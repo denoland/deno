@@ -365,6 +365,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
     deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
     deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_runtime::runtime::init_ops(),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];

@@ -681,7 +681,6 @@ impl JsRuntime {
     let ext_loader = Rc::new(ExtModuleLoader::new(
       loader.clone(),
       &self.extensions.borrow(),
-      &module_map.borrow(),
       self.snapshot_module_load_cb.clone(),
     ));
     module_map.borrow_mut().loader = ext_loader;
@@ -696,6 +695,12 @@ impl JsRuntime {
       for i in 0..num_of_extensions {
         let (maybe_esm_files, maybe_esm_entry_point) = {
           let exts = extensions.borrow();
+          if exts[i].has_js_already_evaluated() {
+            if exts[i].is_core {
+              self.init_cbs(realm);
+            }
+            continue;
+          }
           (
             exts[i].get_esm_sources().map(|e| e.to_owned()),
             exts[i].get_esm_entry_point(),

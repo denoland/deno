@@ -215,6 +215,7 @@ mod startup_snapshot {
     }
   }
 
+  // This is duplicated in `./lib.rs`, keep in sync!
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,

@@ -10,6 +10,7 @@ use crate::resolve_import;
 use crate::resolve_url;
 use crate::snapshot_util::SnapshottedData;
 use crate::Extension;
+use crate::ExtensionFileSourceCode;
 use crate::JsRuntime;
 use crate::OpState;
 use anyhow::Error;
@@ -387,7 +388,7 @@ pub type ExtModuleLoaderCb =
 pub(crate) struct ExtModuleLoader {
   module_loader: Rc<dyn ModuleLoader>,
   maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
-  resolutions: RefCell<HashMap<String, Option<ExtensionFileSource>>>,
+  resolutions: RefCell<HashMap<String, ExtensionFileSource>>,
   used_specifiers: RefCell<HashSet<String>>,
 }
 
@@ -395,7 +396,6 @@ impl ExtModuleLoader {
   pub fn new(
     module_loader: Rc<dyn ModuleLoader>,
     extensions: &[Extension],
-    module_map: &ModuleMap,
     maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
   ) -> Self {
     let mut resolutions = HashMap::new();
@@ -404,13 +404,7 @@ impl ExtModuleLoader {
         .iter()
         .flat_map(|e| e.get_esm_sources())
         .flatten()
-        .map(|s| (s.specifier.to_string(), Some(s.clone()))),
-    );
-    resolutions.extend(
-      module_map
-        .names()
-        .iter()
-        .map(|n| (n.as_str().to_string(), None)),
+        .map(|s| (s.specifier.to_string(), s.clone())),
     );
     ExtModuleLoader {
       module_loader,
@@ -441,7 +435,6 @@ impl ModuleLoader for ExtModuleLoader {
     is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
     if let Some(source) = self.resolutions.borrow().get(specifier.as_str()) {
-      let source = source.as_ref().expect("modules missing a source are already in the module map and should not be loaded");
       self
         .used_specifiers
         .borrow_mut()
@@ -489,7 +482,10 @@ impl Drop for ExtModuleLoader {
     let used_specifiers = self.used_specifiers.get_mut();
     let unused_modules: Vec<_> = resolutions
       .iter()
-      .filter(|(k, v)| !used_specifiers.contains(k.as_str()) && v.is_some())
+      .filter(|(k, v)| {
+        !used_specifiers.contains(k.as_str())
+          && !matches!(v.code, ExtensionFileSourceCode::AlreadyEvaluated)
+      })
       .collect();
 
     if !unused_modules.is_empty() {
@@ -1553,14 +1549,6 @@ impl ModuleMap {
     }
 
     false
-  }
-
-  pub(crate) fn names(&self) -> Vec<&ModuleName> {
-    self
-      .by_name_js
-      .keys()
-      .chain(self.by_name_json.keys())
-      .collect()
   }
 
   pub(crate) fn by_name(
