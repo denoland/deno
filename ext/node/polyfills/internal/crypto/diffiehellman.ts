@@ -241,19 +241,27 @@ export class DiffieHellman {
   setPrivateKey(privateKey: ArrayBufferView): void;
   setPrivateKey(privateKey: string, encoding: BufferEncoding): void;
   setPrivateKey(
-    _privateKey: ArrayBufferView | string,
-    _encoding?: BufferEncoding,
+    privateKey: ArrayBufferView | string,
+    encoding?: BufferEncoding,
   ) {
-    notImplemented("crypto.DiffieHellman.prototype.setPrivateKey");
+    if (encoding == undefined || encoding == 'buffer') {
+      this.#privateKey = Buffer.from(privateKey);
+    } else {
+      this.#privateKey = Buffer.from(privateKey, encoding);
+    }
   }
 
   setPublicKey(publicKey: ArrayBufferView): void;
   setPublicKey(publicKey: string, encoding: BufferEncoding): void;
   setPublicKey(
-    _publicKey: ArrayBufferView | string,
-    _encoding?: BufferEncoding,
+   publicKey: ArrayBufferView | string,
+    encoding?: BufferEncoding,
   ) {
-    notImplemented("crypto.DiffieHellman.prototype.setPublicKey");
+    if (encoding == undefined || encoding == 'buffer') {
+      this.#publicKey = Buffer.from(publicKey);
+    } else {
+      this.#publicKey = Buffer.from(publicKey, encoding);
+    }
   }
 }
 
