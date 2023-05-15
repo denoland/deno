@@ -244,7 +244,7 @@ export class DiffieHellman {
     privateKey: ArrayBufferView | string,
     encoding?: BufferEncoding,
   ) {
-    if (encoding == undefined || encoding == 'buffer') {
+    if (encoding == undefined || encoding == "buffer") {
       this.#privateKey = Buffer.from(privateKey);
     } else {
       this.#privateKey = Buffer.from(privateKey, encoding);
@@ -254,10 +254,10 @@ export class DiffieHellman {
   setPublicKey(publicKey: ArrayBufferView): void;
   setPublicKey(publicKey: string, encoding: BufferEncoding): void;
   setPublicKey(
-   publicKey: ArrayBufferView | string,
+    publicKey: ArrayBufferView | string,
     encoding?: BufferEncoding,
   ) {
-    if (encoding == undefined || encoding == 'buffer') {
+    if (encoding == undefined || encoding == "buffer") {
       this.#publicKey = Buffer.from(publicKey);
     } else {
       this.#publicKey = Buffer.from(publicKey, encoding);
