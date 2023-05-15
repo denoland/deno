@@ -70,6 +70,13 @@ pub async fn cache_packages(
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     assert_eq!(package.copy_index, 0); // the caller should not provide any of these
+    if !package.should_download() {
+      log::debug!(
+        "Skipping caching of optional package: {}",
+        package.pkg_id.as_serialized()
+      );
+      continue;
+    }
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = spawn(async move {

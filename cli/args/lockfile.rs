@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -107,8 +108,12 @@ pub async fn snapshot_from_lockfile(
 
       packages.push(SerializedNpmResolutionSnapshotPackage {
         pkg_id,
-        dist: Default::default(), // temporarily empty
         dependencies,
+        optional: false,
+        // temporarily empty
+        os: Default::default(),
+        cpu: Default::default(),
+        dist: Default::default(),
       });
     }
     (root_packages, packages)
@@ -131,24 +136,54 @@ pub async fn snapshot_from_lockfile(
     }))
   };
   let mut version_infos = get_version_infos();
+  let mut required_packages = HashSet::with_capacity(packages.len());
+  required_packages.extend(root_packages.values().map(|id| id.nv.clone()));
 
   let mut i = 0;
+  let mut had_optional = false;
   while let Some(result) = version_infos.next().await {
-    packages[i].dist = match result {
-      Ok(version_info) => version_info.dist,
+    match result {
+      Ok(version_info) => {
+        let mut package = &mut packages[i];
+        package.dist = version_info.dist;
+        package.cpu = version_info.cpu;
+        package.os = version_info.os;
+
+        if version_info.optional_dependencies.is_empty() {
+          required_packages
+            .extend(package.dependencies.values().map(|id| id.nv.clone()));
+        } else {
+          for (key, id) in &package.dependencies {
+            if !version_info.optional_dependencies.contains_key(key) {
+              required_packages.insert(id.nv.clone());
+            }
+          }
+          had_optional = true;
+        }
+      }
       Err(err) => {
         if api.mark_force_reload() {
           // reset and try again
           version_infos = get_version_infos();
+          required_packages.clear();
           i = 0;
           continue;
         } else {
           return Err(err);
         }
       }
-    };
+    }
 
     i += 1;
+  }
+
+  // only bother to do this if there were optional dependencies
+  if had_optional {
+    for package in &mut packages {
+      if !required_packages.contains(&package.pkg_id.nv) {
+        package.optional = true;
+      }
+    }
   }
 
   // clear the memory cache to reduce memory usage
