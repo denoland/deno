@@ -29,10 +29,9 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_net::ops_tls::TlsStream;
-use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
+use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use http::header::ACCEPT_ENCODING;
 use http::header::CACHE_CONTROL;
@@ -314,11 +313,11 @@ pub fn op_http_upgrade_raw(
 }
 
 #[op]
-pub async fn op_http_upgrade_next(
+pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   index: u32,
   headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, ZeroCopyBuf), AnyError> {
+) -> Result<ResourceId, AnyError> {
   // Stage 1: set the respnse to 101 Switching Protocols and send it
   let upgrade = with_http_mut(index, |http| {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
@@ -343,17 +342,9 @@ pub async fn op_http_upgrade_next(
   // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;
 
-  // Stage 3: return the extracted raw network stream
+  // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
-
-  // We're allocating for those extra bytes, but they are probably going to be empty most of the time
-  Ok((
-    put_network_stream_resource(
-      &mut state.borrow_mut().resource_table,
-      stream,
-    )?,
-    ZeroCopyBuf::from(bytes.to_vec()),
-  ))
+  ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
 #[op(fast)]
