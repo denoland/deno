@@ -10,6 +10,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::task::spawn_blocking;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -601,7 +602,7 @@ pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let output = tokio::task::spawn_blocking(move || {
+  let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()

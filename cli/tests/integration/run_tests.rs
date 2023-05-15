@@ -9,7 +9,6 @@ use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
-use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
@@ -3886,50 +3885,44 @@ async fn test_resolve_dns() {
 
 #[tokio::test]
 async fn http2_request_url() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./run/http2_request_url.ts")
-        .arg("4506")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
-      assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./run/http2_request_url.ts")
+    .arg("4506")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
 
-      let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      ))
-      .unwrap();
+  let cert = reqwest::Certificate::from_pem(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  ))
+  .unwrap();
 
-      let client = reqwest::Client::builder()
-        .add_root_certificate(cert)
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
+  let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .http2_prior_knowledge()
+    .build()
+    .unwrap();
 
-      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
-      assert_eq!(200, res.status());
+  let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+  assert_eq!(200, res.status());
 
-      let body = res.text().await.unwrap();
-      assert_eq!(body, "http://127.0.0.1:4506/");
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "http://127.0.0.1:4506/");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
-    })
-    .await;
+  child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[cfg(not(windows))]
@@ -4173,7 +4166,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn(fut);
+    deno_core::task::spawn(fut);
   }
 }
 

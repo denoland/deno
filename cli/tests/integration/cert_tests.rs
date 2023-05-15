@@ -11,7 +11,6 @@ use std::process::Command;
 use std::sync::Arc;
 use test_util as util;
 use test_util::TempDir;
-use tokio::task::LocalSet;
 use util::TestContext;
 
 itest_flaky!(cafile_url_imports {
@@ -219,113 +218,99 @@ fn cafile_bundle_remote_exports() {
 
 #[tokio::test]
 async fn listen_tls_alpn() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./cert/listen_tls_alpn.ts")
-        .arg("4504")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut msg = [0; 5];
-      let read = stdout.read(&mut msg).unwrap();
-      assert_eq!(read, 5);
-      assert_eq!(&msg, b"READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn.ts")
+    .arg("4504")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
 
-      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      )));
-      let certs = rustls_pemfile::certs(&mut reader).unwrap();
-      let mut root_store = rustls::RootCertStore::empty();
-      root_store.add_parsable_certificates(&certs);
-      let mut cfg = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-      cfg.alpn_protocols.push(b"foobar".to_vec());
-      let cfg = Arc::new(cfg);
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"foobar".to_vec());
+  let cfg = Arc::new(cfg);
 
-      let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
-      let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
-        .await
-        .unwrap();
-      let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4504")
+    .await
+    .unwrap();
+  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
 
-      tls_stream.handshake().await.unwrap();
+  tls_stream.handshake().await.unwrap();
 
-      let (_, rustls_connection) = tls_stream.get_ref();
-      let alpn = rustls_connection.alpn_protocol().unwrap();
-      assert_eq!(alpn, b"foobar");
+  let (_, rustls_connection) = tls_stream.get_ref();
+  let alpn = rustls_connection.alpn_protocol().unwrap();
+  assert_eq!(alpn, b"foobar");
 
-      let status = child.wait().unwrap();
-      assert!(status.success());
-    })
-    .await;
+  let status = child.wait().unwrap();
+  assert!(status.success());
 }
 
 #[tokio::test]
 async fn listen_tls_alpn_fail() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./cert/listen_tls_alpn_fail.ts")
-        .arg("4505")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut msg = [0; 5];
-      let read = stdout.read(&mut msg).unwrap();
-      assert_eq!(read, 5);
-      assert_eq!(&msg, b"READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./cert/listen_tls_alpn_fail.ts")
+    .arg("4505")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut msg = [0; 5];
+  let read = stdout.read(&mut msg).unwrap();
+  assert_eq!(read, 5);
+  assert_eq!(&msg, b"READY");
 
-      let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      )));
-      let certs = rustls_pemfile::certs(&mut reader).unwrap();
-      let mut root_store = rustls::RootCertStore::empty();
-      root_store.add_parsable_certificates(&certs);
-      let mut cfg = rustls::ClientConfig::builder()
-        .with_safe_defaults()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-      cfg.alpn_protocols.push(b"boofar".to_vec());
-      let cfg = Arc::new(cfg);
+  let mut reader = &mut BufReader::new(Cursor::new(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  )));
+  let certs = rustls_pemfile::certs(&mut reader).unwrap();
+  let mut root_store = rustls::RootCertStore::empty();
+  root_store.add_parsable_certificates(&certs);
+  let mut cfg = rustls::ClientConfig::builder()
+    .with_safe_defaults()
+    .with_root_certificates(root_store)
+    .with_no_client_auth();
+  cfg.alpn_protocols.push(b"boofar".to_vec());
+  let cfg = Arc::new(cfg);
 
-      let hostname = rustls::ServerName::try_from("localhost").unwrap();
+  let hostname = rustls::ServerName::try_from("localhost").unwrap();
 
-      let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
-        .await
-        .unwrap();
-      let mut tls_stream =
-        TlsStream::new_client_side(tcp_stream, cfg, hostname);
+  let tcp_stream = tokio::net::TcpStream::connect("localhost:4505")
+    .await
+    .unwrap();
+  let mut tls_stream = TlsStream::new_client_side(tcp_stream, cfg, hostname);
 
-      tls_stream.handshake().await.unwrap_err();
+  tls_stream.handshake().await.unwrap_err();
 
-      let (_, rustls_connection) = tls_stream.get_ref();
-      assert!(rustls_connection.alpn_protocol().is_none());
+  let (_, rustls_connection) = tls_stream.get_ref();
+  assert!(rustls_connection.alpn_protocol().is_none());
 
-      let status = child.wait().unwrap();
-      assert!(status.success());
-    })
-    .await;
+  let status = child.wait().unwrap();
+  assert!(status.success());
 }

@@ -34,6 +34,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -42,7 +44,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -916,12 +918,12 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
-  worker_factory: &CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
-  options: &TestSpecifierOptions,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
@@ -1316,7 +1318,7 @@ async fn test_specifiers(
   let concurrent_jobs = options.concurrent_jobs;
 
   let sender_ = sender.downgrade();
-  let sigint_handler_handle = tokio::task::spawn(async move {
+  let sigint_handler_handle = spawn(async move {
     signal::ctrl_c().await.unwrap();
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
@@ -1328,14 +1330,14 @@ async fn test_specifiers(
     let sender = sender.clone();
     let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
     let specifier_options = options.specifier.clone();
-    tokio::task::spawn_blocking(move || {
-      run_local(test_specifier(
-        &worker_factory,
+    spawn_blocking(move || {
+      create_and_run_current_thread(test_specifier(
+        worker_factory,
         permissions,
         specifier,
         sender.clone(),
         fail_fast_tracker,
-        &specifier_options,
+        specifier_options,
       ))
     })
   });
@@ -1350,7 +1352,7 @@ async fn test_specifiers(
   ));
 
   let handler = {
-    tokio::task::spawn(async move {
+    spawn(async move {
       let earlier = Instant::now();
       let mut tests = IndexMap::new();
       let mut test_steps = IndexMap::new();
@@ -1887,7 +1889,7 @@ pub async fn run_tests_with_watch(
   // run, a process-scoped basic exit handler is required due to a tokio
   // limitation where it doesn't unbind its own handler for the entire process
   // once a user adds one.
-  tokio::task::spawn(async move {
+  spawn(async move {
     loop {
       signal::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
@@ -2070,7 +2072,7 @@ fn start_output_redirect_thread(
   sender: UnboundedSender<TestEvent>,
   flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
-  tokio::task::spawn_blocking(move || loop {
+  spawn_blocking(move || loop {
     let mut buffer = [0; 512];
     let size = match pipe_reader.read(&mut buffer) {
       Ok(0) | Err(_) => break,
