@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2923
+Total: 2934
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -281,6 +281,7 @@ Total: 2923
 - [parallel/test-child-process-exec-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-encoding.js)
 - [parallel/test-child-process-exec-std-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-std-encoding.js)
 - [parallel/test-child-process-exec-timeout-expire.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-expire.js)
+- [parallel/test-child-process-exec-timeout-kill.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-kill.js)
 - [parallel/test-child-process-exec-timeout-not-expired.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-exec-timeout-not-expired.js)
 - [parallel/test-child-process-execFile-promisified-abortController.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-execFile-promisified-abortController.js)
 - [parallel/test-child-process-execfile.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-child-process-execfile.js)
@@ -2370,7 +2371,9 @@ Total: 2923
 - [parallel/test-ttywrap-stack.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-stack.js)
 - [parallel/test-unhandled-exception-rethrow-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unhandled-exception-rethrow-error.js)
 - [parallel/test-unicode-node-options.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unicode-node-options.js)
+- [parallel/test-url-format-whatwg.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-format-whatwg.js)
 - [parallel/test-url-null-char.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-null-char.js)
+- [parallel/test-url-parse-format.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-parse-format.js)
 - [parallel/test-utf8-scripts.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-utf8-scripts.js)
 - [parallel/test-util-callbackify.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-util-callbackify.js)
 - [parallel/test-util-emit-experimental-warning.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-util-emit-experimental-warning.js)
@@ -2495,10 +2498,13 @@ Total: 2923
 - [parallel/test-webcrypto-wrap-unwrap.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-webcrypto-wrap-unwrap.js)
 - [parallel/test-webstream-encoding-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-webstream-encoding-inspect.js)
 - [parallel/test-webstream-readablestream-pipeto.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-webstream-readablestream-pipeto.js)
+- [parallel/test-whatwg-encoding-custom-fatal-streaming.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-fatal-streaming.js)
 - [parallel/test-whatwg-encoding-custom-internals.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-internals.js)
 - [parallel/test-whatwg-encoding-custom-interop.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-interop.js)
 - [parallel/test-whatwg-encoding-custom-textdecoder-api-invalid-label.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-textdecoder-api-invalid-label.js)
+- [parallel/test-whatwg-encoding-custom-textdecoder-fatal.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-textdecoder-fatal.js)
 - [parallel/test-whatwg-encoding-custom-textdecoder-invalid-arg.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-textdecoder-invalid-arg.js)
+- [parallel/test-whatwg-encoding-custom-textdecoder-utf16-surrogates.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-textdecoder-utf16-surrogates.js)
 - [parallel/test-whatwg-encoding-custom-textdecoder.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-encoding-custom-textdecoder.js)
 - [parallel/test-whatwg-events-event-constructors.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-events-event-constructors.js)
 - [parallel/test-whatwg-events-eventtarget-this-of-listener.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-events-eventtarget-this-of-listener.js)
@@ -2506,6 +2512,9 @@ Total: 2923
 - [parallel/test-whatwg-readablebytestream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-readablebytestream.js)
 - [parallel/test-whatwg-readablestream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-readablestream.js)
 - [parallel/test-whatwg-transformstream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-transformstream.js)
+- [parallel/test-whatwg-url-custom-domainto.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-domainto.js)
+- [parallel/test-whatwg-url-custom-inspect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-inspect.js)
+- [parallel/test-whatwg-url-custom-parsing.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-parsing.js)
 - [parallel/test-whatwg-url-custom-properties.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-properties.js)
 - [parallel/test-whatwg-url-custom-searchparams-append.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-searchparams-append.js)
 - [parallel/test-whatwg-url-custom-searchparams-constructor.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-searchparams-constructor.js)
@@ -2522,7 +2531,9 @@ Total: 2923
 - [parallel/test-whatwg-url-custom-searchparams-stringifier.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-searchparams-stringifier.js)
 - [parallel/test-whatwg-url-custom-searchparams-values.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-searchparams-values.js)
 - [parallel/test-whatwg-url-custom-searchparams.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-searchparams.js)
+- [parallel/test-whatwg-url-custom-setters.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-custom-setters.js)
 - [parallel/test-whatwg-url-invalidthis.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-invalidthis.js)
+- [parallel/test-whatwg-url-toascii.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-url-toascii.js)
 - [parallel/test-whatwg-webstreams-adapters-streambase.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-webstreams-adapters-streambase.js)
 - [parallel/test-whatwg-webstreams-adapters-to-readablestream.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-webstreams-adapters-to-readablestream.js)
 - [parallel/test-whatwg-webstreams-adapters-to-readablewritablepair.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-whatwg-webstreams-adapters-to-readablewritablepair.js)

@@ -9,7 +9,11 @@ use deno_runtime::worker::WorkerOptions;
 use std::path::Path;
 use std::rc::Rc;
 
-deno_core::extension!(hello_runtime, esm = ["hello_runtime_bootstrap.js"]);
+deno_core::extension!(
+  hello_runtime,
+  esm_entry_point = "ext:hello_runtime/hello_runtime_bootstrap.js",
+  esm = ["hello_runtime_bootstrap.js"]
+);
 
 #[tokio::main]
 async fn main() -> Result<(), AnyError> {
