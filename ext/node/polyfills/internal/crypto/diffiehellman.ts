@@ -6,7 +6,10 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_TYPE,
+  NodeError,
+} from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateString,
@@ -32,9 +35,14 @@ const DH_GENERATOR = 2;
 
 export class DiffieHellman {
   verifyError!: number;
+  #prime: Buffer;
+  #primeLength: number;
+  #generator: Buffer;
+  #privateKey: Buffer;
+  #publicKey: Buffer;
 
   constructor(
-    sizeOrKey: unknown,
+    sizeOrKey: number | string | ArrayBufferView,
     keyEncoding?: unknown,
     generator?: unknown,
     genEncoding?: unknown,
@@ -71,24 +79,68 @@ export class DiffieHellman {
     genEncoding = genEncoding || encoding;
 
     if (typeof sizeOrKey !== "number") {
-      sizeOrKey = toBuf(sizeOrKey as string, keyEncoding as string);
+      this.#prime = toBuf(sizeOrKey as string, keyEncoding as string);
+    } else {
+      // The supplied parameter is our primeLength, generate a suitable prime.
+      this.#primeLength = sizeOrKey as number;
+      if (this.#primeLength < 2) {
+        throw new NodeError("ERR_OSSL_BN_BITS_TOO_SMALL", "bits too small");
+      }
+
+      this.#prime = Buffer.from(
+        ops.op_node_gen_prime(this.#primeLength).buffer,
+      );
     }
 
     if (!generator) {
-      generator = DH_GENERATOR;
+      // While the commonly used cyclic group generators for DH are 2 and 5, we
+      // need this a buffer, because, well.. Node.
+      this.#generator = Buffer.alloc(4);
+      this.#generator.writeUint32BE(DH_GENERATOR);
     } else if (typeof generator === "number") {
       validateInt32(generator, "generator");
+      this.#generator = Buffer.alloc(4);
+      if (generator <= 0 || generator >= 0x7fffffff) {
+        throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
+      }
+      this.#generator.writeUint32BE(generator);
     } else if (typeof generator === "string") {
       generator = toBuf(generator, genEncoding as string);
+      this.#generator = generator;
     } else if (!isArrayBufferView(generator) && !isAnyArrayBuffer(generator)) {
       throw new ERR_INVALID_ARG_TYPE(
         "generator",
         ["number", "string", "ArrayBuffer", "Buffer", "TypedArray", "DataView"],
         generator,
       );
+    } else {
+      this.#generator = Buffer.from(generator);
     }
 
-    notImplemented("crypto.DiffieHellman");
+    this.#checkGenerator();
+
+    // TODO(lev): actually implement this value
+    this.verifyError = 0;
+  }
+
+  #checkGenerator(): number {
+    let generator: number;
+
+    if (this.#generator.length == 0) {
+      throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
+    } else if (this.#generator.length == 1) {
+      generator = this.#generator.readUint8();
+    } else if (this.#generator.length == 2) {
+      generator = this.#generator.readUint16BE();
+    } else {
+      generator = this.#generator.readUint32BE();
+    }
+
+    if (generator != 2 && generator != 5) {
+      throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
+    }
+
+    return generator;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -106,59 +158,110 @@ export class DiffieHellman {
     outputEncoding: BinaryToTextEncoding,
   ): string;
   computeSecret(
-    _otherPublicKey: ArrayBufferView | string,
-    _inputEncoding?: BinaryToTextEncoding,
-    _outputEncoding?: BinaryToTextEncoding,
+    otherPublicKey: ArrayBufferView | string,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.computeSecret");
+    let buf;
+    if (inputEncoding != undefined && inputEncoding != "buffer") {
+      buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
+    } else {
+      buf = Buffer.from(otherPublicKey.buffer);
+    }
+
+    const sharedSecret = ops.op_node_dh_compute_secret(
+      this.#prime,
+      this.#privateKey,
+      buf,
+    );
+
+    if (outputEncoding == undefined || outputEncoding == "buffer") {
+      return Buffer.from(sharedSecret.buffer);
+    }
+
+    return Buffer.from(sharedSecret.buffer).toString(outputEncoding);
   }
 
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.generateKeys");
+    const generator = this.#checkGenerator();
+    const [privateKey, publicKey] = ops.op_node_dh_generate2(
+      this.#prime,
+      this.#primeLength,
+      generator,
+    );
+
+    this.#privateKey = Buffer.from(privateKey.buffer);
+    this.#publicKey = Buffer.from(publicKey.buffer);
+
+    return this.#publicKey;
   }
 
   getGenerator(): Buffer;
   getGenerator(encoding: BinaryToTextEncoding): string;
-  getGenerator(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getGenerator");
+  getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined && encoding != "buffer") {
+      return this.#generator.toString(encoding);
+    }
+
+    return this.#generator;
   }
 
   getPrime(): Buffer;
   getPrime(encoding: BinaryToTextEncoding): string;
-  getPrime(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPrime");
+  getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined && encoding != "buffer") {
+      return this.#prime.toString(encoding);
+    }
+
+    return this.#prime;
   }
 
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
-  getPrivateKey(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPrivateKey");
+  getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined && encoding != "buffer") {
+      return this.#privateKey.toString(encoding);
+    }
+
+    return this.#privateKey;
   }
 
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding): string;
-  getPublicKey(_encoding?: BinaryToTextEncoding): Buffer | string {
-    notImplemented("crypto.DiffieHellman.prototype.getPublicKey");
+  getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
+    if (encoding !== undefined && encoding != "buffer") {
+      return this.#publicKey.toString(encoding);
+    }
+
+    return this.#publicKey;
   }
 
   setPrivateKey(privateKey: ArrayBufferView): void;
   setPrivateKey(privateKey: string, encoding: BufferEncoding): void;
   setPrivateKey(
-    _privateKey: ArrayBufferView | string,
-    _encoding?: BufferEncoding,
+    privateKey: ArrayBufferView | string,
+    encoding?: BufferEncoding,
   ) {
-    notImplemented("crypto.DiffieHellman.prototype.setPrivateKey");
+    if (encoding == undefined || encoding == "buffer") {
+      this.#privateKey = Buffer.from(privateKey);
+    } else {
+      this.#privateKey = Buffer.from(privateKey, encoding);
+    }
   }
 
   setPublicKey(publicKey: ArrayBufferView): void;
   setPublicKey(publicKey: string, encoding: BufferEncoding): void;
   setPublicKey(
-    _publicKey: ArrayBufferView | string,
-    _encoding?: BufferEncoding,
+    publicKey: ArrayBufferView | string,
+    encoding?: BufferEncoding,
   ) {
-    notImplemented("crypto.DiffieHellman.prototype.setPublicKey");
+    if (encoding == undefined || encoding == "buffer") {
+      this.#publicKey = Buffer.from(publicKey);
+    } else {
+      this.#publicKey = Buffer.from(publicKey, encoding);
+    }
   }
 }
 
