@@ -48,7 +48,7 @@
     "test_util/wpt",
     "third_party",
     "tools/node_compat/TODO.md",
-    "tools/node_compat/versions",
+    "tools/node_compat/node",
     "tools/wpt/expectation.json",
     "tools/wpt/manifest.json",
     "ext/websocket/autobahn/reports"
