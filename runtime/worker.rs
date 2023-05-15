@@ -215,6 +215,18 @@ impl MainWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
+
+    fn dynamic<F>(
+      name: &str,
+    ) -> F {
+      let lib_path = format!("target/debug/deps/lib{}.dylib", name);
+      let lib = dlopen::raw::Library::open(lib_path).unwrap();
+      unsafe {
+        lib.symbol("init").unwrap()
+      }
+      std::mem::forget(lib);
+    }
+
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions = vec![
@@ -238,7 +250,7 @@ impl MainWorker {
         },
       ),
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      dynamic::<deno_websocket::init>("deno_websocket")::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),

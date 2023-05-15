@@ -84,6 +84,7 @@ atty = "=0.2.14"
 base64 = "=0.13.1"
 bencher = "0.1"
 bytes = "1.4.0"
+paste = "1.0.12"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
 console_static_text = "=0.8.1"

@@ -36,6 +36,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 serde_v8.workspace = true
 smallvec.workspace = true
 sourcemap = "6.1"
+paste.workspace = true
 tokio.workspace = true
 url.workspace = true
 v8.workspace = true

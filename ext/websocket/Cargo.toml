@@ -12,6 +12,7 @@ description = "Implementation of WebSocket API for Deno"
 
 [lib]
 path = "lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 bytes.workspace = true

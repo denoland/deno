@@ -309,6 +309,14 @@ macro_rules! extension {
         ext.take()
       }
     }
+
+    $crate::paste::paste! {
+      #[allow(dead_code)]
+      #[no_mangle]
+      pub fn [<init_ $name>] $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+        $name::init_ops $( ::< $( $param ),+ > )? ( $( $( $options_id , )* )? )
+      }
+    }
   };
 
   // This branch of the macro generates a config object that calls the state function with itself.

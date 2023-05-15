@@ -23,6 +23,7 @@ snapshot_from_snapshot = []
 include_js_files_for_snapshotting = [
   "deno_core/include_js_files_for_snapshotting",
 ]
+dynamic = []
 
 [lib]
 name = "deno_runtime"

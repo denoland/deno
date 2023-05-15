@@ -33,6 +33,7 @@ pub use parking_lot;
 pub use serde;
 pub use serde_json;
 pub use serde_v8;
+pub use paste;
 pub use serde_v8::ByteString;
 pub use serde_v8::DetachedBuffer;
 pub use serde_v8::StringOrBuffer;
