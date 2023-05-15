@@ -284,6 +284,7 @@ where
   let resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(stream)),
     closed: Rc::new(Cell::new(false)),
+    tx_lock: AsyncRefCell::new(()),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
