@@ -9,6 +9,7 @@ import {
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
+  NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
@@ -83,6 +84,10 @@ export class DiffieHellman {
     } else {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
+      if (this.#primeLength < 2) {
+        throw new NodeError('ERR_OSSL_BN_BITS_TOO_SMALL', 'bits too small');
+      }
+
       this.#prime = Buffer.from(
         ops.op_node_gen_prime(this.#primeLength).buffer,
       );
@@ -96,6 +101,9 @@ export class DiffieHellman {
     } else if (typeof generator === "number") {
       validateInt32(generator, "generator");
       this.#generator = Buffer.alloc(4);
+      if (generator <= 0 || generator >= 0x7fffffff) {
+        throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
+      }
       this.#generator.writeUint32BE(generator);
     } else if (typeof generator === "string") {
       generator = toBuf(generator, genEncoding as string);
@@ -111,18 +119,29 @@ export class DiffieHellman {
     }
 
     this.#checkGenerator();
+
+    // TODO(lev): actually implement this value
+    this.verifyError = 0;
   }
 
-  #checkGenerator(): void {
-    const generator = this.#generator.readUint32BE();
+  #checkGenerator(): number {
+    let generator: number;
+
+    if (this.#generator.length == 0) {
+      throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
+    } else if (this.#generator.length == 1) {
+      generator = this.#generator.readUint8();
+    } else if (this.#generator.length == 2) {
+      generator = this.#generator.readUint16BE();
+    } else {
+      generator = this.#generator.readUint32BE();
+    }
 
     if (generator != 2 && generator != 5) {
-      throw new ERR_INVALID_ARG_VALUE(
-        "generator",
-        generator,
-        "should be 2 or 5",
-      );
+      throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
     }
+
+    return generator;
   }
 
   computeSecret(otherPublicKey: ArrayBufferView): Buffer;
@@ -141,21 +160,33 @@ export class DiffieHellman {
   ): string;
   computeSecret(
     otherPublicKey: ArrayBufferView | string,
-    _inputEncoding?: BinaryToTextEncoding,
-    _outputEncoding?: BinaryToTextEncoding,
+    inputEncoding?: BinaryToTextEncoding,
+    outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
+    let buf;
+    if (inputEncoding != undefined && inputEncoding != 'buffer') {
+      buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
+    } else {
+      buf = Buffer.from(otherPublicKey.buffer);
+    }
+
     const sharedSecret = ops.op_node_dh_compute_secret(
       this.#prime,
       this.#privateKey,
-      Buffer.from(otherPublicKey.buffer),
+      buf,
     );
-    return Buffer.from(sharedSecret.buffer);
+
+    if (outputEncoding == undefined || outputEncoding == 'buffer') {
+      return Buffer.from(sharedSecret.buffer);
+    }
+
+    return Buffer.from(sharedSecret.buffer).toString(outputEncoding);
   }
 
   generateKeys(): Buffer;
   generateKeys(encoding: BinaryToTextEncoding): string;
   generateKeys(_encoding?: BinaryToTextEncoding): Buffer | string {
-    const generator = this.#generator.readUint32BE();
+    const generator = this.#checkGenerator();
     const [privateKey, publicKey] = ops.op_node_dh_generate2(
       this.#prime,
       this.#primeLength,
