@@ -11,6 +11,7 @@ use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
+use num_bigint_dig::BigUint;
 use num_traits::FromPrimitive;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
@@ -786,6 +787,30 @@ pub fn op_node_dh_generate(
   generator: usize,
 ) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
   dh_generate(prime, prime_len, generator)
+}
+
+// TODO(lev): This duplication should be avoided.
+#[op]
+pub fn op_node_dh_generate2(
+  prime: ZeroCopyBuf,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+  dh_generate(Some(prime).as_deref(), prime_len, generator)
+}
+
+#[op]
+pub fn op_node_dh_compute_secret(
+  prime: ZeroCopyBuf,
+  private_key: ZeroCopyBuf,
+  their_public_key: ZeroCopyBuf,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
+  let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
+  let primei: BigUint = BigUint::from_bytes_be(prime.as_ref());
+  let shared_secret: BigUint = pubkey.modpow(&privkey, &primei);
+
+  Ok(shared_secret.to_bytes_be().into())
 }
 
 #[op]
