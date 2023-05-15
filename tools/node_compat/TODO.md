@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2934
+Total: 2935
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1815,6 +1815,7 @@ Total: 2934
 - [parallel/test-process-env.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-env.js)
 - [parallel/test-process-euid-egid.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-euid-egid.js)
 - [parallel/test-process-exception-capture-errors.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-exception-capture-errors.js)
+- [parallel/test-process-exception-capture-should-abort-on-uncaught-setflagsfromstring.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-exception-capture-should-abort-on-uncaught-setflagsfromstring.js)
 - [parallel/test-process-exception-capture-should-abort-on-uncaught.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-exception-capture-should-abort-on-uncaught.js)
 - [parallel/test-process-exception-capture.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-exception-capture.js)
 - [parallel/test-process-exec-argv.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-process-exec-argv.js)
