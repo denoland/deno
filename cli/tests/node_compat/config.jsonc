@@ -240,6 +240,7 @@
       "test-console-sync-write-error.js",
       "test-console-table.js",
       "test-console-tty-colors.js",
+      "test-crypto-dh-shared.js",
       "test-crypto-dh.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
