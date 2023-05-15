@@ -476,7 +476,10 @@ pub struct BrotliResponseStream {
 
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
-    Self { underlying }
+    Self {
+      state: BrotliState::Header,
+      underlying,
+    }
   }
 }
 
