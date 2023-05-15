@@ -7,13 +7,12 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 import {
-  ERR_INVALID_ARG_TYPE,
   ERR_CRYPTO_UNKNOWN_DH_GROUP,
+  ERR_INVALID_ARG_TYPE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
-  validateOneOf,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
@@ -267,8 +266,68 @@ export class DiffieHellman {
   }
 }
 
-const DH_GROUP_NAMES = ["modp14", "modp15", "modp16", "modp17", "modp18"];
+const DH_GROUP_NAMES = [
+  "modp5",
+  "modp14",
+  "modp15",
+  "modp16",
+  "modp17",
+  "modp18",
+];
 const DH_GROUPS = {
+  "modp5": {
+    prime: [
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+      0xC90FDAA2,
+      0x2168C234,
+      0xC4C6628B,
+      0x80DC1CD1,
+      0x29024E08,
+      0x8A67CC74,
+      0x020BBEA6,
+      0x3B139B22,
+      0x514A0879,
+      0x8E3404DD,
+      0xEF9519B3,
+      0xCD3A431B,
+      0x302B0A6D,
+      0xF25F1437,
+      0x4FE1356D,
+      0x6D51C245,
+      0xE485B576,
+      0x625E7EC6,
+      0xF44C42E9,
+      0xA637ED6B,
+      0x0BFF5CB6,
+      0xF406B7ED,
+      0xEE386BFB,
+      0x5A899FA5,
+      0xAE9F2411,
+      0x7C4B1FE6,
+      0x49286651,
+      0xECE45B3D,
+      0xC2007CB8,
+      0xA163BF05,
+      0x98DA4836,
+      0x1C55D39A,
+      0x69163FA8,
+      0xFD24CF5F,
+      0x83655D23,
+      0xDCA3AD96,
+      0x1C62F356,
+      0x208552BB,
+      0x9ED52907,
+      0x7096966D,
+      0x670C354E,
+      0x4ABC9804,
+      0xF1746C08,
+      0xCA237327,
+      0xFFFFFFFF,
+      0xFFFFFFFF,
+    ],
+    generator: 2,
+  },
   "modp14": {
     prime: [
       0xFFFFFFFF,
