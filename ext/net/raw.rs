@@ -179,7 +179,7 @@ pub enum NetworkStreamAddress {
 
 impl NetworkStreamListener {
   /// Accepts a connection on this listener.
-  pub async fn accept(&self) -> Result<NetworkStream, AnyError> {
+  pub async fn accept(&self) -> Result<NetworkStream, std::io::Error> {
     Ok(match self {
       Self::Tcp(tcp) => {
         let (stream, _addr) = tcp.accept().await?;

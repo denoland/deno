@@ -31,7 +31,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
-use deno_net::raw::NetworkStreamAddress;
 use deno_websocket::ws_create_server_stream;
 use fly_accept_encoding::Encoding;
 use http::header::ACCEPT_ENCODING;
@@ -60,9 +59,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -816,7 +812,7 @@ fn serve_http(
 }
 
 fn serve_http_on<HTTP>(
-  network_stream: NetworkStream,
+  connection: HTTP::Connection,
   listen_properties: &HttpListenProperties,
   cancel: Rc<CancelHandle>,
   tx: tokio::sync::mpsc::Sender<u32>,
@@ -824,15 +820,10 @@ fn serve_http_on<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
-  // We always want some sort of peer address. If we can't get one, just make up one.
-  let peer_address = network_stream.peer_address().unwrap_or_else(|_| {
-    NetworkStreamAddress::Ip(SocketAddr::V4(SocketAddrV4::new(
-      Ipv4Addr::new(0, 0, 0, 0),
-      0,
-    )))
-  });
   let connection_properties: HttpConnectionProperties =
-    HTTP::connection_properties(listen_properties, &peer_address);
+    HTTP::connection_properties(listen_properties, &connection);
+
+  let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
     NetworkStream::Tcp(conn) => {
@@ -886,14 +877,10 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
-  let listener = HTTP::get_network_stream_listener_for_rid(
-    &mut state.borrow_mut(),
-    listener_rid,
-  )?;
+  let listener =
+    HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
-  let local_address = listener.listen_address()?;
-  let listen_properties =
-    HTTP::listen_properties(listener.stream(), &local_address);
+  let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
@@ -906,8 +893,7 @@ where
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
   let handle = spawn(async move {
     loop {
-      let conn = listener
-        .accept()
+      let conn = HTTP::accept_connection_from_listener(&listener)
         .try_or_cancel(cancel_clone.clone())
         .await?;
       serve_http_on::<HTTP>(
@@ -936,17 +922,15 @@ where
 #[op(v8)]
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
-  conn: ResourceId,
+  connection_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError>
 where
   HTTP: HttpPropertyExtractor,
 {
-  let network_stream: NetworkStream =
-    HTTP::get_network_stream_for_rid(&mut state.borrow_mut(), conn)?;
+  let connection =
+    HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
-  let local_address = network_stream.local_address()?;
-  let listen_properties =
-    HTTP::listen_properties(network_stream.stream(), &local_address);
+  let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
@@ -957,7 +941,7 @@ where
 
   let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> =
     serve_http_on::<HTTP>(
-      network_stream,
+      connection,
       &listen_properties,
       resource.cancel_handle(),
       tx,
