@@ -6,7 +6,7 @@ import {
   isAnyArrayBuffer,
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
-import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE, ERR_INVALID_ARG_VALUE} from "ext:deno_node/internal/errors.ts";
 import {
   validateInt32,
   validateString,
@@ -105,6 +105,16 @@ export class DiffieHellman {
       );
     } else {
       this.#generator = Buffer.from(generator);
+    }
+
+    this.#checkGenerator();
+  }
+
+  #checkGenerator(): void {
+    const generator = this.#generator.readUint32BE();
+
+    if (generator != 2 && generator != 5) {
+      throw new ERR_INVALID_ARG_VALUE("generator", generator, "should be 2 or 5");
     }
   }
 
