@@ -8,7 +8,6 @@ import {
 } from "ext:deno_node/internal/util/types.ts";
 import {
   ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
   NodeError,
 } from "ext:deno_node/internal/errors.ts";
 import {
@@ -85,7 +84,7 @@ export class DiffieHellman {
       // The supplied parameter is our primeLength, generate a suitable prime.
       this.#primeLength = sizeOrKey as number;
       if (this.#primeLength < 2) {
-        throw new NodeError('ERR_OSSL_BN_BITS_TOO_SMALL', 'bits too small');
+        throw new NodeError("ERR_OSSL_BN_BITS_TOO_SMALL", "bits too small");
       }
 
       this.#prime = Buffer.from(
@@ -102,7 +101,7 @@ export class DiffieHellman {
       validateInt32(generator, "generator");
       this.#generator = Buffer.alloc(4);
       if (generator <= 0 || generator >= 0x7fffffff) {
-        throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
+        throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
       }
       this.#generator.writeUint32BE(generator);
     } else if (typeof generator === "string") {
@@ -128,7 +127,7 @@ export class DiffieHellman {
     let generator: number;
 
     if (this.#generator.length == 0) {
-      throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
+      throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
     } else if (this.#generator.length == 1) {
       generator = this.#generator.readUint8();
     } else if (this.#generator.length == 2) {
@@ -138,7 +137,7 @@ export class DiffieHellman {
     }
 
     if (generator != 2 && generator != 5) {
-      throw new NodeError('ERR_OSSL_DH_BAD_GENERATOR', 'bad generator');
+      throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
     }
 
     return generator;
@@ -164,7 +163,7 @@ export class DiffieHellman {
     outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
     let buf;
-    if (inputEncoding != undefined && inputEncoding != 'buffer') {
+    if (inputEncoding != undefined && inputEncoding != "buffer") {
       buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
     } else {
       buf = Buffer.from(otherPublicKey.buffer);
@@ -176,7 +175,7 @@ export class DiffieHellman {
       buf,
     );
 
-    if (outputEncoding == undefined || outputEncoding == 'buffer') {
+    if (outputEncoding == undefined || outputEncoding == "buffer") {
       return Buffer.from(sharedSecret.buffer);
     }
 
@@ -202,7 +201,7 @@ export class DiffieHellman {
   getGenerator(): Buffer;
   getGenerator(encoding: BinaryToTextEncoding): string;
   getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != 'buffer') {
+    if (encoding !== undefined && encoding != "buffer") {
       return this.#generator.toString(encoding);
     }
 
@@ -212,7 +211,7 @@ export class DiffieHellman {
   getPrime(): Buffer;
   getPrime(encoding: BinaryToTextEncoding): string;
   getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != 'buffer') {
+    if (encoding !== undefined && encoding != "buffer") {
       return this.#prime.toString(encoding);
     }
 
@@ -222,7 +221,7 @@ export class DiffieHellman {
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != 'buffer') {
+    if (encoding !== undefined && encoding != "buffer") {
       return this.#privateKey.toString(encoding);
     }
 
@@ -232,7 +231,7 @@ export class DiffieHellman {
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding): string;
   getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != 'buffer') {
+    if (encoding !== undefined && encoding != "buffer") {
       return this.#publicKey.toString(encoding);
     }
 
