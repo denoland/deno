@@ -836,6 +836,15 @@ export class ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY extends NodeError {
   }
 }
 
+export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_DH_GROUP",
+      "Unknown DH group",
+    );
+  }
+}
+
 export class ERR_CRYPTO_ENGINE_UNKNOWN extends NodeError {
   constructor(x: string) {
     super("ERR_CRYPTO_ENGINE_UNKNOWN", `Engine "${x}" was not found`);
