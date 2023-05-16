@@ -567,7 +567,6 @@ class ClientRequest extends OutgoingMessage {
             this._requestSendErrorSet = true;
             break;
           }
-          console.log(done, val);
           if (done) break;
           try {
             await core.writeAll(req.requestBodyRid, val);
@@ -645,7 +644,6 @@ class ClientRequest extends OutgoingMessage {
     this.controller.close();
 
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
-      console.log("sent", res);
       const incoming = new IncomingMessageForClient(this.socket);
 
       // TODO
