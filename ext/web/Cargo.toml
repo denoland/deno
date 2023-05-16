@@ -19,11 +19,11 @@ base64-simd = "0.8"
 deno_core.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
+once_cell.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
 winmm-sys.workspace = true
-once_cell.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
