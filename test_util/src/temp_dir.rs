@@ -2,22 +2,10 @@
 
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use anyhow::Context;
 use lsp_types::Url;
-use once_cell::sync::OnceCell;
-
-static TEMP_DIR_SESSION: OnceCell<TempDirSession> = OnceCell::new();
-
-struct TempDirSession {
-  default_prefix: String,
-  counter: AtomicU32,
-}
 
 /// For creating temporary directories in tests.
 ///
@@ -26,15 +14,7 @@ struct TempDirSession {
 /// Note: Do not use this in actual code as this does not protect against
 /// "insecure temporary file" security vulnerabilities.
 #[derive(Clone)]
-pub struct TempDir(Arc<TempDirInner>);
-
-struct TempDirInner(PathBuf);
-
-impl Drop for TempDirInner {
-  fn drop(&mut self) {
-    let _ = std::fs::remove_dir_all(&self.0);
-  }
-}
+pub struct TempDir(Arc<tempfile::TempDir>);
 
 impl Default for TempDir {
   fn default() -> Self {
@@ -55,33 +35,14 @@ impl TempDir {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
   }
 
+  /// Create a new temporary directory with the given prefix as part of its name, if specified.
   fn new_inner(parent_dir: &Path, prefix: Option<&str>) -> Self {
-    let session = TEMP_DIR_SESSION.get_or_init(|| {
-      let default_prefix = format!(
-        "deno-cli-test-{}",
-        SystemTime::now()
-          .duration_since(SystemTime::UNIX_EPOCH)
-          .unwrap()
-          .as_millis()
-      );
-      TempDirSession {
-        default_prefix,
-        counter: Default::default(),
-      }
-    });
-    Self({
-      let count = session.counter.fetch_add(1, Ordering::SeqCst);
-      let path = parent_dir.join(format!(
-        "{}{}-{}",
-        prefix.unwrap_or(""),
-        session.default_prefix,
-        count,
-      ));
-      std::fs::create_dir_all(&path)
-        .with_context(|| format!("Error creating temp dir: {}", path.display()))
-        .unwrap();
-      Arc::new(TempDirInner(path))
-    })
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(prefix.unwrap_or("deno-cli-test"));
+    let dir = builder
+      .tempdir_in(parent_dir)
+      .expect("Failed to create a temporary directory");
+    Self(dir.into())
   }
 
   pub fn uri(&self) -> Url {
@@ -90,11 +51,15 @@ impl TempDir {
 
   pub fn path(&self) -> &Path {
     let inner = &self.0;
-    inner.0.as_path()
+    inner.path()
   }
 
   pub fn create_dir_all(&self, path: impl AsRef<Path>) {
     fs::create_dir_all(self.path().join(path)).unwrap();
+  }
+
+  pub fn remove_dir_all(&self, path: impl AsRef<Path>) {
+    fs::remove_dir_all(self.path().join(path)).unwrap();
   }
 
   pub fn read_to_string(&self, path: impl AsRef<Path>) -> String {

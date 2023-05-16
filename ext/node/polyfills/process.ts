@@ -2,7 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 const internals = globalThis.__bootstrap.internals;
-import { core } from "ext:deno_node/_core.ts";
+const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
@@ -36,6 +36,7 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
+import { Command } from "ext:runtime/40_process.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -61,10 +62,6 @@ import * as uv from "ext:deno_node/internal_binding/uv.ts";
 import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
-  Deno.Command;
-
 const notImplementedEvents = [
   "disconnect",
   "message",
@@ -74,28 +71,6 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = [];
-
-// Overwrites the 1st item with getter.
-// TODO(bartlomieju): added "configurable: true" to make this work for binary
-// commands, but that is probably a wrong solution
-// TODO(bartlomieju): move the configuration for all "argv" to
-// "internals.__bootstrapNodeProcess"
-Object.defineProperty(argv, "0", {
-  get: () => {
-    return Deno.execPath();
-  },
-  configurable: true,
-});
-// Overwrites the 2st item with getter.
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule.startsWith("file:")) {
-      return fromFileUrl(Deno.mainModule);
-    } else {
-      return join(Deno.cwd(), "$deno$node.js");
-    }
-  },
-});
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
@@ -272,11 +247,11 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     let status;
     if (Deno.build.os === "windows") {
-      status = (new DenoCommand("powershell.exe", {
+      status = (new Command("powershell.exe", {
         args: ["Get-Process", "-pid", pid],
       })).outputSync();
     } else {
-      status = (new DenoCommand("kill", {
+      status = (new Command("kill", {
         args: ["-0", pid],
       })).outputSync();
     }
@@ -354,6 +329,17 @@ let execPath: string | null = null;
 class Process extends EventEmitter {
   constructor() {
     super();
+  }
+
+  /** https://nodejs.org/api/process.html#processrelease */
+  get release() {
+    return {
+      name: "node",
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+    };
   }
 
   /** https://nodejs.org/api/process.html#process_process_arch */
@@ -689,9 +675,35 @@ export const removeAllListeners = process.removeAllListeners;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
+  argv0: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
+  // Overwrites the 1st item with getter.
+  if (typeof argv0 === "string") {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return argv0;
+      },
+    });
+  } else {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return Deno.execPath();
+      },
+    });
+  }
+
+  // Overwrites the 2st item with getter.
+  Object.defineProperty(argv, "1", {
+    get: () => {
+      if (Deno.mainModule.startsWith("file:")) {
+        return fromFileUrl(Deno.mainModule);
+      } else {
+        return join(Deno.cwd(), "$deno$node.js");
+      }
+    },
+  });
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }

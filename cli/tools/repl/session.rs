@@ -1,8 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
+
+use crate::args::CliOptions;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::ProcState;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliGraphResolver;
 
 use deno_ast::swc::ast as swc_ast;
 use deno_ast::swc::visit::noop_visit_type;
@@ -18,45 +24,73 @@ use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::source::Resolver;
 use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
+use deno_semver::npm::NpmPackageReqReference;
+use once_cell::sync::Lazy;
 
 use super::cdp;
 
-static PRELUDE: &str = r#"
-Object.defineProperty(globalThis, "_", {
-  configurable: true,
-  get: () => Deno[Deno.internal].lastEvalResult,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_", {
-     value: value,
-     writable: true,
-     enumerable: true,
-     configurable: true,
-   });
-   console.log("Last evaluation result is no longer saved to _.");
-  },
+/// We store functions used in the repl on this object because
+/// the user might modify the `Deno` global or delete it outright.
+pub static REPL_INTERNALS_NAME: Lazy<String> = Lazy::new(|| {
+  let now = std::time::SystemTime::now();
+  let seconds = now
+    .duration_since(std::time::SystemTime::UNIX_EPOCH)
+    .unwrap()
+    .as_secs();
+  // use a changing variable name to make it hard to depend on this
+  format!("__DENO_REPL_INTERNALS_{seconds}__")
 });
 
-Object.defineProperty(globalThis, "_error", {
+fn get_prelude() -> String {
+  format!(
+    r#"
+Object.defineProperty(globalThis, "{0}", {{
+  enumerable: false,
+  writable: false,
+  value: {{
+    lastEvalResult: undefined,
+    lastThrownError: undefined,
+    inspectArgs: Deno[Deno.internal].inspectArgs,
+    noColor: Deno.noColor,
+  }},
+}});
+Object.defineProperty(globalThis, "_", {{
   configurable: true,
-  get: () => Deno[Deno.internal].lastThrownError,
-  set: (value) => {
-   Object.defineProperty(globalThis, "_error", {
+  get: () => {0}.lastEvalResult,
+  set: (value) => {{
+   Object.defineProperty(globalThis, "_", {{
      value: value,
      writable: true,
      enumerable: true,
      configurable: true,
-   });
+   }});
+   console.log("Last evaluation result is no longer saved to _.");
+  }},
+}});
+
+Object.defineProperty(globalThis, "_error", {{
+  configurable: true,
+  get: () => {0}.lastThrownError,
+  set: (value) => {{
+   Object.defineProperty(globalThis, "_error", {{
+     value: value,
+     writable: true,
+     enumerable: true,
+     configurable: true,
+   }});
 
    console.log("Last thrown error is no longer saved to _error.");
-  },
-});
+  }},
+}});
 
 globalThis.clear = console.clear.bind(console);
-"#;
+"#,
+    *REPL_INTERNALS_NAME
+  )
+}
 
 pub enum EvaluationOutput {
   Value(String),
@@ -78,7 +112,7 @@ pub fn result_to_evaluation_output(
   match r {
     Ok(value) => value,
     Err(err) => {
-      EvaluationOutput::Error(format!("{} {}", colors::red("error:"), err))
+      EvaluationOutput::Error(format!("{} {:#}", colors::red("error:"), err))
     }
   }
 }
@@ -89,22 +123,23 @@ struct TsEvaluateResponse {
 }
 
 pub struct ReplSession {
-  proc_state: ProcState,
+  has_node_modules_dir: bool,
+  npm_resolver: Arc<CliNpmResolver>,
+  resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
+  pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
   has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
-  // FIXME(bartlomieju): this field should be used to listen
-  // for "exceptionThrown" notifications
-  #[allow(dead_code)]
-  notification_rx: UnboundedReceiver<Value>,
 }
 
 impl ReplSession {
   pub async fn initialize(
-    proc_state: ProcState,
+    cli_options: &CliOptions,
+    npm_resolver: Arc<CliNpmResolver>,
+    resolver: Arc<CliGraphResolver>,
     mut worker: MainWorker,
   ) -> Result<Self, AnyError> {
     let language_server = ReplLanguageServer::new_initialized().await?;
@@ -143,25 +178,25 @@ impl ReplSession {
     }
     assert_ne!(context_id, 0);
 
-    let referrer = deno_core::resolve_path(
-      "./$deno$repl.ts",
-      proc_state.options.initial_cwd(),
-    )
-    .unwrap();
+    let referrer =
+      deno_core::resolve_path("./$deno$repl.ts", cli_options.initial_cwd())
+        .unwrap();
 
     let mut repl_session = ReplSession {
-      proc_state,
+      has_node_modules_dir: cli_options.has_node_modules_dir(),
+      npm_resolver,
+      resolver,
       worker,
       session,
       context_id,
       language_server,
       has_initialized_node_runtime: false,
       referrer,
-      notification_rx,
+      notifications: Rc::new(RefCell::new(notification_rx)),
     };
 
     // inject prelude
-    repl_session.evaluate_expression(PRELUDE).await?;
+    repl_session.evaluate_expression(&get_prelude()).await?;
 
     Ok(repl_session)
   }
@@ -225,7 +260,7 @@ impl ReplSession {
             let description = match exception_details.exception {
               Some(exception) => exception
                 .description
-                .unwrap_or_else(|| "Unknown exception".to_string()),
+                .unwrap_or_else(|| "undefined".to_string()),
               None => "Unknown exception".to_string(),
             };
             EvaluationOutput::Error(format!(
@@ -307,22 +342,27 @@ impl ReplSession {
     &mut self,
     error: &cdp::RemoteObject,
   ) -> Result<(), AnyError> {
-    self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: "function (object) { Deno[Deno.internal].lastThrownError = object; }".to_string(),
-        object_id: None,
-        arguments: Some(vec![error.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
-    ).await?;
+    self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration: format!(
+            r#"function (object) {{ {}.lastThrownError = object; }}"#,
+            *REPL_INTERNALS_NAME
+          ),
+          object_id: None,
+          arguments: Some(vec![error.into()]),
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: Some(self.context_id),
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
     Ok(())
   }
 
@@ -334,9 +374,10 @@ impl ReplSession {
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration:
-            "function (object) { Deno[Deno.internal].lastEvalResult = object; }"
-              .to_string(),
+          function_declaration: format!(
+            r#"function (object) {{ {}.lastEvalResult = object; }}"#,
+            *REPL_INTERNALS_NAME
+          ),
           object_id: None,
           arguments: Some(vec![evaluate_result.into()]),
           silent: None,
@@ -360,28 +401,33 @@ impl ReplSession {
     // TODO(caspervonb) we should investigate using previews here but to keep things
     // consistent with the previous implementation we just get the preview result from
     // Deno.inspectArgs.
-    let inspect_response = self.post_message_with_event_loop(
-      "Runtime.callFunctionOn",
-      Some(cdp::CallFunctionOnArgs {
-        function_declaration: r#"function (object) {
-          try {
-            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
-        }"#.to_string(),
-        object_id: None,
-        arguments: Some(vec![evaluate_result.into()]),
-        silent: None,
-        return_by_value: None,
-        generate_preview: None,
-        user_gesture: None,
-        await_promise: None,
-        execution_context_id: Some(self.context_id),
-        object_group: None,
-        throw_on_side_effect: None
-      }),
-    ).await?;
+    let inspect_response = self
+      .post_message_with_event_loop(
+        "Runtime.callFunctionOn",
+        Some(cdp::CallFunctionOnArgs {
+          function_declaration: format!(
+            r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+            *REPL_INTERNALS_NAME
+          ),
+          object_id: None,
+          arguments: Some(vec![evaluate_result.into()]),
+          silent: None,
+          return_by_value: None,
+          generate_preview: None,
+          user_gesture: None,
+          await_promise: None,
+          execution_context_id: Some(self.context_id),
+          object_group: None,
+          throw_on_side_effect: None,
+        }),
+      )
+      .await?;
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
@@ -448,7 +494,6 @@ impl ReplSession {
       .iter()
       .flat_map(|i| {
         self
-          .proc_state
           .resolver
           .resolve(i, &self.referrer)
           .ok()
@@ -467,22 +512,17 @@ impl ReplSession {
       if !self.has_initialized_node_runtime {
         deno_node::initialize_runtime(
           &mut self.worker.js_runtime,
-          self.proc_state.options.has_node_modules_dir(),
-        )
-        .await?;
+          self.has_node_modules_dir,
+          None,
+        )?;
         self.has_initialized_node_runtime = true;
       }
 
-      self
-        .proc_state
-        .npm_resolver
-        .add_package_reqs(npm_imports)
-        .await?;
+      self.npm_resolver.add_package_reqs(npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
         self
-          .proc_state
           .npm_resolver
           .inject_synthetic_types_node_package()
           .await?;

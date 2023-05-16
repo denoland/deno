@@ -8,15 +8,12 @@ mod timers;
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -58,93 +55,71 @@ use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(
-    env!("CARGO_PKG_NAME"),
-    &["deno_webidl", "deno_console", "deno_url"],
-  )
-}
-
-fn ops<P: TimersPermission + 'static>(
-  ext: &mut ExtensionBuilder,
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_base64_decode::decl(),
-      op_base64_encode::decl(),
-      op_base64_atob::decl(),
-      op_base64_btoa::decl(),
-      op_encoding_normalize_label::decl(),
-      op_encoding_decode_single::decl(),
-      op_encoding_decode_utf8::decl(),
-      op_encoding_new_decoder::decl(),
-      op_encoding_decode::decl(),
-      op_encoding_encode_into::decl(),
-      op_encode_binary_string::decl(),
-      op_blob_create_part::decl(),
-      op_blob_slice_part::decl(),
-      op_blob_read_part::decl(),
-      op_blob_remove_part::decl(),
-      op_blob_create_object_url::decl(),
-      op_blob_revoke_object_url::decl(),
-      op_blob_from_object_url::decl(),
-      op_message_port_create_entangled::decl(),
-      op_message_port_post_message::decl(),
-      op_message_port_recv_message::decl(),
-      compression::op_compression_new::decl(),
-      compression::op_compression_write::decl(),
-      compression::op_compression_finish::decl(),
-      op_now::decl::<P>(),
-      op_timer_handle::decl(),
-      op_cancel_handle::decl(),
-      op_sleep::decl(),
-      op_transfer_arraybuffer::decl(),
-    ])
-    .state(move |state| {
-      state.put(blob_store.clone());
-      if let Some(location) = maybe_location.clone() {
-        state.put(Location(location));
-      }
-      state.put(StartTime::now());
-    })
-}
-
-pub fn init_ops_and_esm<P: TimersPermission + 'static>(
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> Extension {
-  ops::<P>(&mut ext(), blob_store, maybe_location)
-    .esm(include_js_files!(
-      "00_infra.js",
-      "01_dom_exception.js",
-      "01_mimesniff.js",
-      "02_event.js",
-      "02_structured_clone.js",
-      "02_timers.js",
-      "03_abort_signal.js",
-      "04_global_interfaces.js",
-      "05_base64.js",
-      "06_streams.js",
-      "08_text_encoding.js",
-      "09_file.js",
-      "10_filereader.js",
-      "11_blob_url.js",
-      "12_location.js",
-      "13_message_port.js",
-      "14_compression.js",
-      "15_performance.js",
-    ))
-    .build()
-}
-
-pub fn init_ops<P: TimersPermission + 'static>(
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> Extension {
-  ops::<P>(&mut ext(), blob_store, maybe_location).build()
-}
+deno_core::extension!(deno_web,
+  deps = [ deno_webidl, deno_console, deno_url ],
+  parameters = [P: TimersPermission],
+  ops = [
+    op_base64_decode,
+    op_base64_encode,
+    op_base64_atob,
+    op_base64_btoa,
+    op_encoding_normalize_label,
+    op_encoding_decode_single,
+    op_encoding_decode_utf8,
+    op_encoding_new_decoder,
+    op_encoding_decode,
+    op_encoding_encode_into,
+    op_encode_binary_string,
+    op_blob_create_part,
+    op_blob_slice_part,
+    op_blob_read_part,
+    op_blob_remove_part,
+    op_blob_create_object_url,
+    op_blob_revoke_object_url,
+    op_blob_from_object_url,
+    op_message_port_create_entangled,
+    op_message_port_post_message,
+    op_message_port_recv_message,
+    compression::op_compression_new,
+    compression::op_compression_write,
+    compression::op_compression_finish,
+    op_now<P>,
+    op_timer_handle,
+    op_cancel_handle,
+    op_sleep,
+    op_transfer_arraybuffer,
+  ],
+  esm = [
+    "00_infra.js",
+    "01_dom_exception.js",
+    "01_mimesniff.js",
+    "02_event.js",
+    "02_structured_clone.js",
+    "02_timers.js",
+    "03_abort_signal.js",
+    "04_global_interfaces.js",
+    "05_base64.js",
+    "06_streams.js",
+    "08_text_encoding.js",
+    "09_file.js",
+    "10_filereader.js",
+    "12_location.js",
+    "13_message_port.js",
+    "14_compression.js",
+    "15_performance.js",
+  ],
+  options = {
+    blob_store: BlobStore,
+    maybe_location: Option<Url>,
+  },
+  state = |state, options| {
+    state.put(options.blob_store);
+    if let Some(location) = options.maybe_location {
+      state.put(Location(location));
+    }
+    state.put(StartTime::now());
+  }
+);
 
 #[op]
 fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {

@@ -20,10 +20,21 @@ pub fn op_ffi_get_static<'scope>(
   rid: ResourceId,
   name: String,
   static_type: NativeType,
+  optional: bool,
 ) -> Result<serde_v8::Value<'scope>, AnyError> {
   let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
-  let data_ptr = resource.get_static(name)?;
+  let data_ptr = match resource.get_static(name) {
+    Ok(data_ptr) => Ok(data_ptr),
+    Err(err) => {
+      if optional {
+        let null: v8::Local<v8::Value> = v8::null(scope).into();
+        return Ok(null.into());
+      } else {
+        Err(err)
+      }
+    }
+  }?;
 
   Ok(match static_type {
     NativeType::Void => {

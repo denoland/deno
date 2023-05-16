@@ -5,7 +5,8 @@
 // https://github.com/cloudflare/workerd/blob/77fd0ed6ddba184414f0216508fc62b06e716cab/src/workerd/api/node/async-hooks.c++#L9
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { core } from "ext:deno_node/_core.ts";
+
+const { core } = globalThis.__bootstrap;
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");
@@ -84,7 +85,7 @@ class AsyncContextFrame {
 
     const propagate = (parent: AsyncContextFrame) => {
       parent.storage = parent.storage.filter((entry) => !entry.key.isDead());
-      parent.storage.forEach((entry) => this.storage.push(entry));
+      parent.storage.forEach((entry) => this.storage.push(entry.clone()));
 
       if (maybeStorageEntry) {
         const existingEntry = this.storage.find((entry) =>
@@ -249,6 +250,10 @@ class StorageEntry {
   constructor(key: StorageKey, value: unknown) {
     this.key = key;
     this.value = value;
+  }
+
+  clone() {
+    return new StorageEntry(this.key, this.value);
   }
 }
 

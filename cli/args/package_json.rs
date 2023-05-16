@@ -7,49 +7,53 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::semver::NpmVersionReqSpecifierParseError;
-use deno_graph::semver::VersionReq;
+use deno_npm::registry::parse_dep_entry_name_and_raw_version;
+use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_runtime::deno_node::PackageJson;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::VersionReq;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Error, PartialEq, Eq, Hash)]
-#[error("Could not find @ symbol in npm url '{value}'")]
-pub struct PackageJsonDepNpmSchemeValueParseError {
-  pub value: String,
-}
-
-/// Gets the name and raw version constraint taking into account npm
-/// package aliases.
-pub fn parse_dep_entry_name_and_raw_version<'a>(
-  key: &'a str,
-  value: &'a str,
-) -> Result<(&'a str, &'a str), PackageJsonDepNpmSchemeValueParseError> {
-  if let Some(package_and_version) = value.strip_prefix("npm:") {
-    if let Some((name, version)) = package_and_version.rsplit_once('@') {
-      Ok((name, version))
-    } else {
-      Err(PackageJsonDepNpmSchemeValueParseError {
-        value: value.to_string(),
-      })
-    }
-  } else {
-    Ok((key, value))
-  }
-}
-
-#[derive(Debug, Error, Clone, Hash)]
+#[derive(Debug, Error, Clone)]
 pub enum PackageJsonDepValueParseError {
   #[error(transparent)]
-  SchemeValue(#[from] PackageJsonDepNpmSchemeValueParseError),
+  SchemeValue(#[from] PackageDepNpmSchemeValueParseError),
   #[error(transparent)]
   Specifier(#[from] NpmVersionReqSpecifierParseError),
-  #[error("Not implemented scheme: {scheme}")]
+  #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
 }
 
 pub type PackageJsonDeps =
   BTreeMap<String, Result<NpmPackageReq, PackageJsonDepValueParseError>>;
+
+#[derive(Debug, Default)]
+pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
+
+impl PackageJsonDepsProvider {
+  pub fn new(deps: Option<PackageJsonDeps>) -> Self {
+    Self(deps)
+  }
+
+  pub fn deps(&self) -> Option<&PackageJsonDeps> {
+    self.0.as_ref()
+  }
+
+  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
+    match &self.0 {
+      Some(deps) => {
+        let mut package_reqs = deps
+          .values()
+          .filter_map(|r| r.as_ref().ok())
+          .collect::<Vec<_>>();
+        package_reqs.sort(); // deterministic resolution
+        package_reqs
+      }
+      None => Vec::new(),
+    }
+  }
+}
 
 /// Gets an application level package.json's npm package requirements.
 ///
@@ -71,7 +75,7 @@ pub fn get_local_package_json_version_reqs(
       || value.starts_with("https:")
     {
       return Err(PackageJsonDepValueParseError::Unsupported {
-        scheme: key.split(':').next().unwrap().to_string(),
+        scheme: value.split(':').next().unwrap().to_string(),
       });
     }
     let (name, version_req) = parse_dep_entry_name_and_raw_version(key, value)
@@ -254,39 +258,39 @@ mod test {
     let mut package_json = PackageJson::empty(PathBuf::from("/package.json"));
     package_json.dependencies = Some(HashMap::from([
       ("test".to_string(), "1".to_string()),
-      ("work".to_string(), "workspace:1.1.1".to_string()),
-      ("file".to_string(), "file:something".to_string()),
-      ("git".to_string(), "git:something".to_string()),
-      ("http".to_string(), "http://something".to_string()),
-      ("https".to_string(), "https://something".to_string()),
+      ("work-test".to_string(), "workspace:1.1.1".to_string()),
+      ("file-test".to_string(), "file:something".to_string()),
+      ("git-test".to_string(), "git:something".to_string()),
+      ("http-test".to_string(), "http://something".to_string()),
+      ("https-test".to_string(), "https://something".to_string()),
     ]));
     let result = get_local_package_json_version_reqs_for_tests(&package_json);
     assert_eq!(
       result,
       BTreeMap::from([
         (
-          "file".to_string(),
-          Err("Not implemented scheme: file".to_string()),
+          "file-test".to_string(),
+          Err("Not implemented scheme 'file'".to_string()),
         ),
         (
-          "git".to_string(),
-          Err("Not implemented scheme: git".to_string()),
+          "git-test".to_string(),
+          Err("Not implemented scheme 'git'".to_string()),
         ),
         (
-          "http".to_string(),
-          Err("Not implemented scheme: http".to_string()),
+          "http-test".to_string(),
+          Err("Not implemented scheme 'http'".to_string()),
         ),
         (
-          "https".to_string(),
-          Err("Not implemented scheme: https".to_string()),
+          "https-test".to_string(),
+          Err("Not implemented scheme 'https'".to_string()),
         ),
         (
           "test".to_string(),
           Ok(NpmPackageReq::from_str("test@1").unwrap())
         ),
         (
-          "work".to_string(),
-          Err("Not implemented scheme: work".to_string()),
+          "work-test".to_string(),
+          Err("Not implemented scheme 'workspace'".to_string()),
         )
       ])
     );

@@ -356,7 +356,11 @@ fn merge_range_tree_children<'a>(
     let mut matching_trees: Vec<&'a mut RangeTree<'a>> = Vec::new();
     for (_parent_index, children) in child_forests.iter_mut().enumerate() {
       let next_tree: Option<&'a mut RangeTree<'a>> = {
-        if children.peek().map_or(false, |tree| tree.start == *event) {
+        if children
+          .peek()
+          .map(|tree| tree.start == *event)
+          .unwrap_or(false)
+        {
           children.next()
         } else {
           None

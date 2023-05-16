@@ -2,21 +2,21 @@
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
+use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
-use deno_io::StdFileResource;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -94,25 +94,32 @@ impl StdioOrRid {
   ) -> Result<std::process::Stdio, AnyError> {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
-      StdioOrRid::Rid(rid) => StdFileResource::as_stdio(state, *rid),
+      StdioOrRid::Rid(rid) => {
+        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
+      }
     }
   }
 }
 
-pub fn init_ops() -> Extension {
-  Extension::builder("deno_process")
-    .ops(vec![
-      op_spawn_child::decl(),
-      op_spawn_wait::decl(),
-      op_spawn_sync::decl(),
-      deprecated::op_run::decl(),
-      deprecated::op_run_status::decl(),
-      deprecated::op_kill::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_process,
+  ops = [
+    op_spawn_child,
+    op_spawn_wait,
+    op_spawn_sync,
+    op_spawn_kill,
+    deprecated::op_run,
+    deprecated::op_run_status,
+    deprecated::op_kill,
+  ],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
-struct ChildResource(tokio::process::Child);
+/// Second member stores the pid separately from the RefCell. It's needed for
+/// `op_spawn_kill`, where the RefCell is borrowed mutably by `op_spawn_wait`.
+struct ChildResource(RefCell<tokio::process::Child>, u32);
 
 impl Resource for ChildResource {
   fn name(&self) -> Cow<str> {
@@ -299,7 +306,9 @@ fn spawn_child(
     .take()
     .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
 
-  let child_rid = state.resource_table.add(ChildResource(child));
+  let child_rid = state
+    .resource_table
+    .add(ChildResource(RefCell::new(child), pid));
 
   Ok(Child {
     rid: child_rid,
@@ -325,17 +334,18 @@ async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
+  #![allow(clippy::await_holding_refcell_ref)]
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(rid)?;
-  Rc::try_unwrap(resource)
-    .ok()
-    .unwrap()
-    .0
-    .wait()
-    .await?
-    .try_into()
+    .get::<ChildResource>(rid)?;
+  let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
+  state
+    .borrow_mut()
+    .resource_table
+    .close(rid)
+    .expect("shouldn't have closed until now");
+  result
 }
 
 #[op]
@@ -361,6 +371,19 @@ fn op_spawn_sync(
       None
     },
   })
+}
+
+#[op]
+fn op_spawn_kill(
+  state: &mut OpState,
+  rid: ResourceId,
+  signal: String,
+) -> Result<(), AnyError> {
+  if let Ok(child_resource) = state.resource_table.get::<ChildResource>(rid) {
+    deprecated::kill(child_resource.1 as i32, &signal)?;
+    return Ok(());
+  }
+  Err(type_error("Child process has already terminated."))
 }
 
 mod deprecated {
@@ -574,7 +597,6 @@ mod deprecated {
 
   #[cfg(not(unix))]
   pub fn kill(pid: i32, signal: &str) -> Result<(), AnyError> {
-    use deno_core::error::type_error;
     use std::io::Error;
     use std::io::ErrorKind::NotFound;
     use winapi::shared::minwindef::DWORD;

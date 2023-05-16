@@ -1,27 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::env;
-use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use deno_core::include_js_files;
 use deno_core::snapshot_util::*;
 use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_runtime::deno_cache::SqliteBackedCache;
+use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
+use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
 
 mod ts {
   use super::*;
-  use crate::deno_webgpu_get_declaration;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
   use deno_core::op;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
-  use regex::Regex;
   use serde::Deserialize;
   use serde_json::json;
   use serde_json::Value;
@@ -35,6 +34,104 @@ mod ts {
     specifier: String,
   }
 
+  #[op]
+  fn op_build_info(state: &mut OpState) -> Value {
+    let build_specifier = "asset:///bootstrap.ts";
+
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|s| s.name)
+      .collect::<Vec<&str>>();
+    let build_libs = state.borrow::<Vec<&str>>();
+    json!({
+      "buildSpecifier": build_specifier,
+      "libs": build_libs,
+      "nodeBuiltInModuleNames": node_built_in_module_names,
+    })
+  }
+
+  #[op]
+  fn op_is_node_file() -> bool {
+    false
+  }
+
+  #[op]
+  fn op_script_version(
+    _state: &mut OpState,
+    _args: Value,
+  ) -> Result<Option<String>, AnyError> {
+    Ok(Some("1".to_string()))
+  }
+
+  #[op]
+  // using the same op that is used in `tsc.rs` for loading modules and reading
+  // files, but a slightly different implementation at build time.
+  fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
+    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
+    let path_dts = state.borrow::<PathBuf>();
+    let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
+    let build_specifier = "asset:///bootstrap.ts";
+
+    // we need a basic file to send to tsc to warm it up.
+    if args.specifier == build_specifier {
+      Ok(json!({
+        "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
+        "version": "1",
+        // this corresponds to `ts.ScriptKind.TypeScript`
+        "scriptKind": 3
+      }))
+      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
+      // parse out just the name so we can lookup the asset.
+    } else if let Some(caps) = re_asset.captures(&args.specifier) {
+      if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
+        // if it comes from an op crate, we were supplied with the path to the
+        // file.
+        let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
+          PathBuf::from(op_crate_lib).canonicalize()?
+          // otherwise we will generate the path ourself
+        } else {
+          path_dts.join(format!("lib.{lib}.d.ts"))
+        };
+        let data = std::fs::read_to_string(path)?;
+        Ok(json!({
+          "data": data,
+          "version": "1",
+          // this corresponds to `ts.ScriptKind.TypeScript`
+          "scriptKind": 3
+        }))
+      } else {
+        Err(custom_error(
+          "InvalidSpecifier",
+          format!("An invalid specifier was requested: {}", args.specifier),
+        ))
+      }
+    } else {
+      Err(custom_error(
+        "InvalidSpecifier",
+        format!("An invalid specifier was requested: {}", args.specifier),
+      ))
+    }
+  }
+
+  deno_core::extension!(deno_tsc,
+    ops = [op_build_info, op_is_node_file, op_load, op_script_version],
+    js = [
+      dir "tsc",
+      "00_typescript.js",
+      "99_main_compiler.js",
+    ],
+    options = {
+      op_crate_libs: HashMap<&'static str, PathBuf>,
+      build_libs: Vec<&'static str>,
+      path_dts: PathBuf,
+    },
+    state = |state, options| {
+      state.put(options.op_crate_libs);
+      state.put(options.build_libs);
+      state.put(options.path_dts);
+    },
+  );
+
   pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
     // libs that are being provided by op crates.
     let mut op_crate_libs = HashMap::new();
@@ -43,7 +140,6 @@ mod ts {
     op_crate_libs.insert("deno.url", deno_url::get_declaration());
     op_crate_libs.insert("deno.web", deno_web::get_declaration());
     op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-    op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
     op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
     op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
     op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
@@ -67,6 +163,8 @@ mod ts {
       "deno.ns",
       "deno.unstable",
       // Deno built-in type libraries
+      "decorators",
+      "decorators.legacy",
       "es5",
       "es2015.collection",
       "es2015.core",
@@ -117,8 +215,11 @@ mod ts {
       "es2022.error",
       "es2022.intl",
       "es2022.object",
+      "es2022.regexp",
       "es2022.sharedmemory",
       "es2022.string",
+      "es2023",
+      "es2023.array",
       "esnext",
       "esnext.array",
       "esnext.intl",
@@ -161,110 +262,15 @@ mod ts {
     )
     .unwrap();
 
-    #[op]
-    fn op_build_info(state: &mut OpState) -> Value {
-      let build_specifier = "asset:///bootstrap.ts";
-
-      let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|s| s.name)
-        .collect::<Vec<&str>>();
-      let build_libs = state.borrow::<Vec<&str>>();
-      json!({
-        "buildSpecifier": build_specifier,
-        "libs": build_libs,
-        "nodeBuiltInModuleNames": node_built_in_module_names,
-      })
-    }
-
-    #[op]
-    fn op_is_node_file() -> bool {
-      false
-    }
-
-    #[op]
-    fn op_script_version(
-      _state: &mut OpState,
-      _args: Value,
-    ) -> Result<Option<String>, AnyError> {
-      Ok(Some("1".to_string()))
-    }
-
-    #[op]
-    // using the same op that is used in `tsc.rs` for loading modules and reading
-    // files, but a slightly different implementation at build time.
-    fn op_load(state: &mut OpState, args: LoadArgs) -> Result<Value, AnyError> {
-      let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
-      let path_dts = state.borrow::<PathBuf>();
-      let re_asset =
-        Regex::new(r"asset:/{3}lib\.(\S+)\.d\.ts").expect("bad regex");
-      let build_specifier = "asset:///bootstrap.ts";
-
-      // we need a basic file to send to tsc to warm it up.
-      if args.specifier == build_specifier {
-        Ok(json!({
-          "data": r#"Deno.writeTextFile("hello.txt", "hello deno!");"#,
-          "version": "1",
-          // this corresponds to `ts.ScriptKind.TypeScript`
-          "scriptKind": 3
-        }))
-        // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-        // parse out just the name so we can lookup the asset.
-      } else if let Some(caps) = re_asset.captures(&args.specifier) {
-        if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
-          // if it comes from an op crate, we were supplied with the path to the
-          // file.
-          let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-            PathBuf::from(op_crate_lib).canonicalize()?
-            // otherwise we are will generate the path ourself
-          } else {
-            path_dts.join(format!("lib.{lib}.d.ts"))
-          };
-          let data = std::fs::read_to_string(path)?;
-          Ok(json!({
-            "data": data,
-            "version": "1",
-            // this corresponds to `ts.ScriptKind.TypeScript`
-            "scriptKind": 3
-          }))
-        } else {
-          Err(custom_error(
-            "InvalidSpecifier",
-            format!("An invalid specifier was requested: {}", args.specifier),
-          ))
-        }
-      } else {
-        Err(custom_error(
-          "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", args.specifier),
-        ))
-      }
-    }
-
-    let tsc_extension = Extension::builder("deno_tsc")
-      .ops(vec![
-        op_build_info::decl(),
-        op_is_node_file::decl(),
-        op_load::decl(),
-        op_script_version::decl(),
-      ])
-      .js(include_js_files! {
-        dir "tsc",
-        "00_typescript.js",
-        "99_main_compiler.js",
-      })
-      .state(move |state| {
-        state.put(op_crate_libs.clone());
-        state.put(build_libs.clone());
-        state.put(path_dts.clone());
-      })
-      .build();
-
     create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![tsc_extension],
+      extensions: vec![deno_tsc::init_ops_and_esm(
+        op_crate_libs,
+        build_libs,
+        path_dts,
+      )],
 
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
@@ -287,93 +293,88 @@ mod ts {
 
   pub(crate) fn version() -> String {
     let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let mut version = String::new();
+    let version_text = "  version = \"";
     for line in file_text.lines() {
-      let major_minor_text = "ts.versionMajorMinor = \"";
-      let version_text = "ts.version = \"\".concat(ts.versionMajorMinor, \"";
-      if version.is_empty() {
-        if let Some(index) = line.find(major_minor_text) {
-          let remaining_line = &line[index + major_minor_text.len()..];
-          version
-            .push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
-        }
-      } else if let Some(index) = line.find(version_text) {
+      if let Some(index) = line.find(version_text) {
         let remaining_line = &line[index + version_text.len()..];
-        version.push_str(&remaining_line[..remaining_line.find('"').unwrap()]);
-        return version;
+        return remaining_line[..remaining_line.find('"').unwrap()].to_string();
       }
     }
     panic!("Could not find ts version.")
   }
 }
 
+// FIXME(bartlomieju): information about which extensions were
+// already snapshotted is not preserved in the snapshot. This should be
+// fixed, so we can reliably depend on that information.
+// deps = [runtime]
+deno_core::extension!(
+  cli,
+  esm_entry_point = "ext:cli/99_main.js",
+  esm = [
+    dir "js",
+    "40_testing.js",
+    "99_main.js"
+  ],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.esm(vec![ExtensionFileSource {
+      specifier: "ext:cli/runtime/js/99_main.js",
+      code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+        std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+      ),
+    }]);
+  }
+);
+
 fn create_cli_snapshot(snapshot_path: PathBuf) {
-  let mut extensions: Vec<Extension> = vec![
-    deno_webidl::init(),
-    deno_console::init(),
-    deno_url::init_ops(),
-    deno_tls::init_ops(),
-    deno_web::init_ops::<PermissionsContainer>(
+  // NOTE(bartlomieju): ordering is important here, keep it in sync with
+  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
+  let fs = Arc::new(deno_fs::RealFs);
+  let extensions: Vec<Extension> = vec![
+    deno_webidl::deno_webidl::init_ops(),
+    deno_console::deno_console::init_ops(),
+    deno_url::deno_url::init_ops(),
+    deno_web::deno_web::init_ops::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
-    deno_cache::init_ops::<SqliteBackedCache>(None),
-    deno_websocket::init_ops::<PermissionsContainer>("".to_owned(), None, None),
-    deno_webstorage::init_ops(None),
-    deno_crypto::init_ops(None),
-    deno_webgpu::init_ops(false),
-    deno_broadcast_channel::init_ops(
+    deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
+    deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
+    deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      "".to_owned(),
+      None,
+      None,
+    ),
+    deno_webstorage::deno_webstorage::init_ops(None),
+    deno_crypto::deno_crypto::init_ops(None),
+    deno_broadcast_channel::deno_broadcast_channel::init_ops(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_io::init_ops(Default::default()),
-    deno_fs::init_ops::<PermissionsContainer>(false),
-    deno_node::init_ops::<PermissionsContainer>(None), // No --unstable.
-    deno_node::init_polyfill_ops(),
-    deno_ffi::init_ops::<PermissionsContainer>(false),
-    deno_net::init_ops::<PermissionsContainer>(
+    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
+    deno_net::deno_net::init_ops::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::init_ops(),
-    deno_flash::init_ops::<PermissionsContainer>(false), // No --unstable
-  ];
-
-  let mut esm_files = include_js_files!(
-    dir "js",
-    "40_testing.js",
-  );
-  esm_files.push(ExtensionFileSource {
-    specifier: "runtime/js/99_main.js".to_string(),
-    code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-      std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+    deno_tls::deno_tls::init_ops(),
+    deno_kv::deno_kv::init_ops(
+      SqliteDbHandler::<PermissionsContainer>::new(None),
+      false, // No --unstable.
     ),
-  });
-  extensions.push(
-    Extension::builder("cli")
-      // FIXME(bartlomieju): information about which extensions were
-      // already snapshotted is not preserved in the snapshot. This should be
-      // fixed, so we can reliably depend on that information.
-      // .dependencies(vec!["runtime"])
-      .esm(esm_files)
-      .build(),
-  );
+    deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
+    deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
+    deno_io::deno_io::init_ops(Default::default()),
+    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
+    deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
+    cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
+  ];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
-    compression_cb: Some(Box::new(|vec, snapshot_slice| {
-      lzzzz::lz4_hc::compress_to_vec(
-        snapshot_slice,
-        vec,
-        lzzzz::lz4_hc::CLEVEL_MAX,
-      )
-      .expect("snapshot compression failed");
-    })),
+    compression_cb: None,
     snapshot_module_load_cb: None,
   })
 }
@@ -460,8 +461,14 @@ fn main() {
 
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
   println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
+  println!(
+    "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
+    &git_commit_hash()[..7]
+  );
 
-  println!("cargo:rustc-env=TS_VERSION={}", ts::version());
+  let ts_version = ts::version();
+  debug_assert_eq!(ts_version, "5.0.4"); // bump this assertion when it changes
+  println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
@@ -486,12 +493,4 @@ fn main() {
     ));
     res.compile().unwrap();
   }
-}
-
-fn deno_webgpu_get_declaration() -> PathBuf {
-  let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir
-    .join("tsc")
-    .join("dts")
-    .join("lib.deno_webgpu.d.ts")
 }

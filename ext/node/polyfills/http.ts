@@ -17,6 +17,8 @@ import { Agent } from "ext:deno_node/_http_agent.mjs";
 import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { connResetException } from "ext:deno_node/internal/errors.ts";
+import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -188,12 +190,6 @@ const METHODS = [
 
 type Chunk = string | Buffer | Uint8Array;
 
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoServe = Deno[Deno.internal]?.nodeUnstable?.serve || Deno.serve;
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoUpgradeHttpRaw = Deno[Deno.internal]?.nodeUnstable?.upgradeHttpRaw ||
-  Deno.upgradeHttpRaw;
-
 const ENCODER = new TextEncoder();
 
 export interface RequestOptions {
@@ -264,16 +260,21 @@ class ClientRequest extends NodeWritable {
       method: this.opts.method,
       client,
       headers: this.opts.headers,
+      signal: this.opts.signal ?? undefined,
     };
     const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
       .catch((e) => {
         if (e.message.includes("connection closed before message completed")) {
           // Node.js seems ignoring this error
+        } else if (e.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", e);
         }
         return undefined;
       });
+
     const res = new IncomingMessageForClient(
       await mayResponse,
       this._createSocket(),
@@ -283,6 +284,10 @@ class ClientRequest extends NodeWritable {
       res.on("end", () => {
         client.close();
       });
+    }
+    if (this.opts.timeout != undefined) {
+      clearTimeout(this.opts.timeout);
+      this.opts.timeout = undefined;
     }
     this.cb?.(res);
   }
@@ -345,8 +350,31 @@ class ClientRequest extends NodeWritable {
     }${path}`;
   }
 
-  setTimeout() {
-    console.log("not implemented: ClientRequest.setTimeout");
+  setTimeout(timeout: number, callback?: () => void) {
+    if (timeout == 0) {
+      // Node's underlying Socket implementation expects a 0 value to disable the
+      // existing timeout.
+      if (this.opts.timeout) {
+        clearTimeout(this.opts.timeout);
+        this.opts.timeout = undefined;
+        this.opts.signal = undefined;
+      }
+
+      return;
+    }
+
+    const controller = new AbortController();
+    this.opts.signal = controller.signal;
+
+    this.opts.timeout = setTimeout(() => {
+      controller.abort();
+
+      this.emit("timeout");
+
+      if (callback !== undefined) {
+        callback();
+      }
+    }, timeout);
   }
 }
 
@@ -411,18 +439,9 @@ export class ServerResponse extends NodeWritable {
   finished = false;
   headersSent = false;
   #firstChunk: Chunk | null = null;
-  // Used if --unstable flag IS NOT present
-  #reqEvent?: Deno.RequestEvent;
-  // Used if --unstable flag IS present
-  #resolve?: (value: Response | PromiseLike<Response>) => void;
-  #isFlashRequest: boolean;
+  #resolve: (value: Response | PromiseLike<Response>) => void;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
-    // TODO(kt3k): This is a workaround for denoland/deno#17194
-    // This if-block should be removed when the above issue is resolved.
-    if (chunk.length === 0) {
-      return;
-    }
     if (typeof chunk === "string") {
       controller.enqueue(ENCODER.encode(chunk));
     } else {
@@ -436,10 +455,7 @@ export class ServerResponse extends NodeWritable {
     return status === 101 || status === 204 || status === 205 || status === 304;
   }
 
-  constructor(
-    reqEvent: undefined | Deno.RequestEvent,
-    resolve: undefined | ((value: Response | PromiseLike<Response>) => void),
-  ) {
+  constructor(resolve: (value: Response | PromiseLike<Response>) => void) {
     let controller: ReadableByteStreamController;
     const readable = new ReadableStream({
       start(c) {
@@ -482,8 +498,6 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
-    this.#reqEvent = reqEvent;
-    this.#isFlashRequest = typeof resolve !== "undefined";
   }
 
   setHeader(name: string, value: string) {
@@ -504,7 +518,7 @@ export class ServerResponse extends NodeWritable {
     return this.#headers.has(name);
   }
 
-  writeHead(status: number, headers: Record<string, string>) {
+  writeHead(status: number, headers: Record<string, string> = {}) {
     this.statusCode = status;
     for (const k in headers) {
       if (Object.hasOwn(headers, k)) {
@@ -519,9 +533,8 @@ export class ServerResponse extends NodeWritable {
       this.statusCode = 200;
       this.statusMessage = "OK";
     }
-    // Only taken if --unstable IS NOT present
     if (
-      !this.#isFlashRequest && typeof singleChunk === "string" &&
+      typeof singleChunk === "string" &&
       !this.hasHeader("content-type")
     ) {
       this.setHeader("content-type", "text/plain;charset=UTF-8");
@@ -535,35 +548,19 @@ export class ServerResponse extends NodeWritable {
     if (ServerResponse.#bodyShouldBeNull(this.statusCode!)) {
       body = null;
     }
-    if (this.#isFlashRequest) {
-      this.#resolve!(
-        new Response(body, {
-          headers: this.#headers,
-          status: this.statusCode,
-          statusText: this.statusMessage,
-        }),
-      );
-    } else {
-      this.#reqEvent!.respondWith(
-        new Response(body, {
-          headers: this.#headers,
-          status: this.statusCode,
-          statusText: this.statusMessage,
-        }),
-      ).catch(() => {
-        // ignore this error
-      });
-    }
+    this.#resolve(
+      new Response(body, {
+        headers: this.#headers,
+        status: this.statusCode,
+        statusText: this.statusMessage,
+      }),
+    );
   }
 
   // deno-lint-ignore no-explicit-any
   override end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
-    if (this.#isFlashRequest) {
-      // Flash sets both of these headers.
-      this.#headers.delete("transfer-encoding");
-      this.#headers.delete("content-length");
-    } else if (!chunk && this.#headers.has("transfer-encoding")) {
+    if (!chunk && this.#headers.has("transfer-encoding")) {
       // FIXME(bnoordhuis) Node sends a zero length chunked body instead, i.e.,
       // the trailing "0\r\n", but respondWith() just hangs when I try that.
       this.#headers.set("content-length", "0");
@@ -573,6 +570,11 @@ export class ServerResponse extends NodeWritable {
     // @ts-expect-error The signature for cb is stricter than the one implemented here
     return super.end(chunk, encoding, cb);
   }
+
+  // Undocumented API used by `npm:compression`.
+  _implicitHeader() {
+    this.writeHead(this.statusCode);
+  }
 }
 
 // TODO(@AaronO): optimize
@@ -580,8 +582,11 @@ export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
   url: string;
   method: string;
+  // Polyfills part of net.Socket object.
+  // These properties are used by `npm:forwarded` for example.
+  socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request) {
+  constructor(req: Request, remoteAddr: { hostname: string; port: number }) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -608,6 +613,10 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
+    this.socket = {
+      remoteAddress: remoteAddr.hostname,
+      remotePort: remoteAddr.port,
+    };
     this.#req = req;
   }
 
@@ -629,6 +638,11 @@ export class IncomingMessageForServer extends NodeReadable {
         this.#req.headers.get("upgrade"),
     );
   }
+
+  // connection is deprecated, but still tested in unit test.
+  get connection() {
+    return this.socket;
+  }
 }
 
 type ServerHandler = (
@@ -641,25 +655,19 @@ export function Server(handler?: ServerHandler): ServerImpl {
 }
 
 class ServerImpl extends EventEmitter {
-  #isFlashServer: boolean;
-
   #httpConnections: Set<Deno.HttpConn> = new Set();
   #listener?: Deno.Listener;
 
-  #addr?: Deno.NetAddr;
+  #addr: Deno.NetAddr;
   #hasClosed = false;
   #ac?: AbortController;
-  #servePromise?: Deferred<void>;
+  #servePromise: Deferred<void>;
   listening = false;
 
   constructor(handler?: ServerHandler) {
     super();
-    // @ts-ignore Might be undefined without `--unstable` flag
-    this.#isFlashServer = typeof DenoServe == "function";
-    if (this.#isFlashServer) {
-      this.#servePromise = deferred();
-      this.#servePromise.then(() => this.emit("close"));
-    }
+    this.#servePromise = deferred();
+    this.#servePromise.then(() => this.emit("close"));
     if (handler !== undefined) {
       this.on("request", handler);
     }
@@ -684,86 +692,31 @@ class ServerImpl extends EventEmitter {
 
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.
-    if (this.#isFlashServer) {
-      const hostname = options.host ?? "0.0.0.0";
-      this.#addr = {
-        hostname,
-        port,
-      } as Deno.NetAddr;
-      this.listening = true;
-      nextTick(() => this.#serve());
-    } else {
-      this.listening = true;
-      const hostname = options.host ?? "";
-      this.#listener = Deno.listen({ port, hostname });
-      nextTick(() => this.#listenLoop());
-    }
+    const hostname = options.host ?? "0.0.0.0";
+    this.#addr = {
+      hostname,
+      port,
+    } as Deno.NetAddr;
+    this.listening = true;
+    nextTick(() => this.#serve());
 
     return this;
   }
 
-  async #listenLoop() {
-    const go = async (httpConn: Deno.HttpConn) => {
-      try {
-        for (;;) {
-          let reqEvent = null;
-          try {
-            // Note: httpConn.nextRequest() calls httpConn.close() on error.
-            reqEvent = await httpConn.nextRequest();
-          } catch {
-            // Connection closed.
-            // TODO(bnoordhuis) Emit "clientError" event on the http.Server
-            // instance? Node emits it when request parsing fails and expects
-            // the listener to send a raw 4xx HTTP response on the underlying
-            // net.Socket but we don't have one to pass to the listener.
-          }
-          if (reqEvent === null) {
-            break;
-          }
-          const req = new IncomingMessageForServer(reqEvent.request);
-          const res = new ServerResponse(reqEvent, undefined);
-          this.emit("request", req, res);
-        }
-      } finally {
-        this.#httpConnections.delete(httpConn);
-      }
-    };
-
-    const listener = this.#listener;
-
-    if (listener !== undefined) {
-      this.emit("listening");
-
-      for await (const conn of listener) {
-        let httpConn: Deno.HttpConn;
-        try {
-          httpConn = Deno.serveHttp(conn);
-        } catch {
-          continue; /// Connection closed.
-        }
-
-        this.#httpConnections.add(httpConn);
-        go(httpConn);
-      }
-    }
-  }
-
   #serve() {
     const ac = new AbortController();
-    const handler = (request: Request) => {
-      const req = new IncomingMessageForServer(request);
+    const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
+      const req = new IncomingMessageForServer(request, info.remoteAddr);
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
-        const [conn, head] = DenoUpgradeHttpRaw(request) as [
-          Deno.Conn,
-          Uint8Array,
-        ];
+        const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
           handle: new TCP(constants.SERVER, conn),
         });
-        this.emit("upgrade", req, socket, Buffer.from(head));
+        this.emit("upgrade", req, socket, Buffer.from([]));
+        return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(undefined, resolve);
+          const res = new ServerResponse(resolve);
           this.emit("request", req, res);
         });
       }
@@ -773,7 +726,7 @@ class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    DenoServe(
+    serve(
       {
         handler: handler as Deno.ServeHandler,
         ...this.#addr,
@@ -806,45 +759,20 @@ class ServerImpl extends EventEmitter {
       }
     }
 
-    if (this.#isFlashServer) {
-      if (listening && this.#ac) {
-        this.#ac.abort();
-        this.#ac = undefined;
-      } else {
-        this.#servePromise!.resolve();
-      }
+    if (listening && this.#ac) {
+      this.#ac.abort();
+      this.#ac = undefined;
     } else {
-      nextTick(() => this.emit("close"));
-
-      if (listening) {
-        this.#listener!.close();
-        this.#listener = undefined;
-
-        for (const httpConn of this.#httpConnections) {
-          try {
-            httpConn.close();
-          } catch {
-            // Already closed.
-          }
-        }
-
-        this.#httpConnections.clear();
-      }
+      this.#servePromise!.resolve();
     }
 
     return this;
   }
 
   address() {
-    let addr;
-    if (this.#isFlashServer) {
-      addr = this.#addr!;
-    } else {
-      addr = this.#listener!.addr as Deno.NetAddr;
-    }
     return {
-      port: addr.port,
-      address: addr.hostname,
+      port: this.#addr.port,
+      address: this.#addr.hostname,
     };
   }
 }

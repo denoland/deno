@@ -11,13 +11,16 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
   SymbolFor,
-  TypedArrayPrototypeSubarray,
   TypeError,
+  TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
 
@@ -97,15 +100,16 @@ class Conn {
     const promise = core.read(this.rid, buffer);
     const promiseId = promise[promiseIdSymbol];
     if (this.#unref) core.unrefOp(promiseId);
-    this.#pendingReadPromiseIds.push(promiseId);
+    ArrayPrototypePush(this.#pendingReadPromiseIds, promiseId);
     let nread;
     try {
       nread = await promise;
     } catch (e) {
       throw e;
     } finally {
-      this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
-        id !== promiseId
+      this.#pendingReadPromiseIds = ArrayPrototypeFilter(
+        this.#pendingReadPromiseIds,
+        (id) => id !== promiseId,
       );
     }
     return nread === 0 ? null : nread;
@@ -141,7 +145,7 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableRef(this.#readable);
     }
-    this.#pendingReadPromiseIds.forEach((id) => core.refOp(id));
+    ArrayPrototypeForEach(this.#pendingReadPromiseIds, (id) => core.refOp(id));
   }
 
   unref() {
@@ -149,7 +153,10 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableUnref(this.#readable);
     }
-    this.#pendingReadPromiseIds.forEach((id) => core.unrefOp(id));
+    ArrayPrototypeForEach(
+      this.#pendingReadPromiseIds,
+      (id) => core.unrefOp(id),
+    );
   }
 }
 
@@ -277,6 +284,64 @@ class Datagram {
     return this.#addr;
   }
 
+  async joinMulticastV4(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v4_udp",
+      this.rid,
+      addr,
+      multiInterface,
+    );
+
+    return {
+      leave: () =>
+        core.opAsync(
+          "op_net_leave_multi_v4_udp",
+          this.rid,
+          addr,
+          multiInterface,
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          true,
+          loopback,
+        ),
+      setTTL: (ttl) =>
+        core.opAsync(
+          "op_net_set_multi_ttl_udp",
+          this.rid,
+          ttl,
+        ),
+    };
+  }
+
+  async joinMulticastV6(addr, multiInterface) {
+    await core.opAsync(
+      "op_net_join_multi_v6_udp",
+      this.rid,
+      addr,
+      multiInterface,
+    );
+
+    return {
+      leave: () =>
+        core.opAsync(
+          "op_net_leave_multi_v6_udp",
+          this.rid,
+          addr,
+          multiInterface,
+        ),
+      setLoopback: (loopback) =>
+        core.opAsync(
+          "op_net_set_multi_loopback_udp",
+          this.rid,
+          false,
+          loopback,
+        ),
+    };
+  }
+
   async receive(p) {
     const buf = p || new Uint8Array(this.bufSize);
     let nread;
@@ -383,6 +448,7 @@ function createListenDatagram(udpOpFn, unixOpFn) {
             port: args.port,
           },
           args.reuseAddress ?? false,
+          args.loopback ?? false,
         );
         addr.transport = "udp";
         return new Datagram(rid, addr);

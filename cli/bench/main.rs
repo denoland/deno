@@ -13,8 +13,11 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+include!("../util/time.rs");
+
 mod http;
 mod lsp;
+mod websocket;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -256,8 +259,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
   size as i64
 }
 
-const BINARY_TARGET_FILES: &[&str] =
-  &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
+const BINARY_TARGET_FILES: &[&str] = &[
+  "CLI_SNAPSHOT.bin",
+  "RUNTIME_SNAPSHOT.bin",
+  "COMPILER_SNAPSHOT.bin",
+];
 fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
@@ -396,6 +402,7 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
+  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -411,6 +418,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -436,8 +444,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: chrono::Utc::now()
-      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -450,6 +457,11 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
+
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark()?;
+    new_data.ws_msg_per_sec = ws;
+  }
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
@@ -498,7 +510,7 @@ async fn main() -> Result<()> {
     let mut syscall_count = HashMap::<String, i64>::new();
 
     for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
-      let mut file = secure_tempfile::NamedTempFile::new()?;
+      let mut file = tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
         .args([
@@ -520,7 +532,14 @@ async fn main() -> Result<()> {
       file.as_file_mut().read_to_string(&mut output)?;
 
       let strace_result = test_util::parse_strace_output(&output);
-      let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
       let total = strace_result.get("total").unwrap().calls;
       thread_count.insert(name.to_string(), clone as i64);
       syscall_count.insert(name.to_string(), total as i64);

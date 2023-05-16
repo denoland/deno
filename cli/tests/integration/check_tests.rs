@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::Command;
 use test_util as util;
 use util::env_vars_for_npm_tests;
 use util::env_vars_for_npm_tests_no_sync_download;
 use util::TestContext;
+use util::TestContextBuilder;
 
 itest!(_095_check_with_bare_import {
   args: "check cache/095_cache_with_bare_import.ts",
@@ -83,6 +83,17 @@ itest!(check_no_error_truncation {
     envs: vec![("NO_COLOR".to_string(), "1".to_string())],
     exit_code: 1,
   });
+
+itest!(check_broadcast_channel_stable {
+  args: "check --quiet check/broadcast_channel.ts",
+  output: "check/broadcast_channel.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_broadcast_channel_unstable {
+  args: "check --quiet --unstable check/broadcast_channel.ts",
+  exit_code: 0,
+});
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -214,36 +225,20 @@ fn typecheck_core() {
 
 #[test]
 fn ts_no_recheck_on_redirect() {
-  // TODO: port to test builder
-  let deno_dir = util::new_deno_dir();
-  let e = util::deno_exe_path();
+  let test_context = TestContext::default();
+  let check_command = test_context.new_command().args_vec([
+    "run",
+    "--check",
+    "run/017_import_redirect.ts",
+  ]);
 
-  let redirect_ts = util::testdata_path().join("run/017_import_redirect.ts");
-  assert!(redirect_ts.is_file());
-  let mut cmd = Command::new(e.clone());
-  cmd.env("DENO_DIR", deno_dir.path());
-  let mut initial = cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check")
-    .arg(redirect_ts.clone())
-    .spawn()
-    .expect("failed to span script");
-  let status_initial =
-    initial.wait().expect("failed to wait for child process");
-  assert!(status_initial.success());
+  // run once
+  let output = check_command.run();
+  output.assert_matches_text("[WILDCARD]Check file://[WILDCARD]");
 
-  let mut cmd = Command::new(e);
-  cmd.env("DENO_DIR", deno_dir.path());
-  let output = cmd
-    .current_dir(util::testdata_path())
-    .arg("run")
-    .arg("--check")
-    .arg(redirect_ts)
-    .output()
-    .expect("failed to spawn script");
-
-  assert!(std::str::from_utf8(&output.stderr).unwrap().is_empty());
+  // run again
+  let output = check_command.run();
+  output.assert_matches_text("Hello\n");
 }
 
 itest!(check_dts {
@@ -288,3 +283,34 @@ itest!(package_json_with_deno_json {
   http_server: true,
   exit_code: 1,
 });
+
+#[test]
+fn check_error_in_dep_then_fix() {
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let correct_code =
+    "export function greet(name: string) {\n  return `Hello ${name}`;\n}\n";
+  let incorrect_code =
+    "export function greet(name: number) {\n  return `Hello ${name}`;\n}\n";
+
+  temp_dir.write(
+    "main.ts",
+    "import { greet } from './greet.ts';\n\nconsole.log(greet('world'));\n",
+  );
+  temp_dir.write("greet.ts", incorrect_code);
+
+  let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
+
+  let output = check_command.run();
+  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_exit_code(1);
+
+  temp_dir.write("greet.ts", correct_code);
+  let output = check_command.run();
+  output.assert_matches_text("Check [WILDCARD]main.ts\n");
+
+  temp_dir.write("greet.ts", incorrect_code);
+  let output = check_command.run();
+  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_exit_code(1);
+}

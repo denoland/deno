@@ -26,9 +26,9 @@ fn main() {
 
 fn eval(
   context: &mut JsRuntime,
-  code: &str,
+  code: &'static str,
 ) -> Result<serde_json::Value, String> {
-  let res = context.execute_script("<anon>", code);
+  let res = context.execute_script_static("<anon>", code);
   match res {
     Ok(global) => {
       let scope = &mut context.handle_scope();

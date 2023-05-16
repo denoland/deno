@@ -10,7 +10,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::Extension;
 
 use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
@@ -35,10 +34,16 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-/// This extension has no runtime apis, it only exports some shared native functions.
-pub fn init_ops() -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME")).build()
+/// Lazily resolves the root cert store.
+///
+/// This was done because the root cert store is not needed in all cases
+/// and takes a bit of time to initialize.
+pub trait RootCertStoreProvider: Send + Sync {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError>;
 }
+
+// This extension has no runtime apis, it only exports some shared native functions.
+deno_core::extension!(deno_tls);
 
 struct DefaultSignatureVerification;
 

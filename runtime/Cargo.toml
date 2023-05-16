@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.100.0"
+version = "0.112.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,22 +41,19 @@ deno_core.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_kv.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
-deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 deno_napi.workspace = true
-
-lzzzz.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winres.workspace = true
@@ -70,20 +67,20 @@ deno_core.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_flash.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
+deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
 deno_tls.workspace = true
 deno_url.workspace = true
 deno_web.workspace = true
-deno_webgpu.workspace = true
 deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
+fastwebsockets.workspace = true
 
 atty.workspace = true
 console_static_text.workspace = true
@@ -95,7 +92,6 @@ http.workspace = true
 hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
-lzzzz.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
@@ -109,7 +105,7 @@ uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]

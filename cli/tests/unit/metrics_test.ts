@@ -80,12 +80,14 @@ Deno.test(function metricsForOpCrates() {
 // Test that op_names == Objects.keys(Deno[Deno.internal].core.ops)
 // since building the per-op metrics depends on op_names being complete
 Deno.test(function opNamesMatch() {
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  const ops = Object.keys(Deno[Deno.internal].core.ops);
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  ops.concat(Object.keys(Deno[Deno.internal].core.asyncOps));
+
   assertEquals(
     // @ts-ignore: Deno[Deno.internal].core allowed
     Deno[Deno.internal].core.opNames().sort(),
-    // @ts-ignore: Deno[Deno.internal].core allowed
-    Object.keys(Deno[Deno.internal].core.ops).sort().filter((name) =>
-      name !== "asyncOpsInfo"
-    ),
+    ops.sort().filter((name) => name !== "asyncOpsInfo"),
   );
 });

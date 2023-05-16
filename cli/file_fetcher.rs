@@ -93,7 +93,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let bytes = fs::read(&local)?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
   let source = get_source_from_bytes(bytes, Some(charset))?;
-  let media_type = MediaType::from(specifier);
+  let media_type = MediaType::from_specifier(specifier);
 
   Ok(File {
     local,
@@ -166,7 +166,7 @@ pub fn map_content_type(
 
     (media_type, charset)
   } else {
-    (MediaType::from(specifier), None)
+    (MediaType::from_specifier(specifier), None)
   }
 }
 
@@ -178,7 +178,7 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   blob_store: BlobStore,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -189,7 +189,7 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     blob_store: BlobStore,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
@@ -660,7 +660,7 @@ async fn fetch_once<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
-  let mut request = http_client.get_no_redirect(args.url.clone());
+  let mut request = http_client.get_no_redirect(args.url.clone())?;
 
   if let Some(etag) = args.maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag)?;
@@ -770,7 +770,7 @@ mod tests {
       HttpCache::new(&location),
       cache_setting,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -1208,7 +1208,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::ReloadAll,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1233,7 +1233,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1258,7 +1258,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1399,7 +1399,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1427,7 +1427,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1526,7 +1526,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       false,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1551,7 +1551,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Only,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1559,7 +1559,7 @@ mod tests {
       HttpCache::new(&location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1985,7 +1985,7 @@ mod tests {
   async fn test_fetch_with_default_certificate_store() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land").unwrap();
+    let url = Url::parse("https://deno.land/x").unwrap();
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
@@ -2020,15 +2020,24 @@ mod tests {
   #[ignore] // https://github.com/denoland/deno/issues/12561
   async fn test_fetch_with_empty_certificate_store() {
     use deno_runtime::deno_tls::rustls::RootCertStore;
+    use deno_runtime::deno_tls::RootCertStoreProvider;
+
+    struct ValueRootCertStoreProvider(RootCertStore);
+
+    impl RootCertStoreProvider for ValueRootCertStoreProvider {
+      fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+        Ok(&self.0)
+      }
+    }
 
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
     let client = HttpClient::new(
-      Some(RootCertStore::empty()), // no certs loaded at all
+      // no certs loaded at all
+      Some(Arc::new(ValueRootCertStoreProvider(RootCertStore::empty()))),
       None,
-    )
-    .unwrap();
+    );
 
     let result = fetch_once(
       &client,
