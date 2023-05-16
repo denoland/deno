@@ -999,7 +999,9 @@ function formatWhatwg(
       }
       ret += "@";
     }
-    ret += options.unicode ? domainToUnicode(urlObject.hostname) : urlObject.hostname;
+    ret += options.unicode
+      ? domainToUnicode(urlObject.hostname)
+      : urlObject.hostname;
     if (urlObject.port) {
       ret += `:${urlObject.port}`;
     }
