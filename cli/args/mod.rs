@@ -1515,4 +1515,9 @@ mod test {
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
   }
+
+  #[test]
+  fn resolve_files_test() {
+    let context = TestContextBuilder::new().use_temp_cwd().build();
+  }
 }
