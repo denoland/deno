@@ -308,13 +308,16 @@ macro_rules! extension {
         Self::with_customizer(&mut ext);
         ext.take()
       }
-    }
 
-    $crate::paste::paste! {
       #[allow(dead_code)]
-      #[no_mangle]
-      pub fn [<init_ $name>] $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
-        $name::init_ops $( ::< $( $param ),+ > )? ( $( $( $options_id , )* )? )
+      pub fn init_ops_self $( <  $( $param : $type + 'static ),+ > )? ( &self, $( $( $options_id : $options_type ),* )? ) -> $crate::Extension 
+      $( where $( $bound : $bound_type ),+ )?
+      {
+        let mut ext = Self::ext();
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
+        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
+        Self::with_customizer(&mut ext);
+        ext.take()
       }
     }
   };

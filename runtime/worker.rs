@@ -221,11 +221,15 @@ impl MainWorker {
     ) -> F {
       let lib_path = format!("target/debug/deps/lib{}.dylib", name);
       let lib = dlopen::raw::Library::open(lib_path).unwrap();
-      unsafe {
-        lib.symbol("init").unwrap()
-      }
+      let fn_name = format!("init_{}", name);
+      let f = unsafe {
+        lib.symbol(&fn_name).unwrap()
+      };
       std::mem::forget(lib);
+      f
     }
+
+    let ws = dynamic::<deno_websocket::deno_websocket>("deno_websocket");
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
@@ -250,7 +254,7 @@ impl MainWorker {
         },
       ),
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      dynamic::<deno_websocket::init>("deno_websocket")::<PermissionsContainer>(
+      ws.init_ops_self::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
