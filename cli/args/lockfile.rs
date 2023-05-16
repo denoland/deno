@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -136,9 +137,6 @@ pub async fn snapshot_from_lockfile(
     }))
   };
   let mut version_infos = get_version_infos();
-  let mut required_packages = HashSet::with_capacity(packages.len());
-  required_packages.extend(root_packages.values().map(|id| id.nv.clone()));
-
   let mut i = 0;
   let mut had_optional = false;
   while let Some(result) = version_infos.next().await {
@@ -149,15 +147,7 @@ pub async fn snapshot_from_lockfile(
         package.cpu = version_info.cpu;
         package.os = version_info.os;
 
-        if version_info.optional_dependencies.is_empty() {
-          required_packages
-            .extend(package.dependencies.values().map(|id| id.nv.clone()));
-        } else {
-          for (key, id) in &package.dependencies {
-            if !version_info.optional_dependencies.contains_key(key) {
-              required_packages.insert(id.nv.clone());
-            }
-          }
+        if !version_info.optional_dependencies.is_empty() {
           had_optional = true;
         }
       }
@@ -165,7 +155,6 @@ pub async fn snapshot_from_lockfile(
         if api.mark_force_reload() {
           // reset and try again
           version_infos = get_version_infos();
-          required_packages.clear();
           i = 0;
           continue;
         } else {
@@ -179,9 +168,64 @@ pub async fn snapshot_from_lockfile(
 
   // only bother to do this if there were optional dependencies
   if had_optional {
-    for package in &mut packages {
-      if !required_packages.contains(&package.pkg_id.nv) {
-        package.optional = true;
+    // go through the tree and mark all optional subsets as optional
+    let mut pending = VecDeque::with_capacity(packages.len());
+    let mut traversed_ids = HashSet::with_capacity(packages.len());
+    let mut optional_packages = HashSet::with_capacity(packages.len());
+    let mut required_packages = HashSet::with_capacity(packages.len());
+    let mut pkg_ids_to_index = packages
+      .iter()
+      .map(|pkg| pkg.pkg_id.clone())
+      .enumerate()
+      .map(|(i, id)| (id, i))
+      .collect::<HashMap<_, _>>();
+    required_packages.extend(root_packages.values().map(|id| id.nv.clone()));
+    pending.extend(root_packages.values().cloned());
+    while let Some(pkg_id) = pending.pop_front() {
+      let is_parent_required = required_packages.contains(&pkg_id.nv);
+      // at this point, this should be cached in memory and fast
+      let package_info = api.package_info(&pkg_id.nv.name).await?;
+      let version_info = package_info.version_info(&pkg_id.nv).unwrap();
+      let package = &packages[*pkg_ids_to_index.get(&pkg_id).unwrap()];
+      for (specifier, child_id) in package.dependencies.clone() {
+        let is_child_optional =
+          version_info.optional_dependencies.contains_key(&specifier)
+            && !required_packages.contains(&child_id.nv);
+        let should_mark_required = is_parent_required && !is_child_optional;
+        if should_mark_required && optional_packages.contains(&child_id.nv) {
+          // A previously optional package is now found to be required. Revert
+          // this dependency and its required descendant dependencies back to
+          // being required because this name and version is no longer found in
+          // an optional tree
+          let mut pending = VecDeque::with_capacity(optional_packages.len());
+          pending.push_back(child_id.clone());
+          while let Some(pkg_id) = pending.pop_front() {
+            if optional_packages.remove(&pkg_id.nv) {
+              required_packages.insert(pkg_id.nv.clone());
+              // should be cached in the api at this point
+              let package_info = api.package_info(&pkg_id.nv.name).await?;
+              let version_info = package_info
+                .versions
+                .get(&pkg_id.nv.version)
+                .unwrap_or_else(|| panic!("missing: {:?}", pkg_id.nv));
+              let package = &packages[*pkg_ids_to_index.get(&pkg_id).unwrap()];
+              for key in version_info.dependencies.keys() {
+                if !version_info.optional_dependencies.contains_key(key) {
+                  let dep_id = package.dependencies.get(key).unwrap();
+                  pending.push_back(dep_id.clone());
+                }
+              }
+            }
+          }
+        }
+        if traversed_ids.insert(child_id.clone()) {
+          pending.push_back(child_id.clone());
+          if should_mark_required {
+            required_packages.insert(child_id.nv.clone());
+          } else {
+            optional_packages.insert(child_id.nv.clone());
+          }
+        }
       }
     }
   }
