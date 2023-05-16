@@ -9,6 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use deno_core::task::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -86,8 +87,7 @@ impl FileSystem for RealFs {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>> {
     let opts = open_options(options);
-    let std_file =
-      tokio::task::spawn_blocking(move || opts.open(path)).await??;
+    let std_file = spawn_blocking(move || opts.open(path)).await??;
     Ok(Rc::new(StdFileResourceInner::file(std_file)))
   }
 
@@ -105,14 +105,14 @@ impl FileSystem for RealFs {
     recursive: bool,
     mode: u32,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || mkdir(&path, recursive, mode)).await?
+    spawn_blocking(move || mkdir(&path, recursive, mode)).await?
   }
 
   fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
     chmod(path, mode)
   }
   async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || chmod(&path, mode)).await?
+    spawn_blocking(move || chmod(&path, mode)).await?
   }
 
   fn chown_sync(
@@ -129,53 +129,49 @@ impl FileSystem for RealFs {
     uid: Option<u32>,
     gid: Option<u32>,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || chown(&path, uid, gid)).await?
+    spawn_blocking(move || chown(&path, uid, gid)).await?
   }
 
   fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
     remove(path, recursive)
   }
   async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || remove(&path, recursive)).await?
+    spawn_blocking(move || remove(&path, recursive)).await?
   }
 
   fn copy_file_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
     copy_file(from, to)
   }
   async fn copy_file_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || copy_file(&from, &to)).await?
+    spawn_blocking(move || copy_file(&from, &to)).await?
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
     stat(path).map(Into::into)
   }
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    tokio::task::spawn_blocking(move || stat(&path))
-      .await?
-      .map(Into::into)
+    spawn_blocking(move || stat(&path)).await?.map(Into::into)
   }
 
   fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
     lstat(path).map(Into::into)
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    tokio::task::spawn_blocking(move || lstat(&path))
-      .await?
-      .map(Into::into)
+    spawn_blocking(move || lstat(&path)).await?.map(Into::into)
   }
 
   fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
     realpath(path)
   }
   async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
-    tokio::task::spawn_blocking(move || realpath(&path)).await?
+    spawn_blocking(move || realpath(&path)).await?
   }
 
   fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
     read_dir(path)
   }
   async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
-    tokio::task::spawn_blocking(move || read_dir(&path)).await?
+    spawn_blocking(move || read_dir(&path)).await?
   }
 
   fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
@@ -186,7 +182,7 @@ impl FileSystem for RealFs {
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || fs::rename(oldpath, newpath))
+    spawn_blocking(move || fs::rename(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
@@ -199,7 +195,7 @@ impl FileSystem for RealFs {
     oldpath: PathBuf,
     newpath: PathBuf,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || fs::hard_link(oldpath, newpath))
+    spawn_blocking(move || fs::hard_link(oldpath, newpath))
       .await?
       .map_err(Into::into)
   }
@@ -218,15 +214,14 @@ impl FileSystem for RealFs {
     newpath: PathBuf,
     file_type: Option<FsFileType>,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || symlink(&oldpath, &newpath, file_type))
-      .await?
+    spawn_blocking(move || symlink(&oldpath, &newpath, file_type)).await?
   }
 
   fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
     fs::read_link(path).map_err(Into::into)
   }
   async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
-    tokio::task::spawn_blocking(move || fs::read_link(path))
+    spawn_blocking(move || fs::read_link(path))
       .await?
       .map_err(Into::into)
   }
@@ -235,7 +230,7 @@ impl FileSystem for RealFs {
     truncate(path, len)
   }
   async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || truncate(&path, len)).await?
+    spawn_blocking(move || truncate(&path, len)).await?
   }
 
   fn utime_sync(
@@ -260,7 +255,7 @@ impl FileSystem for RealFs {
   ) -> FsResult<()> {
     let atime = filetime::FileTime::from_unix_time(atime_secs, atime_nanos);
     let mtime = filetime::FileTime::from_unix_time(mtime_secs, mtime_nanos);
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       filetime::set_file_times(path, atime, mtime).map_err(Into::into)
     })
     .await?
@@ -289,7 +284,7 @@ impl FileSystem for RealFs {
     options: OpenOptions,
     data: Vec<u8>,
   ) -> FsResult<()> {
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let opts = open_options(options);
       let mut file = opts.open(path)?;
       #[cfg(unix)]
@@ -307,7 +302,7 @@ impl FileSystem for RealFs {
     fs::read(path).map_err(Into::into)
   }
   async fn read_file_async(&self, path: PathBuf) -> FsResult<Vec<u8>> {
-    tokio::task::spawn_blocking(move || fs::read(path))
+    spawn_blocking(move || fs::read(path))
       .await?
       .map_err(Into::into)
   }
@@ -434,7 +429,7 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
         // Do a regular copy. fcopyfile() is an overkill for < 128KB
         // files.
         let mut buf = [0u8; 128 * 1024];
-        let mut from_file = fs::File::open(&from)?;
+        let mut from_file = fs::File::open(from)?;
         let perm = from_file.metadata()?.permissions();
 
         let mut to_file = fs::OpenOptions::new()
@@ -443,7 +438,7 @@ fn copy_file(from: &Path, to: &Path) -> FsResult<()> {
           .write(true)
           .create(true)
           .truncate(true)
-          .open(&to)?;
+          .open(to)?;
         let writer_metadata = to_file.metadata()?;
         if writer_metadata.is_file() {
           // Set the correct file permissions, in case the file already existed.

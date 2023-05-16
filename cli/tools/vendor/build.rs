@@ -379,6 +379,54 @@ mod test {
   }
 
   #[tokio::test]
+  async fn remote_redirect_entrypoint() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            concat!(
+              "import * as test from 'https://x.nest.land/Yenv@1.0.0/mod.ts';\n",
+              "console.log(test)",
+            ),
+          )
+          .add_redirect("https://x.nest.land/Yenv@1.0.0/mod.ts", "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts")
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+            "export * from './src/mod.ts'",
+          )
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+            "export class Test {}",
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://x.nest.land/Yenv@1.0.0/mod.ts": "./arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+          "https://arweave.net/": "./arweave.net/"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts", "export * from './src/mod.ts'"),
+        (
+          "/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+          "export class Test {}",
+        ),
+      ]),
+    );
+  }
+
+  #[tokio::test]
   async fn same_target_filename_specifiers() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let output = builder

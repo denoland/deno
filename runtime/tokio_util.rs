@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::task::MaskFutureAsSend;
+
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
   tokio::runtime::Builder::new_current_thread()
     .enable_io()
@@ -14,11 +16,14 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .unwrap()
 }
 
-pub fn run_local<F, R>(future: F) -> R
+pub fn create_and_run_current_thread<F, R>(future: F) -> R
 where
-  F: std::future::Future<Output = R>,
+  F: std::future::Future<Output = R> + 'static,
+  R: Send + 'static,
 {
   let rt = create_basic_runtime();
-  let local = tokio::task::LocalSet::new();
-  local.block_on(&rt, future)
+  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  let future = unsafe { MaskFutureAsSend::new(future) };
+  let join_handle = rt.spawn(future);
+  rt.block_on(join_handle).unwrap().into_inner()
 }

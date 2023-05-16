@@ -3,7 +3,7 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
-use crate::tokio_util::run_local;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -35,6 +35,7 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
 use deno_tls::RootCertStoreProvider;
@@ -439,7 +440,7 @@ impl WebWorker {
         unstable,
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
       deno_fs::deno_fs::init_ops::<PermissionsContainer>(
         unstable,
@@ -837,5 +838,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_local(fut)
+  create_and_run_current_thread(fut)
 }

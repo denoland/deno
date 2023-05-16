@@ -36,7 +36,6 @@ static GLOBAL: Jemalloc = Jemalloc;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
-use crate::resolver::CliGraphResolver;
 use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
@@ -47,7 +46,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
@@ -97,7 +96,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       Ok(0)
     }
     DenoSubcommand::Compile(compile_flags) => {
-      tools::standalone::compile(flags, compile_flags).await?;
+      tools::compile::compile(flags, compile_flags).await?;
       Ok(0)
     }
     DenoSubcommand::Coverage(coverage_flags) => {
@@ -282,14 +281,20 @@ pub fn main() {
       Err(err) => unwrap_or_exit(Err(AnyError::from(err))),
     };
 
-    init_v8_flags(&flags.v8_flags, get_v8_flags_from_env());
+    let default_v8_flags = match flags.subcommand {
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+      _ => vec![],
+    };
+    init_v8_flags(&default_v8_flags, &flags.v8_flags, get_v8_flags_from_env());
 
     util::logger::init(flags.log_level);
 
     run_subcommand(flags).await
   };
 
-  let exit_code = unwrap_or_exit(run_local(future));
+  let exit_code = unwrap_or_exit(create_and_run_current_thread(future));
 
   std::process::exit(exit_code);
 }
