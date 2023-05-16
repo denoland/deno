@@ -46,9 +46,14 @@ class AbortSignal extends EventTarget {
   static timeout(millis) {
     const prefix = "Failed to call 'AbortSignal.timeout'";
     webidl.requiredArguments(arguments.length, 1, prefix);
-    millis = webidl.converters["unsigned long long"](millis, {
-      enforceRange: true,
-    });
+    millis = webidl.converters["unsigned long long"](
+      millis,
+      prefix,
+      "Argument 1",
+      {
+        enforceRange: true,
+      },
+    );
 
     const signal = new AbortSignal(illegalConstructorKey);
     signal[timerId] = setTimeout(

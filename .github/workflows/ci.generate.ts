@@ -17,7 +17,7 @@ const Runners = (() => {
 })();
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "21-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  "26-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -363,6 +363,10 @@ const ci = {
           if: "matrix.wpt",
         },
         {
+          ...submoduleStep("./tools/node_compat/node"),
+          if: "matrix.job == 'lint'",
+        },
+        {
           name: "Create source tarballs (release, linux)",
           if: [
             "startsWith(matrix.os, 'ubuntu') &&",
@@ -476,7 +480,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "21-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              "26-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
         },
         {
@@ -540,6 +544,12 @@ const ci = {
           if: "matrix.job == 'lint'",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+        },
+        {
+          name: "node_compat/setup.ts --check",
+          if: "matrix.job == 'lint'",
+          run:
+            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },
         {
           name: "Build debug",
@@ -641,6 +651,15 @@ const ci = {
           },
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+        },
+        {
+          name: "Autobahn testsuite",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+          ].join("\n"),
+          run:
+            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test debug",

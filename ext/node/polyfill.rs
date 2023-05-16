@@ -102,6 +102,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     specifier: "ext:deno_node/http.ts",
   },
   NodeModulePolyfill {
+    name: "http2",
+    specifier: "ext:deno_node/http2.ts",
+  },
+  NodeModulePolyfill {
     name: "https",
     specifier: "ext:deno_node/https.ts",
   },

@@ -77,6 +77,12 @@ itest!(test_with_config2 {
   output: "test/collect2.out",
 });
 
+itest!(test_with_deprecated_config {
+  args: "test --config test/collect/deno.deprecated.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.deprecated.out",
+});
+
 itest!(test_with_malformed_config {
   args: "test --config test/collect/deno.malformed.jsonc",
   exit_code: 1,
@@ -355,6 +361,11 @@ itest!(test_with_custom_jsx {
   output: "test/hello_world.out",
 });
 
+itest!(before_unload_prevent_default {
+  args: "test --quiet test/before_unload_prevent_default.ts",
+  output: "test/before_unload_prevent_default.out",
+});
+
 #[test]
 fn captured_output() {
   let context = TestContext::default();
@@ -416,6 +427,12 @@ fn file_protocol() {
 itest!(uncaught_errors {
   args: "test --quiet test/uncaught_errors_1.ts test/uncaught_errors_2.ts test/uncaught_errors_3.ts",
   output: "test/uncaught_errors.out",
+  exit_code: 1,
+});
+
+itest!(report_error {
+  args: "test --quiet test/report_error.ts",
+  output: "test/report_error.out",
   exit_code: 1,
 });
 

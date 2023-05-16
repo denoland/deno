@@ -30,6 +30,25 @@ pub enum NetworkStream {
   Unix(#[pin] UnixStream),
 }
 
+impl From<TcpStream> for NetworkStream {
+  fn from(value: TcpStream) -> Self {
+    NetworkStream::Tcp(value)
+  }
+}
+
+impl From<TlsStream> for NetworkStream {
+  fn from(value: TlsStream) -> Self {
+    NetworkStream::Tls(value)
+  }
+}
+
+#[cfg(unix)]
+impl From<UnixStream> for NetworkStream {
+  fn from(value: UnixStream) -> Self {
+    NetworkStream::Unix(value)
+  }
+}
+
 /// A raw stream of one of the types handled by this extension.
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum NetworkStreamType {
@@ -160,7 +179,7 @@ pub enum NetworkStreamAddress {
 
 impl NetworkStreamListener {
   /// Accepts a connection on this listener.
-  pub async fn accept(&self) -> Result<NetworkStream, AnyError> {
+  pub async fn accept(&self) -> Result<NetworkStream, std::io::Error> {
     Ok(match self {
       Self::Tcp(tcp) => {
         let (stream, _addr) = tcp.accept().await?;
@@ -239,31 +258,6 @@ pub fn take_network_stream_resource(
   }
 
   Err(bad_resource_id())
-}
-
-/// Inserts a raw stream (back?) into the resource table and returns a resource ID. This can then be used to create raw connection
-/// objects on the JS side.
-pub fn put_network_stream_resource(
-  resource_table: &mut ResourceTable,
-  stream: NetworkStream,
-) -> Result<ResourceId, AnyError> {
-  let res = match stream {
-    NetworkStream::Tcp(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(TcpStreamResource::new((r, w)))
-    }
-    NetworkStream::Tls(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(TlsStreamResource::new((r, w)))
-    }
-    #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(UnixStreamResource::new((r, w)))
-    }
-  };
-
-  Ok(res)
 }
 
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).

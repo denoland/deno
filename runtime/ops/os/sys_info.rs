@@ -48,6 +48,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
+    #[allow(clippy::disallowed_methods)]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'

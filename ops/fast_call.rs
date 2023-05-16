@@ -245,41 +245,16 @@ pub(crate) fn generate(
   }
 
   if optimizer.is_async {
-    // Referenced variables are declared in parent block.
-    let track_async = q!({
-      let __op_id = __ctx.id;
-      let __state = ::std::cell::RefCell::borrow(&__ctx.state);
-      __state.tracker.track_async(__op_id);
-    });
-
-    output_transforms.push_tokens(&track_async);
-
     let queue_future = if optimizer.returns_result {
       q!({
-        let realm_idx = __ctx.realm_idx;
-        let __get_class = __state.get_error_class_fn;
-        let result = _ops::queue_fast_async_op(__ctx, async move {
-          let result = result.await;
-          (
-            realm_idx,
-            __promise_id,
-            __op_id,
-            _ops::to_op_result(__get_class, result),
-          )
-        });
+        let result = _ops::queue_fast_async_op(__ctx, __promise_id, result);
       })
     } else {
       q!({
-        let realm_idx = __ctx.realm_idx;
-        let result = _ops::queue_fast_async_op(__ctx, async move {
-          let result = result.await;
-          (
-            realm_idx,
-            __promise_id,
-            __op_id,
-            _ops::OpResult::Ok(result.into()),
-          )
-        });
+        let result =
+          _ops::queue_fast_async_op(__ctx, __promise_id, async move {
+            Ok(result.await)
+          });
       })
     };
 

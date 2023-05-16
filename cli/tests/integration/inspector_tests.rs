@@ -29,7 +29,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn(fut);
+    deno_core::task::spawn(fut);
   }
 }
 

@@ -31,6 +31,7 @@ impl send_stdin {
             is_unstable: false,
             is_v8: false,
             force_registration: false,
+            arg_count: 2usize as u8,
         }
     }
     #[inline]
@@ -48,8 +49,6 @@ impl send_stdin {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
         };
-        let op_id = ctx.id;
-        let realm_idx = ctx.realm_idx;
         let promise_id = args.get(0);
         let promise_id = deno_core::v8::Local::<
             deno_core::v8::Integer,
@@ -77,28 +76,19 @@ impl send_stdin {
                 return deno_core::_ops::throw_type_error(scope, msg);
             }
         };
-        let get_class = {
-            let state = ::std::cell::RefCell::borrow(&ctx.state);
-            state.tracker.track_async(op_id);
-            state.get_error_class_fn
-        };
+        let fut = deno_core::_ops::map_async_op1(
+            ctx,
+            Self::call(
+                compile_error!("mutable opstate is not supported in async ops"),
+                arg_0,
+            ),
+        );
         let maybe_response = deno_core::_ops::queue_async_op(
             ctx,
             scope,
             false,
-            async move {
-                let result = Self::call(
-                        compile_error!("mutable opstate is not supported in async ops"),
-                        arg_0,
-                    )
-                    .await;
-                (
-                    realm_idx,
-                    promise_id,
-                    op_id,
-                    deno_core::_ops::to_op_result(get_class, result),
-                )
-            },
+            promise_id,
+            fut,
         );
         if let Some(response) = maybe_response {
             rv.set(response);

@@ -16,7 +16,7 @@ const {
   ArrayPrototypeSplice,
   ObjectGetOwnPropertyDescriptor,
   ObjectGetPrototypeOf,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectSetPrototypeOf,
   ObjectKeys,
   ObjectEntries,
@@ -433,7 +433,7 @@ const CircularRequirePrototypeWarningProxy = new Proxy({}, {
 
   getOwnPropertyDescriptor(target, prop) {
     if (
-      ObjectPrototypeHasOwnProperty(target, prop) || prop === "__esModule"
+      ObjectHasOwn(target, prop) || prop === "__esModule"
     ) {
       return ObjectGetOwnPropertyDescriptor(target, prop);
     }
@@ -557,15 +557,21 @@ Module._findPath = function (request, paths, isMain, parentPath) {
       }
     }
 
-    const isDenoDirPackage = ops.op_require_is_deno_dir_package(
-      curPath,
-    );
-    const isRelative = ops.op_require_is_request_relative(
-      request,
-    );
-    const basePath = (isDenoDirPackage && !isRelative)
-      ? pathResolve(curPath, packageSpecifierSubPath(request))
-      : pathResolve(curPath, request);
+    let basePath;
+
+    if (usesLocalNodeModulesDir) {
+      basePath = pathResolve(curPath, request);
+    } else {
+      const isDenoDirPackage = ops.op_require_is_deno_dir_package(
+        curPath,
+      );
+      const isRelative = ops.op_require_is_request_relative(
+        request,
+      );
+      basePath = (isDenoDirPackage && !isRelative)
+        ? pathResolve(curPath, packageSpecifierSubPath(request))
+        : pathResolve(curPath, request);
+    }
     let filename;
 
     const rc = stat(basePath);
@@ -615,7 +621,9 @@ Module._resolveLookupPaths = function (request, parent) {
     return paths;
   }
 
-  if (parent?.filename && parent.filename.length > 0) {
+  if (
+    !usesLocalNodeModulesDir && parent?.filename && parent.filename.length > 0
+  ) {
     const denoDirPath = ops.op_require_resolve_deno_dir(
       request,
       parent.filename,
@@ -853,9 +861,11 @@ Module.prototype.load = function (filename) {
     throw Error("Module already loaded");
   }
 
-  this.filename = filename;
+  // Canonicalize the path so it's not pointing to the symlinked directory
+  // in `node_modules` directory of the referrer.
+  this.filename = ops.op_require_real_path(filename);
   this.paths = Module._nodeModulePaths(
-    pathDirname(filename),
+    pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
   // allow .mjs to be overriden
@@ -897,7 +907,7 @@ Module.prototype.require = function (id) {
 Module.wrapper = [
   // We provide the non-standard APIs in the CommonJS wrapper
   // to avoid exposing them in global namespace.
-  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
+  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance} = globalThis; var window = undefined; (function () {",
   "\n}).call(this); })",
 ];
 Module.wrap = function (script) {
@@ -1096,6 +1106,11 @@ Module._initPaths = function () {
 
 Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
   throw new Error("not implemented");
+};
+
+// Mostly used by tools like ts-node.
+Module.runMain = function () {
+  Module._load(process.argv[1], null, true);
 };
 
 Module.Module = Module;

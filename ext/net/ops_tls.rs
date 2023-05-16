@@ -26,6 +26,7 @@ use deno_core::futures::task::Waker;
 use deno_core::op;
 
 use deno_core::parking_lot::Mutex;
+use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -74,7 +75,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
@@ -224,9 +224,9 @@ impl Drop for TlsStream {
     let use_linger_task = inner.poll_close(&mut cx).is_pending();
 
     if use_linger_task {
-      spawn_local(poll_fn(move |cx| inner.poll_close(cx)));
+      spawn(poll_fn(move |cx| inner.poll_close(cx)));
     } else if cfg!(debug_assertions) {
-      spawn_local(async {}); // Spawn dummy task to detect missing LocalSet.
+      spawn(async {}); // Spawn dummy task to detect missing runtime.
     }
   }
 }
@@ -813,14 +813,10 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  // TODO(@justinmchase): Ideally the certificate store is created once
-  // and not cloned. The store should be wrapped in Arc<T> to reduce
-  // copying memory unnecessarily.
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
 
   let resource_rc = state
     .borrow_mut()
@@ -912,8 +908,7 @@ where
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
   let hostname_dns = ServerName::try_from(&*addr.hostname)
     .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)

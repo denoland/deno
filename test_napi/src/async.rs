@@ -49,7 +49,6 @@ unsafe extern "C" fn complete(
     ptr::null(),
     &mut _result
   ));
-
   assert_napi_ok!(napi_delete_reference(env, baton.func));
   assert_napi_ok!(napi_delete_async_work(env, baton.task));
 }
@@ -73,7 +72,7 @@ extern "C" fn test_async_work(
     &mut resource_name,
   ));
 
-  let mut async_work: napi_async_work = ptr::null_mut();
+  let async_work: napi_async_work = ptr::null_mut();
 
   let mut func: napi_ref = ptr::null_mut();
   assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut func));
@@ -82,6 +81,8 @@ extern "C" fn test_async_work(
     func,
     task: async_work,
   });
+  let mut async_work = baton.task;
+  let baton_ptr = Box::into_raw(baton) as *mut c_void;
 
   assert_napi_ok!(napi_create_async_work(
     env,
@@ -89,9 +90,12 @@ extern "C" fn test_async_work(
     resource_name,
     Some(execute),
     Some(complete),
-    Box::into_raw(baton) as *mut c_void,
+    baton_ptr,
     &mut async_work,
   ));
+  let mut baton = unsafe { Box::from_raw(baton_ptr as *mut Baton) };
+  baton.task = async_work;
+  Box::into_raw(baton);
   assert_napi_ok!(napi_queue_async_work(env, async_work));
 
   ptr::null_mut()

@@ -227,6 +227,20 @@
       "description": "Configuration for linter",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files or directories that will be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files or directories that will not be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
@@ -293,6 +307,20 @@
       "description": "Configuration for formatter",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files or directories that will be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files or directories that will not be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
@@ -311,6 +339,40 @@
               }
             }
           }
+        },
+        "useTabs": {
+          "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+          "type": "boolean",
+          "default": false
+        },
+        "lineWidth": {
+          "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+          "type": "number",
+          "default": 80
+        },
+        "indentWidth": {
+          "description": "The number of characters for an indent.",
+          "type": "number",
+          "default": 2
+        },
+        "singleQuote": {
+          "type": "boolean",
+          "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+          "default": false
+        },
+        "proseWrap": {
+          "description": "Define how prose should be wrapped in Markdown files.",
+          "default": "always",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ]
+        },
+        "semiColons": {
+          "description": "Whether to prefer using semicolons.",
+          "type": "boolean",
+          "default": true
         },
         "options": {
           "type": "object",
@@ -368,6 +430,20 @@
       "description": "Configuration for deno test",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files or directories that will be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files or directories that will not be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
@@ -393,6 +469,20 @@
       "description": "Configuration for deno bench",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files or directories that will be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files or directories that will not be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {

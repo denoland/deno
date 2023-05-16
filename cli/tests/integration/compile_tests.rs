@@ -5,6 +5,8 @@ use std::process::Command;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
+use util::env_vars_for_npm_tests;
+use util::TestContextBuilder;
 
 #[test]
 fn compile() {
@@ -323,7 +325,7 @@ fn compile_with_conflict_file_exists_error() {
     concat!(
       "Could not compile to file '{}' because the file already exists ",
       "and cannot be overwritten. Please delete the existing file or ",
-      "use the `--output <file-path` flag to provide an alternative name."
+      "use the `--output <file-path>` flag to provide an alternative name."
     ),
     exe.display()
   );
@@ -675,30 +677,40 @@ fn workers_basic() {
 
 #[test]
 fn workers_not_in_module_map() {
-  let _guard = util::http_server();
-  let dir = TempDir::new();
+  let context = TestContextBuilder::for_npm()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
   let exe = if cfg!(windows) {
-    dir.path().join("not_in_module_map.exe")
+    temp_dir.path().join("not_in_module_map.exe")
   } else {
-    dir.path().join("not_in_module_map")
+    temp_dir.path().join("not_in_module_map")
   };
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("compile")
-    .arg("--output")
-    .arg(&exe)
-    .arg(util::testdata_path().join("./compile/workers/not_in_module_map.ts"))
-    .output()
-    .unwrap();
-  assert!(output.status.success());
+  let main_path =
+    util::testdata_path().join("./compile/workers/not_in_module_map.ts");
+  let output = context
+    .new_command()
+    .args_vec([
+      "compile",
+      "--output",
+      &exe.to_string_lossy(),
+      &main_path.to_string_lossy(),
+    ])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = Command::new(&exe).env("NO_COLOR", "").output().unwrap();
-  assert!(!output.status.success());
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert!(stderr.starts_with(concat!(
-    "error: Uncaught (in worker \"\") Module not found\n",
-    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n"
-  )));
+  let output = context
+    .new_command()
+    .command_name(exe.to_string_lossy())
+    .env("NO_COLOR", "")
+    .run();
+  output.assert_exit_code(1);
+  output.assert_matches_text(concat!(
+    "error: Uncaught (in worker \"\") Module not found: [WILDCARD]",
+    "error: Uncaught (in promise) Error: Unhandled error in child worker.\n[WILDCARD]"
+  ));
 }
 
 #[test]
@@ -789,4 +801,257 @@ fn dynamic_import_unanalyzable() {
   )
   .unwrap();
   assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+}
+
+itest!(npm_specifiers_errors_no_unstable {
+  args: "compile -A --quiet npm/cached_only/main.ts",
+  output_str: Some(
+    concat!(
+      "error: Using npm specifiers with deno compile requires the --unstable flag.",
+      "\n\n",
+      "Caused by:\n",
+      "    npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"
+    )
+  ),
+  exit_code: 1,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+#[test]
+fn compile_npm_specifiers() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    concat!(
+      "import path from 'node:path';\n",
+      "import { getValue, setValue } from 'npm:@denotest/esm-basic';\n",
+      "import getValueDefault from 'npm:@denotest/esm-import-cjs-default';\n",
+      "setValue(2);\n",
+      "console.log(path.join('testing', 'this'));",
+      "console.log(getValue());",
+      "console.log(getValueDefault());",
+    ),
+  );
+
+  let binary_path = if cfg!(windows) {
+    temp_dir.path().join("binary.exe")
+  } else {
+    temp_dir.path().join("binary")
+  };
+
+  // try with and without --node-modules-dir
+  let compile_commands = &[
+    "compile --unstable --output binary main.ts",
+    "compile --unstable --node-modules-dir --output binary main.ts",
+  ];
+
+  for compile_command in compile_commands {
+    let output = context.new_command().args(compile_command).run();
+    output.assert_exit_code(0);
+    output.skip_output_check();
+
+    let output = context
+      .new_command()
+      .command_name(binary_path.to_string_lossy())
+      .run();
+    output.assert_matches_text(
+      r#"Node esm importing node cjs
+===========================
+{
+  default: [Function (anonymous)],
+  named: [Function (anonymous)],
+  MyClass: [class MyClass]
+}
+{ default: [Function (anonymous)], named: [Function (anonymous)] }
+[Module: null prototype] {
+  MyClass: [class MyClass],
+  __esModule: true,
+  default: {
+    default: [Function (anonymous)],
+    named: [Function (anonymous)],
+    MyClass: [class MyClass]
+  },
+  named: [Function (anonymous)]
+}
+[Module: null prototype] {
+  __esModule: true,
+  default: { default: [Function (anonymous)], named: [Function (anonymous)] },
+  named: [Function (anonymous)]
+}
+===========================
+static method
+testing[WILDCARD]this
+2
+5
+"#,
+    );
+  }
+
+  // try with a package.json
+  temp_dir.remove_dir_all("node_modules");
+  temp_dir.write(
+    "main.ts",
+    concat!(
+      "import { getValue, setValue } from '@denotest/esm-basic';\n",
+      "setValue(2);\n",
+      "console.log(getValue());",
+    ),
+  );
+  temp_dir.write(
+    "package.json",
+    r#"{ "dependencies": { "@denotest/esm-basic": "1" } }"#,
+  );
+
+  let output = context
+    .new_command()
+    .args("compile --unstable --output binary main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .command_name(binary_path.to_string_lossy())
+    .run();
+  output.assert_matches_text("2\n");
+}
+
+#[test]
+fn compile_npm_file_system() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "compile/npm_fs/main.ts",
+    output_file: "compile/npm_fs/main.out",
+    node_modules_dir: true,
+    input_name: Some("binary"),
+    expected_name: "binary",
+    run_args: vec![],
+  });
+}
+
+#[test]
+fn compile_npm_bin_esm() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:@denotest/bin/cli-esm",
+    run_args: vec!["this", "is", "a", "test"],
+    output_file: "npm/deno_run_esm.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cli-esm",
+  });
+}
+
+#[test]
+fn compile_npm_bin_cjs() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:@denotest/bin/cli-cjs",
+    run_args: vec!["this", "is", "a", "test"],
+    output_file: "npm/deno_run_cjs.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cli-cjs",
+  });
+}
+
+#[test]
+fn compile_npm_cowsay() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowsay.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowsay",
+  });
+}
+
+#[test]
+fn compile_npm_cowsay_explicit() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0/cowsay",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowsay.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowsay",
+  });
+}
+
+#[test]
+fn compile_npm_cowthink() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0/cowthink",
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowthink.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowthink",
+  });
+}
+
+struct RunNpmBinCompileOptions<'a> {
+  input_specifier: &'a str,
+  output_file: &'a str,
+  node_modules_dir: bool,
+  input_name: Option<&'a str>,
+  expected_name: &'a str,
+  run_args: Vec<&'a str>,
+}
+
+fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+
+  let temp_dir = context.temp_dir();
+  let testdata_path = context.testdata_path();
+  let main_specifier = if opts.input_specifier.starts_with("npm:") {
+    opts.input_specifier.to_string()
+  } else {
+    testdata_path
+      .join(opts.input_specifier)
+      .to_string_lossy()
+      .to_string()
+  };
+
+  let mut args = vec![
+    "compile".to_string(),
+    "-A".to_string(),
+    "--unstable".to_string(),
+  ];
+
+  if opts.node_modules_dir {
+    args.push("--node-modules-dir".to_string());
+  }
+
+  if let Some(bin_name) = opts.input_name {
+    args.push("--output".to_string());
+    args.push(bin_name.to_string());
+  }
+
+  args.push(main_specifier);
+
+  // compile
+  let output = context.new_command().args_vec(args).run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // run
+  let binary_path = if cfg!(windows) {
+    temp_dir.path().join(format!("{}.exe", opts.expected_name))
+  } else {
+    temp_dir.path().join(opts.expected_name)
+  };
+  let output = context
+    .new_command()
+    .command_name(binary_path.to_string_lossy())
+    .args_vec(opts.run_args)
+    .run();
+  output.assert_matches_file(opts.output_file);
 }

@@ -31,6 +31,14 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+/// Lazily resolves the root cert store.
+///
+/// This was done because the root cert store is not needed in all cases
+/// and takes a bit of time to initialize.
+pub trait RootCertStoreProvider: Send + Sync {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError>;
+}
+
 // This extension has no runtime apis, it only exports some shared native functions.
 deno_core::extension!(deno_tls);
 

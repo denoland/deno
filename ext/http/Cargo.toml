@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_http"
-version = "0.94.0"
+version = "0.99.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,6 +22,7 @@ harness = false
 
 [dependencies]
 async-compression = { version = "0.3.12", features = ["tokio", "brotli", "gzip"] }
+async-trait.workspace = true
 base64.workspace = true
 brotli = "3.3.4"
 bytes.workspace = true
@@ -50,3 +51,4 @@ tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
 bencher.workspace = true
+rand.workspace = true

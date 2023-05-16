@@ -206,7 +206,7 @@ declare type URLPatternInput = string | URLPatternInit;
 /** @category Web APIs */
 declare interface URLPatternComponentResult {
   input: string;
-  groups: Record<string, string>;
+  groups: Record<string, string | undefined>;
 }
 
 /** `URLPatternResult` is the object returned from `URLPattern.exec`.

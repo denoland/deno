@@ -1,20 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
-use crate::request_properties::DefaultHttpRequestProperties;
 use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::CompletionHandle;
+use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
+use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
+use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::task::spawn;
+use deno_core::task::JoinHandle;
 use deno_core::AsyncRefCell;
-use deno_core::BufView;
+use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -23,12 +29,18 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_net::ops_tls::TlsStream;
-use deno_net::raw::put_network_stream_resource;
 use deno_net::raw::NetworkStream;
-use deno_net::raw::NetworkStreamAddress;
+use deno_websocket::ws_create_server_stream;
+use fly_accept_encoding::Encoding;
+use http::header::ACCEPT_ENCODING;
+use http::header::CACHE_CONTROL;
+use http::header::CONTENT_ENCODING;
+use http::header::CONTENT_LENGTH;
+use http::header::CONTENT_RANGE;
+use http::header::CONTENT_TYPE;
 use http::request::Parts;
+use http::HeaderMap;
 use hyper1::body::Incoming;
 use hyper1::header::COOKIE;
 use hyper1::http::HeaderName;
@@ -36,7 +48,9 @@ use hyper1::http::HeaderValue;
 use hyper1::server::conn::http1;
 use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
+use hyper1::service::HttpService;
 use hyper1::upgrade::OnUpgrade;
+
 use hyper1::StatusCode;
 use pin_project::pin_project;
 use pin_project::pinned_drop;
@@ -45,16 +59,45 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
 use std::pin::Pin;
 use std::rc::Rc;
-use tokio::task::spawn_local;
-use tokio::task::JoinHandle;
+
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 
 type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
+
+/// All HTTP/2 connections start with this byte string.
+///
+/// In HTTP/2, each endpoint is required to send a connection preface as a final confirmation
+/// of the protocol in use and to establish the initial settings for the HTTP/2 connection. The
+/// client and server each send a different connection preface.
+///
+/// The client connection preface starts with a sequence of 24 octets, which in hex notation is:
+///
+/// 0x505249202a20485454502f322e300d0a0d0a534d0d0a0d0a
+///
+/// That is, the connection preface starts with the string PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n). This sequence
+/// MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty.
+const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+
+/// ALPN negotation for "h2"
+const TLS_ALPN_HTTP_2: &[u8] = b"h2";
+
+/// ALPN negotation for "http/1.1"
+const TLS_ALPN_HTTP_11: &[u8] = b"http/1.1";
+
+/// Name a trait for streams we can serve HTTP over.
+trait HttpServeStream:
+  tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static
+{
+}
+impl<
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+  > HttpServeStream for S
+{
+}
 
 pub struct HttpSlabRecord {
   request_info: HttpConnectionProperties,
@@ -108,11 +151,11 @@ macro_rules! with {
   ($ref:ident, $mut:ident, $type:ty, $http:ident, $expr:expr) => {
     #[inline(always)]
     #[allow(dead_code)]
-    pub(crate) fn $mut<T>(key: usize, f: impl FnOnce(&mut $type) -> T) -> T {
+    pub(crate) fn $mut<T>(key: u32, f: impl FnOnce(&mut $type) -> T) -> T {
       SLAB.with(|slab| {
         let mut borrow = slab.borrow_mut();
         #[allow(unused_mut)] // TODO(mmastrac): compiler issue?
-        let mut $http = match borrow.get_mut(key) {
+        let mut $http = match borrow.get_mut(key as usize) {
           Some(http) => http,
           None => panic!(
             "Attemped to access invalid request {} ({} in total available)",
@@ -130,10 +173,10 @@ macro_rules! with {
 
     #[inline(always)]
     #[allow(dead_code)]
-    pub(crate) fn $ref<T>(key: usize, f: impl FnOnce(&$type) -> T) -> T {
+    pub(crate) fn $ref<T>(key: u32, f: impl FnOnce(&$type) -> T) -> T {
       SLAB.with(|slab| {
         let borrow = slab.borrow();
-        let $http = borrow.get(key).unwrap();
+        let $http = borrow.get(key as usize).unwrap();
         #[cfg(__zombie_http_tracking)]
         if !$http.alive {
           panic!("Attempted to access a dead HTTP object")
@@ -178,7 +221,7 @@ with!(with_http, with_http_mut, HttpSlabRecord, http, http);
 fn slab_insert(
   request: Request,
   request_info: HttpConnectionProperties,
-) -> usize {
+) -> u32 {
   SLAB.with(|slab| {
     let (request_parts, request_body) = request.into_parts();
     slab.borrow_mut().insert(HttpSlabRecord {
@@ -191,18 +234,90 @@ fn slab_insert(
       #[cfg(__zombie_http_tracking)]
       alive: true,
     })
-  })
+  }) as u32
 }
 
 #[op]
-pub fn op_upgrade_raw(_index: usize) {}
+pub fn op_http_upgrade_raw(
+  state: &mut OpState,
+  index: u32,
+) -> Result<ResourceId, AnyError> {
+  // Stage 1: extract the upgrade future
+  let upgrade = with_http_mut(index, |http| {
+    // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
+    http
+      .request_parts
+      .extensions
+      .remove::<OnUpgrade>()
+      .ok_or_else(|| AnyError::msg("upgrade unavailable"))
+  })?;
+
+  let (read, write) = tokio::io::duplex(1024);
+  let (read_rx, write_tx) = tokio::io::split(read);
+  let (mut write_rx, mut read_tx) = tokio::io::split(write);
+
+  spawn(async move {
+    let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
+
+    // Stage 2: Extract the Upgraded connection
+    let mut buf = [0; 1024];
+    let upgraded = loop {
+      let read = Pin::new(&mut write_rx).read(&mut buf).await?;
+      match upgrade_stream.write(&buf[..read]) {
+        Ok(None) => continue,
+        Ok(Some((response, bytes))) => {
+          with_resp_mut(index, |resp| *resp = Some(response));
+          with_promise_mut(index, |promise| promise.complete(true));
+          let mut upgraded = upgrade.await?;
+          upgraded.write_all(&bytes).await?;
+          break upgraded;
+        }
+        Err(err) => return Err(err),
+      }
+    };
+
+    // Stage 3: Pump the data
+    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = upgraded_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        read_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = write_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        upgraded_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+
+    Ok(())
+  });
+
+  Ok(
+    state
+      .resource_table
+      .add(UpgradeStream::new(read_rx, write_tx)),
+  )
+}
 
 #[op]
-pub async fn op_upgrade(
+pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
-  index: usize,
+  index: u32,
   headers: Vec<(ByteString, ByteString)>,
-) -> Result<(ResourceId, ZeroCopyBuf), AnyError> {
+) -> Result<ResourceId, AnyError> {
   // Stage 1: set the respnse to 101 Switching Protocols and send it
   let upgrade = with_http_mut(index, |http| {
     // Manually perform the upgrade. We're peeking into hyper's underlying machinery here a bit
@@ -227,21 +342,13 @@ pub async fn op_upgrade(
   // Stage 2: wait for the request to finish upgrading
   let upgraded = upgrade.await?;
 
-  // Stage 3: return the extracted raw network stream
+  // Stage 3: take the extracted raw network stream and upgrade it to a websocket, then return it
   let (stream, bytes) = extract_network_stream(upgraded);
-
-  // We're allocating for those extra bytes, but they are probably going to be empty most of the time
-  Ok((
-    put_network_stream_resource(
-      &mut state.borrow_mut().resource_table,
-      stream,
-    )?,
-    ZeroCopyBuf::from(bytes.to_vec()),
-  ))
+  ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
-#[op]
-pub fn op_set_promise_complete(index: usize, status: u16) {
+#[op(fast)]
+pub fn op_http_set_promise_complete(index: u32, status: u16) {
   with_resp_mut(index, |resp| {
     // The Javascript code will never provide a status that is invalid here (see 23_response.js)
     *resp.as_mut().unwrap().status_mut() =
@@ -253,12 +360,15 @@ pub fn op_set_promise_complete(index: usize, status: u16) {
 }
 
 #[op]
-pub fn op_get_request_method_and_url(
-  index: usize,
-) -> (String, Option<String>, String, String, Option<u16>) {
+pub fn op_http_get_request_method_and_url<HTTP>(
+  index: u32,
+) -> (String, Option<String>, String, String, Option<u16>)
+where
+  HTTP: HttpPropertyExtractor,
+{
   // TODO(mmastrac): Passing method can be optimized
   with_http(index, |http| {
-    let request_properties = DefaultHttpRequestProperties::request_properties(
+    let request_properties = HTTP::request_properties(
       &http.request_info,
       &http.request_parts.uri,
       &http.request_parts.headers,
@@ -281,7 +391,10 @@ pub fn op_get_request_method_and_url(
 }
 
 #[op]
-pub fn op_get_request_header(index: usize, name: String) -> Option<ByteString> {
+pub fn op_http_get_request_header(
+  index: u32,
+  name: String,
+) -> Option<ByteString> {
   with_req(index, |req| {
     let value = req.headers.get(name);
     value.map(|value| value.as_bytes().into())
@@ -289,7 +402,9 @@ pub fn op_get_request_header(index: usize, name: String) -> Option<ByteString> {
 }
 
 #[op]
-pub fn op_get_request_headers(index: usize) -> Vec<(ByteString, ByteString)> {
+pub fn op_http_get_request_headers(
+  index: u32,
+) -> Vec<(ByteString, ByteString)> {
   with_req(index, |req| {
     let headers = &req.headers;
     let mut vec = Vec::with_capacity(headers.len());
@@ -323,8 +438,11 @@ pub fn op_get_request_headers(index: usize) -> Vec<(ByteString, ByteString)> {
   })
 }
 
-#[op]
-pub fn op_read_request_body(state: &mut OpState, index: usize) -> ResourceId {
+#[op(fast)]
+pub fn op_http_read_request_body(
+  state: &mut OpState,
+  index: u32,
+) -> ResourceId {
   let incoming = with_req_body_mut(index, |body| body.take().unwrap());
   let body_resource = Rc::new(HttpRequestBody::new(incoming));
   let res = state.resource_table.add_rc(body_resource.clone());
@@ -334,24 +452,20 @@ pub fn op_read_request_body(state: &mut OpState, index: usize) -> ResourceId {
   res
 }
 
-#[op]
-pub fn op_set_response_header(
-  index: usize,
-  name: ByteString,
-  value: ByteString,
-) {
+#[op(fast)]
+pub fn op_http_set_response_header(index: u32, name: &str, value: &str) {
   with_resp_mut(index, |resp| {
     let resp_headers = resp.as_mut().unwrap().headers_mut();
     // These are valid latin-1 strings
-    let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
+    let name = HeaderName::from_bytes(name.as_bytes()).unwrap();
+    let value = HeaderValue::from_bytes(value.as_bytes()).unwrap();
     resp_headers.append(name, value);
   });
 }
 
 #[op]
-pub fn op_set_response_headers(
-  index: usize,
+pub fn op_http_set_response_headers(
+  index: u32,
   headers: Vec<(ByteString, ByteString)>,
 ) {
   // TODO(mmastrac): Invalid headers should be handled?
@@ -367,10 +481,135 @@ pub fn op_set_response_headers(
   })
 }
 
-#[op]
-pub fn op_set_response_body_resource(
+fn is_request_compressible(headers: &HeaderMap) -> Compression {
+  let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
+    return Compression::None;
+  };
+  // Firefox and Chrome send this -- no need to parse
+  if accept_encoding == "gzip, deflate, br" {
+    return Compression::GZip;
+  }
+  if accept_encoding == "gzip" {
+    return Compression::GZip;
+  }
+  // Fall back to the expensive parser
+  let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
+    matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
+  });
+  #[allow(clippy::single_match)]
+  match fly_accept_encoding::preferred(accepted) {
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
+    _ => {}
+  }
+  Compression::None
+}
+
+fn is_response_compressible(headers: &HeaderMap) -> bool {
+  if let Some(content_type) = headers.get(CONTENT_TYPE) {
+    if !is_content_compressible(content_type) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+  if headers.contains_key(CONTENT_ENCODING) {
+    return false;
+  }
+  if headers.contains_key(CONTENT_RANGE) {
+    return false;
+  }
+  if let Some(cache_control) = headers.get(CACHE_CONTROL) {
+    if let Ok(s) = std::str::from_utf8(cache_control.as_bytes()) {
+      if let Some(cache_control) = CacheControl::from_value(s) {
+        if cache_control.no_transform {
+          return false;
+        }
+      }
+    }
+  }
+  true
+}
+
+fn modify_compressibility_from_response(
+  compression: Compression,
+  length: Option<usize>,
+  headers: &mut HeaderMap,
+) -> Compression {
+  ensure_vary_accept_encoding(headers);
+  if let Some(length) = length {
+    // By the time we add compression headers and Accept-Encoding, it probably doesn't make sense
+    // to compress stuff that's smaller than this.
+    if length < 64 {
+      return Compression::None;
+    }
+  }
+  if compression == Compression::None {
+    return Compression::None;
+  }
+  if !is_response_compressible(headers) {
+    return Compression::None;
+  }
+  weaken_etag(headers);
+  headers.remove(CONTENT_LENGTH);
+  headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+  compression
+}
+
+/// If the user provided a ETag header for uncompressed data, we need to ensure it is a
+/// weak Etag header ("W/").
+fn weaken_etag(hmap: &mut HeaderMap) {
+  if let Some(etag) = hmap.get_mut(hyper::header::ETAG) {
+    if !etag.as_bytes().starts_with(b"W/") {
+      let mut v = Vec::with_capacity(etag.as_bytes().len() + 2);
+      v.extend(b"W/");
+      v.extend(etag.as_bytes());
+      *etag = v.try_into().unwrap();
+    }
+  }
+}
+
+// Set Vary: Accept-Encoding header for direct body response.
+// Note: we set the header irrespective of whether or not we compress the data
+// to make sure cache services do not serve uncompressed data to clients that
+// support compression.
+fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
+  if let Some(v) = hmap.get_mut(hyper::header::VARY) {
+    if let Ok(s) = v.to_str() {
+      if !s.to_lowercase().contains("accept-encoding") {
+        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
+      }
+      return;
+    }
+  }
+  hmap.insert(
+    hyper::header::VARY,
+    HeaderValue::from_static("Accept-Encoding"),
+  );
+}
+
+fn set_response(
+  index: u32,
+  length: Option<usize>,
+  response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
+) {
+  let compression =
+    with_req(index, |req| is_request_compressible(&req.headers));
+
+  with_resp_mut(index, move |response| {
+    let response = response.as_mut().unwrap();
+    let compression = modify_compressibility_from_response(
+      compression,
+      length,
+      response.headers_mut(),
+    );
+    response.body_mut().initialize(response_fn(compression))
+  });
+}
+
+#[op(fast)]
+pub fn op_http_set_response_body_resource(
   state: &mut OpState,
-  index: usize,
+  index: u32,
   stream_rid: ResourceId,
   auto_close: bool,
 ) -> Result<(), AnyError> {
@@ -381,59 +620,46 @@ pub fn op_set_response_body_resource(
     state.resource_table.get_any(stream_rid)?
   };
 
-  with_resp_mut(index, move |response| {
-    let future = resource.clone().read(64 * 1024);
-    response
-      .as_mut()
-      .unwrap()
-      .body_mut()
-      .initialize(ResponseBytesInner::Resource(auto_close, resource, future));
-  });
+  set_response(
+    index,
+    resource.size_hint().1.map(|s| s as usize),
+    move |compression| {
+      ResponseBytesInner::from_resource(compression, resource, auto_close)
+    },
+  );
 
   Ok(())
 }
 
-#[op]
-pub fn op_set_response_body_stream(
+#[op(fast)]
+pub fn op_http_set_response_body_stream(
   state: &mut OpState,
-  index: usize,
+  index: u32,
 ) -> Result<ResourceId, AnyError> {
   // TODO(mmastrac): what should this channel size be?
   let (tx, rx) = tokio::sync::mpsc::channel(1);
-  let (tx, rx) = (
-    V8StreamHttpResponseBody::new(tx),
-    ResponseBytesInner::V8Stream(rx),
-  );
 
-  with_resp_mut(index, move |response| {
-    response.as_mut().unwrap().body_mut().initialize(rx);
+  set_response(index, None, |compression| {
+    ResponseBytesInner::from_v8(compression, rx)
   });
 
-  Ok(state.resource_table.add(tx))
+  Ok(state.resource_table.add(V8StreamHttpResponseBody::new(tx)))
 }
 
-#[op]
-pub fn op_set_response_body_text(index: usize, text: String) {
+#[op(fast)]
+pub fn op_http_set_response_body_text(index: u32, text: String) {
   if !text.is_empty() {
-    with_resp_mut(index, move |response| {
-      response
-        .as_mut()
-        .unwrap()
-        .body_mut()
-        .initialize(ResponseBytesInner::Bytes(BufView::from(text.into_bytes())))
+    set_response(index, Some(text.len()), |compression| {
+      ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
   }
 }
 
-#[op]
-pub fn op_set_response_body_bytes(index: usize, buffer: ZeroCopyBuf) {
+#[op(fast)]
+pub fn op_http_set_response_body_bytes(index: u32, buffer: &[u8]) {
   if !buffer.is_empty() {
-    with_resp_mut(index, |response| {
-      response
-        .as_mut()
-        .unwrap()
-        .body_mut()
-        .initialize(ResponseBytesInner::Bytes(BufView::from(buffer)))
+    set_response(index, Some(buffer.len()), |compression| {
+      ResponseBytesInner::from_slice(compression, buffer)
     });
   };
 }
@@ -441,7 +667,7 @@ pub fn op_set_response_body_bytes(index: usize, buffer: ZeroCopyBuf) {
 #[op]
 pub async fn op_http_track(
   state: Rc<RefCell<OpState>>,
-  index: usize,
+  index: u32,
   server_rid: ResourceId,
 ) -> Result<(), AnyError> {
   let handle = with_resp(index, |resp| {
@@ -463,12 +689,12 @@ pub async fn op_http_track(
 }
 
 #[pin_project(PinnedDrop)]
-pub struct SlabFuture<F: Future<Output = ()>>(usize, #[pin] F);
+pub struct SlabFuture<F: Future<Output = ()>>(u32, #[pin] F);
 
 pub fn new_slab_future(
   request: Request,
   request_info: HttpConnectionProperties,
-  tx: tokio::sync::mpsc::Sender<usize>,
+  tx: tokio::sync::mpsc::Sender<u32>,
 ) -> SlabFuture<impl Future<Output = ()>> {
   let index = slab_insert(request, request_info);
   let rx = with_promise(index, |promise| promise.clone());
@@ -488,11 +714,11 @@ impl<F: Future<Output = ()>> PinnedDrop for SlabFuture<F> {
     SLAB.with(|slab| {
       #[cfg(__zombie_http_tracking)]
       {
-        slab.borrow_mut().get_mut(self.0).unwrap().alive = false;
+        slab.borrow_mut().get_mut(self.0 as usize).unwrap().alive = false;
       }
       #[cfg(not(__zombie_http_tracking))]
       {
-        slab.borrow_mut().remove(self.0);
+        slab.borrow_mut().remove(self.0 as usize);
       }
     });
   }
@@ -514,78 +740,90 @@ impl<F: Future<Output = ()>> Future for SlabFuture<F> {
   }
 }
 
+fn serve_http11_unconditional(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+) -> impl Future<Output = Result<(), AnyError>> + 'static {
+  let conn = http1::Builder::new()
+    .keep_alive(true)
+    .serve_connection(io, svc);
+
+  conn.with_upgrades().map_err(AnyError::from)
+}
+
+fn serve_http2_unconditional(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+) -> impl Future<Output = Result<(), AnyError>> + 'static {
+  let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
+  conn.map_err(AnyError::from)
+}
+
+async fn serve_http2_autodetect(
+  io: impl HttpServeStream,
+  svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
+) -> Result<(), AnyError> {
+  let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
+  let (matches, io) = prefix.match_prefix().await?;
+  if matches {
+    serve_http2_unconditional(io, svc).await
+  } else {
+    serve_http11_unconditional(io, svc).await
+  }
+}
+
 fn serve_https(
   mut io: TlsStream,
   request_info: HttpConnectionProperties,
-  cancel: RcRef<CancelHandle>,
-  tx: tokio::sync::mpsc::Sender<usize>,
+  cancel: Rc<CancelHandle>,
+  tx: tokio::sync::mpsc::Sender<u32>,
 ) -> JoinHandle<Result<(), AnyError>> {
-  // TODO(mmastrac): This is faster if we can use tokio::spawn but then the send bounds get us
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(async {
-    io.handshake().await?;
-    let handshake = io.get_ref().1.alpn_protocol();
-    // h2
-    if handshake == Some(&[104, 50]) {
-      let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
-
-      conn.map_err(AnyError::from).try_or_cancel(cancel).await
-    } else {
-      let conn = http1::Builder::new()
-        .keep_alive(true)
-        .serve_connection(io, svc);
-
-      conn
-        .with_upgrades()
-        .map_err(AnyError::from)
-        .try_or_cancel(cancel)
-        .await
+  spawn(
+    async {
+      io.handshake().await?;
+      // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
+      // based on the prefix bytes
+      let handshake = io.get_ref().1.alpn_protocol();
+      if handshake == Some(TLS_ALPN_HTTP_2) {
+        serve_http2_unconditional(io, svc).await
+      } else if handshake == Some(TLS_ALPN_HTTP_11) {
+        serve_http11_unconditional(io, svc).await
+      } else {
+        serve_http2_autodetect(io, svc).await
+      }
     }
-  })
+    .try_or_cancel(cancel),
+  )
 }
 
 fn serve_http(
-  io: impl tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+  io: impl HttpServeStream,
   request_info: HttpConnectionProperties,
-  cancel: RcRef<CancelHandle>,
-  tx: tokio::sync::mpsc::Sender<usize>,
+  cancel: Rc<CancelHandle>,
+  tx: tokio::sync::mpsc::Sender<u32>,
 ) -> JoinHandle<Result<(), AnyError>> {
-  // TODO(mmastrac): This is faster if we can use tokio::spawn but then the send bounds get us
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn_local(async {
-    let conn = http1::Builder::new()
-      .keep_alive(true)
-      .serve_connection(io, svc);
-    conn
-      .with_upgrades()
-      .map_err(AnyError::from)
-      .try_or_cancel(cancel)
-      .await
-  })
+  spawn(serve_http2_autodetect(io, svc).try_or_cancel(cancel))
 }
 
-fn serve_http_on(
-  network_stream: NetworkStream,
+fn serve_http_on<HTTP>(
+  connection: HTTP::Connection,
   listen_properties: &HttpListenProperties,
-  cancel: RcRef<CancelHandle>,
-  tx: tokio::sync::mpsc::Sender<usize>,
-) -> JoinHandle<Result<(), AnyError>> {
-  // We always want some sort of peer address. If we can't get one, just make up one.
-  let peer_address = network_stream.peer_address().unwrap_or_else(|_| {
-    NetworkStreamAddress::Ip(SocketAddr::V4(SocketAddrV4::new(
-      Ipv4Addr::new(0, 0, 0, 0),
-      0,
-    )))
-  });
+  cancel: Rc<CancelHandle>,
+  tx: tokio::sync::mpsc::Sender<u32>,
+) -> JoinHandle<Result<(), AnyError>>
+where
+  HTTP: HttpPropertyExtractor,
+{
   let connection_properties: HttpConnectionProperties =
-    DefaultHttpRequestProperties::connection_properties(
-      listen_properties,
-      &peer_address,
-    );
+    HTTP::connection_properties(listen_properties, &connection);
+
+  let network_stream = HTTP::to_network_stream_from_connection(connection);
 
   match network_stream {
     NetworkStream::Tcp(conn) => {
@@ -603,13 +841,14 @@ fn serve_http_on(
 
 struct HttpJoinHandle(
   AsyncRefCell<Option<JoinHandle<Result<(), AnyError>>>>,
-  CancelHandle,
-  AsyncRefCell<tokio::sync::mpsc::Receiver<usize>>,
+  // Cancel handle must live in a separate Rc to avoid keeping the outer join handle ref'd
+  Rc<CancelHandle>,
+  AsyncRefCell<tokio::sync::mpsc::Receiver<u32>>,
 );
 
 impl HttpJoinHandle {
-  fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
-    RcRef::map(self, |this| &this.1)
+  fn cancel_handle(self: &Rc<Self>) -> Rc<CancelHandle> {
+    self.1.clone()
   }
 }
 
@@ -623,39 +862,41 @@ impl Resource for HttpJoinHandle {
   }
 }
 
+impl Drop for HttpJoinHandle {
+  fn drop(&mut self) {
+    // In some cases we may be dropped without closing, so let's cancel everything on the way out
+    self.1.cancel();
+  }
+}
+
 #[op(v8)]
-pub fn op_serve_http(
+pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError> {
+) -> Result<(ResourceId, &'static str, String), AnyError>
+where
+  HTTP: HttpPropertyExtractor,
+{
   let listener =
-    DefaultHttpRequestProperties::get_network_stream_listener_for_rid(
-      &mut state.borrow_mut(),
-      listener_rid,
-    )?;
+    HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
-  let local_address = listener.listen_address()?;
-  let listen_properties = DefaultHttpRequestProperties::listen_properties(
-    listener.stream(),
-    &local_address,
-  );
+  let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
     AsyncRefCell::new(None),
-    CancelHandle::new(),
+    CancelHandle::new_rc(),
     AsyncRefCell::new(rx),
   ));
   let cancel_clone = resource.cancel_handle();
 
-  let listen_properties_clone = listen_properties.clone();
-  let handle = spawn_local(async move {
+  let listen_properties_clone: HttpListenProperties = listen_properties.clone();
+  let handle = spawn(async move {
     loop {
-      let conn = listener
-        .accept()
+      let conn = HTTP::accept_connection_from_listener(&listener)
         .try_or_cancel(cancel_clone.clone())
         .await?;
-      serve_http_on(
+      serve_http_on::<HTTP>(
         conn,
         &listen_properties_clone,
         cancel_clone.clone(),
@@ -679,35 +920,32 @@ pub fn op_serve_http(
 }
 
 #[op(v8)]
-pub fn op_serve_http_on(
+pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
-  conn: ResourceId,
-) -> Result<(ResourceId, &'static str, String), AnyError> {
-  let network_stream =
-    DefaultHttpRequestProperties::get_network_stream_for_rid(
-      &mut state.borrow_mut(),
-      conn,
-    )?;
+  connection_rid: ResourceId,
+) -> Result<(ResourceId, &'static str, String), AnyError>
+where
+  HTTP: HttpPropertyExtractor,
+{
+  let connection =
+    HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
-  let local_address = network_stream.local_address()?;
-  let listen_properties = DefaultHttpRequestProperties::listen_properties(
-    network_stream.stream(),
-    &local_address,
-  );
+  let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
   let (tx, rx) = tokio::sync::mpsc::channel(10);
   let resource: Rc<HttpJoinHandle> = Rc::new(HttpJoinHandle(
     AsyncRefCell::new(None),
-    CancelHandle::new(),
+    CancelHandle::new_rc(),
     AsyncRefCell::new(rx),
   ));
 
-  let handle = serve_http_on(
-    network_stream,
-    &listen_properties,
-    resource.cancel_handle(),
-    tx,
-  );
+  let handle: JoinHandle<Result<(), deno_core::anyhow::Error>> =
+    serve_http_on::<HTTP>(
+      connection,
+      &listen_properties,
+      resource.cancel_handle(),
+      tx,
+    );
 
   // Set the handle after we start the future
   *RcRef::map(&resource, |this| &this.0)
@@ -732,7 +970,7 @@ pub async fn op_http_wait(
     .resource_table
     .get::<HttpJoinHandle>(rid)?;
 
-  let cancel = join_handle.clone().cancel_handle();
+  let cancel = join_handle.cancel_handle();
   let next = async {
     let mut recv = RcRef::map(&join_handle, |this| &this.2).borrow_mut().await;
     recv.recv().await
@@ -743,7 +981,7 @@ pub async fn op_http_wait(
 
   // Do we have a request?
   if let Some(req) = next {
-    return Ok(req as u32);
+    return Ok(req);
   }
 
   // No - we're shutting down
@@ -773,4 +1011,58 @@ pub async fn op_http_wait(
   }
 
   Ok(u32::MAX)
+}
+
+struct UpgradeStream {
+  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  cancel_handle: CancelHandle,
+}
+
+impl UpgradeStream {
+  pub fn new(
+    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+  ) -> Self {
+    Self {
+      read: AsyncRefCell::new(read),
+      write: AsyncRefCell::new(write),
+      cancel_handle: CancelHandle::new(),
+    }
+  }
+
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let read = RcRef::map(self, |this| &this.read);
+      let mut read = read.borrow_mut().await;
+      Ok(Pin::new(&mut *read).read(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let write = RcRef::map(self, |this| &this.write);
+      let mut write = write.borrow_mut().await;
+      Ok(Pin::new(&mut *write).write(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+}
+
+impl Resource for UpgradeStream {
+  fn name(&self) -> Cow<str> {
+    "httpRawUpgradeStream".into()
+  }
+
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
