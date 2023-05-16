@@ -534,6 +534,8 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
 
     // Did everything shut down while we were waiting?
     if (context.closed) {
+      // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
+      op_http_set_promise_complete(req, 503);
       innerRequest?.close();
       return;
     }

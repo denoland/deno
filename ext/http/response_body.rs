@@ -82,6 +82,10 @@ impl CompletionHandle {
       waker.wake();
     }
   }
+
+  pub fn is_completed(&self) -> bool {
+    self.inner.borrow().complete
+  }
 }
 
 impl Future for CompletionHandle {
