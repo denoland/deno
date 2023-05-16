@@ -1337,7 +1337,7 @@ Deno.test(
           await assertRejects(
             () => conn.handshake(),
             Deno.errors.InvalidData,
-            "BadCertificate",
+            "UnknownCA",
           );
         }
         conn.close();
@@ -1368,7 +1368,7 @@ Deno.test(
       await assertRejects(
         () => tlsConn.handshake(),
         Deno.errors.InvalidData,
-        "CertNotValidForName",
+        "NotValidForName",
       );
       tlsConn.close();
     }
