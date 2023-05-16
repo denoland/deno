@@ -141,7 +141,6 @@ pub struct Metadata {
   /// Whether this uses a node_modules directory (true) or the global cache (false).
   pub node_modules_dir: bool,
   pub npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
-  pub npm_system_info: NpmSystemInfo,
   pub package_json_deps: Option<SerializablePackageJsonDeps>,
 }
 
@@ -519,7 +518,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       maybe_import_map,
       node_modules_dir: self.npm_resolver.node_modules_path().is_some(),
       npm_snapshot,
-      npm_system_info: self.npm_system_info.clone(),
       package_json_deps: self
         .package_json_deps_provider
         .deps()
