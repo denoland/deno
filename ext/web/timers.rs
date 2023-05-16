@@ -91,7 +91,8 @@ pub async fn op_sleep(
     use once_cell::sync::OnceCell;
     static HR_PERIOD: OnceCell<()> = OnceCell::new();
     if millis < 15 {
-      HR_PERIOD.get_or_init(|| {
+      // SAFETY: We just want to set the timer period here
+      HR_PERIOD.get_or_init(|| unsafe {
         winmm::timeBeginPeriod(1);
       });
     }
