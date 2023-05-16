@@ -20,12 +20,10 @@ for (const encoding of BUFFER_ENCODINGS) {
   Deno.test({
     name: "Buffer.from with encoding " + encoding,
     fn: () => {
-      // @ts-ignore: BufferEncoding is a string but TS complains
       assertEquals(
         Buffer.from(bufferLen12.toString(encoding), encoding),
         bufferLen12,
       );
-      // @ts-ignore: BufferEncoding is a string but TS complains
       assertEquals(
         Buffer.from(bufferLen11.toString(encoding), encoding),
         bufferLen11,
