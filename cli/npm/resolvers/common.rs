@@ -13,6 +13,7 @@ use deno_core::task::spawn;
 use deno_core::url::Url;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -59,6 +60,7 @@ pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
   cache: &Arc<NpmCache>,
   registry_url: &Url,
+  system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
   let sync_download = should_sync_download();
   if sync_download {
@@ -70,7 +72,7 @@ pub async fn cache_packages(
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     assert_eq!(package.copy_index, 0); // the caller should not provide any of these
-    if !package.should_download() {
+    if !package.should_download(system_info) {
       log::debug!(
         "Skipping caching of optional package: {}",
         package.pkg_id.as_serialized()

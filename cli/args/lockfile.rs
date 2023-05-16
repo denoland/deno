@@ -173,7 +173,7 @@ pub async fn snapshot_from_lockfile(
     let mut traversed_ids = HashSet::with_capacity(packages.len());
     let mut optional_packages = HashSet::with_capacity(packages.len());
     let mut required_packages = HashSet::with_capacity(packages.len());
-    let mut pkg_ids_to_index = packages
+    let pkg_ids_to_index = packages
       .iter()
       .map(|pkg| pkg.pkg_id.clone())
       .enumerate()

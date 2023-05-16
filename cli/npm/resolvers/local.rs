@@ -24,6 +24,7 @@ use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
@@ -52,6 +53,7 @@ pub struct LocalNpmPackageResolver {
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
+  system_info: NpmSystemInfo,
 }
 
 impl LocalNpmPackageResolver {
@@ -62,6 +64,7 @@ impl LocalNpmPackageResolver {
     registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: Arc<NpmResolution>,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       fs,
@@ -72,6 +75,7 @@ impl LocalNpmPackageResolver {
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
+      system_info,
     }
   }
 
@@ -205,6 +209,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.progress_bar,
       &self.registry_url,
       &self.root_node_modules_path,
+      &self.system_info,
     )
     .await
   }
@@ -230,6 +235,7 @@ async fn sync_resolution_with_fs(
   progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
+  system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() {
     return Ok(()); // don't create the directory
@@ -265,7 +271,7 @@ async fn sync_resolution_with_fs(
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   for package in &package_partitions.packages {
-    if !package.should_download() {
+    if !package.should_download(system_info) {
       continue;
     }
     let folder_name =
@@ -321,7 +327,7 @@ async fn sync_resolution_with_fs(
 
   // 2. Create any "copy" packages, which are used for peer dependencies
   for package in &package_partitions.copy_packages {
-    if !package.should_download() {
+    if !package.should_download(system_info) {
       log::debug!(
         "Skipping setup of optional package: {}",
         package.pkg_id.as_serialized()
@@ -361,7 +367,7 @@ async fn sync_resolution_with_fs(
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
-    if !package.should_download() {
+    if !package.should_download(system_info) {
       continue;
     }
 

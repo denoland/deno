@@ -350,6 +350,9 @@ pub async fn run(
     npm_registry_url,
     npm_resolution.clone(),
     node_modules_path,
+    // this could just be the default, but it's stored and
+    // passed in here just in case there is a discrepancy
+    metadata.npm_system_info,
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
     fs.clone(),

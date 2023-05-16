@@ -13,6 +13,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -686,6 +687,11 @@ impl CliOptions {
     } else {
       CacheSetting::Use
     }
+  }
+
+  pub fn npm_system_info(&self) -> NpmSystemInfo {
+    // todo: change this for deno compile with a --target flag
+    NpmSystemInfo::default()
   }
 
   pub fn resolve_deno_dir(&self) -> Result<DenoDir, AnyError> {
