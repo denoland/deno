@@ -1,0 +1,28 @@
+Object [URL] {
+  hash: [Getter/Setter],
+  host: [Getter/Setter],
+  hostname: [Getter/Setter],
+  href: [Getter/Setter],
+  origin: [Getter],
+  password: [Getter/Setter],
+  pathname: [Getter/Setter],
+  port: [Getter/Setter],
+  protocol: [Getter/Setter],
+  search: [Getter/Setter],
+  username: [Getter/Setter],
+  searchParams: [Getter],
+  toString: [Function: toString],
+  toJSON: [Function: toJSON]
+}
+Object [URLPattern] {
+  protocol: [Getter],
+  username: [Getter],
+  password: [Getter],
+  hostname: [Getter],
+  port: [Getter],
+  pathname: [Getter],
+  search: [Getter],
+  hash: [Getter],
+  test: [Function: test],
+  exec: [Function: exec]
+}
