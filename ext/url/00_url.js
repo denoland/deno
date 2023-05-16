@@ -391,23 +391,26 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(URL.prototype, this),
-      keys: [
-        "href",
-        "origin",
-        "protocol",
-        "username",
-        "password",
-        "host",
-        "hostname",
-        "port",
-        "pathname",
-        "hash",
-        "search",
-      ],
-    }), inspectOptions);
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URL.prototype, this),
+        keys: [
+          "href",
+          "origin",
+          "protocol",
+          "username",
+          "password",
+          "host",
+          "hostname",
+          "port",
+          "pathname",
+          "hash",
+          "search",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   #updateSearchParams() {

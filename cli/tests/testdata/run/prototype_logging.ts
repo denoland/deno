@@ -1,2 +1,2 @@
-console.log(URL.prototype)
-console.log(URLPattern.prototype)
+console.log(URL.prototype);
+console.log(URLPattern.prototype);

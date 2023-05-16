@@ -212,20 +212,23 @@ class URLPattern {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(createFilteredInspectProxy({
-      object: this,
-      evaluate: ObjectPrototypeIsPrototypeOf(URLPattern.prototype, this),
-      keys: [
-        "protocol",
-        "username",
-        "password",
-        "hostname",
-        "port",
-        "pathname",
-        "search",
-        "hash",
-      ],
-    }), inspectOptions);
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URLPattern.prototype, this),
+        keys: [
+          "protocol",
+          "username",
+          "password",
+          "hostname",
+          "port",
+          "pathname",
+          "search",
+          "hash",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 }
 
