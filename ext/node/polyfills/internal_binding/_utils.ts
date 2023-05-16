@@ -60,7 +60,7 @@ export function utf16leToBytes(str: string) {
   const byteArray = [];
   for (let i = 0; i < str.length; ++i) {
     c = str.charCodeAt(i);
-    lo = (c & 0xff);
+    lo = c & 0xff;
     hi = (c >> 8) & 0xff;
     byteArray.push(lo);
     byteArray.push(hi);

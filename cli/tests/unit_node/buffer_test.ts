@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from 'node:buffer';
+import { Buffer } from "node:buffer";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
 const buffer_len12 = Buffer.from("Hello, World!");
@@ -21,9 +21,15 @@ for (let encoding of BUFFER_ENCODINGS) {
     name: "Buffer.from with encoding " + encoding,
     fn: () => {
       // @ts-ignore
-      assertEquals(Buffer.from(buffer_len12.toString(encoding), encoding), buffer_len12);
+      assertEquals(
+        Buffer.from(buffer_len12.toString(encoding), encoding),
+        buffer_len12,
+      );
       // @ts-ignore
-      assertEquals(Buffer.from(buffer_len11.toString(encoding), encoding), buffer_len11);
+      assertEquals(
+        Buffer.from(buffer_len11.toString(encoding), encoding),
+        buffer_len11,
+      );
     },
   });
 }
