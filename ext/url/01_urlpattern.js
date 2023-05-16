@@ -209,20 +209,22 @@ class URLPattern {
     return result;
   }
 
-  [SymbolFor("Deno.customInspect")](inspect) {
-    return `URLPattern ${
-      inspect({
-        protocol: this.protocol,
-        username: this.username,
-        password: this.password,
-        hostname: this.hostname,
-        port: this.port,
-        pathname: this.pathname,
-        search: this.search,
-        hash: this.hash,
-      })
-    }`;
-  }
+  [SymbolFor("Deno.privateCustomInspect")] = {
+    value: function (inspect, inspectOptions) {
+      return `${this.constructor.name} ${
+        inspect({
+          protocol: this.protocol,
+          username: this.username,
+          password: this.password,
+          hostname: this.hostname,
+          port: this.port,
+          pathname: this.pathname,
+          search: this.search,
+          hash: this.hash,
+        }, inspectOptions)
+      }`;
+    },
+  };
 }
 
 webidl.configurePrototype(URLPattern);
