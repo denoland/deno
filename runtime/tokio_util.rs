@@ -16,12 +16,17 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
     .unwrap()
 }
 
+#[inline(always)]
 pub fn create_and_run_current_thread<F, R>(future: F) -> R
 where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
 {
   let rt = create_basic_runtime();
+  // Since this is the main future, we want to box it because it tends to be fairly large. We
+  // also make this function inline(always) to avoid holding the unboxed, unused future on the
+  // stack.
+  let future = Box::pin(future);
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
   let join_handle = rt.spawn(future);
