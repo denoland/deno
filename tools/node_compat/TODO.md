@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2933
+Total: 2932
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -2370,7 +2370,6 @@ Total: 2933
 - [parallel/test-ttywrap-stack.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-stack.js)
 - [parallel/test-unhandled-exception-rethrow-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unhandled-exception-rethrow-error.js)
 - [parallel/test-unicode-node-options.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unicode-node-options.js)
-- [parallel/test-url-format-whatwg.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-format-whatwg.js)
 - [parallel/test-url-null-char.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-null-char.js)
 - [parallel/test-url-parse-format.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-parse-format.js)
 - [parallel/test-utf8-scripts.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-utf8-scripts.js)
