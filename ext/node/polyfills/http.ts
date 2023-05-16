@@ -259,6 +259,7 @@ function validateHost(host, name) {
 }
 
 const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
+const kError = Symbol("kError");
 
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
