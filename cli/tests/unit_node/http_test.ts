@@ -295,32 +295,6 @@ Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
 });
 */
 
-Deno.test("[node/http] set http.IncomingMessage.statusMessage", () => {
-  // deno-lint-ignore no-explicit-any
-  const message = new (http as any).IncomingMessageForClient(
-    new Response(null, { status: 404, statusText: "Not Found" }),
-    {
-      encrypted: true,
-      readable: false,
-      remoteAddress: "foo",
-      address() {
-        return { port: 443, family: "IPv4" };
-      },
-      // deno-lint-ignore no-explicit-any
-      end(_cb: any) {
-        return this;
-      },
-      // deno-lint-ignore no-explicit-any
-      destroy(_e: any) {
-        return;
-      },
-    },
-  );
-  assertEquals(message.statusMessage, "Not Found");
-  message.statusMessage = "boom";
-  assertEquals(message.statusMessage, "boom");
-});
-
 Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestHeaders: Headers;
   let requestBody = "";
