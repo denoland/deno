@@ -1337,7 +1337,7 @@ Deno.test(
           await assertRejects(
             () => conn.handshake(),
             Deno.errors.InvalidData,
-            "UnknownCA",
+            "received fatal alert",
           );
         }
         conn.close();
