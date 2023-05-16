@@ -63,3 +63,20 @@ Deno.test(function urlPatternWithPrototypePollution() {
     RegExp.prototype.exec = originalExec;
   }
 });
+
+Deno.test(function customInspectFunction() {
+  const pattern = new URLPattern("https://deno.land/foo/:bar");
+  assertEquals(
+    Deno.inspect(pattern),
+    `URLPattern {
+  protocol: "https",
+  username: "",
+  password: "",
+  hostname: "deno.land",
+  port: "",
+  pathname: "/foo/:bar",
+  search: "",
+  hash: ""
+}`,
+  );
+});
