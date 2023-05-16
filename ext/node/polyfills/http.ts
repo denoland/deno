@@ -1,13 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+// import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 
 const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import {
   _normalizeArgs,
-  createConnection,
+  // createConnection,
   ListenOptions,
   Socket,
 } from "ext:deno_node/net.ts";
@@ -34,9 +34,9 @@ import {
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
-import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
+// import { chunkExpression as RE_TE_CHUNKED } from "ext:deno_node/_http_common.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
-import { kEmptyObject, once } from "ext:deno_node/internal/util.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import {
   connResetException,
@@ -497,7 +497,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     // initiate connection
-    // TODO
+    // TODO(crowlKats): finish this
     /*if (this.agent) {
       this.agent.addRequest(this, optsWithoutSignal);
     } else {
@@ -534,8 +534,10 @@ class ClientRequest extends OutgoingMessage {
 
     const headers = [];
     for (const key in this[kOutHeaders]) {
-      const entry = this[kOutHeaders][key];
-      this._processHeader(headers, entry[0], entry[1], false);
+      if (Object.hasOwn(this[kOutHeaders], key)) {
+        const entry = this[kOutHeaders][key];
+        this._processHeader(headers, entry[0], entry[1], false);
+      }
     }
 
     const client = this._getClient();
@@ -583,6 +585,8 @@ class ClientRequest extends OutgoingMessage {
           try {
             await core.shutdown(req.requestBodyRid);
           } catch (err) {
+            // TODO(bartlomieju): fix this conditional
+            // deno-lint-ignore no-constant-condition
             if (true) {
               this._requestSendError = err;
               this._requestSendErrorSet = true;
@@ -603,6 +607,7 @@ class ClientRequest extends OutgoingMessage {
     if (this.destroyed || err) {
       this.destroyed = true;
 
+      // deno-lint-ignore no-inner-declarations
       function _destroy(req, err) {
         if (!req.aborted && !err) {
           err = connResetException("socket hang up");
@@ -635,7 +640,9 @@ class ClientRequest extends OutgoingMessage {
     }
   }
 
-  end(chunk?: any, encoding?: any, cb?: any): this {
+  // TODO(bartlomieju): use callback here
+  // deno-lint-ignore no-explicit-any
+  end(chunk?: any, encoding?: any, _cb?: any): this {
     this.finished = true;
 
     if (chunk !== undefined) {
@@ -646,11 +653,11 @@ class ClientRequest extends OutgoingMessage {
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
       const incoming = new IncomingMessageForClient(this.socket);
 
-      // TODO
-      //incoming.httpVersionMajor = versionMajor;
-      //incoming.httpVersionMinor = versionMinor;
-      //incoming.httpVersion = `${versionMajor}.${versionMinor}`;
-      //incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
+      // TODO(@crowlKats):
+      // incoming.httpVersionMajor = versionMajor;
+      // incoming.httpVersionMinor = versionMinor;
+      // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
+      // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
       //  parser.joinDuplicateHeaders;
 
       incoming.url = res.url;
@@ -1131,9 +1138,6 @@ export class IncomingMessageForClient extends NodeReadable {
 // 'no duplicates' field, a `0` byte is prepended as a flag. The one exception
 // to this is the Set-Cookie header which is indicated by a `1` byte flag, since
 // it is an 'array' field and thus is treated differently in _addHeaderLines().
-// TODO: perhaps http_parser could be returning both raw and lowercased versions
-// of known header names to avoid us having to call toLowerCase() for those
-// headers.
 function matchKnownFields(field, lowercased) {
   switch (field.length) {
     case 3:

@@ -10,14 +10,14 @@ import type { Socket } from "ext:deno_node/net.ts";
 import {
   kNeedDrain,
   kOutHeaders,
-  utcDate,
+  // utcDate,
 } from "ext:deno_node/internal/http.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
-  chunkExpression as RE_TE_CHUNKED,
+  // chunkExpression as RE_TE_CHUNKED,
 } from "ext:deno_node/_http_common.ts";
 import {
   defaultTriggerAsyncIdScope,
@@ -28,22 +28,22 @@ const { async_id_symbol } = symbols;
 import {
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
-  ERR_HTTP_TRAILER_INVALID,
-  ERR_INVALID_ARG_TYPE,
-  ERR_INVALID_ARG_VALUE,
+  // ERR_HTTP_TRAILER_INVALID,
+  // ERR_INVALID_ARG_TYPE,
+  // ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_INVALID_HTTP_TOKEN,
   ERR_METHOD_NOT_IMPLEMENTED,
-  ERR_STREAM_ALREADY_FINISHED,
+  // ERR_STREAM_ALREADY_FINISHED,
   ERR_STREAM_CANNOT_PIPE,
-  ERR_STREAM_DESTROYED,
-  ERR_STREAM_NULL_VALUES,
-  ERR_STREAM_WRITE_AFTER_END,
+  // ERR_STREAM_DESTROYED,
+  // ERR_STREAM_NULL_VALUES,
+  // ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+// import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+// import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
@@ -57,6 +57,7 @@ const kCorked = Symbol("corked");
 const nop = () => {};
 
 export class OutgoingMessage extends Stream {
+  // deno-lint-ignore no-explicit-any
   outputData: any[];
   outputSize: number;
   writable: boolean;
@@ -83,8 +84,10 @@ export class OutgoingMessage extends Stream {
   [kCorked]: number;
   _closed: boolean;
 
-  socket: null; // TODO
-  _header: null; // TODO
+  // TODO(crowlKats): use it
+  socket: null;
+  // TODO(crowlKats): use it
+  _header: null;
   [kOutHeaders]: null | Record<string, [string, string]>;
 
   _keepAliveTimeout: number;
@@ -372,7 +375,8 @@ export class OutgoingMessage extends Stream {
   write(
     chunk: string | Uint8Array | Buffer,
     encoding: string | null,
-    callback: () => void,
+    // TODO(crowlKats): use callback
+    _callback: () => void,
   ): boolean {
     if (typeof chunk === "string") {
       chunk = Buffer.from(chunk, encoding);
@@ -388,12 +392,12 @@ export class OutgoingMessage extends Stream {
 
   // deno-lint-ignore no-explicit-any
   addTrailers(_headers: any) {
-    // TODO
+    // TODO(crowlKats): finish it
     notImplemented("OutgoingMessage.addTrailers");
   }
 
   // deno-lint-ignore no-explicit-any
-  end(chunk: any, encoding: any, callback: any) {
+  end(chunk: any, encoding: any, _callback: any) {
     if (typeof chunk === "function") {
       callback = chunk;
       chunk = null;
@@ -402,7 +406,7 @@ export class OutgoingMessage extends Stream {
       callback = encoding;
       encoding = null;
     }
-    // TODO
+    // TODO(crowlKats): finish
 
     return this;
   }
@@ -700,11 +704,13 @@ Object.defineProperty(OutgoingMessage.prototype, "headersSent", {
   },
 });
 
+// TODO(bartlomieju): use it
 // deno-lint-ignore camelcase
-const crlf_buf = Buffer.from("\r\n");
+const _crlf_buf = Buffer.from("\r\n");
 
+// TODO(bartlomieju): use it
 // deno-lint-ignore no-explicit-any
-function onError(msg: any, err: any, callback: any) {
+function _onError(msg: any, err: any, callback: any) {
   const triggerAsyncId = msg.socket ? msg.socket[async_id_symbol] : undefined;
   defaultTriggerAsyncIdScope(
     triggerAsyncId,
@@ -725,27 +731,30 @@ function emitErrorNt(msg: any, err: any, callback: any) {
   }
 }
 
-function write_(
+// TODO(bartlomieju): use it
+function _write_(
   // deno-lint-ignore no-explicit-any
-  msg: any,
+  _msg: any,
   // deno-lint-ignore no-explicit-any
-  chunk: any,
-  encoding: string | null,
+  _chunk: any,
+  _encoding: string | null,
   // deno-lint-ignore no-explicit-any
-  callback: any,
+  _callback: any,
   // deno-lint-ignore no-explicit-any
-  fromEnd: any,
+  _fromEnd: any,
 ) {
-  // TODO
+  // TODO(crowlKats): finish
 }
 
+// TODO(bartlomieju): use it
 // deno-lint-ignore no-explicit-any
-function connectionCorkNT(conn: any) {
+function _connectionCorkNT(conn: any) {
   conn.uncork();
 }
 
+// TODO(bartlomieju): use it
 // deno-lint-ignore no-explicit-any
-function onFinish(outmsg: any) {
+function _onFinish(outmsg: any) {
   if (outmsg && outmsg.socket && outmsg.socket._hadError) return;
   outmsg.emit("finish");
 }
