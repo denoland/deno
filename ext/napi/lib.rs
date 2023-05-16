@@ -329,7 +329,6 @@ pub struct NapiState {
   // Async tasks.
   pub pending_async_work: Vec<PendingNapiAsyncWork>,
   pub async_work_sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
-  pub async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
   // Thread safe functions.
   pub active_threadsafe_functions: usize,
   pub threadsafe_function_receiver:
@@ -526,65 +525,60 @@ deno_core::extension!(deno_napi,
     state.put(NapiState {
       pending_async_work: Vec::new(),
       async_work_sender,
-      async_work_receiver,
       threadsafe_function_sender,
       threadsafe_function_receiver,
       active_threadsafe_functions: 0,
       env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
       tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
     });
+    state.put(async_work_receiver);
   },
-  event_loop_middleware = event_loop_middleware,
 );
 
-fn event_loop_middleware(
-  op_state_rc: Rc<RefCell<OpState>>,
-  cx: &mut std::task::Context,
-) -> bool {
-  // `work` can call back into the runtime. It can also schedule an async task
-  // but we don't know that now. We need to make the runtime re-poll to make
-  // sure no pending NAPI tasks exist.
-  let mut maybe_scheduling = false;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::Context;
 
-  {
-    let mut op_state = op_state_rc.borrow_mut();
-    let napi_state = op_state.borrow_mut::<NapiState>();
+struct AsyncWorkFut {
+  // ..
+  async_work_receiver: mpsc::UnboundedReceiver<PendingNapiAsyncWork>,
+  tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
+}
 
-    while let Poll::Ready(Some(async_work_fut)) =
-      napi_state.async_work_receiver.poll_next_unpin(cx)
+unsafe impl Send for AsyncWorkFut {}
+
+impl Future for AsyncWorkFut {
+  type Output = ();
+
+  fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+    let state = self.get_mut();
+
+    let mut pending_work = None;
+    while let Poll::Ready(Some(work)) =
+      state.async_work_receiver.poll_next_unpin(cx)
     {
-      napi_state.pending_async_work.push(async_work_fut);
+      pending_work.get_or_insert_with(Vec::new).push(work);
     }
 
-    if napi_state.active_threadsafe_functions > 0 {
-      maybe_scheduling = true;
-    }
-
-    let tsfn_ref_counters = napi_state.tsfn_ref_counters.lock().clone();
+    let tsfn_ref_counters = state.tsfn_ref_counters.lock().clone();
     for (_id, counter) in tsfn_ref_counters.iter() {
       if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-        maybe_scheduling = true;
+        cx.waker().wake_by_ref();
         break;
       }
     }
-  }
 
-  loop {
-    let maybe_work = {
-      let mut op_state = op_state_rc.borrow_mut();
-      let napi_state = op_state.borrow_mut::<NapiState>();
-      napi_state.pending_async_work.pop()
-    };
-
-    if let Some(work) = maybe_work {
-      work();
-      maybe_scheduling = true;
-    } else {
-      break;
+    if pending_work.as_ref().map(|p| p.is_empty()).unwrap_or(true) {
+      return Poll::Pending;
     }
-  }
 
-  maybe_scheduling
+    while let Some(Some(work)) = pending_work.as_mut().map(|v| v.pop()) {
+      work();
+    }
+
+    cx.waker().wake_by_ref();
+    Poll::Pending
+  }
 }
 
 pub trait NapiPermissions {
@@ -622,6 +616,17 @@ where
       napi_state.tsfn_ref_counters.clone(),
     )
   };
+
+  if let Some(async_work_receiver) =
+    op_state.try_take::<mpsc::UnboundedReceiver<PendingNapiAsyncWork>>()
+  {
+    let async_work_fut = AsyncWorkFut {
+      async_work_receiver,
+      tsfn_ref_counters: tsfn_ref_counters.clone(),
+    };
+
+    tokio::task::spawn(async_work_fut);
+  }
 
   let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
   let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));

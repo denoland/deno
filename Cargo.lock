@@ -1129,6 +1129,7 @@ version = "0.34.0"
 dependencies = [
  "deno_core",
  "libloading",
+ "tokio",
 ]
 
 [[package]]
