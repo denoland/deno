@@ -14,7 +14,7 @@ const BUFFER_ENCODINGS = [
   "ucs2",
   "utf8",
   "utf16le",
-];
+] as const;
 
 for (const encoding of BUFFER_ENCODINGS) {
   Deno.test({
