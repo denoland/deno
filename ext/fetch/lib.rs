@@ -534,7 +534,7 @@ impl Resource for FetchRequestBodyResource {
   }
 }
 
-pub type BytesStream =
+type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
 pub struct FetchResponseBodyResource {

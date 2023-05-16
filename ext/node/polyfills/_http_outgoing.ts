@@ -134,6 +134,12 @@ export class OutgoingMessage extends Stream {
     this._keepAliveTimeout = 0;
 
     this._onPendingData = nop;
+
+    this.stream = new ReadableStream({
+      start: (controller) => {
+        this.controller = controller;
+      },
+    });
   }
 
   get writableFinished() {
@@ -362,9 +368,22 @@ export class OutgoingMessage extends Stream {
     return headers;
   }
 
-  // deno-lint-ignore no-explicit-any
-  write(chunk: any, encoding: string | null, callback: () => void) {
-    // TODO
+  controller: ReadableStreamDefaultController;
+  write(
+    chunk: string | Uint8Array | Buffer,
+    encoding: string | null,
+    callback: () => void,
+  ): boolean {
+    if (typeof chunk === "string") {
+      chunk = Buffer.from(chunk, encoding);
+    }
+    if (chunk instanceof Buffer) {
+      chunk = new Uint8Array(chunk.buffer);
+    }
+
+    this.controller.enqueue(chunk);
+
+    return false;
   }
 
   // deno-lint-ignore no-explicit-any

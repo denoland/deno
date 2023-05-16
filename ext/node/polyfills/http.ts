@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
+
 const core = globalThis.__bootstrap.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
@@ -527,6 +529,75 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
+
+    const url = this._createUrlStrFromOptions();
+
+    const headers = [];
+    for (const key in this[kOutHeaders]) {
+      const entry = this[kOutHeaders][key];
+      this._processHeader(headers, entry[0], entry[1], false);
+    }
+
+    const client = this._getClient();
+
+    const req = core.ops.op_node_http_request(
+      this.method,
+      url,
+      headers,
+      client,
+      this.method === "POST" || this.method === "PATCH",
+    );
+
+    this._req = req;
+
+    if (req.requestBodyRid !== null) {
+      const reader = this.stream.getReader();
+      (async () => {
+        let done = false;
+        while (!done) {
+          let val;
+          try {
+            const res = await reader.read();
+            done = res.done;
+            val = res.value;
+          } catch (err) {
+            //if (terminator.aborted) break;
+            // TODO(lucacasonato): propagate error into response body stream
+            this._requestSendError = err;
+            this._requestSendErrorSet = true;
+            break;
+          }
+          console.log(done, val);
+          if (done) break;
+          try {
+            await core.writeAll(req.requestBodyRid, val);
+          } catch (err) {
+            //if (terminator.aborted) break;
+            await reader.cancel(err);
+            // TODO(lucacasonato): propagate error into response body stream
+            this._requestSendError = err;
+            this._requestSendErrorSet = true;
+            break;
+          }
+        }
+        if (done /*&& !terminator.aborted*/) {
+          try {
+            await core.shutdown(req.requestBodyRid);
+          } catch (err) {
+            if (true) {
+              this._requestSendError = err;
+              this._requestSendErrorSet = true;
+            }
+          }
+        }
+        //WeakMapPrototypeDelete(requestBodyReaders, req);
+        core.tryClose(req.requestBodyRid);
+      })();
+    }
+  }
+
+  _getClient(): Deno.HttpClient | undefined {
+    return undefined;
   }
 
   onSocket(socket, err) {
@@ -568,25 +639,13 @@ class ClientRequest extends OutgoingMessage {
   end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
 
-    const url = this._createUrlStrFromOptions();
-
-    const headers = [];
-    for (const key in this[kOutHeaders]) {
-      const entry = this[kOutHeaders][key];
-      this._processHeader(headers, entry[0], entry[1], false);
+    if (chunk !== undefined) {
+      this.write(chunk, encoding);
     }
+    this.controller.close();
 
-    const req = core.ops.op_node_http_request(
-      this.method,
-      url,
-      headers,
-      undefined,
-      false,
-      undefined,
-      undefined,
-    );
-
-    core.opAsync("op_fetch_send", req.requestRid).then((res) => {
+    core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
+      console.log("sent");
       const incoming = new IncomingMessageForClient(this.socket);
 
       // TODO
@@ -605,6 +664,14 @@ class ClientRequest extends OutgoingMessage {
 
       this.emit("response", incoming);
     }).catch((err) => {
+      if (this._requestSendErrorSet) {
+        // if the request body stream errored, we want to propagate that error
+        // instead of the original error from opFetchSend
+        throw new TypeError("Failed to fetch: request body stream errored", {
+          cause: this._requestSendError,
+        });
+      }
+
       if (err.message.includes("connection closed before message completed")) {
         // Node.js seems ignoring this error
       } else if (err.message.includes("The signal has been aborted")) {

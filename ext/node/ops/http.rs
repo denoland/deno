@@ -1,7 +1,5 @@
-use deno_core::error::bad_resource;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::StreamExt;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
@@ -9,14 +7,10 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
-use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_fetch::get_or_create_client_from_state;
-use deno_fetch::BytesStream;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
-use deno_fetch::FetchResponse;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
 use deno_fetch::MpscByteStream;
@@ -26,8 +20,6 @@ use reqwest::header::HeaderValue;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::Body;
 use reqwest::Method;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[op]
 pub fn op_node_http_request(
@@ -37,8 +29,6 @@ pub fn op_node_http_request(
   headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
-  body_length: Option<u64>,
-  data: Option<ZeroCopyBuf>,
 ) -> Result<FetchReturn, AnyError> {
   let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
@@ -63,33 +53,17 @@ pub fn op_node_http_request(
   let mut request = client.request(method.clone(), url).headers(header_map);
 
   let request_body_rid = if has_body {
-    match data {
-      None => {
-        // If no body is passed, we return a writer for streaming the body.
-        let (stream, tx) = MpscByteStream::new();
+    // If no body is passed, we return a writer for streaming the body.
+    let (stream, tx) = MpscByteStream::new();
 
-        // If the size of the body is known, we include a content-length
-        // header explicitly.
-        if let Some(body_size) = body_length {
-          request = request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
-        }
+    request = request.body(Body::wrap_stream(stream));
 
-        request = request.body(Body::wrap_stream(stream));
+    let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
+      body: AsyncRefCell::new(tx),
+      cancel: CancelHandle::default(),
+    });
 
-        let request_body_rid =
-          state.resource_table.add(FetchRequestBodyResource {
-            body: AsyncRefCell::new(tx),
-            cancel: CancelHandle::default(),
-          });
-
-        Some(request_body_rid)
-      }
-      Some(data) => {
-        // If a body is passed, we use it, and don't return a body for streaming.
-        request = request.body(Vec::from(&*data));
-        None
-      }
-    }
+    Some(request_body_rid)
   } else {
     // POST and PUT requests should always have a 0 length content-length,
     // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
