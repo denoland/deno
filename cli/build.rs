@@ -304,12 +304,9 @@ mod ts {
   }
 }
 
-// FIXME(bartlomieju): information about which extensions were
-// already snapshotted is not preserved in the snapshot. This should be
-// fixed, so we can reliably depend on that information.
-// deps = [runtime]
 deno_core::extension!(
   cli,
+  deps = [runtime],
   esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",

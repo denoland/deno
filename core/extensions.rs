@@ -23,7 +23,10 @@ pub enum ExtensionFileSourceCode {
   LoadedFromFsDuringSnapshot(PathBuf),
 
   /// Source code has already been evaluated via the snapshot, and should not be
-  /// loaded.
+  /// loaded. This variant is used to avoid storing snapshot-evaluated code in
+  /// the CLI binary -- however it would most likely need to be removed once we
+  /// support `ShadowRealm`s in which case the extension code always needs to be
+  /// available for bootstrapping other realms.
   AlreadyEvaluated,
 }
 
@@ -362,6 +365,12 @@ pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,
   esm_files: Option<Vec<ExtensionFileSource>>,
   esm_entry_point: Option<&'static str>,
+  /// Whether or not the JS from this extension has already been evaluated via
+  /// a snapshot.
+  /// This information must be passed by embedders either by calling
+  /// `ext_name.init_ops()` instead of `ext_name.init_ops_and_esm()` on the
+  /// macro or with `ExtensionBuilder.js_already_evaluated()`.
+  /// TODO(nayeemrmn): Maybe it can be remembered by core instead.
   js_already_evaluated: bool,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
