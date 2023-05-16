@@ -1242,11 +1242,12 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    if let Err(err) = self
-      .npm_resolver
-      .set_package_reqs((*package_reqs).clone())
-      .await
-    {
+    let npm_resolver = self.npm_resolver.clone();
+    // spawn to avoid the LSP's Send requirements
+    let handle = spawn(async move {
+      npm_resolver.set_package_reqs((*package_reqs).clone()).await
+    });
+    if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
   }
