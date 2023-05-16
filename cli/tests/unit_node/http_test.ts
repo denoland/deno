@@ -185,6 +185,7 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
 
 Deno.test("[node/http] request default protocol", async () => {
   const promise = deferred<void>();
+  const promise2 = deferred<void>();
   const server = http.createServer((_, res) => {
     res.end("ok");
   });
@@ -198,6 +199,7 @@ Deno.test("[node/http] request default protocol", async () => {
           server.close();
         });
         assertEquals(res.statusCode, 200);
+        promise2.resolve();
       },
     );
     req.end();
@@ -206,6 +208,7 @@ Deno.test("[node/http] request default protocol", async () => {
     promise.resolve();
   });
   await promise;
+  await promise2;
 });
 
 Deno.test("[node/http] request with headers", async () => {

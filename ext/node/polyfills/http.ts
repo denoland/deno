@@ -645,7 +645,7 @@ class ClientRequest extends OutgoingMessage {
     this.controller.close();
 
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
-      console.log("sent");
+      console.log("sent", res);
       const incoming = new IncomingMessageForClient(this.socket);
 
       // TODO
@@ -656,8 +656,8 @@ class ClientRequest extends OutgoingMessage {
       //  parser.joinDuplicateHeaders;
 
       incoming.url = res.url;
-      incoming.statusCode = res.statusCode;
-      incoming.statusMessage = res.statusMessage;
+      incoming.statusCode = res.status;
+      incoming.statusMessage = res.statusText;
 
       incoming._addHeaderLines(res.headers);
       incoming._bodyRid = res.responseRid;
