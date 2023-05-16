@@ -534,6 +534,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
 
     // Did everything shut down while we were waiting?
     if (context.closed) {
+      op_http_set_promise_complete(req, 500);
       innerRequest?.close();
       return;
     }
