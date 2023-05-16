@@ -176,6 +176,8 @@ export async function generateRunInfo(): Promise<unknown> {
     "windows": "win",
     "darwin": "mac",
     "linux": "linux",
+    "freebsd": "freebsd",
+    "openbsd": "openbsd",
   };
   const proc = await new Deno.Command("git", {
     args: ["rev-parse", "HEAD"],
