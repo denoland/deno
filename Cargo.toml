@@ -163,6 +163,7 @@ nix = "=0.24.2"
 fwdansi = "=1.1.0"
 winres = "=0.1.12"
 winapi = "=0.3.9"
+winmm-sys = "0.2.0"
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]

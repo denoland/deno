@@ -85,6 +85,17 @@ pub async fn op_sleep(
   millis: u64,
   rid: ResourceId,
 ) -> Result<bool, AnyError> {
+  // If a timer is requested with <15ms resolution, request the high-res timer.
+  #[cfg(target_os = "windows")]
+  {
+    use once_cell::sync::OnceCell;
+    static HR_PERIOD: OnceCell<()> = OnceCell::new();
+    if millis < 15 {
+      HR_PERIOD.get_or_try_init(|| {
+        winmm::timeBeginPeriod(1);
+      });
+    }
+  }
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
   let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
