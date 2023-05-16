@@ -325,7 +325,7 @@ fn compile_with_conflict_file_exists_error() {
     concat!(
       "Could not compile to file '{}' because the file already exists ",
       "and cannot be overwritten. Please delete the existing file or ",
-      "use the `--output <file-path` flag to provide an alternative name."
+      "use the `--output <file-path>` flag to provide an alternative name."
     ),
     exe.display()
   );

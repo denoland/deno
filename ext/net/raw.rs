@@ -260,31 +260,6 @@ pub fn take_network_stream_resource(
   Err(bad_resource_id())
 }
 
-/// Inserts a raw stream (back?) into the resource table and returns a resource ID. This can then be used to create raw connection
-/// objects on the JS side.
-pub fn put_network_stream_resource(
-  resource_table: &mut ResourceTable,
-  stream: NetworkStream,
-) -> Result<ResourceId, AnyError> {
-  let res = match stream {
-    NetworkStream::Tcp(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(TcpStreamResource::new((r, w)))
-    }
-    NetworkStream::Tls(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(TlsStreamResource::new((r, w)))
-    }
-    #[cfg(unix)]
-    NetworkStream::Unix(conn) => {
-      let (r, w) = conn.into_split();
-      resource_table.add(UnixStreamResource::new((r, w)))
-    }
-  };
-
-  Ok(res)
-}
-
 /// In some cases it may be more efficient to extract the resource from the resource table and use it directly (for example, an HTTP server).
 /// This method will extract a stream from the resource table and return it, unwrapped.
 pub fn take_network_stream_listener_resource(
