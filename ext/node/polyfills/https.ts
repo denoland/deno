@@ -4,15 +4,11 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
-  Agent as HttpAgent,
   ClientRequest,
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
 } from "ext:deno_node/http.ts";
-import type { Socket } from "ext:deno_node/net.ts";
-
-export class Agent extends HttpAgent {
-}
+import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
 
 export class Server {
   constructor() {
@@ -53,41 +49,61 @@ export function get(...args: any[]) {
   return req;
 }
 
-export const globalAgent = undefined;
+export class Agent extends HttpAgent {
+  constructor(options) {
+    super(options);
+    this.defaultPort = 443;
+    this.protocol = "https:";
+    this.maxCachedSessions = this.options.maxCachedSessions;
+    if (this.maxCachedSessions === undefined) {
+      this.maxCachedSessions = 100;
+    }
+
+    this._sessionCache = {
+      map: {},
+      list: [],
+    };
+  }
+}
+
+const globalAgent = new Agent({
+  keepAlive: true,
+  scheduling: "lifo",
+  timeout: 5000,
+});
+
 /** HttpsClientRequest class loosely follows http.ClientRequest class API. */
 class HttpsClientRequest extends ClientRequest {
   override defaultProtocol = "https:";
-  override async _createCustomClient(): Promise<
-    Deno.HttpClient | undefined
-  > {
+  override _getClient(): Deno.HttpClient | undefined {
     if (caCerts === null) {
       return undefined;
     }
     if (caCerts !== undefined) {
       return Deno.createHttpClient({ caCerts });
     }
-    const status = await Deno.permissions.query({
-      name: "env",
-      variable: "NODE_EXTRA_CA_CERTS",
-    });
-    if (status.state !== "granted") {
-      caCerts = null;
-      return undefined;
-    }
+    // const status = await Deno.permissions.query({
+    //   name: "env",
+    //   variable: "NODE_EXTRA_CA_CERTS",
+    // });
+    // if (status.state !== "granted") {
+    //   caCerts = null;
+    //   return undefined;
+    // }
     const certFilename = Deno.env.get("NODE_EXTRA_CA_CERTS");
     if (!certFilename) {
       caCerts = null;
       return undefined;
     }
-    const caCert = await Deno.readTextFile(certFilename);
+    const caCert = Deno.readTextFileSync(certFilename);
     caCerts = [caCert];
     return Deno.createHttpClient({ caCerts });
   }
 
-  override _createSocket(): Socket {
+  /*override _createSocket(): Socket {
     // deno-lint-ignore no-explicit-any
     return { authorized: true } as any;
-  }
+  }*/
 }
 
 /** Makes a request to an https server. */
@@ -107,15 +123,21 @@ export function request(
 // deno-lint-ignore no-explicit-any
 export function request(...args: any[]) {
   let options = {};
+
   if (typeof args[0] === "string") {
-    options = urlToHttpOptions(new URL(args.shift()));
+    const urlStr = args.shift();
+    options = urlToHttpOptions(new URL(urlStr));
   } else if (args[0] instanceof URL) {
     options = urlToHttpOptions(args.shift());
   }
+
   if (args[0] && typeof args[0] !== "function") {
     Object.assign(options, args.shift());
   }
+
+  options._defaultAgent = globalAgent;
   args.unshift(options);
+
   return new HttpsClientRequest(args[0], args[1]);
 }
 export default {
