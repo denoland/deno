@@ -294,6 +294,10 @@ pub async fn upgrade(
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
       let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+      let passed_version = passed_version
+        .strip_prefix('v')
+        .unwrap_or(&passed_version)
+        .to_string();
 
       if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
@@ -317,9 +321,9 @@ pub async fn upgrade(
       {
         log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
-      } else {
-        passed_version
       }
+
+      passed_version
     }
     None => {
       let latest_version = if upgrade_flags.canary {
@@ -363,7 +367,7 @@ pub async fn upgrade(
 
   let download_url = if upgrade_flags.canary {
     if env!("TARGET") == "aarch64-apple-darwin" {
-      bail!("Canary builds are not available for M1");
+      bail!("Canary builds are not available for M1/M2");
     }
 
     format!(
