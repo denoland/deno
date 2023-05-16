@@ -73,6 +73,7 @@ pub fn slab_get(index: SlabId) -> SlabEntry {
   SlabEntry(entry, index, lock)
 }
 
+#[allow(clippy::let_and_return)]
 fn slab_insert_raw(
   request_parts: Parts,
   request_body: Option<Incoming>,
