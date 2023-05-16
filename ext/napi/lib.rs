@@ -515,7 +515,8 @@ impl Env {
 deno_core::extension!(deno_napi,
   parameters = [P: NapiPermissions],
   ops = [
-    op_napi_open<P>
+    op_napi_open<P>,
+    op_napi_init
   ],
   state = |state| {
     let (async_work_sender, async_work_receiver) =
@@ -586,6 +587,31 @@ pub trait NapiPermissions {
     -> std::result::Result<(), AnyError>;
 }
 
+#[op]
+fn op_napi_init(
+  state: Rc<RefCell<OpState>>,
+) -> std::result::Result<impl Future<Output = std::result::Result<(), AnyError>>, AnyError> {
+  let mut state = state.borrow_mut();
+  let fut = if let Some(async_work_receiver) =
+    state.try_take::<mpsc::UnboundedReceiver<PendingNapiAsyncWork>>()
+  {
+    let napi_state = state.borrow::<NapiState>();
+    Some(AsyncWorkFut {
+      async_work_receiver,
+      tsfn_ref_counters: napi_state.tsfn_ref_counters.clone(),
+    })
+  } else {
+    None
+  };
+
+  Ok(async move {
+    if let Some(fut) = fut {
+      fut.await;
+    }
+    Ok(())
+  })
+}
+
 #[op(v8)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
@@ -616,17 +642,6 @@ where
       napi_state.tsfn_ref_counters.clone(),
     )
   };
-
-  if let Some(async_work_receiver) =
-    op_state.try_take::<mpsc::UnboundedReceiver<PendingNapiAsyncWork>>()
-  {
-    let async_work_fut = AsyncWorkFut {
-      async_work_receiver,
-      tsfn_ref_counters: tsfn_ref_counters.clone(),
-    };
-
-    tokio::task::spawn(async_work_fut);
-  }
 
   let napi_wrap_name = v8::String::new(scope, "napi_wrap").unwrap();
   let napi_wrap = v8::Private::new(scope, Some(napi_wrap_name));

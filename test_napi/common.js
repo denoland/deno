@@ -15,11 +15,13 @@ const [libPrefix, libSuffix] = {
   windows: ["", "dll"],
 }[Deno.build.os];
 
+  const { core } = Deno[Deno.internal];
+  core.opAsync("op_napi_init");
 export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
 
   // Internal, used in ext/node
-  return Deno[Deno.internal].core.ops.op_napi_open(specifier, {
+  return core.ops.op_napi_open(specifier, {
     Buffer: {},
   });
 }
