@@ -718,7 +718,7 @@ Buffer.prototype.ucs2Slice = function ucs2Slice(offset, length) {
 
 Buffer.prototype.ucs2Write = function ucs2Write(string, offset, length) {
   return blitBuffer(
-    utf16leToBytes(string, this.length - offset),
+    utf16leToBytes(string),
     this,
     offset,
     length,

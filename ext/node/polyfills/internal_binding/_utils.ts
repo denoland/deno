@@ -55,19 +55,22 @@ export function hexToBytes(str: string) {
   );
 }
 
-export function utf16leToBytes(str: string, units: number) {
+export function utf16leToBytes(str: string) {
   let c, hi, lo;
   const byteArray = [];
   for (let i = 0; i < str.length; ++i) {
-    if ((units -= 2) < 0) {
-      break;
-    }
     c = str.charCodeAt(i);
-    hi = c >> 8;
-    lo = c % 256;
+    lo = (c & 0xff);
+    hi = (c >> 8) & 0xff;
     byteArray.push(lo);
     byteArray.push(hi);
   }
+
+  // Remove the extra 0x00 if the length is odd.
+  if (str.length % 2 != 0) {
+    byteArray.pop();
+  }
+
   return new Uint8Array(byteArray);
 }
 
@@ -81,8 +84,12 @@ export function bytesToAscii(bytes: Uint8Array) {
 
 export function bytesToUtf16le(bytes: Uint8Array) {
   let res = "";
-  for (let i = 0; i < bytes.length - 1; i += 2) {
-    res += String.fromCharCode(bytes[i] + bytes[i + 1] * 256);
+  let c, hi, lo;
+  for (let i = 0; i < bytes.length; i += 2) {
+    lo = bytes[i];
+    hi = bytes[i + 1];
+    c = (hi << 8) | lo;
+    res += String.fromCharCode(c);
   }
   return res;
 }
