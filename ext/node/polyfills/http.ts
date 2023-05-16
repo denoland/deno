@@ -662,8 +662,16 @@ class ClientRequest extends OutgoingMessage {
       incoming._addHeaderLines(res.headers);
       incoming._bodyRid = res.responseRid;
 
+      if (this._req.cancelHandleRid !== null) {
+        core.tryClose(this._req.cancelHandleRid);
+      }
+
       this.emit("response", incoming);
     }).catch((err) => {
+      if (this._req.cancelHandleRid !== null) {
+        core.tryClose(this._req.cancelHandleRid);
+      }
+
       if (this._requestSendErrorSet) {
         // if the request body stream errored, we want to propagate that error
         // instead of the original error from opFetchSend
