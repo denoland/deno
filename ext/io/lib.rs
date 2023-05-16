@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -350,7 +351,7 @@ impl StdFileResourceInner {
         }
       }
     };
-    let (cell_value, result) = tokio::task::spawn_blocking(move || {
+    let (cell_value, result) = spawn_blocking(move || {
       let result = action(&mut cell_value);
       (cell_value, result)
     })
@@ -372,7 +373,7 @@ impl StdFileResourceInner {
     // we want to restrict this to one async action at a time
     let _permit = self.cell_async_task_queue.acquire().await;
 
-    tokio::task::spawn_blocking(action).await.unwrap()
+    spawn_blocking(action).await.unwrap()
   }
 }
 
