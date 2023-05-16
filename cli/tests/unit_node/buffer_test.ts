@@ -2,8 +2,8 @@
 import { Buffer } from "node:buffer";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
-const buffer_len12 = Buffer.from("Hello, World!");
-const buffer_len11 = Buffer.from("Hello, World");
+const bufferLen12 = Buffer.from("Hello, World!");
+const bufferLen11 = Buffer.from("Hello, World");
 
 const BUFFER_ENCODINGS = [
   "hex",
@@ -16,19 +16,19 @@ const BUFFER_ENCODINGS = [
   "utf16le",
 ];
 
-for (let encoding of BUFFER_ENCODINGS) {
+for (const encoding of BUFFER_ENCODINGS) {
   Deno.test({
     name: "Buffer.from with encoding " + encoding,
     fn: () => {
-      // @ts-ignore
+      // @ts-ignore: BufferEncoding is a string but TS complains
       assertEquals(
-        Buffer.from(buffer_len12.toString(encoding), encoding),
-        buffer_len12,
+        Buffer.from(bufferLen12.toString(encoding), encoding),
+        bufferLen12,
       );
-      // @ts-ignore
+      // @ts-ignore: BufferEncoding is a string but TS complains
       assertEquals(
-        Buffer.from(buffer_len11.toString(encoding), encoding),
-        buffer_len11,
+        Buffer.from(bufferLen11.toString(encoding), encoding),
+        bufferLen11,
       );
     },
   });
