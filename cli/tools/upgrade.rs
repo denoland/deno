@@ -294,19 +294,23 @@ pub async fn upgrade(
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
       let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
-      let ver = Version::parse_standard(&passed_version);
+      let passed_version = passed_version
+        .strip_prefix('v')
+        .unwrap_or(&passed_version)
+        .to_string();
 
       if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
-      } else if !upgrade_flags.canary && ver.is_err() {
+      } else if !upgrade_flags.canary
+        && Version::parse_standard(&passed_version).is_err()
+      {
         bail!("Invalid version passed");
       }
 
       let current_is_passed = if upgrade_flags.canary {
         crate::version::GIT_COMMIT_HASH == passed_version
       } else if !crate::version::is_canary() {
-        let v = ver.clone().unwrap();
-        crate::version::deno() == format!("{}.{}.{}", v.major, v.minor, v.patch)
+        crate::version::deno() == passed_version
       } else {
         false
       };
@@ -317,14 +321,9 @@ pub async fn upgrade(
       {
         log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
-      } else {
-        if !upgrade_flags.canary {
-          let v = ver.unwrap();
-          format!("{}.{}.{}", v.major, v.minor, v.patch)
-        } else {
-          passed_version
-        }
       }
+
+      passed_version
     }
     None => {
       let latest_version = if upgrade_flags.canary {
