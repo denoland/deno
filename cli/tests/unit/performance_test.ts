@@ -21,13 +21,6 @@ Deno.test({ permissions: { hrtime: false } }, async function performanceNow() {
   assert(totalTime >= 10);
 });
 
-Deno.test(function markResourceTiming() {
-  // @ts-ignore the function is defined and is a no-op to provide
-  // compatibility with "npm:undici" module. Once we implement it, we should
-  // add proper typings.
-  assert(typeof performance.markResourceTiming === "function");
-});
-
 Deno.test(function timeOrigin() {
   const origin = performance.timeOrigin;
 
