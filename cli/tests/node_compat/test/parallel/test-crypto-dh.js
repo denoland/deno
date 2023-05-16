@@ -187,20 +187,20 @@ if (false) {
       message: 'The "curve" argument must be of type string. ' +
               'Received undefined'
     });
-
-  assert.throws(
-    function() {
-      crypto.getDiffieHellman('unknown-group');
-    },
-    {
-      name: 'Error',
-      code: 'ERR_CRYPTO_UNKNOWN_DH_GROUP',
-      message: 'Unknown DH group'
-    },
-    'crypto.getDiffieHellman(\'unknown-group\') ' +
-    'failed to throw the expected error.'
-  );
 }
+
+assert.throws(
+  function() {
+    crypto.getDiffieHellman('unknown-group');
+  },
+  {
+    name: 'Error',
+    code: 'ERR_CRYPTO_UNKNOWN_DH_GROUP',
+    message: 'Unknown DH group'
+  },
+  'crypto.getDiffieHellman(\'unknown-group\') ' +
+  'failed to throw the expected error.'
+);
 
 assert.throws(
   () => crypto.createDiffieHellman('', true),
