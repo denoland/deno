@@ -23,13 +23,19 @@ where
   R: Send + 'static,
 {
   let rt = create_basic_runtime();
-  println!("create_and_run_current_thread={}", std::mem::size_of::<F>());
-  // Since this is the main future, we want to box it because it tends to be fairly large. We
-  // also make this function inline(always) to avoid holding the unboxed, unused future on the
-  // stack.
-  let future = Box::pin(future);
+
+  // Since this is the main future, we want to box it in debug mode because it tends to be fairly
+  // large and the compiler won't optimize repeated copies. We also make this runtime factory
+  // function #[inline(always)] to avoid holding the unboxed, unused future on the stack.
+
+  #[cfg(debug_assertions)]
+  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  let future = Box::pin(unsafe { MaskFutureAsSend::new(future) });
+
+  #[cfg(not(debug_assertions))]
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
+
   let join_handle = rt.spawn(future);
   rt.block_on(join_handle).unwrap().into_inner()
 }

@@ -77,6 +77,9 @@ impl SubcommandOutput for Result<(), std::io::Error> {
   }
 }
 
+/// Ensure that the subcommand runs in a task, rather than being directly executed. Since some of these
+/// futures are very large, this prevents the stack from getting blown out from passing them by value up
+/// the callchain (especially in debug mode when Rust doesn't have a chance to elide copies!).
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {

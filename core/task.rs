@@ -51,7 +51,6 @@ pub fn spawn<F: Future<Output = R> + 'static, R: 'static>(
   debug_assert!(
     Handle::current().runtime_flavor() == RuntimeFlavor::CurrentThread
   );
-  println!("spawn={}", std::mem::size_of::<F>());
   // SAFETY: we know this is a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(f) };
   JoinHandle {
