@@ -42,12 +42,12 @@ mod windows {
   /// use it once per process and avoid nesting these calls.
   fn lock_hr() {
     // SAFETY: We just want to set the timer period here
-    unsafe { windows::Win32::Media::timeBeginPeriod(1) };
+    unsafe { windows_sys::Win32::Media::timeBeginPeriod(1) };
   }
 
   fn unlock_hr() {
     // SAFETY: We just want to set the timer period here
-    unsafe { windows::Win32::Media::timeEndPeriod(1) };
+    unsafe { windows_sys::Win32::Media::timeEndPeriod(1) };
   }
 }
 
