@@ -23,6 +23,7 @@ where
   R: Send + 'static,
 {
   let rt = create_basic_runtime();
+  println!("create_and_run_current_thread={}", std::mem::size_of::<F>());
   // Since this is the main future, we want to box it because it tends to be fairly large. We
   // also make this function inline(always) to avoid holding the unboxed, unused future on the
   // stack.

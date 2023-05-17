@@ -44,12 +44,14 @@ impl<R> Future for JoinHandle<R> {
 /// Equivalent to [`tokio::task::spawn`], but does not require the future to be [`Send`]. Must only be
 /// used on a [`RuntimeFlavor::CurrentThread`] executor, though this is only checked when running with
 /// debug assertions.
+#[inline(always)]
 pub fn spawn<F: Future<Output = R> + 'static, R: 'static>(
   f: F,
 ) -> JoinHandle<R> {
   debug_assert!(
     Handle::current().runtime_flavor() == RuntimeFlavor::CurrentThread
   );
+  println!("spawn={}", std::mem::size_of::<F>());
   // SAFETY: we know this is a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(f) };
   JoinHandle {
@@ -60,6 +62,7 @@ pub fn spawn<F: Future<Output = R> + 'static, R: 'static>(
 
 /// Equivalent to [`tokio::task::spawn_blocking`]. Currently a thin wrapper around the tokio API, but this
 /// may change in the future.
+#[inline(always)]
 pub fn spawn_blocking<
   F: (FnOnce() -> R) + Send + 'static,
   R: Send + 'static,
@@ -89,6 +92,7 @@ impl<R> MaskResultAsSend<R> {
   }
 }
 
+#[repr(transparent)]
 pub struct MaskFutureAsSend<F> {
   future: F,
 }
@@ -102,6 +106,7 @@ impl<F> MaskFutureAsSend<F> {
   ///
   /// You must ensure that the future is actually used on the same
   /// thread, ie. always use current thread runtime flavor from Tokio.
+  #[inline(always)]
   pub unsafe fn new(future: F) -> Self {
     Self { future }
   }
