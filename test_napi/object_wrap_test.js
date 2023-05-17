@@ -16,3 +16,8 @@ Deno.test("napi object wrap new", function () {
   assertEquals(obj.get_value(), 10);
   assertEquals(objectWrap.NapiObject.factory(), 64);
 });
+
+Deno.test("napi bind finalizer", function () {
+  const obj = {};
+  objectWrap.test_bind_finalizer(obj);
+});
