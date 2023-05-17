@@ -1,11 +1,38 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use std::str::FromStr;
+use std::fmt::Debug;
 
 use deno_core::task::MaskFutureAsSend;
 
+/// Default configuration for tokio. In the future, this method may have different defaults
+/// depending on the platform and/or CPU layout.
+fn tokio_configuration() -> (u32, u32, usize) {
+  (513, 2048, 1024)
+}
+
+fn tokio_env<T: FromStr>(name: &'static str, default: T) -> T where <T as FromStr>::Err: Debug {
+  match std::env::var(name) {
+    Ok(value) => value.parse().unwrap(),
+    Err(_) => default,
+  }
+}
+
 pub fn create_basic_runtime() -> tokio::runtime::Runtime {
+  let (event_interval, global_queue_interval, max_io_events_per_tick) =
+    tokio_configuration();
+
   tokio::runtime::Builder::new_current_thread()
     .enable_io()
     .enable_time()
+    .event_interval(tokio_env("TOKIO_EVENT_INTERVAL", event_interval))
+    .global_queue_interval(tokio_env(
+      "TOKIO_GLOBAL_QUEUE_INTERVAL",
+      global_queue_interval,
+    ))
+    .max_io_events_per_tick(tokio_env(
+      "TOKIO_MAX_IO_EVENTS_PER_TICK",
+      max_io_events_per_tick,
+    ))
     // This limits the number of threads for blocking operations (like for
     // synchronous fs ops) or CPU bound tasks like when we run dprint in
     // parallel for deno fmt.
