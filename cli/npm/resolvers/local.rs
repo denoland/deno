@@ -24,6 +24,7 @@ use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
@@ -52,6 +53,7 @@ pub struct LocalNpmPackageResolver {
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
+  system_info: NpmSystemInfo,
 }
 
 impl LocalNpmPackageResolver {
@@ -62,6 +64,7 @@ impl LocalNpmPackageResolver {
     registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: Arc<NpmResolution>,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       fs,
@@ -72,6 +75,7 @@ impl LocalNpmPackageResolver {
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
+      system_info,
     }
   }
 
@@ -205,6 +209,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.progress_bar,
       &self.registry_url,
       &self.root_node_modules_path,
+      &self.system_info,
     )
     .await
   }
@@ -230,6 +235,7 @@ async fn sync_resolution_with_fs(
   progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
+  system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() {
     return Ok(()); // don't create the directory
@@ -254,7 +260,8 @@ async fn sync_resolution_with_fs(
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
   let sync_download = should_sync_download();
-  let mut package_partitions = snapshot.all_packages_partitioned();
+  let mut package_partitions =
+    snapshot.all_system_packages_partitioned(system_info);
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
