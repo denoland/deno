@@ -210,7 +210,8 @@ pub fn get_or_create_client_from_state(
         client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
-        only: None,
+        http1: true,
+        http2: true,
       },
     )?;
     state.put::<reqwest::Client>(client.clone());
