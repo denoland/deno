@@ -69,7 +69,6 @@ pub async fn cache_packages(
 
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
-    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = spawn(async move {
