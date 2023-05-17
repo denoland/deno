@@ -15,8 +15,9 @@ mod windows {
     }
   }
 
-  /// Maintains the HR timer refcount. Times should not be nested more than 5 deep so this is
-  /// more than sufficient.
+  /// Maintains the HR timer refcount. This should be more than sufficient as 2^32 timers would be
+  /// an impossible situation, and if it does somehow happen, the worst case is that we'll disable
+  /// the high-res timer when we shouldn't (and things would eventually return to proper operation).
   static TIMER_REFCOUNT: AtomicU32 = AtomicU32::new(0);
 
   pub(super) fn inc_ref() {
