@@ -26,6 +26,8 @@ mod version;
 mod watcher;
 mod worker;
 
+use deno_core::task::JoinHandle;
+use deno_core::task::spawn;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -50,42 +52,53 @@ use deno_runtime::tokio_util::create_and_run_current_thread;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
+use std::future::Future;
 use std::path::PathBuf;
 
+fn spawn_subcommand<F: Future<Output = Result<i32, AnyError>>>(f: F) -> JoinHandle<Result<i32, AnyError>> {
+  deno_core::task::spawn(f)
+}
+
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
-  match flags.subcommand.clone() {
+  let handle = smatch flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => {
-      let cli_options = CliOptions::from_flags(flags)?;
-      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
-      if cli_options.watch_paths().is_some() {
-        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
-          .await?;
-      } else {
-        tools::bench::run_benchmarks(cli_options, bench_options).await?;
-      }
-      Ok(0)
+      spawn_subcommand(async {
+        let cli_options = CliOptions::from_flags(flags)?;
+        let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+        if cli_options.watch_paths().is_some() {
+          tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
+            .await?;
+        } else {
+          tools::bench::run_benchmarks(cli_options, bench_options).await?;
+        }
+      })
     }
     DenoSubcommand::Bundle(bundle_flags) => {
-      tools::bundle::bundle(flags, bundle_flags).await?;
-      Ok(0)
+      spawn_subcommand(async {
+        tools::bundle::bundle(flags, bundle_flags).await?;
+      })
     }
     DenoSubcommand::Doc(doc_flags) => {
-      tools::doc::print_docs(flags, doc_flags).await?;
-      Ok(0)
+      spawn_subcommand(async {
+        tools::doc::print_docs(flags, doc_flags).await?;
+      })
     }
     DenoSubcommand::Eval(eval_flags) => {
-      tools::run::eval_command(flags, eval_flags).await
+      spawn_subcommand(async {
+        tools::run::eval_command(flags, eval_flags).await
+      })
     }
     DenoSubcommand::Cache(cache_flags) => {
-      let factory = CliFactory::from_flags(flags).await?;
-      let module_load_preparer = factory.module_load_preparer().await?;
-      let emitter = factory.emitter()?;
-      let graph_container = factory.graph_container();
-      module_load_preparer
-        .load_and_type_check_files(&cache_flags.files)
-        .await?;
-      emitter.cache_module_emits(&graph_container.graph())?;
-      Ok(0)
+      spawn_subcommand(async {
+        let factory = CliFactory::from_flags(flags).await?;
+        let module_load_preparer = factory.module_load_preparer().await?;
+        let emitter = factory.emitter()?;
+        let graph_container = factory.graph_container();
+        module_load_preparer
+          .load_and_type_check_files(&cache_flags.files)
+          .await?;
+        emitter.cache_module_emits(&graph_container.graph())?;
+      })
     }
     DenoSubcommand::Check(check_flags) => {
       let factory = CliFactory::from_flags(flags).await?;
