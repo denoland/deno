@@ -2,9 +2,9 @@
 
 //! This module helps deno implement timers and performance APIs.
 
+use crate::hr_timer_lock::hr_timer_lock;
 use deno_core::error::AnyError;
 use deno_core::op;
-
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -85,21 +85,18 @@ pub async fn op_sleep(
   millis: u64,
   rid: ResourceId,
 ) -> Result<bool, AnyError> {
-  // If a timer is requested with <15ms resolution, request the high-res timer.
-  #[cfg(target_os = "windows")]
-  {
-    use once_cell::sync::OnceCell;
-    static HR_PERIOD: OnceCell<()> = OnceCell::new();
-    if millis < 15 {
-      // SAFETY: We just want to set the timer period here
-      HR_PERIOD.get_or_init(|| unsafe {
-        winmm::timeBeginPeriod(1);
-      });
-    }
-  }
+  // If a timer is requested with <50ms resolution, request the high-res timer.
+  let hr_timer_lock = if millis < 50 {
+    Some(hr_timer_lock())
+  } else {
+    None
+  };
   let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
   let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
     .await;
+
+  // We can release the high-res timer lock here (doing it explicitly)
+  drop(hr_timer_lock);
   Ok(res.is_ok())
 }
