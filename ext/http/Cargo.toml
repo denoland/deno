@@ -12,6 +12,7 @@ description = "HTTP server implementation for Deno"
 
 [features]
 "__zombie_http_tracking" = []
+"__http_tracing" = []
 
 [lib]
 path = "lib.rs"
