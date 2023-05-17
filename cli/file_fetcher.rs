@@ -1747,11 +1747,8 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client(
-        "test_client".to_string(),
-        CreateHttpClientOptions::default(),
-      )
-      .unwrap(),
+      create_http_client("test_client", CreateHttpClientOptions::default())
+        .unwrap(),
     )
   }
 

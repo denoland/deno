@@ -615,13 +615,6 @@ impl HttpClientResource {
 
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub enum HttpOnly {
-  Http1,
-  Http2,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
 pub enum PoolIdleTimeout {
   State(bool),
   Specify(u64),
@@ -636,7 +629,10 @@ pub struct CreateHttpClientArgs {
   private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<PoolIdleTimeout>,
-  only: Option<HttpOnly>,
+  #[serde(default = true)]
+  http1: bool,
+  #[serde(default = true)]
+  http2: bool,
 }
 
 #[op]
@@ -693,7 +689,8 @@ where
           PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
         },
       ),
-      only: args.only,
+      http1: args.http1,
+      http2: args.http2,
     },
   )?;
 
@@ -701,7 +698,7 @@ where
   Ok(rid)
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
@@ -710,7 +707,24 @@ pub struct CreateHttpClientOptions {
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
-  pub only: Option<HttpOnly>,
+  pub http1: bool,
+  pub http2: bool,
+}
+
+impl Default for CreateHttpClientOptions {
+  fn default() -> Self {
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: None,
+      unsafely_ignore_certificate_errors: None,
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    }
+  }
 }
 
 /// Create new instance of async reqwest::Client. This client supports
@@ -754,13 +768,14 @@ pub fn create_http_client(
     );
   }
 
-  if let Some(only) = options.only {
-    builder = match only {
-      HttpOnly::Http1 => builder.http1_only(),
-      HttpOnly::Http2 => builder.http2_prior_knowledge(),
-    };
+  match (options.http1, options.http2) {
+    (true, false) => builder = builder.http1_only(),
+    (false, true) => builder = builder.http2_prior_knowledge(),
+    (true, true) => {}
+    (false, false) => {
+      return Err(type_error("At least http1 or http2 need to be enabled"))
+    }
   }
 
-  // unwrap here because it can only fail when native TLS is used.
-  Ok(builder.build().unwrap())
+  builder.build().map_err(|e| e.into())
 }
