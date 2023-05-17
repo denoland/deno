@@ -80,8 +80,10 @@ const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
-const H1_ONLY_PORT: u16 = 5546;
-const H2_ONLY_PORT: u16 = 5547;
+const H1_ONLY_TLS_PORT: u16 = 5546;
+const H2_ONLY_TLS_PORT: u16 = 5547;
+const H1_ONLY_PORT: u16 = 5548;
+const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -1395,8 +1397,9 @@ async fn wrap_main_https_server() {
   }
 }
 
-async fn wrap_https_h1_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+async fn wrap_https_h1_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H1_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1440,8 +1443,9 @@ async fn wrap_https_h1_only_server() {
   }
 }
 
-async fn wrap_https_h2_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+async fn wrap_https_h2_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1480,6 +1484,42 @@ async fn wrap_https_h2_only_server() {
 
     //continue to prevent TLS error stopping the server
     if main_server_https.await.is_err() {
+      continue;
+    }
+  }
+}
+
+async fn wrap_https_h1_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+
+  loop {
+    let main_server_http_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_http = Server::bind(&main_server_http_addr)
+      .http1_only(true)
+      .serve(main_server_http_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_http.await.is_err() {
+      continue;
+    }
+  }
+}
+
+async fn wrap_https_h2_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+
+  loop {
+    let main_server_http_svc = make_service_fn(|_| async {
+      Ok::<_, Infallible>(service_fn(main_server))
+    });
+    let main_server_http = Server::bind(&main_server_http_addr)
+      .http2_only(true)
+      .serve(main_server_http_svc);
+
+    //continue to prevent TLS error stopping the server
+    if main_server_http.await.is_err() {
       continue;
     }
   }
@@ -1573,6 +1613,8 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
+  let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
+  let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
 
@@ -1594,6 +1636,8 @@ pub async fn run_all_servers() {
       main_server_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
+      h1_only_server_tls_fut,
+      h2_only_server_tls_fut,
       h1_only_server_fut,
       h2_only_server_fut
     )
