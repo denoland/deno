@@ -26,7 +26,6 @@ mod version;
 mod watcher;
 mod worker;
 
-use deno_core::task::JoinHandle;
 #[cfg(not(target_env = "msvc"))]
 use tikv_jemallocator::Jemalloc;
 
@@ -46,6 +45,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
+use deno_core::task::JoinHandle;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread;
