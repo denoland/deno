@@ -85,18 +85,25 @@ pub async fn op_sleep(
   millis: u64,
   rid: ResourceId,
 ) -> Result<bool, AnyError> {
-  // If a timer is requested with <50ms resolution, request the high-res timer.
-  let hr_timer_lock = if millis < 50 {
+  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+
+  // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
+  // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
+  // timers longer than 100ms are a reasonable cutoff here.
+
+  // The high-res timers on Windows are still limited. Unfortuntely this means that our shortest duration 4ms timers
+  // can still be 25% late, but without a more complex timer system or spinning on the clock itself, we're somewhat
+  // bounded by the OS' scheduler itself.
+  let _hr_timer_lock = if millis <= 100 {
     Some(hr_timer_lock())
   } else {
     None
   };
-  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+
   let res = tokio::time::sleep(Duration::from_millis(millis))
     .or_cancel(handle.0.clone())
     .await;
 
-  // We can release the high-res timer lock here (doing it explicitly)
-  drop(hr_timer_lock);
+  // We release the high-res timer lock here, either by being cancelled or resolving.
   Ok(res.is_ok())
 }

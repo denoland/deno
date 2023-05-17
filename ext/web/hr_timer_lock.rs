@@ -37,14 +37,17 @@ mod windows {
     }
   }
 
+  /// If the refcount is > 0, we ask Windows for a lower timer period once. While the underlying
+  /// Windows timeBeginPeriod/timeEndPeriod API can manage its own reference counts, we choose to
+  /// use it once per process and avoid nesting these calls.
   fn lock_hr() {
     // SAFETY: We just want to set the timer period here
-    unsafe { winmm::timeBeginPeriod(1) };
+    unsafe { windows::Win32::Media::timeBeginPeriod(1) };
   }
 
   fn unlock_hr() {
     // SAFETY: We just want to set the timer period here
-    unsafe { winmm::timeEndPeriod(1) };
+    unsafe { windows::Win32::Media::timeEndPeriod(1) };
   }
 }
 
@@ -58,6 +61,6 @@ pub(crate) fn hr_timer_lock() -> windows::HrTimerLock {
 
 /// No-op on other platforms.
 #[cfg(not(target_os = "windows"))]
-pub(crate) fn hr_timer_lock() -> () {
-  ()
+pub(crate) fn hr_timer_lock() -> (std::marker::PhantomData<()>,) {
+  (std::marker::PhantomData::default(),)
 }
