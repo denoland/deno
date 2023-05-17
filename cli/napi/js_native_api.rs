@@ -1201,17 +1201,45 @@ fn napi_get_value_uint32(
   Ok(())
 }
 
-// TODO
 #[napi_sym::napi_sym]
 fn napi_add_finalizer(
-  _env: *mut Env,
-  _js_object: napi_value,
-  _native_object: *const c_void,
-  _finalize_cb: napi_finalize,
-  _finalize_hint: *const c_void,
-  _result: *mut napi_ref,
+  env: *mut Env,
+  js_object: napi_value,
+  native_object: *const c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *const c_void,
+  result: *mut napi_ref,
 ) -> Result {
-  log::info!("napi_add_finalizer is not yet supported.");
+  check_env!(env);
+  let env = unsafe { &mut *env };
+  let scope = &mut env.scope();
+
+  let value = napi_value_unchecked(js_object);
+
+  let weak_ptr = Rc::new(Cell::new(None));
+
+  let weak = v8::Weak::with_finializer(
+    scope,
+    value,
+    Box::new(move || {
+      finalize_cb(env, native_object, finalize_hint);
+
+      // Self-deleting weak.
+      if let Some(weak_ptr) = weak_ptr.get() {
+        let weak: v8::Weak<v8::Object> =
+          unsafe { v8::Weak::from_raw(isolate, Some(weak_ptr)) };
+        drop(weak);
+      }
+    }),
+  );
+
+  let raw = weak.into_raw();
+  weak_ptr.set(raw);
+
+  if !result.is_null() {
+    *result = raw;
+  }
+
   Ok(())
 }
 
