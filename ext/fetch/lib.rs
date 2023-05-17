@@ -629,11 +629,16 @@ pub struct CreateHttpClientArgs {
   private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<PoolIdleTimeout>,
-  #[serde(default = true)]
+  #[serde(default = "default_true")]
   http1: bool,
-  #[serde(default = true)]
+  #[serde(default = "default_true")]
   http2: bool,
 }
+
+fn default_true() -> bool {
+  true
+}
+
 
 #[op]
 pub fn op_fetch_custom_client<FP>(
