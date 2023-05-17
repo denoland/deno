@@ -490,11 +490,11 @@ async fn get_tls_config(
 
       let mut config = rustls::ServerConfig::builder()
         .with_safe_defaults()
-        .with_client_cert_verifier(
+        .with_client_cert_verifier(Arc::new(
           rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
             root_cert_store,
           ),
-        )
+        ))
         .with_single_cert(certs, PrivateKey(key))
         .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();

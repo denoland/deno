@@ -939,14 +939,11 @@ export function format(
       ["Object", "string"],
       urlObject,
     );
-  } else if (!(urlObject instanceof Url)) {
-    if (urlObject instanceof URL) {
-      return formatWhatwg(urlObject, options);
-    }
-    return Url.prototype.format.call(urlObject);
+  } else if (urlObject instanceof URL) {
+    return formatWhatwg(urlObject, options);
   }
 
-  return (urlObject as Url).format();
+  return Url.prototype.format.call(urlObject);
 }
 
 /**
@@ -1002,10 +999,9 @@ function formatWhatwg(
       }
       ret += "@";
     }
-    // TODO(wafuwfu13): Support unicode option
-    // ret += options.unicode ?
-    //   domainToUnicode(urlObject.host) : urlObject.host;
-    ret += urlObject.host;
+    ret += options.unicode
+      ? domainToUnicode(urlObject.hostname)
+      : urlObject.hostname;
     if (urlObject.port) {
       ret += `:${urlObject.port}`;
     }

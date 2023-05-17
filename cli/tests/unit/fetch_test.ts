@@ -1497,6 +1497,18 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
+  async function fetchSupportsHttpsOverIpAddress() {
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const res = await fetch("https://localhost:5546/http_version", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "HTTP/1.1");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
   async function fetchSupportsHttp1Only() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
