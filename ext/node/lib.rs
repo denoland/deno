@@ -491,7 +491,7 @@ pub fn initialize_runtime(
         argv0
       );
       // Make the nodeGlobalThisName unconfigurable here.
-      Object.defineProperty(globalThis, nodeGlobalThisName, { configurable: false });
+      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
     }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );
