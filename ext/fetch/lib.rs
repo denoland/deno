@@ -200,11 +200,18 @@ pub fn get_or_create_client_from_state(
     let options = state.borrow::<Options>();
     let client = create_http_client(
       &options.user_agent,
-      options.root_cert_store()?,
-      vec![],
-      options.proxy.clone(),
-      options.unsafely_ignore_certificate_errors.clone(),
-      options.client_cert_chain_and_key.clone(),
+      CreateHttpClientOptions {
+        root_cert_store: options.root_cert_store()?,
+        ca_certs: vec![],
+        proxy: options.proxy.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+        pool_max_idle_per_host: None,
+        pool_idle_timeout: None,
+        only: None,
+      },
     )?;
     state.put::<reqwest::Client>(client.clone());
     Ok(client)
@@ -606,14 +613,14 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum HttpOnly {
   Http1,
   Http2,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum PoolIdleTimeout {
   State(bool),
@@ -694,7 +701,7 @@ where
   Ok(rid)
 }
 
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,

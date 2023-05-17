@@ -221,16 +221,14 @@ impl CacheSemantics {
 
 pub struct HttpClient {
   options: CreateHttpClientOptions,
+  root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   cell: once_cell::sync::OnceCell<reqwest::Client>,
 }
 
 impl std::fmt::Debug for HttpClient {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("HttpClient")
-      .field(
-        "unsafely_ignore_certificate_errors",
-        &self.unsafely_ignore_certificate_errors,
-      )
+      .field("options", &self.options)
       .finish()
   }
 }
@@ -242,10 +240,10 @@ impl HttpClient {
   ) -> Self {
     Self {
       options: CreateHttpClientOptions {
-        root_cert_store,
         unsafely_ignore_certificate_errors,
         ..Default::default()
       },
+      root_cert_store_provider,
       cell: Default::default(),
     }
   }
@@ -254,6 +252,7 @@ impl HttpClient {
   pub fn from_client(client: reqwest::Client) -> Self {
     let result = Self {
       options: Default::default(),
+      root_cert_store_provider: Default::default(),
       cell: Default::default(),
     };
     result.cell.set(client).unwrap();
@@ -264,11 +263,16 @@ impl HttpClient {
     self.cell.get_or_try_init(|| {
       create_http_client(
         get_user_agent(),
-        self.options,
+        CreateHttpClientOptions {
+          root_cert_store: match &self.root_cert_store_provider {
+            Some(provider) => Some(provider.get_or_try_init()?.clone()),
+            None => None,
+          },
+          ..self.options.clone()
+        },
       )
     })
   }
-
 
   /// Do a GET request without following redirects.
   pub fn get_no_redirect<U: reqwest::IntoUrl>(
