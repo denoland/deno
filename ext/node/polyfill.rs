@@ -142,6 +142,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     specifier: "ext:deno_node/process.ts",
   },
   NodeModulePolyfill {
+    name: "punycode",
+    specifier: "ext:deno_node/punycode.ts",
+  },
+  NodeModulePolyfill {
     name: "querystring",
     specifier: "ext:deno_node/querystring.ts",
   },
