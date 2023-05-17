@@ -40,7 +40,7 @@ function initialize(
   // get node's globalThis
   ObjectDefineProperty(globalThis, nodeGlobalThisName, {
     enumerable: false,
-    writable: true,
+    configurable: true,
     value: nodeGlobalThis,
   });
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
