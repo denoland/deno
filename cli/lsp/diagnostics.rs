@@ -25,6 +25,8 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::task::spawn;
+use deno_core::task::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -50,7 +52,6 @@ pub type DiagnosticRecord =
 pub type DiagnosticVec = Vec<DiagnosticRecord>;
 type DiagnosticMap =
   HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
-type TsDiagnosticsMap = HashMap<String, Vec<crate::tsc::Diagnostic>>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -198,9 +199,9 @@ impl DiagnosticsServer {
 
       runtime.block_on(async {
         let mut token = CancellationToken::new();
-        let mut ts_handle: Option<tokio::task::JoinHandle<()>> = None;
-        let mut lint_handle: Option<tokio::task::JoinHandle<()>> = None;
-        let mut deps_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut ts_handle: Option<JoinHandle<()>> = None;
+        let mut lint_handle: Option<JoinHandle<()>> = None;
+        let mut deps_handle: Option<JoinHandle<()>> = None;
         let diagnostics_publisher = DiagnosticsPublisher::new(client.clone());
 
         loop {
@@ -214,7 +215,7 @@ impl DiagnosticsServer {
               diagnostics_publisher.clear().await;
 
               let previous_ts_handle = ts_handle.take();
-              ts_handle = Some(tokio::spawn({
+              ts_handle = Some(spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let ts_server = ts_server.clone();
@@ -266,7 +267,7 @@ impl DiagnosticsServer {
               }));
 
               let previous_deps_handle = deps_handle.take();
-              deps_handle = Some(tokio::spawn({
+              deps_handle = Some(spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
@@ -294,7 +295,7 @@ impl DiagnosticsServer {
               }));
 
               let previous_lint_handle = lint_handle.take();
-              lint_handle = Some(tokio::spawn({
+              lint_handle = Some(spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
@@ -539,10 +540,9 @@ async fn generate_ts_diagnostics(
   let (enabled_specifiers, disabled_specifiers) = specifiers
     .into_iter()
     .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
-  let ts_diagnostics_map: TsDiagnosticsMap = if !enabled_specifiers.is_empty() {
-    let req = tsc::RequestMethod::GetDiagnostics(enabled_specifiers);
+  let ts_diagnostics_map = if !enabled_specifiers.is_empty() {
     ts_server
-      .request_with_cancellation(snapshot.clone(), req, token)
+      .get_diagnostics(snapshot.clone(), enabled_specifiers, token)
       .await?
   } else {
     Default::default()
@@ -1096,7 +1096,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location, Default::default());
+    let mut documents = Documents::new(location);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

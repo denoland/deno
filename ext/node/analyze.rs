@@ -32,6 +32,7 @@ static NODE_GLOBALS: &[&str] = &[
   "setImmediate",
   "setInterval",
   "setTimeout",
+  "performance",
 ];
 
 #[derive(Debug, Clone)]
@@ -528,7 +529,7 @@ mod tests {
           "var clearTimeout = globalThis.clearTimeout;var console = globalThis.console;",
           "var global = globalThis.global;var process = globalThis.process;",
           "var setImmediate = globalThis.setImmediate;var setInterval = globalThis.setInterval;",
-          "var setTimeout = globalThis.setTimeout;\n",
+          "var setTimeout = globalThis.setTimeout;var performance = globalThis.performance;\n",
           "export const x = 1;"
         ),
         NODE_GLOBAL_THIS_NAME,

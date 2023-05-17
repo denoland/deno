@@ -1,1 +1,0 @@
-globalThis.foo = 42;

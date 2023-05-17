@@ -15,7 +15,6 @@ import {
   deferred,
   fail,
 } from "./test_util.ts";
-import { consoleSize } from "../../../runtime/js/40_tty.js";
 
 const {
   upgradeHttpRaw,
@@ -661,6 +660,38 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   await listeningPromise;
   const client = await Deno.connect({ port: 4501 });
   client.close();
+  ac.abort();
+  await server;
+});
+
+// https://github.com/denoland/deno/issues/15427
+Deno.test({ permissions: { net: true } }, async function httpServerCloseGet() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+  const requestPromise = deferred();
+  const responsePromise = deferred();
+  const server = Deno.serve({
+    handler: async () => {
+      requestPromise.resolve();
+      await new Promise((r) => setTimeout(r, 500));
+      responsePromise.resolve();
+      return new Response("ok");
+    },
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
+  await listeningPromise;
+  const conn = await Deno.connect({ port: 4501 });
+  const encoder = new TextEncoder();
+  const body =
+    `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+  const writeResult = await conn.write(encoder.encode(body));
+  assertEquals(body.length, writeResult);
+  await requestPromise;
+  conn.close();
+  await responsePromise;
   ac.abort();
   await server;
 });

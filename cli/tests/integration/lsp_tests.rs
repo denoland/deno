@@ -4713,7 +4713,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6849|file:///a/b",
+          "exportMapKey": "foo|6810|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -7414,6 +7414,49 @@ fn lsp_closed_file_find_references() {
       }
     }])
   );
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_closed_file_find_references_low_document_pre_load() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("sub_dir");
+  temp_dir.write("./other_file.ts", "export const b = 5;");
+  temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
+  temp_dir.write(
+    "./sub_dir/mod.test.ts",
+    "import { a } from './mod.ts'; console.log(a);",
+  );
+  let temp_dir_url = temp_dir.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_preload_limit(1);
+  });
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 5;"#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // won't have results because the document won't be pre-loaded
+  assert_eq!(res, json!([]));
 
   client.shutdown();
 }

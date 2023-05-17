@@ -23,6 +23,7 @@ mod resources;
 mod runtime;
 pub mod snapshot_util;
 mod source_map;
+pub mod task;
 mod task_queue;
 
 // Re-exports

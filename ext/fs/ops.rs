@@ -1154,7 +1154,7 @@ where
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context("readfile")?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   Ok(buf.into())
 }
@@ -1210,7 +1210,7 @@ where
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context("readfile")?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   Ok(string_from_utf8_lossy(buf))
 }
