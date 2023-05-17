@@ -260,7 +260,8 @@ async fn sync_resolution_with_fs(
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
   let sync_download = should_sync_download();
-  let mut package_partitions = snapshot.all_packages_partitioned();
+  let mut package_partitions =
+    snapshot.all_system_packages_partitioned(system_info);
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
@@ -271,9 +272,6 @@ async fn sync_resolution_with_fs(
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
   for package in &package_partitions.packages {
-    if !package.should_download(system_info) {
-      continue;
-    }
     let folder_name =
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let folder_path = deno_local_registry_dir.join(&folder_name);
@@ -327,14 +325,6 @@ async fn sync_resolution_with_fs(
 
   // 2. Create any "copy" packages, which are used for peer dependencies
   for package in &package_partitions.copy_packages {
-    if !package.should_download(system_info) {
-      log::debug!(
-        "Skipping setup of optional package: {}",
-        package.pkg_id.as_serialized()
-      );
-      continue;
-    }
-
     let package_cache_folder_id = package.get_package_cache_folder_id();
     let destination_path = deno_local_registry_dir
       .join(get_package_folder_id_folder_name(&package_cache_folder_id));
@@ -367,10 +357,6 @@ async fn sync_resolution_with_fs(
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in &all_packages {
-    if !package.should_download(system_info) {
-      continue;
-    }
-
     let sub_node_modules = deno_local_registry_dir
       .join(get_package_folder_id_folder_name(
         &package.get_package_cache_folder_id(),

@@ -545,13 +545,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       let registry_url = self.npm_api.base_url();
       let root_path = self.npm_cache.registry_folder(registry_url);
       let mut builder = VfsBuilder::new(root_path);
-      for package in self.npm_resolution.all_packages() {
-        if package.should_download(&self.npm_system_info) {
-          let folder = self
-            .npm_resolver
-            .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
-          builder.add_dir_recursive(&folder)?;
-        }
+      for package in self
+        .npm_resolution
+        .all_system_packages(&self.npm_system_info)
+      {
+        let folder = self
+          .npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
+        builder.add_dir_recursive(&folder)?;
       }
       // overwrite the root directory's name to obscure the user's registry url
       builder.set_root_dir_name("node_modules".to_string());

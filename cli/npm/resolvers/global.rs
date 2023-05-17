@@ -129,13 +129,14 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    let package_partitions = self.resolution.all_packages_partitioned();
+    let package_partitions = self
+      .resolution
+      .all_system_packages_partitioned(&self.system_info);
 
     cache_packages(
       package_partitions.packages,
       &self.cache,
       &self.registry_url,
-      &self.system_info,
     )
     .await?;
 
