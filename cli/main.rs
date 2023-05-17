@@ -55,6 +55,7 @@ use std::env::current_exe;
 use std::future::Future;
 use std::path::PathBuf;
 
+/// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
   fn output(self) -> Result<i32, AnyError>;
 }
