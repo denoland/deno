@@ -1203,32 +1203,38 @@ fn napi_get_value_uint32(
 
 #[napi_sym::napi_sym]
 fn napi_add_finalizer(
-  env: *mut Env,
+  env_ptr: *mut Env,
   js_object: napi_value,
   native_object: *const c_void,
   finalize_cb: napi_finalize,
   finalize_hint: *const c_void,
   result: *mut napi_ref,
 ) -> Result {
-  check_env!(env);
-  let env = unsafe { &mut *env };
+  use std::cell::Cell;
+  use std::rc::Rc;
+
+  check_env!(env_ptr);
+  let env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
 
   let value = napi_value_unchecked(js_object);
 
   let weak_ptr = Rc::new(Cell::new(None));
 
-  let weak = v8::Weak::with_finializer(
+  let weak = v8::Weak::with_finalizer(
     scope,
     value,
-    Box::new(move || {
-      finalize_cb(env, native_object, finalize_hint);
+    Box::new({
+      let weak_ptr = weak_ptr.clone();
+      move |isolate| {
+        finalize_cb(env_ptr as _, native_object as _, finalize_hint as _);
 
-      // Self-deleting weak.
-      if let Some(weak_ptr) = weak_ptr.get() {
-        let weak: v8::Weak<v8::Object> =
-          unsafe { v8::Weak::from_raw(isolate, Some(weak_ptr)) };
-        drop(weak);
+        // Self-deleting weak.
+        if let Some(weak_ptr) = weak_ptr.get() {
+          let weak: v8::Weak<v8::Value> =
+            unsafe { v8::Weak::from_raw(isolate, Some(weak_ptr)) };
+          drop(weak);
+        }
       }
     }),
   );
@@ -1236,8 +1242,10 @@ fn napi_add_finalizer(
   let raw = weak.into_raw();
   weak_ptr.set(raw);
 
-  if !result.is_null() {
-    *result = raw;
+  if let Some(raw) = raw {
+    if !result.is_null() {
+      *result = raw.as_ptr() as _;
+    }
   }
 
   Ok(())
