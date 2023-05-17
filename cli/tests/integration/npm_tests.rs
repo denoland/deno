@@ -1871,10 +1871,10 @@ fn binary_package_with_optional_dependencies() {
       assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
         .exists());
-      assert!(!project_path
+      assert!(project_path
         .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
         .exists());
-      assert!(project_path
+      assert!(!project_path
         .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
         .exists());
     }
