@@ -640,7 +640,6 @@ fn default_true() -> bool {
   true
 }
 
-
 #[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
