@@ -259,3 +259,111 @@ async fn find_optional_packages<TRegistryApi: NpmRegistryApi>(
 
   Ok(optional_packages)
 }
+
+#[cfg(test)]
+mod test {
+  use deno_npm::registry::TestNpmRegistryApi;
+  use deno_npm::resolution::NpmResolutionSnapshot;
+  use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
+
+  use super::*;
+
+  #[tokio::test]
+  async fn test_find_optional_packages() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.ensure_package_version("package-e", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_optional_dependency(("package-a", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
+    api.add_optional_dependency(("package-d", "1.0.0"), ("package-e", "1"));
+    let optional_packages = run_find_optional_packages(
+      vec![("package-a@1", "package-a@1.0.0")],
+      &api,
+    )
+    .await;
+    assert_eq!(
+      optional_packages,
+      vec![
+        "package-c@1.0.0".to_string(),
+        "package-d@1.0.0".to_string(),
+        "package-e@1.0.0".to_string()
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn optional_to_required() {
+    let api = TestNpmRegistryApi::default();
+    api.ensure_package_version("package-a", "1.0.0");
+    api.ensure_package_version("package-b", "1.0.0");
+    api.ensure_package_version("package-b2", "1.0.0");
+    api.ensure_package_version("package-b3", "1.0.0");
+    api.ensure_package_version("package-c", "1.0.0");
+    api.ensure_package_version("package-d", "1.0.0");
+    api.ensure_package_version("package-e", "1.0.0");
+    api.add_dependency(("package-a", "1.0.0"), ("package-b", "1"));
+    api.add_dependency(("package-b", "1.0.0"), ("package-b2", "1"));
+    api.add_dependency(("package-b2", "1.0.0"), ("package-b3", "1"));
+    // deep down this is set back to being required, so it and its required
+    // dependency should be marked as required
+    api.add_dependency(("package-b3", "1.0.0"), ("package-c", "1"));
+    api.add_optional_dependency(("package-a", "1.0.0"), ("package-c", "1"));
+    api.add_dependency(("package-c", "1.0.0"), ("package-d", "1"));
+    api.add_optional_dependency(("package-d", "1.0.0"), ("package-e", "1"));
+
+    let optional_packages = run_find_optional_packages(
+      vec![("package-a@1", "package-a@1.0.0")],
+      &api,
+    )
+    .await;
+    assert_eq!(optional_packages, vec!["package-e@1.0.0".to_string()],);
+  }
+
+  async fn run_find_optional_packages(
+    root_packages: Vec<(&str, &str)>,
+    api: &TestNpmRegistryApi,
+  ) -> Vec<String> {
+    let root_packages = root_packages
+      .into_iter()
+      .map(|(req, id)| {
+        (
+          NpmPackageReq::from_str(req).unwrap(),
+          NpmPackageId::from_serialized(id).unwrap(),
+        )
+      })
+      .collect::<HashMap<_, _>>();
+
+    let snapshot =
+      NpmResolutionSnapshot::new(NpmResolutionSnapshotCreateOptions {
+        api: Arc::new(api.clone()),
+        snapshot: Default::default(),
+        types_node_version_req: None,
+      });
+    let snapshot = snapshot
+      .resolve_pending({
+        let mut reqs = root_packages.keys().cloned().collect::<Vec<_>>();
+        reqs.sort();
+        reqs
+      })
+      .await
+      .unwrap();
+    let mut serialized = snapshot.as_serialized();
+    for package in &mut serialized.packages {
+      package.optional = false;
+    }
+
+    let mut optional =
+      find_optional_packages(&root_packages, &serialized.packages, api)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|nv| nv.to_string())
+        .collect::<Vec<_>>();
+    optional.sort();
+    optional
+  }
+}
