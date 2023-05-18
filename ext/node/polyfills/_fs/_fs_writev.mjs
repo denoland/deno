@@ -23,7 +23,7 @@ export function writev(fd, buffers, position, callback) {
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await denoFs.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -64,7 +64,7 @@ export function writevSync(fd, buffers, position) {
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += denoFs.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
