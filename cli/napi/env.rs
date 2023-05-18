@@ -165,8 +165,8 @@ fn napi_get_node_version(
   env: *mut Env,
   result: *mut *const napi_node_version,
 ) -> napi_status {
-  crate::check_env2!(env);
-  crate::check_arg2!(env, result);
+  crate::check_env!(env);
+  crate::check_arg!(env, result);
 
   *result = &NODE_VERSION as *const napi_node_version;
   napi_ok
