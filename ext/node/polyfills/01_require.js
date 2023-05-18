@@ -132,6 +132,7 @@ import zlib from "ext:deno_node/zlib.ts";
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
+// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfill.rs`
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,

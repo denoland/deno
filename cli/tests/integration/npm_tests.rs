@@ -1799,3 +1799,84 @@ fn reload_info_not_found_cache_but_exists_remote() {
     output.assert_exit_code(0);
   }
 }
+
+#[test]
+fn binary_package_with_optional_dependencies() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
+    .use_copy_temp_dir("npm/binary_package")
+    .cwd("npm/binary_package")
+    .build();
+
+  let temp_dir = context.temp_dir();
+  let temp_dir_path = temp_dir.path();
+  let project_path = temp_dir_path.join("npm/binary_package");
+
+  // write empty config file so a lockfile gets created
+  temp_dir.write("npm/binary_package/deno.json", "{}");
+
+  // run it twice, with the first time creating the lockfile and the second using it
+  for i in 0..2 {
+    if i == 1 {
+      assert!(project_path.join("deno.lock").exists());
+    }
+
+    let output = context
+      .new_command()
+      .args("run -A --node-modules-dir main.js")
+      .run();
+
+    #[cfg(target_os = "windows")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on windows[WILDCARD]",
+      );
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on mac[WILDCARD]",
+      );
+
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on linux[WILDCARD]",
+      );
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+  }
+}

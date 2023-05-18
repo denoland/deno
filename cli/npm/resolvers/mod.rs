@@ -18,6 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
@@ -289,6 +290,7 @@ pub fn create_npm_fs_resolver(
   registry_url: Url,
   resolution: Arc<NpmResolution>,
   maybe_node_modules_path: Option<PathBuf>,
+  system_info: NpmSystemInfo,
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
@@ -298,12 +300,14 @@ pub fn create_npm_fs_resolver(
       registry_url,
       node_modules_folder,
       resolution,
+      system_info,
     )),
     None => Arc::new(GlobalNpmPackageResolver::new(
       fs,
       cache,
       registry_url,
       resolution,
+      system_info,
     )),
   }
 }
