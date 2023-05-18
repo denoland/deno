@@ -36,6 +36,7 @@ import { setUnrefTimeout } from "ext:deno_node/timers.ts";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
+import { clearTimeout } from "ext:deno_web/02_timers.js";
 
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");

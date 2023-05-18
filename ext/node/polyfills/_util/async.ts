@@ -2,6 +2,8 @@
 // This module is vendored from std/async/deferred.ts and std/async/delay.ts
 // (with some modifications)
 
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
+
 export interface Deferred<T> extends Promise<T> {
   readonly state: "pending" | "fulfilled" | "rejected";
   resolve(value?: T | PromiseLike<T>): void;

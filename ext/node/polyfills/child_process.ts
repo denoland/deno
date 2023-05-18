@@ -42,6 +42,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 import * as denoOs from "ext:runtime/30_os.js";
 
 const core = globalThis.Deno.core;

@@ -21,6 +21,7 @@ import { createHash, Hash } from "ext:deno_node/internal/crypto/hash.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 const core = globalThis.Deno.core;
 const { ops } = core;

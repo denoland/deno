@@ -2,6 +2,7 @@
 const core = globalThis.Deno.core;
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 export function close(fd: number, callback: CallbackWithError) {
   fd = getValidatedFd(fd);

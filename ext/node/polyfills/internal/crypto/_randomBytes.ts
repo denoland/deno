@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Buffer } from "ext:deno_node/buffer.ts";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 
 export const MAX_RANDOM_VALUES = 65536;
 export const MAX_SIZE = 4294967295;

@@ -102,6 +102,7 @@ import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
 import { channel } from "ext:deno_node/diagnostics_channel.ts";
+import { clearTimeout, setTimeout } from "ext:deno_web/02_timers.js";
 import * as denoOs from "ext:runtime/30_os.js";
 
 let debug = debuglog("net", (fn) => {
