@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use attrs::Attributes;
-use once_cell::sync::Lazy;
 use optimizer::BailoutReason;
 use optimizer::Optimizer;
 use proc_macro::TokenStream;
@@ -9,7 +8,6 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use quote::ToTokens;
-use regex::Regex;
 use syn::parse;
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
@@ -146,6 +144,8 @@ impl Op {
               is_unstable: #is_unstable,
               is_v8: #is_v8,
               force_registration: false,
+              // TODO(mmastrac)
+              arg_count: 0,
             }
           }
 
@@ -160,8 +160,8 @@ impl Op {
 
     let has_fallible_fast_call = active && optimizer.returns_result;
 
-    let v8_body = if is_async {
-      let deferred = attrs.deferred;
+    let (v8_body, arg_count) = if is_async {
+      let deferred: bool = attrs.deferred;
       codegen_v8_async(
         &core,
         &item,
@@ -184,25 +184,30 @@ impl Op {
 
       #[doc(hidden)]
       impl #name {
-        pub fn name() -> &'static str {
+        pub const fn name() -> &'static str {
           stringify!(#name)
         }
 
-        pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
-          use #core::v8::MapFnTo;
-          Self::v8_func::<#type_params>.map_fn_to()
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        pub extern "C" fn v8_fn_ptr #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
+          let info = unsafe { &*info };
+          let scope = &mut unsafe { #core::v8::CallbackScope::new(info) };
+          let args = #core::v8::FunctionCallbackArguments::from_function_callback_info(info);
+          let rv = #core::v8::ReturnValue::from_function_callback_info(info);
+          Self::v8_func::<#type_params>(scope, args, rv);
         }
 
-        pub fn decl #generics () -> #core::OpDecl #where_clause {
+        pub const fn decl #generics () -> #core::OpDecl #where_clause {
           #core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+            v8_fn_ptr: Self::v8_fn_ptr::<#type_params> as _,
             enabled: true,
             fast_fn: #decl,
             is_async: #is_async,
             is_unstable: #is_unstable,
             is_v8: #is_v8,
             force_registration: false,
+            arg_count: #arg_count as u8,
           }
         }
 
@@ -239,7 +244,7 @@ fn codegen_v8_async(
   margs: Attributes,
   asyncness: bool,
   deferred: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -253,46 +258,67 @@ fn codegen_v8_async(
   let rust_i0 = special_args.len();
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
-  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, true);
+  let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
   let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
-  let (pre_result, mut result_fut) = match asyncness {
-    true => (
-      quote! {},
-      quote! { Self::call::<#type_params>(#args_head #args_tail).await; },
-    ),
-    false => (
-      quote! { let result_fut = Self::call::<#type_params>(#args_head #args_tail); },
-      quote! { result_fut.await; },
-    ),
-  };
-  let result_wrapper = match is_result(&f.sig.output) {
-    true => {
-      // Support `Result<impl Future<Output = Result<T, AnyError>> + 'static, AnyError>`
-      if !asyncness {
-        result_fut = quote! { result_fut; };
-        quote! {
-          let result = match result {
-            Ok(fut) => fut.await,
-            Err(e) => return (realm_idx, promise_id, op_id, #core::_ops::to_op_result::<()>(get_class, Err(e))),
-          };
-        }
-      } else {
-        quote! {}
+  let wrapper = match (asyncness, is_result(&f.sig.output)) {
+    (true, true) => {
+      quote! {
+        let fut = #core::_ops::map_async_op1(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let maybe_response = #core::_ops::queue_async_op(
+          ctx,
+          scope,
+          #deferred,
+          promise_id,
+          fut,
+        );
       }
     }
-    false => quote! { let result = Ok(result); },
+    (true, false) => {
+      quote! {
+        let fut = #core::_ops::map_async_op2(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let maybe_response = #core::_ops::queue_async_op(
+          ctx,
+          scope,
+          #deferred,
+          promise_id,
+          fut,
+        );
+      }
+    }
+    (false, true) => {
+      quote! {
+        let fut = #core::_ops::map_async_op3(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let maybe_response = #core::_ops::queue_async_op(
+          ctx,
+          scope,
+          #deferred,
+          promise_id,
+          fut,
+        );
+      }
+    }
+    (false, false) => {
+      quote! {
+        let fut = #core::_ops::map_async_op4(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let maybe_response = #core::_ops::queue_async_op(
+          ctx,
+          scope,
+          #deferred,
+          promise_id,
+          fut,
+        );
+      }
+    }
   };
 
-  quote! {
+  let token_stream = quote! {
     use #core::futures::FutureExt;
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
       &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
       as *const #core::_ops::OpCtx)
     };
-    let op_id = ctx.id;
-    let realm_idx = ctx.realm_idx;
 
     let promise_id = args.get(0);
     let promise_id = #core::v8::Local::<#core::v8::Integer>::try_from(promise_id)
@@ -308,21 +334,15 @@ fn codegen_v8_async(
     };
 
     #arg_decls
+    #wrapper
 
-    // Track async call & get copy of get_error_class_fn
-    let get_class = {
-      let state = ::std::cell::RefCell::borrow(&ctx.state);
-      state.tracker.track_async(op_id);
-      state.get_error_class_fn
-    };
+    if let Some(response) = maybe_response {
+      rv.set(response);
+    }
+  };
 
-    #pre_result
-    #core::_ops::queue_async_op(ctx, scope, #deferred, async move {
-      let result = #result_fut
-      #result_wrapper
-      (realm_idx, promise_id, op_id, #core::_ops::to_op_result(get_class, result))
-    });
-  }
+  // +1 arg for the promise ID
+  (token_stream, 1 + f.sig.inputs.len() - rust_i0)
 }
 
 fn scope_arg(arg: &FnArg) -> Option<TokenStream2> {
@@ -359,7 +379,7 @@ fn codegen_v8_sync(
   f: &syn::ItemFn,
   margs: Attributes,
   has_fallible_fast_call: bool,
-) -> TokenStream2 {
+) -> (TokenStream2, usize) {
   let Attributes { is_v8, .. } = margs;
   let special_args = f
     .sig
@@ -390,7 +410,7 @@ fn codegen_v8_sync(
     quote! {}
   };
 
-  quote! {
+  let token_stream = quote! {
     // SAFETY: #core guarantees args.data() is a v8 External pointing to an OpCtx for the isolates lifetime
     let ctx = unsafe {
       &*(#core::v8::Local::<#core::v8::External>::cast(args.data()).value()
@@ -407,7 +427,9 @@ fn codegen_v8_sync(
     op_state.tracker.track_sync(ctx.id);
 
     #ret
-  }
+  };
+
+  (token_stream, f.sig.inputs.len() - rust_i0)
 }
 
 /// (full declarations, idents, v8 argument count)
@@ -855,30 +877,26 @@ fn is_unit_result(ty: impl ToTokens) -> bool {
 }
 
 fn is_resource_id(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": (?:deno_core :: )?ResourceId$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(r#": (?:deno_core :: )?ResourceId$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_mut_ref_opstate(arg: impl ToTokens) -> bool {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#": & mut (?:deno_core :: )?OpState$"#).unwrap());
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(r#": & mut (?:deno_core :: )?OpState$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_rc_refcell_opstate(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#).unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re =
+    lazy_regex::regex!(r#": Rc < RefCell < (?:deno_core :: )?OpState > >$"#);
+  re.is_match(&tokens(arg))
 }
 
 fn is_handle_scope(arg: &syn::FnArg) -> bool {
-  static RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#)
-      .unwrap()
-  });
-  RE.is_match(&tokens(arg))
+  let re = lazy_regex::regex!(
+    r#": & mut (?:deno_core :: )?v8 :: HandleScope(?: < '\w+ >)?$"#
+  );
+  re.is_match(&tokens(arg))
 }
 
 fn is_future(ty: impl ToTokens) -> bool {
@@ -903,6 +921,7 @@ fn exclude_lifetime_params(
 mod tests {
   use crate::Attributes;
   use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
 
   #[testing_macros::fixture("optimizer_tests/**/*.rs")]

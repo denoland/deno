@@ -155,24 +155,29 @@ Deno.test({
   name: "process.on signal",
   ignore: Deno.build.os == "windows",
   async fn() {
-    const promise = deferred();
-    let c = 0;
-    const listener = () => {
-      c += 1;
-    };
-    process.on("SIGINT", listener);
-    setTimeout(async () => {
-      // Sends SIGINT 3 times.
-      for (const _ of Array(3)) {
-        await delay(20);
-        Deno.kill(Deno.pid, "SIGINT");
-      }
+    const process = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        `
+        import process from "node:process";
+        setInterval(() => {}, 1000);
+        process.on("SIGINT", () => {
+          console.log("foo");
+        });
+        `,
+      ],
+      stdout: "piped",
+      stderr: "null",
+    }).spawn();
+    await delay(500);
+    for (const _ of Array(3)) {
+      process.kill("SIGINT");
       await delay(20);
-      Deno.removeSignalListener("SIGINT", listener);
-      promise.resolve();
-    });
-    await promise;
-    assertEquals(c, 3);
+    }
+    await delay(20);
+    process.kill("SIGTERM");
+    const output = await process.output();
+    assertEquals(new TextDecoder().decode(output.stdout), "foo\nfoo\nfoo\n");
   },
 });
 
@@ -180,24 +185,35 @@ Deno.test({
   name: "process.off signal",
   ignore: Deno.build.os == "windows",
   async fn() {
-    const promise = deferred();
-    let c = 0;
-    const listener = () => {
-      c += 1;
-      process.off("SIGINT", listener);
-    };
-    process.on("SIGINT", listener);
-    setTimeout(async () => {
-      // Sends SIGINT 3 times.
-      for (const _ of Array(3)) {
-        await delay(20);
-        Deno.kill(Deno.pid, "SIGINT");
-      }
+    const process = new Deno.Command(Deno.execPath(), {
+      args: [
+        "eval",
+        `
+        import process from "node:process";
+        setInterval(() => {}, 1000);
+        const listener = () => {
+          console.log("foo");
+          process.off("SIGINT")
+        };
+        process.on("SIGINT", listener);
+        `,
+      ],
+      stdout: "piped",
+      stderr: "null",
+    }).spawn();
+    await delay(500);
+    for (const _ of Array(3)) {
+      try {
+        process.kill("SIGINT");
+      } catch { /* should die after the first one */ }
       await delay(20);
-      promise.resolve();
-    });
-    await promise;
-    assertEquals(c, 1);
+    }
+    await delay(20);
+    try {
+      process.kill("SIGTERM");
+    } catch { /* should be dead, avoid hanging just in case */ }
+    const output = await process.output();
+    assertEquals(new TextDecoder().decode(output.stdout), "foo\n");
   },
 });
 

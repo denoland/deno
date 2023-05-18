@@ -7,9 +7,12 @@
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayBufferPrototypeGetByteLength,
   TypedArrayPrototypeSubarray,
   TypedArrayPrototypeSlice,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
   MathFloor,
   MathMin,
   PromiseResolve,
@@ -28,12 +31,12 @@ const MAX_SIZE = 2 ** 32 - 2;
 // from `src`.
 // Returns the number of bytes copied.
 function copyBytes(src, dst, off = 0) {
-  const r = dst.byteLength - off;
-  if (src.byteLength > r) {
+  const r = TypedArrayPrototypeGetByteLength(dst) - off;
+  if (TypedArrayPrototypeGetByteLength(src) > r) {
     src = TypedArrayPrototypeSubarray(src, 0, r);
   }
   TypedArrayPrototypeSet(dst, src, off);
-  return src.byteLength;
+  return TypedArrayPrototypeGetByteLength(src);
 }
 
 class Buffer {
@@ -57,15 +60,17 @@ class Buffer {
   }
 
   empty() {
-    return this.#buf.byteLength <= this.#off;
+    return TypedArrayPrototypeGetByteLength(this.#buf) <= this.#off;
   }
 
   get length() {
-    return this.#buf.byteLength - this.#off;
+    return TypedArrayPrototypeGetByteLength(this.#buf) - this.#off;
   }
 
   get capacity() {
-    return this.#buf.buffer.byteLength;
+    return ArrayBufferPrototypeGetByteLength(
+      TypedArrayPrototypeGetBuffer(this.#buf),
+    );
   }
 
   truncate(n) {
@@ -85,7 +90,7 @@ class Buffer {
   }
 
   #tryGrowByReslice(n) {
-    const l = this.#buf.byteLength;
+    const l = TypedArrayPrototypeGetByteLength(this.#buf);
     if (n <= this.capacity - l) {
       this.#reslice(l + n);
       return l;
@@ -94,15 +99,16 @@ class Buffer {
   }
 
   #reslice(len) {
-    assert(len <= this.#buf.buffer.byteLength);
-    this.#buf = new Uint8Array(this.#buf.buffer, 0, len);
+    const ab = TypedArrayPrototypeGetBuffer(this.#buf);
+    assert(len <= ArrayBufferPrototypeGetByteLength(ab));
+    this.#buf = new Uint8Array(ab, 0, len);
   }
 
   readSync(p) {
     if (this.empty()) {
       // Buffer is empty, reset to recover space.
       this.reset();
-      if (p.byteLength === 0) {
+      if (TypedArrayPrototypeGetByteLength(p) === 0) {
         // this edge case is tested in 'bufferReadEmptyAtEOF' test
         return 0;
       }
@@ -122,7 +128,7 @@ class Buffer {
   }
 
   writeSync(p) {
-    const m = this.#grow(p.byteLength);
+    const m = this.#grow(TypedArrayPrototypeGetByteLength(p));
     return copyBytes(p, this.#buf, m);
   }
 
@@ -180,7 +186,7 @@ class Buffer {
       // otherwise read directly into the internal buffer
       const buf = shouldGrow
         ? tmp
-        : new Uint8Array(this.#buf.buffer, this.length);
+        : new Uint8Array(TypedArrayPrototypeGetBuffer(this.#buf), this.length);
 
       const nread = await r.read(buf);
       if (nread === null) {
@@ -205,7 +211,7 @@ class Buffer {
       // otherwise read directly into the internal buffer
       const buf = shouldGrow
         ? tmp
-        : new Uint8Array(this.#buf.buffer, this.length);
+        : new Uint8Array(TypedArrayPrototypeGetBuffer(this.#buf), this.length);
 
       const nread = r.readSync(buf);
       if (nread === null) {

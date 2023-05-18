@@ -8,7 +8,7 @@ use deno_core::OpState;
 
 deno_core::extension!(
   deno_runtime,
-  ops = [op_main_module],
+  ops = [op_main_module, op_ppid],
   options = { main_module: ModuleSpecifier },
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
@@ -31,7 +31,10 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   Ok(main_path)
 }
 
-pub fn ppid() -> i64 {
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retreive the ppid on Windows.
+#[op]
+pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:

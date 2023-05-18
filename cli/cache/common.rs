@@ -43,15 +43,3 @@ impl FastInsecureHasher {
     self.0.finish()
   }
 }
-
-/// Disable write-ahead-logging and tweak some other stuff.
-/// We want to favor startup time over cache performance and
-/// creating a WAL is expensive on startup.
-pub static INITIAL_PRAGMAS: &str = "
-  PRAGMA journal_mode=OFF;
-  PRAGMA synchronous=NORMAL;
-  PRAGMA temp_store=memory;
-  PRAGMA page_size=4096;
-  PRAGMA mmap_size=6000000;
-  PRAGMA optimize;
-";

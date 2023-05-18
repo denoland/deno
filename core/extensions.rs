@@ -43,7 +43,7 @@ impl ExtensionFileSource {
           self.specifier,
           Self::find_non_ascii(code)
         );
-        Ok((*code).into())
+        Ok(ModuleCode::from_static(code))
       }
       ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
         let msg = || format!("Failed to read \"{}\"", path.display());
@@ -72,8 +72,9 @@ pub struct OpDecl {
   pub is_async: bool,
   pub is_unstable: bool,
   pub is_v8: bool,
-  pub fast_fn: Option<Box<dyn FastFunction>>,
   pub force_registration: bool,
+  pub arg_count: u8,
+  pub fast_fn: Option<FastFunction>,
 }
 
 impl OpDecl {
@@ -165,6 +166,7 @@ macro_rules! ops {
 ///
 ///  * deps: a comma-separated list of module dependencies, eg: `deps = [ my_other_extension ]`
 ///  * parameters: a comma-separated list of parameters and base traits, eg: `parameters = [ P: MyTrait ]`
+///  * bounds: a comma-separated list of additional type bounds, eg: `bounds = [ P::MyAssociatedType: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
 ///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
@@ -179,8 +181,9 @@ macro_rules! extension {
     $name:ident
     $(, deps = [ $( $dep:ident ),* ] )?
     $(, parameters = [ $( $param:ident : $type:ident ),+ ] )?
+    $(, bounds = [ $( $bound:path : $bound_type:ident ),+ ] )?
     $(, ops_fn = $ops_symbol:ident $( < $ops_param:ident > )? )?
-    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $op_param:ident > )?  ),+ $(,)? ] )?
+    $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
@@ -229,13 +232,15 @@ macro_rules! extension {
       // If ops were specified, add those ops to the extension.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder) {
+      fn with_ops $( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder)
+      $( where $( $bound : $bound_type ),+ )?
+      {
         // If individual ops are specified, roll them up into a vector and apply them
         $(
           ext.ops(vec![
             $(
               $( #[ $m ] )*
-              $( $op )::+ :: decl $( :: <$op_param> )? ()
+              $( $op )::+ :: decl $( :: < $($op_param),* > )? ()
             ),+
           ]);
         )?
@@ -247,7 +252,9 @@ macro_rules! extension {
       // Includes the state and middleware functions, if defined.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? ) {
+      fn with_state_and_middleware$( <  $( $param : $type + 'static ),+ > )?(ext: &mut $crate::ExtensionBuilder, $( $( $options_id : $options_type ),* )? )
+      $( where $( $bound : $bound_type ),+ )?
+      {
         $crate::extension!(! __config__ ext $( parameters = [ $( $param : $type ),* ] )? $( config = { $( $options_id : $options_type ),* } )? $( state_fn = $state_fn )? );
 
         $(
@@ -267,31 +274,37 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_js_only $( <  $( $param : $type + 'static ),+ > )? () -> $crate::Extension {
+      pub fn init_js_only $( <  $( $param : $type + 'static ),* > )? () -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_customizer(&mut ext);
         ext.take()
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
+        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }
 
       #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension {
+      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      $( where $( $bound : $bound_type ),+ )?
+      {
         let mut ext = Self::ext();
-        Self::with_ops $( ::<($( $param ),+)> )?(&mut ext);
-        Self::with_state_and_middleware $( ::<($( $param ),+)> )?(&mut ext, $( $( $options_id , )* )? );
+        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
+        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
         ext.take()
       }
@@ -348,6 +361,7 @@ pub struct Extension {
   name: &'static str,
   deps: Option<&'static [&'static str]>,
   force_op_registration: bool,
+  pub(crate) is_core: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -457,6 +471,16 @@ impl Extension {
   pub fn disable(self) -> Self {
     self.enabled(false)
   }
+
+  pub(crate) fn find_esm(
+    &self,
+    specifier: &str,
+  ) -> Option<&ExtensionFileSource> {
+    self
+      .get_esm_sources()?
+      .iter()
+      .find(|s| s.specifier == specifier)
+  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
@@ -472,6 +496,7 @@ pub struct ExtensionBuilder {
   name: &'static str,
   deps: &'static [&'static str],
   force_op_registration: bool,
+  is_core: bool,
 }
 
 impl ExtensionBuilder {
@@ -547,6 +572,7 @@ impl ExtensionBuilder {
       name: self.name,
       force_op_registration: self.force_op_registration,
       deps,
+      is_core: self.is_core,
     }
   }
 
@@ -568,7 +594,14 @@ impl ExtensionBuilder {
       name: self.name,
       deps,
       force_op_registration: self.force_op_registration,
+      is_core: self.is_core,
     }
+  }
+
+  #[doc(hidden)]
+  pub(crate) fn deno_core(&mut self) -> &mut Self {
+    self.is_core = true;
+    self
   }
 }
 

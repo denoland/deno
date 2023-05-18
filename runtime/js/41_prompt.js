@@ -37,11 +37,14 @@ function prompt(message = "Prompt", defaultValue) {
     return null;
   }
 
-  core.print(`${message} `, false);
-
   if (defaultValue) {
-    core.print(`[${defaultValue}] `, false);
+    message += ` [${defaultValue}]`;
   }
+
+  message += " ";
+
+  // output in one shot to make the tests more reliable
+  core.print(message, false);
 
   return readLineFromStdinSync() || defaultValue;
 }

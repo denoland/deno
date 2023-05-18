@@ -3,6 +3,7 @@
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents::Documents;
+use super::documents::DocumentsFilter;
 use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
@@ -27,7 +28,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
+  lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
@@ -278,7 +279,7 @@ fn get_import_map_completions(
           if let Ok(resolved) = import_map.resolve(&key, specifier) {
             let resolved = resolved.to_string();
             let workspace_items: Vec<lsp::CompletionItem> = documents
-              .documents(false, true)
+              .documents(DocumentsFilter::AllDiagnosable)
               .into_iter()
               .filter_map(|d| {
                 let specifier_str = d.specifier().to_string();
@@ -460,7 +461,7 @@ fn get_workspace_completions(
   documents: &Documents,
 ) -> Vec<lsp::CompletionItem> {
   let workspace_specifiers = documents
-    .documents(false, true)
+    .documents(DocumentsFilter::AllDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone())
     .collect();
