@@ -15,6 +15,7 @@ pub mod coerce;
 pub mod date;
 pub mod env;
 pub mod error;
+pub mod finalizer;
 pub mod mem;
 pub mod numbers;
 pub mod object_wrap;
@@ -147,6 +148,7 @@ unsafe extern "C" fn napi_register_module_v1(
   array::init(env, exports);
   env::init(env, exports);
   error::init(env, exports);
+  finalizer::init(env, exports);
   primitives::init(env, exports);
   properties::init(env, exports);
   promise::init(env, exports);

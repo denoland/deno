@@ -18,6 +18,8 @@ pub struct TsFn {
   pub context: *mut c_void,
   pub thread_counter: usize,
   pub ref_counter: Arc<AtomicUsize>,
+  finalizer: Option<napi_finalize>,
+  finalizer_data: *mut c_void,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   tsfn_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
@@ -25,7 +27,12 @@ pub struct TsFn {
 impl Drop for TsFn {
   fn drop(&mut self) {
     let env = unsafe { self.env.as_mut().unwrap() };
-    env.remove_threadsafe_function_ref_counter(self.id)
+    env.remove_threadsafe_function_ref_counter(self.id);
+    if let Some(finalizer) = self.finalizer {
+      unsafe {
+        (finalizer)(self.env as _, self.finalizer_data, ptr::null_mut());
+      }
+    }
   }
 }
 
@@ -126,8 +133,8 @@ fn napi_create_threadsafe_function(
   _async_resource_name: napi_value,
   _max_queue_size: usize,
   initial_thread_count: usize,
-  _thread_finialize_data: *mut c_void,
-  _thread_finalize_cb: napi_finalize,
+  thread_finialize_data: *mut c_void,
+  thread_finalize_cb: Option<napi_finalize>,
   context: *mut c_void,
   maybe_call_js_cb: Option<napi_threadsafe_function_call_js>,
   result: *mut napi_threadsafe_function,
@@ -153,10 +160,13 @@ fn napi_create_threadsafe_function(
     context,
     thread_counter: initial_thread_count,
     sender: env_ref.async_work_sender.clone(),
+    finalizer: thread_finalize_cb,
+    finalizer_data: thread_finialize_data,
     tsfn_sender: env_ref.threadsafe_function_sender.clone(),
     ref_counter: Arc::new(AtomicUsize::new(1)),
     env,
   };
+
   env_ref
     .add_threadsafe_function_ref_counter(tsfn.id, tsfn.ref_counter.clone());
 
