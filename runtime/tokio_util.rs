@@ -7,7 +7,7 @@ use deno_core::task::MaskFutureAsSend;
 /// Default configuration for tokio. In the future, this method may have different defaults
 /// depending on the platform and/or CPU layout.
 const fn tokio_configuration() -> (u32, u32, usize) {
-  (512, 2048, 1024)
+  (61, 31, 1024)
 }
 
 fn tokio_env<T: FromStr>(name: &'static str, default: T) -> T
