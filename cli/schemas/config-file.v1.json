@@ -223,6 +223,13 @@
         }
       }
     },
+    "exclude": {
+      "type": "array",
+      "description": "List of files or directories that will be ignored by all other configurations.",
+      "items": {
+        "type": "string"
+      }
+    },
     "lint": {
       "description": "Configuration for linter",
       "type": "object",
@@ -414,6 +421,10 @@
           }
         }
       }
+    },
+    "nodeModulesDir": {
+      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag.",
+      "type": "boolean"
     },
     "tasks": {
       "description": "Configuration for deno task",
