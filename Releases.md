@@ -8,7 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 1.33.4 / 2023.05.18
 
-- feat(ext/web): Request higher-resolution timer on Windows if user requests
+- fix(ext/web): Request higher-resolution timer on Windows if user requests
   setTimeout w/short delay (#19149)
 - feat(node/crypto): Builtin Diffie-Hellman Groups (#19137)
 - feat(node/crypto): Diffie Hellman Support (#18943)
