@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -379,6 +379,22 @@ Deno.test(
   },
 );
 
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    const enc = new TextEncoder();
+    const data = enc.encode("Hello");
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, data, { signal: ac.signal });
+    const dataRead = Deno.readFileSync(filename);
+    const dec = new TextDecoder("utf-8");
+    const actual = dec.decode(dataRead);
+    assertEquals(actual, "Hello");
+  },
+);
+
 function assertNotExists(filename: string | URL) {
   if (pathExists(filename)) {
     throw new Error(`The file ${filename} exists.`);
@@ -393,3 +409,19 @@ function pathExists(path: string | URL) {
     return false;
   }
 }
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeFileStream() {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue(new Uint8Array([1]));
+        controller.enqueue(new Uint8Array([2]));
+        controller.close();
+      },
+    });
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeFile(filename, stream);
+    assertEquals(Deno.readFileSync(filename), new Uint8Array([1, 2]));
+  },
+);

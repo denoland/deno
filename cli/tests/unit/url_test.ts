@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -29,6 +29,21 @@ Deno.test(function urlParsing() {
   assertEquals(
     String(url),
     "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+  );
+});
+
+Deno.test(function emptyUrl() {
+  assertThrows(
+    // @ts-ignore for test
+    () => new URL(),
+    TypeError,
+    "1 argument required, but only 0 present",
+  );
+  assertThrows(
+    // @ts-ignore for test
+    () => URL.canParse(),
+    TypeError,
+    "1 argument required, but only 0 present",
   );
 });
 

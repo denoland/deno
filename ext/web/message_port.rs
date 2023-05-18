@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -6,10 +8,13 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
-use deno_core::{CancelFuture, Resource};
-use deno_core::{CancelHandle, OpState};
-use deno_core::{RcRef, ResourceId};
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc::unbounded_channel;

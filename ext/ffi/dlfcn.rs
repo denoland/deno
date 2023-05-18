@@ -1,6 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::check_unstable;
+use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
 use crate::symbol::Symbol;
 use crate::turbocall;
@@ -10,10 +11,12 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use dlopen::raw::Library;
 use serde::Deserialize;
+use serde_value::ValueDeserializer;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -36,36 +39,29 @@ impl Resource for DynamicLibraryResource {
 }
 
 impl DynamicLibraryResource {
-  pub fn get_static(&self, symbol: String) -> Result<*const c_void, AnyError> {
+  pub fn get_static(&self, symbol: String) -> Result<*mut c_void, AnyError> {
     // By default, Err returned by this function does not tell
     // which symbol wasn't exported. So we'll modify the error
     // message to include the name of symbol.
     //
     // SAFETY: The obtained T symbol is the size of a pointer.
-    match unsafe { self.lib.symbol::<*const c_void>(&symbol) } {
+    match unsafe { self.lib.symbol::<*mut c_void>(&symbol) } {
       Ok(value) => Ok(Ok(value)),
       Err(err) => Err(generic_error(format!(
-        "Failed to register symbol {}: {}",
-        symbol, err
+        "Failed to register symbol {symbol}: {err}"
       ))),
     }?
   }
 }
 
-pub fn needs_unwrap(rv: NativeType) -> bool {
+pub fn needs_unwrap(rv: &NativeType) -> bool {
   matches!(
     rv,
-    NativeType::Function
-      | NativeType::Pointer
-      | NativeType::Buffer
-      | NativeType::I64
-      | NativeType::ISize
-      | NativeType::U64
-      | NativeType::USize
+    NativeType::I64 | NativeType::ISize | NativeType::U64 | NativeType::USize
   )
 }
 
-fn is_i64(rv: NativeType) -> bool {
+fn is_i64(rv: &NativeType) -> bool {
   matches!(rv, NativeType::I64 | NativeType::ISize)
 }
 
@@ -80,9 +76,16 @@ pub struct ForeignFunction {
   #[serde(rename = "callback")]
   #[serde(default = "default_callback")]
   callback: bool,
+  #[serde(rename = "optional")]
+  #[serde(default = "default_optional")]
+  optional: bool,
 }
 
 fn default_callback() -> bool {
+  false
+}
+
+fn default_optional() -> bool {
   false
 }
 
@@ -97,11 +100,29 @@ struct ForeignStatic {
   _type: String,
 }
 
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
+#[derive(Debug)]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
   ForeignStatic(ForeignStatic),
+}
+
+impl<'de> Deserialize<'de> for ForeignSymbol {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    let value = serde_value::Value::deserialize(deserializer)?;
+
+    // Probe a ForeignStatic and if that doesn't match, assume ForeignFunction to improve error messages
+    if let Ok(res) = ForeignStatic::deserialize(
+      ValueDeserializer::<D::Error>::new(value.clone()),
+    ) {
+      Ok(ForeignSymbol::ForeignStatic(res))
+    } else {
+      ForeignFunction::deserialize(ValueDeserializer::<D::Error>::new(value))
+        .map(ForeignSymbol::ForeignFunction)
+    }
+  }
 }
 
 #[derive(Deserialize, Debug)]
@@ -113,7 +134,7 @@ pub struct FfiLoadArgs {
 #[op(v8)]
 pub fn op_ffi_load<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   args: FfiLoadArgs,
 ) -> Result<(ResourceId, serde_v8::Value<'scope>), AnyError>
 where
@@ -142,7 +163,7 @@ where
       ForeignSymbol::ForeignStatic(_) => {
         // No-op: Statics will be handled separately and are not part of the Rust-side resource.
       }
-      ForeignSymbol::ForeignFunction(foreign_fn) => {
+      ForeignSymbol::ForeignFunction(foreign_fn) => 'register_symbol: {
         let symbol = match &foreign_fn.name {
           Some(symbol) => symbol,
           None => &symbol_key,
@@ -154,19 +175,27 @@ where
           // SAFETY: The obtained T symbol is the size of a pointer.
           match unsafe { resource.lib.symbol::<*const c_void>(symbol) } {
             Ok(value) => Ok(value),
-            Err(err) => Err(generic_error(format!(
-              "Failed to register symbol {}: {}",
-              symbol, err
-            ))),
+            Err(err) => if foreign_fn.optional {
+              let null: v8::Local<v8::Value> = v8::null(scope).into();
+              let func_key = v8::String::new(scope, &symbol_key).unwrap();
+              obj.set(scope, func_key.into(), null);
+              break 'register_symbol;
+            } else {
+              Err(generic_error(format!(
+                "Failed to register symbol {symbol}: {err}"
+              )))
+            },
           }?;
+
         let ptr = libffi::middle::CodePtr::from_ptr(fn_ptr as _);
         let cif = libffi::middle::Cif::new(
           foreign_fn
             .parameters
             .clone()
             .into_iter()
-            .map(libffi::middle::Type::from),
-          foreign_fn.result.into(),
+            .map(libffi::middle::Type::try_from)
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -216,43 +245,51 @@ fn make_sync_fn<'s>(
       // SAFETY: The pointer will not be deallocated until the function is
       // garbage collected.
       let symbol = unsafe { &*(external.value() as *const Symbol) };
-      let needs_unwrap = match needs_unwrap(symbol.result_type) {
+      let needs_unwrap = match needs_unwrap(&symbol.result_type) {
         true => Some(args.get(symbol.parameter_types.len() as i32)),
         false => None,
       };
-      match crate::call::ffi_call_sync(scope, args, symbol) {
+      let out_buffer = match symbol.result_type {
+        NativeType::Struct(_) => {
+          let argc = args.length();
+          out_buffer_as_ptr(
+            scope,
+            Some(
+              v8::Local::<v8::TypedArray>::try_from(args.get(argc - 1))
+                .unwrap(),
+            ),
+          )
+        }
+        _ => None,
+      };
+      match crate::call::ffi_call_sync(scope, args, symbol, out_buffer) {
         Ok(result) => {
           match needs_unwrap {
             Some(v) => {
               let view: v8::Local<v8::ArrayBufferView> = v.try_into().unwrap();
-              let backing_store =
-                view.buffer(scope).unwrap().get_backing_store();
+              let pointer =
+                view.buffer(scope).unwrap().data().unwrap().as_ptr() as *mut u8;
 
-              if is_i64(symbol.result_type) {
+              if is_i64(&symbol.result_type) {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut i64)
-                };
+                let bs = unsafe { &mut *(pointer as *mut i64) };
                 // SAFETY: We already checked that type == I64
                 let value = unsafe { result.i64_value };
                 *bs = value;
               } else {
                 // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
                 // it points to a fixed continuous slice of bytes on the heap.
-                let bs = unsafe {
-                  &mut *(&backing_store[..] as *const _ as *mut [u8]
-                    as *mut u64)
-                };
+                let bs = unsafe { &mut *(pointer as *mut u64) };
                 // SAFETY: We checked that type == U64
                 let value = unsafe { result.u64_value };
                 *bs = value;
               }
             }
             None => {
-              // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
-              let result = unsafe { result.to_v8(scope, symbol.result_type) };
+              let result =
+                // SAFETY: Same return type declared to libffi; trust user to have it right beyond that.
+                unsafe { result.to_v8(scope, symbol.result_type.clone()) };
               rv.set(result.v8_value);
             }
           }
@@ -272,6 +309,8 @@ fn make_sync_fn<'s>(
     let func = builder.build_fast(
       scope,
       &turbocall::make_template(sym, &trampoline),
+      None,
+      None,
       None,
     );
     fast_call_alloc = Some(Box::into_raw(Box::new(trampoline)));
@@ -381,6 +420,11 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 
 #[cfg(test)]
 mod tests {
+  use super::ForeignFunction;
+  use super::ForeignSymbol;
+  use crate::symbol::NativeType;
+  use serde_json::json;
+
   #[cfg(target_os = "windows")]
   #[test]
   fn test_format_error() {
@@ -394,5 +438,53 @@ mod tests {
       format_error(err, "foo.dll".to_string()),
       "foo.dll is not a valid Win32 application.\r\n".to_string(),
     );
+  }
+
+  /// Ensure that our custom serialize for ForeignSymbol is working using `serde_json`.
+  #[test]
+  fn test_serialize_foreign_symbol() {
+    let symbol: ForeignSymbol = serde_json::from_value(json! {{
+      "name": "test",
+      "type": "type is unused"
+    }})
+    .expect("Failed to parse");
+    assert!(matches!(symbol, ForeignSymbol::ForeignStatic(..)));
+
+    let symbol: ForeignSymbol = serde_json::from_value(json! {{
+      "name": "test",
+      "parameters": ["i64"],
+      "result": "bool"
+    }})
+    .expect("Failed to parse");
+    if let ForeignSymbol::ForeignFunction(ForeignFunction {
+      name: Some(expected_name),
+      parameters,
+      ..
+    }) = symbol
+    {
+      assert_eq!(expected_name, "test");
+      assert_eq!(parameters, vec![NativeType::I64]);
+    } else {
+      panic!("Failed to parse ForeignFunction as expected");
+    }
+  }
+
+  #[test]
+  fn test_serialize_foreign_symbol_failures() {
+    let error = serde_json::from_value::<ForeignSymbol>(json! {{
+      "name": "test",
+      "parameters": ["int"],
+      "result": "bool"
+    }})
+    .expect_err("Expected this to fail");
+    assert!(error.to_string().contains("expected one of"));
+
+    let error = serde_json::from_value::<ForeignSymbol>(json! {{
+      "name": "test",
+      "parameters": ["i64"],
+      "result": "int"
+    }})
+    .expect_err("Expected this to fail");
+    assert!(error.to_string().contains("expected one of"));
   }
 }

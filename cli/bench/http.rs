@@ -1,9 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::process::Command;
+use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 use super::Result;
-use std::sync::atomic::{AtomicU16, Ordering};
-use std::{collections::HashMap, path::Path, process::Command, time::Duration};
-pub use test_util::{parse_wrk_output, WrkOutput as HttpBenchmarkResult};
+
+pub use test_util::parse_wrk_output;
+pub use test_util::WrkOutput as HttpBenchmarkResult;
 // Some of the benchmarks in this file have been renamed. In case the history
 // somehow gets messed up:
 //   "node_http" was once called "node"
@@ -27,7 +34,7 @@ pub fn benchmark(
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let http_dir = manifest_dir.join("bench").join("http");
-  for entry in std::fs::read_dir(http_dir.clone())? {
+  for entry in std::fs::read_dir(&http_dir)? {
     let entry = entry?;
     let pathbuf = entry.path();
     let path = pathbuf.to_str().unwrap();
@@ -37,7 +44,7 @@ pub fn benchmark(
     let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
-    let lua_script = http_dir.join(format!("{}.lua", file_stem));
+    let lua_script = http_dir.join(format!("{file_stem}.lua"));
     let mut maybe_lua = None;
     if lua_script.exists() {
       maybe_lua = Some(lua_script.to_str().unwrap());
@@ -92,6 +99,7 @@ pub fn benchmark(
             "run",
             "--allow-all",
             "--unstable",
+            "--enable-testing-features-do-not-use",
             path,
             &server_addr(port),
           ],
@@ -151,7 +159,7 @@ fn run(
   let wrk = test_util::prebuilt_tool_path("wrk");
   assert!(wrk.is_file());
 
-  let addr = format!("http://127.0.0.1:{}/", port);
+  let addr = format!("http://127.0.0.1:{port}/");
   let mut wrk_cmd =
     vec![wrk.to_str().unwrap(), "-d", DURATION, "--latency", &addr];
 
@@ -165,9 +173,9 @@ fn run(
 
   std::thread::sleep(Duration::from_secs(1)); // wait to capture failure. TODO racy.
 
-  println!("{}", output);
+  println!("{output}");
   assert!(
-    server.try_wait()?.map_or(true, |s| s.success()),
+    server.try_wait()?.map(|s| s.success()).unwrap_or(true),
     "server ended with error"
   );
 
@@ -180,14 +188,14 @@ fn run(
 }
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
-fn get_port() -> u16 {
+pub(crate) fn get_port() -> u16 {
   let p = NEXT_PORT.load(Ordering::SeqCst);
   NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
   p
 }
 
 fn server_addr(port: u16) -> String {
-  format!("0.0.0.0:{}", port)
+  format!("0.0.0.0:{port}")
 }
 
 fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {

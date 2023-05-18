@@ -1,4 +1,5 @@
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::KeyIvInit;
@@ -19,6 +20,7 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::ZeroCopyBuf;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::PaddingScheme;
@@ -28,6 +30,8 @@ use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+
+use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,7 +99,7 @@ pub async fn op_crypto_decrypt(
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

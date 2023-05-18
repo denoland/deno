@@ -1,5 +1,6 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//
 // From https://github.com/just-js/benchmarks/tree/main/01-stdio
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
 
 const blocksize = parseInt(Deno.args[0] || 65536);
 const buf = new Uint8Array(blocksize);

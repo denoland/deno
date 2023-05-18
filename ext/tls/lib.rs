@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub use rustls;
 pub use rustls_native_certs;
@@ -9,17 +9,14 @@ pub use webpki_roots;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::Extension;
 
 use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
-use rustls::client::StoresClientSessions;
 use rustls::client::WebPkiVerifier;
-use rustls::internal::msgs::handshake::DigitallySignedStruct;
 use rustls::Certificate;
 use rustls::ClientConfig;
+use rustls::DigitallySignedStruct;
 use rustls::Error;
 use rustls::PrivateKey;
 use rustls::RootCertStore;
@@ -28,17 +25,22 @@ use rustls_pemfile::certs;
 use rustls_pemfile::pkcs8_private_keys;
 use rustls_pemfile::rsa_private_keys;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-/// This extension has no runtime apis, it only exports some shared native functions.
-pub fn init() -> Extension {
-  Extension::builder().build()
+/// Lazily resolves the root cert store.
+///
+/// This was done because the root cert store is not needed in all cases
+/// and takes a bit of time to initialize.
+pub trait RootCertStoreProvider: Send + Sync {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError>;
 }
+
+// This extension has no runtime apis, it only exports some shared native functions.
+deno_core::extension!(deno_tls);
 
 struct DefaultSignatureVerification;
 
@@ -138,26 +140,6 @@ pub struct Proxy {
 pub struct BasicAuth {
   pub username: String,
   pub password: String,
-}
-
-#[derive(Default)]
-struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
-
-impl StoresClientSessions for ClientSessionMemoryCache {
-  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-    self.0.lock().get(key).cloned()
-  }
-
-  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-    let mut sessions = self.0.lock();
-    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
-    while sessions.len() >= 1024 {
-      let key = sessions.keys().next().unwrap().clone();
-      sessions.remove(&key);
-    }
-    sessions.insert(key, value);
-    true
-  }
 }
 
 pub fn create_default_root_cert_store() -> RootCertStore {
@@ -288,7 +270,7 @@ fn filter_invalid_encoding_err(
   to_be_filtered: Result<HandshakeSignatureValid, Error>,
 ) -> Result<HandshakeSignatureValid, Error> {
   match to_be_filtered {
-    Err(Error::InvalidCertificateEncoding) => {
+    Err(Error::InvalidCertificate(rustls::CertificateError::BadEncoding)) => {
       Ok(HandshakeSignatureValid::assertion())
     }
     res => res,

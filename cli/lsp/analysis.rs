@@ -1,13 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
-use crate::args::LintConfig;
 use crate::tools::lint::create_linter;
-use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -18,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_lint::rules::LintRule;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -29,12 +28,7 @@ use tower_lsp::lsp_types::Range;
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
 static FIX_ALL_ERROR_CODES: Lazy<HashMap<&'static str, &'static str>> =
-  Lazy::new(|| {
-    ([("2339", "2339"), ("2345", "2339")])
-      .iter()
-      .cloned()
-      .collect()
-  });
+  Lazy::new(|| ([("2339", "2339"), ("2345", "2339")]).into_iter().collect());
 
 /// Fixes which help determine if there is a preferred fix when there are
 /// multiple fixes available.
@@ -54,13 +48,12 @@ static PREFERRED_FIXES: Lazy<HashMap<&'static str, (u32, bool)>> =
       ("addMissingAwait", (1, false)),
       ("fixImport", (0, true)),
     ])
-    .iter()
-    .cloned()
+    .into_iter()
     .collect()
   });
 
 static IMPORT_SPECIFIER_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"\sfrom\s+["']([^"']*)["']"#).unwrap());
+  lazy_regex::lazy_regex!(r#"\sfrom\s+["']([^"']*)["']"#);
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[".ts", ".tsx", ".js", ".jsx", ".mjs"];
 
@@ -127,9 +120,8 @@ fn as_lsp_range(range: &deno_lint::diagnostic::Range) -> Range {
 
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
-  maybe_lint_config: Option<&LintConfig>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 
@@ -165,7 +157,7 @@ fn check_specifier(
   documents: &Documents,
 ) -> Option<String> {
   for ext in SUPPORTED_EXTENSIONS {
-    let specifier_with_ext = format!("{}{}", specifier, ext);
+    let specifier_with_ext = format!("{specifier}{ext}");
     if documents.contains_import(&specifier_with_ext, referrer) {
       return Some(specifier_with_ext);
     }
@@ -405,7 +397,7 @@ impl CodeActionCollection {
       specifier.clone(),
       vec![lsp::TextEdit {
         new_text: prepend_whitespace(
-          format!("// deno-lint-ignore {}\n", code),
+          format!("// deno-lint-ignore {code}\n"),
           line_content,
         ),
         range: lsp::Range {
@@ -421,7 +413,7 @@ impl CodeActionCollection {
       }],
     );
     let ignore_error_action = lsp::CodeAction {
-      title: format!("Disable {} for this line", code),
+      title: format!("Disable {code} for this line"),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,
@@ -454,7 +446,7 @@ impl CodeActionCollection {
       })
     });
 
-    let mut new_text = format!("// deno-lint-ignore-file {}\n", code);
+    let mut new_text = format!("// deno-lint-ignore-file {code}\n");
     let mut range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -468,7 +460,7 @@ impl CodeActionCollection {
     // If ignore file comment already exists, append the lint code
     // to the existing comment.
     if let Some(ignore_comment) = maybe_ignore_comment {
-      new_text = format!(" {}", code);
+      new_text = format!(" {code}");
       // Get the end position of the comment.
       let line = maybe_parsed_source
         .unwrap()
@@ -486,7 +478,7 @@ impl CodeActionCollection {
     let mut changes = HashMap::new();
     changes.insert(specifier.clone(), vec![lsp::TextEdit { new_text, range }]);
     let ignore_file_action = lsp::CodeAction {
-      title: format!("Disable {} for the entire file", code),
+      title: format!("Disable {code} for the entire file"),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
       diagnostics: Some(vec![diagnostic.clone()]),
       command: None,

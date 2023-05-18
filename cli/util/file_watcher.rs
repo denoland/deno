@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::colors;
 use crate::util::fs::canonicalize_path;
@@ -74,7 +74,7 @@ where
   if let Err(err) = result {
     let error_string = match err.downcast_ref::<JsError>() {
       Some(e) => format_js_error(e),
-      None => format!("{:?}", err),
+      None => format!("{err:?}"),
     };
     eprintln!(
       "{}: {}",
@@ -107,9 +107,13 @@ where
         log::debug!("File change ignored")
       }
       ResolutionResult::Restart {
-        paths_to_watch,
+        mut paths_to_watch,
         result,
       } => {
+        // watch the current directory when empty
+        if paths_to_watch.is_empty() {
+          paths_to_watch.push(PathBuf::from("."));
+        }
         return (paths_to_watch, result);
       }
     }
@@ -126,7 +130,7 @@ pub struct PrintConfig {
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
     if clear_screen && atty::is(atty::Stream::Stderr) {
-      eprint!("{}", CLEAR_SCREEN);
+      eprint!("{CLEAR_SCREEN}");
     }
     info!(
       "{} File change detected! Restarting!",
@@ -190,9 +194,13 @@ where
       print_after_restart();
     }
     ResolutionResult::Restart {
-      paths_to_watch: paths,
+      paths_to_watch: mut paths,
       result,
     } => {
+      // watch the current directory when empty
+      if paths.is_empty() {
+        paths.push(PathBuf::from("."));
+      }
       paths_to_watch = paths;
       resolution_result = result;
     }
@@ -296,6 +304,13 @@ where
   }
 
   loop {
+    // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+    // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+    // start to fail, this may need to be increased.
+    for _ in 0..10 {
+      tokio::task::yield_now().await;
+    }
+
     let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
@@ -314,13 +329,13 @@ where
         continue;
       },
       _ = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 

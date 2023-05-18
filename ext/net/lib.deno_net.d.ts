@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -37,6 +37,17 @@ declare namespace Deno {
     readonly rid: number;
 
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+
+    /**
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the listener not block the event loop from finishing. */
+    unref(): void;
   }
 
   /** Specialized listener that accepts TLS connections.

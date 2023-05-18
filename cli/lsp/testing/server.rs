@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::collectors::TestCollector;
 use super::definitions::TestDefinitions;
@@ -8,6 +8,7 @@ use super::lsp_custom;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
+use crate::lsp::documents::DocumentsFilter;
 use crate::lsp::language_server::StateSnapshot;
 use crate::lsp::performance::Performance;
 
@@ -92,7 +93,10 @@ impl TestServer {
               // eliminating any we go over when iterating over the document
               let mut keys: HashSet<ModuleSpecifier> =
                 tests.keys().cloned().collect();
-              for document in snapshot.documents.documents(false, true) {
+              for document in snapshot
+                .documents
+                .documents(DocumentsFilter::AllDiagnosable)
+              {
                 let specifier = document.specifier();
                 keys.remove(specifier);
                 let script_version = document.script_version();
@@ -156,7 +160,7 @@ impl TestServer {
                 match run.exec(&client, maybe_root_uri.as_ref()).await {
                   Ok(_) => (),
                   Err(err) => {
-                    client.show_message(lsp::MessageType::ERROR, err).await;
+                    client.show_message(lsp::MessageType::ERROR, err);
                   }
                 }
                 client.send_test_notification(TestingNotification::Progress(

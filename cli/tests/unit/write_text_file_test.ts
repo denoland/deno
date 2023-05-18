@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -196,5 +198,21 @@ Deno.test(
     // append not set should also overwrite
     await Deno.writeTextFile(filename, data);
     assertEquals(Deno.readTextFileSync(filename), "Hello");
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, write: true } },
+  async function writeTextFileStream() {
+    const stream = new ReadableStream({
+      pull(controller) {
+        controller.enqueue("Hello");
+        controller.enqueue("World");
+        controller.close();
+      },
+    });
+    const filename = Deno.makeTempDirSync() + "/test.txt";
+    await Deno.writeTextFile(filename, stream);
+    assertEquals(Deno.readTextFileSync(filename), "HelloWorld");
   },
 );

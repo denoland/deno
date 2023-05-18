@@ -1,11 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // The logic of this module is heavily influenced by
 // https://github.com/microsoft/vscode/blob/main/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts
 // and https://github.com/microsoft/vscode/blob/main/src/vs/workbench/api/common/extHostTypes.ts
 // for the SemanticTokensBuilder implementation.
 
-use std::ops::{Index, IndexMut};
+use std::ops::Index;
+use std::ops::IndexMut;
 use tower_lsp::lsp_types::SemanticToken;
 use tower_lsp::lsp_types::SemanticTokenModifier;
 use tower_lsp::lsp_types::SemanticTokenType;

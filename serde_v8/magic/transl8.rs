@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 //! Transerialization extends the set of serde-compatible types (for given de/serializers).
 //! By "hackishly" transmuting references across serde boundaries as u64s.

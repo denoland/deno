@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::process::Command;
 use test_util::deno_cmd;
@@ -30,16 +30,17 @@ fn napi_tests() {
     .arg("--allow-read")
     .arg("--allow-env")
     .arg("--allow-ffi")
-    .arg("--unstable")
+    .arg("--allow-run")
     .spawn()
     .unwrap()
     .wait_with_output()
     .unwrap();
   let stdout = std::str::from_utf8(&output.stdout).unwrap();
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
+
   if !output.status.success() {
-    println!("stdout {}", stdout);
-    println!("stderr {}", stderr);
+    println!("stdout {stdout}");
+    println!("stderr {stderr}");
   }
   assert!(output.status.success());
 }

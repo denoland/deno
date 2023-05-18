@@ -1,10 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
 mod bindings;
 pub mod error;
 mod error_codes;
 mod extensions;
+mod fast_string;
 mod flags;
 mod gotham_state;
 mod inspector;
@@ -16,10 +17,14 @@ mod ops;
 mod ops_builtin;
 mod ops_builtin_v8;
 mod ops_metrics;
+mod path;
+mod realm;
 mod resources;
 mod runtime;
 pub mod snapshot_util;
 mod source_map;
+pub mod task;
+mod task_queue;
 
 // Re-exports
 pub use anyhow;
@@ -37,6 +42,8 @@ pub use sourcemap;
 pub use url;
 pub use v8;
 
+pub use deno_ops::op;
+
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
 pub use crate::async_cancel::CancelTryFuture;
@@ -52,8 +59,11 @@ pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionBuilder;
+pub use crate::extensions::ExtensionFileSource;
+pub use crate::extensions::ExtensionFileSourceCode;
 pub use crate::extensions::OpDecl;
 pub use crate::extensions::OpMiddlewareFn;
+pub use crate::fast_string::FastString;
 pub use crate::flags::v8_set_flags;
 pub use crate::inspector::InspectorMsg;
 pub use crate::inspector::InspectorMsgKind;
@@ -69,20 +79,20 @@ pub use crate::module_specifier::resolve_url;
 pub use crate::module_specifier::resolve_url_or_path;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
-pub use crate::module_specifier::DUMMY_SPECIFIER;
+pub use crate::modules::ExtModuleLoader;
+pub use crate::modules::ExtModuleLoaderCb;
 pub use crate::modules::FsModuleLoader;
+pub use crate::modules::ModuleCode;
 pub use crate::modules::ModuleId;
 pub use crate::modules::ModuleLoader;
 pub use crate::modules::ModuleSource;
 pub use crate::modules::ModuleSourceFuture;
 pub use crate::modules::ModuleType;
 pub use crate::modules::NoopModuleLoader;
+pub use crate::modules::ResolutionKind;
 pub use crate::normalize_path::normalize_path;
-pub use crate::ops::Op;
-pub use crate::ops::OpAsyncFuture;
 pub use crate::ops::OpCall;
 pub use crate::ops::OpError;
-pub use crate::ops::OpFn;
 pub use crate::ops::OpId;
 pub use crate::ops::OpResult;
 pub use crate::ops::OpState;
@@ -93,6 +103,8 @@ pub use crate::ops_builtin::op_resources;
 pub use crate::ops_builtin::op_void_async;
 pub use crate::ops_builtin::op_void_sync;
 pub use crate::ops_metrics::OpsTracker;
+pub use crate::path::strip_unc_prefix;
+pub use crate::realm::JsRealm;
 pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
@@ -101,7 +113,6 @@ pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::CrossIsolateStore;
 pub use crate::runtime::GetErrorClassFn;
 pub use crate::runtime::JsErrorCreateFn;
-pub use crate::runtime::JsRealm;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::RuntimeOptions;
 pub use crate::runtime::SharedArrayBufferStore;
@@ -109,13 +120,14 @@ pub use crate::runtime::Snapshot;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
 pub use crate::runtime::V8_WRAPPER_TYPE_INDEX;
 pub use crate::source_map::SourceMapGetter;
-pub use deno_ops::op;
+pub use crate::task_queue::TaskQueue;
+pub use crate::task_queue::TaskQueuePermit;
 
 pub fn v8_version() -> &'static str {
   v8::V8::get_version()
 }
 
-/// An internal module re-exporting funcs used by the #[op] (`deno_ops`) macro
+/// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
   pub use super::bindings::throw_type_error;
@@ -123,6 +135,10 @@ pub mod _ops {
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::ops::OpResult;
+  pub use super::runtime::map_async_op1;
+  pub use super::runtime::map_async_op2;
+  pub use super::runtime::map_async_op3;
+  pub use super::runtime::map_async_op4;
   pub use super::runtime::queue_async_op;
   pub use super::runtime::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
@@ -132,22 +148,38 @@ pub mod _ops {
 /// A helper macro that will return a call site in Rust code. Should be
 /// used when executing internal one-line scripts for JsRuntime lifecycle.
 ///
-/// Returns a string in form of: "`[deno:<filename>:<line>:<column>]`"
+/// Returns a string in form of: "`[ext:<filename>:<line>:<column>]`"
 #[macro_export]
 macro_rules! located_script_name {
   () => {
-    format!(
-      "[deno:{}:{}:{}]",
+    concat!(
+      "[ext:",
       std::file!(),
+      ":",
       std::line!(),
-      std::column!()
-    );
+      ":",
+      std::column!(),
+      "]"
+    )
   };
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn located_script_name() {
+    // Note that this test will fail if this file is moved. We don't
+    // test line locations because that's just too brittle.
+    let name = located_script_name!();
+    let expected = if cfg!(windows) {
+      "[ext:core\\lib.rs:"
+    } else {
+      "[ext:core/lib.rs:"
+    };
+    assert_eq!(&name[..expected.len()], expected);
+  }
 
   #[test]
   fn test_v8_version() {

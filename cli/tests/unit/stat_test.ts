@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -298,7 +298,7 @@ Deno.test(
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
-    assert(s.dev === null);
+    assert(s.dev !== 0);
     assert(s.ino === null);
     assert(s.mode === null);
     assert(s.nlink === null);

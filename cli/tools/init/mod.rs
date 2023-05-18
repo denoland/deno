@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::InitFlags;
 use crate::colors;
@@ -18,7 +18,7 @@ fn create_file(
     .write(true)
     .create_new(true)
     .open(dir.join(filename))
-    .with_context(|| format!("Failed to create {} file", filename))?;
+    .with_context(|| format!("Failed to create {filename} file"))?;
   file.write_all(content.as_bytes())?;
   Ok(())
 }
@@ -38,7 +38,7 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   create_file(&dir, "main.ts", main_ts)?;
 
   let main_test_ts = include_str!("./templates/main_test.ts")
-    .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL.as_str());
+    .replace("{CURRENT_STD_URL}", deno_std::CURRENT_STD_URL_STR);
   create_file(&dir, "main_test.ts", &main_test_ts)?;
   let main_bench_ts = include_str!("./templates/main_bench.ts");
   create_file(&dir, "main_bench.ts", main_bench_ts)?;

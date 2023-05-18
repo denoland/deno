@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::serde_json;
@@ -13,8 +13,11 @@ use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
 
+include!("../util/time.rs");
+
 mod http;
 mod lsp;
+mod websocket;
 
 fn read_json(filename: &str) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -189,7 +192,7 @@ fn run_exec_time(
     let ret_code_test = if let Some(code) = return_code {
       // Bash test which asserts the return code value of the previous command
       // $? contains the return code of the previous command
-      format!("; test $? -eq {}", code)
+      format!("; test $? -eq {code}")
     } else {
       "".to_string()
     };
@@ -244,11 +247,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
     if name.starts_with(prefix) && name.ends_with(".rlib") {
       let start = name.split('-').next().unwrap().to_string();
       if seen.contains(&start) {
-        println!("skip {}", name);
+        println!("skip {name}");
       } else {
         seen.insert(start);
         size += entry.metadata().unwrap().len();
-        println!("check size {} {}", name, size);
+        println!("check size {name} {size}");
       }
     }
   }
@@ -256,8 +259,11 @@ fn rlib_size(target_dir: &std::path::Path, prefix: &str) -> i64 {
   size as i64
 }
 
-const BINARY_TARGET_FILES: &[&str] =
-  &["CLI_SNAPSHOT.bin", "COMPILER_SNAPSHOT.bin"];
+const BINARY_TARGET_FILES: &[&str] = &[
+  "CLI_SNAPSHOT.bin",
+  "RUNTIME_SNAPSHOT.bin",
+  "COMPILER_SNAPSHOT.bin",
+];
 fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
   let mut mtimes = HashMap::<String, SystemTime>::new();
@@ -269,11 +275,11 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
   // add up size for everything in target/release/deps/libswc*
   let swc_size = rlib_size(target_dir, "libswc");
-  println!("swc {} bytes", swc_size);
+  println!("swc {swc_size} bytes");
   sizes.insert("swc_rlib".to_string(), swc_size);
 
   let v8_size = rlib_size(target_dir, "libv8");
-  println!("v8 {} bytes", v8_size);
+  println!("v8 {v8_size} bytes");
   sizes.insert("rusty_v8_rlib".to_string(), v8_size);
 
   // Because cargo's OUT_DIR is not predictable, search the build tree for
@@ -314,7 +320,7 @@ fn bundle_benchmark(deno_exe: &Path) -> Result<HashMap<String, i64>> {
   let mut sizes = HashMap::<String, i64>::new();
 
   for (name, url) in BUNDLES {
-    let path = format!("{}.bundle.js", name);
+    let path = format!("{name}.bundle.js");
     test_util::run(
       &[
         deno_exe.to_str().unwrap(),
@@ -374,7 +380,7 @@ fn cargo_deps() -> usize {
       count += 1
     }
   }
-  println!("cargo_deps {}", count);
+  println!("cargo_deps {count}");
   assert!(count > 10); // Sanity check.
   count
 }
@@ -396,6 +402,7 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
+  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -411,6 +418,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -436,8 +444,7 @@ async fn main() -> Result<()> {
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
-    created_at: chrono::Utc::now()
-      .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+    created_at: utc_now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     sha1: test_util::run_collect(
       &["git", "rev-parse", "HEAD"],
       None,
@@ -450,6 +457,11 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
+
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark()?;
+    new_data.ws_msg_per_sec = ws;
+  }
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
@@ -472,7 +484,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"lsp") {
-    let lsp_exec_times = lsp::benchmarks(&deno_exe)?;
+    let lsp_exec_times = lsp::benchmarks(&deno_exe);
     new_data.lsp_exec_time = lsp_exec_times;
   }
 
@@ -498,7 +510,7 @@ async fn main() -> Result<()> {
     let mut syscall_count = HashMap::<String, i64>::new();
 
     for (name, args, expected_exit_code) in EXEC_TIME_BENCHMARKS {
-      let mut file = secure_tempfile::NamedTempFile::new()?;
+      let mut file = tempfile::NamedTempFile::new()?;
 
       let exit_status = Command::new("strace")
         .args([
@@ -520,7 +532,14 @@ async fn main() -> Result<()> {
       file.as_file_mut().read_to_string(&mut output)?;
 
       let strace_result = test_util::parse_strace_output(&output);
-      let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
       let total = strace_result.get("total").unwrap().calls;
       thread_count.insert(name.to_string(), clone as i64);
       syscall_count.insert(name.to_string(), total as i64);

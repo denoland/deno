@@ -1,15 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod urlpattern;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
@@ -17,35 +15,31 @@ use std::path::PathBuf;
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/url",
-      "00_url.js",
-      "01_urlpattern.js",
-    ))
-    .ops(vec![
-      op_url_reparse::decl(),
-      op_url_parse::decl(),
-      op_url_get_serialization::decl(),
-      op_url_parse_with_base::decl(),
-      op_url_parse_search_params::decl(),
-      op_url_stringify_search_params::decl(),
-      op_urlpattern_parse::decl(),
-      op_urlpattern_process_match_input::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_url,
+  deps = [deno_webidl],
+  ops = [
+    op_url_reparse,
+    op_url_parse,
+    op_url_get_serialization,
+    op_url_parse_with_base,
+    op_url_parse_search_params,
+    op_url_stringify_search_params,
+    op_urlpattern_parse,
+    op_urlpattern_process_match_input
+  ],
+  esm = ["00_url.js", "01_urlpattern.js"],
+);
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
 #[op]
 pub fn op_url_parse_with_base(
   state: &mut OpState,
-  href: String,
-  base_href: String,
-  buf: &mut [u8],
+  href: &str,
+  base_href: &str,
+  buf: &mut [u32],
 ) -> u32 {
-  let base_url = match Url::parse(&base_href) {
+  let base_url = match Url::parse(base_href) {
     Ok(url) => url,
     Err(_) => return ParseStatus::Err as u32,
   };
@@ -67,8 +61,8 @@ pub fn op_url_get_serialization(state: &mut OpState) -> String {
 }
 
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
-#[op]
-pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
+#[op(fast)]
+pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
   parse_url(state, href, None, buf)
 }
 
@@ -99,15 +93,14 @@ pub fn op_url_parse(state: &mut OpState, href: String, buf: &mut [u8]) -> u32 {
 #[inline]
 fn parse_url(
   state: &mut OpState,
-  href: String,
+  href: &str,
   base_href: Option<&Url>,
-  buf: &mut [u8],
+  buf: &mut [u32],
 ) -> u32 {
-  match Url::options().base_url(base_href).parse(&href) {
+  match Url::options().base_url(base_href).parse(href) {
     Ok(url) => {
       let inner_url = quirks::internal_components(&url);
 
-      let buf: &mut [u32] = as_u32_slice(buf);
       buf[0] = inner_url.scheme_end;
       buf[1] = inner_url.username_end;
       buf[2] = inner_url.host_start;

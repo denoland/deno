@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-write
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import exports from "../../cli/napi/sym/symbol_exports.json" assert {
   type: "json",

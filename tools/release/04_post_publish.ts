@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run -A --lock=tools/deno.lock.json
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, createOctoKit, getGitHubRepository } from "./deps.ts";
 
@@ -51,13 +51,18 @@ async function forwardReleaseCommitToMain() {
     newBranchName,
     "origin/main",
   ]);
-  await repo.command([
+  const cherryPickResult = await repo.command([
     "git",
     "cherry-pick",
-    "--strategy-option",
-    "theirs",
     releaseCommitHash,
-  ]);
+  ]).noThrow();
+  if (cherryPickResult.code !== 0) {
+    // commit with conflicts that can be resolved in the PR
+    await repo.command("git add .");
+    await repo.command(
+      'git commit --no-verify -m "Cherry-pick version bump commit with conflicts"',
+    ).noThrow();
+  }
   await repo.gitPush("origin", newBranchName);
 
   $.logStep(`Opening PR...`);
@@ -75,7 +80,13 @@ async function forwardReleaseCommitToMain() {
   $.log(`Opened PR at ${openedPr.data.url}`);
 
   function getPrBody() {
-    let text =
+    let text = "";
+
+    if (cherryPickResult.code !== 0) {
+      text += `**THIS PR HAS GIT CONFLICTS THAT MUST BE RESOLVED**\n\n`;
+    }
+
+    text +=
       `This is the release commit being forwarded back to main for ${cliCrate.version}\n\n` +
       `Please ensure:\n` +
       `- [ ] Everything looks ok in the PR\n` +

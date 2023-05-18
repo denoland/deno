@@ -4,7 +4,7 @@ function childProcessFork(path) {
   const p = Deno.run({
     cmd: [Deno.execPath(), "run", "--unstable", "-A", path],
     env: {
-      "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE": Deno.core.ops.op_npm_process_state(),
+      "DENO_DONT_USE_INTERNAL_NODE_COMPAT_STATE": Deno[Deno.internal].core.ops.op_npm_process_state(),
     }
   });
   p.status().then(() => {

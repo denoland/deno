@@ -1,0 +1,13 @@
+error: TS2769 [ERROR]: No overload matches this call.
+  [WILDCARD]
+const _data = fs.readFileSync("./node_builtin.js", 123);
+                                                   ~~~
+    at file:///[WILDCARD]/node_builtin_modules/mod.ts:2:52
+
+TS2322 [ERROR]: Type 'string[]' is not assignable to type 'number[]'.
+  Type 'string' is not assignable to type 'number'.
+const _testString: number[] = builtinModules;
+      ~~~~~~~~~~~
+    at file:///[WILDCARD]/node_builtin_modules/mod.ts:9:7
+
+Found 2 errors.

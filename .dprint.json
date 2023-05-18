@@ -11,7 +11,7 @@
   },
   "exec": {
     "associations": "**/*.rs",
-    "rustfmt": "rustfmt"
+    "rustfmt": "rustfmt --config imports_granularity=item"
   },
   "includes": [
     "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
@@ -21,7 +21,15 @@
     ".git",
     "cli/bench/testdata/express-router.js",
     "cli/bench/testdata/npm/*",
-    "cli/tsc/dts/*.d.ts",
+    "cli/tsc/dts/lib.d.ts",
+    "cli/tsc/dts/lib.scripthost.d.ts",
+    "cli/tsc/dts/lib.decorators*.d.ts",
+    "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/lib.dom*.d.ts",
+    "cli/tsc/dts/lib.es*.d.ts",
+    "cli/tsc/dts/typescript.d.ts",
+    "cli/tests/node_compat/test",
+    "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     "cli/tests/testdata/fmt/badly_formatted.json",
     "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",
@@ -39,14 +47,17 @@
     "test_util/std",
     "test_util/wpt",
     "third_party",
+    "tools/node_compat/TODO.md",
+    "tools/node_compat/node",
     "tools/wpt/expectation.json",
-    "tools/wpt/manifest.json"
+    "tools/wpt/manifest.json",
+    "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.79.0.wasm",
-    "https://plugins.dprint.dev/json-0.17.0.wasm",
-    "https://plugins.dprint.dev/markdown-0.15.1.wasm",
+    "https://plugins.dprint.dev/typescript-0.84.4.wasm",
+    "https://plugins.dprint.dev/json-0.17.2.wasm",
+    "https://plugins.dprint.dev/markdown-0.15.2.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
-    "https://plugins.dprint.dev/exec-0.3.2.json@8efbbb3fcfbdf84142c3c438fbdeaf1637152a020032127c837b2b14e23261c3"
+    "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
   ]
 }

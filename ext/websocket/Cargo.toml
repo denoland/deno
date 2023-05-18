@@ -1,8 +1,8 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_websocket"
-version = "0.87.0"
+version = "0.109.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,11 +14,13 @@ description = "Implementation of WebSocket API for Deno"
 path = "lib.rs"
 
 [dependencies]
+bytes.workspace = true
 deno_core.workspace = true
+deno_net.workspace = true
 deno_tls.workspace = true
+fastwebsockets = { workspace = true, features = ["upgrade"] }
 http.workspace = true
-hyper.workspace = true
+hyper = { workspace = true, features = ["backports"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
-tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }

@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
+use deno_core::task::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
@@ -162,7 +163,7 @@ impl DrawThread {
     internal_state.has_draw_thread = true;
 
     let drawer_id = internal_state.drawer_id;
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let mut previous_size = console_size();
       loop {
         let mut delay_ms = 120;

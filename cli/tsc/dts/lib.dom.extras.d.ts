@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /*
  * This library contains DOM standards that are not currently included in the
@@ -23,7 +23,7 @@ declare type URLPatternInput = string | URLPatternInit;
 
 declare interface URLPatternComponentResult {
   input: string;
-  groups: Record<string, string>;
+  groups: Record<string, string | undefined>;
 }
 
 /** `URLPatternResult` is the object returned from `URLPattern.exec`. */

@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   buildMode,
   getPrebuiltToolPath,
@@ -7,11 +7,33 @@ import {
   join,
   ROOT_PATH,
 } from "./util.js";
+import { checkCopyright } from "./copyright_checker.js";
+
+let didLint = false;
+
+if (Deno.args.includes("--js")) {
+  await dlint();
+  await dlintPreferPrimordials();
+  didLint = true;
+}
+
+if (Deno.args.includes("--rs")) {
+  await clippy();
+  didLint = true;
+}
+
+if (!didLint) {
+  await Promise.all([
+    dlint(),
+    dlintPreferPrimordials(),
+    checkCopyright(),
+    clippy(),
+  ]);
+}
 
 async function dlint() {
   const configFile = join(ROOT_PATH, ".dlint.json");
   const execPath = getPrebuiltToolPath("dlint");
-  console.log("dlint");
 
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
@@ -27,6 +49,7 @@ async function dlint() {
     ":!:cli/tsc/dts/**",
     ":!:cli/tests/testdata/encoding/**",
     ":!:cli/tests/testdata/error_syntax.js",
+    ":!:cli/tests/testdata/file_extensions/ts_with_js_extension.js",
     ":!:cli/tests/testdata/fmt/**",
     ":!:cli/tests/testdata/npm/**",
     ":!:cli/tests/testdata/lint/**",
@@ -42,18 +65,26 @@ async function dlint() {
   }
 
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
+  const pending = [];
   for (const chunk of chunks) {
     const cmd = new Deno.Command(execPath, {
+      cwd: ROOT_PATH,
       args: ["run", "--config=" + configFile, ...chunk],
-      stdout: "inherit",
-      stderr: "inherit",
+      // capture to not conflict with clippy output
+      stderr: "piped",
     });
-    const { code } = await cmd.output();
-
-    if (code > 0) {
-      throw new Error("dlint failed");
-    }
+    pending.push(
+      cmd.output().then(({ stderr, code }) => {
+        if (code > 0) {
+          const decoder = new TextDecoder();
+          console.log("\n------ dlint ------");
+          console.log(decoder.decode(stderr));
+          throw new Error("dlint failed");
+        }
+      }),
+    );
   }
+  await Promise.all(pending);
 }
 
 // `prefer-primordials` has to apply only to files related to bootstrapping,
@@ -61,12 +92,15 @@ async function dlint() {
 // is needed.
 async function dlintPreferPrimordials() {
   const execPath = getPrebuiltToolPath("dlint");
-  console.log("prefer-primordials");
-
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
-    "core/**/*.js",
+    // TODO(petamoriken): enable for node polyfills
+    // "ext/node/polyfills/*.mjs",
+    // "ext/node/polyfills/*.ts",
+    // ":!:ext/node/polyfills/*.d.ts",
+    "core/*.js",
+    ":!:core/*_test.js",
     ":!:core/examples/**",
   ]);
 
@@ -77,6 +111,7 @@ async function dlintPreferPrimordials() {
   const chunks = splitToChunks(sourceFiles, `${execPath} run`.length);
   for (const chunk of chunks) {
     const cmd = new Deno.Command(execPath, {
+      cwd: ROOT_PATH,
       args: ["run", "--rule", "prefer-primordials", ...chunk],
       stdout: "inherit",
       stderr: "inherit",
@@ -106,16 +141,15 @@ function splitToChunks(paths, initCmdLen) {
 }
 
 async function clippy() {
-  console.log("clippy");
-
   const currentBuildMode = buildMode();
-  const cmd = ["clippy", "--all-targets", "--locked"];
+  const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
   if (currentBuildMode != "debug") {
     cmd.push("--release");
   }
 
   const cargoCmd = new Deno.Command("cargo", {
+    cwd: ROOT_PATH,
     args: [
       ...cmd,
       "--",
@@ -131,28 +165,3 @@ async function clippy() {
     throw new Error("clippy failed");
   }
 }
-
-async function main() {
-  await Deno.chdir(ROOT_PATH);
-
-  let didLint = false;
-
-  if (Deno.args.includes("--js")) {
-    await dlint();
-    await dlintPreferPrimordials();
-    didLint = true;
-  }
-
-  if (Deno.args.includes("--rs")) {
-    await clippy();
-    didLint = true;
-  }
-
-  if (!didLint) {
-    await dlint();
-    await dlintPreferPrimordials();
-    await clippy();
-  }
-}
-
-await main();

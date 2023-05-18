@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -8,7 +8,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { copy } from "../../../test_util/std/streams/conversion.ts";
+import { copy } from "../../../test_util/std/streams/copy.ts";
 
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
@@ -574,6 +574,23 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
   file.close();
 });
 
+Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
+  const filename = "cli/tests/testdata/assets/hello.txt";
+  const file = await Deno.open(filename);
+  const seekPosition = 6n;
+  // Deliberately move 1 step forward
+  await file.read(new Uint8Array(1)); // "H"
+  // Skipping "Hello "
+  // seeking from beginning of a file plus seekPosition
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Start);
+  assertEquals(seekPosition, BigInt(cursorPosition));
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+  file.close();
+});
+
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
   const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
@@ -658,7 +675,7 @@ Deno.test({ permissions: { read: true } }, async function seekMode() {
   const file = await Deno.open(filename);
   await assertRejects(
     async () => {
-      await file.seek(1, -1);
+      await file.seek(1, -1 as unknown as Deno.SeekMode);
     },
     TypeError,
     "Invalid seek mode",

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -22,6 +22,25 @@ mod renderer;
 
 // Inspired by Indicatif, but this custom implementation allows
 // for more control over what's going on under the hood.
+
+#[derive(Debug, Clone, Copy)]
+pub enum ProgressMessagePrompt {
+  Download,
+  Blocking,
+  Initialize,
+}
+
+impl ProgressMessagePrompt {
+  pub fn as_text(&self) -> String {
+    match self {
+      ProgressMessagePrompt::Download => colors::green("Download").to_string(),
+      ProgressMessagePrompt::Blocking => colors::cyan("Blocking").to_string(),
+      ProgressMessagePrompt::Initialize => {
+        colors::green("Initialize").to_string()
+      }
+    }
+  }
+}
 
 #[derive(Debug)]
 pub struct UpdateGuard {
@@ -59,6 +78,7 @@ pub enum ProgressBarStyle {
 #[derive(Clone, Debug)]
 struct ProgressBarEntry {
   id: usize,
+  prompt: ProgressMessagePrompt,
   pub message: String,
   pos: Arc<AtomicU64>,
   total_size: Arc<AtomicU64>,
@@ -128,11 +148,16 @@ impl ProgressBarInner {
     }
   }
 
-  pub fn add_entry(&self, message: String) -> ProgressBarEntry {
+  pub fn add_entry(
+    &self,
+    kind: ProgressMessagePrompt,
+    message: String,
+  ) -> ProgressBarEntry {
     let mut internal_state = self.state.lock();
     let id = internal_state.total_entries;
     let entry = ProgressBarEntry {
       id,
+      prompt: kind,
       message,
       pos: Default::default(),
       total_size: Default::default(),
@@ -208,6 +233,7 @@ impl DrawThreadRenderer for ProgressBarInner {
         pending_entries: state.entries.len(),
         total_entries: state.total_entries,
         display_entry: ProgressDataDisplayEntry {
+          prompt: preferred_entry.prompt,
           message: preferred_entry.message.clone(),
           position: preferred_entry.position(),
           total_size: preferred_entry.total_size(),
@@ -229,7 +255,7 @@ impl DrawThreadRenderer for ProgressBarInner {
 
 #[derive(Clone, Debug)]
 pub struct ProgressBar {
-  inner: Option<ProgressBarInner>,
+  inner: ProgressBarInner,
 }
 
 impl ProgressBar {
@@ -240,49 +266,49 @@ impl ProgressBar {
 
   pub fn new(style: ProgressBarStyle) -> Self {
     Self {
-      inner: match Self::are_supported() {
-        true => Some(ProgressBarInner::new(match style {
-          ProgressBarStyle::DownloadBars => {
-            Arc::new(renderer::BarProgressBarRenderer)
-          }
-          ProgressBarStyle::TextOnly => {
-            Arc::new(renderer::TextOnlyProgressBarRenderer)
-          }
-        })),
-        false => None,
-      },
+      inner: ProgressBarInner::new(match style {
+        ProgressBarStyle::DownloadBars => {
+          Arc::new(renderer::BarProgressBarRenderer)
+        }
+        ProgressBarStyle::TextOnly => {
+          Arc::new(renderer::TextOnlyProgressBarRenderer)
+        }
+      }),
     }
   }
 
   pub fn update(&self, msg: &str) -> UpdateGuard {
-    match &self.inner {
-      Some(inner) => {
-        let entry = inner.add_entry(msg.to_string());
-        UpdateGuard {
-          maybe_entry: Some(entry),
-        }
+    self.update_with_prompt(ProgressMessagePrompt::Download, msg)
+  }
+
+  pub fn update_with_prompt(
+    &self,
+    kind: ProgressMessagePrompt,
+    msg: &str,
+  ) -> UpdateGuard {
+    // only check if progress bars are supported once we go
+    // to update so that we lazily initialize the progress bar
+    if ProgressBar::are_supported() {
+      let entry = self.inner.add_entry(kind, msg.to_string());
+      UpdateGuard {
+        maybe_entry: Some(entry),
       }
-      None => {
-        // if we're not running in TTY, fallback to using logger crate
-        if !msg.is_empty() {
-          log::log!(log::Level::Info, "{} {}", colors::green("Download"), msg);
-        }
-        UpdateGuard { maybe_entry: None }
+    } else {
+      // if we're not running in TTY, fallback to using logger crate
+      if !msg.is_empty() {
+        log::log!(log::Level::Info, "{} {}", kind.as_text(), msg);
       }
+      UpdateGuard { maybe_entry: None }
     }
   }
 
   pub fn clear_guard(&self) -> ClearGuard {
-    if let Some(inner) = &self.inner {
-      inner.increment_clear();
-    }
+    self.inner.increment_clear();
     ClearGuard { pb: self.clone() }
   }
 
   fn decrement_clear(&self) {
-    if let Some(inner) = &self.inner {
-      inner.decrement_clear();
-    }
+    self.inner.decrement_clear();
   }
 }
 
