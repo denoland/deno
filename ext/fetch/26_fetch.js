@@ -258,6 +258,7 @@ async function mainFetch(req, recursive, terminator) {
         }
       }
       WeakMapPrototypeDelete(requestBodyReaders, req);
+      reader.releaseLock();
       core.tryClose(requestBodyRid);
     })();
   }
