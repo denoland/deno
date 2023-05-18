@@ -2906,33 +2906,42 @@ Deno.test(
 );
 
 // TODO(mmastrac): This test should eventually use fetch, when we support trailers there.
-Deno.test({ permissions: { net: true, run: true, read: true } }, async function httpServerTrailers() {
-  const ac = new AbortController();
-  const listeningPromise = deferred();
+Deno.test(
+  { permissions: { net: true, run: true, read: true } },
+  async function httpServerTrailers() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
 
-  const server = Deno.serve({
-    handler: async (request, { remoteAddr }) => {
-      let response = new Response("Hello World", { headers: { "trailer": "baz", "transfer-encoding": "chunked", "foo": "bar" } });
-      addTrailers(response, [ ["baz", "why"] ]);
-      return response;
-    },
-    port: 4501,
-    signal: ac.signal,
-    onListen: onListen(listeningPromise),
-    onError: createOnErrorCb(ac),
-  });
+    const server = Deno.serve({
+      handler: async (request, { remoteAddr }) => {
+        let response = new Response("Hello World", {
+          headers: {
+            "trailer": "baz",
+            "transfer-encoding": "chunked",
+            "foo": "bar",
+          },
+        });
+        addTrailers(response, [["baz", "why"]]);
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
 
-  // We don't have a great way to access this right now, so just fetch the trailers with cURL
-  const [stdout, stderr] = await curlRequestWithStdErr([
-    "http://localhost:4501/path",
-    "-v",
-    "--http2",
-    "--http2-prior-knowledge",
-  ]);
-  assertMatch(stderr, /baz: why/);
-  ac.abort();
-  await server;
-});
+    // We don't have a great way to access this right now, so just fetch the trailers with cURL
+    const [stdout, stderr] = await curlRequestWithStdErr([
+      "http://localhost:4501/path",
+      "-v",
+      "--http2",
+      "--http2-prior-knowledge",
+    ]);
+    assertMatch(stderr, /baz: why/);
+    ac.abort();
+    await server;
+  },
+);
 
 Deno.test(
   { permissions: { net: true, run: true, read: true } },
