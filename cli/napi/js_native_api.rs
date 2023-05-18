@@ -200,8 +200,8 @@ fn napi_create_bigint_uint64(
 fn napi_create_bigint_words(
   env: *mut Env,
   sign_bit: bool,
-  words: *const u64,
   word_count: usize,
+  words: *const u64,
   result: *mut napi_value,
 ) -> Result {
   check_env!(env);
@@ -950,12 +950,17 @@ fn napi_get_value_bigint_int64(
   env: *mut Env,
   value: napi_value,
   result: *mut i64,
+  lossless: *mut bool,
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
   let bigint = value.to_big_int(&mut env.scope()).unwrap();
-  *result = bigint.i64_value().0;
+  let (result_, lossless_) = bigint.i64_value();
+  *result = result_;
+  *lossless = lossless_;
+  // TODO(bartlomieju):
+  // napi_clear_last_error()
   Ok(())
 }
 
@@ -964,12 +969,17 @@ fn napi_get_value_bigint_uint64(
   env: *mut Env,
   value: napi_value,
   result: *mut u64,
+  lossless: *mut bool,
 ) -> Result {
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
   let bigint = value.to_big_int(&mut env.scope()).unwrap();
-  *result = bigint.u64_value().0;
+  let (result_, lossless_) = bigint.u64_value();
+  *result = result_;
+  *lossless = lossless_;
+  // TODO(bartlomieju):
+  // napi_clear_last_error()
   Ok(())
 }
 
@@ -978,24 +988,36 @@ fn napi_get_value_bigint_words(
   env: *mut Env,
   value: napi_value,
   sign_bit: *mut i32,
-  size: *mut usize,
-  out_words: *mut u64,
+  word_count: *mut usize,
+  words: *mut u64,
 ) -> Result {
   check_env!(env);
+  // TODO(bartlomieju):
+  // check_arg!(env, value);
+  check_arg!(env, word_count);
   let env = unsafe { &mut *env };
 
   let value = napi_value_unchecked(value);
-  let bigint = value.to_big_int(&mut env.scope()).unwrap();
+  let big = match value.to_big_int(&mut env.scope()) {
+    Some(b) => b,
+    None => return Err(Error::BigIntExpected),
+  };
+  let word_count_int;
 
-  let out_words = std::slice::from_raw_parts_mut(out_words, *size);
-  let mut words = Vec::with_capacity(bigint.word_count());
-  let (sign, _) = bigint.to_words_array(words.as_mut_slice());
-  *sign_bit = sign as i32;
-
-  for (i, word) in out_words.iter_mut().enumerate() {
-    *word = words[i];
+  if sign_bit.is_null() && words.is_null() {
+    word_count_int = big.word_count();
+  } else {
+    check_arg!(env, sign_bit);
+    check_arg!(env, words);
+    let out_words = std::slice::from_raw_parts_mut(words, *word_count);
+    let (sign, slice_) = big.to_words_array(out_words);
+    word_count_int = slice_.len();
+    *sign_bit = sign as i32;
   }
 
+  *word_count = word_count_int;
+  // TODO(bartlomieju):
+  // napi_clear_last_error()
   Ok(())
 }
 

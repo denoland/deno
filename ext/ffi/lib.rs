@@ -2,7 +2,6 @@
 
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::v8;
 use deno_core::OpState;
 
 use std::cell::RefCell;
@@ -10,7 +9,6 @@ use std::mem::size_of;
 use std::os::raw::c_char;
 use std::os::raw::c_short;
 use std::path::Path;
-use std::ptr;
 use std::rc::Rc;
 
 mod call;
@@ -25,6 +23,7 @@ mod turbocall;
 use call::op_ffi_call_nonblocking;
 use call::op_ffi_call_ptr;
 use call::op_ffi_call_ptr_nonblocking;
+use callback::op_ffi_unsafe_callback_close;
 use callback::op_ffi_unsafe_callback_create;
 use callback::op_ffi_unsafe_callback_ref;
 use dlfcn::op_ffi_load;
@@ -42,10 +41,6 @@ const _: () = {
   assert!(size_of::<c_short>() == 2);
   assert!(size_of::<*const ()>() == 8);
 };
-
-thread_local! {
-  static LOCAL_ISOLATE_POINTER: RefCell<*const v8::Isolate> = RefCell::new(ptr::null());
-}
 
 pub(crate) const MAX_SAFE_INTEGER: isize = 9007199254740991;
 pub(crate) const MIN_SAFE_INTEGER: isize = -9007199254740991;
@@ -109,6 +104,7 @@ deno_core::extension!(deno_ffi,
     op_ffi_read_f64<P>,
     op_ffi_read_ptr<P>,
     op_ffi_unsafe_callback_create<P>,
+    op_ffi_unsafe_callback_close,
     op_ffi_unsafe_callback_ref,
   ],
   esm = [ "00_ffi.js" ],

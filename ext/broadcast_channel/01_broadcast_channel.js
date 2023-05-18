@@ -83,12 +83,9 @@ class BroadcastChannel extends EventTarget {
     super();
 
     const prefix = "Failed to construct 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    this[_name] = webidl.converters["DOMString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    this[_name] = webidl.converters["DOMString"](name, prefix, "Argument 1");
 
     this[webidl.brand] = webidl.brand;
 
@@ -106,7 +103,7 @@ class BroadcastChannel extends EventTarget {
     webidl.assertBranded(this, BroadcastChannelPrototype);
 
     const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     if (this[_closed]) {
       throw new DOMException("Already closed", "InvalidStateError");

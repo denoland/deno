@@ -57,7 +57,10 @@ deno_core::extension!(
   deno_os_worker,
   ops_fn = deno_ops,
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" => op.disable(),
+    "op_exit" | "op_set_exit_code" => deno_core::OpDecl {
+      v8_fn_ptr: deno_core::op_void_sync::v8_fn_ptr as _,
+      ..op
+    },
     _ => op,
   },
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
@@ -336,6 +339,7 @@ fn rss() -> usize {
     (out, idx)
   }
 
+  #[allow(clippy::disallowed_methods)]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c

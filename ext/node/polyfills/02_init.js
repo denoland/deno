@@ -34,12 +34,13 @@ function initialize(
   nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
   nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
   nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
+  nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
 
   // add a hidden global for the esm code to use in order to reliably
   // get node's globalThis
   ObjectDefineProperty(globalThis, nodeGlobalThisName, {
     enumerable: false,
-    writable: false,
+    configurable: true,
     value: nodeGlobalThis,
   });
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here

@@ -27,6 +27,13 @@ fn no_snaps() {
 }
 
 #[test]
+fn no_tests() {
+  no_tests_included("foo", "mts");
+  no_tests_included("foo", "ts");
+  no_tests_included("foo", "js");
+}
+
+#[test]
 fn error_if_invalid_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let deno_dir = context.deno_dir();
@@ -265,6 +272,101 @@ fn no_snaps_included(test_name: &str, extension: &str) {
 
   let expected = fs::read_to_string(
     util::testdata_path().join("coverage/no_snaps_included/expected.out"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
+    panic!("pattern match failed");
+  }
+
+  output.assert_exit_code(0);
+}
+
+fn no_tests_included(test_name: &str, extension: &str) {
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/no_tests_included/{test_name}.test.{extension}"),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .split_output()
+    .run();
+
+  // Verify there's no "Check" being printed
+  assert!(output.stderr().is_empty());
+
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/no_tests_included/expected.out"),
+  )
+  .unwrap();
+
+  if !util::wildcard_match(&expected, &actual) {
+    println!("OUTPUT\n{actual}\nOUTPUT");
+    println!("EXPECTED\n{expected}\nEXPECTED");
+    panic!("pattern match failed");
+  }
+
+  output.assert_exit_code(0);
+}
+
+#[test]
+fn no_npm_cache_coverage() {
+  let context = TestContext::default();
+  let tempdir = context.deno_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--allow-read".to_string(),
+      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("coverage/no_npm_coverage/no_npm_coverage_test.ts"),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "coverage".to_string(),
+      format!("{}/", tempdir.to_str().unwrap()),
+    ])
+    .split_output()
+    .run();
+
+  // Verify there's no "Check" being printed
+  assert!(output.stderr().is_empty());
+
+  let actual = util::strip_ansi_codes(output.stdout()).to_string();
+
+  let expected = fs::read_to_string(
+    util::testdata_path().join("coverage/no_npm_coverage/expected.out"),
   )
   .unwrap();
 

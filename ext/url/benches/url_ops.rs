@@ -22,6 +22,7 @@ fn setup() -> Vec<Extension> {
         "#,
         ),
       }])
+      .esm_entry_point("ext:bench_setup/setup")
       .build(),
   ]
 }

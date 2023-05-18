@@ -9,11 +9,11 @@
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIncludes,
-  Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   RegExpPrototypeTest,
+  SafeMap,
   SafeMapIterator,
   StringPrototypeReplaceAll,
   StringPrototypeToLowerCase,
@@ -92,7 +92,7 @@ function parseMimeType(input) {
     type: StringPrototypeToLowerCase(type),
     subtype: StringPrototypeToLowerCase(subtype),
     /** @type {Map<string, string>} */
-    parameters: new Map(),
+    parameters: new SafeMap(),
   };
 
   // 11.
