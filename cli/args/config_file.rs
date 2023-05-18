@@ -1320,8 +1320,7 @@ mod tests {
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, ignored) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, ignored) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
@@ -1506,8 +1505,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
   }
 
@@ -1517,8 +1515,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
   }
 
@@ -1535,24 +1532,17 @@ mod tests {
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
 
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
 
-    let test_config = config_file
-      .to_test_config()
-      .expect("error parsing fmt object")
-      .expect("fmt object should be defined");
+    let test_config = config_file.to_test_config().unwrap().unwrap();
     assert_eq!(test_config.files.include, Vec::<PathBuf>::new());
     assert_eq!(
       test_config.files.exclude,
       vec![PathBuf::from("/deno/npm/"), PathBuf::from("/deno/foo/")]
     );
 
-    let bench_config = config_file
-      .to_bench_config()
-      .expect("error parsing fmt object")
-      .expect("fmt object should be defined");
+    let bench_config = config_file.to_bench_config().unwrap().unwrap();
     assert_eq!(
       bench_config.files.exclude,
       vec![PathBuf::from("/deno/foo/")]
@@ -1568,30 +1558,20 @@ mod tests {
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
 
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
 
     let empty_include = Vec::<PathBuf>::new();
 
-    let files_config = config_file
-      .to_files_config()
-      .expect("error parsing files object")
-      .expect("files object should be defined");
+    let files_config = config_file.to_files_config().unwrap().unwrap();
     assert_eq!(files_config.include, empty_include);
     assert_eq!(files_config.exclude, vec![PathBuf::from("/deno/npm/")]);
 
-    let lint_config = config_file
-      .to_lint_config()
-      .expect("error parsing lint object")
-      .expect("lint object should be defined");
+    let lint_config = config_file.to_lint_config().unwrap().unwrap();
     assert_eq!(lint_config.files.include, empty_include);
     assert_eq!(lint_config.files.exclude, vec![PathBuf::from("/deno/npm/")]);
 
-    let fmt_config = config_file
-      .to_fmt_config()
-      .expect("error parsing fmt object")
-      .expect("fmt object should be defined");
+    let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
     assert_eq!(fmt_config.files.include, empty_include);
     assert_eq!(fmt_config.files.exclude, vec![PathBuf::from("/deno/npm/")],);
   }
