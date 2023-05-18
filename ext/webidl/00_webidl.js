@@ -948,10 +948,12 @@ function createRecordConverter(keyConverter, valueConverter) {
 
 function createPromiseConverter(converter) {
   return (V, prefix, context, opts) =>
-    PromisePrototypeThen(
-      PromiseResolve(V),
-      (V) => converter(V, prefix, context, opts),
-    );
+    // should be able to handle thenables
+    // see: https://github.com/web-platform-tests/wpt/blob/a31d3ba53a79412793642366f3816c9a63f0cf57/streams/writable-streams/close.any.js#L207
+    typeof V?.then === "function"
+      ? PromisePrototypeThen(PromiseResolve(V), (V) =>
+        converter(V, prefix, context, opts))
+      : PromiseResolve(converter(V, prefix, context, opts));
 }
 
 function invokeCallbackFunction(

@@ -132,6 +132,7 @@ import zlib from "ext:deno_node/zlib.ts";
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
 
+// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfill.rs`
 function setupBuiltinModules() {
   const nodeModules = {
     "_http_agent": _httpAgent,
@@ -907,7 +908,7 @@ Module.prototype.require = function (id) {
 Module.wrapper = [
   // We provide the non-standard APIs in the CommonJS wrapper
   // to avoid exposing them in global namespace.
-  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout} = globalThis; var window = undefined; (function () {",
+  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance} = globalThis; var window = undefined; (function () {",
   "\n}).call(this); })",
 ];
 Module.wrap = function (script) {
@@ -1106,6 +1107,11 @@ Module._initPaths = function () {
 
 Module.syncBuiltinESMExports = function syncBuiltinESMExports() {
   throw new Error("not implemented");
+};
+
+// Mostly used by tools like ts-node.
+Module.runMain = function () {
+  Module._load(process.argv[1], null, true);
 };
 
 Module.Module = Module;

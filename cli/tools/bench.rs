@@ -27,11 +27,13 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_v8;
+use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -436,7 +438,7 @@ async fn check_specifiers(
 
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
-  worker_factory: &CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   sender: UnboundedSender<BenchEvent>,
@@ -522,15 +524,15 @@ async fn bench_specifiers(
     let specifier = specifier;
     let sender = sender.clone();
     let options = option_for_handles.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let future = bench_specifier(
-        &worker_factory,
+        worker_factory,
         permissions,
         specifier,
         sender,
         options.filter,
       );
-      run_local(future)
+      create_and_run_current_thread(future)
     })
   });
 
@@ -539,7 +541,7 @@ async fn bench_specifiers(
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = {
-    tokio::task::spawn(async move {
+    spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
       let mut reporter =

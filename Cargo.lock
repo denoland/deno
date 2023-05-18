@@ -176,6 +176,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-compression"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b0122885821398cc923ece939e24d1056a2384ee719432397fa9db87230ff11"
+dependencies = [
+ "brotli",
+ "flate2",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -696,7 +710,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
-version = "1.33.2"
+version = "1.33.4"
 dependencies = [
  "async-trait",
  "atty",
@@ -819,7 +833,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.97.0"
+version = "0.99.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -829,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.97.0"
+version = "0.99.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -839,7 +853,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.35.0"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -851,14 +865,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.103.0"
+version = "0.105.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.185.0"
+version = "0.187.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -883,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.117.0"
+version = "0.119.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -951,7 +965,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.127.0"
+version = "0.129.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -968,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.90.0"
+version = "0.92.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -983,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.13.0"
+version = "0.15.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1023,9 +1037,10 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.98.0"
+version = "0.100.0"
 dependencies = [
- "async-compression",
+ "async-compression 0.3.15",
+ "async-trait",
  "base64 0.13.1",
  "bencher",
  "brotli",
@@ -1046,6 +1061,7 @@ dependencies = [
  "percent-encoding",
  "phf",
  "pin-project",
+ "rand",
  "ring",
  "serde",
  "slab",
@@ -1056,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.13.0"
+version = "0.15.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1070,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1101,9 +1117,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e88b89dc19bc7b0c28297c9fde36dc999a04c19b6d01ff061ae30dc9119488c8"
+checksum = "54cecfa877ecd31bb7f694826a2b6566ff77515f527bddae296aff455e6999c2"
 dependencies = [
  "ring",
  "serde",
@@ -1124,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.33.0"
+version = "0.35.0"
 dependencies = [
  "deno_core",
  "libloading",
@@ -1132,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.95.0"
+version = "0.97.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1147,12 +1163,13 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.40.0"
+version = "0.42.0"
 dependencies = [
  "aes",
  "cbc",
  "data-encoding",
  "deno_core",
+ "deno_fetch",
  "deno_fs",
  "deno_media_type",
  "deno_npm",
@@ -1181,6 +1198,7 @@ dependencies = [
  "pbkdf2",
  "rand",
  "regex",
+ "reqwest",
  "ring",
  "ripemd",
  "rsa",
@@ -1199,9 +1217,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab571ab55247090bb78bc0466fdf01bd331c98e9e2c4a236bfa93479d906c5c"
+checksum = "007cdc59079448de7af94510f7e9652bc6f17e9029741b26f3754f86a3cc2dd0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1210,14 +1228,13 @@ dependencies = [
  "log",
  "monch",
  "once_cell",
- "parking_lot 0.12.1",
  "serde",
  "thiserror",
 ]
 
 [[package]]
 name = "deno_ops"
-version = "0.63.0"
+version = "0.65.0"
 dependencies = [
  "lazy-regex",
  "once_cell",
@@ -1235,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.111.0"
+version = "0.113.0"
 dependencies = [
  "atty",
  "console_static_text",
@@ -1301,12 +1318,13 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15deca0c59b55353c4a26c0259dd271c21eb72af106271c6459fd551c5f7bdef"
+checksum = "5fc7ee9db8e2094ace8b1c318b6c83533bc923524f9a5425846fb0e2cd4731a7"
 dependencies = [
  "anyhow",
  "futures",
+ "glob",
  "monch",
  "os_pipe",
  "path-dedot",
@@ -1316,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.90.0"
+version = "0.92.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1330,7 +1348,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.103.0"
+version = "0.105.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1342,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.134.0"
+version = "0.136.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1356,11 +1374,12 @@ dependencies = [
  "serde",
  "tokio",
  "uuid",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "deno_webidl"
-version = "0.103.0"
+version = "0.105.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1368,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.108.0"
+version = "0.110.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -1384,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.98.0"
+version = "0.100.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -2396,9 +2415,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.23.2"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
+checksum = "0646026eb1b3eea4cd9ba47912ea5ce9cc07713d105b1a14698f4e6433d348b7"
 dependencies = [
  "http",
  "hyper 0.14.26",
@@ -2965,9 +2984,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1120c1ab92ab8cdacb3b89ac9a214f512d2e78e90e3b57c00d9551ced19f646f"
+checksum = "bb73e1dc7d232e1ab47ef27f45fa1d173a0979b370e763a9d0584556011150e0"
 
 [[package]]
 name = "napi-build"
@@ -2986,7 +3005,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.33.0"
+version = "0.35.0"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
@@ -3771,11 +3790,11 @@ checksum = "4bf2521270932c3c7bed1a59151222bd7643c79310f2916f01925e1e16255698"
 
 [[package]]
 name = "reqwest"
-version = "0.11.14"
+version = "0.11.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21eed90ec8570952d53b772ecf8f206aa1ec9a3d76b2521c56c42973f2d91ee9"
+checksum = "cde824a14b7c14f85caff81225f411faacc04a2013f41670f41443742b1c1c55"
 dependencies = [
- "async-compression",
+ "async-compression 0.4.0",
  "base64 0.21.0",
  "bytes",
  "encoding_rs",
@@ -3951,14 +3970,14 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.20.8"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fff78fc74d175294f4e83b28343315ffcfb114b156f0185e9741cb5570f50e2f"
+checksum = "07180898a28ed6a7f7ba2311594308f595e3dd2e3c3812fa0a80a47b45f17e5d"
 dependencies = [
  "log",
  "ring",
+ "rustls-webpki",
  "sct",
- "webpki",
 ]
 
 [[package]]
@@ -3980,6 +3999,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d194b56d58803a43635bdc398cd17e383d6f71f9182b9a192c127ca42494a59b"
 dependencies = [
  "base64 0.21.0",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.100.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6207cd5ed3d8dca7816f8f3725513a34609c0c765bf652b8c3cb4cfd87db46b"
+dependencies = [
+ "ring",
+ "untrusted",
 ]
 
 [[package]]
@@ -4255,7 +4284,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.96.0"
+version = "0.98.0"
 dependencies = [
  "bencher",
  "bytes",
@@ -5117,22 +5146,22 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.38"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a9cd18aa97d5c45c6603caea1da6628790b37f7a34b6ca89522331c5180fed0"
+checksum = "978c9a314bd8dc99be594bc3c175faaa9794be04a5a5e153caba6915336cebac"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.38"
+version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fb327af4685e4d03fa8cbcf1716380da910eeb2bb8be417e7f9fd3fb164f36f"
+checksum = "f9456a42c5b0d803c8cd86e73dd7cc9edd429499f37a3550d286d5e86720569f"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.13",
 ]
 
 [[package]]
@@ -5199,14 +5228,13 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.25.0"
+version = "1.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8e00990ebabbe4c14c08aca901caed183ecd5c09562a12c824bb53d3c3fd3af"
+checksum = "0aa32867d44e6f2ce3385e89dceb990188b8bb0fb25b0cf576647a6f98ac5105"
 dependencies = [
  "autocfg",
  "bytes",
  "libc",
- "memchr",
  "mio",
  "num_cpus",
  "parking_lot 0.12.1",
@@ -5214,29 +5242,28 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
- "windows-sys 0.42.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "tokio-macros"
-version = "1.8.2"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d266c00fde287f55d3f1c3e96c500c362a2b8c695076ec180f27918820bc6df8"
+checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.13",
 ]
 
 [[package]]
 name = "tokio-rustls"
-version = "0.23.4"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c43ee83903113e03984cb9e5cebe6c04a5116269e900e3ddba8f068a62adda59"
+checksum = "e0d409377ff5b1e3ca6437aa86c1eb7d40c134bfec254e44c830defa92669db5"
 dependencies = [
  "rustls",
  "tokio",
- "webpki",
 ]
 
 [[package]]
@@ -5703,9 +5730,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "0.71.0"
+version = "0.71.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51a173a437bebab13d587a4aaf0a1e7a49433226538c9a78ca3b4ce3b8c6aeb6"
+checksum = "1a4bbfd886a9c2f87170438c0cdb6b1ddbfe80412ab591c83d24c7e48e487313"
 dependencies = [
  "bitflags 1.3.2",
  "fslock",
@@ -5947,13 +5974,13 @@ version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
 dependencies = [
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
+ "windows_aarch64_gnullvm 0.42.2",
+ "windows_aarch64_msvc 0.42.2",
+ "windows_i686_gnu 0.42.2",
+ "windows_i686_msvc 0.42.2",
+ "windows_x86_64_gnu 0.42.2",
+ "windows_x86_64_gnullvm 0.42.2",
+ "windows_x86_64_msvc 0.42.2",
 ]
 
 [[package]]
@@ -5962,7 +5989,16 @@ version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75283be5efb2831d37ea142365f009c02ec203cd29a3ebecbc093d52315b66d0"
 dependencies = [
- "windows-targets",
+ "windows-targets 0.42.2",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
+dependencies = [
+ "windows-targets 0.48.0",
 ]
 
 [[package]]
@@ -5971,13 +6007,28 @@ version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e5180c00cd44c9b1c88adb3693291f1cd93605ded80c250a75d472756b4d071"
 dependencies = [
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
+ "windows_aarch64_gnullvm 0.42.2",
+ "windows_aarch64_msvc 0.42.2",
+ "windows_i686_gnu 0.42.2",
+ "windows_i686_msvc 0.42.2",
+ "windows_x86_64_gnu 0.42.2",
+ "windows_x86_64_gnullvm 0.42.2",
+ "windows_x86_64_msvc 0.42.2",
+]
+
+[[package]]
+name = "windows-targets"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b1eb6f0cd7c80c79759c929114ef071b87354ce476d9d94271031c0497adfd5"
+dependencies = [
+ "windows_aarch64_gnullvm 0.48.0",
+ "windows_aarch64_msvc 0.48.0",
+ "windows_i686_gnu 0.48.0",
+ "windows_i686_msvc 0.48.0",
+ "windows_x86_64_gnu 0.48.0",
+ "windows_x86_64_gnullvm 0.48.0",
+ "windows_x86_64_msvc 0.48.0",
 ]
 
 [[package]]
@@ -5987,10 +6038,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "597a5118570b68bc08d8d59125332c54f1ba9d9adeedeef5b99b02ba2b0698f8"
 
 [[package]]
+name = "windows_aarch64_gnullvm"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91ae572e1b79dba883e0d315474df7305d12f569b400fcf90581b06062f7e1bc"
+
+[[package]]
 name = "windows_aarch64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e08e8864a60f06ef0d0ff4ba04124db8b0fb3be5776a5cd47641e942e58c4d43"
+
+[[package]]
+name = "windows_aarch64_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ef27e0d7bdfcfc7b868b317c1d32c641a6fe4629c171b8928c7b08d98d7cf3"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -5999,10 +6062,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61d927d8da41da96a81f029489353e68739737d3beca43145c8afec9a31a84f"
 
 [[package]]
+name = "windows_i686_gnu"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622a1962a7db830d6fd0a69683c80a18fda201879f0f447f065a3b7467daa241"
+
+[[package]]
 name = "windows_i686_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44d840b6ec649f480a41c8d80f9c65108b92d89345dd94027bfe06ac444d1060"
+
+[[package]]
+name = "windows_i686_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4542c6e364ce21bf45d69fdd2a8e455fa38d316158cfd43b3ac1c5b1b19f8e00"
 
 [[package]]
 name = "windows_x86_64_gnu"
@@ -6011,16 +6086,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8de912b8b8feb55c064867cf047dda097f92d51efad5b491dfb98f6bbb70cb36"
 
 [[package]]
+name = "windows_x86_64_gnu"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca2b8a661f7628cbd23440e50b05d705db3686f894fc9580820623656af974b1"
+
+[[package]]
 name = "windows_x86_64_gnullvm"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26d41b46a36d453748aedef1486d5c7a85db22e56aff34643984ea85514e94a3"
 
 [[package]]
+name = "windows_x86_64_gnullvm"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7896dbc1f41e08872e9d5e8f8baa8fdd2677f29468c4e156210174edc7f7b953"
+
+[[package]]
 name = "windows_x86_64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
+
+[[package]]
+name = "windows_x86_64_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a515f5799fe4961cb532f983ce2b23082366b898e52ffbce459c86f67c8378a"
 
 [[package]]
 name = "winnow"

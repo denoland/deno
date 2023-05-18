@@ -14,6 +14,8 @@ use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -28,21 +30,27 @@ use super::common::NpmPackageFsResolver;
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
+  fs: Arc<dyn FileSystem>,
   cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
   registry_url: Url,
+  system_info: NpmSystemInfo,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
+    fs: Arc<dyn FileSystem>,
     cache: Arc<NpmCache>,
     registry_url: Url,
     resolution: Arc<NpmResolution>,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      fs,
       cache,
       resolution,
       registry_url,
+      system_info,
     }
   }
 
@@ -121,7 +129,26 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    cache_packages_in_resolver(self).await
+    let package_partitions = self
+      .resolution
+      .all_system_packages_partitioned(&self.system_info);
+
+    cache_packages(
+      package_partitions.packages,
+      &self.cache,
+      &self.registry_url,
+    )
+    .await?;
+
+    // create the copy package folders
+    for copy in package_partitions.copy_packages {
+      self.cache.ensure_copy_package(
+        &copy.get_package_cache_folder_id(),
+        &self.registry_url,
+      )?;
+    }
+
+    Ok(())
   }
 
   fn ensure_read_permission(
@@ -130,29 +157,6 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(permissions, &registry_path, path)
+    ensure_registry_read_permission(&self.fs, permissions, &registry_path, path)
   }
-}
-
-async fn cache_packages_in_resolver(
-  resolver: &GlobalNpmPackageResolver,
-) -> Result<(), AnyError> {
-  let package_partitions = resolver.resolution.all_packages_partitioned();
-
-  cache_packages(
-    package_partitions.packages,
-    &resolver.cache,
-    &resolver.registry_url,
-  )
-  .await?;
-
-  // create the copy package folders
-  for copy in package_partitions.copy_packages {
-    resolver.cache.ensure_copy_package(
-      &copy.get_package_cache_folder_id(),
-      &resolver.registry_url,
-    )?;
-  }
-
-  Ok(())
 }

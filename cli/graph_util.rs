@@ -345,10 +345,10 @@ pub fn error_for_any_npm_specifier(
   for module in graph.modules() {
     match module {
       Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
       Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
+        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
       }
       Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
     }

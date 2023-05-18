@@ -10,6 +10,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::task::spawn_blocking;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -103,7 +104,7 @@ deno_core::extension!(deno_crypto,
     x25519::op_crypto_export_spki_x25519,
     x25519::op_crypto_export_pkcs8_x25519,
   ],
-  esm = [ "00_crypto.js", "01_webidl.js" ],
+  esm = [ "00_crypto.js" ],
   options = {
     maybe_seed: Option<u64>,
   },
@@ -601,7 +602,7 @@ pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let output = tokio::task::spawn_blocking(move || {
+  let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()

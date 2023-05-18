@@ -3,6 +3,7 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
+use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
@@ -93,11 +94,18 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
+  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+}
+
+pub fn canonicalize_path_maybe_not_exists_with_fs(
+  path: &Path,
+  canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
+) -> Result<PathBuf, Error> {
   let path = path.to_path_buf().clean();
   let mut path = path.as_path();
   let mut names_stack = Vec::new();
   loop {
-    match canonicalize_path(path) {
+    match canonicalize(path) {
       Ok(mut canonicalized_path) => {
         for name in names_stack.into_iter().rev() {
           canonicalized_path = canonicalized_path.join(name);
@@ -496,7 +504,7 @@ impl LaxSingleProcessFsFlag {
               // This uses a blocking task because we use a single threaded
               // runtime and this is time sensitive so we don't want it to update
               // at the whims of of whatever is occurring on the runtime thread.
-              tokio::task::spawn_blocking({
+              spawn_blocking({
                 let token = token.clone();
                 let last_updated_path = last_updated_path.clone();
                 move || {

@@ -20,6 +20,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -68,7 +69,6 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::task::spawn_local;
 
 use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
@@ -81,11 +81,19 @@ mod reader_stream;
 mod request_body;
 mod request_properties;
 mod response_body;
+mod slab;
 mod websocket_upgrade;
+
+pub use request_properties::DefaultHttpPropertyExtractor;
+pub use request_properties::HttpConnectionProperties;
+pub use request_properties::HttpListenProperties;
+pub use request_properties::HttpPropertyExtractor;
+pub use request_properties::HttpRequestProperties;
 
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  parameters = [ HTTP: HttpPropertyExtractor ],
   ops = [
     op_http_accept,
     op_http_headers,
@@ -97,10 +105,10 @@ deno_core::extension!(
     op_http_write,
     http_next::op_http_get_request_header,
     http_next::op_http_get_request_headers,
-    http_next::op_http_get_request_method_and_url,
+    http_next::op_http_get_request_method_and_url<HTTP>,
     http_next::op_http_read_request_body,
-    http_next::op_http_serve_on,
-    http_next::op_http_serve,
+    http_next::op_http_serve_on<HTTP>,
+    http_next::op_http_serve<HTTP>,
     http_next::op_http_set_promise_complete,
     http_next::op_http_set_response_body_bytes,
     http_next::op_http_set_response_body_resource,
@@ -109,8 +117,8 @@ deno_core::extension!(
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
     http_next::op_http_track,
+    http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
-    http_next::op_http_upgrade_next,
     http_next::op_http_wait,
   ],
   esm = ["00_serve.js", "01_http.js"],
@@ -177,7 +185,7 @@ impl HttpConnResource {
     };
     let (task_fut, closed_fut) = task_fut.remote_handle();
     let closed_fut = closed_fut.shared();
-    spawn_local(task_fut);
+    spawn(task_fut);
 
     Self {
       addr,
@@ -998,7 +1006,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    deno_core::task::spawn(fut);
   }
 }
 
@@ -1008,7 +1016,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    deno_core::task::spawn(fut);
   }
 }
 

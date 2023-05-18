@@ -170,6 +170,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_dh_generate_group,
     ops::crypto::op_node_dh_generate_group_async,
     ops::crypto::op_node_dh_generate,
+    ops::crypto::op_node_dh_generate2,
+    ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_dh_generate_async,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_random_int,
@@ -204,6 +206,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
+    ops::http::op_node_http_request,
     op_node_build_os,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -487,6 +490,8 @@ pub fn initialize_runtime(
         usesLocalNodeModulesDir,
         argv0
       );
+      // Make the nodeGlobalThisName unconfigurable here.
+      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
     }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );

@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file
-
 import { assertMatch } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
@@ -15,7 +13,6 @@ import {
   deferred,
   fail,
 } from "./test_util.ts";
-import { consoleSize } from "../../../runtime/js/40_tty.js";
 
 const {
   upgradeHttpRaw,
@@ -151,7 +148,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
 
 Deno.test({ permissions: { net: true } }, async function httpServerOnError() {
   const ac = new AbortController();
-  const promise = deferred();
   const listeningPromise = deferred();
   let requestStash: Request | null;
 
@@ -184,8 +180,10 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerOnErrorFails() {
     const ac = new AbortController();
-    const promise = deferred();
     const listeningPromise = deferred();
+    // NOTE(bartlomieju): deno lint doesn't know that it's actually used later,
+    // but TypeScript can't see that either ¯\_(ツ)_/¯
+    // deno-lint-ignore no-unused-vars
     let requestStash: Request | null;
 
     const server = Deno.serve({
@@ -406,7 +404,7 @@ function createUrlTest(
     const urlPromise = deferred();
     const ac = new AbortController();
     const server = Deno.serve({
-      handler: async (request: Request) => {
+      handler: (request: Request) => {
         urlPromise.resolve(request.url);
         return new Response("");
       },
@@ -557,7 +555,7 @@ function createStreamTest(count: number, delay: number, action: string) {
     }
   }
 
-  function makeStream(count: number, delay: number): ReadableStream {
+  function makeStream(_count: number, delay: number): ReadableStream {
     return new ReadableStream({
       start(controller) {
         if (delay == 0) {
@@ -573,7 +571,7 @@ function createStreamTest(count: number, delay: number, action: string) {
     const ac = new AbortController();
     const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (_request) => {
         return new Response(makeStream(count, delay));
       },
       port: 4501,
@@ -603,8 +601,8 @@ function createStreamTest(count: number, delay: number, action: string) {
   });
 }
 
-for (let count of [0, 1, 2, 3]) {
-  for (let delay of [0, 1, 1000]) {
+for (const count of [0, 1, 2, 3]) {
+  for (const delay of [0, 1, 1000]) {
     // Creating a stream that errors in start will throw
     if (delay > 0) {
       createStreamTest(count, delay, "Throw");
@@ -661,6 +659,38 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   await listeningPromise;
   const client = await Deno.connect({ port: 4501 });
   client.close();
+  ac.abort();
+  await server;
+});
+
+// https://github.com/denoland/deno/issues/15427
+Deno.test({ permissions: { net: true } }, async function httpServerCloseGet() {
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+  const requestPromise = deferred();
+  const responsePromise = deferred();
+  const server = Deno.serve({
+    handler: async () => {
+      requestPromise.resolve();
+      await new Promise((r) => setTimeout(r, 500));
+      responsePromise.resolve();
+      return new Response("ok");
+    },
+    port: 4501,
+    signal: ac.signal,
+    onListen: onListen(listeningPromise),
+    onError: createOnErrorCb(ac),
+  });
+  await listeningPromise;
+  const conn = await Deno.connect({ port: 4501 });
+  const encoder = new TextEncoder();
+  const body =
+    `GET / HTTP/1.1\r\nHost: example.domain\r\nConnection: close\r\n\r\n`;
+  const writeResult = await conn.write(encoder.encode(body));
+  assertEquals(body.length, writeResult);
+  await requestPromise;
+  conn.close();
+  await responsePromise;
   ac.abort();
   await server;
 });
@@ -772,7 +802,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const ac = new AbortController();
   const listeningPromise = deferred();
   const server = Deno.serve({
-    handler: async (request) => {
+    handler: (request) => {
       const {
         response,
         socket,
@@ -894,7 +924,7 @@ Deno.test(
     const ac = new AbortController();
     const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         const {
           response,
           socket,
@@ -945,7 +975,7 @@ Deno.test(
     const ac = new AbortController();
     const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         const {
           response,
           socket,
@@ -980,7 +1010,7 @@ Deno.test(
     const ac = new AbortController();
     const listeningPromise = deferred();
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         const {
           response,
           socket,
@@ -989,7 +1019,7 @@ Deno.test(
           console.error(e);
           fail();
         };
-        socket.onmessage = (m) => {
+        socket.onmessage = (_m) => {
           socket.send(request.url.toString());
           socket.close(1001);
         };
@@ -1027,7 +1057,7 @@ Deno.test(
 
     let headers: Headers;
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         headers = request.headers;
         promise.resolve();
         return new Response("");
@@ -1322,7 +1352,7 @@ Deno.test(
     await clientConn.read(buf);
 
     await promise;
-    let responseText = new TextDecoder("iso-8859-1").decode(buf);
+    const responseText = new TextDecoder("iso-8859-1").decode(buf);
     clientConn.close();
 
     ac.abort();
@@ -1425,41 +1455,6 @@ Deno.test(
   },
 );
 
-Deno.test(
-  { permissions: { net: true, write: true, read: true } },
-  async function httpServerCorrectSizeResponse() {
-    const promise = deferred();
-    const listeningPromise = deferred();
-    const ac = new AbortController();
-
-    const tmpFile = await Deno.makeTempFile();
-    const file = await Deno.open(tmpFile, { write: true, read: true });
-    await file.write(new Uint8Array(70 * 1024).fill(1)); // 70kb sent in 64kb + 6kb chunks
-    file.close();
-
-    const server = Deno.serve({
-      handler: async (request) => {
-        const f = await Deno.open(tmpFile, { read: true });
-        promise.resolve();
-        return new Response(f.readable);
-      },
-      port: 4503,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
-
-    await listeningPromise;
-    const resp = await fetch("http://127.0.0.1:4503/");
-    await promise;
-    const body = await resp.arrayBuffer();
-
-    assertEquals(body.byteLength, 70 * 1024);
-    ac.abort();
-    await server;
-  },
-);
-
 // https://github.com/denoland/deno/issues/12741
 // https://github.com/denoland/deno/pull/12746
 // https://github.com/denoland/deno/pull/12798
@@ -1509,7 +1504,7 @@ Deno.test(
     const ac = new AbortController();
 
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         assertEquals(request.body, null);
         promise.resolve();
         return new Response(new Uint8Array([128]));
@@ -1545,7 +1540,7 @@ Deno.test(
     const ac = new AbortController();
 
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         assertEquals(request.method, "GET");
         assertEquals(request.headers.get("host"), "deno.land");
         promise.resolve();
@@ -1579,7 +1574,7 @@ Deno.test(
     const ac = new AbortController();
 
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         assertEquals(request.method, "GET");
         assertEquals(request.headers.get("server"), "hello\tworld");
         promise.resolve();
@@ -1678,13 +1673,14 @@ Deno.test(
 
 type TestCase = {
   headers?: Record<string, string>;
+  // deno-lint-ignore no-explicit-any
   body: any;
-  expects_chunked?: boolean;
-  expects_con_len?: boolean;
+  expectsChunked?: boolean;
+  expectsConnLen?: boolean;
 };
 
 function hasHeader(msg: string, name: string): boolean {
-  let n = msg.indexOf("\r\n\r\n") || msg.length;
+  const n = msg.indexOf("\r\n\r\n") || msg.length;
   return msg.slice(0, n).includes(name);
 }
 
@@ -1695,7 +1691,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     const listeningPromise = deferred();
 
     const server = Deno.serve({
-      handler: async (request) => {
+      handler: (request) => {
         assertEquals(request.method, "GET");
         promise.resolve();
         return new Response(testCase.body, testCase.headers ?? {});
@@ -1726,23 +1722,23 @@ function createServerLengthTest(name: string, testCase: TestCase) {
       msg += decoder.decode(buf.subarray(0, readResult));
       try {
         assert(
-          testCase.expects_chunked == hasHeader(msg, "Transfer-Encoding:"),
+          testCase.expectsChunked == hasHeader(msg, "Transfer-Encoding:"),
         );
-        assert(testCase.expects_chunked == hasHeader(msg, "chunked"));
-        assert(testCase.expects_con_len == hasHeader(msg, "Content-Length:"));
+        assert(testCase.expectsChunked == hasHeader(msg, "chunked"));
+        assert(testCase.expectsConnLen == hasHeader(msg, "Content-Length:"));
 
         const n = msg.indexOf("\r\n\r\n") + 4;
 
-        if (testCase.expects_chunked) {
+        if (testCase.expectsChunked) {
           assertEquals(msg.slice(n + 1, n + 3), "\r\n");
           assertEquals(msg.slice(msg.length - 7), "\r\n0\r\n\r\n");
         }
 
-        if (testCase.expects_con_len && typeof testCase.body === "string") {
+        if (testCase.expectsConnLen && typeof testCase.body === "string") {
           assertEquals(msg.slice(n), testCase.body);
         }
         break;
-      } catch (e) {
+      } catch {
         continue;
       }
     }
@@ -1763,60 +1759,60 @@ function stream(s: string): ReadableStream<Uint8Array> {
 createServerLengthTest("fixedResponseKnown", {
   headers: { "content-length": "11" },
   body: "foo bar baz",
-  expects_chunked: false,
-  expects_con_len: true,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("fixedResponseUnknown", {
   headers: { "content-length": "11" },
   body: stream("foo bar baz"),
-  expects_chunked: true,
-  expects_con_len: false,
+  expectsChunked: true,
+  expectsConnLen: false,
 });
 
 createServerLengthTest("fixedResponseKnownEmpty", {
   headers: { "content-length": "0" },
   body: "",
-  expects_chunked: false,
-  expects_con_len: true,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("chunkedRespondKnown", {
   headers: { "transfer-encoding": "chunked" },
   body: "foo bar baz",
-  expects_chunked: false,
-  expects_con_len: true,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("chunkedRespondUnknown", {
   headers: { "transfer-encoding": "chunked" },
   body: stream("foo bar baz"),
-  expects_chunked: true,
-  expects_con_len: false,
+  expectsChunked: true,
+  expectsConnLen: false,
 });
 
 createServerLengthTest("autoResponseWithKnownLength", {
   body: "foo bar baz",
-  expects_chunked: false,
-  expects_con_len: true,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("autoResponseWithUnknownLength", {
   body: stream("foo bar baz"),
-  expects_chunked: true,
-  expects_con_len: false,
+  expectsChunked: true,
+  expectsConnLen: false,
 });
 
 createServerLengthTest("autoResponseWithKnownLengthEmpty", {
   body: "",
-  expects_chunked: false,
-  expects_con_len: true,
+  expectsChunked: false,
+  expectsConnLen: true,
 });
 
 createServerLengthTest("autoResponseWithUnknownLengthEmpty", {
   body: stream(""),
-  expects_chunked: true,
-  expects_con_len: false,
+  expectsChunked: true,
+  expectsConnLen: false,
 });
 
 Deno.test(
@@ -2012,38 +2008,147 @@ Deno.test(
   },
 );
 
-Deno.test(
-  { permissions: { net: true, write: true, read: true } },
-  async function httpServerSendFile() {
-    const promise = deferred();
-    const ac = new AbortController();
-    const listeningPromise = deferred();
-    const tmpFile = await Deno.makeTempFile();
-    const file = await Deno.open(tmpFile, { write: true, read: true });
-    const data = new Uint8Array(70 * 1024).fill(1);
-    await file.write(data);
-    file.close();
-    const server = Deno.serve({
-      handler: async () => {
-        const f = await Deno.open(tmpFile, { read: true });
-        promise.resolve();
-        return new Response(f.readable, { status: 200 });
-      },
-      port: 4503,
-      signal: ac.signal,
-      onListen: onListen(listeningPromise),
-      onError: createOnErrorCb(ac),
-    });
+function makeTempData(size: number) {
+  return new Uint8Array(size).fill(1);
+}
 
-    await listeningPromise;
-    const response = await fetch(`http://localhost:4503/`);
-    assertEquals(response.status, 200);
-    await promise;
-    assertEquals(new Uint8Array(await response.arrayBuffer()), data);
-    ac.abort();
-    await server;
+async function makeTempFile(size: number) {
+  const tmpFile = await Deno.makeTempFile();
+  const file = await Deno.open(tmpFile, { write: true, read: true });
+  const data = makeTempData(size);
+  await file.write(data);
+  file.close();
+
+  return await Deno.open(tmpFile, { write: true, read: true });
+}
+
+const compressionTestCases = [
+  { name: "Empty", length: 0, in: {}, out: {}, expect: null },
+  {
+    name: "EmptyAcceptGzip",
+    length: 0,
+    in: { "Accept-Encoding": "gzip" },
+    out: {},
+    expect: null,
   },
-);
+  // This technically would be compressible if not for the size, however the size_hint is not implemented
+  // for FileResource and we don't currently peek ahead on resources.
+  // {
+  //   name: "EmptyAcceptGzip2",
+  //   length: 0,
+  //   in: { "Accept-Encoding": "gzip" },
+  //   out: { "Content-Type": "text/plain" },
+  //   expect: null,
+  // },
+  { name: "Uncompressible", length: 1024, in: {}, out: {}, expect: null },
+  {
+    name: "UncompressibleAcceptGzip",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: {},
+    expect: null,
+  },
+  {
+    name: "UncompressibleType",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/fake" },
+    expect: null,
+  },
+  {
+    name: "CompressibleType",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain" },
+    expect: "gzip",
+  },
+  {
+    name: "CompressibleType2",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip, deflate, br" },
+    out: { "Content-Type": "text/plain" },
+    expect: "gzip",
+  },
+  {
+    name: "UncompressibleRange",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Content-Range": "1" },
+    expect: null,
+  },
+  {
+    name: "UncompressibleCE",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Content-Encoding": "random" },
+    expect: null,
+  },
+  {
+    name: "UncompressibleCC",
+    length: 1024,
+    in: { "Accept-Encoding": "gzip" },
+    out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
+    expect: null,
+  },
+];
+
+for (const testCase of compressionTestCases) {
+  const name = `httpServerCompression${testCase.name}`;
+  Deno.test(
+    { permissions: { net: true, write: true, read: true } },
+    {
+      [name]: async function () {
+        const promise = deferred();
+        const ac = new AbortController();
+        const listeningPromise = deferred();
+        const server = Deno.serve({
+          handler: async (_request) => {
+            const f = await makeTempFile(testCase.length);
+            promise.resolve();
+            // deno-lint-ignore no-explicit-any
+            const headers = testCase.out as any;
+            headers["Content-Length"] = testCase.length.toString();
+            return new Response(f.readable, {
+              headers: headers as HeadersInit,
+            });
+          },
+          port: 4503,
+          signal: ac.signal,
+          onListen: onListen(listeningPromise),
+          onError: createOnErrorCb(ac),
+        });
+        try {
+          await listeningPromise;
+          const resp = await fetch("http://127.0.0.1:4503/", {
+            headers: testCase.in as HeadersInit,
+          });
+          await promise;
+          const body = await resp.arrayBuffer();
+          if (testCase.expect == null) {
+            assertEquals(body.byteLength, testCase.length);
+            assertEquals(
+              resp.headers.get("content-length"),
+              testCase.length.toString(),
+            );
+            assertEquals(
+              resp.headers.get("content-encoding"),
+              testCase.out["Content-Encoding"] || null,
+            );
+          } else if (testCase.expect == "gzip") {
+            // Note the fetch will transparently decompress this response, BUT we can detect that a response
+            // was compressed by the lack of a content length.
+            assertEquals(body.byteLength, testCase.length);
+            assertEquals(resp.headers.get("content-encoding"), null);
+            assertEquals(resp.headers.get("content-length"), null);
+          }
+        } finally {
+          ac.abort();
+          await server;
+        }
+      },
+    }[name],
+  );
+}
 
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
@@ -2052,15 +2157,12 @@ Deno.test(
     const ac = new AbortController();
     const listeningPromise = deferred();
 
-    const tmpFile = await Deno.makeTempFile();
-    const file = await Deno.open(tmpFile, { write: true, read: true });
-    const data = new Uint8Array(70 * 1024).fill(1);
-    await file.write(data);
-    file.close();
-
     const server = Deno.serve({
       handler: async (request) => {
-        assertEquals(new Uint8Array(await request.arrayBuffer()), data);
+        assertEquals(
+          new Uint8Array(await request.arrayBuffer()),
+          makeTempData(70 * 1024),
+        );
         promise.resolve();
         return new Response("ok");
       },
@@ -2071,7 +2173,7 @@ Deno.test(
     });
 
     await listeningPromise;
-    const f = await Deno.open(tmpFile, { write: true, read: true });
+    const f = await makeTempFile(70 * 1024);
     const response = await fetch(`http://localhost:4503/`, {
       method: "POST",
       body: f.readable,
@@ -2450,7 +2552,7 @@ Deno.test(
     let reqCount = -1;
     let timerId: number | undefined;
     const server = Deno.serve({
-      handler: async (req) => {
+      handler: (_req) => {
         reqCount++;
         if (reqCount === 0) {
           const msg = new TextEncoder().encode("data: hello\r\n\r\n");
