@@ -1843,14 +1843,8 @@
       "bad-buffers-and-views.any.worker.html": true,
       "construct-byob-request.any.html": true,
       "construct-byob-request.any.worker.html": true,
-      "general.any.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
-      ],
-      "general.any.worker.html": [
-        "ReadableStream with byte source: Respond to multiple pull() by separate enqueue()",
-        "ReadableStream with byte source: enqueue() discards auto-allocated BYOB request"
-      ],
+      "general.any.html": true,
+      "general.any.worker.html": true,
       "non-transferable-buffers.any.html": true,
       "non-transferable-buffers.any.worker.html": true,
       "enqueue-with-detached-buffer.window.html": false,
@@ -1862,10 +1856,7 @@
       "enqueue-with-detached-buffer.any.worker.html": true
     },
     "readable-streams": {
-      "async-iterator.any.html": [
-        "next() that succeeds; return()",
-        "next() that succeeds; return() [no awaiting]"
-      ],
+      "async-iterator.any.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sources.any.html": true,
@@ -1892,10 +1883,7 @@
       "tee.any.worker.html": true,
       "templated.any.html": true,
       "templated.any.worker.html": true,
-      "async-iterator.any.worker.html": [
-        "next() that succeeds; return()",
-        "next() that succeeds; return() [no awaiting]"
-      ],
+      "async-iterator.any.worker.html": true,
       "cross-realm-crash.window.html": false
     },
     "transform-streams": {
@@ -1929,12 +1917,8 @@
       "bad-underlying-sinks.any.worker.html": true,
       "byte-length-queuing-strategy.any.html": true,
       "byte-length-queuing-strategy.any.worker.html": true,
-      "close.any.html": [
-        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
-      ],
-      "close.any.worker.html": [
-        "when close is called on a WritableStream in waiting state, ready should be fulfilled immediately even if close takes a long time"
-      ],
+      "close.any.html": true,
+      "close.any.worker.html": true,
       "constructor.any.html": true,
       "constructor.any.worker.html": true,
       "count-queuing-strategy.any.html": true,
