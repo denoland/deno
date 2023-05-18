@@ -1856,10 +1856,7 @@
       "enqueue-with-detached-buffer.any.worker.html": true
     },
     "readable-streams": {
-      "async-iterator.any.html": [
-        "next() that succeeds; return()",
-        "next() that succeeds; return() [no awaiting]"
-      ],
+      "async-iterator.any.html": true,
       "bad-strategies.any.html": true,
       "bad-strategies.any.worker.html": true,
       "bad-underlying-sources.any.html": true,
@@ -1886,10 +1883,7 @@
       "tee.any.worker.html": true,
       "templated.any.html": true,
       "templated.any.worker.html": true,
-      "async-iterator.any.worker.html": [
-        "next() that succeeds; return()",
-        "next() that succeeds; return() [no awaiting]"
-      ],
+      "async-iterator.any.worker.html": true,
       "cross-realm-crash.window.html": false
     },
     "transform-streams": {
