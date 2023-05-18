@@ -215,13 +215,12 @@ impl MainWorker {
       CreateCache(Arc::new(create_cache_fn))
     });
 
-
     fn dynamic<F>(
       name: &str,
     ) -> F {
-      let lib_path = format!("target/debug/deps/lib{}.dylib", name);
+      let lib_path = format!("target/debug/lib{}.dylib", name);
       let lib = dlopen::raw::Library::open(lib_path).unwrap();
-      let fn_name = format!("init_{}", name);
+      let fn_name = format!("dyn_init_{}", name);
       let f = unsafe {
         lib.symbol(&fn_name).unwrap()
       };
@@ -229,7 +228,10 @@ impl MainWorker {
       f
     }
 
-    let ws = dynamic::<deno_websocket::deno_websocket>("deno_websocket");
+    let ws = dynamic::<
+     fn() -> *mut deno_websocket::deno_websocket
+    >("deno_websocket");
+    let ws = unsafe { &mut *ws() };
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!

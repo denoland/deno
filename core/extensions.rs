@@ -193,6 +193,7 @@ macro_rules! extension {
     $(, state = $state_fn:expr )?
     $(, event_loop_middleware = $event_loop_middleware_fn:ident )?
     $(, customizer = $customizer_fn:expr )?
+    $(, dynamic = $symbol:ident )?
     $(,)?
   ) => {
     /// Extension struct for
@@ -320,7 +321,22 @@ macro_rules! extension {
         ext.take()
       }
     }
+
+    $crate::extension!(! __dyn__ $ ( $symbol )? $ ( config = { $( $options_id : $options_type ),* } )? );
   };
+
+  (! __dyn__ $name: ident $sym:ident config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+    #[allow(dead_core)]
+      #[no_mangle]
+      pub fn $sym ( $( $options_id : $options_type ),* ) -> $crate::Extension {
+        $name::init_ops ( $( $options_id , )* )
+      }
+  };
+
+  (! __dyn__ config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  };
+
+  (! __dyn__ ) => {};
 
   // This branch of the macro generates a config object that calls the state function with itself.
   (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } $( state_fn = $state_fn:expr )? ) => {

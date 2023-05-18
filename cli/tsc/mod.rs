@@ -760,7 +760,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     })
     .collect();
 
-  deno_core::extension!(deno_cli_tsc,
+  deno_core::extension!(deno_cli_tsc2,
     ops_fn = deno_ops,
     options = {
       request: Request,
@@ -796,7 +796,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![deno_cli_tsc::init_ops(
+    extensions: vec![deno_cli_tsc2::init_ops(
       request,
       root_map,
       remapped_specifiers,

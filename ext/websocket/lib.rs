@@ -99,19 +99,13 @@ impl Resource for WsCancelResource {
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
 #[op]
-pub fn op_ws_check_permission_and_cancel_handle<WP>(
+pub fn op_ws_check_permission_and_cancel_handle(
   state: &mut OpState,
   api_name: String,
   url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
-where
-  WP: WebSocketPermissions + 'static,
 {
-  state
-    .borrow_mut::<WP>()
-    .check_net_url(&url::Url::parse(&url)?, &api_name)?;
-
   if cancel_handle {
     let rid = state
       .resource_table
@@ -158,7 +152,7 @@ async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
 }
 
 #[op]
-pub async fn op_ws_create<WP>(
+pub async fn op_ws_create(
   state: Rc<RefCell<OpState>>,
   api_name: String,
   url: String,
@@ -166,18 +160,7 @@ pub async fn op_ws_create<WP>(
   cancel_handle: Option<ResourceId>,
   headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
-where
-  WP: WebSocketPermissions + 'static,
 {
-  {
-    let mut s = state.borrow_mut();
-    s.borrow_mut::<WP>()
-      .check_net_url(&url::Url::parse(&url)?, &api_name)
-      .expect(
-        "Permission check should have been done in op_ws_check_permission",
-      );
-  }
-
   let cancel_resource = if let Some(cancel_rid) = cancel_handle {
     let r = state
       .borrow_mut()
@@ -524,10 +507,9 @@ pub async fn op_ws_next_event(
 
 deno_core::extension!(deno_websocket,
   deps = [ deno_url, deno_webidl ],
-  parameters = [P: WebSocketPermissions],
   ops = [
-    op_ws_check_permission_and_cancel_handle<P>,
-    op_ws_create<P>,
+    op_ws_check_permission_and_cancel_handle,
+    op_ws_create,
     op_ws_close,
     op_ws_next_event,
     op_ws_send_binary,
@@ -549,6 +531,7 @@ deno_core::extension!(deno_websocket,
     ));
     state.put::<WsRootStoreProvider>(WsRootStoreProvider(options.root_cert_store_provider));
   },
+  dynamic = dyn_init_deno_websocket,
 );
 
 pub fn get_declaration() -> PathBuf {
