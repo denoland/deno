@@ -4,6 +4,7 @@
 
 const core = globalThis.Deno.core;
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Response } from "ext:deno_fetch/23_response.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import {
   _normalizeArgs,

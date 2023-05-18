@@ -41,7 +41,8 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
-import { TcpConn } from "ext:deno_net/01_net.js";
+import { listen, TcpConn } from "ext:deno_net/01_net.js";
+import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
@@ -637,13 +638,13 @@ function serve(arg1, arg2) {
     listenOpts.cert = options.cert;
     listenOpts.key = options.key;
     listenOpts.alpnProtocols = ["h2", "http/1.1"];
-    const listener = Deno.listenTls(listenOpts);
+    const listener = listenTls(listenOpts);
     listenOpts.port = listener.addr.port;
     context.initialize(op_http_serve(
       listener.rid,
     ));
   } else {
-    const listener = Deno.listen(listenOpts);
+    const listener = listen(listenOpts);
     listenOpts.port = listener.addr.port;
     context.initialize(op_http_serve(
       listener.rid,

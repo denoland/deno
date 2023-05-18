@@ -24,6 +24,7 @@ import {
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import * as denoTls from "ext:deno_net/02_tls.js";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -136,7 +137,10 @@ export class TLSSocket extends net.Socket {
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
         try {
-          const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          const conn = await denoTls.startTls(
+            handle[kStreamBaseField],
+            options,
+          );
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
           handle[kStreamBaseField] = conn;
@@ -242,7 +246,9 @@ export class ServerImpl extends EventEmitter {
     // TODO(kt3k): The default host should be "localhost"
     const hostname = this.options.host ?? "0.0.0.0";
 
-    this.listener = Deno.listenTls({ port, hostname, cert, key });
+    this.listener = denoTls.listenTls(
+      { port, hostname, cert, key } as any,
+    ) as unknown as Deno.TlsListener;
 
     callback?.call(this);
     this.#listen(this.listener);

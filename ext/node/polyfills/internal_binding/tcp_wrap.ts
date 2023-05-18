@@ -24,6 +24,8 @@
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.h
 
+import { errors } from "ext:runtime/01_errors.js";
+import { connect, listen } from "ext:deno_net/01_net.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -206,13 +208,13 @@ export class TCP extends ConnectionWrap {
     let listener;
 
     try {
-      listener = Deno.listen(listenOptions);
+      listener = listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
+      if (e instanceof errors.AddrInUse) {
         return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
+      } else if (e instanceof errors.AddrNotAvailable) {
         return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      } else if (e instanceof errors.PermissionDenied) {
         throw e;
       }
 
@@ -367,7 +369,7 @@ export class TCP extends ConnectionWrap {
       transport: "tcp",
     };
 
-    Deno.connect(connectOptions).then(
+    connect(connectOptions).then(
       (conn: Deno.Conn) => {
         // Incorrect / backwards, but correcting the local address and port with
         // what was actually used given we can't actually specify these in Deno.
@@ -432,7 +434,7 @@ export class TCP extends ConnectionWrap {
     try {
       connection = await this.#listener.accept();
     } catch (e) {
-      if (e instanceof Deno.errors.BadResource && this.#closed) {
+      if (e instanceof errors.BadResource && this.#closed) {
         // Listener and server has closed.
         return;
       }

@@ -42,6 +42,7 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
+import { connect, listen } from "ext:deno_net/01_net.js";
 
 export enum socketType {
   SOCKET,
@@ -140,7 +141,7 @@ export class Pipe extends ConnectionWrap {
       transport: "unix",
     };
 
-    Deno.connect(connectOptions).then(
+    connect(connectOptions).then(
       (conn: Deno.UnixConn) => {
         const localAddr = conn.localAddr as Deno.UnixAddr;
 
@@ -199,7 +200,7 @@ export class Pipe extends ConnectionWrap {
     let listener;
 
     try {
-      listener = Deno.listen(listenOptions);
+      listener = listen(listenOptions);
     } catch (e) {
       if (e instanceof Deno.errors.AddrInUse) {
         return codeMap.get("EADDRINUSE")!;

@@ -35,6 +35,7 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import { isIP } from "ext:deno_node/internal/net.ts";
 import * as net from "ext:deno_net/01_net.js";
+import { errors } from "ext:runtime/01_errors.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
@@ -328,11 +329,11 @@ export class UDP extends HandleWrap {
     try {
       listener = DenoListenDatagram(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
+      if (e instanceof errors.AddrInUse) {
         return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
+      } else if (e instanceof errors.AddrNotAvailable) {
         return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      } else if (e instanceof errors.PermissionDenied) {
         throw e;
       }
 
@@ -403,7 +404,7 @@ export class UDP extends HandleWrap {
         sent = await this.#listener!.send(payload, addr);
       } catch (e) {
         // TODO(cmorten): map errors to appropriate error codes.
-        if (e instanceof Deno.errors.BadResource) {
+        if (e instanceof errors.BadResource) {
           err = codeMap.get("EBADF")!;
         } else if (
           e instanceof Error &&
@@ -450,8 +451,8 @@ export class UDP extends HandleWrap {
     } catch (e) {
       // TODO(cmorten): map errors to appropriate error codes.
       if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
+        e instanceof errors.Interrupted ||
+        e instanceof errors.BadResource
       ) {
         nread = 0;
       } else {

@@ -35,6 +35,7 @@ import {
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
+import { resolveDns } from "ext:deno_net/01_net.js";
 
 interface LookupAddress {
   address: string;
@@ -83,9 +84,11 @@ export function getaddrinfo(
   (async () => {
     await Promise.allSettled(
       recordTypes.map((recordType) =>
-        Deno.resolveDns(hostname, recordType).then((records) => {
-          records.forEach((record) => addresses.push(record));
-        })
+        (resolveDns as typeof Deno.resolveDns)(hostname, recordType).then(
+          (records) => {
+            records.forEach((record) => addresses.push(record));
+          },
+        )
       ),
     );
 
@@ -236,7 +239,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     let code = 0;
 
     try {
-      ret = await Deno.resolveDns(query, recordType, resolveOptions);
+      ret = await resolveDns(query, recordType, resolveOptions);
     } catch (e) {
       if (e instanceof Deno.errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
