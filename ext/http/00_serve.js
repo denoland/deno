@@ -60,6 +60,7 @@ const {
   op_http_set_response_body_text,
   op_http_set_response_header,
   op_http_set_response_headers,
+  op_http_set_response_trailers,
   op_http_upgrade_raw,
   op_http_upgrade_websocket_next,
   op_http_wait,
@@ -75,6 +76,7 @@ const {
   "op_http_set_response_body_text",
   "op_http_set_response_header",
   "op_http_set_response_headers",
+  "op_http_set_response_trailers",
   "op_http_upgrade_raw",
   "op_http_upgrade_websocket_next",
   "op_http_wait",
@@ -123,6 +125,11 @@ function upgradeHttpRaw(req, conn) {
     return inner._wantsUpgrade("upgradeHttpRaw", conn);
   }
   throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+}
+
+function addTrailers(resp, headerList) {
+  const inner = toInnerResponse(resp);
+  op_http_set_response_trailers(inner.slabId, headerList);
 }
 
 class InnerRequest {
@@ -682,6 +689,7 @@ async function serve(arg1, arg2) {
   }
 }
 
+internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 
 export { serve, upgradeHttpRaw };
