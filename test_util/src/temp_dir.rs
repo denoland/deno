@@ -58,6 +58,10 @@ impl TempDir {
     fs::create_dir_all(self.path().join(path)).unwrap();
   }
 
+  pub fn remove_dir_all(&self, path: impl AsRef<Path>) {
+    fs::remove_dir_all(self.path().join(path)).unwrap();
+  }
+
   pub fn read_to_string(&self, path: impl AsRef<Path>) -> String {
     let file_path = self.path().join(path);
     fs::read_to_string(&file_path)

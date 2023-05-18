@@ -10,7 +10,6 @@ const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
-  Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
@@ -19,6 +18,7 @@ const {
   PromiseReject,
   ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   SymbolFor,
   TypeError,
@@ -113,7 +113,7 @@ class PermissionStatus extends EventTarget {
 }
 
 /** @type {Map<string, StatusCacheValue>} */
-const statusCache = new Map();
+const statusCache = new SafeMap();
 
 /**
  * @param {Deno.PermissionDescriptor} desc

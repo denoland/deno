@@ -2,21 +2,16 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 import { setExitHandler } from "ext:runtime/30_os.js";
-import { Console } from "ext:deno_console/02_console.js";
+import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  ArrayFrom,
   ArrayPrototypeFilter,
   ArrayPrototypeJoin,
-  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
-  ArrayPrototypeSort,
-  BigInt,
   DateNow,
   Error,
   FunctionPrototype,
@@ -26,7 +21,7 @@ const {
   MapPrototypeSet,
   MathCeil,
   ObjectKeys,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Promise,
   SafeArrayIterator,
@@ -36,6 +31,7 @@ const {
 } = primordials;
 
 const opSanitizerDelayResolveQueue = [];
+let hasSetOpSanitizerDelayMacrotask = false;
 
 // Even if every resource is closed by the end of a test, there can be a delay
 // until the pending ops have all finished. This function returns a promise
@@ -47,6 +43,10 @@ const opSanitizerDelayResolveQueue = [];
 // before that, though, in order to give time for worker message ops to finish
 // (since timeouts of 0 don't queue tasks in the timer queue immediately).
 function opSanitizerDelay() {
+  if (!hasSetOpSanitizerDelayMacrotask) {
+    core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
+    hasSetOpSanitizerDelayMacrotask = true;
+  }
   return new Promise((resolve) => {
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
@@ -83,8 +83,8 @@ const OP_DETAILS = {
   "op_dns_resolve": ["resolve a DNS name", "awaiting the result of a `Deno.resolveDns` call"],
   "op_fdatasync_async": ["flush pending data operations for a file to disk", "awaiting the result of a `Deno.fdatasync` call"],
   "op_fetch_send": ["send a HTTP request", "awaiting the result of a `fetch` call"],
-  "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"] ,
-  "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call",  "awaiting the returned promise"],
+  "op_ffi_call_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
+  "op_ffi_call_ptr_nonblocking": ["do a non blocking ffi call", "awaiting the returned promise"],
   "op_flock_async": ["lock a file", "awaiting the result of a `Deno.flock` call"],
   "op_fs_events_poll": ["get the next file system event", "breaking out of a for await loop looping over `Deno.FsEvents`"],
   "op_fstat_async": ["get file metadata", "awaiting the result of a `Deno.File#fstat` call"],
@@ -124,11 +124,14 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_worker_recv_message":  ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_worker_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
-  "op_ws_send": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_text": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_binary": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_ping": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
+  "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
 // Wrap test function in additional assertion that makes sure
@@ -163,7 +166,7 @@ function assertOps(fn) {
 
     const details = [];
     for (const key in post.ops) {
-      if (!ObjectPrototypeHasOwnProperty(post.ops, key)) {
+      if (!ObjectHasOwn(post.ops, key)) {
         continue;
       }
       const preOp = pre.ops[key] ??
@@ -415,9 +418,28 @@ function assertExit(fn, isTest) {
   };
 }
 
-function assertTestStepScopes(fn) {
+function wrapOuter(fn, desc) {
+  return async function outerWrapped() {
+    try {
+      if (desc.ignore) {
+        return "ignored";
+      }
+      return await fn(desc) ?? "ok";
+    } catch (error) {
+      return { failed: { jsError: core.destructureError(error) } };
+    } finally {
+      const state = MapPrototypeGet(testStates, desc.id);
+      for (const childDesc of state.children) {
+        stepReportResult(childDesc, { failed: "incomplete" }, 0);
+      }
+      state.completed = true;
+    }
+  };
+}
+
+function wrapInner(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
-  return async function testStepSanitizer(desc) {
+  return async function innerWrapped(desc) {
     function getRunningStepDescs() {
       const results = [];
       let childDesc = desc;
@@ -458,11 +480,17 @@ function assertTestStepScopes(fn) {
       };
     }
     await fn(MapPrototypeGet(testStates, desc.id).context);
+    let failedSteps = 0;
     for (const childDesc of MapPrototypeGet(testStates, desc.id).children) {
-      if (!MapPrototypeGet(testStates, childDesc.id).completed) {
+      const state = MapPrototypeGet(testStates, childDesc.id);
+      if (!state.completed) {
         return { failed: "incompleteSteps" };
       }
+      if (state.failed) {
+        failedSteps++;
+      }
     }
+    return failedSteps == 0 ? null : { failed: { failedSteps } };
   };
 }
 
@@ -481,7 +509,7 @@ function withPermissions(fn, permissions) {
     const token = pledgePermissions(permissions);
 
     try {
-      await fn(...new SafeArrayIterator(params));
+      return await fn(...new SafeArrayIterator(params));
     } finally {
       restorePermissions(token);
     }
@@ -495,7 +523,6 @@ function withPermissions(fn, permissions) {
  *   fn: TestFunction
  *   origin: string,
  *   location: TestLocation,
- *   filteredOut: boolean,
  *   ignore: boolean,
  *   only: boolean.
  *   sanitizeOps: boolean,
@@ -538,7 +565,6 @@ function withPermissions(fn, permissions) {
  *   name: string,
  *   fn: BenchFunction
  *   origin: string,
- *   filteredOut: boolean,
  *   ignore: boolean,
  *   only: boolean.
  *   sanitizeExit: boolean,
@@ -546,14 +572,8 @@ function withPermissions(fn, permissions) {
  * }} BenchDescription
  */
 
-/** @type {TestDescription[]} */
-const testDescs = [];
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
-/** @type {BenchDescription[]} */
-const benchDescs = [];
-let isTestSubcommand = false;
-let isBenchSubcommand = false;
 
 // Main test function provided by Deno.
 function test(
@@ -561,7 +581,7 @@ function test(
   optionsOrFn,
   maybeFn,
 ) {
-  if (!isTestSubcommand) {
+  if (typeof ops.op_register_test != "function") {
     return;
   }
 
@@ -647,19 +667,17 @@ function test(
 
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
-  testDesc.origin = getTestOrigin();
   const jsError = core.destructureError(new Error());
   testDesc.location = {
     fileName: jsError.frames[1].fileName,
     lineNumber: jsError.frames[1].lineNumber,
     columnNumber: jsError.frames[1].columnNumber,
   };
+  testDesc.fn = wrapTest(testDesc);
 
-  const { id, filteredOut } = ops.op_register_test(testDesc);
+  const { id, origin } = ops.op_register_test(testDesc);
   testDesc.id = id;
-  testDesc.filteredOut = filteredOut;
-
-  ArrayPrototypePush(testDescs, testDesc);
+  testDesc.origin = origin;
   MapPrototypeSet(testStates, testDesc.id, {
     context: createTestContext(testDesc),
     children: [],
@@ -673,7 +691,7 @@ function bench(
   optionsOrFn,
   maybeFn,
 ) {
-  if (!isBenchSubcommand) {
+  if (typeof ops.op_register_bench != "function") {
     return;
   }
 
@@ -756,36 +774,13 @@ function bench(
     benchDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
   }
 
-  benchDesc.origin = getBenchOrigin();
   const AsyncFunction = (async () => {}).constructor;
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
+  benchDesc.fn = wrapBenchmark(benchDesc);
 
-  const { id, filteredOut } = ops.op_register_bench(benchDesc);
+  const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;
-  benchDesc.filteredOut = filteredOut;
-
-  ArrayPrototypePush(benchDescs, benchDesc);
-}
-
-async function runTest(desc) {
-  if (desc.ignore) {
-    return "ignored";
-  }
-  let testFn = wrapTestFnWithSanitizers(desc.fn, desc);
-  if (!("parent" in desc) && desc.permissions) {
-    testFn = withPermissions(
-      testFn,
-      desc.permissions,
-    );
-  }
-  try {
-    const result = await testFn(desc);
-    if (result) return result;
-    const failedSteps = failedChildStepsCount(desc);
-    return failedSteps === 0 ? "ok" : { failed: { failedSteps } };
-  } catch (error) {
-    return { failed: { jsError: core.destructureError(error) } };
-  }
+  benchDesc.origin = origin;
 }
 
 function compareMeasurements(a, b) {
@@ -808,8 +803,7 @@ function benchStats(n, highPrecision, avg, min, max, all) {
   };
 }
 
-async function benchMeasure(timeBudget, desc) {
-  const fn = desc.fn;
+async function benchMeasure(timeBudget, fn, async) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
@@ -823,7 +817,7 @@ async function benchMeasure(timeBudget, desc) {
   let iterations = 20;
   let budget = 10 * 1e6;
 
-  if (!desc.async) {
+  if (!async) {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
 
@@ -854,7 +848,7 @@ async function benchMeasure(timeBudget, desc) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
-    if (!desc.async) {
+    if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
 
@@ -887,7 +881,7 @@ async function benchMeasure(timeBudget, desc) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
-    if (!desc.async) {
+    if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
         for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
@@ -920,171 +914,47 @@ async function benchMeasure(timeBudget, desc) {
   return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
 }
 
-async function runBench(desc) {
-  let token = null;
+/** Wrap a user benchmark function in one which returns a structured result. */
+function wrapBenchmark(desc) {
+  const fn = desc.fn;
+  return async function outerWrapped() {
+    let token = null;
+    const originalConsole = globalThis.console;
 
-  try {
-    if (desc.permissions) {
-      token = pledgePermissions(desc.permissions);
-    }
-
-    if (desc.sanitizeExit) {
-      setExitHandler((exitCode) => {
-        assert(
-          false,
-          `Bench attempted to exit with exit code: ${exitCode}`,
-        );
+    try {
+      globalThis.console = new Console((s) => {
+        ops.op_dispatch_bench_event({ output: s });
       });
+
+      if (desc.permissions) {
+        token = pledgePermissions(desc.permissions);
+      }
+
+      if (desc.sanitizeExit) {
+        setExitHandler((exitCode) => {
+          assert(
+            false,
+            `Bench attempted to exit with exit code: ${exitCode}`,
+          );
+        });
+      }
+
+      const benchTimeInMs = 500;
+      const stats = await benchMeasure(benchTimeInMs, fn, desc.async);
+
+      return { ok: stats };
+    } catch (error) {
+      return { failed: core.destructureError(error) };
+    } finally {
+      globalThis.console = originalConsole;
+      if (bench.sanitizeExit) setExitHandler(null);
+      if (token !== null) restorePermissions(token);
     }
-
-    const benchTimeInMs = 500;
-    const stats = await benchMeasure(benchTimeInMs, desc);
-
-    return { ok: stats };
-  } catch (error) {
-    return { failed: core.destructureError(error) };
-  } finally {
-    if (bench.sanitizeExit) setExitHandler(null);
-    if (token !== null) restorePermissions(token);
-  }
-}
-
-let origin = null;
-
-function getTestOrigin() {
-  if (origin == null) {
-    origin = ops.op_get_test_origin();
-  }
-  return origin;
-}
-
-function getBenchOrigin() {
-  if (origin == null) {
-    origin = ops.op_get_bench_origin();
-  }
-  return origin;
+  };
 }
 
 function benchNow() {
   return ops.op_bench_now();
-}
-
-function enableTest() {
-  isTestSubcommand = true;
-}
-
-function enableBench() {
-  isBenchSubcommand = true;
-}
-
-async function runTests({
-  shuffle = null,
-} = {}) {
-  core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-
-  const origin = getTestOrigin();
-  const only = ArrayPrototypeFilter(testDescs, (test) => test.only);
-  const filtered = ArrayPrototypeFilter(
-    only.length > 0 ? only : testDescs,
-    (desc) => !desc.filteredOut,
-  );
-
-  ops.op_dispatch_test_event({
-    plan: {
-      origin,
-      total: filtered.length,
-      filteredOut: testDescs.length - filtered.length,
-      usedOnly: only.length > 0,
-    },
-  });
-
-  if (shuffle !== null) {
-    // http://en.wikipedia.org/wiki/Linear_congruential_generator
-    // Use BigInt for everything because the random seed is u64.
-    const nextInt = function (state) {
-      const m = 0x80000000n;
-      const a = 1103515245n;
-      const c = 12345n;
-
-      return function (max) {
-        return state = ((a * state + c) % m) % BigInt(max);
-      };
-    }(BigInt(shuffle));
-
-    for (let i = filtered.length - 1; i > 0; i--) {
-      const j = nextInt(i);
-      [filtered[i], filtered[j]] = [filtered[j], filtered[i]];
-    }
-  }
-
-  for (const desc of filtered) {
-    if (ops.op_tests_should_stop()) {
-      break;
-    }
-    ops.op_dispatch_test_event({ wait: desc.id });
-    const earlier = DateNow();
-    const result = await runTest(desc);
-    const elapsed = DateNow() - earlier;
-    const state = MapPrototypeGet(testStates, desc.id);
-    state.completed = true;
-    for (const childDesc of state.children) {
-      stepReportResult(childDesc, { failed: "incomplete" }, 0);
-    }
-    ops.op_dispatch_test_event({
-      result: [desc.id, result, elapsed],
-    });
-  }
-}
-
-async function runBenchmarks() {
-  core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
-
-  const origin = getBenchOrigin();
-  const originalConsole = globalThis.console;
-
-  globalThis.console = new Console((s) => {
-    ops.op_dispatch_bench_event({ output: s });
-  });
-
-  const only = ArrayPrototypeFilter(benchDescs, (bench) => bench.only);
-  const filtered = ArrayPrototypeFilter(
-    only.length > 0 ? only : benchDescs,
-    (desc) => !desc.filteredOut && !desc.ignore,
-  );
-
-  let groups = new Set();
-  // make sure ungrouped benchmarks are placed above grouped
-  groups.add(undefined);
-
-  for (const desc of filtered) {
-    desc.group ||= undefined;
-    groups.add(desc.group);
-  }
-
-  groups = ArrayFrom(groups);
-  ArrayPrototypeSort(
-    filtered,
-    (a, b) => groups.indexOf(a.group) - groups.indexOf(b.group),
-  );
-
-  ops.op_dispatch_bench_event({
-    plan: {
-      origin,
-      total: filtered.length,
-      usedOnly: only.length > 0,
-      names: ArrayPrototypeMap(filtered, (desc) => desc.name),
-    },
-  });
-
-  for (const desc of filtered) {
-    desc.baseline = !!desc.baseline;
-    ops.op_dispatch_bench_event({ wait: desc.id });
-    ops.op_dispatch_bench_event({
-      result: [desc.id, await runBench(desc)],
-    });
-  }
-
-  globalThis.console = originalConsole;
 }
 
 function getFullName(desc) {
@@ -1106,13 +976,6 @@ function stepReportResult(desc, result, elapsed) {
   ops.op_dispatch_test_event({
     stepResult: [desc.id, result, elapsed],
   });
-}
-
-function failedChildStepsCount(desc) {
-  return ArrayPrototypeFilter(
-    MapPrototypeGet(testStates, desc.id).children,
-    (d) => MapPrototypeGet(testStates, d.id).failed,
-  ).length;
 }
 
 /** @param desc {TestDescription | TestStepDescription} */
@@ -1191,7 +1054,6 @@ function createTestContext(desc) {
       stepDesc.sanitizeOps ??= desc.sanitizeOps;
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
-      stepDesc.origin = getTestOrigin();
       const jsError = core.destructureError(new Error());
       stepDesc.location = {
         fileName: jsError.frames[1].fileName,
@@ -1202,8 +1064,10 @@ function createTestContext(desc) {
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
       stepDesc.rootName = rootName;
-      const { id } = ops.op_register_test_step(stepDesc);
+      stepDesc.fn = wrapTest(stepDesc);
+      const { id, origin } = ops.op_register_test_step(stepDesc);
       stepDesc.id = id;
+      stepDesc.origin = origin;
       const state = {
         context: createTestContext(stepDesc),
         children: [],
@@ -1218,10 +1082,9 @@ function createTestContext(desc) {
 
       ops.op_dispatch_test_event({ stepWait: stepDesc.id });
       const earlier = DateNow();
-      const result = await runTest(stepDesc);
+      const result = await stepDesc.fn(stepDesc);
       const elapsed = DateNow() - earlier;
       state.failed = !!result.failed;
-      state.completed = true;
       stepReportResult(stepDesc, result, elapsed);
       return result == "ok";
     },
@@ -1229,36 +1092,28 @@ function createTestContext(desc) {
 }
 
 /**
+ * Wrap a user test function in one which returns a structured result.
  * @template T {Function}
  * @param testFn {T}
- * @param opts {{
- *   sanitizeOps: boolean,
- *   sanitizeResources: boolean,
- *   sanitizeExit: boolean,
- * }}
+ * @param desc {TestDescription | TestStepDescription}
  * @returns {T}
  */
-function wrapTestFnWithSanitizers(testFn, opts) {
-  testFn = assertTestStepScopes(testFn);
-
-  if (opts.sanitizeOps) {
+function wrapTest(desc) {
+  let testFn = wrapInner(desc.fn);
+  if (desc.sanitizeOps) {
     testFn = assertOps(testFn);
   }
-  if (opts.sanitizeResources) {
+  if (desc.sanitizeResources) {
     testFn = assertResources(testFn);
   }
-  if (opts.sanitizeExit) {
+  if (desc.sanitizeExit) {
     testFn = assertExit(testFn, true);
   }
-  return testFn;
+  if (!("parent" in desc) && desc.permissions) {
+    testFn = withPermissions(testFn, desc.permissions);
+  }
+  return wrapOuter(testFn, desc);
 }
-
-internals.testing = {
-  runTests,
-  runBenchmarks,
-  enableTest,
-  enableBench,
-};
 
 import { denoNs } from "ext:runtime/90_deno_ns.js";
 denoNs.bench = bench;

@@ -12,7 +12,6 @@ use deno_core::url::Url;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
-use once_cell::sync::Lazy;
 use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
@@ -26,29 +25,6 @@ use crate::util::fs::canonicalize_path;
 
 use super::flags_allow_net;
 
-static LONG_VERSION: Lazy<String> = Lazy::new(|| {
-  format!(
-    "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
-    if crate::version::is_canary() {
-      "canary"
-    } else {
-      env!("PROFILE")
-    },
-    env!("TARGET"),
-    deno_core::v8_version(),
-    crate::version::TYPESCRIPT
-  )
-});
-
-static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
-  crate::version::deno()
-    .split('+')
-    .next()
-    .unwrap()
-    .to_string()
-});
-
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
   pub ignore: Vec<PathBuf>,
@@ -60,6 +36,7 @@ pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
   pub json: bool,
+  pub no_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -550,8 +527,11 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) => std::env::current_dir().ok(),
-      _ => None,
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+        std::env::current_dir().ok()
+      }
+      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
+      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
     }
   }
 
@@ -615,11 +595,12 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "A modern JavaScript and TypeScript runtime
+static DENO_HELP: &str = concat!(
+  "A modern JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual@v{}
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -634,10 +615,8 @@ To execute a script:
 To evaluate code in the shell:
 
   deno eval \"console.log(30933 + 404)\"
-",
-    SHORT_VERSION.as_str()
-  )
-});
+"
+);
 
 /// Main entry point for parsing deno's command line flags.
 pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
@@ -717,12 +696,25 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 }
 
 fn clap_root() -> Command {
+  let long_version = format!(
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
+    if crate::version::is_canary() {
+      "canary"
+    } else {
+      env!("PROFILE")
+    },
+    env!("TARGET"),
+    deno_core::v8_version(),
+    crate::version::TYPESCRIPT
+  );
+
   Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     .max_term_width(80)
     .version(crate::version::deno())
-    .long_version(LONG_VERSION.as_str())
+    .long_version(long_version)
     .arg(
       Arg::new("unstable")
         .long("unstable")
@@ -770,12 +762,13 @@ fn clap_root() -> Command {
     .subcommand(types_subcommand())
     .subcommand(upgrade_subcommand())
     .subcommand(vendor_subcommand())
-    .long_about(DENO_HELP.as_str())
+    .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
 
 fn bench_subcommand() -> Command {
   runtime_args(Command::new("bench"), true, false)
+    .arg(check_arg(true))
     .arg(
       Arg::new("json")
         .long("json")
@@ -804,6 +797,12 @@ fn bench_subcommand() -> Command {
         .value_parser(value_parser!(PathBuf))
         .action(ArgAction::Append),
     )
+    .arg(
+      Arg::new("no-run")
+        .long("no-run")
+        .help("Cache bench modules, but don't run benchmarks")
+        .action(ArgAction::SetTrue),
+    )
     .arg(watch_arg(false))
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
@@ -811,12 +810,12 @@ fn bench_subcommand() -> Command {
     .long_about(
       "Run benchmarks using Deno's built-in bench tool.
 
-Evaluate the given modules, run all benches declared with 'Deno.bench()' \
+Evaluate the given modules, run all benches declared with 'Deno.bench()'
 and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
-Directory arguments are expanded to all contained files matching the \
+Directory arguments are expanded to all contained files matching the
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
@@ -826,6 +825,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 fn bundle_subcommand() -> Command {
   compile_args(Command::new("bundle"))
     .hide(true)
+    .arg(check_arg(true))
     .arg(
       Arg::new("source_file")
         .required(true)
@@ -853,6 +853,7 @@ If no output file is given, the output is written to standard output:
 
 fn cache_subcommand() -> Command {
   compile_args(Command::new("cache"))
+    .arg(check_arg(false))
     .arg(
       Arg::new("file")
         .num_args(1..)
@@ -863,12 +864,12 @@ fn cache_subcommand() -> Command {
     .long_about(
       "Cache and compile remote dependencies recursively.
 
-Download and compile a module with all of its static dependencies and save \
+Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
 
   deno cache https://deno.land/std/http/file_server.ts
 
-Future runs of this module will trigger no downloads or compilation unless \
+Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     )
 }
@@ -910,14 +911,15 @@ Unless --reload is specified, this command will not re-download already cached d
 fn compile_subcommand() -> Command {
   runtime_args(Command::new("compile"), true, false)
     .arg(script_arg().required(true))
+    .arg(check_arg(true))
     .arg(
       Arg::new("include")
         .long("include")
         .help("UNSTABLE: Additional module to include in the module graph")
         .long_help(
-          "Includes an additional module in the compiled executable's module \
-    graph. Use this flag if a dynamically imported module or a web worker main \
-    module fails to load in the executable. This flag can be passed multiple \
+          "Includes an additional module in the compiled executable's module
+    graph. Use this flag if a dynamically imported module or a web worker main
+    module fails to load in the executable. This flag can be passed multiple
     times, to include multiple additional modules.",
         )
         .action(ArgAction::Append)
@@ -950,19 +952,19 @@ fn compile_subcommand() -> Command {
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output color_util https://deno.land/std/examples/colors.ts
 
-Any flags passed which affect runtime behavior, such as '--unstable', \
-'--allow-*', '--v8-flags', etc. are encoded into the output executable and \
+Any flags passed which affect runtime behavior, such as '--unstable',
+'--allow-*', '--v8-flags', etc. are encoded into the output executable and
 used at runtime as if they were passed to a similar 'deno run' command.
 
-The executable name is inferred by default: Attempt to take the file stem of \
-the URL path. The above example would become 'file_server'. If the file stem \
-is something generic like 'main', 'mod', 'index' or 'cli', and the path has no \
-parent, take the file name of the parent path. Otherwise settle with the \
+The executable name is inferred by default: Attempt to take the file stem of
+the URL path. The above example would become 'file_server'. If the file stem
+is something generic like 'main', 'mod', 'index' or 'cli', and the path has no
+parent, take the file name of the parent path. Otherwise settle with the
 generic name. If the resulting name has an '@...' suffix, strip it.
 
-Cross-compiling to different target architectures is supported using the \
-`--target` flag. On the first invocation with deno will download proper \
-binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not \
+Cross-compiling to different target architectures is supported using the
+`--target` flag. On the first invocation with deno will download proper
+binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not
 supported in canary.
 ",
     )
@@ -1007,8 +1009,8 @@ Exclude urls ending with test.ts and test.js:
 
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
-Include urls that start with the file schema and exclude files ending with \
-test.ts and test.js, for an url to match it must match the include pattern and \
+Include urls that start with the file schema and exclude files ending with
+test.ts and test.js, for an url to match it must match the include pattern and
 not match the exclude pattern:
 
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
@@ -1064,8 +1066,8 @@ Generate html reports from lcov:
         .value_parser(value_parser!(PathBuf))
         .help("Output file (defaults to stdout) for lcov")
         .long_help(
-          "Exports the coverage report in lcov format to the given file. \
-    Filename should be passed along with '=' For example '--output=foo.lcov' \
+          "Exports the coverage report in lcov format to the given file.
+    Filename should be passed along with '=' For example '--output=foo.lcov'
     If no --output arg is specified then the report is written to stdout.",
         )
         .require_equals(true)
@@ -1154,6 +1156,7 @@ To evaluate as TypeScript:
 
 This command has implicit access to all permissions (--allow-all).",
     )
+    .arg(check_arg(false))
     .arg(
       // TODO(@satyarohith): remove this argument in 2.0.
       Arg::new("ts")
@@ -1352,6 +1355,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 fn install_subcommand() -> Command {
   runtime_args(Command::new("install"), true, true)
     .arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
+    .arg(check_arg(true))
     .arg(
       Arg::new("name")
         .long("name")
@@ -1426,23 +1430,22 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno")
 }
 
-static LSP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+static LSP_HELP: &str = concat!(
+  "The 'deno lsp' subcommand provides a way for code editors and IDEs to
 interact with Deno using the Language Server Protocol. Usually humans do not
 use this subcommand directly. For example, 'deno lsp' can provide IDEs with
 go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
-https://deno.land/manual@v{}/getting_started/setup_your_environment#editors-and-ides",
-    SHORT_VERSION.as_str()
-  )
-});
+https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/setup_your_environment#editors-and-ides",
+);
 
 fn lsp_subcommand() -> Command {
   Command::new("lsp")
     .about("Start the language server")
-    .long_about(LSP_HELP.as_str())
+    .long_about(LSP_HELP)
 }
 
 fn lint_subcommand() -> Command {
@@ -1554,6 +1557,7 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 fn repl_subcommand() -> Command {
   runtime_args(Command::new("repl"), true, true)
     .about("Read Eval Print Loop")
+    .arg(check_arg(false))
     .arg(
       Arg::new("eval-file")
         .long("eval-file")
@@ -1573,6 +1577,7 @@ fn repl_subcommand() -> Command {
 
 fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
+    .arg(check_arg(false))
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
@@ -1635,6 +1640,7 @@ fn task_subcommand() -> Command {
 
 fn test_subcommand() -> Command {
   runtime_args(Command::new("test"), true, true)
+    .arg(check_arg(true))
     .arg(
       Arg::new("ignore")
         .long("ignore")
@@ -1861,7 +1867,7 @@ Remote modules and multiple modules may also be specified:
 }
 
 fn compile_args(app: Command) -> Command {
-  compile_args_without_check_args(app.arg(no_check_arg()).arg(check_arg()))
+  compile_args_without_check_args(app.arg(no_check_arg()))
 }
 
 fn compile_args_without_check_args(app: Command) -> Command {
@@ -1879,6 +1885,90 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
+static ALLOW_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-read\n",
+  "  --allow-read=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_WRITE_HELP: &str = concat!(
+  "Allow file system write access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-write\n",
+  "  --allow-write=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_NET_HELP: &str = concat!(
+  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-net\n",
+  "  --allow-net=\"localhost:8080,deno.land\""
+);
+
+static ALLOW_ENV_HELP: &str = concat!(
+  "Allow access to system environment information. Optionally specify accessible environment variables.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-env\n",
+  "  --allow-env=\"PORT,HOME,PATH\""
+);
+
+static ALLOW_SYS_HELP: &str = concat!(
+  "Allow access to OS information. Optionally allow specific APIs by function name.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-sys\n",
+  "  --allow-sys=\"systemMemoryInfo,osRelease\""
+);
+
+static ALLOW_RUN_HELP: &str = concat!(
+  "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-run\n",
+  "  --allow-run=\"whoami,ps\""
+);
+
+static ALLOW_FFI_HELP: &str = concat!(
+  "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-ffi\n",
+  "  --allow-ffi=\"./libfoo.so\""
+);
+
+static ALLOW_HRTIME_HELP: &str = concat!(
+  "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
+static ALLOW_ALL_HELP: &str = concat!(
+  "Allow all permissions. Learn more about permissions in Deno:\n",
+  "https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -1887,7 +1977,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system read access")
+        .value_name("PATH")
+        .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1897,7 +1988,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system write access")
+        .value_name("PATH")
+        .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1907,7 +1999,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow network access")
+        .value_name("IP_OR_HOSTNAME")
+        .help(ALLOW_NET_HELP)
         .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
@@ -1917,7 +2010,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow environment access")
+        .value_name("VARIABLE_NAME")
+        .help(ALLOW_ENV_HELP)
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -1936,7 +2030,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow access to system info")
+        .value_name("API_NAME")
+        .help(ALLOW_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
     )
     .arg(
@@ -1945,7 +2040,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow running subprocesses"),
+        .value_name("PROGRAM_NAME")
+        .help(ALLOW_RUN_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -1953,7 +2049,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow loading dynamic libraries")
+        .value_name("PATH")
+        .help(ALLOW_FFI_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1961,14 +2058,14 @@ fn permission_args(app: Command) -> Command {
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Allow high resolution time measurement"),
+        .help(ALLOW_HRTIME_HELP),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help("Allow all permissions"),
+        .help(ALLOW_ALL_HELP),
     )
     .arg(
       Arg::new("prompt")
@@ -2046,15 +2143,14 @@ fn inspect_args(app: Command) -> Command {
     )
 }
 
-static IMPORT_MAP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "Load import map file from local file or remote URL.
-  Docs: https://deno.land/manual@v{}/linking_to_external_code/import_maps
-  Specification: https://wicg.github.io/import-maps/
-  Examples: https://github.com/WICG/import-maps#the-import-map",
-    SHORT_VERSION.as_str()
-  )
-});
+static IMPORT_MAP_HELP: &str = concat!(
+  "Load import map file from local file or remote URL.
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/linking_to_external_code/import_maps
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+);
 
 fn import_map_arg() -> Arg {
   Arg::new("import-map")
@@ -2062,7 +2158,7 @@ fn import_map_arg() -> Arg {
     .alias("importmap")
     .value_name("FILE")
     .help("Load import map file")
-    .long_help(IMPORT_MAP_HELP.as_str())
+    .long_help(IMPORT_MAP_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2154,7 +2250,7 @@ fn v8_flags_arg() -> Arg {
     .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help. \
+    .long_help("To see a list of all available flags use --v8-flags=--help.
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
@@ -2186,7 +2282,7 @@ Additional paths might be watched by passing them as arguments to this flag.",
       .value_hint(ValueHint::AnyPath)
   } else {
     arg.action(ArgAction::SetTrue).long_help(
-      "Watch for file changes and restart process automatically. \
+      "Watch for file changes and restart process automatically.
       Only local files from entry point module graph are watched.",
     )
   }
@@ -2208,28 +2304,38 @@ fn no_check_arg() -> Arg {
     .long("no-check")
     .help("Skip type-checking modules")
     .long_help(
-      "Skip type-checking. If the value of '--no-check=remote' is supplied, \
-      diagnostic errors from remote modules will be ignored.",
+      "Skip type-checking. If the value of '--no-check=remote' is supplied,
+diagnostic errors from remote modules will be ignored.",
     )
 }
 
-fn check_arg() -> Arg {
-  Arg::new("check")
+fn check_arg(checks_local_by_default: bool) -> Arg {
+  let arg = Arg::new("check")
     .conflicts_with("no-check")
     .long("check")
     .num_args(0..=1)
     .require_equals(true)
     .value_name("CHECK_TYPE")
-    .help("Type-check modules")
-    .long_help(
-      "Type-check modules.
+    .help("Type-check modules");
 
-Deno does not type-check modules automatically from v1.23 onwards. Pass this \
-flag to enable type-checking or use the 'deno check' subcommand.
-
+  if checks_local_by_default {
+    arg.long_help(
+      "Set type-checking behavior. This subcommand type-checks local modules by
+default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
-will be included.",
+will be included.
+
+Alternatively, the 'deno check' subcommand can be used.",
     )
+  } else {
+    arg.long_help(
+      "Enable type-checking. This subcommand does not type-check by default.
+If the value of '--check=all' is supplied, diagnostic errors from remote modules
+will be included.
+
+Alternatively, the 'deno check' subcommand can be used.",
+    )
+  }
 }
 
 fn script_arg() -> Arg {
@@ -2252,7 +2358,9 @@ fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
+    .help("Check the specified lock file.
+
+If value is not provided, defaults to \"deno.lock\" in the current working directory.")
     .num_args(0..=1)
     .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
@@ -2274,16 +2382,15 @@ fn no_lock_arg() -> Arg {
     .conflicts_with("lock")
 }
 
-static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The configuration file can be used to configure different aspects of \
-      deno including TypeScript, linting, and code formatting. Typically the \
-      configuration file will be called `deno.json` or `deno.jsonc` and \
-      automatically detected; in that case this flag is not necessary. \
-      See https://deno.land/manual@v{}/getting_started/configuration_file",
-    SHORT_VERSION.as_str()
-  )
-});
+static CONFIG_HELP: &str = concat!(
+  "The configuration file can be used to configure different aspects of
+deno including TypeScript, linting, and code formatting. Typically the
+configuration file will be called `deno.json` or `deno.jsonc` and
+automatically detected; in that case this flag is not necessary.
+See https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/configuration_file"
+);
 
 fn config_arg() -> Arg {
   Arg::new("config")
@@ -2291,7 +2398,7 @@ fn config_arg() -> Arg {
     .long("config")
     .value_name("FILE")
     .help("Specify the configuration file")
-    .long_help(CONFIG_HELP.as_str())
+    .long_help(CONFIG_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2368,11 +2475,14 @@ fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Vec::new()
   };
 
+  let no_run = matches.get_flag("no-run");
+
   watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
     json,
+    no_run,
   });
 }
 
@@ -2729,7 +2839,8 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
-    .map_or(ConfigFlag::Discover, ConfigFlag::Path);
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -6482,6 +6593,7 @@ mod tests {
       "--unstable",
       "--no-npm",
       "--no-remote",
+      "--no-run",
       "--filter",
       "- foo",
       "--location",
@@ -6499,6 +6611,7 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
           json: true,
+          no_run: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
             ignore: vec![],
@@ -6526,6 +6639,7 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
           json: false,
+          no_run: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],

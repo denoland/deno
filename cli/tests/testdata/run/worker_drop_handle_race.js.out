@@ -4,4 +4,4 @@ error: Uncaught (in worker "") Error
     at [WILDCARD]/workers/drop_handle_race.js:2:9
     at [WILDCARD]
 error: Uncaught (in promise) Error: Unhandled error in child worker.
-    at Worker.#pollControl (ext:runtime/11_workers.js:[WILDCARD])
+    at Worker.#pollControl [WILDCARD]
