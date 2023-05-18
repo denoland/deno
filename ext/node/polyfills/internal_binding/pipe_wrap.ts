@@ -24,6 +24,7 @@
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/pipe_wrap.h
 
+import { errors } from "ext:runtime/01_errors.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -43,6 +44,7 @@ import {
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 import { connect, listen } from "ext:deno_net/01_net.js";
+import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export enum socketType {
   SOCKET,
@@ -158,9 +160,9 @@ export class Pipe extends ConnectionWrap {
         // TODO(cmorten): correct mapping of connection error to status code.
         let code: number;
 
-        if (e instanceof Deno.errors.NotFound) {
+        if (e instanceof errors.NotFound) {
           code = codeMap.get("ENOENT")!;
-        } else if (e instanceof Deno.errors.PermissionDenied) {
+        } else if (e instanceof errors.PermissionDenied) {
           code = codeMap.get("EACCES")!;
         } else {
           code = codeMap.get("ECONNREFUSED")!;
@@ -202,11 +204,11 @@ export class Pipe extends ConnectionWrap {
     try {
       listener = listen(listenOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.AddrInUse) {
+      if (e instanceof errors.AddrInUse) {
         return codeMap.get("EADDRINUSE")!;
-      } else if (e instanceof Deno.errors.AddrNotAvailable) {
+      } else if (e instanceof errors.AddrNotAvailable) {
         return codeMap.get("EADDRNOTAVAIL")!;
-      } else if (e instanceof Deno.errors.PermissionDenied) {
+      } else if (e instanceof errors.PermissionDenied) {
         throw e;
       }
 
@@ -273,7 +275,7 @@ export class Pipe extends ConnectionWrap {
     // TODO(cmorten): this will incorrectly throw on Windows
     // REF: https://github.com/denoland/deno/issues/4357
     try {
-      Deno.chmodSync(this.#address!, desiredMode);
+      denoFs.chmodSync(this.#address!, desiredMode);
     } catch {
       // TODO(cmorten): map errors to appropriate error codes.
       return codeMap.get("UNKNOWN")!;
@@ -319,7 +321,7 @@ export class Pipe extends ConnectionWrap {
     try {
       connection = await this.#listener.accept();
     } catch (e) {
-      if (e instanceof Deno.errors.BadResource && this.#closed) {
+      if (e instanceof errors.BadResource && this.#closed) {
         // Listener and server has closed.
         return;
       }

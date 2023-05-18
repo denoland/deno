@@ -27,6 +27,7 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
+import { errors } from "ext:runtime/01_errors.js";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -283,13 +284,13 @@ export class LibuvStreamWrap extends HandleWrap {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
+        e instanceof errors.Interrupted ||
+        e instanceof errors.BadResource
       ) {
         nread = codeMap.get("EOF")!;
       } else if (
-        e instanceof Deno.errors.ConnectionReset ||
-        e instanceof Deno.errors.ConnectionAborted
+        e instanceof errors.ConnectionReset ||
+        e instanceof errors.ConnectionAborted
       ) {
         nread = codeMap.get("ECONNRESET")!;
       } else {
@@ -343,8 +344,8 @@ export class LibuvStreamWrap extends HandleWrap {
 
       // TODO(cmorten): map err to status codes
       if (
-        e instanceof Deno.errors.BadResource ||
-        e instanceof Deno.errors.BrokenPipe
+        e instanceof errors.BadResource ||
+        e instanceof errors.BrokenPipe
       ) {
         status = codeMap.get("EBADF")!;
       } else {

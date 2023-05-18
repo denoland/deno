@@ -8,6 +8,8 @@ const core = globalThis.Deno.core;
 import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import * as fs from "ext:deno_fs/30_fs.js";
+import { permissions } from "ext:runtime/10_permissions.js";
+import { env as denoEnv } from "ext:runtime/30_os.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
@@ -32,15 +34,14 @@ export const nextTick = _nextTick;
 /** Wrapper of Deno.env.get, which doesn't throw type error when
  * the env name has "=" or "\0" in it. */
 function denoEnvGet(name: string) {
-  const perm =
-    Deno.permissions.querySync?.({ name: "env", variable: name }).state ??
-      "granted"; // for Deno Deploy
+  const perm = permissions.querySync?.({ name: "env", variable: name }).state ??
+    "granted"; // for Deno Deploy
   // Returns undefined if the env permission is unavailable
   if (perm !== "granted") {
     return undefined;
   }
   try {
-    return Deno.env.get(name);
+    return denoEnv.get(name);
   } catch (e) {
     if (e instanceof TypeError) {
       return undefined;
@@ -73,7 +74,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
 
       return envValue;
     },
-    ownKeys: () => Reflect.ownKeys(Deno.env.toObject()),
+    ownKeys: () => Reflect.ownKeys(denoEnv.toObject()),
     getOwnPropertyDescriptor: (_target, name) => {
       const value = denoEnvGet(String(name));
       if (value) {
@@ -85,7 +86,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
       }
     },
     set(_target, prop, value) {
-      Deno.env.set(String(prop), String(value));
+      denoEnv.set(String(prop), String(value));
       return true; // success
     },
     has: (_target, prop) => typeof denoEnvGet(String(prop)) === "string",

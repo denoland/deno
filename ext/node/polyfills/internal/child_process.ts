@@ -40,6 +40,7 @@ import {
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import process from "ext:deno_node/process.ts";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoOs from "ext:runtime/30_os.js";
 import * as denoProcess from "ext:runtime/40_process.js";
 
@@ -273,7 +274,7 @@ export class ChildProcess extends EventEmitter {
       this.#process.kill(denoSignal);
     } catch (err) {
       const alreadyClosed = err instanceof TypeError ||
-        err instanceof Deno.errors.PermissionDenied;
+        err instanceof errors.PermissionDenied;
       if (!alreadyClosed) {
         throw err;
       }
@@ -857,7 +858,7 @@ export function spawnSync(
     result.stderr = stderr;
     result.output = [output.signal, stdout, stderr];
   } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
+    if (err instanceof errors.NotFound) {
       result.error = _createSpawnSyncError("ENOENT", command, args);
     }
   }

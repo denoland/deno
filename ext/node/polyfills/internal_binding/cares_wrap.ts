@@ -35,6 +35,7 @@ import {
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
+import { errors } from "ext:runtime/01_errors.js";
 import { resolveDns } from "ext:deno_net/01_net.js";
 
 interface LookupAddress {
@@ -241,7 +242,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     try {
       ret = await resolveDns(query, recordType, resolveOptions);
     } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
+      if (e instanceof errors.NotFound) {
         code = codeMap.get("EAI_NODATA")!;
       } else {
         // TODO(cmorten): map errors to appropriate error codes.
