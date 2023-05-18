@@ -592,6 +592,50 @@ pub trait NapiPermissions {
     -> std::result::Result<(), AnyError>;
 }
 
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointer Env.
+/// - The caller must ensure that the pointer is valid.
+/// - The caller must ensure that the pointer is not freed.
+pub unsafe fn weak_local(
+  env_ptr: *mut Env,
+  value: v8::Local<v8::Value>,
+  data: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
+) -> Option<v8::Local<v8::Value>> {
+  use std::cell::Cell;
+
+  let env = &mut *env_ptr;
+
+  let weak_ptr = Rc::new(Cell::new(None));
+  let scope = &mut env.scope();
+
+  let weak = v8::Weak::with_finalizer(
+    scope,
+    value,
+    Box::new({
+      let weak_ptr = weak_ptr.clone();
+      move |isolate| {
+        finalize_cb(env_ptr as _, data as _, finalize_hint as _);
+
+        // Self-deleting weak.
+        if let Some(weak_ptr) = weak_ptr.get() {
+          let weak: v8::Weak<v8::Value> =
+            unsafe { v8::Weak::from_raw(isolate, Some(weak_ptr)) };
+          drop(weak);
+        }
+      }
+    }),
+  );
+
+  let value = weak.to_local(scope);
+  let raw = weak.into_raw();
+  weak_ptr.set(raw);
+
+  value
+}
+
 #[op(v8)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,

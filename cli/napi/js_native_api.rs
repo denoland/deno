@@ -497,18 +497,21 @@ fn napi_create_range_error(
 
 #[napi_sym::napi_sym]
 fn napi_create_external(
-  env: *mut Env,
+  env_ptr: *mut Env,
   value: *mut c_void,
-  _finalize_cb: napi_finalize,
-  _finalize_hint: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
-  check_env!(env);
-  let env = unsafe { &mut *env };
-  let value: v8::Local<v8::Value> =
+  check_env!(env_ptr);
+  let env = unsafe { &mut *env_ptr };
+
+  let external: v8::Local<v8::Value> =
     v8::External::new(&mut env.scope(), value).into();
-  // TODO: finalization
-  *result = value.into();
+
+  let value = weak_local(env_ptr, external, value, finalize_cb, finalize_hint);
+
+  *result = transmute(value);
   Ok(())
 }
 
@@ -517,6 +520,7 @@ pub type BackingStoreDeleterCallback = unsafe extern "C" fn(
   byte_length: usize,
   deleter_data: *mut c_void,
 );
+
 extern "C" {
   fn v8__ArrayBuffer__NewBackingStore__with_data(
     data: *mut c_void,
@@ -526,69 +530,104 @@ extern "C" {
   ) -> *mut BackingStore;
 }
 
+struct BufferFinalizer {
+  env: *mut Env,
+  finalize_cb: napi_finalize,
+  finalize_data: *mut c_void,
+  finalize_hint: *mut c_void,
+}
+
+impl BufferFinalizer {
+  fn into_raw(self) -> *mut BufferFinalizer {
+    Box::into_raw(Box::new(self))
+  }
+}
+
+impl Drop for BufferFinalizer {
+  fn drop(&mut self) {
+    unsafe {
+      (self.finalize_cb)(self.env as _, self.finalize_data, self.finalize_hint);
+    }
+  }
+}
+
 pub extern "C" fn backing_store_deleter_callback(
   data: *mut c_void,
-  byte_length: usize,
-  _deleter_data: *mut c_void,
+  _byte_length: usize,
+  deleter_data: *mut c_void,
 ) {
-  let slice_ptr = ptr::slice_from_raw_parts_mut(data as *mut u8, byte_length);
-  let b = unsafe { Box::from_raw(slice_ptr) };
-  drop(b);
+  let mut finalizer =
+    unsafe { Box::from_raw(deleter_data as *mut BufferFinalizer) };
+
+  finalizer.finalize_data = data;
 }
 
 #[napi_sym::napi_sym]
 fn napi_create_external_arraybuffer(
-  env: *mut Env,
+  env_ptr: *mut Env,
   data: *mut c_void,
   byte_length: usize,
-  _finalize_cb: napi_finalize,
+  finalize_cb: napi_finalize,
   finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
-  check_env!(env);
-  let env = unsafe { &mut *env };
-  let _slice = std::slice::from_raw_parts(data as *mut u8, byte_length);
-  // TODO: finalization
+  check_env!(env_ptr);
+  let env = unsafe { &mut *env_ptr };
+
+  let finalizer = BufferFinalizer {
+    env: env_ptr,
+    finalize_data: ptr::null_mut(),
+    finalize_cb,
+    finalize_hint,
+  };
+
   let store: UniqueRef<BackingStore> =
     transmute(v8__ArrayBuffer__NewBackingStore__with_data(
       data,
       byte_length,
       backing_store_deleter_callback,
-      finalize_hint,
+      finalizer.into_raw() as _,
     ));
 
   let ab =
     v8::ArrayBuffer::with_backing_store(&mut env.scope(), &store.make_shared());
   let value: v8::Local<v8::Value> = ab.into();
+
   *result = value.into();
   Ok(())
 }
 
 #[napi_sym::napi_sym]
 fn napi_create_external_buffer(
-  env: *mut Env,
-  byte_length: isize,
+  env_ptr: *mut Env,
+  byte_length: usize,
   data: *mut c_void,
-  _finalize_cb: napi_finalize,
-  _finalize_hint: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
   result: *mut napi_value,
 ) -> Result {
-  check_env!(env);
-  let env = unsafe { &mut *env };
-  let slice = if byte_length == -1 {
-    std::ffi::CStr::from_ptr(data as *const _).to_bytes()
-  } else {
-    std::slice::from_raw_parts(data as *mut u8, byte_length as usize)
+  check_env!(env_ptr);
+  let env = unsafe { &mut *env_ptr };
+
+  let finalizer = BufferFinalizer {
+    env: env_ptr,
+    finalize_data: ptr::null_mut(),
+    finalize_cb,
+    finalize_hint,
   };
-  // TODO: make this not copy the slice
-  // TODO: finalization
-  let store = v8::ArrayBuffer::new_backing_store_from_boxed_slice(
-    slice.to_vec().into_boxed_slice(),
-  );
+
+  let store: UniqueRef<BackingStore> =
+    transmute(v8__ArrayBuffer__NewBackingStore__with_data(
+      data,
+      byte_length,
+      backing_store_deleter_callback,
+      finalizer.into_raw() as _,
+    ));
+
   let ab =
     v8::ArrayBuffer::with_backing_store(&mut env.scope(), &store.make_shared());
   let value =
-    v8::Uint8Array::new(&mut env.scope(), ab, 0, slice.len()).unwrap();
+    v8::Uint8Array::new(&mut env.scope(), ab, 0, byte_length).unwrap();
   let value: v8::Local<v8::Value> = value.into();
   *result = value.into();
   Ok(())
@@ -1223,17 +1262,25 @@ fn napi_get_value_uint32(
   Ok(())
 }
 
-// TODO
 #[napi_sym::napi_sym]
 fn napi_add_finalizer(
-  _env: *mut Env,
-  _js_object: napi_value,
-  _native_object: *const c_void,
-  _finalize_cb: napi_finalize,
-  _finalize_hint: *const c_void,
-  _result: *mut napi_ref,
+  env_ptr: *mut Env,
+  js_object: napi_value,
+  native_object: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
+  result: *mut napi_ref,
 ) -> Result {
-  log::info!("napi_add_finalizer is not yet supported.");
+  check_env!(env_ptr);
+
+  let value = napi_value_unchecked(js_object);
+  let value =
+    weak_local(env_ptr, value, native_object, finalize_cb, finalize_hint);
+
+  if !result.is_null() {
+    *result = transmute(value);
+  }
+
   Ok(())
 }
 
