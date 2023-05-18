@@ -313,6 +313,7 @@ impl CliFactory {
           CliNpmRegistryApi::default_url().to_owned(),
           npm_resolution.clone(),
           self.options.node_modules_dir_path(),
+          self.options.npm_system_info(),
         );
         Ok(Arc::new(CliNpmResolver::new(
           fs.clone(),
@@ -557,8 +558,9 @@ impl CliFactory {
       self.deno_dir()?,
       self.npm_api()?,
       self.npm_cache()?,
-      self.npm_resolver().await?,
       self.npm_resolution().await?,
+      self.npm_resolver().await?,
+      self.options.npm_system_info(),
       self.package_json_deps_provider(),
     ))
   }
