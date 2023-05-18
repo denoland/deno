@@ -2913,8 +2913,8 @@ Deno.test(
     const listeningPromise = deferred();
 
     const server = Deno.serve({
-      handler: async (request, { remoteAddr }) => {
-        let response = new Response("Hello World", {
+      handler: () => {
+        const response = new Response("Hello World", {
           headers: {
             "trailer": "baz",
             "transfer-encoding": "chunked",
@@ -2931,7 +2931,7 @@ Deno.test(
     });
 
     // We don't have a great way to access this right now, so just fetch the trailers with cURL
-    const [stdout, stderr] = await curlRequestWithStdErr([
+    const [_, stderr] = await curlRequestWithStdErr([
       "http://localhost:4501/path",
       "-v",
       "--http2",
