@@ -615,6 +615,7 @@
       "test-url-domain-ascii-unicode.js",
       "test-url-fileurltopath.js",
       "test-url-format-invalid-input.js",
+      "test-url-format-whatwg.js",
       "test-url-format.js",
       "test-url-parse-invalid-input.js",
       "test-url-parse-query.js",

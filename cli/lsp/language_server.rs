@@ -10,6 +10,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
@@ -467,6 +468,7 @@ fn create_lsp_structs(
     registry_url.clone(),
     resolution.clone(),
     None,
+    NpmSystemInfo::default(),
   );
   (
     api,
@@ -725,6 +727,7 @@ impl Inner {
         self.npm_api.base_url().clone(),
         npm_resolution,
         None,
+        NpmSystemInfo::default(),
       ),
       None,
     ));
@@ -1242,11 +1245,12 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    if let Err(err) = self
-      .npm_resolver
-      .set_package_reqs((*package_reqs).clone())
-      .await
-    {
+    let npm_resolver = self.npm_resolver.clone();
+    // spawn to avoid the LSP's Send requirements
+    let handle = spawn(async move {
+      npm_resolver.set_package_reqs((*package_reqs).clone()).await
+    });
+    if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
   }
