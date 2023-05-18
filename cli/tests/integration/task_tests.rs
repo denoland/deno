@@ -278,3 +278,12 @@ itest!(task_pre_only {
   exit_code: 1,
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
+
+itest!(task_deno_no_pre_post {
+  args: "task test",
+  cwd: Some("task/deno_json_pre_post/"),
+  output: "task/deno_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/deno_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
