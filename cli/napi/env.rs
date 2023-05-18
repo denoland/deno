@@ -40,7 +40,7 @@ pub unsafe extern "C" fn napi_fatal_error(
 
 // napi-3
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_fatal_exception(env: *mut Env, value: napi_value) -> napi_status {
   let Some(env) = env.as_mut() else {
     return napi_invalid_arg;
@@ -50,7 +50,7 @@ fn napi_fatal_exception(env: *mut Env, value: napi_value) -> napi_status {
   panic!("Fatal exception triggered by napi_fatal_exception!\n{error}");
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_add_env_cleanup_hook(
   env: *mut Env,
   hook: extern "C" fn(*const c_void),
@@ -73,7 +73,7 @@ fn napi_add_env_cleanup_hook(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_remove_env_cleanup_hook(
   env: *mut Env,
   hook: extern "C" fn(*const c_void),
@@ -100,7 +100,7 @@ fn napi_remove_env_cleanup_hook(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_open_callback_scope(
   _env: *mut Env,
   _resource_object: napi_value,
@@ -111,7 +111,7 @@ fn napi_open_callback_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_close_callback_scope(
   _env: *mut Env,
   _scope: napi_callback_scope,
@@ -120,7 +120,7 @@ fn napi_close_callback_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn node_api_get_module_file_name(
   env: *mut Env,
   result: *mut *const c_char,
@@ -134,7 +134,7 @@ fn node_api_get_module_file_name(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_module_register(module: *const NapiModule) -> napi_status {
   MODULE.with(|cell| {
     let mut slot = cell.borrow_mut();
@@ -143,7 +143,7 @@ fn napi_module_register(module: *const NapiModule) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_uv_event_loop(
   _env: *mut Env,
   uv_loop: *mut *mut (),
@@ -160,7 +160,7 @@ const NODE_VERSION: napi_node_version = napi_node_version {
   release: "Deno\0".as_ptr() as *const c_char,
 };
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_node_version(
   env: *mut Env,
   result: *mut *const napi_node_version,

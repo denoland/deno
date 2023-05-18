@@ -9,7 +9,7 @@ pub struct AsyncWork {
   pub complete: napi_async_complete_callback,
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_async_work(
   _env: *mut Env,
   _async_resource: napi_value,
@@ -29,7 +29,7 @@ fn napi_create_async_work(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_cancel_async_work(
   _env: &mut Env,
   _async_work: napi_async_work,
@@ -38,7 +38,7 @@ fn napi_cancel_async_work(
 }
 
 /// Frees a previously allocated work object.
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_delete_async_work(
   _env: &mut Env,
   work: napi_async_work,
@@ -49,7 +49,7 @@ fn napi_delete_async_work(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_queue_async_work(
   env_ptr: *mut Env,
   work: napi_async_work,
@@ -71,7 +71,7 @@ fn napi_queue_async_work(
 
 // TODO: Custom async operations.
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_async_init(
   _env: *mut Env,
   _async_resource: napi_value,
@@ -81,7 +81,7 @@ fn napi_async_init(
   todo!()
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_async_destroy(_env: *mut Env, _async_context: *mut ()) -> napi_status {
   todo!()
 }

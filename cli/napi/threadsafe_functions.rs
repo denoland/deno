@@ -128,7 +128,7 @@ impl TsFn {
   }
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_threadsafe_function(
   env: *mut Env,
   func: napi_value,
@@ -189,7 +189,7 @@ fn napi_create_threadsafe_function(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_acquire_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,
@@ -198,7 +198,7 @@ fn napi_acquire_threadsafe_function(
   tsfn.acquire()
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_unref_threadsafe_function(
   _env: &mut Env,
   tsfn: napi_threadsafe_function,
@@ -208,7 +208,7 @@ fn napi_unref_threadsafe_function(
 }
 
 /// Maybe called from any thread.
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 pub fn napi_get_threadsafe_function_context(
   func: napi_threadsafe_function,
   result: *mut *const c_void,
@@ -218,7 +218,7 @@ pub fn napi_get_threadsafe_function_context(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_call_threadsafe_function(
   func: napi_threadsafe_function,
   data: *mut c_void,
@@ -229,7 +229,7 @@ fn napi_call_threadsafe_function(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_ref_threadsafe_function(
   _env: &mut Env,
   func: napi_threadsafe_function,
@@ -238,7 +238,7 @@ fn napi_ref_threadsafe_function(
   tsfn.ref_()
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_release_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,

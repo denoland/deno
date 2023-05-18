@@ -142,7 +142,7 @@ pub(crate) fn napi_set_last_error(
 }
 
 /// Returns napi_value that represents a new JavaScript Array.
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_array(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_env2!(env);
   check_arg2!(env, result);
@@ -151,7 +151,7 @@ fn napi_create_array(env: *mut Env, result: *mut napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_array_with_length(
   env: *mut Env,
   len: i32,
@@ -164,7 +164,7 @@ fn napi_create_array_with_length(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_arraybuffer(
   env: *mut Env,
   len: usize,
@@ -184,7 +184,7 @@ fn napi_create_arraybuffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_bigint_int64(
   env: *mut Env,
   value: i64,
@@ -197,7 +197,7 @@ fn napi_create_bigint_int64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_bigint_uint64(
   env: *mut Env,
   value: u64,
@@ -210,7 +210,7 @@ fn napi_create_bigint_uint64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_bigint_words(
   env: *mut Env,
   sign_bit: bool,
@@ -243,7 +243,7 @@ fn napi_create_bigint_words(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_buffer(
   env: *mut Env,
   len: usize,
@@ -262,7 +262,7 @@ fn napi_create_buffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_buffer_copy(
   env: *mut Env,
   len: usize,
@@ -284,7 +284,7 @@ fn napi_create_buffer_copy(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_coerce_to_bool(
   env: *mut Env,
   value: napi_value,
@@ -299,7 +299,7 @@ fn napi_coerce_to_bool(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_coerce_to_number(
   env: *mut Env,
   value: napi_value,
@@ -317,7 +317,7 @@ fn napi_coerce_to_number(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_coerce_to_object(
   env: *mut Env,
   value: napi_value,
@@ -332,7 +332,7 @@ fn napi_coerce_to_object(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_coerce_to_string(
   env: *mut Env,
   value: napi_value,
@@ -347,7 +347,7 @@ fn napi_coerce_to_string(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_dataview(
   env: *mut Env,
   len: usize,
@@ -381,7 +381,7 @@ fn napi_create_dataview(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_date(
   env: *mut Env,
   time: f64,
@@ -395,7 +395,7 @@ fn napi_create_date(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_double(
   env: *mut Env,
   value: f64,
@@ -447,7 +447,7 @@ fn set_error_code(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_error(
   env: *mut Env,
   code: napi_value,
@@ -473,7 +473,7 @@ fn napi_create_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_type_error(
   env: *mut Env,
   code: napi_value,
@@ -499,7 +499,7 @@ fn napi_create_type_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_range_error(
   env: *mut Env,
   code: napi_value,
@@ -525,7 +525,7 @@ fn napi_create_range_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_external(
   env_ptr: *mut Env,
   value: *mut c_void,
@@ -591,7 +591,7 @@ pub extern "C" fn backing_store_deleter_callback(
   finalizer.finalize_data = data;
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_external_arraybuffer(
   env_ptr: *mut Env,
   data: *mut c_void,
@@ -626,7 +626,7 @@ fn napi_create_external_arraybuffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_external_buffer(
   env_ptr: *mut Env,
   byte_length: usize,
@@ -661,7 +661,7 @@ fn napi_create_external_buffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_function(
   env: *mut Env,
   name: *const c_char,
@@ -687,7 +687,7 @@ fn napi_create_function(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_int32(
   env: *mut Env,
   value: i32,
@@ -700,7 +700,7 @@ fn napi_create_int32(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_uint32(
   env: *mut Env,
   value: u32,
@@ -713,7 +713,7 @@ fn napi_create_uint32(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_int64(
   env: *mut Env,
   value: i64,
@@ -726,7 +726,7 @@ fn napi_create_int64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_object(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_env2!(env);
   let env = unsafe { &mut *env };
@@ -735,7 +735,7 @@ fn napi_create_object(env: *mut Env, result: *mut napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_promise(
   env: *mut Env,
   deferred: *mut napi_deferred,
@@ -753,7 +753,7 @@ fn napi_create_promise(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_reference(
   env: *mut Env,
   value: napi_value,
@@ -770,7 +770,7 @@ fn napi_create_reference(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_string_latin1(
   env: *mut Env,
   string: *const u8,
@@ -809,7 +809,7 @@ fn napi_create_string_latin1(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_string_utf16(
   env: *mut Env,
   string: *const u16,
@@ -850,7 +850,7 @@ fn napi_create_string_utf16(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_string_utf8(
   env: *mut Env,
   string: *const u8,
@@ -883,7 +883,7 @@ fn napi_create_string_utf8(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_symbol(
   env: *mut Env,
   description: napi_value,
@@ -906,7 +906,7 @@ fn napi_create_symbol(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_create_typedarray(
   env: *mut Env,
   ty: napi_typedarray_type,
@@ -983,7 +983,7 @@ fn napi_create_typedarray(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_make_callback(
   env: *mut Env,
   async_context: *mut c_void,
@@ -1017,7 +1017,7 @@ fn napi_make_callback(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_bigint_int64(
   env: *mut Env,
   value: napi_value,
@@ -1036,7 +1036,7 @@ fn napi_get_value_bigint_int64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_bigint_uint64(
   env: *mut Env,
   value: napi_value,
@@ -1055,7 +1055,7 @@ fn napi_get_value_bigint_uint64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_bigint_words(
   env: *mut Env,
   value: napi_value,
@@ -1093,7 +1093,7 @@ fn napi_get_value_bigint_words(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_bool(
   env: *mut Env,
   value: napi_value,
@@ -1106,7 +1106,7 @@ fn napi_get_value_bool(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_double(
   env: *mut Env,
   value: napi_value,
@@ -1120,7 +1120,7 @@ fn napi_get_value_double(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_external(
   _env: *mut Env,
   value: napi_value,
@@ -1132,7 +1132,7 @@ fn napi_get_value_external(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_int32(
   env: *mut Env,
   value: napi_value,
@@ -1145,7 +1145,7 @@ fn napi_get_value_int32(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_int64(
   env: *mut Env,
   value: napi_value,
@@ -1158,7 +1158,7 @@ fn napi_get_value_int64(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_string_latin1(
   env: *mut Env,
   value: napi_value,
@@ -1199,7 +1199,7 @@ fn napi_get_value_string_latin1(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_string_utf8(
   env: *mut Env,
   value: napi_value,
@@ -1241,7 +1241,7 @@ fn napi_get_value_string_utf8(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_string_utf16(
   env: *mut Env,
   value: napi_value,
@@ -1282,7 +1282,7 @@ fn napi_get_value_string_utf16(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_value_uint32(
   env: *mut Env,
   value: napi_value,
@@ -1295,7 +1295,7 @@ fn napi_get_value_uint32(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_add_finalizer(
   env_ptr: *mut Env,
   js_object: napi_value,
@@ -1317,7 +1317,7 @@ fn napi_add_finalizer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_adjust_external_memory(
   env: *mut Env,
   change_in_bytes: i64,
@@ -1335,7 +1335,7 @@ fn napi_adjust_external_memory(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_call_function(
   env: *mut Env,
   recv: napi_value,
@@ -1362,7 +1362,7 @@ fn napi_call_function(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_close_escapable_handle_scope(
   env: *mut Env,
   _scope: napi_escapable_handle_scope,
@@ -1372,7 +1372,7 @@ fn napi_close_escapable_handle_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_close_handle_scope(
   env: *mut Env,
   scope: napi_handle_scope,
@@ -1386,7 +1386,7 @@ fn napi_close_handle_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_define_class(
   env_ptr: *mut Env,
   name: *const c_char,
@@ -1513,7 +1513,7 @@ fn napi_define_class(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_define_properties(
   env_ptr: *mut Env,
   obj: napi_value,
@@ -1595,7 +1595,7 @@ fn napi_define_properties(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_delete_element(
   env: *mut Env,
   value: napi_value,
@@ -1610,7 +1610,7 @@ fn napi_delete_element(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_delete_property(
   env: *mut Env,
   object: napi_value,
@@ -1638,13 +1638,13 @@ fn napi_delete_property(
 }
 
 // TODO: properly implement ref counting stuff
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_delete_reference(env: *mut Env, _nref: napi_ref) -> napi_status {
   let mut _env = &mut *(env as *mut Env);
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> napi_status {
   check_env2!(env);
 
@@ -1664,7 +1664,7 @@ fn napi_detach_arraybuffer(env: *mut Env, value: napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_escape_handle<'s>(
   _env: *mut Env,
   _handle_scope: napi_escapable_handle_scope,
@@ -1676,13 +1676,13 @@ fn napi_escape_handle<'s>(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_all_property_names(_env: *mut Env) -> napi_status {
   // TODO
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_and_clear_last_exception(
   env: *mut Env,
   result: *mut napi_value,
@@ -1696,7 +1696,7 @@ fn napi_get_and_clear_last_exception(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_array_length(
   _env: *mut Env,
   value: napi_value,
@@ -1707,7 +1707,7 @@ fn napi_get_array_length(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_arraybuffer_info(
   _env: *mut Env,
   value: napi_value,
@@ -1725,7 +1725,7 @@ fn napi_get_arraybuffer_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_boolean(
   env: *mut Env,
   value: bool,
@@ -1738,7 +1738,7 @@ fn napi_get_boolean(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_buffer_info(
   env: *mut Env,
   value: napi_value,
@@ -1763,7 +1763,7 @@ fn napi_get_buffer_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_cb_info(
   env: *mut Env,
   cbinfo: napi_callback_info,
@@ -1805,7 +1805,7 @@ fn napi_get_cb_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_dataview_info(
   env: *mut Env,
   value: napi_value,
@@ -1828,7 +1828,7 @@ fn napi_get_dataview_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_date_value(
   env: *mut Env,
   value: napi_value,
@@ -1844,7 +1844,7 @@ fn napi_get_date_value(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_element(
   env: *mut Env,
   object: napi_value,
@@ -1861,7 +1861,7 @@ fn napi_get_element(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_global(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_env2!(env);
   check_arg2!(env, result);
@@ -1873,7 +1873,7 @@ fn napi_get_global(env: *mut Env, result: *mut napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_instance_data(
   env: *mut Env,
   result: *mut *mut c_void,
@@ -1885,7 +1885,7 @@ fn napi_get_instance_data(
 }
 
 // TODO(bartlomieju): this function is broken
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_last_error_info(
   _env: *mut Env,
   error_code: *mut *const napi_extended_error_info,
@@ -1901,7 +1901,7 @@ fn napi_get_last_error_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_named_property(
   env: *mut Env,
   object: napi_value,
@@ -1923,7 +1923,7 @@ fn napi_get_named_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_new_target(
   _env: &mut Env,
   cbinfo: &CallbackInfo,
@@ -1934,7 +1934,7 @@ fn napi_get_new_target(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_null(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_env2!(env);
   check_arg2!(env, result);
@@ -1943,7 +1943,7 @@ fn napi_get_null(env: *mut Env, result: *mut napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_property(
   env: *mut Env,
   object: napi_value,
@@ -1959,7 +1959,7 @@ fn napi_get_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_property_names(
   env: *mut Env,
   object: napi_value,
@@ -1978,7 +1978,7 @@ fn napi_get_property_names(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_prototype(
   env: *mut Env,
   value: napi_value,
@@ -1993,7 +1993,7 @@ fn napi_get_prototype(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_reference_value(
   env: *mut Env,
   reference: napi_ref,
@@ -2005,7 +2005,7 @@ fn napi_get_reference_value(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_typedarray_info(
   env: *mut Env,
   typedarray: napi_value,
@@ -2065,7 +2065,7 @@ fn napi_get_typedarray_info(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_undefined(env: *mut Env, result: *mut napi_value) -> napi_status {
   check_env2!(env);
   check_arg2!(env, result);
@@ -2076,13 +2076,13 @@ fn napi_get_undefined(env: *mut Env, result: *mut napi_value) -> napi_status {
 
 pub const NAPI_VERSION: u32 = 8;
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_get_version(_: napi_env, version: *mut u32) -> napi_status {
   *version = NAPI_VERSION;
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_has_element(
   env: *mut Env,
   value: napi_value,
@@ -2097,7 +2097,7 @@ fn napi_has_element(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_has_named_property(
   env: *mut Env,
   value: napi_value,
@@ -2114,7 +2114,7 @@ fn napi_has_named_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_has_own_property(
   env: *mut Env,
   object: napi_value,
@@ -2149,7 +2149,7 @@ fn napi_has_own_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_has_property(
   env: *mut Env,
   object: napi_value,
@@ -2175,7 +2175,7 @@ fn napi_has_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_instanceof(
   env: *mut Env,
   value: napi_value,
@@ -2204,7 +2204,7 @@ fn napi_instanceof(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_array(
   _env: *mut Env,
   value: napi_value,
@@ -2215,7 +2215,7 @@ fn napi_is_array(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_arraybuffer(
   _env: *mut Env,
   value: napi_value,
@@ -2226,7 +2226,7 @@ fn napi_is_arraybuffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_buffer(
   _env: *mut Env,
   value: napi_value,
@@ -2239,7 +2239,7 @@ fn napi_is_buffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_dataview(
   _env: *mut Env,
   value: napi_value,
@@ -2250,7 +2250,7 @@ fn napi_is_dataview(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_date(
   _env: *mut Env,
   value: napi_value,
@@ -2261,7 +2261,7 @@ fn napi_is_date(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_detached_arraybuffer(
   env: *mut Env,
   value: napi_value,
@@ -2282,7 +2282,7 @@ fn napi_is_detached_arraybuffer(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_error(
   env: *mut Env,
   value: napi_value,
@@ -2302,7 +2302,7 @@ fn napi_is_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_exception_pending(env: *mut Env, result: *mut bool) -> napi_status {
   let mut _env = &mut *(env as *mut Env);
   // TODO
@@ -2310,7 +2310,7 @@ fn napi_is_exception_pending(env: *mut Env, result: *mut bool) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_promise(
   _env: *mut Env,
   value: napi_value,
@@ -2321,7 +2321,7 @@ fn napi_is_promise(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_is_typedarray(
   _env: *mut Env,
   value: napi_value,
@@ -2332,7 +2332,7 @@ fn napi_is_typedarray(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_new_instance(
   env: *mut Env,
   constructor: napi_value,
@@ -2352,7 +2352,7 @@ fn napi_new_instance(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_object_freeze(
   env: &mut Env,
   object: v8::Local<v8::Value>,
@@ -2368,7 +2368,7 @@ fn napi_object_freeze(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_object_seal(
   env: &mut Env,
   object: v8::Local<v8::Value>,
@@ -2384,7 +2384,7 @@ fn napi_object_seal(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_open_escapable_handle_scope(
   _env: *mut Env,
   _result: *mut napi_escapable_handle_scope,
@@ -2393,7 +2393,7 @@ fn napi_open_escapable_handle_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_open_handle_scope(
   env: *mut Env,
   _result: *mut napi_handle_scope,
@@ -2405,19 +2405,19 @@ fn napi_open_handle_scope(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_reference_ref() -> napi_status {
   // TODO
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_reference_unref() -> napi_status {
   // TODO
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_reject_deferred(
   env: *mut Env,
   deferred: napi_deferred,
@@ -2442,7 +2442,7 @@ fn napi_reject_deferred(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_remove_wrap(env: *mut Env, value: napi_value) -> napi_status {
   check_env2!(env);
   let env = unsafe { &mut *env };
@@ -2454,7 +2454,7 @@ fn napi_remove_wrap(env: *mut Env, value: napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_resolve_deferred(
   env: *mut Env,
   deferred: napi_deferred,
@@ -2478,7 +2478,7 @@ fn napi_resolve_deferred(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_run_script(
   env: *mut Env,
   script: napi_value,
@@ -2511,7 +2511,7 @@ fn napi_run_script(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_set_element(
   env: *mut Env,
   object: napi_value,
@@ -2527,7 +2527,7 @@ fn napi_set_element(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_set_instance_data(
   env: *mut Env,
   data: *mut c_void,
@@ -2546,7 +2546,7 @@ fn napi_set_instance_data(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_set_named_property(
   env: *mut Env,
   object: napi_value,
@@ -2563,7 +2563,7 @@ fn napi_set_named_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_set_property(
   env: *mut Env,
   object: napi_value,
@@ -2592,7 +2592,7 @@ fn napi_set_property(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_strict_equals(
   env: *mut Env,
   lhs: napi_value,
@@ -2608,7 +2608,7 @@ fn napi_strict_equals(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
   check_env2!(env);
   let env = unsafe { &mut *env };
@@ -2617,7 +2617,7 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_throw_error(
   env: *mut Env,
   code: *const c_char,
@@ -2650,7 +2650,7 @@ fn napi_throw_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_throw_range_error(
   env: *mut Env,
   code: *const c_char,
@@ -2681,7 +2681,7 @@ fn napi_throw_range_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_throw_type_error(
   env: *mut Env,
   code: *const c_char,
@@ -2738,7 +2738,7 @@ pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {
   }
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_typeof(
   env: *mut Env,
   value: napi_value,
@@ -2755,7 +2755,7 @@ fn napi_typeof(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_unwrap(
   env: *mut Env,
   value: napi_value,
@@ -2776,7 +2776,7 @@ fn napi_unwrap(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn napi_wrap(
   env: *mut Env,
   value: napi_value,
@@ -2793,7 +2793,7 @@ fn napi_wrap(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn node_api_throw_syntax_error(
   env: *mut Env,
   _code: *const c_char,
@@ -2814,7 +2814,7 @@ fn node_api_throw_syntax_error(
   napi_ok
 }
 
-#[napi_sym::napi_sym2]
+#[napi_sym::napi_sym]
 fn node_api_create_syntax_error(
   env: *mut Env,
   _code: napi_value,
