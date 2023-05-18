@@ -2,16 +2,16 @@
 running 6 tests from ./test/steps/passing_steps.ts
 description ...
   step 1 ...
-    inner 1 ... ok ([WILDCARD]ms)
-    inner 2 ... ok ([WILDCARD]ms)
-  step 1 ... ok ([WILDCARD]ms)
-description ... ok ([WILDCARD]ms)
+    inner 1 ... ok ([WILDCARD]s)
+    inner 2 ... ok ([WILDCARD]s)
+  step 1 ... ok ([WILDCARD]s)
+description ... ok ([WILDCARD]s)
 description function as first arg ...
   step1 ...
-    inner1 ... ok ([WILDCARD]ms)
-    inner1 ... ok ([WILDCARD]ms)
-  step1 ... ok ([WILDCARD]ms)
-description function as first arg ... ok ([WILDCARD]ms)
+    inner1 ... ok ([WILDCARD]s)
+    inner1 ... ok ([WILDCARD]s)
+  step1 ... ok ([WILDCARD]s)
+description function as first arg ... ok ([WILDCARD]s)
 parallel steps without sanitizers ...
   step 1 ... ok ([WILDCARD])
   step 2 ... ok ([WILDCARD])

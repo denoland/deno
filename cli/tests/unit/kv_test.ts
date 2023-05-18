@@ -6,6 +6,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
+import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
 
 let isCI: boolean;
 try {
@@ -64,7 +65,9 @@ dbTest("basic read-write-delete and versionstamps", async (db) => {
   assertEquals(result1.value, null);
   assertEquals(result1.versionstamp, null);
 
-  await db.set(["a"], "b");
+  const setRes = await db.set(["a"], "b");
+  assert(setRes.ok);
+  assertEquals(setRes.versionstamp, "00000000000000010000");
   const result2 = await db.get(["a"]);
   assertEquals(result2.key, ["a"]);
   assertEquals(result2.value, "b");
@@ -119,6 +122,36 @@ dbTest("set and get recursive object", async (db) => {
   const resultValue: any = result.value;
   assert(resultValue.a === resultValue);
 });
+
+// invalid values (as per structured clone algorithm with _for storage_, NOT JSON)
+const INVALID_VALUE_CASES = [
+  { name: "function", value: () => {} },
+  { name: "symbol", value: Symbol() },
+  { name: "WeakMap", value: new WeakMap() },
+  { name: "WeakSet", value: new WeakSet() },
+  {
+    name: "WebAssembly.Module",
+    value: new WebAssembly.Module(
+      new Uint8Array([0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00]),
+    ),
+  },
+  {
+    name: "SharedArrayBuffer",
+    value: new SharedArrayBuffer(3),
+  },
+];
+
+for (const { name, value } of INVALID_VALUE_CASES) {
+  dbTest(`set and get ${name} value (invalid)`, async (db) => {
+    await assertRejects(
+      async () => await db.set(["a"], value),
+      Error,
+    );
+    const res = await db.get(["a"]);
+    assertEquals(res.key, ["a"]);
+    assertEquals(res.value, null);
+  });
+}
 
 const keys = [
   ["a"],
@@ -177,21 +210,22 @@ dbTest("compare and mutate", async (db) => {
   const currentValue = await db.get(["t"]);
   assertEquals(currentValue.versionstamp, "00000000000000010000");
 
-  let ok = await db.atomic()
+  let res = await db.atomic()
     .check({ key: ["t"], versionstamp: currentValue.versionstamp })
     .set(currentValue.key, "2")
     .commit();
-  assertEquals(ok, true);
+  assert(res.ok);
+  assertEquals(res.versionstamp, "00000000000000020000");
 
   const newValue = await db.get(["t"]);
   assertEquals(newValue.versionstamp, "00000000000000020000");
   assertEquals(newValue.value, "2");
 
-  ok = await db.atomic()
+  res = await db.atomic()
     .check({ key: ["t"], versionstamp: currentValue.versionstamp })
     .set(currentValue.key, "3")
     .commit();
-  assertEquals(ok, false);
+  assert(!res.ok);
 
   const newValue2 = await db.get(["t"]);
   assertEquals(newValue2.versionstamp, "00000000000000020000");
@@ -199,21 +233,51 @@ dbTest("compare and mutate", async (db) => {
 });
 
 dbTest("compare and mutate not exists", async (db) => {
-  let ok = await db.atomic()
+  let res = await db.atomic()
     .check({ key: ["t"], versionstamp: null })
     .set(["t"], "1")
     .commit();
-  assertEquals(ok, true);
+  assert(res.ok);
 
   const newValue = await db.get(["t"]);
   assertEquals(newValue.versionstamp, "00000000000000010000");
   assertEquals(newValue.value, "1");
 
-  ok = await db.atomic()
+  res = await db.atomic()
     .check({ key: ["t"], versionstamp: null })
     .set(["t"], "2")
     .commit();
-  assertEquals(ok, false);
+  assert(!res.ok);
+});
+
+dbTest("atomic mutation helper (sum)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().sum(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
+});
+
+dbTest("atomic mutation helper (min)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().min(["t"], 1n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
+
+  await db.atomic().min(["t"], 2n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(1n));
+});
+
+dbTest("atomic mutation helper (max)", async (db) => {
+  await db.set(["t"], new Deno.KvU64(42n));
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().max(["t"], 41n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(42n));
+
+  await db.atomic().max(["t"], 43n).commit();
+  assertEquals((await db.get(["t"])).value, new Deno.KvU64(43n));
 });
 
 dbTest("compare multiple and mutate", async (db) => {
@@ -225,13 +289,13 @@ dbTest("compare multiple and mutate", async (db) => {
   const currentValue2 = await db.get(["t2"]);
   assertEquals(currentValue2.versionstamp, "00000000000000020000");
 
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .check({ key: ["t1"], versionstamp: currentValue1.versionstamp })
     .check({ key: ["t2"], versionstamp: currentValue2.versionstamp })
     .set(currentValue1.key, "3")
     .set(currentValue2.key, "4")
     .commit();
-  assertEquals(ok, true);
+  assert(res.ok);
 
   const newValue1 = await db.get(["t1"]);
   assertEquals(newValue1.versionstamp, "00000000000000030000");
@@ -241,13 +305,13 @@ dbTest("compare multiple and mutate", async (db) => {
   assertEquals(newValue2.value, "4");
 
   // just one of the two checks failed
-  const ok2 = await db.atomic()
+  const res2 = await db.atomic()
     .check({ key: ["t1"], versionstamp: newValue1.versionstamp })
     .check({ key: ["t2"], versionstamp: null })
     .set(newValue1.key, "5")
     .set(newValue2.key, "6")
     .commit();
-  assertEquals(ok2, false);
+  assert(!res2.ok);
 
   const newValue3 = await db.get(["t1"]);
   assertEquals(newValue3.versionstamp, "00000000000000030000");
@@ -259,79 +323,79 @@ dbTest("compare multiple and mutate", async (db) => {
 
 dbTest("atomic mutation ordering (set before delete)", async (db) => {
   await db.set(["a"], "1");
-  const ok1 = await db.atomic()
+  const res = await db.atomic()
     .set(["a"], "2")
     .delete(["a"])
     .commit();
-  assert(ok1);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, null);
 });
 
 dbTest("atomic mutation ordering (delete before set)", async (db) => {
   await db.set(["a"], "1");
-  const ok1 = await db.atomic()
+  const res = await db.atomic()
     .delete(["a"])
     .set(["a"], "2")
     .commit();
-  assert(ok1);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, "2");
 });
 
 dbTest("atomic mutation type=set", async (db) => {
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: "1", type: "set" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, "1");
 });
 
 dbTest("atomic mutation type=set overwrite", async (db) => {
   await db.set(["a"], "1");
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: "2", type: "set" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, "2");
 });
 
 dbTest("atomic mutation type=delete", async (db) => {
   await db.set(["a"], "1");
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], type: "delete" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, null);
 });
 
 dbTest("atomic mutation type=delete no exists", async (db) => {
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], type: "delete" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, null);
 });
 
 dbTest("atomic mutation type=sum", async (db) => {
   await db.set(["a"], new Deno.KvU64(10n));
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "sum" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, new Deno.KvU64(11n));
 });
 
 dbTest("atomic mutation type=sum no exists", async (db) => {
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "sum" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assert(result.value);
   assertEquals(result.value, new Deno.KvU64(1n));
@@ -339,21 +403,21 @@ dbTest("atomic mutation type=sum no exists", async (db) => {
 
 dbTest("atomic mutation type=sum wrap around", async (db) => {
   await db.set(["a"], new Deno.KvU64(0xffffffffffffffffn));
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(10n), type: "sum" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, new Deno.KvU64(9n));
 
-  const ok2 = await db.atomic()
+  const res2 = await db.atomic()
     .mutate({
       key: ["a"],
       value: new Deno.KvU64(0xffffffffffffffffn),
       type: "sum",
     })
     .commit();
-  assert(ok2);
+  assert(res2);
   const result2 = await db.get(["a"]);
   assertEquals(result2.value, new Deno.KvU64(8n));
 });
@@ -387,26 +451,26 @@ dbTest("atomic mutation type=sum wrong type in mutation", async (db) => {
 
 dbTest("atomic mutation type=min", async (db) => {
   await db.set(["a"], new Deno.KvU64(10n));
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(5n), type: "min" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, new Deno.KvU64(5n));
 
-  const ok2 = await db.atomic()
+  const res2 = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(15n), type: "min" })
     .commit();
-  assert(ok2);
+  assert(res2);
   const result2 = await db.get(["a"]);
   assertEquals(result2.value, new Deno.KvU64(5n));
 });
 
 dbTest("atomic mutation type=min no exists", async (db) => {
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "min" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assert(result.value);
   assertEquals(result.value, new Deno.KvU64(1n));
@@ -441,26 +505,26 @@ dbTest("atomic mutation type=min wrong type in mutation", async (db) => {
 
 dbTest("atomic mutation type=max", async (db) => {
   await db.set(["a"], new Deno.KvU64(10n));
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(5n), type: "max" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assertEquals(result.value, new Deno.KvU64(10n));
 
-  const ok2 = await db.atomic()
+  const res2 = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(15n), type: "max" })
     .commit();
-  assert(ok2);
+  assert(res2);
   const result2 = await db.get(["a"]);
   assertEquals(result2.value, new Deno.KvU64(15n));
 });
 
 dbTest("atomic mutation type=max no exists", async (db) => {
-  const ok = await db.atomic()
+  const res = await db.atomic()
     .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "max" })
     .commit();
-  assert(ok);
+  assert(res.ok);
   const result = await db.get(["a"]);
   assert(result.value);
   assertEquals(result.value, new Deno.KvU64(1n));
@@ -514,21 +578,35 @@ Deno.test("KvU64 underflow", () => {
   }, RangeError);
 });
 
-Deno.test("KvU64 frozen", () => {
-  const a = new Deno.KvU64(1n);
-  assertThrows(() => {
-    // @ts-expect-error value is readonly
-    a.value = 2n;
-  }, TypeError);
-});
-
 Deno.test("KvU64 unbox", () => {
   const a = new Deno.KvU64(1n);
   assertEquals(a.value, 1n);
 });
 
-async function collect(iter: Deno.KvListIterator): Promise<Deno.KvEntry[]> {
-  const entries: Deno.KvEntry[] = [];
+Deno.test("KvU64 unbox with valueOf", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a.valueOf(), 1n);
+});
+
+Deno.test("KvU64 auto-unbox", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a as unknown as bigint + 1n, 2n);
+});
+
+Deno.test("KvU64 toString", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(a.toString(), "1");
+});
+
+Deno.test("KvU64 inspect", () => {
+  const a = new Deno.KvU64(1n);
+  assertEquals(Deno.inspect(a), "[Deno.KvU64: 1n]");
+});
+
+async function collect<T>(
+  iter: Deno.KvListIterator<T>,
+): Promise<Deno.KvEntry<T>[]> {
+  const entries: Deno.KvEntry<T>[] = [];
   for await (const entry of iter) {
     entries.push(entry);
   }
@@ -1059,7 +1137,8 @@ dbTest("operation size limit", async (db) => {
     i,
   ) => ["a", i]);
 
-  assertEquals((await db.getMany(lastValidKeys)).length, 10);
+  const res = await db.getMany(lastValidKeys);
+  assertEquals(res.length, 10);
 
   await assertRejects(
     async () => await db.getMany(firstInvalidKeys),
@@ -1067,73 +1146,161 @@ dbTest("operation size limit", async (db) => {
     "too many ranges (max 10)",
   );
 
-  assertEquals(
-    (await collect(db.list({
-      prefix: ["a"],
-    }, {
-      batchSize: 1000,
-    }))).length,
-    0,
-  );
+  const res2 = await collect(db.list({ prefix: ["a"] }, { batchSize: 1000 }));
+  assertEquals(res2.length, 0);
 
   assertRejects(
-    async () =>
-      await collect(db.list({
-        prefix: ["a"],
-      }, {
-        batchSize: 1001,
-      })),
+    async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 1001 })),
     TypeError,
     "too many entries (max 1000)",
   );
 
   // when batchSize is not specified, limit is used but is clamped to 500
   assertEquals(
-    (await collect(db.list({
-      prefix: ["a"],
-    }, {
-      limit: 1001,
-    }))).length,
+    (await collect(db.list({ prefix: ["a"] }, { limit: 1001 }))).length,
     0,
   );
 
-  assertEquals(
-    await db.atomic().check(...lastValidKeys.map((key) => ({
+  const res3 = await db.atomic()
+    .check(...lastValidKeys.map((key) => ({
       key,
       versionstamp: null,
-    }))).mutate(...lastValidKeys.map((key) => ({
+    })))
+    .mutate(...lastValidKeys.map((key) => ({
       key,
       type: "set",
       value: 1,
-    } satisfies Deno.KvMutation))).commit(),
-    true,
-  );
+    } satisfies Deno.KvMutation)))
+    .commit();
+  assert(res3);
 
   await assertRejects(
-    async () =>
-      await db.atomic().check(...firstInvalidKeys.map((key) => ({
-        key,
-        versionstamp: null,
-      }))).mutate(...lastValidKeys.map((key) => ({
-        key,
-        type: "set",
-        value: 1,
-      } satisfies Deno.KvMutation))).commit(),
+    async () => {
+      await db.atomic()
+        .check(...firstInvalidKeys.map((key) => ({
+          key,
+          versionstamp: null,
+        })))
+        .mutate(...lastValidKeys.map((key) => ({
+          key,
+          type: "set",
+          value: 1,
+        } satisfies Deno.KvMutation)))
+        .commit();
+    },
     TypeError,
     "too many checks (max 10)",
   );
 
   await assertRejects(
-    async () =>
-      await db.atomic().check(...lastValidKeys.map((key) => ({
-        key,
-        versionstamp: null,
-      }))).mutate(...firstInvalidKeys.map((key) => ({
-        key,
-        type: "set",
-        value: 1,
-      } satisfies Deno.KvMutation))).commit(),
+    async () => {
+      await db.atomic()
+        .check(...lastValidKeys.map((key) => ({
+          key,
+          versionstamp: null,
+        })))
+        .mutate(...firstInvalidKeys.map((key) => ({
+          key,
+          type: "set",
+          value: 1,
+        } satisfies Deno.KvMutation)))
+        .commit();
+    },
     TypeError,
     "too many mutations (max 10)",
   );
 });
+
+dbTest("keys must be arrays", async (db) => {
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.get("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.getMany(["a"]),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.set("a", 1),
+    TypeError,
+  );
+
+  await assertRejects(
+    // @ts-expect-error invalid type
+    async () => await db.delete("a"),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .mutate({ key: "a", type: "set", value: 1 } satisfies Deno.KvMutation)
+        .commit(),
+    TypeError,
+  );
+
+  await assertRejects(
+    async () =>
+      await db.atomic()
+        // @ts-expect-error invalid type
+        .check({ key: "a", versionstamp: null })
+        .set(["a"], 1)
+        .commit(),
+    TypeError,
+  );
+});
+
+Deno.test("Deno.Kv constructor throws", () => {
+  assertThrows(() => {
+    new Deno.Kv();
+  });
+});
+
+// This function is never called, it is just used to check that all the types
+// are behaving as expected.
+async function _typeCheckingTests() {
+  const kv = new Deno.Kv();
+
+  const a = await kv.get(["a"]);
+  assertType<IsExact<typeof a, Deno.KvEntryMaybe<unknown>>>(true);
+
+  const b = await kv.get<string>(["b"]);
+  assertType<IsExact<typeof b, Deno.KvEntryMaybe<string>>>(true);
+
+  const c = await kv.getMany([["a"], ["b"]]);
+  assertType<
+    IsExact<typeof c, [Deno.KvEntryMaybe<unknown>, Deno.KvEntryMaybe<unknown>]>
+  >(true);
+
+  const d = await kv.getMany([["a"], ["b"]] as const);
+  assertType<
+    IsExact<typeof d, [Deno.KvEntryMaybe<unknown>, Deno.KvEntryMaybe<unknown>]>
+  >(true);
+
+  const e = await kv.getMany<[string, number]>([["a"], ["b"]]);
+  assertType<
+    IsExact<typeof e, [Deno.KvEntryMaybe<string>, Deno.KvEntryMaybe<number>]>
+  >(true);
+
+  const keys: Deno.KvKey[] = [["a"], ["b"]];
+  const f = await kv.getMany(keys);
+  assertType<IsExact<typeof f, Deno.KvEntryMaybe<unknown>[]>>(true);
+
+  const g = kv.list({ prefix: ["a"] });
+  assertType<IsExact<typeof g, Deno.KvListIterator<unknown>>>(true);
+  const h = await g.next();
+  assert(!h.done);
+  assertType<IsExact<typeof h.value, Deno.KvEntry<unknown>>>(true);
+
+  const i = kv.list<string>({ prefix: ["a"] });
+  assertType<IsExact<typeof i, Deno.KvListIterator<string>>>(true);
+  const j = await i.next();
+  assert(!j.done);
+  assertType<IsExact<typeof j.value, Deno.KvEntry<string>>>(true);
+}

@@ -1,18 +1,31 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use deno_core::error::AnyError;
+
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::futures::StreamExt;
+use deno_core::parking_lot::Mutex;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+use deno_semver::npm::NpmPackageReq;
 
 use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
-use crate::npm::NpmResolutionPackage;
+use crate::npm::CliNpmRegistryApi;
 use crate::Flags;
 
 use super::DenoSubcommand;
 
 pub use deno_lockfile::Lockfile;
 pub use deno_lockfile::LockfileError;
-use deno_lockfile::NpmPackageDependencyLockfileInfo;
-use deno_lockfile::NpmPackageLockfileInfo;
 
 pub fn discover(
   flags: &Flags,
@@ -61,24 +74,100 @@ pub fn discover(
   Ok(Some(lockfile))
 }
 
-// NOTE(bartlomieju): we don't want a reverse mapping to be possible.
-#[allow(clippy::from_over_into)]
-impl Into<NpmPackageLockfileInfo> for NpmResolutionPackage {
-  fn into(self) -> NpmPackageLockfileInfo {
-    let dependencies = self
-      .dependencies
-      .into_iter()
-      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-        name,
-        id: id.as_serialized(),
-      })
-      .collect();
+pub async fn snapshot_from_lockfile(
+  lockfile: Arc<Mutex<Lockfile>>,
+  api: &CliNpmRegistryApi,
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
+  let (root_packages, mut packages) = {
+    let lockfile = lockfile.lock();
 
-    NpmPackageLockfileInfo {
-      display_id: self.pkg_id.nv.to_string(),
-      serialized_id: self.pkg_id.as_serialized(),
-      integrity: self.dist.integrity().to_string(),
-      dependencies,
+    let mut root_packages =
+      HashMap::<NpmPackageReq, NpmPackageId>::with_capacity(
+        lockfile.content.npm.specifiers.len(),
+      );
+    // collect the specifiers to version mappings
+    for (key, value) in &lockfile.content.npm.specifiers {
+      let package_req = NpmPackageReq::from_str(key)
+        .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
+      let package_id = NpmPackageId::from_serialized(value)?;
+      root_packages.insert(package_req, package_id.clone());
     }
+
+    // now fill the packages except for the dist information
+    let mut packages = Vec::with_capacity(lockfile.content.npm.packages.len());
+    for (key, package) in &lockfile.content.npm.packages {
+      let pkg_id = NpmPackageId::from_serialized(key)?;
+
+      // collect the dependencies
+      let mut dependencies = HashMap::with_capacity(package.dependencies.len());
+      for (name, specifier) in &package.dependencies {
+        let dep_id = NpmPackageId::from_serialized(specifier)?;
+        dependencies.insert(name.clone(), dep_id);
+      }
+
+      packages.push(SerializedNpmResolutionSnapshotPackage {
+        pkg_id,
+        dependencies,
+        // temporarily empty
+        os: Default::default(),
+        cpu: Default::default(),
+        dist: Default::default(),
+        optional_dependencies: Default::default(),
+      });
+    }
+    (root_packages, packages)
+  };
+
+  // now that the lockfile is dropped, fetch the package version information
+  let pkg_nvs = packages
+    .iter()
+    .map(|p| p.pkg_id.nv.clone())
+    .collect::<Vec<_>>();
+  let get_version_infos = || {
+    FuturesOrdered::from_iter(pkg_nvs.iter().map(|nv| async move {
+      let package_info = api.package_info(&nv.name).await?;
+      match package_info.version_info(nv) {
+        Ok(version_info) => Ok(version_info),
+        Err(err) => {
+          bail!("Could not find '{}' specified in the lockfile.", err.0);
+        }
+      }
+    }))
+  };
+  let mut version_infos = get_version_infos();
+  let mut i = 0;
+  while let Some(result) = version_infos.next().await {
+    match result {
+      Ok(version_info) => {
+        let mut package = &mut packages[i];
+        package.dist = version_info.dist;
+        package.cpu = version_info.cpu;
+        package.os = version_info.os;
+        package.optional_dependencies =
+          version_info.optional_dependencies.into_keys().collect();
+      }
+      Err(err) => {
+        if api.mark_force_reload() {
+          // reset and try again
+          version_infos = get_version_infos();
+          i = 0;
+          continue;
+        } else {
+          return Err(err);
+        }
+      }
+    }
+
+    i += 1;
   }
+
+  // clear the memory cache to reduce memory usage
+  api.clear_memory_cache();
+
+  SerializedNpmResolutionSnapshot {
+    packages,
+    root_packages,
+  }
+  .into_valid()
+  .context("The lockfile is corrupt. You can recreate it with --lock-write")
 }

@@ -265,6 +265,10 @@ fn default_to_true() -> bool {
   true
 }
 
+fn default_document_preload_limit() -> usize {
+  1000
+}
+
 fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   d: D,
 ) -> Result<Option<String>, D::Error> {
@@ -318,6 +322,10 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_to_true")]
   pub lint: bool,
 
+  /// Limits the number of files that can be preloaded by the language server.
+  #[serde(default = "default_document_preload_limit")]
+  pub document_preload_limit: usize,
+
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
@@ -354,6 +362,7 @@ impl Default for WorkspaceSettings {
       inlay_hints: Default::default(),
       internal_debug: false,
       lint: true,
+      document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -439,8 +448,8 @@ impl Config {
     }
   }
 
-  pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.workspace.clone()
+  pub fn workspace_settings(&self) -> &WorkspaceSettings {
+    &self.settings.workspace
   }
 
   /// Set the workspace settings directly, which occurs during initialization
@@ -483,6 +492,38 @@ impl Config {
       .get(specifier)
       .map(|settings| settings.enable)
       .unwrap_or_else(|| self.settings.workspace.enable)
+  }
+
+  /// Gets the directories or specifically enabled file paths based on the
+  /// workspace config.
+  ///
+  /// WARNING: This may incorrectly have some directory urls as being
+  /// represented as file urls.
+  pub fn enabled_urls(&self) -> Vec<Url> {
+    let mut urls: Vec<Url> = Vec::new();
+
+    if !self.settings.workspace.enable && self.enabled_paths.is_empty() {
+      // do not return any urls when disabled
+      return urls;
+    }
+
+    for (workspace, enabled_paths) in &self.enabled_paths {
+      if !enabled_paths.is_empty() {
+        urls.extend(enabled_paths.iter().cloned());
+      } else {
+        urls.push(workspace.clone());
+      }
+    }
+
+    if urls.is_empty() {
+      if let Some(root_dir) = &self.root_uri {
+        urls.push(root_dir.clone())
+      }
+    }
+
+    // sort for determinism
+    urls.sort();
+    urls
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
@@ -626,6 +667,7 @@ mod tests {
   use super::*;
   use deno_core::resolve_url;
   use deno_core::serde_json::json;
+  use pretty_assertions::assert_eq;
 
   #[test]
   fn test_config_specifier_enabled() {
@@ -681,7 +723,7 @@ mod tests {
       .set_workspace_settings(json!({}))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings {
         enable: false,
         enable_paths: Vec::new(),
@@ -717,6 +759,7 @@ mod tests {
         },
         internal_debug: false,
         lint: true,
+        document_preload_limit: 1_000,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -745,7 +788,7 @@ mod tests {
       .set_workspace_settings(json!({ "cache": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -757,7 +800,7 @@ mod tests {
       .set_workspace_settings(json!({ "import_map": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -769,7 +812,7 @@ mod tests {
       .set_workspace_settings(json!({ "tls_certificate": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -781,8 +824,49 @@ mod tests {
       .set_workspace_settings(json!({ "config": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
+    );
+  }
+
+  #[test]
+  fn config_enabled_urls() {
+    let mut config = Config::new();
+    let root_dir = Url::parse("file:///example/").unwrap();
+    config.root_uri = Some(root_dir.clone());
+    config.settings.workspace.enable = false;
+    config.settings.workspace.enable_paths = Vec::new();
+    assert_eq!(config.enabled_urls(), vec![]);
+
+    config.settings.workspace.enable = true;
+    assert_eq!(config.enabled_urls(), vec![root_dir]);
+
+    config.settings.workspace.enable = false;
+    let root_dir1 = Url::parse("file:///root1/").unwrap();
+    let root_dir2 = Url::parse("file:///root2/").unwrap();
+    let root_dir3 = Url::parse("file:///root3/").unwrap();
+    config.enabled_paths = HashMap::from([
+      (
+        root_dir1.clone(),
+        vec![
+          root_dir1.join("sub_dir/").unwrap(),
+          root_dir1.join("sub_dir/other/").unwrap(),
+          root_dir1.join("test.ts").unwrap(),
+        ],
+      ),
+      (root_dir2.clone(), vec![root_dir2.join("other.ts").unwrap()]),
+      (root_dir3.clone(), vec![]),
+    ]);
+
+    assert_eq!(
+      config.enabled_urls(),
+      vec![
+        root_dir1.join("sub_dir/").unwrap(),
+        root_dir1.join("sub_dir/other/").unwrap(),
+        root_dir1.join("test.ts").unwrap(),
+        root_dir2.join("other.ts").unwrap(),
+        root_dir3
+      ]
     );
   }
 }

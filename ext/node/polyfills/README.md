@@ -169,25 +169,6 @@ to pass certain tests. However, avoid doing such manual changes to the test
 files, since that may cover up inconsistencies between the node library and
 actual node behavior.
 
-### Working with child processes ? Use `DENO_NODE_COMPAT_URL`
-
-When working with `child_process` modules, you will have to run tests pulled
-from Node.js. These tests usually spawn deno child processes via the use of
-`process.execPath`. The `deno` executable will use its own embedded version of
-std modules, then you may get the impression your code is not really working as
-it should.
-
-To prevent this, set `DENO_NODE_COMPAT_URL` with the absolute path to your
-`deno_std` repo, ending with a trailing slash:
-
-```
-export DENO_NODE_COMPAT_URL=$PWD/
-# or
-export DENO_NODE_COMPAT_URL=file:///path/to/deno_std/dir/
-```
-
-Then, `deno` will use your local copy of `deno_std` instead of latest version.
-
 ### Best practices
 
 When converting from promise-based to callback-based APIs, the most obvious way
