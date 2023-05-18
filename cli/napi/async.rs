@@ -9,7 +9,7 @@ pub struct AsyncWork {
   pub complete: napi_async_complete_callback,
 }
 
-#[napi_sym::napi_sym]
+#[napi_sym::napi_sym2]
 fn napi_create_async_work(
   _env: *mut Env,
   _async_resource: napi_value,
@@ -18,7 +18,7 @@ fn napi_create_async_work(
   complete: napi_async_complete_callback,
   data: *mut c_void,
   result: *mut napi_async_work,
-) -> Result {
+) -> napi_status {
   let mut work = AsyncWork {
     data,
     execute,
@@ -26,30 +26,38 @@ fn napi_create_async_work(
   };
   let work_box = Box::new(work);
   *result = transmute::<*mut AsyncWork, _>(Box::into_raw(work_box));
-  Ok(())
+  napi_ok
 }
 
-#[napi_sym::napi_sym]
+#[napi_sym::napi_sym2]
 fn napi_cancel_async_work(
   _env: &mut Env,
   _async_work: napi_async_work,
-) -> Result {
-  Ok(())
+) -> napi_status {
+  napi_ok
 }
 
 /// Frees a previously allocated work object.
-#[napi_sym::napi_sym]
-fn napi_delete_async_work(_env: &mut Env, work: napi_async_work) -> Result {
+#[napi_sym::napi_sym2]
+fn napi_delete_async_work(
+  _env: &mut Env,
+  work: napi_async_work,
+) -> napi_status {
   let work = Box::from_raw(work as *mut AsyncWork);
   drop(work);
 
-  Ok(())
+  napi_ok
 }
 
-#[napi_sym::napi_sym]
-fn napi_queue_async_work(env_ptr: *mut Env, work: napi_async_work) -> Result {
+#[napi_sym::napi_sym2]
+fn napi_queue_async_work(
+  env_ptr: *mut Env,
+  work: napi_async_work,
+) -> napi_status {
   let work: &AsyncWork = &*(work as *const AsyncWork);
-  let env: &mut Env = env_ptr.as_mut().ok_or(Error::InvalidArg)?;
+  let Some(env) = env_ptr.as_mut() else {
+    return napi_invalid_arg;
+  };
 
   let fut = Box::new(move || {
     (work.execute)(env_ptr as napi_env, work.data);
@@ -58,22 +66,22 @@ fn napi_queue_async_work(env_ptr: *mut Env, work: napi_async_work) -> Result {
   });
   env.add_async_work(fut);
 
-  Ok(())
+  napi_ok
 }
 
 // TODO: Custom async operations.
 
-#[napi_sym::napi_sym]
+#[napi_sym::napi_sym2]
 fn napi_async_init(
   _env: *mut Env,
   _async_resource: napi_value,
   _async_resource_name: napi_value,
   _result: *mut *mut (),
-) -> Result {
+) -> napi_status {
   todo!()
 }
 
-#[napi_sym::napi_sym]
-fn napi_async_destroy(_env: *mut Env, _async_context: *mut ()) -> Result {
+#[napi_sym::napi_sym2]
+fn napi_async_destroy(_env: *mut Env, _async_context: *mut ()) -> napi_status {
   todo!()
 }

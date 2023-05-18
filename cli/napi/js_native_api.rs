@@ -22,6 +22,15 @@ macro_rules! check_env {
   };
 }
 
+#[macro_export]
+macro_rules! check_env2 {
+  ($env: expr) => {
+    if $env.is_null() {
+      return napi_invalid_arg;
+    }
+  };
+}
+
 #[inline]
 unsafe fn napi_value_unchecked(val: napi_value) -> v8::Local<v8::Value> {
   transmute::<napi_value, v8::Local<v8::Value>>(val)
@@ -39,6 +48,20 @@ macro_rules! return_status_if_false {
           std::ptr::null_mut(),
         )
         .into(),
+      );
+    }
+  };
+}
+
+#[macro_export]
+macro_rules! return_status_if_false2 {
+  ($env: expr, $condition: expr, $status: ident) => {
+    if !$condition {
+      return $crate::napi::js_native_api::napi_set_last_error(
+        $env,
+        $status,
+        0,
+        std::ptr::null_mut(),
       );
     }
   };
@@ -97,6 +120,15 @@ macro_rules! status_call {
 macro_rules! check_arg {
   ($env: expr, $ptr: expr) => {
     $crate::return_status_if_false!($env, !$ptr.is_null(), napi_invalid_arg);
+  };
+}
+
+// Macro to check napi arguments.
+// If nullptr, return napi_invalid_arg.
+#[macro_export]
+macro_rules! check_arg2 {
+  ($env: expr, $ptr: expr) => {
+    $crate::return_status_if_false2!($env, !$ptr.is_null(), napi_invalid_arg);
   };
 }
 
