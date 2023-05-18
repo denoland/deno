@@ -348,6 +348,13 @@ impl FilesConfig {
     self.include.is_empty()
       || self.include.iter().any(|i| file_path.starts_with(i))
   }
+
+  fn extend(self, rhs: Self) -> Self {
+    Self {
+      include: [self.include, rhs.include].concat(),
+      exclude: [self.exclude, rhs.exclude].concat(),
+    }
+  }
 }
 
 /// Choose between flat and nested files configuration.
@@ -426,6 +433,13 @@ pub struct LintConfig {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
   pub report: Option<String>,
+}
+
+impl LintConfig {
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
+  }
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
@@ -548,6 +562,13 @@ pub struct FmtConfig {
   pub files: FilesConfig,
 }
 
+impl FmtConfig {
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files, ..self }
+  }
+}
+
 /// `test` config representation for serde
 ///
 /// fields `include` and `exclude` are expanded from [SerializedFilesConfig].
@@ -578,6 +599,13 @@ impl SerializedTestConfig {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct TestConfig {
   pub files: FilesConfig,
+}
+
+impl TestConfig {
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files }
+  }
 }
 
 /// `bench` config representation for serde
@@ -612,6 +640,13 @@ pub struct BenchConfig {
   pub files: FilesConfig,
 }
 
+impl BenchConfig {
+  pub fn with_files(self, files: FilesConfig) -> Self {
+    let files = self.files.extend(files);
+    Self { files }
+  }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum LockConfig {
@@ -632,6 +667,7 @@ pub struct ConfigFileJson {
   pub test: Option<Value>,
   pub bench: Option<Value>,
   pub lock: Option<Value>,
+  pub exclude: Option<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -844,44 +880,105 @@ impl ConfigFile {
     self.json.imports.is_some() || self.json.scopes.is_some()
   }
 
-  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
-    if let Some(config) = self.json.fmt.clone() {
-      let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
-        .context("Failed to parse \"fmt\" configuration")?;
-      Ok(Some(fmt_config.into_resolved(&self.specifier)?))
+  pub fn to_files_config(&self) -> Result<Option<FilesConfig>, AnyError> {
+    let exclude: Vec<String> = if let Some(exclude) = self.json.exclude.clone()
+    {
+      serde_json::from_value(exclude)
+        .context("Failed to parse \"exclude\" configuration")?
     } else {
-      Ok(None)
+      Vec::new()
+    };
+
+    let raw_files_config = SerializedFilesConfig {
+      exclude,
+      ..Default::default()
+    };
+    Ok(Some(raw_files_config.into_resolved(&self.specifier)?))
+  }
+
+  pub fn to_fmt_config(&self) -> Result<Option<FmtConfig>, AnyError> {
+    let files_config = self.to_files_config()?;
+    let fmt_config = match self.json.fmt.clone() {
+      Some(config) => {
+        let fmt_config: SerializedFmtConfig = serde_json::from_value(config)
+          .context("Failed to parse \"fmt\" configuration")?;
+        Some(fmt_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && fmt_config.is_none() {
+      return Ok(None);
     }
+
+    let fmt_config = fmt_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(fmt_config.with_files(files_config)))
   }
 
   pub fn to_lint_config(&self) -> Result<Option<LintConfig>, AnyError> {
-    if let Some(config) = self.json.lint.clone() {
-      let lint_config: SerializedLintConfig = serde_json::from_value(config)
-        .context("Failed to parse \"lint\" configuration")?;
-      Ok(Some(lint_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let lint_config = match self.json.lint.clone() {
+      Some(config) => {
+        let lint_config: SerializedLintConfig = serde_json::from_value(config)
+          .context("Failed to parse \"lint\" configuration")?;
+        Some(lint_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && lint_config.is_none() {
+      return Ok(None);
     }
+
+    let lint_config = lint_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(lint_config.with_files(files_config)))
   }
 
   pub fn to_test_config(&self) -> Result<Option<TestConfig>, AnyError> {
-    if let Some(config) = self.json.test.clone() {
-      let test_config: SerializedTestConfig = serde_json::from_value(config)
-        .context("Failed to parse \"test\" configuration")?;
-      Ok(Some(test_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let test_config = match self.json.test.clone() {
+      Some(config) => {
+        let test_config: SerializedTestConfig = serde_json::from_value(config)
+          .context("Failed to parse \"test\" configuration")?;
+        Some(test_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && test_config.is_none() {
+      return Ok(None);
     }
+
+    let test_config = test_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(test_config.with_files(files_config)))
   }
 
   pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {
-    if let Some(config) = self.json.bench.clone() {
-      let bench_config: SerializedBenchConfig = serde_json::from_value(config)
-        .context("Failed to parse \"bench\" configuration")?;
-      Ok(Some(bench_config.into_resolved(&self.specifier)?))
-    } else {
-      Ok(None)
+    let files_config = self.to_files_config()?;
+    let bench_config = match self.json.bench.clone() {
+      Some(config) => {
+        let bench_config: SerializedBenchConfig =
+          serde_json::from_value(config)
+            .context("Failed to parse \"bench\" configuration")?;
+        Some(bench_config.into_resolved(&self.specifier)?)
+      }
+      None => None,
+    };
+
+    if files_config.is_none() && bench_config.is_none() {
+      return Ok(None);
     }
+
+    let bench_config = bench_config.unwrap_or_default();
+    let files_config = files_config.unwrap_or_default();
+
+    Ok(Some(bench_config.with_files(files_config)))
   }
 
   /// Return any tasks that are defined in the configuration file as a sequence
@@ -1223,8 +1320,7 @@ mod tests {
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, ignored) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, ignored) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
     assert!(options.contains_key("strict"));
@@ -1409,8 +1505,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
   }
 
@@ -1420,9 +1515,65 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
-    let (options_value, _) =
-      config_file.to_compiler_options().expect("error parsing");
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
+  }
+
+  #[test]
+  fn test_parse_config_with_global_files() {
+    let config_text = r#"{
+      "exclude": ["foo/"],
+      "test": {
+        "exclude": ["npm/"],
+      },
+      "bench": {}
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
+    assert!(options_value.is_object());
+
+    let test_config = config_file.to_test_config().unwrap().unwrap();
+    assert_eq!(test_config.files.include, Vec::<PathBuf>::new());
+    assert_eq!(
+      test_config.files.exclude,
+      vec![PathBuf::from("/deno/npm/"), PathBuf::from("/deno/foo/")]
+    );
+
+    let bench_config = config_file.to_bench_config().unwrap().unwrap();
+    assert_eq!(
+      bench_config.files.exclude,
+      vec![PathBuf::from("/deno/foo/")]
+    );
+  }
+
+  #[test]
+  fn test_parse_config_with_global_files_only() {
+    let config_text = r#"{
+      "exclude": ["npm/"]
+    }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+
+    let (options_value, _) = config_file.to_compiler_options().unwrap();
+    assert!(options_value.is_object());
+
+    let empty_include = Vec::<PathBuf>::new();
+
+    let files_config = config_file.to_files_config().unwrap().unwrap();
+    assert_eq!(files_config.include, empty_include);
+    assert_eq!(files_config.exclude, vec![PathBuf::from("/deno/npm/")]);
+
+    let lint_config = config_file.to_lint_config().unwrap().unwrap();
+    assert_eq!(lint_config.files.include, empty_include);
+    assert_eq!(lint_config.files.exclude, vec![PathBuf::from("/deno/npm/")]);
+
+    let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
+    assert_eq!(fmt_config.files.include, empty_include);
+    assert_eq!(fmt_config.files.exclude, vec![PathBuf::from("/deno/npm/")],);
   }
 
   #[test]
