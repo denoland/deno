@@ -144,7 +144,10 @@ fn napi_module_register(module: *const NapiModule) -> napi_status {
 }
 
 #[napi_sym::napi_sym2]
-fn napi_get_uv_event_loop(_env: *mut Env, uv_loop: *mut *mut ()) -> Result {
+fn napi_get_uv_event_loop(
+  _env: *mut Env,
+  uv_loop: *mut *mut (),
+) -> napi_status {
   // There is no uv_loop in Deno
   *uv_loop = std::ptr::null_mut();
   napi_ok
