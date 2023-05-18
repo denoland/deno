@@ -28,12 +28,9 @@ Deno.test("napi typedarray float64", function () {
   assertEquals(Math.round(10 * doubleResult[2]) / 10, -6.6);
 });
 
-// TODO(bartlomieju): this test causes segfaults when used with jemalloc.
-// Node documentation provides a hint that this function is not supported by
-// other runtime like electron.
-// Deno.test("napi typedarray external", function () {
-//   assertEquals(
-//     new Uint8Array(typedarray.test_external()),
-//     new Uint8Array([0, 1, 2, 3]),
-//   );
-// });
+Deno.test("napi typedarray external", function () {
+  assertEquals(
+    new Uint8Array(typedarray.test_external()),
+    new Uint8Array([0, 1, 2, 3]),
+  );
+});
