@@ -19,6 +19,7 @@ use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use indexmap::IndexMap;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::task::LocalSet;
@@ -105,22 +106,83 @@ pub async fn execute_script(
         .unwrap()
         .to_owned(),
     };
-    let script = get_script_with_args(script, cli_options);
-    output_task(task_name, &script);
-    let seq_list = deno_task_shell::parser::parse(&script)
-      .with_context(|| format!("Error parsing script '{task_name}'."))?;
-    let npx_commands = resolve_npm_commands(npm_resolver, node_resolver)?;
-    let env_vars = collect_env_vars();
-    let local = LocalSet::new();
-    let future =
-      deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands);
-    let exit_code = local.run_until(future).await;
-    Ok(exit_code)
+
+    let mut pre_task_name: String = "pre".to_owned();
+    pre_task_name.push_str(task_name);
+    if let Some(pre_script) = package_json_scripts.get(&pre_task_name) {
+      let exit_code = run_npm_script(
+        &pre_task_name,
+        pre_script,
+        cli_options,
+        &cwd,
+        npm_resolver,
+        node_resolver,
+      )
+      .await?;
+
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+    }
+
+    let exit_code = run_npm_script(
+      task_name,
+      script,
+      cli_options,
+      &cwd,
+      npm_resolver,
+      node_resolver,
+    )
+    .await?;
+
+    if exit_code > 0 {
+      return Ok(exit_code);
+    }
+
+    let mut post_task_name: String = "post".to_owned();
+    post_task_name.push_str(task_name);
+    if let Some(post_script) = package_json_scripts.get(&post_task_name) {
+      let exit_code = run_npm_script(
+        &post_task_name,
+        post_script,
+        cli_options,
+        &cwd,
+        npm_resolver,
+        node_resolver,
+      )
+      .await?;
+
+      if exit_code > 0 {
+        return Ok(exit_code);
+      }
+    }
+
+    Ok(0)
   } else {
     eprintln!("Task not found: {task_name}");
     print_available_tasks(&tasks_config, &package_json_scripts);
     Ok(1)
   }
+}
+
+async fn run_npm_script(
+  task_name: &str,
+  script: &str,
+  cli_options: &CliOptions,
+  cwd: &Path,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &NodeResolver,
+) -> Result<i32, AnyError> {
+  let script = get_script_with_args(script, cli_options);
+  output_task(task_name, &script);
+  let seq_list = deno_task_shell::parser::parse(&script)
+    .with_context(|| format!("Error parsing script '{task_name}'."))?;
+  let npx_commands = resolve_npm_commands(npm_resolver, node_resolver)?;
+  let env_vars = collect_env_vars();
+  let local = LocalSet::new();
+  let future = deno_task_shell::execute(seq_list, env_vars, cwd, npx_commands);
+  let exit_code = local.run_until(future).await;
+  Ok(exit_code)
 }
 
 fn get_script_with_args(script: &str, options: &CliOptions) -> String {
