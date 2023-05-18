@@ -13,6 +13,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "ext:deno_node/buffer.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 import * as denoOs from "ext:runtime/30_os.js";
 
@@ -60,7 +61,7 @@ export function access(
       cb(e);
     }
   }, (err) => {
-    if (err instanceof Deno.errors.NotFound) {
+    if (err instanceof errors.NotFound) {
       // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `ENOENT: no such file or directory, access '${path}'`,
@@ -113,7 +114,7 @@ export function accessSync(path: string | Buffer | URL, mode?: number) {
       throw e;
     }
   } catch (err) {
-    if (err instanceof Deno.errors.NotFound) {
+    if (err instanceof errors.NotFound) {
       // deno-lint-ignore no-explicit-any
       const e: any = new Error(
         `ENOENT: no such file or directory, access '${path}'`,

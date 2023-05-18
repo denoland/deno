@@ -9,6 +9,7 @@ import {
 import { fs } from "ext:deno_node/internal_binding/constants.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function copyFile(
@@ -48,7 +49,7 @@ export function copyFile(
       e.code = "EEXIST";
       cb(e);
     }, (e) => {
-      if (e instanceof Deno.errors.NotFound) {
+      if (e instanceof errors.NotFound) {
         denoFs.copyFile(srcStr, destStr).then(() => cb(null), cb);
       }
       cb(e);
@@ -78,7 +79,7 @@ export function copyFileSync(
       denoFs.lstatSync(destStr);
       throw new Error(`A file exists at the destination: ${destStr}`);
     } catch (e) {
-      if (e instanceof Deno.errors.NotFound) {
+      if (e instanceof errors.NotFound) {
         denoFs.copyFileSync(srcStr, destStr);
       }
       throw e;

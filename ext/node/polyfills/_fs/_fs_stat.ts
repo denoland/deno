@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export type statOptions = {
@@ -302,7 +303,7 @@ export function statSync(
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
-      err instanceof Deno.errors.NotFound
+      err instanceof errors.NotFound
     ) {
       return;
     }

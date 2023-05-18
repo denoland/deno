@@ -6,6 +6,7 @@ import * as pathModule from "ext:deno_node/path.ts";
 import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function chmod(
@@ -30,7 +31,7 @@ export function chmod(
   denoFs.chmod(pathModule.toNamespacedPath(path), mode).catch((error) => {
     // Ignore NotSupportedError that occurs on windows
     // https://github.com/denoland/deno_std/issues/2995
-    if (!(error instanceof Deno.errors.NotSupported)) {
+    if (!(error instanceof errors.NotSupported)) {
       throw error;
     }
   }).then(
@@ -64,7 +65,7 @@ export function chmodSync(path: string | URL, mode: string | number) {
   } catch (error) {
     // Ignore NotSupportedError that occurs on windows
     // https://github.com/denoland/deno_std/issues/2995
-    if (!(error instanceof Deno.errors.NotSupported)) {
+    if (!(error instanceof errors.NotSupported)) {
       throw error;
     }
   }

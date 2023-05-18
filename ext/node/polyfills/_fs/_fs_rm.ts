@@ -5,6 +5,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 type rmOptions = {
@@ -46,7 +47,7 @@ export function rm(
       }
       denoFs.remove(path, { recursive: options?.recursive })
         .then((_) => callback(null), (err: unknown) => {
-          if (options?.force && err instanceof Deno.errors.NotFound) {
+          if (options?.force && err instanceof errors.NotFound) {
             callback(null);
           } else {
             callback(
@@ -70,7 +71,7 @@ export function rmSync(path: string | URL, options?: rmOptions) {
   try {
     denoFs.removeSync(path, { recursive: options?.recursive });
   } catch (err: unknown) {
-    if (options?.force && err instanceof Deno.errors.NotFound) {
+    if (options?.force && err instanceof errors.NotFound) {
       return;
     }
     if (err instanceof Error) {

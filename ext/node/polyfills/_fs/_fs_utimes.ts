@@ -3,6 +3,7 @@
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 function getValidTime(
@@ -17,7 +18,7 @@ function getValidTime(
     typeof time === "number" &&
     (Number.isNaN(time) || !Number.isFinite(time))
   ) {
-    throw new Deno.errors.InvalidData(
+    throw new errors.InvalidData(
       `invalid ${name}, must not be infinity or NaN`,
     );
   }
@@ -34,7 +35,7 @@ export function utimes(
   path = path instanceof URL ? fromFileUrl(path) : path;
 
   if (!callback) {
-    throw new Deno.errors.InvalidData("No callback function supplied");
+    throw new errors.InvalidData("No callback function supplied");
   }
 
   atime = getValidTime(atime, "atime");

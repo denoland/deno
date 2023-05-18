@@ -24,6 +24,7 @@ import {
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoTls from "ext:deno_net/02_tls.js";
 
 const kConnectOptions = Symbol("connect-options");
@@ -265,7 +266,7 @@ export class ServerImpl extends EventEmitter {
         const socket = new net.Socket({ handle });
         this.emit("secureConnection", socket);
       } catch (e) {
-        if (e instanceof Deno.errors.BadResource) {
+        if (e instanceof errors.BadResource) {
           this.#closed = true;
         }
         // swallow

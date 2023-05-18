@@ -13,6 +13,7 @@ import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
 import type { Buffer } from "ext:deno_node/buffer.ts";
+import { errors } from "ext:runtime/01_errors.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 function existsSync(filePath: string | URL): boolean {
@@ -20,7 +21,7 @@ function existsSync(filePath: string | URL): boolean {
     denoFs.lstatSync(filePath);
     return true;
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if (error instanceof errors.NotFound) {
       return false;
     }
     throw error;

@@ -109,7 +109,7 @@ It's not possible to access env var when snapshotting.
 try {
   debugEnv = Deno.env.get("NODE_DEBUG") ?? "";
 } catch (error) {
-  if (error instanceof Deno.errors.PermissionDenied) {
+  if (error instanceof errors.PermissionDenied) {
     debugEnv = "";
   } else {
     throw error;
