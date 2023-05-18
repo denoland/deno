@@ -1,18 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventSender;
-use crate::tools::test::TestFilter;
 use crate::tools::test::TestLocation;
-use crate::tools::test::TestResult;
 use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -25,29 +23,30 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use uuid::Uuid;
 
-pub fn init(
-  sender: TestEventSender,
-  fail_fast_tracker: FailFastTracker,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_test")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_test_origin::decl(),
-      op_register_test::decl(),
-      op_register_test_step::decl(),
-      op_dispatch_test_event::decl(),
-      op_tests_should_stop::decl(),
-    ])
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(fail_fast_tracker.clone());
-      state.put(filter.clone());
-      Ok(())
-    })
-    .build()
-}
+#[derive(Default)]
+pub(crate) struct TestContainer(
+  pub Vec<(TestDescription, v8::Global<v8::Function>)>,
+);
+
+deno_core::extension!(deno_test,
+  ops = [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_register_test,
+    op_register_test_step,
+    op_dispatch_test_event,
+  ],
+  options = {
+    sender: TestEventSender,
+  },
+  state = |state, options| {
+    state.put(options.sender);
+    state.put(TestContainer::default());
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
@@ -95,16 +94,16 @@ pub fn op_restore_test_permissions(
   }
 }
 
-#[op]
-fn op_get_test_origin(state: &mut OpState) -> Result<String, AnyError> {
-  Ok(state.borrow::<ModuleSpecifier>().to_string())
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct TestInfo {
+struct TestInfo<'s> {
+  #[serde(rename = "fn")]
+  function: serde_v8::Value<'s>,
   name: String,
-  origin: String,
+  #[serde(default)]
+  ignore: bool,
+  #[serde(default)]
+  only: bool,
   location: TestLocation,
 }
 
@@ -112,28 +111,36 @@ struct TestInfo {
 #[serde(rename_all = "camelCase")]
 struct TestRegisterResult {
   id: usize,
-  filtered_out: bool,
+  origin: String,
 }
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op]
-fn op_register_test(
+#[op(v8)]
+fn op_register_test<'a>(
+  scope: &mut v8::HandleScope<'a>,
   state: &mut OpState,
-  info: TestInfo,
+  info: TestInfo<'a>,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-  let filter = state.borrow::<TestFilter>().clone();
-  let filtered_out = !filter.includes(&info.name);
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestDescription {
     id,
     name: info.name,
-    origin: info.origin,
+    ignore: info.ignore,
+    only: info.only,
+    origin: origin.clone(),
     location: info.location,
   };
+  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
+  let function = v8::Global::new(scope, function);
+  state
+    .borrow_mut::<TestContainer>()
+    .0
+    .push((description.clone(), function));
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(TestEvent::Register(description)).ok();
-  Ok(TestRegisterResult { id, filtered_out })
+  Ok(TestRegisterResult { id, origin })
 }
 
 fn deserialize_parent<'de, D>(deserializer: D) -> Result<usize, D::Error>
@@ -151,7 +158,6 @@ where
 #[serde(rename_all = "camelCase")]
 struct TestStepInfo {
   name: String,
-  origin: String,
   location: TestLocation,
   level: usize,
   #[serde(rename = "parent")]
@@ -167,10 +173,11 @@ fn op_register_test_step(
   info: TestStepInfo,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = TestStepDescription {
     id,
     name: info.name,
-    origin: info.origin,
+    origin: origin.clone(),
     location: info.location,
     level: info.level,
     parent_id: info.parent_id,
@@ -179,10 +186,7 @@ fn op_register_test_step(
   };
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(TestEvent::StepRegister(description)).ok();
-  Ok(TestRegisterResult {
-    id,
-    filtered_out: false,
-  })
+  Ok(TestRegisterResult { id, origin })
 }
 
 #[op]
@@ -190,18 +194,11 @@ fn op_dispatch_test_event(
   state: &mut OpState,
   event: TestEvent,
 ) -> Result<(), AnyError> {
-  if matches!(
-    event,
-    TestEvent::Result(_, TestResult::Cancelled | TestResult::Failed(_), _)
-  ) {
-    state.borrow::<FailFastTracker>().add_failure();
-  }
+  assert!(
+    matches!(event, TestEvent::StepWait(_) | TestEvent::StepResult(..)),
+    "Only step wait/result events are expected from JS."
+  );
   let mut sender = state.borrow::<TestEventSender>().clone();
   sender.send(event).ok();
   Ok(())
-}
-
-#[op]
-fn op_tests_should_stop(state: &mut OpState) -> bool {
-  state.borrow::<FailFastTracker>().should_stop()
 }

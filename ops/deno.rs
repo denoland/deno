@@ -1,8 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 #![cfg(not(test))]
 
-use proc_macro2::{Span, TokenStream};
-use proc_macro_crate::{crate_name, FoundCrate};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use proc_macro_crate::crate_name;
+use proc_macro_crate::FoundCrate;
 use quote::quote;
 use syn::Ident;
 

@@ -11,10 +11,10 @@ use std::task::Poll;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
-use deno_core::located_script_name;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -22,6 +22,7 @@ use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::LocalInspectorSession;
+use deno_core::ModuleCode;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
@@ -29,15 +30,16 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
+use deno_io::Stdio;
+use deno_kv::sqlite::SqliteDbHandler;
+use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
 use crate::inspector_server::InspectorServer;
-use crate::js;
 use crate::ops;
-use crate::ops::io::Stdio;
 use crate::permissions::PermissionsContainer;
 use crate::BootstrapOptions;
 
@@ -67,41 +69,33 @@ pub struct MainWorker {
   should_break_on_first_statement: bool,
   should_wait_for_inspector_session: bool,
   exit_code: ExitCode,
+  bootstrap_fn_global: Option<v8::Global<v8::Function>>,
 }
 
 pub struct WorkerOptions {
   pub bootstrap: BootstrapOptions,
 
   /// JsRuntime extensions, not to be confused with ES modules.
-  /// Only ops registered by extensions will be initialized. If you need
-  /// to execute JS code from extensions, use `extensions_with_js` options
-  /// instead.
-  pub extensions: Vec<Extension>,
-
-  /// JsRuntime extensions, not to be confused with ES modules.
-  /// Ops registered by extensions will be initialized and JS code will be
-  /// executed. If you don't need to execute JS code from extensions, use
-  /// `extensions` option instead.
   ///
-  /// This is useful when creating snapshots, in such case you would pass
-  /// extensions using `extensions_with_js`, later when creating a runtime
-  /// from the snapshot, you would pass these extensions using `extensions`
-  /// option.
-  pub extensions_with_js: Vec<Extension>,
+  /// Extensions register "ops" and JavaScript sources provided in `js` or `esm`
+  /// configuration. If you are using a snapshot, then extensions shouldn't
+  /// provide JavaScript sources that were already snapshotted.
+  pub extensions: Vec<Extension>,
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -156,6 +150,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -170,11 +165,10 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
-      root_cert_store: Default::default(),
+      root_cert_store_provider: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
-      extensions_with_js: Default::default(),
       startup_snapshot: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
@@ -199,101 +193,128 @@ impl MainWorker {
     permissions: PermissionsContainer,
     mut options: WorkerOptions,
   ) -> Self {
+    deno_core::extension!(deno_permissions_worker,
+      options = {
+        permissions: PermissionsContainer,
+        unstable: bool,
+        enable_testing_features: bool,
+      },
+      state = |state, options| {
+        state.put::<PermissionsContainer>(options.permissions);
+        state.put(ops::UnstableChecker { unstable: options.unstable });
+        state.put(ops::TestingFeaturesEnabled(options.enable_testing_features));
+      },
+    );
+
     // Permissions: many ops depend on this
     let unstable = options.bootstrap.unstable;
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let perm_ext = Extension::builder("deno_permissions_worker")
-      .state(move |state| {
-        state.put::<PermissionsContainer>(permissions.clone());
-        state.put(ops::UnstableChecker { unstable });
-        state.put(ops::TestingFeaturesEnabled(enable_testing_features));
-        Ok(())
-      })
-      .build();
     let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
     });
 
-    // Internal modules
-    let mut extensions: Vec<Extension> = vec![
+    // NOTE(bartlomieju): ordering is important here, keep it in sync with
+    // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    let mut extensions = vec![
       // Web APIs
-      deno_webidl::init(),
-      deno_console::init(),
-      deno_url::init(),
-      deno_web::init::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init_ops(),
+      deno_console::deno_console::init_ops(),
+      deno_url::deno_url::init_ops(),
+      deno_web::deno_web::init_ops::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::init::<PermissionsContainer>(deno_fetch::Options {
-        user_agent: options.bootstrap.user_agent.clone(),
-        root_cert_store: options.root_cert_store.clone(),
-        unsafely_ignore_certificate_errors: options
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
-        ..Default::default()
-      }),
-      deno_cache::init::<SqliteBackedCache>(create_cache),
-      deno_websocket::init::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+        deno_fetch::Options {
+          user_agent: options.bootstrap.user_agent.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
+          unsafely_ignore_certificate_errors: options
+            .unsafely_ignore_certificate_errors
+            .clone(),
+          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
+          ..Default::default()
+        },
+      ),
+      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
+      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::init(options.origin_storage_dir.clone()),
-      deno_broadcast_channel::init(options.broadcast_channel.clone(), unstable),
-      deno_crypto::init(options.seed),
-      deno_webgpu::init(unstable),
-      // ffi
-      deno_ffi::init::<PermissionsContainer>(unstable),
-      // Runtime ops
-      ops::runtime::init(main_module.clone()),
-      ops::worker_host::init(
+      deno_webstorage::deno_webstorage::init_ops(
+        options.origin_storage_dir.clone(),
+      ),
+      deno_crypto::deno_crypto::init_ops(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops(
+        options.broadcast_channel.clone(),
+        unstable,
+      ),
+      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
+      deno_net::deno_net::init_ops::<PermissionsContainer>(
+        options.root_cert_store_provider.clone(),
+        unstable,
+        options.unsafely_ignore_certificate_errors.clone(),
+      ),
+      deno_tls::deno_tls::init_ops(),
+      deno_kv::deno_kv::init_ops(
+        SqliteDbHandler::<PermissionsContainer>::new(
+          options.origin_storage_dir.clone(),
+        ),
+        unstable,
+      ),
+      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init_ops(Some(options.stdio)),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
+        options.npm_resolver,
+        options.fs,
+      ),
+      // Ops from this crate
+      ops::runtime::deno_runtime::init_ops(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops(
         options.create_web_worker_cb.clone(),
         options.web_worker_preload_module_cb.clone(),
         options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::spawn::init(),
-      ops::fs_events::init(),
-      ops::fs::init(),
-      ops::io::init(),
-      ops::io::init_stdio(options.stdio),
-      deno_tls::init(),
-      deno_net::init::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+      ops::fs_events::deno_fs_events::init_ops(),
+      ops::os::deno_os::init_ops(exit_code.clone()),
+      ops::permissions::deno_permissions::init_ops(),
+      ops::process::deno_process::init_ops(),
+      ops::signal::deno_signal::init_ops(),
+      ops::tty::deno_tty::init_ops(),
+      ops::http::deno_http_runtime::init_ops(),
+      deno_permissions_worker::init_ops(
+        permissions,
         unstable,
-        options.unsafely_ignore_certificate_errors.clone(),
+        enable_testing_features,
       ),
-      deno_napi::init::<PermissionsContainer>(unstable),
-      deno_node::init::<PermissionsContainer>(options.npm_resolver),
-      ops::os::init(exit_code.clone()),
-      ops::permissions::init(),
-      ops::process::init(),
-      ops::signal::init(),
-      ops::tty::init(),
-      deno_http::init(),
-      deno_flash::init::<PermissionsContainer>(unstable),
-      ops::http::init(),
-      // Permissions ext (worker specific state)
-      perm_ext,
     ];
+
     extensions.extend(std::mem::take(&mut options.extensions));
+
+    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
+    let startup_snapshot = options
+      .startup_snapshot
+      .unwrap_or_else(crate::js::deno_isolate_init);
+    #[cfg(feature = "dont_create_runtime_snapshot")]
+    let startup_snapshot = options.startup_snapshot
+      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(
-        options
-          .startup_snapshot
-          .unwrap_or_else(js::deno_isolate_init),
-      ),
+      startup_snapshot: Some(startup_snapshot),
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      extensions_with_js: options.extensions_with_js,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
@@ -314,27 +335,53 @@ impl MainWorker {
       op_state.borrow_mut().put(inspector);
     }
 
+    let bootstrap_fn_global = {
+      let context = js_runtime.global_context();
+      let scope = &mut js_runtime.handle_scope();
+      let context_local = v8::Local::new(scope, context);
+      let global_obj = context_local.global(scope);
+      let bootstrap_str =
+        v8::String::new_external_onebyte_static(scope, b"bootstrap").unwrap();
+      let bootstrap_ns: v8::Local<v8::Object> = global_obj
+        .get(scope, bootstrap_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
+      let main_runtime_str =
+        v8::String::new_external_onebyte_static(scope, b"mainRuntime").unwrap();
+      let bootstrap_fn =
+        bootstrap_ns.get(scope, main_runtime_str.into()).unwrap();
+      let bootstrap_fn =
+        v8::Local::<v8::Function>::try_from(bootstrap_fn).unwrap();
+      v8::Global::new(scope, bootstrap_fn)
+    };
+
     Self {
       js_runtime,
       should_break_on_first_statement: options.should_break_on_first_statement,
       should_wait_for_inspector_session: options
         .should_wait_for_inspector_session,
       exit_code,
+      bootstrap_fn_global: Some(bootstrap_fn_global),
     }
   }
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
-    let script = format!("bootstrap.mainRuntime({})", options.as_json());
-    self
-      .execute_script(&located_script_name!(), &script)
-      .expect("Failed to execute bootstrap script");
+    let scope = &mut self.js_runtime.handle_scope();
+    let args = options.as_v8(scope);
+    let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
+    let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
+    let undefined = v8::undefined(scope);
+    bootstrap_fn
+      .call(scope, undefined.into(), &[args.into()])
+      .unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
   pub fn execute_script(
     &mut self,
-    script_name: &str,
-    source_code: &str,
+    script_name: &'static str,
+    source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -469,14 +516,14 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
   pub fn dispatch_load_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('load'))",
+      ascii_str!("dispatchEvent(new Event('load'))"),
     )?;
     Ok(())
   }
@@ -486,14 +533,14 @@ impl MainWorker {
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
   pub fn dispatch_unload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('unload'))",
+      ascii_str!("dispatchEvent(new Event('unload'))"),
     )?;
     Ok(())
   }
@@ -503,14 +550,16 @@ impl MainWorker {
   /// running.
   pub fn dispatch_beforeunload_event(
     &mut self,
-    script_name: &str,
+    script_name: &'static str,
   ) -> Result<bool, AnyError> {
     let value = self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+      ascii_str!(
+        "dispatchEvent(new Event('beforeunload', { cancelable: true }));"
+      ),
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
     Ok(local_value.is_false())

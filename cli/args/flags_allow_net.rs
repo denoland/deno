@@ -26,24 +26,24 @@ impl FromStr for BarePort {
   }
 }
 
-pub fn validator(host_and_port: &str) -> Result<(), String> {
-  if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+pub fn validator(host_and_port: &str) -> Result<String, String> {
+  if Url::parse(&format!("internal://{host_and_port}")).is_ok()
     || host_and_port.parse::<IpAddr>().is_ok()
     || host_and_port.parse::<BarePort>().is_ok()
   {
-    Ok(())
+    Ok(host_and_port.to_string())
   } else {
-    Err(format!("Bad host:port pair: {}", host_and_port))
+    Err(format!("Bad host:port pair: {host_and_port}"))
   }
 }
 
 /// Expands "bare port" paths (eg. ":8080") into full paths with hosts. It
 /// expands to such paths into 3 paths with following hosts: `0.0.0.0:port`,
 /// `127.0.0.1:port` and `localhost:port`.
-pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
+pub fn parse(paths: Vec<String>) -> clap::error::Result<Vec<String>> {
   let mut out: Vec<String> = vec![];
   for host_and_port in paths.iter() {
-    if Url::parse(&format!("deno://{}", host_and_port)).is_ok()
+    if Url::parse(&format!("internal://{host_and_port}")).is_ok()
       || host_and_port.parse::<IpAddr>().is_ok()
     {
       out.push(host_and_port.to_owned())
@@ -54,8 +54,8 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
       }
     } else {
       return Err(clap::Error::raw(
-        clap::ErrorKind::InvalidValue,
-        format!("Bad host:port pair: {}", host_and_port),
+        clap::error::ErrorKind::InvalidValue,
+        format!("Bad host:port pair: {host_and_port}"),
       ));
     }
   }
@@ -64,7 +64,8 @@ pub fn parse(paths: Vec<String>) -> clap::Result<Vec<String>> {
 
 #[cfg(test)]
 mod bare_port_tests {
-  use super::{BarePort, ParsePortError};
+  use super::BarePort;
+  use super::ParsePortError;
 
   #[test]
   fn bare_port_parsed() {

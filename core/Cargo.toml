@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.165.0"
+version = "0.186.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,6 +16,7 @@ path = "lib.rs"
 [features]
 default = ["v8_use_custom_libcxx"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
+include_js_files_for_snapshotting = []
 
 [dependencies]
 anyhow.workspace = true
@@ -35,14 +36,14 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 serde_v8.workspace = true
 smallvec.workspace = true
 sourcemap = "6.1"
+tokio.workspace = true
 url.workspace = true
 v8.workspace = true
 
 [[example]]
 name = "http_bench_json_ops"
-path = "examples/http_bench_json_ops.rs"
+path = "examples/http_bench_json_ops/main.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 deno_ast.workspace = true
-tokio.workspace = true

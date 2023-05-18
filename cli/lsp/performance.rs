@@ -121,10 +121,11 @@ impl Performance {
     averages
       .into_iter()
       .map(|(k, d)| {
-        let a = d.clone().into_iter().sum::<Duration>() / d.len() as u32;
+        let count = d.len() as u32;
+        let a = d.into_iter().sum::<Duration>() / count;
         PerformanceAverage {
           name: k,
-          count: d.len() as u32,
+          count,
           average_duration: a.as_millis() as u32,
         }
       })

@@ -5,7 +5,6 @@ use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -16,19 +15,27 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 #[cfg(unix)]
-use tokio::signal::unix::{signal, Signal, SignalKind};
+use tokio::signal::unix::signal;
+#[cfg(unix)]
+use tokio::signal::unix::Signal;
+#[cfg(unix)]
+use tokio::signal::unix::SignalKind;
 #[cfg(windows)]
-use tokio::signal::windows::{ctrl_break, ctrl_c, CtrlBreak, CtrlC};
+use tokio::signal::windows::ctrl_break;
+#[cfg(windows)]
+use tokio::signal::windows::ctrl_c;
+#[cfg(windows)]
+use tokio::signal::windows::CtrlBreak;
+#[cfg(windows)]
+use tokio::signal::windows::CtrlC;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_signal")
-    .ops(vec![
-      op_signal_bind::decl(),
-      op_signal_unbind::decl(),
-      op_signal_poll::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_signal,
+  ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[cfg(unix)]
 /// The resource for signal stream.
@@ -212,7 +219,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGIO" => Ok(29),
     "SIGPWR" => Ok(30),
     "SIGSYS" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal : {s}"))),
   }
 }
 
@@ -250,7 +257,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
     29 => Ok("SIGIO"),
     30 => Ok("SIGPWR"),
     31 => Ok("SIGSYS"),
-    _ => Err(type_error(format!("Invalid signal : {}", s))),
+    _ => Err(type_error(format!("Invalid signal : {s}"))),
   }
 }
 
@@ -288,7 +295,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGINFO" => Ok(29),
     "SIGUSR1" => Ok(30),
     "SIGUSR2" => Ok(31),
-    _ => Err(type_error(format!("Invalid signal: {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {s}"))),
   }
 }
 
@@ -326,7 +333,7 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
     29 => Ok("SIGINFO"),
     30 => Ok("SIGUSR1"),
     31 => Ok("SIGUSR2"),
-    _ => Err(type_error(format!("Invalid signal: {}", s))),
+    _ => Err(type_error(format!("Invalid signal: {s}"))),
   }
 }
 
@@ -453,13 +460,12 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: String,
+  sig: &str,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(&sig)?;
+  let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
     return Err(type_error(format!(
-      "Binding to signal '{}' is not allowed",
-      sig
+      "Binding to signal '{sig}' is not allowed",
     )));
   }
   let resource = SignalStreamResource {
@@ -474,9 +480,9 @@ fn op_signal_bind(
 #[op]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: String,
+  sig: &str,
 ) -> Result<ResourceId, AnyError> {
-  let signo = signal_str_to_int(&sig)?;
+  let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
     signal: AsyncRefCell::new(match signo {
       // SIGINT

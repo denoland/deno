@@ -13,6 +13,7 @@ use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
 use crate::util::file_watcher::ResolutionResult;
@@ -20,12 +21,14 @@ use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
 use deno_ast::ParsedSource;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_core::task::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
@@ -48,7 +51,14 @@ pub async fn format(
   fmt_options: FmtOptions,
 ) -> Result<(), AnyError> {
   if fmt_options.is_stdin {
-    return format_stdin(fmt_options);
+    return format_stdin(
+      fmt_options,
+      cli_options
+        .ext_flag()
+        .as_ref()
+        .map(|s| s.as_str())
+        .unwrap_or("ts"),
+    );
   }
 
   let files = fmt_options.files;
@@ -92,11 +102,12 @@ pub async fn format(
       }
     }
   };
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let deno_dir = &deno_dir;
-  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async move {
+  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let cli_options = factory.cli_options();
+  let caches = factory.caches()?;
+  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async {
     let incremental_cache = Arc::new(IncrementalCache::new(
-      &deno_dir.fmt_incremental_cache_db_file_path(),
+      caches.fmt_incremental_cache_db(),
       &fmt_options,
       &paths,
     ));
@@ -183,7 +194,7 @@ fn format_markdown(
           dprint_plugin_json::format_text(text, &json_config)
         } else {
           let fake_filename =
-            PathBuf::from(format!("deno_fmt_stdin.{}", extension));
+            PathBuf::from(format!("deno_fmt_stdin.{extension}"));
           let mut codeblock_config =
             get_resolved_typescript_config(fmt_options);
           codeblock_config.line_width = line_width;
@@ -287,13 +298,13 @@ async fn check_source_files(
           warn!("Error checking: {}", file_path.to_string_lossy());
           warn!(
             "{}",
-            format!("{}", e)
+            format!("{e}")
               .split('\n')
               .map(|l| {
                 if l.trim().is_empty() {
                   String::new()
                 } else {
-                  format!("  {}", l)
+                  format!("  {l}")
                 }
               })
               .collect::<Vec<_>>()
@@ -317,8 +328,7 @@ async fn check_source_files(
   } else {
     let not_formatted_files_str = files_str(not_formatted_files_count);
     Err(generic_error(format!(
-      "Found {} not formatted {} in {}",
-      not_formatted_files_count, not_formatted_files_str, checked_files_str,
+      "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
     )))
   }
 }
@@ -369,7 +379,7 @@ async fn format_source_files(
         Err(e) => {
           let _g = output_lock.lock();
           eprintln!("Error formatting: {}", file_path.to_string_lossy());
-          eprintln!("   {}", e);
+          eprintln!("   {e}");
         }
       }
       Ok(())
@@ -457,14 +467,14 @@ fn format_ensure_stable(
 }
 
 /// Format stdin and write result to stdout.
-/// Treats input as TypeScript or as set by `--ext` flag.
+/// Treats input as set by `--ext` flag.
 /// Compatible with `--check` flag.
-fn format_stdin(fmt_options: FmtOptions) -> Result<(), AnyError> {
+fn format_stdin(fmt_options: FmtOptions, ext: &str) -> Result<(), AnyError> {
   let mut source = String::new();
   if stdin().read_to_string(&mut source).is_err() {
     bail!("Failed to read from stdin");
   }
-  let file_path = PathBuf::from(format!("_stdin.{}", fmt_options.ext));
+  let file_path = PathBuf::from(format!("_stdin.{ext}"));
   let formatted_text = format_file(&file_path, &source, &fmt_options.options)?;
   if fmt_options.check {
     if formatted_text.is_some() {
@@ -509,6 +519,13 @@ fn get_resolved_typescript_config(
         dprint_plugin_typescript::configuration::QuoteStyle::AlwaysSingle,
       );
     }
+  }
+
+  if let Some(semi_colons) = options.semi_colons {
+    builder.semi_colons(match semi_colons {
+      true => dprint_plugin_typescript::configuration::SemiColons::Prefer,
+      false => dprint_plugin_typescript::configuration::SemiColons::Asi,
+    });
   }
 
   builder.build()
@@ -575,7 +592,10 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
   let file_bytes = fs::read(file_path)
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let charset = text_encoding::detect_charset(&file_bytes);
-  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)?;
+  let file_text = text_encoding::convert_to_utf8(&file_bytes, charset)
+    .map_err(|_| {
+      anyhow!("{} is not a valid UTF-8 file", file_path.display())
+    })?;
   let had_bom = file_text.starts_with(text_encoding::BOM_CHAR);
   let text = if had_bom {
     text_encoding::strip_bom(&file_text).to_string()
@@ -610,7 +630,7 @@ where
   let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();
     let file_path = file_path.clone();
-    tokio::task::spawn_blocking(move || f(file_path))
+    spawn_blocking(move || f(file_path))
   });
   let join_results = futures::future::join_all(handles).await;
 
@@ -709,7 +729,7 @@ mod test {
       &PathBuf::from("mod.ts"),
       "1",
       &Default::default(),
-      |_, file_text, _| Ok(Some(format!("1{}", file_text))),
+      |_, file_text, _| Ok(Some(format!("1{file_text}"))),
     )
     .unwrap();
   }

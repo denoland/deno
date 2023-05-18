@@ -1,5 +1,12 @@
-use super::transl8::{impl_magic, impl_wrapper, FromV8, ToV8};
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use crate::error::value_to_type_str;
 use crate::Error;
+
+use super::transl8::impl_magic;
+use super::transl8::impl_wrapper;
+use super::transl8::FromV8;
+use super::transl8::ToV8;
 
 impl_wrapper!(
   pub struct U16String(Vec<u16>);
@@ -31,7 +38,7 @@ impl FromV8 for U16String {
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
     let v8str = v8::Local::<v8::String>::try_from(value)
-      .map_err(|_| Error::ExpectedString)?;
+      .map_err(|_| Error::ExpectedString(value_to_type_str(value)))?;
     let len = v8str.length();
     let mut buffer = Vec::with_capacity(len);
     #[allow(clippy::uninit_vec)]

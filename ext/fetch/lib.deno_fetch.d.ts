@@ -421,7 +421,6 @@ declare class Response implements Body {
   readonly redirected: boolean;
   readonly status: number;
   readonly statusText: string;
-  readonly trailer: Promise<Headers>;
   readonly type: ResponseType;
   readonly url: string;
   clone(): Response;

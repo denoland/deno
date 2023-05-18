@@ -45,7 +45,7 @@ pub fn get_unique_path(
   let mut count = 2;
   // case insensitive comparison so the output works on case insensitive file systems
   while !unique_set.insert(path.to_string_lossy().to_lowercase()) {
-    path = path_with_stem_suffix(&original_path, &format!("_{}", count));
+    path = path_with_stem_suffix(&original_path, &format!("_{count}"));
     count += 1;
   }
   path

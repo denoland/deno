@@ -1,15 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub mod fs;
 pub mod fs_events;
 pub mod http;
-pub mod io;
 pub mod os;
 pub mod permissions;
 pub mod process;
 pub mod runtime;
 pub mod signal;
-pub mod spawn;
 pub mod tty;
 mod utils;
 pub mod web_worker;
@@ -36,8 +33,7 @@ impl UnstableChecker {
   pub fn check_unstable(&self, api_name: &str) {
     if !self.unstable {
       eprintln!(
-        "Unstable API '{}'. The --unstable flag must be provided.",
-        api_name
+        "Unstable API '{api_name}'. The --unstable flag must be provided."
       );
       std::process::exit(70);
     }

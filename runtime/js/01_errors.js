@@ -1,153 +1,157 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-"use strict";
 
-((window) => {
-  const core = window.Deno.core;
-  const { Error } = window.__bootstrap.primordials;
-  const { BadResource, Interrupted } = core;
+const core = globalThis.Deno.core;
+const { BadResource, Interrupted } = core;
+const primordials = globalThis.__bootstrap.primordials;
+const { Error } = primordials;
 
-  class NotFound extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "NotFound";
-    }
+class NotFound extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "NotFound";
   }
+}
 
-  class PermissionDenied extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "PermissionDenied";
-    }
+class PermissionDenied extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "PermissionDenied";
   }
+}
 
-  class ConnectionRefused extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "ConnectionRefused";
-    }
+class ConnectionRefused extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "ConnectionRefused";
   }
+}
 
-  class ConnectionReset extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "ConnectionReset";
-    }
+class ConnectionReset extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "ConnectionReset";
   }
+}
 
-  class ConnectionAborted extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "ConnectionAborted";
-    }
+class ConnectionAborted extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "ConnectionAborted";
   }
+}
 
-  class NotConnected extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "NotConnected";
-    }
+class NotConnected extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "NotConnected";
   }
+}
 
-  class AddrInUse extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AddrInUse";
-    }
+class AddrInUse extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "AddrInUse";
   }
+}
 
-  class AddrNotAvailable extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AddrNotAvailable";
-    }
+class AddrNotAvailable extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "AddrNotAvailable";
   }
+}
 
-  class BrokenPipe extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "BrokenPipe";
-    }
+class BrokenPipe extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "BrokenPipe";
   }
+}
 
-  class AlreadyExists extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "AlreadyExists";
-    }
+class AlreadyExists extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "AlreadyExists";
   }
+}
 
-  class InvalidData extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "InvalidData";
-    }
+class InvalidData extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "InvalidData";
   }
+}
 
-  class TimedOut extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "TimedOut";
-    }
+class TimedOut extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "TimedOut";
   }
+}
 
-  class WriteZero extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "WriteZero";
-    }
+class WriteZero extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "WriteZero";
   }
+}
 
-  class UnexpectedEof extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "UnexpectedEof";
-    }
+class WouldBlock extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "WouldBlock";
   }
+}
 
-  class Http extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "Http";
-    }
+class UnexpectedEof extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "UnexpectedEof";
   }
+}
 
-  class Busy extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "Busy";
-    }
+class Http extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "Http";
   }
+}
 
-  class NotSupported extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "NotSupported";
-    }
+class Busy extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "Busy";
   }
+}
 
-  const errors = {
-    NotFound,
-    PermissionDenied,
-    ConnectionRefused,
-    ConnectionReset,
-    ConnectionAborted,
-    NotConnected,
-    AddrInUse,
-    AddrNotAvailable,
-    BrokenPipe,
-    AlreadyExists,
-    InvalidData,
-    TimedOut,
-    Interrupted,
-    WriteZero,
-    UnexpectedEof,
-    BadResource,
-    Http,
-    Busy,
-    NotSupported,
-  };
+class NotSupported extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = "NotSupported";
+  }
+}
 
-  window.__bootstrap.errors = {
-    errors,
-  };
-})(this);
+const errors = {
+  NotFound,
+  PermissionDenied,
+  ConnectionRefused,
+  ConnectionReset,
+  ConnectionAborted,
+  NotConnected,
+  AddrInUse,
+  AddrNotAvailable,
+  BrokenPipe,
+  AlreadyExists,
+  InvalidData,
+  TimedOut,
+  Interrupted,
+  WriteZero,
+  WouldBlock,
+  UnexpectedEof,
+  BadResource,
+  Http,
+  Busy,
+  NotSupported,
+};
+
+export { errors };

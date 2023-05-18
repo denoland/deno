@@ -82,7 +82,7 @@ const cleanupCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
-    Promise.resolve().then(() => cleanup());
+    queueMicrotask(() => cleanup());
   },
 );
 

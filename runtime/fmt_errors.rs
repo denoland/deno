@@ -12,7 +12,7 @@ use std::fmt::Write as _;
 /// Compares all properties of JsError, except for JsError::cause.
 /// This function is used to detect that 2 JsError objects in a JsError::cause
 /// chain are identical, ie. there is a recursive cause.
-/// 02_console.js, which also detects recursive causes, can use JS object
+/// 01_console.js, which also detects recursive causes, can use JS object
 /// comparisons to compare errors. We don't have access to JS object identity in
 /// format_js_error().
 fn errors_are_equal_without_cause(a: &JsError, b: &JsError) -> bool {
@@ -45,7 +45,8 @@ pub fn format_location(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
     .as_ref()
-    .map_or(false, |f| f.starts_with("deno:"));
+    .map(|f| f.starts_with("ext:"))
+    .unwrap_or(false);
   if frame.is_native {
     return cyan("native").to_string();
   }
@@ -73,7 +74,8 @@ fn format_frame(frame: &JsStackFrame) -> String {
   let _internal = frame
     .file_name
     .as_ref()
-    .map_or(false, |f| f.starts_with("deno:"));
+    .map(|f| f.starts_with("ext:"))
+    .unwrap_or(false);
   let is_method_call =
     !(frame.is_top_level.unwrap_or_default() || frame.is_constructor);
   let mut result = String::new();
@@ -93,18 +95,18 @@ fn format_frame(frame: &JsStackFrame) -> String {
     if let Some(function_name) = &frame.function_name {
       if let Some(type_name) = &frame.type_name {
         if !function_name.starts_with(type_name) {
-          write!(formatted_method, "{}.", type_name).unwrap();
+          write!(formatted_method, "{type_name}.").unwrap();
         }
       }
       formatted_method += function_name;
       if let Some(method_name) = &frame.method_name {
         if !function_name.ends_with(method_name) {
-          write!(formatted_method, " [as {}]", method_name).unwrap();
+          write!(formatted_method, " [as {method_name}]").unwrap();
         }
       }
     } else {
       if let Some(type_name) = &frame.type_name {
-        write!(formatted_method, "{}.", type_name).unwrap();
+        write!(formatted_method, "{type_name}.").unwrap();
       }
       if let Some(method_name) = &frame.method_name {
         formatted_method += method_name
@@ -149,7 +151,7 @@ fn format_maybe_source_line(
     return "".to_string();
   }
   if source_line.contains("Couldn't format source line: ") {
-    return format!("\n{}", source_line);
+    return format!("\n{source_line}");
   }
 
   let mut s = String::new();
@@ -178,7 +180,7 @@ fn format_maybe_source_line(
 
   let indent = format!("{:indent$}", "", indent = level);
 
-  format!("\n{}{}\n{}{}", indent, source_line, indent, color_underline)
+  format!("\n{indent}{source_line}\n{indent}{color_underline}")
 }
 
 fn find_recursive_cause(js_error: &JsError) -> Option<ErrorReference> {
@@ -227,7 +229,7 @@ fn format_aggregated_error(
     );
 
     for line in error_string.trim_start_matches("Uncaught ").lines() {
-      write!(s, "\n    {}", line).unwrap();
+      write!(s, "\n    {line}").unwrap();
     }
   }
 
@@ -252,7 +254,10 @@ fn format_js_error_inner(
   if let Some(aggregated) = &js_error.aggregated {
     let aggregated_message = format_aggregated_error(
       aggregated,
-      circular.as_ref().map_or(0, |circular| circular.index),
+      circular
+        .as_ref()
+        .map(|circular| circular.index)
+        .unwrap_or(0),
     );
     s.push_str(&aggregated_message);
   }
@@ -274,9 +279,12 @@ fn format_js_error_inner(
     write!(s, "\n    at {}", format_frame(frame)).unwrap();
   }
   if let Some(cause) = &js_error.cause {
-    let is_caused_by_circular = circular.as_ref().map_or(false, |circular| {
-      errors_are_equal_without_cause(circular.reference.from, js_error)
-    });
+    let is_caused_by_circular = circular
+      .as_ref()
+      .map(|circular| {
+        errors_are_equal_without_cause(circular.reference.from, js_error)
+      })
+      .unwrap_or(false);
 
     let error_string = if is_caused_by_circular {
       cyan(format!("[Circular *{}]", circular.unwrap().index)).to_string()

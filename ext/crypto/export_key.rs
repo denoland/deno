@@ -1,4 +1,5 @@
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
@@ -14,6 +15,8 @@ use spki::der::asn1;
 use spki::der::Decode;
 use spki::der::Encode;
 use spki::AlgorithmIdentifier;
+
+use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

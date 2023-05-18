@@ -8,7 +8,10 @@ A proc_macro for Deno's Node-API implementation. It does the following things:
 - Maps `deno_napi::Result` to raw `napi_result`.
 
 ```rust
-use deno_napi::{napi_value, Env, Error, Result};
+use deno_napi::napi_value;
+use deno_napi::Env;
+use deno_napi::Error;
+use deno_napi::Result;
 
 #[napi_sym::napi_sym]
 fn napi_get_boolean(

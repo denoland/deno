@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 #[macro_export]
 macro_rules! assert_ends_with {
   ($left:expr, $right:expr $(,)?) => {
