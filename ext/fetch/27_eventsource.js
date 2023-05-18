@@ -273,7 +273,7 @@ class EventSource extends EventTarget {
         let eventType = "";
         let lastEventID = "";
         for await (
-          let chunk of res.body.stream
+          const chunk of res.body.stream
             .pipeThrough(new TextDecoderStream())
             .pipeThrough(new TextLineStream())
         ) {
