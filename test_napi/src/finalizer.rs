@@ -73,10 +73,63 @@ extern "C" fn test_external_finalizer(
   result
 }
 
+unsafe extern "C" fn finalize_cb_vec(
+  _env: napi_env,
+  data: *mut ::std::os::raw::c_void,
+  hint: *mut ::std::os::raw::c_void,
+) {
+  let _ = Vec::from_raw_parts(data as *mut u8, 3, 3);
+  assert!(hint.is_null());
+}
+
+extern "C" fn test_external_buffer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let mut result = ptr::null_mut();
+  let buf: Vec<u8> = vec![1, 2, 3];
+  assert_napi_ok!(napi_create_external_buffer(
+    env,
+    3,
+    buf.as_ptr() as _,
+    Some(finalize_cb_vec),
+    ptr::null_mut(),
+    &mut result
+  ));
+  std::mem::forget(buf);
+
+  result
+}
+
+extern "C" fn test_external_arraybuffer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let mut result = ptr::null_mut();
+  let buf: Vec<u8> = vec![1, 2, 3];
+  assert_napi_ok!(napi_create_external_arraybuffer(
+    env,
+    buf.as_ptr() as _,
+    3,
+    Some(finalize_cb_vec),
+    ptr::null_mut(),
+    &mut result
+  ));
+  std::mem::forget(buf);
+
+  result
+}
+
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_bind_finalizer", test_bind_finalizer),
     napi_new_property!(env, "test_external_finalizer", test_external_finalizer),
+    napi_new_property!(env, "test_external_buffer", test_external_buffer),
+    napi_new_property!(
+      env,
+      "test_external_arraybuffer",
+      test_external_arraybuffer
+    ),
   ];
 
   assert_napi_ok!(napi_define_properties(

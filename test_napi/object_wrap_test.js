@@ -28,3 +28,14 @@ Deno.test("napi external finalizer", function () {
   obj = null;
 });
 
+Deno.test("napi external buffer", function() {
+  let buf = objectWrap.test_external_buffer();
+  assertEquals(buf, new Uint8Array([1, 2, 3]));
+  buf = null;
+});
+
+Deno.test("napi external arraybuffer", function() {
+  let buf = objectWrap.test_external_arraybuffer();
+  assertEquals(new Uint8Array(buf), new Uint8Array([1, 2, 3]));
+  buf = null;
+});

@@ -556,9 +556,8 @@ pub extern "C" fn backing_store_deleter_callback(
   _byte_length: usize,
   deleter_data: *mut c_void,
 ) {
-  let mut finalizer = unsafe {
-    Box::from_raw(deleter_data as *mut BufferFinalizer)
-  };
+  let mut finalizer =
+    unsafe { Box::from_raw(deleter_data as *mut BufferFinalizer) };
 
   finalizer.finalize_data = data;
 }
