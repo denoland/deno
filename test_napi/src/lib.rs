@@ -9,6 +9,7 @@ use napi_sys::*;
 pub mod array;
 pub mod arraybuffer;
 pub mod r#async;
+pub mod bigint;
 pub mod callback;
 pub mod coerce;
 pub mod date;
@@ -156,6 +157,7 @@ unsafe extern "C" fn napi_register_module_v1(
   date::init(env, exports);
   tsfn::init(env, exports);
   mem::init(env, exports);
+  bigint::init(env, exports);
 
   init_cleanup_hook(env, exports);
 
