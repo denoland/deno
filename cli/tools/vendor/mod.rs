@@ -51,6 +51,7 @@ pub async fn vendor(
     cli_options.initial_cwd(),
   )
   .await?;
+  let had_npm_packages = !graph.npm_packages.is_empty();
   let vendored_count = build::build(
     graph,
     factory.parsed_source_cache()?,
@@ -72,6 +73,9 @@ pub async fn vendor(
   );
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
+    if had_npm_packages {
+      maybe_output_update_config_npm(cli_options);
+    }
     if maybe_update_config_file(&output_dir, cli_options) {
       log::info!(
         concat!(
@@ -154,17 +158,37 @@ fn validate_options(
   Ok(())
 }
 
-fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
-  assert!(output_dir.is_absolute());
-  let config_file_specifier = match options.maybe_config_file_specifier() {
-    Some(f) => f,
-    None => return false,
-  };
-
-  let fmt_config = options
+fn maybe_output_update_config_npm(options: &CliOptions) {
+  let has_node_modules_dir_in_config = options
     .maybe_config_file()
     .as_ref()
-    .and_then(|config| config.to_fmt_config().ok())
+    .and_then(|c| c.node_modules_dir())
+    .unwrap_or(false);
+  if !has_node_modules_dir_in_config {
+    log::info!(
+      concat!(
+        "To vendor npm packages add a `nodeModulesDir: true` entry ",
+        "to your Deno configuration file in order to use a node_modules directory."
+      )
+    );
+  }
+}
+
+fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
+  assert!(output_dir.is_absolute());
+  let config_file = match options.maybe_config_file() {
+    Some(config_file) => config_file,
+    None => return false,
+  };
+  let config_file_specifier = &config_file.specifier;
+
+  if config_file_specifier.scheme() != "file" {
+    return false;
+  }
+
+  let fmt_config = config_file
+    .to_fmt_config()
+    .ok()
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(
@@ -187,10 +211,6 @@ fn update_config_file(
   import_map_specifier: &ModuleSpecifier,
   fmt_options: &FmtOptionsConfig,
 ) -> Result<(), AnyError> {
-  if config_specifier.scheme() != "file" {
-    return Ok(());
-  }
-
   let config_path = specifier_to_file_path(config_specifier)?;
   let config_text = std::fs::read_to_string(&config_path)?;
   let relative_text =
