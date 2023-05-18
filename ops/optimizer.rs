@@ -200,13 +200,33 @@ impl Transform {
         *ty = parse_quote! { *const #core::v8::fast_api::FastApiOneByteString };
         match str_ty {
           StringType::Ref => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str();
+            let var = match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+              Ok(v) => v,
+              Err(_) => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+              }
+            };
           }),
           StringType::Cow => q!(Vars { var: &ident }, {
-            let var = ::std::borrow::Cow::Borrowed(unsafe { &*var }.as_str());
+            let var = ::std::borrow::Cow::Borrowed(
+              match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+                Ok(v) => v,
+                Err(_) => {
+                  unsafe { &mut *fast_api_callback_options }.fallback = true;
+                  return Default::default();
+                }
+              },
+            );
           }),
           StringType::Owned => q!(Vars { var: &ident }, {
-            let var = unsafe { &*var }.as_str().to_owned();
+            let var = match ::std::str::from_utf8(unsafe { &*var }.as_bytes()) {
+              Ok(v) => v.to_owned(),
+              Err(_) => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+              }
+            };
           }),
         }
       }
@@ -718,6 +738,7 @@ impl Optimizer {
                     let segment = single_segment(segments)?;
                     match segment {
                       PathSegment { ident, .. } if ident == "str" => {
+                        self.needs_fast_callback_option = true;
                         self.fast_parameters.push(FastValue::SeqOneByteString);
                         assert!(self
                           .transforms
@@ -742,6 +763,7 @@ impl Optimizer {
               if let Some(val) = get_fast_scalar(ident.to_string().as_str()) {
                 self.fast_parameters.push(val);
               } else if ident == "String" {
+                self.needs_fast_callback_option = true;
                 // Is `T` an owned String?
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
@@ -775,6 +797,7 @@ impl Optimizer {
               }
               // Is `T` a str?
               PathSegment { ident, .. } if ident == "str" => {
+                self.needs_fast_callback_option = true;
                 self.fast_parameters.push(FastValue::SeqOneByteString);
                 assert!(self
                   .transforms
@@ -915,6 +938,7 @@ mod tests {
   use super::*;
   use crate::Attributes;
   use crate::Op;
+  use pretty_assertions::assert_eq;
   use std::path::PathBuf;
   use syn::parse_quote;
 

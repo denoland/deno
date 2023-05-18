@@ -78,7 +78,6 @@ declare module "ext:deno_fetch/26_fetch.js" {
       | "response"
       | "none",
     skipBody: boolean,
-    flash: boolean,
   ): Request;
   function redirectStatus(status: number): boolean;
   function nullBodyStatus(status: number): boolean;

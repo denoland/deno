@@ -26,8 +26,6 @@ fn js_unit_tests() {
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
-    // Flash tests are crashing with SIGSEGV on Ubuntu, so we'll disable these entirely
-    .arg("--ignore=./cli/tests/unit/flash_test.ts")
     .arg("--location=http://js-unit-tests/foo/bar")
     .arg("--no-prompt")
     .arg("-A")

@@ -48,6 +48,10 @@ may change slightly over time, but in general the model is as follows:
   that a value set in one web worker can not be accessed by another.
 - All runtime I/O is considered to be privileged and must always be guarded by a
   runtime permission. This includes filesystem access, network access, etc.
+  - The only exception to this is runtime storage explosion attacks that are
+    isolated to a part of the file system, caused by evaluated code (for
+    example, caching big dependencies or no limits on runtime caches such as the
+    [Web Cache](https://developer.mozilla.org/en-US/docs/Web/API/Cache) API).
 - Users should not be able to self-escalate their permissions without explicit
   consent.
 - I/O required to build an initial static module graph should always follow the

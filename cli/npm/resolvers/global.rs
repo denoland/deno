@@ -4,61 +4,61 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_npm::resolution::PackageNotFoundFromReferrerError;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::npm::cache::NpmPackageCacheFolderId;
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmResolutionPackage;
 
 use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  cache: NpmCache,
-  resolution: NpmResolution,
+  fs: Arc<dyn FileSystem>,
+  cache: Arc<NpmCache>,
+  resolution: Arc<NpmResolution>,
   registry_url: Url,
+  system_info: NpmSystemInfo,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    cache: NpmCache,
+    fs: Arc<dyn FileSystem>,
+    cache: Arc<NpmCache>,
     registry_url: Url,
-    resolution: NpmResolution,
+    resolution: Arc<NpmResolution>,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      fs,
       cache,
       resolution,
       registry_url,
+      system_info,
     }
-  }
-
-  fn package_folder(&self, id: &NpmPackageId) -> PathBuf {
-    let folder_id = self
-      .resolution
-      .resolve_package_cache_folder_id_from_id(id)
-      .unwrap();
-    self
-      .cache
-      .package_folder_for_id(&folder_id, &self.registry_url)
   }
 
   fn resolve_types_package(
     &self,
     package_name: &str,
     referrer_pkg_id: &NpmPackageCacheFolderId,
-  ) -> Result<NpmResolutionPackage, AnyError> {
+  ) -> Result<NpmResolutionPackage, Box<PackageNotFoundFromReferrerError>> {
     let types_name = types_package_name(package_name);
     self
       .resolution
@@ -76,11 +76,16 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     None
   }
 
-  fn resolve_package_folder_from_deno_module(
-    &self,
-    id: &NpmPackageId,
-  ) -> Result<PathBuf, AnyError> {
-    Ok(self.package_folder(id))
+  fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
+    let folder_id = self
+      .resolution
+      .resolve_package_cache_folder_id_from_id(id)
+      .unwrap();
+    Ok(
+      self
+        .cache
+        .package_folder_for_id(&folder_id, &self.registry_url),
+    )
   }
 
   fn resolve_package_folder_from_package(
@@ -105,7 +110,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    Ok(self.package_folder(&pkg.pkg_id))
+    self.package_folder(&pkg.pkg_id)
   }
 
   fn resolve_package_folder_from_specifier(
@@ -123,44 +128,35 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     )
   }
 
-  fn package_size(&self, id: &NpmPackageId) -> Result<u64, AnyError> {
-    let package_folder = self.package_folder(id);
-    Ok(crate::util::fs::dir_size(&package_folder)?)
-  }
-
   async fn cache_packages(&self) -> Result<(), AnyError> {
-    cache_packages_in_resolver(self).await
+    let package_partitions = self
+      .resolution
+      .all_system_packages_partitioned(&self.system_info);
+
+    cache_packages(
+      package_partitions.packages,
+      &self.cache,
+      &self.registry_url,
+    )
+    .await?;
+
+    // create the copy package folders
+    for copy in package_partitions.copy_packages {
+      self.cache.ensure_copy_package(
+        &copy.get_package_cache_folder_id(),
+        &self.registry_url,
+      )?;
+    }
+
+    Ok(())
   }
 
   fn ensure_read_permission(
     &self,
-    permissions: &mut dyn NodePermissions,
+    permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(permissions, &registry_path, path)
+    ensure_registry_read_permission(&self.fs, permissions, &registry_path, path)
   }
-}
-
-async fn cache_packages_in_resolver(
-  resolver: &GlobalNpmPackageResolver,
-) -> Result<(), AnyError> {
-  let package_partitions = resolver.resolution.all_packages_partitioned();
-
-  cache_packages(
-    package_partitions.packages,
-    &resolver.cache,
-    &resolver.registry_url,
-  )
-  .await?;
-
-  // create the copy package folders
-  for copy in package_partitions.copy_packages {
-    resolver.cache.ensure_copy_package(
-      &copy.get_package_cache_folder_id(),
-      &resolver.registry_url,
-    )?;
-  }
-
-  Ok(())
 }

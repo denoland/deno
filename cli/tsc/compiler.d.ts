@@ -46,6 +46,8 @@ declare global {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
+    // deno-lint-ignore no-explicit-any
+    asyncOps: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
@@ -75,7 +77,7 @@ declare global {
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
-    | GetReferencesRequest
+    | FindReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
@@ -212,8 +214,8 @@ declare global {
     position: number;
   }
 
-  interface GetReferencesRequest extends BaseLanguageServerRequest {
-    method: "getReferences";
+  interface FindReferencesRequest extends BaseLanguageServerRequest {
+    method: "findReferences";
     specifier: string;
     position: number;
   }

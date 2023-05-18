@@ -12,7 +12,7 @@ import * as util from "node:util";
 Deno.test({
   name: "[util] format",
   fn() {
-    assertEquals(util.format("%o", [10, 11]), "[ 10, 11 ]");
+    assertEquals(util.format("%o", [10, 11]), "[ 10, 11, [length]: 2 ]");
   },
 });
 

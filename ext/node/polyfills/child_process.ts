@@ -2,7 +2,6 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { core } from "ext:deno_node/_core.ts";
 import {
   ChildProcess,
   ChildProcessOptions,
@@ -43,6 +42,8 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+
+const { core } = globalThis.__bootstrap;
 
 const MAX_BUFFER = 1024 * 1024;
 

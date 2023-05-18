@@ -136,6 +136,30 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     let mut version_info: serde_json::Map<String, serde_json::Value> =
       serde_json::from_str(&package_json_text)?;
     version_info.insert("dist".to_string(), dist.into());
+
+    if let Some(maybe_optional_deps) = version_info.get("optionalDependencies")
+    {
+      if let Some(optional_deps) = maybe_optional_deps.as_object() {
+        if let Some(maybe_deps) = version_info.get("dependencies") {
+          if let Some(deps) = maybe_deps.as_object() {
+            let mut cloned_deps = deps.to_owned();
+            for (key, value) in optional_deps {
+              cloned_deps.insert(key.to_string(), value.to_owned());
+            }
+            version_info.insert(
+              "dependencies".to_string(),
+              serde_json::to_value(cloned_deps).unwrap(),
+            );
+          }
+        } else {
+          version_info.insert(
+            "dependencies".to_string(),
+            serde_json::to_value(optional_deps).unwrap(),
+          );
+        }
+      }
+    }
+
     versions.insert(version.clone(), version_info.into());
     let version = semver::Version::parse(&version)?;
     if version.cmp(&latest_version).is_gt() {

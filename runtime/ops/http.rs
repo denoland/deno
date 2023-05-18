@@ -29,7 +29,7 @@ use tokio::net::UnixStream;
 
 deno_core::extension!(
   deno_http_runtime,
-  ops = [op_http_start, op_http_upgrade, op_flash_upgrade_http],
+  ops = [op_http_start, op_http_upgrade],
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.force_op_registration();
   },
@@ -89,23 +89,6 @@ fn op_http_start(
   }
 
   Err(bad_resource_id())
-}
-
-#[op]
-fn op_flash_upgrade_http(
-  state: &mut OpState,
-  token: u32,
-  server_id: u32,
-) -> Result<deno_core::ResourceId, AnyError> {
-  let flash_ctx = state.borrow_mut::<deno_flash::FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-
-  let tcp_stream = deno_flash::detach_socket(ctx, token)?;
-  Ok(
-    state
-      .resource_table
-      .add(TcpStreamResource::new(tcp_stream.into_split())),
-  )
 }
 
 #[derive(Serialize)]
