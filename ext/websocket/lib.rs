@@ -16,7 +16,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
-use deno_net::raw::take_network_stream_resource;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::RootCertStoreProvider;
@@ -284,6 +283,7 @@ where
   let resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(stream)),
     closed: Rc::new(Cell::new(false)),
+    tx_lock: AsyncRefCell::new(()),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
@@ -317,6 +317,7 @@ pub enum MessageKind {
 pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
   closed: Rc<Cell<bool>>,
+  tx_lock: AsyncRefCell<()>,
 }
 
 impl ServerWebSocket {
@@ -325,6 +326,7 @@ impl ServerWebSocket {
     self: Rc<Self>,
     frame: Frame,
   ) -> Result<(), AnyError> {
+    let _lock = RcRef::map(&self, |r| &r.tx_lock).borrow_mut().await;
     // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
     // to populate the write buffer. We encounter an await point when writing
     // to the socket after the frame has already been written to the buffer.
@@ -361,26 +363,11 @@ pub fn ws_create_server_stream(
   let ws_resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(ws)),
     closed: Rc::new(Cell::new(false)),
+    tx_lock: AsyncRefCell::new(()),
   };
 
   let rid = state.resource_table.add(ws_resource);
   Ok(rid)
-}
-
-#[op]
-pub fn op_ws_server_create(
-  state: &mut OpState,
-  conn: ResourceId,
-  extra_bytes: &[u8],
-) -> Result<ResourceId, AnyError> {
-  let network_stream =
-    take_network_stream_resource(&mut state.resource_table, conn)?;
-  // Copying the extra bytes, but unlikely this will account for much
-  ws_create_server_stream(
-    state,
-    network_stream,
-    Bytes::from(extra_bytes.to_vec()),
-  )
 }
 
 #[op]
@@ -534,7 +521,6 @@ deno_core::extension!(deno_websocket,
     op_ws_send_text,
     op_ws_send_ping,
     op_ws_send_pong,
-    op_ws_server_create,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {
@@ -591,6 +577,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    deno_core::task::spawn(fut);
   }
 }

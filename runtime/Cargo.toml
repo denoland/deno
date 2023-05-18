@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.111.0"
+version = "0.113.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -41,7 +41,7 @@ deno_core.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
 deno_net.workspace = true
@@ -67,7 +67,7 @@ deno_core.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
-deno_fs.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
 deno_io.workspace = true
 deno_kv.workspace = true

@@ -1,11 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
+use deno_fs::sync::MaybeSend;
+use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
@@ -13,11 +20,6 @@ use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
 pub mod analyze;
 pub mod errors;
@@ -50,7 +52,10 @@ impl NodePermissions for AllowAllNodePermissions {
   }
 }
 
-pub trait NpmResolver: std::fmt::Debug + Send + Sync {
+#[allow(clippy::disallowed_types)]
+pub type NpmResolverRc = deno_fs::sync::MaybeArc<dyn NpmResolver>;
+
+pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves an npm package folder path from an npm package referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -165,6 +170,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_dh_generate_group,
     ops::crypto::op_node_dh_generate_group_async,
     ops::crypto::op_node_dh_generate,
+    ops::crypto::op_node_dh_generate2,
+    ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_dh_generate_async,
     ops::crypto::op_node_verify,
     ops::crypto::op_node_random_int,
@@ -199,6 +206,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
+    ops::http::op_node_http_request,
     op_node_build_os,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -449,8 +457,8 @@ deno_core::extension!(deno_node,
     "zlib.ts",
   ],
   options = {
-    maybe_npm_resolver: Option<Arc<dyn NpmResolver>>,
-    fs: Arc<dyn deno_fs::FileSystem>,
+    maybe_npm_resolver: Option<NpmResolverRc>,
+    fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
     let fs = options.fs;
@@ -482,6 +490,8 @@ pub fn initialize_runtime(
         usesLocalNodeModulesDir,
         argv0
       );
+      // Make the nodeGlobalThisName unconfigurable here.
+      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
     }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );

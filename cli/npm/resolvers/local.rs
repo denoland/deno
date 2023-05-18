@@ -18,16 +18,18 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::task::spawn;
+use deno_core::task::JoinHandle;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_core::futures;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use tokio::task::JoinHandle;
 
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
@@ -51,6 +53,7 @@ pub struct LocalNpmPackageResolver {
   registry_url: Url,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
+  system_info: NpmSystemInfo,
 }
 
 impl LocalNpmPackageResolver {
@@ -61,6 +64,7 @@ impl LocalNpmPackageResolver {
     registry_url: Url,
     node_modules_folder: PathBuf,
     resolution: Arc<NpmResolution>,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       fs,
@@ -71,6 +75,7 @@ impl LocalNpmPackageResolver {
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
+      system_info,
     }
   }
 
@@ -154,7 +159,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     loop {
       current_folder = get_next_node_modules_ancestor(current_folder);
       let sub_dir = join_package_name(current_folder, name);
-      if sub_dir.is_dir() {
+      if self.fs.is_dir(&sub_dir) {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
           let package_json = PackageJson::load_skip_read_permission(
@@ -173,7 +178,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(current_folder, &types_package_name(name));
-        if sub_dir.is_dir() {
+        if self.fs.is_dir(&sub_dir) {
           return Ok(sub_dir);
         }
       }
@@ -204,6 +209,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.progress_bar,
       &self.registry_url,
       &self.root_node_modules_path,
+      &self.system_info,
     )
     .await
   }
@@ -214,6 +220,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     ensure_registry_read_permission(
+      &self.fs,
       permissions,
       &self.root_node_modules_path,
       path,
@@ -228,6 +235,7 @@ async fn sync_resolution_with_fs(
   progress_bar: &ProgressBar,
   registry_url: &Url,
   root_node_modules_dir_path: &Path,
+  system_info: &NpmSystemInfo,
 ) -> Result<(), AnyError> {
   if snapshot.is_empty() {
     return Ok(()); // don't create the directory
@@ -252,7 +260,8 @@ async fn sync_resolution_with_fs(
   // Copy (hardlink in future) <global_registry_cache>/<package_id>/ to
   // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name>
   let sync_download = should_sync_download();
-  let mut package_partitions = snapshot.all_packages_partitioned();
+  let mut package_partitions =
+    snapshot.all_system_packages_partitioned(system_info);
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
@@ -276,7 +285,7 @@ async fn sync_resolution_with_fs(
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
-      let handle = tokio::task::spawn(async move {
+      let handle = spawn(async move {
         cache
           .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
           .await?;

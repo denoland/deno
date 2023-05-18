@@ -26,6 +26,7 @@ fn napi_tests() {
 
   let output = deno_cmd()
     .current_dir(test_util::napi_tests_path())
+    .env("RUST_BACKTRACE", "1")
     .arg("test")
     .arg("--allow-read")
     .arg("--allow-env")
@@ -39,6 +40,7 @@ fn napi_tests() {
   let stderr = std::str::from_utf8(&output.stderr).unwrap();
 
   if !output.status.success() {
+    eprintln!("exit code {:?}", output.status.code());
     println!("stdout {stdout}");
     println!("stderr {stderr}");
   }

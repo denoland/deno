@@ -9,9 +9,11 @@ use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
+use deno_core::task::spawn;
 use deno_core::url::Url;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
@@ -67,10 +69,9 @@ pub async fn cache_packages(
 
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
-    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
-    let handle = tokio::task::spawn(async move {
+    let handle = spawn(async move {
       cache
         .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
         .await
@@ -90,6 +91,7 @@ pub async fn cache_packages(
 }
 
 pub fn ensure_registry_read_permission(
+  fs: &Arc<dyn FileSystem>,
   permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
@@ -101,8 +103,8 @@ pub fn ensure_registry_read_permission(
       .all(|c| !matches!(c, std::path::Component::ParentDir))
   {
     // todo(dsherret): cache this?
-    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
-      match std::fs::canonicalize(path) {
+    if let Ok(registry_path) = fs.realpath_sync(registry_path) {
+      match fs.realpath_sync(path) {
         Ok(path) if path.starts_with(registry_path) => {
           return Ok(());
         }

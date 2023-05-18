@@ -23,6 +23,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
@@ -237,8 +238,21 @@ impl NpmResolution {
     Ok(nv)
   }
 
-  pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
-    self.snapshot.read().all_packages_partitioned()
+  pub fn all_system_packages(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> Vec<NpmResolutionPackage> {
+    self.snapshot.read().all_system_packages(system_info)
+  }
+
+  pub fn all_system_packages_partitioned(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> NpmPackagesPartitioned {
+    self
+      .snapshot
+      .read()
+      .all_system_packages_partitioned(system_info)
   }
 
   pub fn has_packages(&self) -> bool {
@@ -318,7 +332,7 @@ fn populate_lockfile_from_snapshot(
         .as_serialized(),
     );
   }
-  for package in snapshot.all_packages() {
+  for package in snapshot.all_packages_for_every_system() {
     lockfile
       .check_or_insert_npm_package(npm_package_to_lockfile_info(package))?;
   }
@@ -326,13 +340,13 @@ fn populate_lockfile_from_snapshot(
 }
 
 fn npm_package_to_lockfile_info(
-  pkg: NpmResolutionPackage,
+  pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
   let dependencies = pkg
     .dependencies
-    .into_iter()
+    .iter()
     .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-      name,
+      name: name.clone(),
       id: id.as_serialized(),
     })
     .collect();

@@ -5,7 +5,6 @@ use crate::args::Flags;
 use crate::factory::CliFactory;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::standalone::is_standalone_binary;
-use crate::standalone::DenoCompileBinaryWriter;
 use crate::util::path::path_has_trailing_slash;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -25,14 +24,9 @@ pub async fn compile(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  let file_fetcher = factory.file_fetcher()?;
-  let http_client = factory.http_client();
-  let deno_dir = factory.deno_dir()?;
   let module_graph_builder = factory.module_graph_builder().await?;
   let parsed_source_cache = factory.parsed_source_cache()?;
-
-  let binary_writer =
-    DenoCompileBinaryWriter::new(file_fetcher, http_client, deno_dir);
+  let binary_writer = factory.create_compile_binary_writer().await?;
   let module_specifier = cli_options.resolve_main_module()?;
   let module_roots = {
     let mut vec = Vec::with_capacity(compile_flags.include.len() + 1);
@@ -56,8 +50,11 @@ pub async fn compile(
   )
   .unwrap();
 
-  // at the moment, we don't support npm specifiers in deno_compile, so show an error
-  error_for_any_npm_specifier(&graph)?;
+  if !cli_options.unstable() {
+    error_for_any_npm_specifier(&graph).context(
+      "Using npm specifiers with deno compile requires the --unstable flag.",
+    )?;
+  }
 
   let parser = parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
@@ -117,7 +114,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
         concat!(
           "Could not compile to file '{}' because the file already exists ",
           "and cannot be overwritten. Please delete the existing file or ",
-          "use the `--output <file-path` flag to provide an alternative name."
+          "use the `--output <file-path>` flag to provide an alternative name."
         ),
         output_path.display()
       );

@@ -32,6 +32,7 @@ pub struct NodeModulePolyfill {
   pub specifier: &'static str,
 }
 
+// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
 pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "assert",
@@ -74,6 +75,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     specifier: "ext:deno_node/dgram.ts",
   },
   NodeModulePolyfill {
+    name: "diagnostics_channel",
+    specifier: "ext:deno_node/diagnostics_channel.ts",
+  },
+  NodeModulePolyfill {
     name: "dns",
     specifier: "ext:deno_node/dns.ts",
   },
@@ -100,6 +105,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "http",
     specifier: "ext:deno_node/http.ts",
+  },
+  NodeModulePolyfill {
+    name: "http2",
+    specifier: "ext:deno_node/http2.ts",
   },
   NodeModulePolyfill {
     name: "https",
@@ -136,6 +145,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "process",
     specifier: "ext:deno_node/process.ts",
+  },
+  NodeModulePolyfill {
+    name: "punycode",
+    specifier: "ext:deno_node/punycode.ts",
   },
   NodeModulePolyfill {
     name: "querystring",

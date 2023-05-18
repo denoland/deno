@@ -577,3 +577,25 @@ Deno.test(
     assertStringIncludes(output, "typescript");
   },
 );
+
+Deno.test(
+  "[node/child_process spawn] supports stdio array option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
