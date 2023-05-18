@@ -45,12 +45,6 @@ struct Thing {
   _allocation: Vec<u8>,
 }
 
-impl Drop for Thing {
-  fn drop(&mut self) {
-    println!("Dropping Thing");
-  }
-}
-
 unsafe extern "C" fn finalize_cb_drop(
   _env: napi_env,
   data: *mut ::std::os::raw::c_void,
