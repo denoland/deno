@@ -70,7 +70,9 @@ impl PermissionState {
     format!(
       "{} access{}",
       name,
-      info().map_or(String::new(), |info| { format!(" to {info}") }),
+      info()
+        .map(|info| { format!(" to {info}") })
+        .unwrap_or_default(),
     )
   }
 
@@ -114,7 +116,9 @@ impl PermissionState {
         let msg = format!(
           "{} access{}",
           name,
-          info().map_or(String::new(), |info| { format!(" to {info}") }),
+          info()
+            .map(|info| { format!(" to {info}") })
+            .unwrap_or_default(),
         );
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
@@ -659,6 +663,40 @@ impl UnaryPermission<WriteDescriptor> {
         self.global_state = PermissionState::Granted;
       } else {
         self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
+  /// As `check()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  pub fn check_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    let resolved_path = resolve_from_cwd(path)?;
+    let (result, prompted, is_allow_all) =
+      self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(api_name),
+        Some(&format!("<{display}>")),
+        self.prompt,
+      );
+    if prompted {
+      if result.is_ok() {
+        if is_allow_all {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.granted_list.insert(WriteDescriptor(resolved_path));
+        }
+      } else {
+        self.global_state = PermissionState::Denied;
+        if !is_allow_all {
+          self.denied_list.insert(WriteDescriptor(resolved_path));
+        }
       }
     }
     result
@@ -1569,14 +1607,14 @@ impl Permissions {
   ) -> Result<UnaryPermission<NetDescriptor>, AnyError> {
     Ok(UnaryPermission::<NetDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| NetDescriptor::from_str(x))
             .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1588,9 +1626,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
     Ok(UnaryPermission::<EnvDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1600,8 +1638,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1613,9 +1651,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<SysDescriptor>, AnyError> {
     Ok(UnaryPermission::<SysDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1625,8 +1663,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1638,9 +1676,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
     Ok(UnaryPermission::<RunDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1650,8 +1688,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1789,6 +1827,16 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_write_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
   pub fn check_run(
     &mut self,
     cmd: &str,
@@ -1822,20 +1870,9 @@ impl PermissionsContainer {
   }
 }
 
-impl deno_flash::FlashPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    host: &(T, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().net.check(host, Some(api_name))
-  }
-}
-
 impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)
   }
 }
@@ -1938,6 +1975,15 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     self.0.lock().write.check(path, Some(api_name))
   }
 
+  fn check_write_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(p, display, api_name)
+  }
+
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().read.check_all(Some(api_name))
   }
@@ -1960,6 +2006,18 @@ impl deno_ffi::FfiPermissions for PermissionsContainer {
   #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.0.lock().ffi.check(path)
+  }
+}
+
+impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check(p, Some(api_name))
+  }
+
+  #[inline(always)]
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check(p, Some(api_name))
   }
 }
 

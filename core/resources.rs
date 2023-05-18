@@ -154,6 +154,18 @@ pub trait Resource: Any + 'static {
     })
   }
 
+  /// The same as [`read_byob()`][Resource::read_byob], but synchronous.
+  fn read_byob_sync(self: Rc<Self>, data: &mut [u8]) -> Result<usize, Error> {
+    _ = data;
+    Err(not_supported())
+  }
+
+  /// The same as [`write()`][Resource::write], but synchronous.
+  fn write_sync(self: Rc<Self>, data: &[u8]) -> Result<usize, Error> {
+    _ = data;
+    Err(not_supported())
+  }
+
   /// The shutdown method can be used to asynchronously close the resource. It
   /// is not automatically called when the resource is dropped or closed.
   ///
@@ -172,6 +184,13 @@ pub trait Resource: Any + 'static {
   /// low-level optimizations.
   #[cfg(unix)]
   fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
+    None
+  }
+
+  /// Resources backed by a file descriptor can let ops know to allow for
+  /// low-level optimizations.
+  #[cfg(windows)]
+  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
     None
   }
 

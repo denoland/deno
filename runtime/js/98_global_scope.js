@@ -13,7 +13,7 @@ import * as event from "ext:deno_web/02_event.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as console from "ext:deno_console/02_console.js";
+import * as console from "ext:deno_console/01_console.js";
 import * as caches from "ext:deno_cache/01_cache.js";
 import * as compression from "ext:deno_web/14_compression.js";
 import * as worker from "ext:runtime/11_workers.js";
@@ -24,7 +24,6 @@ import * as urlPattern from "ext:deno_url/01_urlpattern.js";
 import * as headers from "ext:deno_fetch/20_headers.js";
 import * as streams from "ext:deno_web/06_streams.js";
 import * as fileReader from "ext:deno_web/10_filereader.js";
-import * as webgpu from "ext:deno_webgpu/01_webgpu.js";
 import * as webSocket from "ext:deno_websocket/01_websocket.js";
 import * as webSocketStream from "ext:deno_websocket/02_websocketstream.js";
 import * as broadcastChannel from "ext:deno_broadcast_channel/01_broadcast_channel.js";
@@ -142,40 +141,6 @@ const windowOrWorkerGlobalScope = {
 const unstableWindowOrWorkerGlobalScope = {
   BroadcastChannel: util.nonEnumerable(broadcastChannel.BroadcastChannel),
   WebSocketStream: util.nonEnumerable(webSocketStream.WebSocketStream),
-
-  GPU: util.nonEnumerable(webgpu.GPU),
-  GPUAdapter: util.nonEnumerable(webgpu.GPUAdapter),
-  GPUAdapterInfo: util.nonEnumerable(webgpu.GPUAdapterInfo),
-  GPUSupportedLimits: util.nonEnumerable(webgpu.GPUSupportedLimits),
-  GPUSupportedFeatures: util.nonEnumerable(webgpu.GPUSupportedFeatures),
-  GPUDeviceLostInfo: util.nonEnumerable(webgpu.GPUDeviceLostInfo),
-  GPUDevice: util.nonEnumerable(webgpu.GPUDevice),
-  GPUQueue: util.nonEnumerable(webgpu.GPUQueue),
-  GPUBuffer: util.nonEnumerable(webgpu.GPUBuffer),
-  GPUBufferUsage: util.nonEnumerable(webgpu.GPUBufferUsage),
-  GPUMapMode: util.nonEnumerable(webgpu.GPUMapMode),
-  GPUTexture: util.nonEnumerable(webgpu.GPUTexture),
-  GPUTextureUsage: util.nonEnumerable(webgpu.GPUTextureUsage),
-  GPUTextureView: util.nonEnumerable(webgpu.GPUTextureView),
-  GPUSampler: util.nonEnumerable(webgpu.GPUSampler),
-  GPUBindGroupLayout: util.nonEnumerable(webgpu.GPUBindGroupLayout),
-  GPUPipelineLayout: util.nonEnumerable(webgpu.GPUPipelineLayout),
-  GPUBindGroup: util.nonEnumerable(webgpu.GPUBindGroup),
-  GPUShaderModule: util.nonEnumerable(webgpu.GPUShaderModule),
-  GPUShaderStage: util.nonEnumerable(webgpu.GPUShaderStage),
-  GPUComputePipeline: util.nonEnumerable(webgpu.GPUComputePipeline),
-  GPURenderPipeline: util.nonEnumerable(webgpu.GPURenderPipeline),
-  GPUColorWrite: util.nonEnumerable(webgpu.GPUColorWrite),
-  GPUCommandEncoder: util.nonEnumerable(webgpu.GPUCommandEncoder),
-  GPURenderPassEncoder: util.nonEnumerable(webgpu.GPURenderPassEncoder),
-  GPUComputePassEncoder: util.nonEnumerable(webgpu.GPUComputePassEncoder),
-  GPUCommandBuffer: util.nonEnumerable(webgpu.GPUCommandBuffer),
-  GPURenderBundleEncoder: util.nonEnumerable(webgpu.GPURenderBundleEncoder),
-  GPURenderBundle: util.nonEnumerable(webgpu.GPURenderBundle),
-  GPUQuerySet: util.nonEnumerable(webgpu.GPUQuerySet),
-  GPUError: util.nonEnumerable(webgpu.GPUError),
-  GPUOutOfMemoryError: util.nonEnumerable(webgpu.GPUOutOfMemoryError),
-  GPUValidationError: util.nonEnumerable(webgpu.GPUValidationError),
 };
 
 class Navigator {
@@ -205,14 +170,6 @@ function setLanguage(val) {
 }
 
 ObjectDefineProperties(Navigator.prototype, {
-  gpu: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, NavigatorPrototype);
-      return webgpu.gpu;
-    },
-  },
   hardwareConcurrency: {
     configurable: true,
     enumerable: true,
@@ -261,14 +218,6 @@ class WorkerNavigator {
 const workerNavigator = webidl.createBranded(WorkerNavigator);
 
 ObjectDefineProperties(WorkerNavigator.prototype, {
-  gpu: {
-    configurable: true,
-    enumerable: true,
-    get() {
-      webidl.assertBranded(this, WorkerNavigatorPrototype);
-      return webgpu.gpu;
-    },
-  },
   hardwareConcurrency: {
     configurable: true,
     enumerable: true,

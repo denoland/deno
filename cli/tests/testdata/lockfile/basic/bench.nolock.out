@@ -1,6 +1,5 @@
 Download http://localhost:4545/lockfile/basic/mod.ts
 Check file:///[WILDCARD]/main.bench.ts
-5
 cpu: [WILDCARD]
 runtime: [WILDCARD]
 

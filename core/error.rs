@@ -9,8 +9,8 @@ use std::fmt::Formatter;
 
 use anyhow::Error;
 
+use crate::realm::JsRealm;
 use crate::runtime::GetErrorClassFn;
-use crate::runtime::JsRealm;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -195,6 +195,47 @@ impl JsStackFrame {
       promise_index: None,
     }
   }
+
+  /// Gets the source mapped stack frame corresponding to the
+  /// (script_resource_name, line_number, column_number) from a v8 message.
+  /// For non-syntax errors, it should also correspond to the first stack frame.
+  pub fn from_v8_message<'a>(
+    scope: &'a mut v8::HandleScope,
+    message: v8::Local<'a, v8::Message>,
+  ) -> Option<Self> {
+    let f = message.get_script_resource_name(scope)?;
+    let f: v8::Local<v8::String> = f.try_into().ok()?;
+    let f = f.to_rust_string_lossy(scope);
+    let l = message.get_line_number(scope)? as i64;
+    // V8's column numbers are 0-based, we want 1-based.
+    let c = message.get_start_column() as i64 + 1;
+    let state_rc = JsRuntime::state(scope);
+    let (getter, cache) = {
+      let state = state_rc.borrow();
+      (
+        state.source_map_getter.clone(),
+        state.source_map_cache.clone(),
+      )
+    };
+
+    if let Some(source_map_getter) = getter {
+      let mut cache = cache.borrow_mut();
+      let (f, l, c) =
+        apply_source_map(f, l, c, &mut cache, &**source_map_getter);
+      Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
+    } else {
+      Some(JsStackFrame::from_location(Some(f), Some(l), Some(c)))
+    }
+  }
+
+  pub fn maybe_format_location(&self) -> Option<String> {
+    Some(format!(
+      "{}:{}:{}",
+      self.file_name.as_ref()?,
+      self.line_number?,
+      self.column_number?
+    ))
+  }
 }
 
 fn get_property<'a>(
@@ -231,43 +272,26 @@ impl JsError {
     let scope = &mut v8::HandleScope::new(scope);
 
     let exception_message = msg.get(scope).to_rust_string_lossy(scope);
-    let state_rc = JsRuntime::state(scope);
 
     // Convert them into Vec<JsStackFrame>
     let mut frames: Vec<JsStackFrame> = vec![];
-
     let mut source_line = None;
     let mut source_line_frame_index = None;
+
+    if let Some(stack_frame) = JsStackFrame::from_v8_message(scope, msg) {
+      frames = vec![stack_frame];
+    }
     {
-      let state = &mut *state_rc.borrow_mut();
-
-      let script_resource_name = msg
-        .get_script_resource_name(scope)
-        .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-        .map(|v| v.to_rust_string_lossy(scope));
-      let line_number: Option<i64> =
-        msg.get_line_number(scope).and_then(|v| v.try_into().ok());
-      let column_number: Option<i64> = msg.get_start_column().try_into().ok();
-      if let (Some(f), Some(l), Some(c)) =
-        (script_resource_name, line_number, column_number)
-      {
-        // V8's column numbers are 0-based, we want 1-based.
-        let c = c + 1;
-        if let Some(source_map_getter) = &state.source_map_getter {
-          let (f, l, c) = apply_source_map(
-            f,
-            l,
-            c,
-            &mut state.source_map_cache,
-            source_map_getter.as_ref(),
-          );
-          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-        } else {
-          frames = vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-        }
-      }
-
-      if let Some(source_map_getter) = &state.source_map_getter {
+      let state_rc = JsRuntime::state(scope);
+      let (getter, cache) = {
+        let state = state_rc.borrow();
+        (
+          state.source_map_getter.clone(),
+          state.source_map_cache.clone(),
+        )
+      };
+      if let Some(source_map_getter) = getter {
+        let mut cache = cache.borrow_mut();
         for (i, frame) in frames.iter().enumerate() {
           if let (Some(file_name), Some(line_number)) =
             (&frame.file_name, frame.line_number)
@@ -276,8 +300,8 @@ impl JsError {
               source_line = get_source_line(
                 file_name,
                 line_number,
-                &mut state.source_map_cache,
-                source_map_getter.as_ref(),
+                &mut cache,
+                &**source_map_getter,
               );
               source_line_frame_index = Some(i);
               break;
@@ -377,49 +401,30 @@ impl JsError {
         Some(frames_v8) => serde_v8::from_v8(scope, frames_v8.into()).unwrap(),
         None => vec![],
       };
-
       let mut source_line = None;
       let mut source_line_frame_index = None;
+
+      // When the stack frame array is empty, but the source location given by
+      // (script_resource_name, line_number, start_column + 1) exists, this is
+      // likely a syntax error. For the sake of formatting we treat it like it
+      // was given as a single stack frame.
+      if frames.is_empty() {
+        if let Some(stack_frame) = JsStackFrame::from_v8_message(scope, msg) {
+          frames = vec![stack_frame];
+        }
+      }
       {
         let state_rc = JsRuntime::state(scope);
-        let state = &mut *state_rc.borrow_mut();
+        let (getter, cache) = {
+          let state = state_rc.borrow();
+          (
+            state.source_map_getter.clone(),
+            state.source_map_cache.clone(),
+          )
+        };
+        if let Some(source_map_getter) = getter {
+          let mut cache = cache.borrow_mut();
 
-        // When the stack frame array is empty, but the source location given by
-        // (script_resource_name, line_number, start_column + 1) exists, this is
-        // likely a syntax error. For the sake of formatting we treat it like it
-        // was given as a single stack frame.
-        if frames.is_empty() {
-          let script_resource_name = msg
-            .get_script_resource_name(scope)
-            .and_then(|v| v8::Local::<v8::String>::try_from(v).ok())
-            .map(|v| v.to_rust_string_lossy(scope));
-          let line_number: Option<i64> =
-            msg.get_line_number(scope).and_then(|v| v.try_into().ok());
-          let column_number: Option<i64> =
-            msg.get_start_column().try_into().ok();
-          if let (Some(f), Some(l), Some(c)) =
-            (script_resource_name, line_number, column_number)
-          {
-            // V8's column numbers are 0-based, we want 1-based.
-            let c = c + 1;
-            if let Some(source_map_getter) = &state.source_map_getter {
-              let (f, l, c) = apply_source_map(
-                f,
-                l,
-                c,
-                &mut state.source_map_cache,
-                source_map_getter.as_ref(),
-              );
-              frames =
-                vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-            } else {
-              frames =
-                vec![JsStackFrame::from_location(Some(f), Some(l), Some(c))];
-            }
-          }
-        }
-
-        if let Some(source_map_getter) = &state.source_map_getter {
           for (i, frame) in frames.iter().enumerate() {
             if let (Some(file_name), Some(line_number)) =
               (&frame.file_name, frame.line_number)
@@ -428,8 +433,8 @@ impl JsError {
                 source_line = get_source_line(
                   file_name,
                   line_number,
-                  &mut state.source_map_cache,
-                  source_map_getter.as_ref(),
+                  &mut cache,
+                  &**source_map_getter,
                 );
                 source_line_frame_index = Some(i);
                 break;
@@ -502,16 +507,6 @@ impl JsError {
 
 impl std::error::Error for JsError {}
 
-fn format_source_loc(
-  file_name: &str,
-  line_number: i64,
-  column_number: i64,
-) -> String {
-  let line_number = line_number;
-  let column_number = column_number;
-  format!("{file_name}:{line_number}:{column_number}")
-}
-
 impl Display for JsError {
   fn fmt(&self, f: &mut Formatter) -> fmt::Result {
     if let Some(stack) = &self.stack {
@@ -521,14 +516,9 @@ impl Display for JsError {
       }
     }
     write!(f, "{}", self.exception_message)?;
-    let frame = self.frames.first();
-    if let Some(frame) = frame {
-      if let (Some(f_), Some(l), Some(c)) =
-        (&frame.file_name, frame.line_number, frame.column_number)
-      {
-        let source_loc = format_source_loc(f_, l, c);
-        write!(f, "\n    at {source_loc}")?;
-      }
+    let location = self.frames.first().and_then(|f| f.maybe_format_location());
+    if let Some(location) = location {
+      write!(f, "\n    at {location}")?;
     }
     Ok(())
   }

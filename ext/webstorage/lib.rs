@@ -6,10 +6,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use rusqlite::params;
 use rusqlite::Connection;
@@ -22,40 +19,27 @@ struct OriginStorageDir(PathBuf);
 
 const MAX_STORAGE_BYTES: usize = 10 * 1024 * 1024;
 
-fn ext() -> ExtensionBuilder {
-  Extension::builder_with_deps(env!("CARGO_PKG_NAME"), &["deno_webidl"])
-}
-
-fn ops(
-  ext: &mut ExtensionBuilder,
-  origin_storage_dir: Option<PathBuf>,
-) -> &mut ExtensionBuilder {
-  ext
-    .ops(vec![
-      op_webstorage_length::decl(),
-      op_webstorage_key::decl(),
-      op_webstorage_set::decl(),
-      op_webstorage_get::decl(),
-      op_webstorage_remove::decl(),
-      op_webstorage_clear::decl(),
-      op_webstorage_iterate_keys::decl(),
-    ])
-    .state(move |state| {
-      if let Some(origin_storage_dir) = &origin_storage_dir {
-        state.put(OriginStorageDir(origin_storage_dir.clone()));
-      }
-    })
-}
-
-pub fn init_ops_and_esm(origin_storage_dir: Option<PathBuf>) -> Extension {
-  ops(&mut ext(), origin_storage_dir)
-    .esm(include_js_files!("01_webstorage.js",))
-    .build()
-}
-
-pub fn init_ops(origin_storage_dir: Option<PathBuf>) -> Extension {
-  ops(&mut ext(), origin_storage_dir).build()
-}
+deno_core::extension!(deno_webstorage,
+  deps = [ deno_webidl ],
+  ops = [
+    op_webstorage_length,
+    op_webstorage_key,
+    op_webstorage_set,
+    op_webstorage_get,
+    op_webstorage_remove,
+    op_webstorage_clear,
+    op_webstorage_iterate_keys,
+  ],
+  esm = [ "01_webstorage.js" ],
+  options = {
+    origin_storage_dir: Option<PathBuf>
+  },
+  state = |state, options| {
+    if let Some(origin_storage_dir) = options.origin_storage_dir {
+      state.put(OriginStorageDir(origin_storage_dir));
+    }
+  },
+);
 
 pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_webstorage.d.ts")

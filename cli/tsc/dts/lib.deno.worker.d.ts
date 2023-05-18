@@ -3,7 +3,6 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
@@ -58,7 +57,6 @@ declare class WorkerGlobalScope extends EventTarget {
 /** @category Web APIs */
 declare class WorkerNavigator {
   constructor();
-  readonly gpu: GPU;
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;

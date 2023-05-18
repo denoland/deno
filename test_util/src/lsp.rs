@@ -9,7 +9,6 @@ use super::new_deno_dir;
 use super::TempDir;
 
 use anyhow::Result;
-use lazy_static::lazy_static;
 use lsp_types as lsp;
 use lsp_types::ClientCapabilities;
 use lsp_types::ClientInfo;
@@ -25,6 +24,7 @@ use lsp_types::TextDocumentClientCapabilities;
 use lsp_types::TextDocumentSyncClientCapabilities;
 use lsp_types::Url;
 use lsp_types::WorkspaceClientCapabilities;
+use once_cell::sync::Lazy;
 use parking_lot::Condvar;
 use parking_lot::Mutex;
 use regex::Regex;
@@ -48,10 +48,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-lazy_static! {
-  static ref CONTENT_TYPE_REG: Regex =
-    Regex::new(r"(?i)^content-length:\s+(\d+)").unwrap();
-}
+static CONTENT_TYPE_REG: Lazy<Regex> =
+  lazy_regex::lazy_regex!(r"(?i)^content-length:\s+(\d+)");
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LspResponseError {
@@ -146,6 +144,11 @@ impl LspStdoutReader {
 
   pub fn pending_len(&self) -> usize {
     self.pending_messages.0.lock().len()
+  }
+
+  pub fn output_pending_messages(&self) {
+    let messages = self.pending_messages.0.lock();
+    eprintln!("{:?}", messages);
   }
 
   pub fn had_message(&self, is_match: impl Fn(&LspMessage) -> bool) -> bool {
@@ -375,6 +378,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_preload_limit(&mut self, arg: usize) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("documentPreloadLimit".to_string(), arg.into());
+    self
+  }
+
   pub fn set_tls_certificate(&mut self, value: impl AsRef<str>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert(
@@ -453,6 +462,9 @@ impl LspClientBuilder {
     self
   }
 
+  // not deprecated, this is just here so you don't accidentally
+  // commit code with this enabled
+  #[deprecated]
   pub fn print_stderr(&mut self) -> &mut Self {
     self.print_stderr = true;
     self
@@ -541,6 +553,7 @@ impl LspClient {
   }
 
   pub fn queue_len(&self) -> usize {
+    self.reader.output_pending_messages();
     self.reader.pending_len()
   }
 
@@ -552,11 +565,25 @@ impl LspClient {
     &mut self,
     do_build: impl Fn(&mut InitializeParamsBuilder),
   ) {
+    self.initialize_with_config(
+      do_build,
+      json!([{
+        "enable": true
+      }]),
+    )
+  }
+
+  pub fn initialize_with_config(
+    &mut self,
+    do_build: impl Fn(&mut InitializeParamsBuilder),
+    config: Value,
+  ) {
     let mut builder = InitializeParamsBuilder::new();
     builder.set_root_uri(self.context.deno_dir().uri());
     do_build(&mut builder);
     self.write_request("initialize", builder.build());
     self.write_notification("initialized", json!({}));
+    self.handle_configuration_request(config);
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {

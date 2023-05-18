@@ -1,15 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::task::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -19,6 +18,7 @@ use super::config::SpecifierSettings;
 use super::config::SETTINGS_SECTION;
 use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
+use super::urls::LspClientUrl;
 
 #[derive(Debug)]
 pub enum TestingNotification {
@@ -45,40 +45,78 @@ impl Client {
     Self(Arc::new(ReplClient))
   }
 
-  pub async fn publish_diagnostics(
-    &self,
-    uri: lsp::Url,
-    diags: Vec<lsp::Diagnostic>,
-    version: Option<i32>,
-  ) {
-    self.0.publish_diagnostics(uri, diags, version).await;
+  /// Gets additional methods that should only be called outside
+  /// the LSP's lock to prevent deadlocking scenarios.
+  pub fn when_outside_lsp_lock(&self) -> OutsideLockClient {
+    OutsideLockClient(self.0.clone())
   }
 
-  pub async fn send_registry_state_notification(
+  pub fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   ) {
-    self.0.send_registry_state_notification(params).await;
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_registry_state_notification(params).await;
+    });
   }
 
   pub fn send_test_notification(&self, params: TestingNotification) {
-    self.0.send_test_notification(params);
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_test_notification(params).await;
+    });
+  }
+
+  pub fn show_message(
+    &self,
+    message_type: lsp::MessageType,
+    message: impl std::fmt::Display,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    let message = message.to_string();
+    spawn(async move {
+      client.show_message(message_type, message).await;
+    });
+  }
+}
+
+/// DANGER: The methods on this client should only be called outside
+/// the LSP's lock. The reason is you never want to call into the client
+/// while holding the lock because the client might call back into the
+/// server and cause a deadlock.
+pub struct OutsideLockClient(Arc<dyn ClientTrait>);
+
+impl OutsideLockClient {
+  pub async fn register_capability(
+    &self,
+    registrations: Vec<lsp::Registration>,
+  ) -> Result<(), AnyError> {
+    self.0.register_capability(registrations).await
   }
 
   pub async fn specifier_configurations(
     &self,
-    specifiers: Vec<lsp::Url>,
+    specifiers: Vec<LspClientUrl>,
   ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
-    self.0.specifier_configurations(specifiers).await
+    self
+      .0
+      .specifier_configurations(
+        specifiers.into_iter().map(|s| s.into_url()).collect(),
+      )
+      .await
   }
 
   pub async fn specifier_configuration(
     &self,
-    specifier: &lsp::Url,
+    specifier: &LspClientUrl,
   ) -> Result<SpecifierSettings, AnyError> {
     let values = self
       .0
-      .specifier_configurations(vec![specifier.clone()])
+      .specifier_configurations(vec![specifier.as_url().clone()])
       .await?;
     if let Some(value) = values.into_iter().next() {
       value.map_err(|err| {
@@ -100,211 +138,185 @@ impl Client {
     self.0.workspace_configuration().await
   }
 
-  pub async fn show_message(
+  pub async fn publish_diagnostics(
     &self,
-    message_type: lsp::MessageType,
-    message: impl std::fmt::Display,
+    uri: lsp::Url,
+    diags: Vec<lsp::Diagnostic>,
+    version: Option<i32>,
   ) {
-    self
-      .0
-      .show_message(message_type, format!("{message}"))
-      .await
-  }
-
-  pub async fn register_capability(
-    &self,
-    registrations: Vec<lsp::Registration>,
-  ) -> Result<(), AnyError> {
-    self.0.register_capability(registrations).await
+    self.0.publish_diagnostics(uri, diags, version).await;
   }
 }
 
-type AsyncReturn<T> = Pin<Box<dyn Future<Output = T> + 'static + Send>>;
-
+#[async_trait]
 trait ClientTrait: Send + Sync {
-  fn publish_diagnostics(
+  async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
-  ) -> AsyncReturn<()>;
-  fn send_registry_state_notification(
+  );
+  async fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
-  ) -> AsyncReturn<()>;
-  fn send_test_notification(&self, params: TestingNotification);
-  fn specifier_configurations(
+  );
+  async fn send_test_notification(&self, params: TestingNotification);
+  async fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
-  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>;
-  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>>;
-  fn show_message(
-    &self,
-    message_type: lsp::MessageType,
-    text: String,
-  ) -> AsyncReturn<()>;
-  fn register_capability(
+  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>;
+  async fn workspace_configuration(&self) -> Result<Value, AnyError>;
+  async fn show_message(&self, message_type: lsp::MessageType, text: String);
+  async fn register_capability(
     &self,
     registrations: Vec<lsp::Registration>,
-  ) -> AsyncReturn<Result<(), AnyError>>;
+  ) -> Result<(), AnyError>;
 }
 
 #[derive(Clone)]
 struct TowerClient(tower_lsp::Client);
 
+#[async_trait]
 impl ClientTrait for TowerClient {
-  fn publish_diagnostics(
+  async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
     diagnostics: Vec<lsp::Diagnostic>,
     version: Option<i32>,
-  ) -> AsyncReturn<()> {
-    let client = self.0.clone();
-    Box::pin(async move {
-      client.publish_diagnostics(uri, diagnostics, version).await
-    })
+  ) {
+    self.0.publish_diagnostics(uri, diagnostics, version).await
   }
 
-  fn send_registry_state_notification(
+  async fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
-  ) -> AsyncReturn<()> {
-    let client = self.0.clone();
-    Box::pin(async move {
-      client
-        .send_notification::<lsp_custom::RegistryStateNotification>(params)
-        .await
-    })
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::RegistryStateNotification>(params)
+      .await
   }
 
-  fn send_test_notification(&self, notification: TestingNotification) {
-    let client = self.0.clone();
-    tokio::task::spawn(async move {
-      match notification {
-        TestingNotification::Module(params) => {
-          client
-            .send_notification::<testing_lsp_custom::TestModuleNotification>(
-              params,
-            )
-            .await
-        }
-        TestingNotification::DeleteModule(params) => client
-          .send_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
+  async fn send_test_notification(&self, notification: TestingNotification) {
+    match notification {
+      TestingNotification::Module(params) => {
+        self
+          .0
+          .send_notification::<testing_lsp_custom::TestModuleNotification>(
             params,
           )
-          .await,
-        TestingNotification::Progress(params) => client
+          .await
+      }
+      TestingNotification::DeleteModule(params) => self
+        .0
+        .send_notification::<testing_lsp_custom::TestModuleDeleteNotification>(
+          params,
+        )
+        .await,
+      TestingNotification::Progress(params) => {
+        self
+          .0
           .send_notification::<testing_lsp_custom::TestRunProgressNotification>(
             params,
           )
-          .await,
+          .await
       }
-    });
+    }
   }
 
-  fn specifier_configurations(
+  async fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
-  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
-  {
-    let client = self.0.clone();
-    Box::pin(async move {
-      let config_response = client
-        .configuration(
-          uris
-            .into_iter()
-            .map(|uri| ConfigurationItem {
-              scope_uri: Some(uri),
-              section: Some(SETTINGS_SECTION.to_string()),
-            })
-            .collect(),
-        )
-        .await?;
-
-      Ok(
-        config_response
+  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
+    let config_response = self
+      .0
+      .configuration(
+        uris
           .into_iter()
-          .map(|value| {
-            serde_json::from_value::<SpecifierSettings>(value).map_err(|err| {
-              anyhow!("Error converting specifier settings: {}", err)
-            })
+          .map(|uri| ConfigurationItem {
+            scope_uri: Some(uri),
+            section: Some(SETTINGS_SECTION.to_string()),
           })
           .collect(),
       )
-    })
+      .await?;
+
+    Ok(
+      config_response
+        .into_iter()
+        .map(|value| {
+          serde_json::from_value::<SpecifierSettings>(value).map_err(|err| {
+            anyhow!("Error converting specifier settings: {}", err)
+          })
+        })
+        .collect(),
+    )
   }
 
-  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>> {
-    let client = self.0.clone();
-    Box::pin(async move {
-      let config_response = client
-        .configuration(vec![ConfigurationItem {
-          scope_uri: None,
-          section: Some(SETTINGS_SECTION.to_string()),
-        }])
-        .await;
-      match config_response {
-        Ok(value_vec) => match value_vec.get(0).cloned() {
-          Some(value) => Ok(value),
-          None => bail!("Missing response workspace configuration."),
-        },
-        Err(err) => {
-          bail!("Error getting workspace configuration: {}", err)
-        }
+  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
+    let config_response = self
+      .0
+      .configuration(vec![ConfigurationItem {
+        scope_uri: None,
+        section: Some(SETTINGS_SECTION.to_string()),
+      }])
+      .await;
+    match config_response {
+      Ok(value_vec) => match value_vec.get(0).cloned() {
+        Some(value) => Ok(value),
+        None => bail!("Missing response workspace configuration."),
+      },
+      Err(err) => {
+        bail!("Error getting workspace configuration: {}", err)
       }
-    })
+    }
   }
 
-  fn show_message(
+  async fn show_message(
     &self,
     message_type: lsp::MessageType,
     message: String,
-  ) -> AsyncReturn<()> {
-    let client = self.0.clone();
-    Box::pin(async move { client.show_message(message_type, message).await })
+  ) {
+    self.0.show_message(message_type, message).await
   }
 
-  fn register_capability(
+  async fn register_capability(
     &self,
     registrations: Vec<lsp::Registration>,
-  ) -> AsyncReturn<Result<(), AnyError>> {
-    let client = self.0.clone();
-    Box::pin(async move {
-      client
-        .register_capability(registrations)
-        .await
-        .map_err(|err| anyhow!("{}", err))
-    })
+  ) -> Result<(), AnyError> {
+    self
+      .0
+      .register_capability(registrations)
+      .await
+      .map_err(|err| anyhow!("{}", err))
   }
 }
 
 #[derive(Clone)]
 struct ReplClient;
 
+#[async_trait]
 impl ClientTrait for ReplClient {
-  fn publish_diagnostics(
+  async fn publish_diagnostics(
     &self,
     _uri: lsp::Url,
     _diagnostics: Vec<lsp::Diagnostic>,
     _version: Option<i32>,
-  ) -> AsyncReturn<()> {
-    Box::pin(future::ready(()))
+  ) {
   }
 
-  fn send_registry_state_notification(
+  async fn send_registry_state_notification(
     &self,
     _params: lsp_custom::RegistryStateNotificationParams,
-  ) -> AsyncReturn<()> {
-    Box::pin(future::ready(()))
+  ) {
   }
 
-  fn send_test_notification(&self, _params: TestingNotification) {}
+  async fn send_test_notification(&self, _params: TestingNotification) {}
 
-  fn specifier_configurations(
+  async fn specifier_configurations(
     &self,
     uris: Vec<lsp::Url>,
-  ) -> AsyncReturn<Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError>>
-  {
+  ) -> Result<Vec<Result<SpecifierSettings, AnyError>>, AnyError> {
     // all specifiers are enabled for the REPL
     let settings = uris
       .into_iter()
@@ -315,27 +327,24 @@ impl ClientTrait for ReplClient {
         })
       })
       .collect();
-    Box::pin(future::ready(Ok(settings)))
+    Ok(settings)
   }
 
-  fn workspace_configuration(&self) -> AsyncReturn<Result<Value, AnyError>> {
-    Box::pin(future::ready(Ok(
-      serde_json::to_value(get_repl_workspace_settings()).unwrap(),
-    )))
+  async fn workspace_configuration(&self) -> Result<Value, AnyError> {
+    Ok(serde_json::to_value(get_repl_workspace_settings()).unwrap())
   }
 
-  fn show_message(
+  async fn show_message(
     &self,
     _message_type: lsp::MessageType,
     _message: String,
-  ) -> AsyncReturn<()> {
-    Box::pin(future::ready(()))
+  ) {
   }
 
-  fn register_capability(
+  async fn register_capability(
     &self,
     _registrations: Vec<lsp::Registration>,
-  ) -> AsyncReturn<Result<(), AnyError>> {
-    Box::pin(future::ready(Ok(())))
+  ) -> Result<(), AnyError> {
+    Ok(())
   }
 }

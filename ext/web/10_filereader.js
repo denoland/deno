@@ -23,18 +23,19 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
-  ObjectPrototypeIsPrototypeOf,
   queueMicrotask,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   TypedArrayPrototypeSet,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
-  Uint8ArrayPrototype,
 } = primordials;
 
 const state = Symbol("[[state]]");
@@ -58,18 +59,18 @@ class FileReader extends EventTarget {
    * @param {{kind: "ArrayBuffer" | "Text" | "DataUrl" | "BinaryString", encoding?: string}} readtype
    */
   #readOperation(blob, readtype) {
-    // 1. If fr’s state is "loading", throw an InvalidStateError DOMException.
+    // 1. If fr's state is "loading", throw an InvalidStateError DOMException.
     if (this[state] === "loading") {
       throw new DOMException(
         "Invalid FileReader state.",
         "InvalidStateError",
       );
     }
-    // 2. Set fr’s state to "loading".
+    // 2. Set fr's state to "loading".
     this[state] = "loading";
-    // 3. Set fr’s result to null.
+    // 3. Set fr's result to null.
     this[result] = null;
-    // 4. Set fr’s error to null.
+    // 4. Set fr's error to null.
     this[error] = null;
 
     // We set this[aborted] to a new object, and keep track of it in a
@@ -119,7 +120,8 @@ class FileReader extends EventTarget {
           // and whose value property is a Uint8Array object, run these steps:
           if (
             !chunk.done &&
-            ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk.value)
+            TypedArrayPrototypeGetSymbolToStringTag(chunk.value) ===
+              "Uint8Array"
           ) {
             ArrayPrototypePush(chunks, chunk.value);
 
@@ -127,7 +129,7 @@ class FileReader extends EventTarget {
             {
               const size = ArrayPrototypeReduce(
                 chunks,
-                (p, i) => p + i.byteLength,
+                (p, i) => p + TypedArrayPrototypeGetByteLength(i),
                 0,
               );
               const ev = new ProgressEvent("progress", {
@@ -146,12 +148,12 @@ class FileReader extends EventTarget {
             // TODO(lucacasonato): this is wrong, should be HTML "queue a task"
             queueMicrotask(() => {
               if (abortedState.aborted) return;
-              // 1. Set fr’s state to "done".
+              // 1. Set fr's state to "done".
               this[state] = "done";
-              // 2. Let result be the result of package data given bytes, type, blob’s type, and encodingName.
+              // 2. Let result be the result of package data given bytes, type, blob's type, and encodingName.
               const size = ArrayPrototypeReduce(
                 chunks,
-                (p, i) => p + i.byteLength,
+                (p, i) => p + TypedArrayPrototypeGetByteLength(i),
                 0,
               );
               const bytes = new Uint8Array(size);
@@ -159,11 +161,11 @@ class FileReader extends EventTarget {
               for (let i = 0; i < chunks.length; ++i) {
                 const chunk = chunks[i];
                 TypedArrayPrototypeSet(bytes, chunk, offs);
-                offs += chunk.byteLength;
+                offs += TypedArrayPrototypeGetByteLength(chunk);
               }
               switch (readtype.kind) {
                 case "ArrayBuffer": {
-                  this[result] = bytes.buffer;
+                  this[result] = TypedArrayPrototypeGetBuffer(bytes);
                   break;
                 }
                 case "BinaryString":
@@ -218,7 +220,7 @@ class FileReader extends EventTarget {
                 this.dispatchEvent(ev);
               }
 
-              // 5. If fr’s state is not "loading", fire a progress event called loadend at the fr.
+              // 5. If fr's state is not "loading", fire a progress event called loadend at the fr.
               //Note: Event handler for the load or error events could have started another load, if that happens the loadend event for this load is not fired.
               if (this[state] !== "loading") {
                 const ev = new ProgressEvent("loadend", {
@@ -245,7 +247,7 @@ class FileReader extends EventTarget {
               this.dispatchEvent(ev);
             }
 
-            //If fr’s state is not "loading", fire a progress event called loadend at fr.
+            //If fr's state is not "loading", fire a progress event called loadend at fr.
             //Note: Event handler for the error event could have started another load, if that happens the loadend event for this load is not fired.
             if (this[state] !== "loading") {
               const ev = new ProgressEvent("loadend", {});
@@ -271,7 +273,7 @@ class FileReader extends EventTarget {
     webidl.assertBranded(this, FileReaderPrototype);
 
     if (!this[handlerSymbol]) {
-      this[handlerSymbol] = new Map();
+      this[handlerSymbol] = new SafeMap();
     }
     let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
     if (handlerWrapper) {
@@ -350,7 +352,7 @@ class FileReader extends EventTarget {
   readAsArrayBuffer(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsArrayBuffer' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     this.#readOperation(blob, { kind: "ArrayBuffer" });
   }
 
@@ -358,7 +360,7 @@ class FileReader extends EventTarget {
   readAsBinaryString(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "BinaryString" });
   }
@@ -367,7 +369,7 @@ class FileReader extends EventTarget {
   readAsDataURL(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "DataUrl" });
   }
@@ -379,12 +381,9 @@ class FileReader extends EventTarget {
   readAsText(blob, encoding = undefined) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsText' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     if (encoding !== undefined) {
-      encoding = webidl.converters["DOMString"](encoding, {
-        prefix,
-        context: "Argument 2",
-      });
+      encoding = webidl.converters["DOMString"](encoding, prefix, "Argument 2");
     }
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "Text", encoding });

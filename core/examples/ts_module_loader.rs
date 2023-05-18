@@ -14,6 +14,7 @@ use anyhow::Error;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
 use deno_core::resolve_import;
 use deno_core::resolve_path;
 use deno_core::JsRuntime;
@@ -41,17 +42,18 @@ impl ModuleLoader for TypescriptModuleLoader {
   fn load(
     &self,
     module_specifier: &ModuleSpecifier,
-    _maybe_referrer: Option<ModuleSpecifier>,
+    _maybe_referrer: Option<&ModuleSpecifier>,
     _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    let module_specifier = module_specifier.clone();
-    async move {
+    fn load(
+      module_specifier: &ModuleSpecifier,
+    ) -> Result<ModuleSource, AnyError> {
       let path = module_specifier
         .to_file_path()
         .map_err(|_| anyhow!("Only file:// URLs are supported."))?;
 
-      let media_type = MediaType::from(&path);
-      let (module_type, should_transpile) = match MediaType::from(&path) {
+      let media_type = MediaType::from_path(&path);
+      let (module_type, should_transpile) = match MediaType::from_path(&path) {
         MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
           (ModuleType::JavaScript, false)
         }
@@ -81,15 +83,14 @@ impl ModuleLoader for TypescriptModuleLoader {
       } else {
         code
       };
-      let module = ModuleSource {
-        code: code.into_bytes().into_boxed_slice(),
+      Ok(ModuleSource::new(
         module_type,
-        module_url_specified: module_specifier.to_string(),
-        module_url_found: module_specifier.to_string(),
-      };
-      Ok(module)
+        code.into(),
+        module_specifier,
+      ))
     }
-    .boxed_local()
+
+    futures::future::ready(load(module_specifier)).boxed_local()
   }
 }
 

@@ -1,7 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { magenta } from "std/fmt/colors.ts";
-import { dirname, fromFileUrl, join } from "std/path/mod.ts";
-import { fail } from "std/testing/asserts.ts";
+
+/**
+ * This script will run the test files specified in the configuration file.
+ *
+ * Each test file will be run independently (in a separate process as this is
+ * what Node.js is doing) and we wait until it completes. If the process reports
+ * an abnormal code, the test is reported and the test suite will fail
+ * immediately.
+ *
+ * Some tests check for presence of certain `process.exitCode`.
+ * Some tests depends on directories/files created by other tests - they must
+ * all share the same working directory.
+ */
+
+import { magenta } from "../../../test_util/std/fmt/colors.ts";
+import { pooledMap } from "../../../test_util/std/async/pool.ts";
+import { dirname, fromFileUrl, join } from "../../../test_util/std/path/mod.ts";
+import { fail } from "../../../test_util/std/testing/asserts.ts";
 import {
   config,
   getPathsFromTestSuites,
@@ -10,24 +25,14 @@ import {
 
 // If the test case is invoked like
 // deno test -A cli/tests/node_compat/test.ts -- <test-names>
-// Use the test-names as filters
+// Use the <test-names> as filters
 const filters = Deno.args;
 const hasFilters = filters.length > 0;
-
-/**
- * This script will run the test files specified in the configuration file
- *
- * Each test file will be run independently and wait until completion, if an abnormal
- * code for the test is reported, the test suite will fail immediately
- */
-
 const toolsPath = dirname(fromFileUrl(import.meta.url));
-const stdRootUrl = new URL("../../", import.meta.url).href;
 const testPaths = partitionParallelTestPaths(
   getPathsFromTestSuites(config.tests),
 );
 const cwd = new URL(".", import.meta.url);
-const importMap = "import_map.json";
 const windowsIgnorePaths = new Set(
   getPathsFromTestSuites(config.windowsIgnore),
 );
@@ -47,10 +52,9 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
   ) {
     return;
   }
-  const isTodo = path.includes("TODO");
   const ignore =
     (Deno.build.os === "windows" && windowsIgnorePaths.has(path)) ||
-    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path)) || isTodo;
+    (Deno.build.os === "darwin" && darwinIgnorePaths.has(path));
   await t.step({
     name: `Node.js compatibility "${path}"`,
     ignore,
@@ -74,7 +78,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         "--unstable",
         //"--unsafely-ignore-certificate-errors",
         "--v8-flags=" + v8Flags.join(),
-        testCase.endsWith(".mjs") ? "--import-map=" + importMap : "runner.ts",
+        "runner.ts",
         testCase,
       ];
 
@@ -83,7 +87,6 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
       const command = new Deno.Command(Deno.execPath(), {
         args,
         env: {
-          DENO_NODE_COMPAT_URL: stdRootUrl,
           TEST_SERIAL_ID: String(testSerialId++),
         },
         cwd,
@@ -93,15 +96,23 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
       if (code !== 0) {
         // If the test case failed, show the stdout, stderr, and instruction
         // for repeating the single test case.
-        if (stdout.length) console.log(decoder.decode(stdout));
-        console.log(`Error: "${path}" failed`);
-        console.log(
-          "You can repeat only this test with the command:",
-          magenta(
-            `./target/debug/deno test -A --import-map cli/tests/node_compat/import_map.json cli/tests/node_compat/test.ts -- ${path}`,
-          ),
+        if (stdout.length) {
+          console.log(decoder.decode(stdout));
+        }
+        const stderrOutput = decoder.decode(stderr);
+        const repeatCmd = magenta(
+          `./target/debug/deno test -A cli/tests/node_compat/test.ts -- ${path}`,
         );
-        fail(decoder.decode(stderr));
+        const msg = `"${magenta(path)}" failed:
+
+${stderrOutput}
+
+You can repeat only this test with the command:
+
+  ${repeatCmd}
+`;
+        console.log(msg);
+        fail(msg);
       } else if (hasFilters) {
         // Even if the test case is successful, shows the stdout and stderr
         // when test case filtering is specified.
@@ -116,16 +127,20 @@ Deno.test("Node.js compatibility", async (t) => {
   for (const path of testPaths.sequential) {
     await runTest(t, path);
   }
-  const pending = [];
-  for (const path of testPaths.parallel) {
-    pending.push(runTest(t, path));
+  const testPool = pooledMap(
+    navigator.hardwareConcurrency,
+    testPaths.parallel,
+    (path) => runTest(t, path),
+  );
+  const testCases = [];
+  for await (const testCase of testPool) {
+    testCases.push(testCase);
   }
-  await Promise.all(pending);
+  await Promise.all(testCases);
 });
 
 function checkConfigTestFilesOrder(testFileLists: Array<string[]>) {
-  for (let testFileList of testFileLists) {
-    testFileList = testFileList.filter((name) => !name.startsWith("TODO:"));
+  for (const testFileList of testFileLists) {
     const sortedTestList = JSON.parse(JSON.stringify(testFileList));
     sortedTestList.sort();
     if (JSON.stringify(testFileList) !== JSON.stringify(sortedTestList)) {

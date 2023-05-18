@@ -38,10 +38,10 @@ export function CSI(strings, ...args) {
 }
 
 CSI.kEscape = kEscape;
-CSI.kClearToLineBeginning = CSI`1K`;
-CSI.kClearToLineEnd = CSI`0K`;
-CSI.kClearLine = CSI`2K`;
-CSI.kClearScreenDown = CSI`0J`;
+CSI.kClearToLineBeginning = `${kEscape}[1K`;
+CSI.kClearToLineEnd = `${kEscape}[0K`;
+CSI.kClearLine = `${kEscape}[2K`;
+CSI.kClearScreenDown = `${kEscape}[0J`;
 
 // TODO(BridgeAR): Treat combined characters as single character, i.e,
 // 'a\u0301' and '\u0301a' (both have the same visual output).

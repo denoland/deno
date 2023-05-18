@@ -135,6 +135,8 @@ mod npm;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "shared_library_tests.rs"]
+mod shared_library_tests;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]

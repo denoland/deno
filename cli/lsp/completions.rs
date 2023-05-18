@@ -3,6 +3,7 @@
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents::Documents;
+use super::documents::DocumentsFilter;
 use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
@@ -27,7 +28,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
+  lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
@@ -48,7 +49,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
@@ -78,14 +79,12 @@ async fn check_auto_config_registry(
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
-            client
-              .send_registry_state_notification(
-                lsp_custom::RegistryStateNotificationParams {
-                  origin,
-                  suggestions,
-                },
-              )
-              .await;
+            client.send_registry_state_notification(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            );
           }
         }
       }
@@ -139,7 +138,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
@@ -280,7 +279,7 @@ fn get_import_map_completions(
           if let Ok(resolved) = import_map.resolve(&key, specifier) {
             let resolved = resolved.to_string();
             let workspace_items: Vec<lsp::CompletionItem> = documents
-              .documents(false, true)
+              .documents(DocumentsFilter::AllDiagnosable)
               .into_iter()
               .filter_map(|d| {
                 let specifier_str = d.specifier().to_string();
@@ -462,7 +461,7 @@ fn get_workspace_completions(
   documents: &Documents,
 ) -> Vec<lsp::CompletionItem> {
   let workspace_specifiers = documents
-    .documents(false, true)
+    .documents(DocumentsFilter::AllDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone())
     .collect();
@@ -682,7 +681,6 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
-        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,
@@ -707,7 +705,6 @@ mod tests {
       &text_info,
       &Range {
         specifier: ModuleSpecifier::parse("https://deno.land").unwrap(),
-        text: "".to_string(),
         start: deno_graph::Position {
           line: 0,
           character: 0,

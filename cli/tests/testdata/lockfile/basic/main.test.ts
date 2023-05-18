@@ -1,8 +1,8 @@
-import "./main.ts";
+import { getValue } from "mod";
 
 Deno.test("test", () => {
-  const testing = 1 + 2;
-  if (testing !== 3) {
+  const testing = 1 + getValue();
+  if (testing !== 6) {
     throw "FAIL";
   }
 });

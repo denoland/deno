@@ -165,7 +165,7 @@ fn main() {
     js_runtime
       .execute_script(
         "http_bench_json_ops.js",
-        include_str!("http_bench_json_ops.js"),
+        include_ascii_string!("http_bench_json_ops.js"),
       )
       .unwrap();
     js_runtime.run_event_loop(false).await

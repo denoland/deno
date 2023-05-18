@@ -32,7 +32,7 @@ jobs:
         with:
           # use a recent version instead of the latest version in case
           # the latest version ever has issues that breaks publishing
-          deno-version: v1.23.2
+          deno-version: v1.31.3
 
       - name: Publish
         env:

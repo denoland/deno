@@ -114,6 +114,11 @@ itest!(finally_timeout {
   output: "bench/finally_timeout.out",
 });
 
+itest!(before_unload_prevent_default {
+  args: "bench --quiet bench/before_unload_prevent_default.ts",
+  output: "bench/before_unload_prevent_default.out",
+});
+
 itest!(group_baseline {
   args: "bench bench/group_baseline.ts",
   exit_code: 0,
@@ -136,6 +141,12 @@ itest!(filter {
   args: "bench --filter=foo bench/filter",
   exit_code: 0,
   output: "bench/filter.out",
+});
+
+itest!(no_run {
+  args: "bench --no-run bench/no_run.ts",
+  output: "bench/no_run.out",
+  exit_code: 1,
 });
 
 itest!(no_prompt_by_default {

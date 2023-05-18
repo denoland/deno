@@ -10,72 +10,78 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::npm::NpmPackageNvReference;
-use deno_graph::npm::NpmPackageReqReference;
 use deno_graph::Dependency;
 use deno_graph::Module;
+use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
+use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_runtime::colors;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageNvReference;
+use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
 use crate::display;
+use crate::factory::CliFactory;
 use crate::graph_util::graph_lock_or_exit;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageResolver;
-use crate::npm::NpmResolutionPackage;
-use crate::npm::NpmResolutionSnapshot;
-use crate::proc_state::ProcState;
+use crate::npm::CliNpmResolver;
 use crate::util::checksum;
 
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
-  let ps = ProcState::build(flags).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
   if let Some(specifier) = info_flags.file {
-    let specifier = resolve_url_or_path(&specifier, ps.options.initial_cwd())?;
-    let mut loader = ps.create_graph_loader();
+    let module_graph_builder = factory.module_graph_builder().await?;
+    let npm_resolver = factory.npm_resolver().await?;
+    let maybe_lockfile = factory.maybe_lockfile();
+    let specifier = resolve_url_or_path(&specifier, cli_options.initial_cwd())?;
+    let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
-    let graph = ps
+    let graph = module_graph_builder
       .create_graph_with_loader(vec![specifier], &mut loader)
       .await?;
 
-    if let Some(lockfile) = &ps.lockfile {
+    if let Some(lockfile) = maybe_lockfile {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
     if info_flags.json {
       let mut json_graph = json!(graph);
-      add_npm_packages_to_json(&mut json_graph, &ps.npm_resolver);
+      add_npm_packages_to_json(&mut json_graph, npm_resolver);
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, &ps.npm_resolver, &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver, &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
     // If it was just "deno info" print location of caches and exit
     print_cache_info(
-      &ps,
+      &factory,
       info_flags.json,
-      ps.options.location_flag().as_ref(),
+      cli_options.location_flag().as_ref(),
     )?;
   }
   Ok(())
 }
 
 fn print_cache_info(
-  state: &ProcState,
+  factory: &CliFactory,
   json: bool,
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
-  let deno_dir = &state.dir.root_path_for_display();
-  let modules_cache = &state.file_fetcher.get_http_cache_location();
-  let npm_cache = &state.npm_cache.as_readonly().get_cache_location();
-  let typescript_cache = &state.dir.gen_cache.location;
-  let registry_cache = &state.dir.registries_folder_path();
-  let mut origin_dir = state.dir.origin_data_folder_path();
+  let dir = factory.deno_dir()?;
+  let modules_cache = factory.file_fetcher()?.get_http_cache_location();
+  let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
+  let typescript_cache = &dir.gen_cache.location;
+  let registry_cache = dir.registries_folder_path();
+  let mut origin_dir = dir.origin_data_folder_path();
+  let deno_dir = dir.root_path_for_display().to_string();
 
   if let Some(location) = &location {
     origin_dir =
@@ -86,7 +92,7 @@ fn print_cache_info(
 
   if json {
     let mut output = json!({
-      "denoDir": deno_dir.to_string(),
+      "denoDir": deno_dir,
       "modulesCache": modules_cache,
       "npmCache": npm_cache,
       "typescriptCache": typescript_cache,
@@ -139,7 +145,7 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &NpmPackageResolver,
+  npm_resolver: &CliNpmResolver,
 ) {
   // ideally deno_graph could handle this, but for now we just modify the json here
   let snapshot = npm_resolver.snapshot();
@@ -211,7 +217,8 @@ fn add_npm_packages_to_json(
     }
   }
 
-  let mut sorted_packages = snapshot.all_packages();
+  let mut sorted_packages =
+    snapshot.all_packages_for_every_system().collect::<Vec<_>>();
   sorted_packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
@@ -316,7 +323,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -342,7 +349,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self
@@ -378,7 +385,7 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a NpmPackageResolver,
+    npm_resolver: &'a CliNpmResolver,
     writer: &mut TWrite,
   ) -> fmt::Result {
     let npm_snapshot = npm_resolver.snapshot();
@@ -477,14 +484,15 @@ impl<'a> GraphDisplayContext<'a> {
         Ok(())
       }
       Err(err) => {
-        if let ModuleGraphError::Missing(_, _) = *err {
+        if let ModuleGraphError::ModuleError(ModuleError::Missing(_, _)) = *err
+        {
           writeln!(
             writer,
             "{} module could not be found",
             colors::red("error:")
           )
         } else {
-          writeln!(writer, "{} {}", colors::red("error:"), err)
+          writeln!(writer, "{} {:#}", colors::red("error:"), err)
         }
       }
       Ok(None) => {
@@ -621,27 +629,28 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> TreeNode {
     self.seen.insert(specifier.to_string());
     match err {
-      ModuleGraphError::InvalidTypeAssertion { .. } => {
-        self.build_error_msg(specifier, "(invalid import assertion)")
-      }
-      ModuleGraphError::LoadingErr(_, _, _) => {
-        self.build_error_msg(specifier, "(loading error)")
-      }
-      ModuleGraphError::ParseErr(_, _) => {
-        self.build_error_msg(specifier, "(parsing error)")
-      }
+      ModuleGraphError::ModuleError(err) => match err {
+        ModuleError::InvalidTypeAssertion { .. } => {
+          self.build_error_msg(specifier, "(invalid import assertion)")
+        }
+        ModuleError::LoadingErr(_, _, _) => {
+          self.build_error_msg(specifier, "(loading error)")
+        }
+        ModuleError::ParseErr(_, _) => {
+          self.build_error_msg(specifier, "(parsing error)")
+        }
+        ModuleError::UnsupportedImportAssertionType { .. } => {
+          self.build_error_msg(specifier, "(unsupported import assertion)")
+        }
+        ModuleError::UnsupportedMediaType { .. } => {
+          self.build_error_msg(specifier, "(unsupported)")
+        }
+        ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
+          self.build_error_msg(specifier, "(missing)")
+        }
+      },
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")
-      }
-      ModuleGraphError::UnsupportedImportAssertionType { .. } => {
-        self.build_error_msg(specifier, "(unsupported import assertion)")
-      }
-      ModuleGraphError::UnsupportedMediaType { .. } => {
-        self.build_error_msg(specifier, "(unsupported)")
-      }
-      ModuleGraphError::Missing(_, _)
-      | ModuleGraphError::MissingDynamic(_, _) => {
-        self.build_error_msg(specifier, "(missing)")
       }
     }
   }

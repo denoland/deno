@@ -1,8 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub fn find_builtin_node_module(
-  module_name: &str,
-) -> Option<&NodeModulePolyfill> {
+use deno_core::error::generic_error;
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+
+// TODO(bartlomieju): seems super wasteful to parse the specifier each time
+pub fn resolve_builtin_node_module(module_name: &str) -> Result<Url, AnyError> {
+  if let Some(module) = find_builtin_node_module(module_name) {
+    return Ok(ModuleSpecifier::parse(module.specifier).unwrap());
+  }
+
+  Err(generic_error(format!(
+    "Unknown built-in \"node:\" module: {module_name}"
+  )))
+}
+
+fn find_builtin_node_module(module_name: &str) -> Option<&NodeModulePolyfill> {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
     .find(|m| m.name == module_name)
@@ -18,6 +32,7 @@ pub struct NodeModulePolyfill {
   pub specifier: &'static str,
 }
 
+// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
 pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "assert",
@@ -60,6 +75,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     specifier: "ext:deno_node/dgram.ts",
   },
   NodeModulePolyfill {
+    name: "diagnostics_channel",
+    specifier: "ext:deno_node/diagnostics_channel.ts",
+  },
+  NodeModulePolyfill {
     name: "dns",
     specifier: "ext:deno_node/dns.ts",
   },
@@ -88,12 +107,16 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     specifier: "ext:deno_node/http.ts",
   },
   NodeModulePolyfill {
+    name: "http2",
+    specifier: "ext:deno_node/http2.ts",
+  },
+  NodeModulePolyfill {
     name: "https",
     specifier: "ext:deno_node/https.ts",
   },
   NodeModulePolyfill {
     name: "module",
-    specifier: "ext:deno_node_loading/module_es_shim.js",
+    specifier: "ext:deno_node/01_require.js",
   },
   NodeModulePolyfill {
     name: "net",
@@ -122,6 +145,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
     name: "process",
     specifier: "ext:deno_node/process.ts",
+  },
+  NodeModulePolyfill {
+    name: "punycode",
+    specifier: "ext:deno_node/punycode.ts",
   },
   NodeModulePolyfill {
     name: "querystring",

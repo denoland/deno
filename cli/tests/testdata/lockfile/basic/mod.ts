@@ -1,1 +1,3 @@
-console.log(5);
+export function getValue() {
+  return 5;
+}

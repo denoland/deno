@@ -4,12 +4,11 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as timers from "ext:deno_web/02_timers.js";
 import * as httpClient from "ext:deno_fetch/22_http_client.js";
-import * as console from "ext:deno_console/02_console.js";
+import * as console from "ext:deno_console/01_console.js";
 import * as ffi from "ext:deno_ffi/00_ffi.js";
 import * as net from "ext:deno_net/01_net.js";
 import * as tls from "ext:deno_net/02_tls.js";
 import * as http from "ext:deno_http/01_http.js";
-import * as flash from "ext:deno_flash/01_http.js";
 import * as errors from "ext:runtime/01_errors.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
@@ -23,6 +22,7 @@ import * as signals from "ext:runtime/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "ext:runtime/40_http.js";
+import * as kv from "ext:deno_kv/01_db.ts";
 
 const denoNs = {
   metrics: core.metrics,
@@ -152,7 +152,10 @@ const denoNs = {
 };
 
 const denoNsUnstable = {
-  listenDatagram: net.listenDatagram,
+  listenDatagram: net.createListenDatagram(
+    ops.op_net_listen_udp,
+    ops.op_net_listen_unixpacket,
+  ),
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
@@ -168,7 +171,11 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
-  upgradeHttpRaw: flash.upgradeHttpRaw,
+  serve: http.serve,
+  openKv: kv.openKv,
+  Kv: kv.Kv,
+  KvU64: kv.KvU64,
+  KvListIterator: kv.KvListIterator,
 };
 
 export { denoNs, denoNsUnstable };

@@ -7,6 +7,10 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  TypedArrayPrototypeGetByteLength,
+} = primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { TransformStream } from "ext:deno_web/06_streams.js";
 
@@ -24,20 +28,14 @@ class CompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'CompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    format = webidl.converters.CompressionFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
     const rid = ops.op_compression_new(format, false);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, {
-          prefix,
-          context: "chunk",
-        });
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
         const output = ops.op_compression_write(
           rid,
           chunk,
@@ -72,20 +70,14 @@ class DecompressionStream {
 
   constructor(format) {
     const prefix = "Failed to construct 'DecompressionStream'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    format = webidl.converters.CompressionFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    format = webidl.converters.CompressionFormat(format, prefix, "Argument 1");
 
     const rid = ops.op_compression_new(format, true);
 
     this.#transform = new TransformStream({
       transform(chunk, controller) {
-        chunk = webidl.converters.BufferSource(chunk, {
-          prefix,
-          context: "chunk",
-        });
+        chunk = webidl.converters.BufferSource(chunk, prefix, "chunk");
         const output = ops.op_compression_write(
           rid,
           chunk,
@@ -113,7 +105,7 @@ class DecompressionStream {
 }
 
 function maybeEnqueue(controller, output) {
-  if (output && output.byteLength > 0) {
+  if (output && TypedArrayPrototypeGetByteLength(output) > 0) {
     controller.enqueue(output);
   }
 }
