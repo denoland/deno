@@ -28,7 +28,7 @@ import {
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 
 function validateGenerateKey(

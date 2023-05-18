@@ -2,7 +2,7 @@
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { HASH_DATA } from "ext:deno_node/internal/crypto/types.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 
 export const MAX_ALLOC = Math.pow(2, 30) - 1;

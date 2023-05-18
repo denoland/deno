@@ -3,7 +3,7 @@ import {
   MAX_SIZE as kMaxUint32,
 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 
 const kBufferMaxLength = 0x7fffffff;

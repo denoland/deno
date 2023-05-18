@@ -18,7 +18,7 @@ import type {
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
 
-const { ops, encode } = globalThis.__bootstrap.core;
+const { ops, encode } = globalThis.Deno.core;
 
 export type CipherCCMTypes =
   | "aes-128-ccm"

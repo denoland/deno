@@ -20,7 +20,7 @@ import {
   prepareSecretKey,
 } from "ext:deno_node/internal/crypto/keys.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops } = globalThis.Deno.core;
 
 // TODO(@littledivy): Use Result<T, E> instead of boolean when
 // https://bugs.chromium.org/p/v8/issues/detail?id=13600 is fixed.

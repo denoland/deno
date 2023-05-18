@@ -31,7 +31,7 @@ export {
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 const {
   op_node_gen_prime_async,

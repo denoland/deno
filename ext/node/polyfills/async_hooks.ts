@@ -6,7 +6,7 @@
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");

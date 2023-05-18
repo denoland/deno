@@ -3,7 +3,7 @@
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops } = globalThis.Deno.core;
 
 export function cachedDataVersionTag() {
   return ops.op_v8_cached_data_version_tag();

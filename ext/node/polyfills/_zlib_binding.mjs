@@ -43,7 +43,7 @@ export const DEFLATERAW = 5;
 export const INFLATERAW = 6;
 export const UNZIP = 7;
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core
 const { ops } = core;
 
 const writeResult = new Uint32Array(2);

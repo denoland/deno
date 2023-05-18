@@ -9,7 +9,7 @@ import { validateString } from "ext:deno_node/internal/validators.mjs";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops } = globalThis.Deno.core;
 
 // deno-lint-ignore no-explicit-any
 export type PeerCertificate = any;

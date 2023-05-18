@@ -28,7 +28,7 @@ import {
   isArrayBufferView,
 } from "ext:deno_node/internal/util/types.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {

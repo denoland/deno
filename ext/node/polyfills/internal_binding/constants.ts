@@ -196,7 +196,7 @@ let os: {
   UV_UDP_REUSEADDR: number;
 };
 
-const core = globalThis.__bootstrap.core;
+const core = globalThis.Deno.core;
 const buildOs = core.ops.op_node_build_os();
 if (buildOs === "darwin") {
   os = {

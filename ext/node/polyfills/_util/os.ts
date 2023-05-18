@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops } = globalThis.Deno.core;
 
 export type OSType = "windows" | "linux" | "darwin" | "freebsd";
 

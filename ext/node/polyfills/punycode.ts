@@ -2,7 +2,7 @@
 
 import { ucs2 } from "ext:deno_node/internal/idna.ts";
 
-const { ops } = globalThis.__bootstrap.core;
+const { ops } = globalThis.Deno.core;
 
 function toASCII(domain) {
   return ops.op_node_idna_domain_to_ascii(domain);

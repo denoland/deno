@@ -5,7 +5,7 @@ import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { _exiting } from "ext:deno_node/_process/exiting.ts";
 import { FixedQueue } from "ext:deno_node/internal/fixed_queue.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 
 interface Tock {
   callback: (...args: Array<unknown>) => void;

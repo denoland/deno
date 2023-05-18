@@ -44,7 +44,7 @@ import {
 } from "ext:deno_node/internal/util.mjs";
 import * as denoOs from "ext:runtime/30_os.js";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 
 const MAX_BUFFER = 1024 * 1024;
 

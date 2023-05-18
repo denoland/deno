@@ -21,7 +21,7 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 
 // https://tc39.es/ecma262/#sec-object.prototype.tostring
 const _toString = Object.prototype.toString;

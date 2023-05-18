@@ -22,7 +22,7 @@ import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { ERR_CRYPTO_SIGN_KEY_REQUIRED } from "ext:deno_node/internal/errors.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 const { ops } = core;
 
 export type DSAEncoding = "der" | "ieee-p1363";

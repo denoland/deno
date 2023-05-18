@@ -1,7 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-const { core, internals } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";

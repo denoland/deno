@@ -4,7 +4,7 @@
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
-const { core } = globalThis.__bootstrap;
+const core = globalThis.Deno.core;
 
 export class Script {
   code: string;
