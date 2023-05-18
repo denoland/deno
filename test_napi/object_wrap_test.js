@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertEquals, loadTestLibrary } from "./common.js";
+import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const objectWrap = loadTestLibrary();
 
@@ -21,3 +21,10 @@ Deno.test("napi bind finalizer", function () {
   const obj = {};
   objectWrap.test_bind_finalizer(obj);
 });
+
+Deno.test("napi external finalizer", function () {
+  let obj = objectWrap.test_external_finalizer();
+  assert(obj);
+  obj = null;
+});
+

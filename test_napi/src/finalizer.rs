@@ -41,12 +41,49 @@ extern "C" fn test_bind_finalizer(
   obj
 }
 
-pub fn init(env: napi_env, exports: napi_value) {
-  let properties = &[napi_new_property!(
+struct Thing {
+  _allocation: Vec<u8>,
+}
+
+impl Drop for Thing {
+  fn drop(&mut self) {
+    println!("Dropping Thing");
+  }
+}
+
+unsafe extern "C" fn finalize_cb_drop(
+  _env: napi_env,
+  data: *mut ::std::os::raw::c_void,
+  hint: *mut ::std::os::raw::c_void,
+) {
+  let _ = Box::from_raw(data as *mut Thing);
+  assert!(hint.is_null());
+}
+
+extern "C" fn test_external_finalizer(
+  env: napi_env,
+  _: napi_callback_info,
+) -> napi_value {
+  let data = Box::into_raw(Box::new(Thing {
+    _allocation: vec![1, 2, 3],
+  }));
+
+  let mut result = ptr::null_mut();
+  assert_napi_ok!(napi_create_external(
     env,
-    "test_bind_finalizer",
-    test_bind_finalizer
-  )];
+    data as _,
+    Some(finalize_cb_drop),
+    ptr::null_mut(),
+    &mut result
+  ));
+  result
+}
+
+pub fn init(env: napi_env, exports: napi_value) {
+  let properties = &[
+    napi_new_property!(env, "test_bind_finalizer", test_bind_finalizer),
+    napi_new_property!(env, "test_external_finalizer", test_external_finalizer),
+  ];
 
   assert_napi_ok!(napi_define_properties(
     env,
