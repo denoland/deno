@@ -13,6 +13,7 @@ use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
@@ -685,6 +686,42 @@ impl CliOptions {
       CacheSetting::ReloadAll
     } else {
       CacheSetting::Use
+    }
+  }
+
+  pub fn npm_system_info(&self) -> NpmSystemInfo {
+    match self.sub_command() {
+      DenoSubcommand::Compile(CompileFlags {
+        target: Some(target),
+        ..
+      }) => {
+        // the values of NpmSystemInfo align with the possible values for the
+        // `arch` and `platform` fields of Node.js' `process` global:
+        // https://nodejs.org/api/process.html
+        match target.as_str() {
+          "aarch64-apple-darwin" => NpmSystemInfo {
+            os: "darwin".to_string(),
+            cpu: "arm64".to_string(),
+          },
+          "x86_64-apple-darwin" => NpmSystemInfo {
+            os: "darwin".to_string(),
+            cpu: "x64".to_string(),
+          },
+          "x86_64-unknown-linux-gnu" => NpmSystemInfo {
+            os: "linux".to_string(),
+            cpu: "x64".to_string(),
+          },
+          "x86_64-pc-windows-msvc" => NpmSystemInfo {
+            os: "win32".to_string(),
+            cpu: "x64".to_string(),
+          },
+          value => {
+            log::warn!("Not implemented NPM system info for target '{value}'. Using current system default. This may impact NPM ");
+            NpmSystemInfo::default()
+          }
+        }
+      }
+      _ => NpmSystemInfo::default(),
     }
   }
 

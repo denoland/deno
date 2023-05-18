@@ -107,8 +107,12 @@ pub async fn snapshot_from_lockfile(
 
       packages.push(SerializedNpmResolutionSnapshotPackage {
         pkg_id,
-        dist: Default::default(), // temporarily empty
         dependencies,
+        // temporarily empty
+        os: Default::default(),
+        cpu: Default::default(),
+        dist: Default::default(),
+        optional_dependencies: Default::default(),
       });
     }
     (root_packages, packages)
@@ -131,11 +135,17 @@ pub async fn snapshot_from_lockfile(
     }))
   };
   let mut version_infos = get_version_infos();
-
   let mut i = 0;
   while let Some(result) = version_infos.next().await {
-    packages[i].dist = match result {
-      Ok(version_info) => version_info.dist,
+    match result {
+      Ok(version_info) => {
+        let mut package = &mut packages[i];
+        package.dist = version_info.dist;
+        package.cpu = version_info.cpu;
+        package.os = version_info.os;
+        package.optional_dependencies =
+          version_info.optional_dependencies.into_keys().collect();
+      }
       Err(err) => {
         if api.mark_force_reload() {
           // reset and try again
@@ -146,7 +156,7 @@ pub async fn snapshot_from_lockfile(
           return Err(err);
         }
       }
-    };
+    }
 
     i += 1;
   }

@@ -63,7 +63,7 @@ impl DiffieHellman {
   }
 
   pub fn new(prime: Prime, generator: usize) -> Self {
-    let private_key = PrivateKey::new(32);
+    let private_key = PrivateKey::new(prime.bits());
 
     let generator = BigUint::from_usize(generator).unwrap();
     let public_key = private_key.compute_public_key(&generator, &prime);

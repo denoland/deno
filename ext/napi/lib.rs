@@ -101,95 +101,6 @@ pub struct NapiModule {
   reserved: [*mut c_void; 4],
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Error {
-  InvalidArg,
-  ObjectExpected,
-  StringExpected,
-  NameExpected,
-  FunctionExpected,
-  NumberExpected,
-  BooleanExpected,
-  ArrayExpected,
-  GenericFailure,
-  PendingException,
-  Cancelled,
-  EscapeCalledTwice,
-  HandleScopeMismatch,
-  CallbackScopeMismatch,
-  QueueFull,
-  Closing,
-  BigIntExpected,
-  DateExpected,
-  ArrayBufferExpected,
-  DetachableArraybufferExpected,
-  WouldDeadlock,
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<Error> for napi_status {
-  fn into(self) -> Error {
-    match self {
-      napi_invalid_arg => Error::InvalidArg,
-      napi_object_expected => Error::ObjectExpected,
-      napi_string_expected => Error::StringExpected,
-      napi_name_expected => Error::NameExpected,
-      napi_function_expected => Error::FunctionExpected,
-      napi_number_expected => Error::NumberExpected,
-      napi_boolean_expected => Error::BooleanExpected,
-      napi_array_expected => Error::ArrayExpected,
-      napi_generic_failure => Error::GenericFailure,
-      napi_pending_exception => Error::PendingException,
-      napi_cancelled => Error::Cancelled,
-      napi_escape_called_twice => Error::EscapeCalledTwice,
-      napi_handle_scope_mismatch => Error::HandleScopeMismatch,
-      napi_callback_scope_mismatch => Error::CallbackScopeMismatch,
-      napi_queue_full => Error::QueueFull,
-      napi_closing => Error::Closing,
-      napi_bigint_expected => Error::BigIntExpected,
-      napi_date_expected => Error::DateExpected,
-      napi_arraybuffer_expected => Error::ArrayBufferExpected,
-      napi_detachable_arraybuffer_expected => {
-        Error::DetachableArraybufferExpected
-      }
-      napi_would_deadlock => Error::WouldDeadlock,
-      _ => unreachable!(),
-    }
-  }
-}
-
-pub type Result = std::result::Result<(), Error>;
-
-impl From<Error> for napi_status {
-  fn from(error: Error) -> Self {
-    match error {
-      Error::InvalidArg => napi_invalid_arg,
-      Error::ObjectExpected => napi_object_expected,
-      Error::StringExpected => napi_string_expected,
-      Error::NameExpected => napi_name_expected,
-      Error::FunctionExpected => napi_function_expected,
-      Error::NumberExpected => napi_number_expected,
-      Error::BooleanExpected => napi_boolean_expected,
-      Error::ArrayExpected => napi_array_expected,
-      Error::GenericFailure => napi_generic_failure,
-      Error::PendingException => napi_pending_exception,
-      Error::Cancelled => napi_cancelled,
-      Error::EscapeCalledTwice => napi_escape_called_twice,
-      Error::HandleScopeMismatch => napi_handle_scope_mismatch,
-      Error::CallbackScopeMismatch => napi_callback_scope_mismatch,
-      Error::QueueFull => napi_queue_full,
-      Error::Closing => napi_closing,
-      Error::BigIntExpected => napi_bigint_expected,
-      Error::DateExpected => napi_date_expected,
-      Error::ArrayBufferExpected => napi_arraybuffer_expected,
-      Error::DetachableArraybufferExpected => {
-        napi_detachable_arraybuffer_expected
-      }
-      Error::WouldDeadlock => napi_would_deadlock,
-    }
-  }
-}
-
 pub type napi_valuetype = i32;
 
 pub const napi_undefined: napi_valuetype = 0;
@@ -590,6 +501,50 @@ fn event_loop_middleware(
 pub trait NapiPermissions {
   fn check(&mut self, path: Option<&Path>)
     -> std::result::Result<(), AnyError>;
+}
+
+/// # Safety
+///
+/// This function is unsafe because it dereferences raw pointer Env.
+/// - The caller must ensure that the pointer is valid.
+/// - The caller must ensure that the pointer is not freed.
+pub unsafe fn weak_local(
+  env_ptr: *mut Env,
+  value: v8::Local<v8::Value>,
+  data: *mut c_void,
+  finalize_cb: napi_finalize,
+  finalize_hint: *mut c_void,
+) -> Option<v8::Local<v8::Value>> {
+  use std::cell::Cell;
+
+  let env = &mut *env_ptr;
+
+  let weak_ptr = Rc::new(Cell::new(None));
+  let scope = &mut env.scope();
+
+  let weak = v8::Weak::with_finalizer(
+    scope,
+    value,
+    Box::new({
+      let weak_ptr = weak_ptr.clone();
+      move |isolate| {
+        finalize_cb(env_ptr as _, data as _, finalize_hint as _);
+
+        // Self-deleting weak.
+        if let Some(weak_ptr) = weak_ptr.get() {
+          let weak: v8::Weak<v8::Value> =
+            unsafe { v8::Weak::from_raw(isolate, Some(weak_ptr)) };
+          drop(weak);
+        }
+      }
+    }),
+  );
+
+  let value = weak.to_local(scope);
+  let raw = weak.into_raw();
+  weak_ptr.set(raw);
+
+  value
 }
 
 #[op(v8)]

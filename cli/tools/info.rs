@@ -217,7 +217,8 @@ fn add_npm_packages_to_json(
     }
   }
 
-  let mut sorted_packages = snapshot.all_packages();
+  let mut sorted_packages =
+    snapshot.all_packages_for_every_system().collect::<Vec<_>>();
   sorted_packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
