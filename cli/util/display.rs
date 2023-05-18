@@ -23,7 +23,7 @@ pub fn human_size(size: f64) -> String {
     .unwrap()
     * 1_f64;
   let unit = units[exponent as usize];
-  format!("{}{}{}", negative, pretty_bytes, unit)
+  format!("{negative}{pretty_bytes}{unit}")
 }
 
 const BYTES_TO_KIB: u64 = 2u64.pow(10);
@@ -41,7 +41,7 @@ pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
   fn get_in_format(byte_count: u64, conversion: u64, suffix: &str) -> String {
     let converted_value = byte_count / conversion;
     let decimal = (byte_count % conversion) * 100 / conversion;
-    format!("{}.{:0>2}{}", converted_value, decimal, suffix)
+    format!("{converted_value}.{decimal:0>2}{suffix}")
   }
 }
 
@@ -49,7 +49,7 @@ pub fn human_download_size(byte_count: u64, total_bytes: u64) -> String {
 /// represents a human readable version of that time.
 pub fn human_elapsed(elapsed: u128) -> String {
   if elapsed < 1_000 {
-    return format!("{}ms", elapsed);
+    return format!("{elapsed}ms");
   }
   if elapsed < 1_000 * 60 {
     return format!("{}s", elapsed / 1000);
@@ -58,7 +58,7 @@ pub fn human_elapsed(elapsed: u128) -> String {
   let seconds = elapsed / 1_000;
   let minutes = seconds / 60;
   let seconds_remainder = seconds % 60;
-  format!("{}m{}s", minutes, seconds_remainder)
+  format!("{minutes}m{seconds_remainder}s")
 }
 
 pub fn write_to_stdout_ignore_sigpipe(

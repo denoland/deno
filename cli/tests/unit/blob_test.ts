@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
-import { concat } from "../../../test_util/std/bytes/mod.ts";
+import { concat } from "../../../test_util/std/bytes/concat.ts";
 
 Deno.test(function blobString() {
   const b1 = new Blob(["Hello World"]);

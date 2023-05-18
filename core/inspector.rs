@@ -11,7 +11,6 @@ use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::channel::oneshot;
 use crate::futures::future::select;
 use crate::futures::future::Either;
-use crate::futures::future::Future;
 use crate::futures::prelude::*;
 use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
@@ -82,6 +81,7 @@ pub struct JsRuntimeInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   deregister_tx: Option<oneshot::Sender<()>>,
+  is_dispatching_message: RefCell<bool>,
 }
 
 impl Drop for JsRuntimeInspector {
@@ -111,6 +111,16 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
     &self.v8_inspector_client
   }
 
+  unsafe fn base_ptr(
+    this: *const Self,
+  ) -> *const v8::inspector::V8InspectorClientBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_inspector_client) }
+  }
+
   fn base_mut(&mut self) -> &mut v8::inspector::V8InspectorClientBase {
     &mut self.v8_inspector_client
   }
@@ -128,18 +138,6 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   fn run_if_waiting_for_debugger(&mut self, context_group_id: i32) {
     assert_eq!(context_group_id, JsRuntimeInspector::CONTEXT_GROUP_ID);
     self.flags.borrow_mut().waiting_for_session = false;
-  }
-}
-
-/// Polling `JsRuntimeInspector` allows inspector to accept new incoming
-/// connections and "pump" messages in different sessions.
-///
-/// It should be polled on tick of event loop, ie. in `JsRuntime::poll_event_loop`
-/// function.
-impl Future for JsRuntimeInspector {
-  type Output = ();
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-    self.poll_sessions(Some(cx)).unwrap()
   }
 }
 
@@ -172,6 +170,7 @@ impl JsRuntimeInspector {
       flags: Default::default(),
       waker,
       deregister_tx: None,
+      is_dispatching_message: Default::default(),
     }));
     let mut self_ = self__.borrow_mut();
     self_.v8_inspector = Rc::new(RefCell::new(
@@ -214,6 +213,10 @@ impl JsRuntimeInspector {
     self__
   }
 
+  pub fn is_dispatching_message(&self) -> bool {
+    *self.is_dispatching_message.borrow()
+  }
+
   pub fn context_destroyed(
     &mut self,
     scope: &mut HandleScope,
@@ -228,6 +231,35 @@ impl JsRuntimeInspector {
       .context_destroyed(context);
   }
 
+  pub fn exception_thrown(
+    &self,
+    scope: &mut HandleScope,
+    exception: v8::Local<'_, v8::Value>,
+    in_promise: bool,
+  ) {
+    let context = scope.get_current_context();
+    let message = v8::Exception::create_message(scope, exception);
+    let stack_trace = message.get_stack_trace(scope).unwrap();
+    let mut v8_inspector_ref = self.v8_inspector.borrow_mut();
+    let v8_inspector = v8_inspector_ref.as_mut().unwrap();
+    let stack_trace = v8_inspector.create_stack_trace(stack_trace);
+    v8_inspector.exception_thrown(
+      context,
+      if in_promise {
+        v8::inspector::StringView::from("Uncaught (in promise)".as_bytes())
+      } else {
+        v8::inspector::StringView::from("Uncaught".as_bytes())
+      },
+      exception,
+      v8::inspector::StringView::from("".as_bytes()),
+      v8::inspector::StringView::from("".as_bytes()),
+      0,
+      0,
+      stack_trace,
+      0,
+    );
+  }
+
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
   }
@@ -236,7 +268,7 @@ impl JsRuntimeInspector {
     self.sessions.borrow().has_blocking_sessions()
   }
 
-  fn poll_sessions(
+  pub fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
@@ -294,7 +326,9 @@ impl JsRuntimeInspector {
         match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(session_stream_item)) => {
             let (v8_session_ptr, msg) = session_stream_item;
+            *self.is_dispatching_message.borrow_mut() = true;
             InspectorSession::dispatch_message(v8_session_ptr, msg);
+            *self.is_dispatching_message.borrow_mut() = false;
             continue;
           }
           Poll::Ready(None) => break,
@@ -645,6 +679,14 @@ impl InspectorSession {
 impl v8::inspector::ChannelImpl for InspectorSession {
   fn base(&self) -> &v8::inspector::ChannelBase {
     &self.v8_channel
+  }
+
+  unsafe fn base_ptr(this: *const Self) -> *const v8::inspector::ChannelBase
+  where
+    Self: Sized,
+  {
+    // SAFETY: this pointer is valid for the whole lifetime of inspector
+    unsafe { std::ptr::addr_of!((*this).v8_channel) }
   }
 
   fn base_mut(&mut self) -> &mut v8::inspector::ChannelBase {

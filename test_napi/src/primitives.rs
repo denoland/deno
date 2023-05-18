@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use crate::assert_napi_ok;
 use crate::napi_new_property;
 use napi_sys::*;

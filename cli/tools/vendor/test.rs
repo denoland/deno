@@ -17,11 +17,12 @@ use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliResolver;
+use crate::npm::CliNpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
 
@@ -214,18 +215,14 @@ impl VendorTestBuilder {
 
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let output_dir = make_path("/vendor");
-    let roots = self
-      .entry_points
-      .iter()
-      .map(|s| (s.to_owned(), deno_graph::ModuleKind::Esm))
-      .collect();
+    let roots = self.entry_points.clone();
     let loader = self.loader.clone();
-    let parsed_source_cache = ParsedSourceCache::new(None);
+    let parsed_source_cache = ParsedSourceCache::new_in_memory();
     let analyzer = parsed_source_cache.as_analyzer();
     let graph = build_test_graph(
       roots,
       self.original_import_map.clone(),
-      loader.clone(),
+      loader,
       &*analyzer,
     )
     .await;
@@ -260,25 +257,41 @@ impl VendorTestBuilder {
 }
 
 async fn build_test_graph(
-  roots: Vec<(ModuleSpecifier, ModuleKind)>,
+  roots: Vec<ModuleSpecifier>,
   original_import_map: Option<ImportMap>,
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver =
-    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
-  deno_graph::create_graph(
-    roots,
-    &mut loader,
-    deno_graph::GraphOptions {
-      is_dynamic: false,
-      imports: None,
-      resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
-      module_analyzer: Some(analyzer),
-      reporter: None,
-    },
-  )
-  .await
+  let resolver = original_import_map.map(|original_import_map| {
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
+    CliGraphResolver::new(
+      None,
+      Some(Arc::new(original_import_map)),
+      false,
+      npm_registry_api,
+      npm_resolution,
+      Default::default(),
+      Default::default(),
+    )
+  });
+  let mut graph = ModuleGraph::default();
+  graph
+    .build(
+      roots,
+      &mut loader,
+      deno_graph::BuildOptions {
+        resolver: resolver.as_ref().map(|r| r.as_graph_resolver()),
+        module_analyzer: Some(analyzer),
+        ..Default::default()
+      },
+    )
+    .await;
+  graph
 }
 
 fn make_path(text: &str) -> PathBuf {

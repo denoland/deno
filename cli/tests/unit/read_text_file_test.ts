@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -93,7 +95,7 @@ Deno.test(
     queueMicrotask(() => ac.abort());
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -111,7 +113,7 @@ Deno.test(
     queueMicrotask(() => ac.abort(abortReason));
     const error = await assertRejects(
       async () => {
-        await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+        await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
           signal: ac.signal,
         });
       },
@@ -126,13 +128,24 @@ Deno.test(
     const ac = new AbortController();
     queueMicrotask(() => ac.abort("Some string"));
     try {
-      await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
         signal: ac.signal,
       });
       unreachable();
     } catch (e) {
       assertEquals(e, "Some string");
     }
+  },
+);
+
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readTextFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readTextFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
   },
 );
 
@@ -151,7 +164,13 @@ Deno.test(
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file.txt";
 
-    Deno.writeFileSync(filePath, bytes);
+    try {
+      Deno.writeFileSync(filePath, bytes);
+    } catch {
+      // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
+      // so skip running if writing fails.
+      return;
+    }
 
     assertThrows(
       () => {
@@ -172,7 +191,13 @@ Deno.test(
     const bytes = new Uint8Array(kStringMaxLengthPlusOne);
     const filePath = "cli/tests/testdata/too_big_a_file_2.txt";
 
-    await Deno.writeFile(filePath, bytes);
+    try {
+      await Deno.writeFile(filePath, bytes);
+    } catch {
+      // NOTE(bartlomieju): writing a 0.5Gb file might be too much for CI,
+      // so skip running if writing fails.
+      return;
+    }
 
     await assertRejects(
       async () => {

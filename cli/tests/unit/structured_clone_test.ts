@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 // Basic tests for the structured clone algorithm. Mainly tests TypeScript

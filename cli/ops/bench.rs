@@ -1,10 +1,14 @@
-use crate::tools::bench::BenchDescription;
-use crate::tools::bench::BenchEvent;
-use crate::tools::test::TestFilter;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time;
+
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
+use deno_core::serde_v8;
+use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_runtime::permissions::create_child_permissions;
@@ -12,32 +16,36 @@ use deno_runtime::permissions::ChildPermissionsArg;
 use deno_runtime::permissions::PermissionsContainer;
 use serde::Deserialize;
 use serde::Serialize;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::time;
 use tokio::sync::mpsc::UnboundedSender;
 use uuid::Uuid;
 
-pub fn init(
-  sender: UnboundedSender<BenchEvent>,
-  filter: TestFilter,
-) -> Extension {
-  Extension::builder("deno_bench")
-    .ops(vec![
-      op_pledge_test_permissions::decl(),
-      op_restore_test_permissions::decl(),
-      op_get_bench_origin::decl(),
-      op_register_bench::decl(),
-      op_dispatch_bench_event::decl(),
-      op_bench_now::decl(),
-    ])
-    .state(move |state| {
-      state.put(sender.clone());
-      state.put(filter.clone());
-      Ok(())
-    })
-    .build()
-}
+use crate::tools::bench::BenchDescription;
+use crate::tools::bench::BenchEvent;
+
+#[derive(Default)]
+pub(crate) struct BenchContainer(
+  pub Vec<(BenchDescription, v8::Global<v8::Function>)>,
+);
+
+deno_core::extension!(deno_bench,
+  ops = [
+    op_pledge_test_permissions,
+    op_restore_test_permissions,
+    op_register_bench,
+    op_dispatch_bench_event,
+    op_bench_now,
+  ],
+  options = {
+    sender: UnboundedSender<BenchEvent>,
+  },
+  state = |state, options| {
+    state.put(options.sender);
+    state.put(BenchContainer::default());
+  },
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.force_op_registration();
+  },
+);
 
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
@@ -86,51 +94,61 @@ pub fn op_restore_test_permissions(
   }
 }
 
-#[op]
-fn op_get_bench_origin(state: &mut OpState) -> String {
-  state.borrow::<ModuleSpecifier>().to_string()
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct BenchInfo {
+struct BenchInfo<'s> {
+  #[serde(rename = "fn")]
+  function: serde_v8::Value<'s>,
   name: String,
-  origin: String,
   baseline: bool,
   group: Option<String>,
+  ignore: bool,
+  only: bool,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BenchRegisterResult {
   id: usize,
-  filtered_out: bool,
+  origin: String,
 }
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op]
-fn op_register_bench(
+#[op(v8)]
+fn op_register_bench<'a>(
+  scope: &mut v8::HandleScope<'a>,
   state: &mut OpState,
-  info: BenchInfo,
+  info: BenchInfo<'a>,
 ) -> Result<BenchRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
-  let filter = state.borrow::<TestFilter>().clone();
-  let filtered_out = !filter.includes(&info.name);
+  let origin = state.borrow::<ModuleSpecifier>().to_string();
   let description = BenchDescription {
     id,
     name: info.name,
-    origin: info.origin,
+    origin: origin.clone(),
     baseline: info.baseline,
     group: info.group,
+    ignore: info.ignore,
+    only: info.only,
   };
+  let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
+  let function = v8::Global::new(scope, function);
+  state
+    .borrow_mut::<BenchContainer>()
+    .0
+    .push((description.clone(), function));
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(BenchEvent::Register(description)).ok();
-  Ok(BenchRegisterResult { id, filtered_out })
+  Ok(BenchRegisterResult { id, origin })
 }
 
 #[op]
 fn op_dispatch_bench_event(state: &mut OpState, event: BenchEvent) {
+  assert!(
+    matches!(event, BenchEvent::Output(_)),
+    "Only output events are expected from JS."
+  );
   let sender = state.borrow::<UnboundedSender<BenchEvent>>().clone();
   sender.send(event).ok();
 }

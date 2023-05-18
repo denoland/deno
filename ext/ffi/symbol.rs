@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
+use deno_core::error::AnyError;
+
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq)]
@@ -25,9 +28,11 @@ pub enum NativeType {
   Struct(Box<[NativeType]>),
 }
 
-impl From<NativeType> for libffi::middle::Type {
-  fn from(native_type: NativeType) -> Self {
-    match native_type {
+impl TryFrom<NativeType> for libffi::middle::Type {
+  type Error = AnyError;
+
+  fn try_from(native_type: NativeType) -> Result<Self, Self::Error> {
+    Ok(match native_type {
       NativeType::Void => libffi::middle::Type::void(),
       NativeType::U8 | NativeType::Bool => libffi::middle::Type::u8(),
       NativeType::I8 => libffi::middle::Type::i8(),
@@ -44,10 +49,18 @@ impl From<NativeType> for libffi::middle::Type {
       NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         libffi::middle::Type::pointer()
       }
-      NativeType::Struct(fields) => libffi::middle::Type::structure(
-        fields.iter().map(|field| field.clone().into()),
-      ),
-    }
+      NativeType::Struct(fields) => {
+        libffi::middle::Type::structure(match fields.len() > 0 {
+          true => fields
+            .iter()
+            .map(|field| field.clone().try_into())
+            .collect::<Result<Vec<_>, _>>()?,
+          false => {
+            return Err(type_error("Struct must have at least one field"))
+          }
+        })
+      }
+    })
   }
 }
 
