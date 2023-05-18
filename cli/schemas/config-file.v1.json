@@ -422,6 +422,10 @@
         }
       }
     },
+    "nodeModulesDir": {
+      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag.",
+      "type": "boolean"
+    },
     "tasks": {
       "description": "Configuration for deno task",
       "type": "object",

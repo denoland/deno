@@ -668,12 +668,13 @@ pub struct ConfigFileJson {
   pub bench: Option<Value>,
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
+  pub node_modules_dir: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ConfigFile {
   pub specifier: ModuleSpecifier,
-  pub json: ConfigFileJson,
+  json: ConfigFileJson,
 }
 
 impl ConfigFile {
@@ -863,6 +864,10 @@ impl ConfigFile {
 
   pub fn to_import_map_path(&self) -> Option<String> {
     self.json.import_map.clone()
+  }
+
+  pub fn node_modules_dir(&self) -> Option<bool> {
+    self.json.node_modules_dir
   }
 
   pub fn to_import_map_value(&self) -> Value {

@@ -2431,7 +2431,7 @@ fn local_npm_arg() -> Arg {
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("Creates a local node_modules folder")
+    .help("Enables or disables the use of a local node_modules folder for npm packages")
 }
 
 fn unsafely_ignore_certificate_errors_arg() -> Arg {
