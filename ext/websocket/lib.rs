@@ -283,6 +283,7 @@ where
   let resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(stream)),
     closed: Rc::new(Cell::new(false)),
+    tx_lock: AsyncRefCell::new(()),
   };
   let mut state = state.borrow_mut();
   let rid = state.resource_table.add(resource);
@@ -316,6 +317,7 @@ pub enum MessageKind {
 pub struct ServerWebSocket {
   ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
   closed: Rc<Cell<bool>>,
+  tx_lock: AsyncRefCell<()>,
 }
 
 impl ServerWebSocket {
@@ -324,6 +326,7 @@ impl ServerWebSocket {
     self: Rc<Self>,
     frame: Frame,
   ) -> Result<(), AnyError> {
+    let _lock = RcRef::map(&self, |r| &r.tx_lock).borrow_mut().await;
     // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
     // to populate the write buffer. We encounter an await point when writing
     // to the socket after the frame has already been written to the buffer.
@@ -360,6 +363,7 @@ pub fn ws_create_server_stream(
   let ws_resource = ServerWebSocket {
     ws: AsyncRefCell::new(FragmentCollector::new(ws)),
     closed: Rc::new(Cell::new(false)),
+    tx_lock: AsyncRefCell::new(()),
   };
 
   let rid = state.resource_table.add(ws_resource);
