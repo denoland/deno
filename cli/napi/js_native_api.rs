@@ -62,7 +62,7 @@ fn check_new_from_utf8_len<'s>(
   env: *mut Env,
   str_: *const c_char,
   len: usize,
-) -> std::result::Result<v8::Local<'s, v8::String>, napi_status> {
+) -> Result<v8::Local<'s, v8::String>, napi_status> {
   return_error_status_if_false!(
     env,
     (len == NAPI_AUTO_LENGTH) || len <= INT_MAX as _,
@@ -91,7 +91,7 @@ fn check_new_from_utf8_len<'s>(
 fn check_new_from_utf8<'s>(
   env: *mut Env,
   str_: *const c_char,
-) -> std::result::Result<v8::Local<'s, v8::String>, napi_status> {
+) -> Result<v8::Local<'s, v8::String>, napi_status> {
   check_new_from_utf8_len(env, str_, NAPI_AUTO_LENGTH)
 }
 
