@@ -13,8 +13,8 @@ import {
 import { TransformStream } from "ext:deno_web/06_streams.js";
 import { TextDecoderStream } from "ext:deno_web/08_text_encoding.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
-import { mainFetch } from "ext:deno_fetch/23_request.js";
-import { newInnerRequest } from "ext:deno_fetch/26_fetch.js";
+import { newInnerRequest } from "ext:deno_fetch/23_request.js";
+import { mainFetch } from "ext:deno_fetch/26_fetch.js";
 
 const primordials = globalThis.__bootstrap.primordials;
 const {
