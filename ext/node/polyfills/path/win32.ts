@@ -3,7 +3,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import path from "ext:deno_node/path/mod.ts";
-
 import {
   _format,
   assertPath,

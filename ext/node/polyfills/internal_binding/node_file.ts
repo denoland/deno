@@ -26,6 +26,7 @@
 // - https://github.com/nodejs/node/blob/master/src/node_file.h
 
 import { assert } from "ext:deno_node/_util/asserts.ts";
+import * as io from "ext:deno_io/12_io.js";
 import { seekSync } from "ext:deno_fs/30_fs.js";
 
 /**
@@ -59,13 +60,13 @@ export function writeBuffer(
   );
 
   if (position) {
-    seekSync(fd, position, Deno.SeekMode.Current);
+    seekSync(fd, position, io.SeekMode.Current);
   }
 
   const subarray = buffer.subarray(offset, offset + length);
 
   try {
-    return Deno.writeSync(fd, subarray);
+    return io.writeSync(fd, subarray);
   } catch (e) {
     ctx.errno = extractOsErrorNumberFromErrorMessage(e);
     return 0;

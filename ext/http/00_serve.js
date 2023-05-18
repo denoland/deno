@@ -1,10 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file camelcase
-const core = globalThis.Deno.core;
+const {
+  BadResourcePrototype,
+  close,
+  generateAsyncOpHandler,
+  refOp,
+  tryClose,
+  unrefOp,
+  writeAll,
+} = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
 const internals = globalThis.__bootstrap.internals;
 
-const { BadResourcePrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import {
@@ -65,7 +72,7 @@ const {
   op_http_upgrade_raw,
   op_http_upgrade_websocket_next,
   op_http_wait,
-} = core.generateAsyncOpHandler(
+} = generateAsyncOpHandler(
   "op_http_get_request_headers",
   "op_http_get_request_method_and_url",
   "op_http_read_request_body",
@@ -149,7 +156,7 @@ class InnerRequest {
 
   close() {
     if (this.#streamRid !== undefined) {
-      core.close(this.#streamRid);
+      close(this.#streamRid);
       this.#streamRid = undefined;
     }
     this.#slabId = undefined;
@@ -353,7 +360,7 @@ class CallbackContext {
   close() {
     try {
       this.closed = true;
-      core.tryClose(this.serverRid);
+      tryClose(this.serverRid);
     } catch {
       // Pass
     }
@@ -424,7 +431,7 @@ async function asyncResponse(responseBodies, req, status, stream) {
       responseRid = op_http_set_response_body_stream(req);
       SetPrototypeAdd(responseBodies, responseRid);
       op_http_set_promise_complete(req, status);
-      timeoutPromise = core.writeAll(responseRid, value1);
+      timeoutPromise = writeAll(responseRid, value1);
     }, 250);
     const { value: value2, done: done2 } = await reader.read();
 
@@ -456,17 +463,17 @@ async function asyncResponse(responseBodies, req, status, stream) {
       SetPrototypeAdd(responseBodies, responseRid);
       op_http_set_promise_complete(req, status);
       // Write our first packet
-      await core.writeAll(responseRid, value1);
+      await writeAll(responseRid, value1);
     }
 
-    await core.writeAll(responseRid, value2);
+    await writeAll(responseRid, value2);
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
         closed = true;
         break;
       }
-      await core.writeAll(responseRid, value);
+      await writeAll(responseRid, value);
     }
   } catch (error) {
     closed = true;
@@ -483,7 +490,7 @@ async function asyncResponse(responseBodies, req, status, stream) {
       clearTimeout(timeout);
     }
     if (responseRid) {
-      core.tryClose(responseRid);
+      tryClose(responseRid);
       SetPrototypeDelete(responseBodies, responseRid);
     } else {
       op_http_set_promise_complete(req, status);
@@ -697,7 +704,7 @@ function serve(arg1, arg2) {
     }
 
     for (const streamRid of new SafeSetIterator(responseBodies)) {
-      core.tryClose(streamRid);
+      tryClose(streamRid);
     }
   })();
 
@@ -706,13 +713,13 @@ function serve(arg1, arg2) {
     ref() {
       ref = true;
       if (currentPromise) {
-        core.refOp(currentPromise[promiseIdSymbol]);
+        refOp(currentPromise[promiseIdSymbol]);
       }
     },
     unref() {
       ref = false;
       if (currentPromise) {
-        core.unrefOp(currentPromise[promiseIdSymbol]);
+        unrefOp(currentPromise[promiseIdSymbol]);
       }
     },
   };

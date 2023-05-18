@@ -10,6 +10,7 @@ import {
 } from "ext:deno_node/internal/fs/utils.mjs";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import * as io from "ext:deno_io/12_io.js";
 import * as denoFs from "ext:deno_fs/30_fs.js";
 
 export function writeSync(fd, buffer, offset, length, position) {
@@ -20,12 +21,12 @@ export function writeSync(fd, buffer, offset, length, position) {
       buffer = new Uint8Array(buffer.buffer);
     }
     if (typeof position === "number") {
-      denoFs.seekSync(fd, position, Deno.SeekMode.Start);
+      denoFs.seekSync(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += Deno.writeSync(fd, buffer.subarray(currentOffset, end));
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset, end));
     }
     return currentOffset - offset;
   };
@@ -66,12 +67,12 @@ export function write(fd, buffer, offset, length, position, callback) {
       buffer = new Uint8Array(buffer.buffer);
     }
     if (typeof position === "number") {
-      await denoFs.seek(fd, position, Deno.SeekMode.Start);
+      await denoFs.seek(fd, position, io.SeekMode.Start);
     }
     let currentOffset = offset;
     const end = offset + length;
     while (currentOffset - offset < length) {
-      currentOffset += await Deno.write(
+      currentOffset += await io.write(
         fd,
         buffer.subarray(currentOffset, end),
       );

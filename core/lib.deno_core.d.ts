@@ -201,6 +201,10 @@ declare namespace Deno {
       resolve_hook?: (promise: Promise<unknown>) => void,
     ): void;
 
+    function generateAsyncOpHandler(
+      ...asyncOpNames: string[]
+    ): Record<string, (...args: unknown[]) => Promise<unknown>>;
+
     const build: {
       target: string;
       arch: string;

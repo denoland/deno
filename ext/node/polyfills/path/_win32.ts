@@ -13,7 +13,6 @@ import {
   CHAR_QUESTION_MARK,
 } from "ext:deno_node/path/_constants.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-
 import {
   _format,
   assertPath,
@@ -23,6 +22,7 @@ import {
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
+import { cwd } from "ext:deno_fs/30_fs.js";
 
 export const sep = "\\";
 export const delimiter = ";";
@@ -46,14 +46,14 @@ export function resolve(...pathSegments: string[]): string {
       if (typeof Deno?.cwd !== "function") {
         throw new TypeError("Resolved a drive-letter-less path without a CWD.");
       }
-      path = Deno.cwd();
+      path = cwd();
     } else {
       if (
         typeof Deno?.env?.get !== "function" || typeof Deno?.cwd !== "function"
       ) {
         throw new TypeError("Resolved a relative path without a CWD.");
       }
-      path = Deno.cwd();
+      path = cwd();
 
       // Verify that a cwd was found and that it actually points
       // to our drive. If not, default to the drive's root.

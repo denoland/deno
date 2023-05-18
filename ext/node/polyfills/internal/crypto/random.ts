@@ -31,13 +31,12 @@ export {
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
 
-const core = globalThis.Deno.core;
-const { ops } = core;
+const { generateAsyncOpHandler, ops } = globalThis.Deno.core;
 const {
   op_node_gen_prime_async,
   op_node_check_prime_bytes_async,
   op_node_check_prime_async,
-} = Deno.core.generateAsyncOpHandler(
+} = generateAsyncOpHandler(
   "op_node_gen_prime_async",
   "op_node_check_prime_bytes_async",
   "op_node_check_prime_async",

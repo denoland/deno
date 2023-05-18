@@ -8,7 +8,6 @@ import type {
 } from "ext:deno_node/path/_interface.ts";
 import { CHAR_DOT, CHAR_FORWARD_SLASH } from "ext:deno_node/path/_constants.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
-
 import {
   _format,
   assertPath,
@@ -16,6 +15,7 @@ import {
   isPosixPathSeparator,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
+import { cwd } from "ext:deno_fs/30_fs.js";
 
 export const sep = "/";
 export const delimiter = ":";
@@ -39,7 +39,7 @@ export function resolve(...pathSegments: string[]): string {
       if (typeof Deno?.cwd !== "function") {
         throw new TypeError("Resolved a relative path without a CWD.");
       }
-      path = Deno.cwd();
+      path = cwd();
     }
 
     assertPath(path);

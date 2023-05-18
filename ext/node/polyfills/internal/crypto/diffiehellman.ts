@@ -30,7 +30,7 @@ import type {
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 
-const { ops } = Deno.core;
+const { ops } = globalThis.Deno.core;
 
 const DH_GENERATOR = 2;
 
