@@ -682,8 +682,6 @@ function serve(arg1, arg2) {
     for (const streamRid of new SafeSetIterator(responseBodies)) {
       core.tryClose(streamRid);
     }
-
-    serverPromise.resolve();
   })();
 
   return { finished };
