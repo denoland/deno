@@ -671,7 +671,13 @@ fn vendored_text(module_count: &str, dir: &str) -> String {
 }
 
 fn vendored_npm_package_text(package_count: &str) -> String {
-  format!("Vendored {} into node_modules directory. Set `nodeModulesDir: false` to disable vendoring npm packages in the future.", package_count)
+  format!(
+    concat!(
+     "Vendored {} into node_modules directory. Set `nodeModulesDir: false` ",
+     "in the Deno configuration file to disable vendoring npm packages in the future.",
+    ),
+    package_count
+  )
 }
 
 fn success_text_updated_deno_json(dir: &str) -> String {

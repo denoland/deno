@@ -101,7 +101,10 @@ pub async fn vendor(
         .await?;
     }
     log::info!(
-      concat!("Vendored {} npm {} into node_modules directory. Set `nodeModulesDir: false` to disable vendoring npm packages in the future."),
+      concat!(
+        "Vendored {} npm {} into node_modules directory. Set `nodeModulesDir: false` ",
+        "in the Deno configuration file to disable vendoring npm packages in the future.",
+      ),
       npm_package_count,
       if npm_package_count == 1 {
         "package"
