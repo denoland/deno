@@ -6,7 +6,6 @@ import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
-  assertRejects,
   assertStringIncludes,
   assertThrows,
   Deferred,
@@ -16,6 +15,7 @@ import {
 
 const {
   upgradeHttpRaw,
+  addTrailers,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -50,7 +50,7 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   assertThrows(() => Deno.listen({ port: 4501 }));
 
   ac.abort();
-  await server;
+  await server.finished;
 
   const listener = Deno.listen({ port: 4501 });
   listener!.close();
@@ -93,7 +93,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
   });
   await listeningPromise;
 
-  await assertRejects(
+  assertThrows(
     () =>
       Deno.serve({
         handler: (_req) => new Response("ok"),
@@ -284,18 +284,18 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerErrorOverloadMissingHandler() {
+  function httpServerErrorOverloadMissingHandler() {
     // @ts-ignore - testing invalid overload
-    await assertRejects(() => Deno.serve(), TypeError, "handler");
+    assertThrows(() => Deno.serve(), TypeError, "handler");
     // @ts-ignore - testing invalid overload
-    await assertRejects(() => Deno.serve({}), TypeError, "handler");
-    await assertRejects(
+    assertThrows(() => Deno.serve({}), TypeError, "handler");
+    assertThrows(
       // @ts-ignore - testing invalid overload
       () => Deno.serve({ handler: undefined }),
       TypeError,
       "handler",
     );
-    await assertRejects(
+    assertThrows(
       // @ts-ignore - testing invalid overload
       () => Deno.serve(undefined, { handler: () => {} }),
       TypeError,
@@ -2904,6 +2904,45 @@ Deno.test(
   },
 );
 
+// TODO(mmastrac): This test should eventually use fetch, when we support trailers there.
+// This test is ignored because it's flaky and relies on cURL's verbose output.
+Deno.test(
+  { permissions: { net: true, run: true, read: true }, ignore: true },
+  async function httpServerTrailers() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: () => {
+        const response = new Response("Hello World", {
+          headers: {
+            "trailer": "baz",
+            "transfer-encoding": "chunked",
+            "foo": "bar",
+          },
+        });
+        addTrailers(response, [["baz", "why"]]);
+        return response;
+      },
+      port: 4501,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    // We don't have a great way to access this right now, so just fetch the trailers with cURL
+    const [_, stderr] = await curlRequestWithStdErr([
+      "http://localhost:4501/path",
+      "-v",
+      "--http2",
+      "--http2-prior-knowledge",
+    ]);
+    assertMatch(stderr, /baz: why/);
+    ac.abort();
+    await server;
+  },
+);
+
 Deno.test(
   { permissions: { net: true, run: true, read: true } },
   async function httpsServeCurlH2C() {
@@ -2948,4 +2987,14 @@ async function curlRequest(args: string[]) {
   }).output();
   assert(success);
   return new TextDecoder().decode(stdout);
+}
+
+async function curlRequestWithStdErr(args: string[]) {
+  const { success, stdout, stderr } = await new Deno.Command("curl", {
+    args,
+    stdout: "piped",
+    stderr: "piped",
+  }).output();
+  assert(success);
+  return [new TextDecoder().decode(stdout), new TextDecoder().decode(stderr)];
 }
