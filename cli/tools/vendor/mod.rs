@@ -76,11 +76,13 @@ pub async fn vendor(
     raw_output_dir.display(),
   );
 
-  let modified_result = if vendored_count > 0 {
-    maybe_update_config_file(&output_dir, cli_options, try_add_node_modules_dir)
-  } else {
-    ModifiedResult::default()
-  };
+  let try_add_import_map = vendored_count > 0;
+  let modified_result = maybe_update_config_file(
+    &output_dir,
+    cli_options,
+    try_add_import_map,
+    try_add_node_modules_dir,
+  );
 
   // cache the node_modules folder when it's been added to the config file
   if modified_result.added_node_modules_dir {
@@ -101,7 +103,7 @@ pub async fn vendor(
     log::info!(
       concat!("Vendored {} npm {} into node_modules directory. Set `nodeModulesDir: false` to disable vendoring npm packages in the future."),
       npm_package_count,
-      if vendored_count == 1 {
+      if npm_package_count == 1 {
         "package"
       } else {
         "packages"
@@ -196,6 +198,7 @@ fn validate_options(
 fn maybe_update_config_file(
   output_dir: &Path,
   options: &CliOptions,
+  try_add_import_map: bool,
   try_add_node_modules_dir: bool,
 ) -> ModifiedResult {
   assert!(output_dir.is_absolute());
@@ -215,8 +218,14 @@ fn maybe_update_config_file(
   let result = update_config_file(
     config_file,
     &fmt_config.options,
-    &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
-      .unwrap(),
+    if try_add_import_map {
+      Some(
+        ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
+          .unwrap(),
+      )
+    } else {
+      None
+    },
     try_add_node_modules_dir,
   );
   match result {
@@ -231,13 +240,15 @@ fn maybe_update_config_file(
 fn update_config_file(
   config_file: &ConfigFile,
   fmt_options: &FmtOptionsConfig,
-  import_map_specifier: &ModuleSpecifier,
+  import_map_specifier: Option<ModuleSpecifier>,
   try_add_node_modules_dir: bool,
 ) -> Result<ModifiedResult, AnyError> {
   let config_path = specifier_to_file_path(&config_file.specifier)?;
   let config_text = std::fs::read_to_string(&config_path)?;
   let import_map_specifier =
-    relative_specifier(&config_file.specifier, import_map_specifier);
+    import_map_specifier.and_then(|import_map_specifier| {
+      relative_specifier(&config_file.specifier, &import_map_specifier)
+    });
   let modified_result = update_config_text(
     &config_text,
     fmt_options,

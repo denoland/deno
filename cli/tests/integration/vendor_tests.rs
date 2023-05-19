@@ -613,6 +613,36 @@ fn vendor_npm_node_specifiers() {
   ));
 }
 
+#[test]
+fn vendor_only_npm_specifiers() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "my_app.ts",
+    concat!(
+      "import { getValue, setValue } from 'npm:@denotest/esm-basic';\n",
+      "setValue(5);\n",
+      "console.log(path.isAbsolute(Deno.cwd()), getValue());",
+    ),
+  );
+  temp_dir.write("deno.json", "{}");
+
+  let output = context.new_command().args("vendor my_app.ts").run();
+  output.assert_matches_text(
+    format!(
+      concat!(
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "{}\n",
+        "Initialize @denotest/esm-basic@1.0.0\n",
+        "{}\n",
+      ),
+      vendored_text("0 modules", "vendor/"),
+      vendored_npm_package_text("1 npm package"),
+    )
+  );
+}
+
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
   let mut text = format!("Vendored {module_count} into {dir} directory.");
   if has_import_map {
