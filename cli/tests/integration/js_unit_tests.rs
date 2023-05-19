@@ -121,9 +121,6 @@ util::unit_test_factory!(
 fn js_unit_test(test: String) {
   let _g = util::http_server();
 
-  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
-  // of one because there are some chdir tests in there.
-  // TODO(caspervonb) split these tests into two groups: parallel and serial.
   let mut deno = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("test")
@@ -180,6 +177,7 @@ fn js_unit_test(test: String) {
     {
       break status;
     }
+    std::thread::sleep(Duration::from_millis(10));
   };
 
   #[cfg(unix)]

@@ -45,10 +45,10 @@ util::unit_test_factory!(
     _fs_write_test = _fs / _fs_write_test,
     async_hooks_test,
     child_process_test,
-    crypto_cipher_test,
-    crypto_hash_test,
-    crypto_key_test,
-    crypto_sign_test,
+    crypto_cipher_test = crypto / crypto_cipher_test,
+    crypto_hash_test = crypto / crypto_hash_test,
+    crypto_key_test = crypto / crypto_key_test,
+    crypto_sign_test = crypto / crypto_sign_test,
     fs_test,
     http_test,
     _randomBytes_test = internal / _randomBytes_test,
@@ -73,10 +73,8 @@ util::unit_test_factory!(
 fn node_unit_test(test: String) {
   let _g = util::http_server();
 
-  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
-  // of one because there are some chdir tests in there.
-  // TODO(caspervonb) split these tests into two groups: parallel and serial.
-  let mut deno = util::deno_cmd()
+  let mut deno = util::deno_cmd();
+  let mut deno = deno
     .current_dir(util::root_path())
     .arg("test")
     .arg("--unstable")
@@ -84,7 +82,12 @@ fn node_unit_test(test: String) {
     // but this shouldn't be necessary. tls.connect currently doesn't
     // pass hostname option correctly and it causes cert errors.
     .arg("--unsafely-ignore-certificate-errors")
-    .arg("-A")
+    .arg("-A");
+  // Parallel tests for crypto
+  if test.starts_with("crypto/") {
+    deno = deno.arg("--parallel");
+  }
+  let mut deno = deno
     .arg(
       util::tests_path()
         .join("unit_node")
@@ -138,6 +141,7 @@ fn node_unit_test(test: String) {
     {
       break status;
     }
+    std::thread::sleep(Duration::from_millis(10));
   };
 
   #[cfg(unix)]
