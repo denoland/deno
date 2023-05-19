@@ -563,7 +563,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
   };
 }
 
-async function serve(arg1, arg2) {
+function serve(arg1, arg2) {
   let options = undefined;
   let handler = undefined;
   if (typeof arg1 === "function") {
@@ -653,33 +653,46 @@ async function serve(arg1, arg2) {
 
   onListen({ port: listenOpts.port });
 
-  while (true) {
-    const rid = context.serverRid;
-    let req;
-    try {
-      req = await op_http_wait(rid);
-    } catch (error) {
-      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+  const serverPromise = new Deferred();
+
+  const server = {
+    finished: serverPromise.promise,
+  };
+
+  // Run the server
+  (async () => {
+    while (true) {
+      const rid = context.serverRid;
+      let req;
+      try {
+        req = await op_http_wait(rid);
+      } catch (error) {
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          break;
+        }
+        throw new Deno.errors.Http(error);
+      }
+      if (req === 0xffffffff) {
         break;
       }
-      throw new Deno.errors.Http(error);
+      PromisePrototypeCatch(callback(req), (error) => {
+        // Abnormal exit
+        console.error(
+          "Terminating Deno.serve loop due to unexpected error",
+          error,
+        );
+        context.close();
+      });
     }
-    if (req === 0xffffffff) {
-      break;
-    }
-    PromisePrototypeCatch(callback(req), (error) => {
-      // Abnormal exit
-      console.error(
-        "Terminating Deno.serve loop due to unexpected error",
-        error,
-      );
-      context.close();
-    });
-  }
 
-  for (const streamRid of new SafeSetIterator(responseBodies)) {
-    core.tryClose(streamRid);
-  }
+    for (const streamRid of new SafeSetIterator(responseBodies)) {
+      core.tryClose(streamRid);
+    }
+
+    serverPromise.resolve();
+  })();
+
+  return server;
 }
 
 internals.upgradeHttpRaw = upgradeHttpRaw;

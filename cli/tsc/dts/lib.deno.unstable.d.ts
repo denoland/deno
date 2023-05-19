@@ -1305,6 +1305,16 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** A promise that resolves once server finishes - eg. when aborted using
+     * the signal passed to {@linkcode ServeOptions.signal}.
+     */
+    finished: Promise<void>;
+  }
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -1362,7 +1372,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Promise<void>;
+  export function serve(handler: ServeHandler): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1425,7 +1435,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Promise<void>;
+  ): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1487,7 +1497,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Promise<void>;
+  ): Server;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
