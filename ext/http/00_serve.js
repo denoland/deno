@@ -43,6 +43,7 @@ const {
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
+  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
@@ -660,13 +661,22 @@ function serve(arg1, arg2) {
 
   onListen({ port: listenOpts.port });
 
+  let ref = true;
+  let currentPromise = null;
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+
   // Run the server
   const finished = (async () => {
     while (true) {
       const rid = context.serverRid;
       let req;
       try {
-        req = await op_http_wait(rid);
+        currentPromise = op_http_wait(rid);
+        if (!ref) {
+          core.unrefOp(currentPromise[promiseIdSymbol]);
+        }
+        req = await currentPromise;
+        currentPromise = null;
       } catch (error) {
         if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           break;
@@ -691,7 +701,21 @@ function serve(arg1, arg2) {
     }
   })();
 
-  return { finished };
+  return {
+    finished,
+    ref() {
+      ref = true;
+      if (currentPromise) {
+        core.refOp(currentPromise[promiseIdSymbol]);
+      }
+    },
+    unref() {
+      ref = false;
+      if (currentPromise) {
+        core.unrefOp(currentPromise[promiseIdSymbol]);
+      }
+    },
+  };
 }
 
 internals.addTrailers = addTrailers;

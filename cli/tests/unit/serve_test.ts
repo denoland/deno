@@ -10,6 +10,7 @@ import {
   assertThrows,
   Deferred,
   deferred,
+  execCode,
   fail,
 } from "./test_util.ts";
 
@@ -55,6 +56,21 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   const listener = Deno.listen({ port: 4501 });
   listener!.close();
 });
+
+Deno.test(
+  { permissions: { read: true, run: true } },
+  async function httpServerUnref() {
+    const [statusCode, _output] = await execCode(`
+      async function main() {
+        const server = Deno.serve({ port: 4501, handler: () => null });
+        server.unref();
+        await server.finished; // This doesn't block the program from exiting
+      }
+      main();
+    `);
+    assertEquals(statusCode, 0);
+  },
+);
 
 Deno.test(async function httpServerCanResolveHostnames() {
   const ac = new AbortController();
