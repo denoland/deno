@@ -417,7 +417,7 @@ impl WebWorker {
         },
       ),
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      deno_websocket::deno_websocket::init_ops(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),

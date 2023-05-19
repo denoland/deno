@@ -14,9 +14,10 @@ description = "A modern JavaScript/TypeScript runtime built with V8, Rust, and T
 path = "lib.rs"
 
 [features]
-default = ["v8_use_custom_libcxx"]
+default = ["v8_use_custom_libcxx", "unstable_type_name"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 include_js_files_for_snapshotting = []
+unstable_type_name = ["v8/unstable_type_name"]
 
 [dependencies]
 anyhow.workspace = true

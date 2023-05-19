@@ -322,10 +322,10 @@ macro_rules! extension {
       }
     }
 
-    $crate::extension!(! __dyn__ $ ( $symbol )? $ ( config = { $( $options_id : $options_type ),* } )? );
+    $crate::extension!(! __dyn__ $name $ ( $symbol )? $ ( config = { $( $options_id : $options_type ),* } )? );
   };
 
-  (! __dyn__ $name: ident $sym:ident config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  (! __dyn__ $name:ident $sym:ident config = { $( $options_id:ident : $options_type:ty ),* } ) => {
     #[allow(dead_core)]
       #[no_mangle]
       pub fn $sym ( $( $options_id : $options_type ),* ) -> $crate::Extension {
@@ -333,10 +333,10 @@ macro_rules! extension {
       }
   };
 
-  (! __dyn__ config = { $( $options_id:ident : $options_type:ty ),* } ) => {
+  (! __dyn__ $name:ident config = { $( $options_id:ident : $options_type:ty ),* } ) => {
   };
 
-  (! __dyn__ ) => {};
+  (! __dyn__ $name:ident ) => {};
 
   // This branch of the macro generates a config object that calls the state function with itself.
   (! __config__ $ext:ident $( parameters = [ $( $param:ident : $type:ident ),+ ] )? config = { $( $options_id:ident : $options_type:ty ),* } $( state_fn = $state_fn:expr )? ) => {

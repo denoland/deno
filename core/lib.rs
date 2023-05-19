@@ -1,4 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+#![cfg_attr(feature = "unstable_type_name", feature(const_type_name))]
+
 mod async_cancel;
 mod async_cell;
 mod bindings;

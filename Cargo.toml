@@ -41,7 +41,8 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.71.2", default-features = false }
+# v8 = { version = "0.71.2", default-features = false }
+v8 = { path = "../rusty_v8", default-features = false }
 deno_ast = { version = "0.26.0", features = ["transpiling"] }
 
 deno_core = { version = "0.186.0", path = "./core" }

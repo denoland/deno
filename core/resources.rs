@@ -79,6 +79,10 @@ pub trait Resource: Any + 'static {
     type_name::<Self>().into()
   }
 
+  fn type_name(&self) -> &'static str {
+    type_name::<Self>()
+  }
+
   /// Read a single chunk of data from the resource. This operation returns a
   /// `BufView` that represents the data that was read. If a zero length buffer
   /// is returned, it indicates that the resource has reached EOF.
@@ -202,7 +206,11 @@ pub trait Resource: Any + 'static {
 impl dyn Resource {
   #[inline(always)]
   fn is<T: Resource>(&self) -> bool {
-    self.type_id() == TypeId::of::<T>()
+    #[cfg(not(feature = "unstable_type_name"))]
+    return self.type_id() == TypeId::of::<T>();
+
+    #[cfg(feature = "unstable_type_name")]
+    return self.type_name() == type_name::<T>();
   }
 
   #[inline(always)]

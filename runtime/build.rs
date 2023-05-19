@@ -298,7 +298,7 @@ mod startup_snapshot {
         Default::default(),
       ),
       deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
-      deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
+      deno_websocket::deno_websocket::init_ops_and_esm(
         "".to_owned(),
         None,
         None,

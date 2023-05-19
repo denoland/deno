@@ -373,7 +373,6 @@ impl JsRuntime {
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
     let global_context;
     let mut maybe_snapshotted_data = None;
-
     let mut isolate = if snapshot_options.will_snapshot() {
       let snapshot_creator =
         snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
