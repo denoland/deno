@@ -5,7 +5,6 @@ use std::process::Command;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
-use util::env_vars_for_npm_tests;
 use util::TestContextBuilder;
 
 #[test]
@@ -21,7 +20,6 @@ fn compile() {
     let output = util::deno_cmd_with_deno_dir(&dir)
       .current_dir(util::root_path())
       .arg("compile")
-      .arg("--unstable")
       .arg("--output")
       .arg(&exe)
       .arg("./test_util/std/examples/welcome.ts")
@@ -53,7 +51,6 @@ fn standalone_args() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/args.ts")
@@ -90,7 +87,6 @@ fn standalone_error() {
   let output = util::deno_cmd()
     .current_dir(&testdata_path)
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/standalone_error.ts")
@@ -135,7 +131,6 @@ fn standalone_error_module_with_imports() {
   let output = util::deno_cmd()
     .current_dir(&testdata_path)
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/standalone_error_module_with_imports_1.ts")
@@ -176,7 +171,6 @@ fn standalone_load_datauri() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/standalone_import_datauri.ts")
@@ -209,7 +203,6 @@ fn standalone_follow_redirects() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/standalone_follow_redirects.ts")
@@ -243,7 +236,6 @@ fn compile_with_file_exists_error() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&output_path)
     .arg("./compile/args.ts")
@@ -277,7 +269,6 @@ fn compile_with_directory_exists_error() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/args.ts")
@@ -311,7 +302,6 @@ fn compile_with_conflict_file_exists_error() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/args.ts")
@@ -325,7 +315,7 @@ fn compile_with_conflict_file_exists_error() {
     concat!(
       "Could not compile to file '{}' because the file already exists ",
       "and cannot be overwritten. Please delete the existing file or ",
-      "use the `--output <file-path` flag to provide an alternative name."
+      "use the `--output <file-path>` flag to provide an alternative name."
     ),
     exe.display()
   );
@@ -347,7 +337,6 @@ fn compile_and_overwrite_file() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/args.ts")
@@ -362,7 +351,6 @@ fn compile_and_overwrite_file() {
   let recompile_output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./compile/args.ts")
@@ -385,7 +373,6 @@ fn standalone_runtime_flags() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--seed")
     .arg("1")
@@ -426,7 +413,6 @@ fn standalone_ext_flag_ts() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--ext")
     .arg("ts")
     .arg("--output")
@@ -464,7 +450,6 @@ fn standalone_ext_flag_js() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--ext")
     .arg("js")
     .arg("--output")
@@ -502,7 +487,6 @@ fn standalone_import_map() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--import-map")
     .arg("compile/standalone_import_map.json")
@@ -536,7 +520,6 @@ fn standalone_import_map_config_file() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--allow-read")
     .arg("--config")
     .arg("compile/standalone_import_map_config.json")
@@ -571,7 +554,6 @@ fn skip_rebundle() {
   let output = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg("./run/001_hello.js")
@@ -608,7 +590,6 @@ fn check_local_by_default() {
   let status = util::deno_cmd()
     .current_dir(util::root_path())
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg(util::testdata_path().join("./compile/check_local_by_default.ts"))
@@ -630,7 +611,6 @@ fn check_local_by_default2() {
     .current_dir(util::root_path())
     .env("NO_COLOR", "1")
     .arg("compile")
-    .arg("--unstable")
     .arg("--output")
     .arg(&exe)
     .arg(util::testdata_path().join("./compile/check_local_by_default2.ts"))
@@ -803,21 +783,6 @@ fn dynamic_import_unanalyzable() {
   assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
 }
 
-itest!(npm_specifiers_errors_no_unstable {
-  args: "compile -A --quiet npm/cached_only/main.ts",
-  output_str: Some(
-    concat!(
-      "error: Using npm specifiers with deno compile requires the --unstable flag.",
-      "\n\n",
-      "Caused by:\n",
-      "    npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"
-    )
-  ),
-  exit_code: 1,
-  envs: env_vars_for_npm_tests(),
-  http_server: true,
-});
-
 #[test]
 fn compile_npm_specifiers() {
   let context = TestContextBuilder::for_npm()
@@ -847,8 +812,8 @@ fn compile_npm_specifiers() {
 
   // try with and without --node-modules-dir
   let compile_commands = &[
-    "compile --unstable --output binary main.ts",
-    "compile --unstable --node-modules-dir --output binary main.ts",
+    "compile --output binary main.ts",
+    "compile --node-modules-dir --output binary main.ts",
   ];
 
   for compile_command in compile_commands {
@@ -910,7 +875,7 @@ testing[WILDCARD]this
 
   let output = context
     .new_command()
-    .args("compile --unstable --output binary main.ts")
+    .args("compile --output binary main.ts")
     .run();
   output.assert_exit_code(0);
   output.skip_output_check();
@@ -1020,11 +985,7 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
       .to_string()
   };
 
-  let mut args = vec![
-    "compile".to_string(),
-    "-A".to_string(),
-    "--unstable".to_string(),
-  ];
+  let mut args = vec!["compile".to_string(), "-A".to_string()];
 
   if opts.node_modules_dir {
     args.push("--node-modules-dir".to_string());

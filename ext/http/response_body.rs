@@ -82,6 +82,10 @@ impl CompletionHandle {
       waker.wake();
     }
   }
+
+  pub fn is_completed(&self) -> bool {
+    self.inner.borrow().complete
+  }
 }
 
 impl Future for CompletionHandle {
@@ -154,7 +158,11 @@ impl std::fmt::Debug for ResponseBytesInner {
 /// required by hyper. As the API requires information about request completion (including a success/fail
 /// flag), we include a very lightweight [`CompletionHandle`] for interested parties to listen on.
 #[derive(Debug, Default)]
-pub struct ResponseBytes(ResponseBytesInner, CompletionHandle);
+pub struct ResponseBytes(
+  ResponseBytesInner,
+  CompletionHandle,
+  Rc<RefCell<Option<HeaderMap>>>,
+);
 
 impl ResponseBytes {
   pub fn initialize(&mut self, inner: ResponseBytesInner) {
@@ -164,6 +172,10 @@ impl ResponseBytes {
 
   pub fn completion_handle(&self) -> CompletionHandle {
     self.1.clone()
+  }
+
+  pub fn trailers(&self) -> Rc<RefCell<Option<HeaderMap>>> {
+    self.2.clone()
   }
 
   fn complete(&mut self, success: bool) -> ResponseBytesInner {
@@ -246,6 +258,9 @@ impl Body for ResponseBytes {
     let res = loop {
       let res = match &mut self.0 {
         ResponseBytesInner::Done | ResponseBytesInner::Empty => {
+          if let Some(trailers) = self.2.borrow_mut().take() {
+            return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+          }
           unreachable!()
         }
         ResponseBytesInner::Bytes(..) => {
@@ -267,6 +282,9 @@ impl Body for ResponseBytes {
     };
 
     if matches!(res, ResponseStreamResult::EndOfStream) {
+      if let Some(trailers) = self.2.borrow_mut().take() {
+        return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+      }
       self.complete(true);
     }
     std::task::Poll::Ready(res.into())
@@ -274,6 +292,7 @@ impl Body for ResponseBytes {
 
   fn is_end_stream(&self) -> bool {
     matches!(self.0, ResponseBytesInner::Done | ResponseBytesInner::Empty)
+      && self.2.borrow_mut().is_none()
   }
 
   fn size_hint(&self) -> SizeHint {
