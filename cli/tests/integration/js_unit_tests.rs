@@ -164,7 +164,7 @@ fn js_unit_test(test: String) {
     {
       break status;
     }
-    std::thread::sleep(Duration::from_millis(10));
+    std::thread::sleep(Duration::from_millis(100));
   };
 
   #[cfg(unix)]
