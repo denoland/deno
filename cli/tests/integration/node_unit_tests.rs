@@ -130,7 +130,7 @@ fn node_unit_test(test: String) {
     if now.elapsed() > PER_TEST_TIMEOUT {
       // Last-ditch kill
       _ = deno.kill();
-      panic!("Test failed to complete in time");
+      panic!("Test {test} failed to complete in time");
     }
     if let Some(status) = deno
       .try_wait()
