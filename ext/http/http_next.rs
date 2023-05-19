@@ -318,6 +318,22 @@ pub fn op_http_set_response_headers(
   }
 }
 
+#[op]
+pub fn op_http_set_response_trailers(
+  slab_id: SlabId,
+  trailers: Vec<(ByteString, ByteString)>,
+) {
+  let mut http = slab_get(slab_id);
+  let mut trailer_map: HeaderMap = HeaderMap::with_capacity(trailers.len());
+  for (name, value) in trailers {
+    // These are valid latin-1 strings
+    let name = HeaderName::from_bytes(&name).unwrap();
+    let value = HeaderValue::from_bytes(&value).unwrap();
+    trailer_map.append(name, value);
+  }
+  *http.trailers().borrow_mut() = Some(trailer_map);
+}
+
 fn is_request_compressible(headers: &HeaderMap) -> Compression {
   let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
     return Compression::None;
