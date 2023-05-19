@@ -10,6 +10,8 @@ import {
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
+const listenPort = 4504;
+
 Deno.test(
   { permissions: { net: true } },
   async function fetchRequiresOneArgument() {
@@ -639,7 +641,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchRequest() {
-    const addr = "127.0.0.1:4501";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
@@ -673,7 +675,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchRequestAcceptHeaders() {
-    const addr = "127.0.0.1:4501";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
@@ -705,7 +707,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyString() {
-    const addr = "127.0.0.1:4511";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const body = "hello world";
     const response = await fetch(`http://${addr}/blah`, {
@@ -743,7 +745,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyTypedArray() {
-    const addr = "127.0.0.1:4503";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const bodyStr = "hello world";
     const body = new TextEncoder().encode(bodyStr);
@@ -781,7 +783,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchUserSetContentLength() {
-    const addr = "127.0.0.1:4501";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
@@ -812,7 +814,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchUserSetTransferEncoding() {
-    const addr = "127.0.0.1:4501";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const response = await fetch(`http://${addr}/blah`, {
       method: "POST",
@@ -1158,7 +1160,7 @@ Deno.test(
     permissions: { net: true },
   },
   async function fetchPostBodyReadableStream() {
-    const addr = "127.0.0.1:4511";
+    const addr = `127.0.0.1:${listenPort}`;
     const bufPromise = bufferServer(addr);
     const stream = new TransformStream();
     const writer = stream.writable.getWriter();
@@ -1217,7 +1219,7 @@ Deno.test(
   async function fetchFilterOutCustomHostHeader(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4511";
+    const addr = `127.0.0.1:${listenPort}`;
     const [hostname, port] = addr.split(":");
     const listener = Deno.listen({
       hostname,
@@ -1693,7 +1695,7 @@ Deno.test(
   async function fetchWithInvalidContentLengthAndTransferEncoding(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4516";
+    const addr = `127.0.0.1:${listenPort}`;
     const data = "a".repeat(10 << 10);
 
     const body = new TextEncoder().encode(
@@ -1725,7 +1727,7 @@ Deno.test(
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4517";
+    const addr = `127.0.0.1:${listenPort}`;
     const data = "a".repeat(10 << 10);
 
     const body = new TextEncoder().encode(
@@ -1753,7 +1755,7 @@ Deno.test(
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4518";
+    const addr = `127.0.0.1:${listenPort}`;
     const data = "a".repeat(10 << 10);
 
     const contentLength = data.length / 2;
@@ -1780,7 +1782,7 @@ Deno.test(
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
-    const addr = "127.0.0.1:4519";
+    const addr = `127.0.0.1:${listenPort}`;
     const data = "a".repeat(10 << 10);
 
     const contentLength = data.length * 2;
