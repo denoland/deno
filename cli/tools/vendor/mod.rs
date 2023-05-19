@@ -405,6 +405,30 @@ mod internal_test {
 }
 "#
     );
+
+    // trailing comma
+    let result = update_config_text(
+      r#"{
+  "tasks": {
+    "task1": "other"
+  },
+}
+"#,
+      &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
+    )
+    .unwrap();
+    assert_eq!(
+      result.new_text.unwrap(),
+      r#"{
+  "tasks": {
+    "task1": "other"
+  },
+  "importMap": "./vendor/import_map.json"
+}
+"#
+    );
   }
 
   #[test]

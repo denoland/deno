@@ -10,6 +10,7 @@ use test_util as util;
 use test_util::TempDir;
 use util::http_server;
 use util::new_deno_dir;
+use util::TestContextBuilder;
 
 #[test]
 fn output_dir_exists() {
@@ -535,6 +536,51 @@ fn update_existing_config_test() {
   assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "");
   assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "outputted");
   assert!(output.status.success());
+}
+
+#[test]
+fn vendor_npm_node_specifiers() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "my_app.ts",
+    concat!(
+      "import { path, getValue, setValue } from 'http://localhost:4545/vendor/npm_and_node_specifier.ts';\n",
+      "setValue(5);\n",
+      "console.log(path.isAbsolute(Deno.cwd()), getValue());",
+    ),
+  );
+  temp_dir.write("deno.json", "{}");
+
+  let output = context.new_command().args("vendor my_app.ts").run();
+  output.assert_matches_text(
+    format!(
+      concat!(
+        "Download http://localhost:4545/vendor/npm_and_node_specifier.ts\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "{}\n",
+      ),
+      success_text_updated_deno_json("1 module", "vendor/")
+    )
+  );
+  let output = context.new_command().args("run -A my_app.ts").run();
+  output.assert_matches_text("Initialize @denotest/esm-basic@1.0.0\ntrue 5\n");
+  assert!(temp_dir.path().join("node_modules").exists());
+  assert!(temp_dir.path().join("deno.lock").exists());
+
+  // now try re-vendoring
+  let output = context.new_command().args("vendor --force my_app.ts").run();
+  output.assert_matches_text(format!(
+    concat!(
+      "Ignoring import map. Specifying an import map file ({}) in the deno ",
+      "vendor output directory is not supported. If you wish to use an ",
+      "import map while vendoring, please specify one located outside this ",
+      "directory.\n{}\n",
+    ),
+    PathBuf::from("vendor").join("import_map.json").display(),
+    success_text_updated_deno_json("1 module", "vendor/"),
+  ));
 }
 
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
