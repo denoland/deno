@@ -166,5 +166,9 @@ fn js_unit_test(test: &'static str) {
     "Deno should not have died with a signal"
   );
   assert_eq!(Some(0), status.code(), "Deno should have exited cleanly");
+
+  stdout.join().unwrap();
+  stderr.join().unwrap();
+
   assert!(status.success());
 }
