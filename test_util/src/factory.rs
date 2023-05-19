@@ -47,9 +47,9 @@ pub fn check_test_glob(
     let file = file
       .strip_prefix(&base_dir)
       .expect("File {file} did not start with {base_dir} prefix");
-    let file = file.strip_prefix("/").unwrap().to_owned();
-    list.push(file.replace("/", "_DIR_"));
-    found.insert(file.replace("/", "_DIR_"));
+    let file = file.strip_prefix('/').unwrap().to_owned();
+    list.push(file.replace('/', "_DIR_"));
+    found.insert(file.replace('/', "_DIR_"));
   }
 
   let mut error = false;
