@@ -21,7 +21,7 @@ fn js_unit_tests_lint() {
 
 util::unit_test_factory!(
   js_unit_test,
-  "cli/tests/unit/*.ts",
+  "tests/unit/*.ts",
   [
     abort_controller_test,
     blob_test,
@@ -171,7 +171,10 @@ fn js_unit_test(test: &'static str) {
       _ = deno.kill();
       panic!("Test failed to complete in time");
     }
-    if let Some(status) = deno.try_wait().expect("failed to wait for the child process") {
+    if let Some(status) = deno
+      .try_wait()
+      .expect("failed to wait for the child process")
+    {
       break status;
     }
   };

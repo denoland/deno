@@ -55,7 +55,7 @@ use url::Url;
 
 pub mod assertions;
 mod builders;
-mod factory;
+pub mod factory;
 pub mod lsp;
 mod npm;
 pub mod pty;
