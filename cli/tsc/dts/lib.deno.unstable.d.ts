@@ -1305,6 +1305,28 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** A promise that resolves once server finishes - eg. when aborted using
+     * the signal passed to {@linkcode ServeOptions.signal}.
+     */
+    finished: Promise<void>;
+
+    /**
+     * Make the server block the event loop from finishing.
+     *
+     * Note: the server blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the server not block the event loop from finishing. */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -1331,8 +1353,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1362,7 +1387,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Promise<void>;
+  export function serve(handler: ServeHandler): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1391,8 +1416,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1425,7 +1453,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Promise<void>;
+  ): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1454,8 +1482,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1487,7 +1518,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Promise<void>;
+  ): Server;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
