@@ -21,7 +21,8 @@ fn js_unit_tests_lint() {
 
 util::unit_test_factory!(
   js_unit_test,
-  "tests/unit/*.ts",
+  "tests/unit",
+  "*.ts",
   [
     abort_controller_test,
     blob_test,
@@ -117,7 +118,7 @@ util::unit_test_factory!(
   ]
 );
 
-fn js_unit_test(test: &'static str) {
+fn js_unit_test(test: String) {
   let _g = util::http_server();
 
   // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
@@ -138,11 +139,12 @@ fn js_unit_test(test: &'static str) {
 
   let now = Instant::now();
   let stdout = deno.stdout.take().unwrap();
+  let test_name = test.clone();
   let stdout = std::thread::spawn(move || {
     let reader = BufReader::new(stdout);
     for line in reader.lines() {
       if let Ok(line) = line {
-        println!("[{test} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
+        println!("[{test_name} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
       } else {
         break;
       }
@@ -151,11 +153,12 @@ fn js_unit_test(test: &'static str) {
 
   let now = Instant::now();
   let stderr = deno.stderr.take().unwrap();
+  let test_name = test.clone();
   let stderr = std::thread::spawn(move || {
     let reader = BufReader::new(stderr);
     for line in reader.lines() {
       if let Ok(line) = line {
-        eprintln!("[{test} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
+        eprintln!("[{test_name} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
       } else {
         break;
       }
