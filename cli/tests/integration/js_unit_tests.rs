@@ -165,7 +165,7 @@ fn js_unit_test(test: String) {
     }
   });
 
-  const PER_TEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+  const PER_TEST_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 
   let now = Instant::now();
   let status = loop {

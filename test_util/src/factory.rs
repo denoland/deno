@@ -7,19 +7,34 @@ use glob::glob;
 /// Generate a unit test factory verified and backed by a glob.
 #[macro_export]
 macro_rules! unit_test_factory {
-  ($test_fn:ident, $base:literal, $glob:literal, [ $( $test:ident ),+ $(,)? ]) => {
+  ($test_fn:ident, $base:literal, $glob:literal, [ $( $test:ident $(= $($path:ident)/+)? ),+ $(,)? ]) => {
     #[test]
     fn check_test_glob() {
-      $crate::factory::check_test_glob($base, $glob, [$( stringify!( $test ) ),+].as_slice());
+      $crate::factory::check_test_glob($base, $glob, [ $( ( stringify!($test), stringify!( $( $($path)/+ )? ) ) ),+ ].as_slice());
     }
 
     $(
       #[allow(non_snake_case)]
       #[test]
       fn $test() {
-        $test_fn(stringify!($test).replace("_DIR_", "/"))
+        $test_fn($crate::factory::get_path(stringify!($test), stringify!( $( $($path)/+ )?)))
       }
     )+
+  };
+  (__test__ $($prefix:ident)* $test:ident) => {
+    #[allow(non_snake_case)]
+    #[test]
+    fn $test() {
+      $test_fn(stringify!($($prefix)/+ $test))
+    }
+  };
+}
+
+pub fn get_path(test: &'static str, path: &'static str) -> String {
+  if path.is_empty() {
+    test.to_owned()
+  } else {
+    path.replace(' ', "")
   }
 }
 
@@ -27,7 +42,7 @@ macro_rules! unit_test_factory {
 pub fn check_test_glob(
   base: &'static str,
   glob_pattern: &'static str,
-  files: &[&'static str],
+  files: &[(&'static str, &'static str)],
 ) {
   let base_dir = PathBuf::from(base)
     .canonicalize()
@@ -44,19 +59,30 @@ pub fn check_test_glob(
       .canonicalize()
       .unwrap();
     file.set_extension("");
+    let name = file.file_name().unwrap().to_string_lossy();
     let file = file.to_string_lossy().into_owned();
     let file = file
       .strip_prefix(&base_dir)
       .expect("File {file} did not start with {base_dir} prefix");
     let file = file.strip_prefix('/').unwrap().to_owned();
-    list.push(file.replace('/', "_DIR_"));
-    found.insert(file.replace('/', "_DIR_"));
+    if file.contains('/') {
+      list.push(format!("{}={}", name, file))
+    } else {
+      list.push(file.clone());
+    }
+    found.insert(file);
   }
 
   let mut error = false;
-  for file in files {
-    if found.contains(*file) {
-      found.remove(*file);
+  for (test, path) in files {
+    // Remove spaces from the macro
+    let path = if path.is_empty() {
+      (*test).to_owned()
+    } else {
+      path.replace(' ', "")
+    };
+    if found.contains(&path) {
+      found.remove(&path);
     } else {
       error = true;
     }
