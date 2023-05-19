@@ -2,6 +2,8 @@
 use std::io::BufRead;
 use std::io::BufReader;
 use std::process::Stdio;
+use std::time::Duration;
+use std::time::Instant;
 use test_util as util;
 
 #[test]
@@ -134,31 +136,46 @@ fn js_unit_test(test: &'static str) {
     .spawn()
     .expect("failed to spawn script");
 
+  let now = Instant::now();
   let stdout = deno.stdout.take().unwrap();
   let stdout = std::thread::spawn(move || {
     let reader = BufReader::new(stdout);
     for line in reader.lines() {
       if let Ok(line) = line {
-        eprintln!("[{test}] {line}");
+        println!("[{test} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
       } else {
         break;
       }
     }
   });
 
+  let now = Instant::now();
   let stderr = deno.stderr.take().unwrap();
   let stderr = std::thread::spawn(move || {
     let reader = BufReader::new(stderr);
     for line in reader.lines() {
       if let Ok(line) = line {
-        eprintln!("[{test}] {line}");
+        eprintln!("[{test} {:0>6.2}] {line}", now.elapsed().as_secs_f32());
       } else {
         break;
       }
     }
   });
 
-  let status = deno.wait().expect("failed to wait for the child process");
+  const PER_TEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+  let now = Instant::now();
+  let status = loop {
+    if now.elapsed() > PER_TEST_TIMEOUT {
+      // Last-ditch kill
+      _ = deno.kill();
+      panic!("Test failed to complete in time");
+    }
+    if let Some(status) = deno.try_wait().expect("failed to wait for the child process") {
+      break status;
+    }
+  };
+
   #[cfg(unix)]
   assert_eq!(
     std::os::unix::process::ExitStatusExt::signal(&status),
