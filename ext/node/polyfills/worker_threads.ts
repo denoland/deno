@@ -241,8 +241,6 @@ export {
   workerData,
 };
 
-
-
 const defaultExport = {
   markAsUntransferable,
   moveMessagePortToContext,

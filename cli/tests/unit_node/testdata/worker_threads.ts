@@ -21,7 +21,7 @@ await message("Hello, how are you my thread?");
 
 (parentPort as any).postMessage("I'm fine!");
 
-await new Promise(resolve => setTimeout(resolve, 100));
+await new Promise((resolve) => setTimeout(resolve, 100));
 
 (parentPort as any).postMessage({
   isMainThread,
