@@ -1872,20 +1872,59 @@ fn napi_get_instance_data(
   napi_ok
 }
 
-// TODO(bartlomieju): this function is broken
+static ERROR_MESSAGES: [&str; 22] = [
+  "",
+  "Invalid argument",
+  "An object was expected",
+  "A string was expected",
+  "A string or symbol was expected",
+  "A function was expected",
+  "A number was expected",
+  "A boolean was expected",
+  "An array was expected",
+  "Unknown failure",
+  "An exception is pending",
+  "The async work item was cancelled",
+  "napi_escape_handle already called on scope",
+  "Invalid handle scope usage",
+  "Invalid callback scope usage",
+  "Thread-safe function queue is full",
+  "Thread-safe function handle is closing",
+  "A bigint was expected",
+  "A date was expected",
+  "An arraybuffer was expected",
+  "A detachable arraybuffer was expected",
+  "Main thread would deadlock",
+];
+
 #[napi_sym::napi_sym]
 fn napi_get_last_error_info(
-  _env: *mut Env,
-  error_code: *mut *const napi_extended_error_info,
+  env: *mut Env,
+  result: *mut *const napi_extended_error_info,
 ) -> napi_status {
+  check_env!(env);
+  check_arg!(env, result);
+  let env = unsafe { &mut *env };
+
+  assert!(env.last_error.error_code <= napi_would_deadlock);
+
+  env.last_error.error_message = ERROR_MESSAGES
+    [env.last_error.error_code as usize]
+    .as_bytes()
+    .as_ptr() as *const i8;
+
+  if env.last_error.error_code == napi_ok {
+    napi_clear_last_error(env);
+  }
+
   let err_info = Box::new(napi_extended_error_info {
-    error_message: std::ptr::null(),
-    engine_reserved: std::ptr::null_mut(),
-    engine_error_code: 0,
-    error_code: napi_ok,
+    error_message: env.last_error.error_message,
+    engine_reserved: env.last_error.engine_reserved,
+    engine_error_code: env.last_error.engine_error_code,
+    error_code: env.last_error.error_code,
   });
 
-  *error_code = Box::into_raw(err_info);
+  *result = Box::into_raw(err_info);
   napi_ok
 }
 
