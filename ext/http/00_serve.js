@@ -653,14 +653,8 @@ function serve(arg1, arg2) {
 
   onListen({ port: listenOpts.port });
 
-  const serverPromise = new Deferred();
-
-  const server = {
-    finished: serverPromise.promise,
-  };
-
   // Run the server
-  (async () => {
+  const finished = (async () => {
     while (true) {
       const rid = context.serverRid;
       let req;
@@ -692,7 +686,7 @@ function serve(arg1, arg2) {
     serverPromise.resolve();
   })();
 
-  return server;
+  return { finished };
 }
 
 internals.upgradeHttpRaw = upgradeHttpRaw;

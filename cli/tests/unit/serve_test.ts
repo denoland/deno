@@ -6,7 +6,6 @@ import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
-  assertRejects,
   assertStringIncludes,
   assertThrows,
   Deferred,
@@ -284,7 +283,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerErrorOverloadMissingHandler() {
+  function httpServerErrorOverloadMissingHandler() {
     // @ts-ignore - testing invalid overload
     assertThrows(() => Deno.serve(), TypeError, "handler");
     // @ts-ignore - testing invalid overload
