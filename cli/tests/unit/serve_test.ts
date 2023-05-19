@@ -6,7 +6,6 @@ import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
-  assertRejects,
   assertStringIncludes,
   assertThrows,
   Deferred,
@@ -50,7 +49,7 @@ Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   assertThrows(() => Deno.listen({ port: 4501 }));
 
   ac.abort();
-  await server;
+  await server.finished;
 
   const listener = Deno.listen({ port: 4501 });
   listener!.close();
@@ -93,7 +92,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
   });
   await listeningPromise;
 
-  await assertRejects(
+  assertThrows(
     () =>
       Deno.serve({
         handler: (_req) => new Response("ok"),
@@ -284,18 +283,18 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
 
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerErrorOverloadMissingHandler() {
+  function httpServerErrorOverloadMissingHandler() {
     // @ts-ignore - testing invalid overload
-    await assertRejects(() => Deno.serve(), TypeError, "handler");
+    assertThrows(() => Deno.serve(), TypeError, "handler");
     // @ts-ignore - testing invalid overload
-    await assertRejects(() => Deno.serve({}), TypeError, "handler");
-    await assertRejects(
+    assertThrows(() => Deno.serve({}), TypeError, "handler");
+    assertThrows(
       // @ts-ignore - testing invalid overload
       () => Deno.serve({ handler: undefined }),
       TypeError,
       "handler",
     );
-    await assertRejects(
+    assertThrows(
       // @ts-ignore - testing invalid overload
       () => Deno.serve(undefined, { handler: () => {} }),
       TypeError,
