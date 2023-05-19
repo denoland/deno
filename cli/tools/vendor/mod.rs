@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_ast::TextChange;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -12,6 +13,7 @@ use deno_core::resolve_url_or_path;
 use log::warn;
 
 use crate::args::CliOptions;
+use crate::args::ConfigFile;
 use crate::args::Flags;
 use crate::args::FmtOptionsConfig;
 use crate::args::VendorFlags;
@@ -73,10 +75,9 @@ pub async fn vendor(
   );
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    if had_npm_packages {
-      maybe_output_update_config_npm(cli_options);
-    }
-    if maybe_update_config_file(&output_dir, cli_options) {
+    let result =
+      maybe_update_config_file(&output_dir, cli_options, had_npm_packages);
+    if result.updated_import_map {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
@@ -158,32 +159,18 @@ fn validate_options(
   Ok(())
 }
 
-fn maybe_output_update_config_npm(options: &CliOptions) {
-  let has_node_modules_dir_in_config = options
-    .maybe_config_file()
-    .as_ref()
-    .and_then(|c| c.node_modules_dir())
-    .unwrap_or(false);
-  if !has_node_modules_dir_in_config {
-    log::info!(
-      concat!(
-        "To vendor npm packages add a `nodeModulesDir: true` entry ",
-        "to your Deno configuration file in order to use a node_modules directory."
-      )
-    );
-  }
-}
-
-fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
+fn maybe_update_config_file(
+  output_dir: &Path,
+  options: &CliOptions,
+  had_npm_packages: bool,
+) -> ModifiedResult {
   assert!(output_dir.is_absolute());
   let config_file = match options.maybe_config_file() {
     Some(config_file) => config_file,
-    None => return false,
+    None => return ModifiedResult::default(),
   };
-  let config_file_specifier = &config_file.specifier;
-
-  if config_file_specifier.scheme() != "file" {
-    return false;
+  if config_file.specifier.scheme() != "file" {
+    return ModifiedResult::default();
   }
 
   let fmt_config = config_file
@@ -192,89 +179,127 @@ fn maybe_update_config_file(output_dir: &Path, options: &CliOptions) -> bool {
     .unwrap_or_default()
     .unwrap_or_default();
   let result = update_config_file(
-    &config_file_specifier,
+    config_file,
+    &fmt_config.options,
     &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
       .unwrap(),
-    &fmt_config.options,
+    had_npm_packages,
   );
   match result {
-    Ok(()) => true,
+    Ok(modified_result) => modified_result,
     Err(err) => {
       warn!("Error updating config file. {:#}", err);
-      false
+      ModifiedResult::default()
     }
   }
 }
 
 fn update_config_file(
-  config_specifier: &ModuleSpecifier,
-  import_map_specifier: &ModuleSpecifier,
+  config_file: &ConfigFile,
   fmt_options: &FmtOptionsConfig,
-) -> Result<(), AnyError> {
-  let config_path = specifier_to_file_path(config_specifier)?;
+  import_map_specifier: &ModuleSpecifier,
+  had_npm_packages: bool,
+) -> Result<ModifiedResult, AnyError> {
+  let config_path = specifier_to_file_path(&config_file.specifier)?;
   let config_text = std::fs::read_to_string(&config_path)?;
-  let relative_text =
-    match relative_specifier(config_specifier, import_map_specifier) {
-      Some(text) => text,
-      None => return Ok(()), // ignore
-    };
-  if let Some(new_text) =
-    update_config_text(&config_text, &relative_text, fmt_options)
-  {
+  let import_map_specifier =
+    relative_specifier(&config_file.specifier, import_map_specifier);
+  let modified_result = update_config_text(
+    &config_text,
+    fmt_options,
+    import_map_specifier.as_deref(),
+    had_npm_packages,
+  )?;
+  if let Some(new_text) = &modified_result.new_text {
     std::fs::write(config_path, new_text)?;
   }
+  Ok(modified_result)
+}
 
-  Ok(())
+#[derive(Default)]
+struct ModifiedResult {
+  updated_import_map: bool,
+  updated_node_modules_dir: bool,
+  new_text: Option<String>,
 }
 
 fn update_config_text(
   text: &str,
-  import_map_specifier: &str,
   fmt_options: &FmtOptionsConfig,
-) -> Option<String> {
+  import_map_specifier: Option<&str>,
+  had_npm_packages: bool,
+) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
   let ast =
-    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())
-      .ok()?;
+    jsonc_parser::parse_to_ast(text, &Default::default(), &Default::default())?;
   let obj = match ast.value {
     Some(Value::Object(obj)) => obj,
-    _ => return None, // shouldn't happen, so ignore
+    _ => bail!("Failed updating config file due to no object."),
   };
-  let import_map_specifier = import_map_specifier.replace('\"', "\\\"");
+  let mut modified_result = ModifiedResult::default();
+  let mut text_changes = Vec::new();
+  let mut should_format = false;
 
-  match obj.get("importMap") {
-    Some(ObjectProp {
-      value: Value::StringLit(lit),
-      ..
-    }) => Some(format!(
-      "{}{}{}",
-      &text[..lit.range.start + 1],
-      import_map_specifier,
-      &text[lit.range.end - 1..],
-    )),
-    None => {
-      // insert it crudely at a position that won't cause any issues
-      // with comments and format after to make it look nice
+  if had_npm_packages {
+    // Only modify the nodeModulesDir property if it's not set
+    // as this allows people to opt-out of this when vendoring
+    // by specifying `nodeModulesDir: false`
+    if obj.get("nodeModulesDir").is_none() {
       let insert_position = obj.range.end - 1;
-      let insert_text = format!(
-        r#"{}"importMap": "{}""#,
-        if obj.properties.is_empty() { "" } else { "," },
-        import_map_specifier
-      );
-      let new_text = format!(
-        "{}{}{}",
-        &text[..insert_position],
-        insert_text,
-        &text[insert_position..],
-      );
-      format_json(&new_text, fmt_options)
-        .ok()
-        .map(|formatted_text| formatted_text.unwrap_or(new_text))
+      text_changes.push(TextChange {
+        range: insert_position..insert_position,
+        new_text: r#""nodeModulesDir": true"#.to_string(),
+      });
+      should_format = true;
+      modified_result.updated_node_modules_dir = true;
     }
-    // shouldn't happen, so ignore
-    Some(_) => None,
   }
+
+  if let Some(import_map_specifier) = import_map_specifier {
+    let import_map_specifier = import_map_specifier.replace('\"', "\\\"");
+    match obj.get("importMap") {
+      Some(ObjectProp {
+        value: Value::StringLit(lit),
+        ..
+      }) => {
+        text_changes.push(TextChange {
+          range: lit.range.start..lit.range.end,
+          new_text: format!("\"{}\"", import_map_specifier),
+        });
+        modified_result.updated_import_map = true;
+      }
+      None => {
+        // insert it crudely at a position that won't cause any issues
+        // with comments and format after to make it look nice
+        let insert_position = obj.range.end - 1;
+        text_changes.push(TextChange {
+          range: insert_position..insert_position,
+          new_text: format!(r#""importMap": "{}""#, import_map_specifier),
+        });
+        should_format = true;
+        modified_result.updated_import_map = true;
+      }
+      // shouldn't happen
+      Some(_) => {
+        bail!("Failed updating importMap in config file due to invalid type.")
+      }
+    }
+  }
+
+  if text_changes.is_empty() {
+    return Ok(modified_result);
+  }
+
+  let new_text = deno_ast::apply_text_changes(text, text_changes);
+  modified_result.new_text = if should_format {
+    format_json(&new_text, fmt_options)
+      .ok()
+      .map(|formatted_text| formatted_text.unwrap_or(new_text))
+  } else {
+    Some(new_text)
+  };
+  Ok(modified_result)
 }
 
 fn is_dir_empty(dir_path: &Path) -> Result<bool, AnyError> {
@@ -308,16 +333,49 @@ mod internal_test {
 
   #[test]
   fn update_config_text_no_existing_props_add_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       "{\n}",
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
+    assert!(result.updated_import_map);
+    assert!(!result.updated_node_modules_dir);
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
       r#"{
   "importMap": "./vendor/import_map.json"
+}
+"#
+    );
+
+    let result = update_config_text(
+      "{\n}",
+      &Default::default(),
+      Some("./vendor/import_map.json"),
+      true,
+    )
+    .unwrap();
+    assert!(result.updated_import_map);
+    assert!(result.updated_node_modules_dir);
+    assert_eq!(
+      result.new_text.unwrap(),
+      r#"{
+  "nodeModulesDir": true,
+  "importMap": "./vendor/import_map.json"
+}
+"#
+    );
+
+    let result =
+      update_config_text("{\n}", &Default::default(), None, true).unwrap();
+    assert!(!result.updated_import_map);
+    assert!(result.updated_node_modules_dir);
+    assert_eq!(
+      result.new_text.unwrap(),
+      r#"{
+  "nodeModulesDir": true
 }
 "#
     );
@@ -325,19 +383,20 @@ mod internal_test {
 
   #[test]
   fn update_config_text_existing_props_add_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       r#"{
   "tasks": {
     "task1": "other"
   }
 }
 "#,
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
       r#"{
   "tasks": {
     "task1": "other"
@@ -350,21 +409,54 @@ mod internal_test {
 
   #[test]
   fn update_config_text_update_prop() {
-    let text = update_config_text(
+    let result = update_config_text(
       r#"{
   "importMap": "./local.json"
 }
 "#,
-      "./vendor/import_map.json",
       &Default::default(),
+      Some("./vendor/import_map.json"),
+      false,
     )
     .unwrap();
     assert_eq!(
-      text,
+      result.new_text.unwrap(),
       r#"{
   "importMap": "./vendor/import_map.json"
 }
 "#
     );
+  }
+
+  #[test]
+  fn no_update_node_modules_dir() {
+    // will not update if this is already set (even if it's false)
+    let result = update_config_text(
+      r#"{
+  "nodeModulesDir": false
+}
+"#,
+      &Default::default(),
+      None,
+      true,
+    )
+    .unwrap();
+    assert!(!result.updated_node_modules_dir);
+    assert!(!result.updated_import_map);
+    assert_eq!(result.new_text, None);
+
+    let result = update_config_text(
+      r#"{
+  "nodeModulesDir": true
+}
+"#,
+      &Default::default(),
+      None,
+      true,
+    )
+    .unwrap();
+    assert!(!result.updated_node_modules_dir);
+    assert!(!result.updated_import_map);
+    assert_eq!(result.new_text, None);
   }
 }
