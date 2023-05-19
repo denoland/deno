@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use std::io::BufRead;
 use std::io::BufReader;
-use std::io::Read;
 use std::process::Stdio;
 use test_util as util;
 
@@ -136,7 +135,7 @@ fn js_unit_test(test: &'static str) {
     .expect("failed to spawn script");
 
   let stdout = deno.stdout.take().unwrap();
-  std::thread::spawn(move || {
+  let stdout = std::thread::spawn(move || {
     let reader = BufReader::new(stdout);
     for line in reader.lines() {
       if let Ok(line) = line {
@@ -148,7 +147,7 @@ fn js_unit_test(test: &'static str) {
   });
 
   let stderr = deno.stderr.take().unwrap();
-  std::thread::spawn(move || {
+  let stderr = std::thread::spawn(move || {
     let reader = BufReader::new(stderr);
     for line in reader.lines() {
       if let Ok(line) = line {
