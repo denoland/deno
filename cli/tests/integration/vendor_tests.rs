@@ -569,7 +569,7 @@ fn vendor_npm_node_specifiers() {
   assert!(temp_dir.path().join("node_modules").exists());
   assert!(temp_dir.path().join("deno.lock").exists());
 
-  // now try re-vendoring
+  // now try re-vendoring with a lockfile
   let output = context.new_command().args("vendor --force my_app.ts").run();
   output.assert_matches_text(format!(
     concat!(
