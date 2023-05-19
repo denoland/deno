@@ -2,15 +2,17 @@
 
 import { assertEquals, loadTestLibrary } from "./common.js";
 
+let callCount = 0;
+function incrementCallCount() {
+  callCount++;
+}
+
 if (import.meta.main) {
   const instanceData = loadTestLibrary();
   instanceData.setPrintOnDelete();
   assertEquals(instanceData.increment(), 42);
-  let callCount = 0;
-  instanceData.objectWithFinalizer(() => callCount++);
-  console.log("created object");
+  instanceData.objectWithFinalizer(incrementCallCount);
   gc();
-  console.log("gc run");
   assertEquals(callCount, 1);
 } else {
   Deno.test("napi instance data", async () => {

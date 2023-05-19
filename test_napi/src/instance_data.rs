@@ -39,7 +39,6 @@ extern "C" fn increment(
 
   assert_napi_ok!(napi_get_instance_data(env, data_ptr));
   let data = unsafe { &mut *(*data_ptr as *mut AddonData) };
-  eprintln!("data {:#?}", data);
   assert_napi_ok!(napi_create_uint32(env, data.value + 1, &mut result));
 
   result
@@ -66,11 +65,9 @@ unsafe extern "C" fn test_finalizer(
   let data_ptr = &mut (data as *mut c_void);
   assert_napi_ok!(napi_get_instance_data(env, data_ptr));
   let data = unsafe { &mut *(*data_ptr as *mut AddonData) };
-  eprintln!("data {:#?}", data);
   let mut js_cb: napi_value = ptr::null_mut();
   let mut undefined: napi_value = ptr::null_mut();
   assert_napi_ok!(napi_get_reference_value(env, data.js_cb_ref, &mut js_cb));
-  eprintln!("js_cb {:#?}", js_cb);
   assert_napi_ok!(napi_get_undefined(env, &mut undefined));
   assert_napi_ok!(napi_call_function(
     env,
@@ -93,10 +90,10 @@ extern "C" fn object_with_finalizer(
   let mut result: napi_value = ptr::null_mut();
 
   assert_napi_ok!(napi_get_instance_data(env, data_ptr));
-  let data = unsafe { (&mut *(*data_ptr as *mut AddonData)) };
+  let data = unsafe { &mut *(*data_ptr as *mut AddonData) };
   assert!(data.js_cb_ref.is_null());
 
-  let (_args, argc, js_cb) = napi_get_callback_info!(env, info, 1);
+  let (args, argc, _) = napi_get_callback_info!(env, info, 1);
   assert_eq!(argc, 1);
 
   let value: napi_value = ptr::null_mut();
@@ -109,7 +106,7 @@ extern "C" fn object_with_finalizer(
     ptr::null_mut(),
     ptr::null_mut(),
   ));
-  assert_napi_ok!(napi_create_reference(env, js_cb, 1, &mut data.js_cb_ref));
+  assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut data.js_cb_ref));
 
   value
 }
