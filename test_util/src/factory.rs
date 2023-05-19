@@ -48,7 +48,8 @@ pub fn check_test_glob(
     .canonicalize()
     .unwrap()
     .to_string_lossy()
-    .into_owned();
+    // Strip Windows slashes
+    .replace('\\', "/");
   let mut found = HashSet::new();
   let mut list = vec![];
   for file in glob(&format!("{}/{}", base, glob_pattern))
@@ -60,7 +61,8 @@ pub fn check_test_glob(
       .unwrap();
     file.set_extension("");
     let name = file.file_name().unwrap().to_string_lossy();
-    let file = file.to_string_lossy().into_owned();
+    // Strip windows slashes
+    let file = file.to_string_lossy().replace('\\', "/");
     let file = file
       .strip_prefix(&base_dir)
       .expect("File {file} did not start with {base_dir} prefix");
