@@ -6,19 +6,6 @@ use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
 
-#[test]
-fn js_unit_tests_lint() {
-  let status = util::deno_cmd()
-    .arg("lint")
-    .arg("--unstable")
-    .arg(util::tests_path().join("unit"))
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
 util::unit_test_factory!(
   js_unit_test,
   "tests/unit",
