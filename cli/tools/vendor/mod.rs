@@ -53,7 +53,9 @@ pub async fn vendor(
     cli_options.initial_cwd(),
   )
   .await?;
-  let had_npm_packages = !graph.npm_packages.is_empty();
+  let npm_package_count = graph.npm_packages.len();
+  let try_add_node_modules_dir = npm_package_count > 0
+    && cli_options.node_modules_dir_enablement().unwrap_or(true);
   let vendored_count = build::build(
     graph,
     factory.parsed_source_cache()?,
@@ -73,11 +75,43 @@ pub async fn vendor(
     },
     raw_output_dir.display(),
   );
+
+  let modified_result = if vendored_count > 0 {
+    maybe_update_config_file(&output_dir, cli_options, try_add_node_modules_dir)
+  } else {
+    ModifiedResult::default()
+  };
+
+  // cache the node_modules folder when it's been added to the config file
+  if modified_result.added_node_modules_dir {
+    let node_modules_path = cli_options.node_modules_dir_path().or_else(|| {
+      cli_options
+        .maybe_config_file_specifier()
+        .filter(|c| c.scheme() == "file")
+        .and_then(|c| c.to_file_path().ok())
+        .map(|config_path| config_path.parent().unwrap().join("node_modules"))
+    });
+    if let Some(node_modules_path) = node_modules_path {
+      factory
+        .create_node_modules_npm_fs_resolver(node_modules_path)
+        .await?
+        .cache_packages()
+        .await?;
+    }
+    log::info!(
+      concat!("Vendored {} npm {} into node_modules directory. Set `nodeModulesDir: false` to disable vendoring npm packages in the future."),
+      npm_package_count,
+      if vendored_count == 1 {
+        "package"
+      } else {
+        "packages"
+      },
+    );
+  }
+
   if vendored_count > 0 {
     let import_map_path = raw_output_dir.join("import_map.json");
-    let result =
-      maybe_update_config_file(&output_dir, cli_options, had_npm_packages);
-    if result.updated_import_map {
+    if modified_result.updated_import_map {
       log::info!(
         concat!(
           "\nUpdated your local Deno configuration file with a reference to the ",
@@ -162,7 +196,7 @@ fn validate_options(
 fn maybe_update_config_file(
   output_dir: &Path,
   options: &CliOptions,
-  had_npm_packages: bool,
+  try_add_node_modules_dir: bool,
 ) -> ModifiedResult {
   assert!(output_dir.is_absolute());
   let config_file = match options.maybe_config_file() {
@@ -183,7 +217,7 @@ fn maybe_update_config_file(
     &fmt_config.options,
     &ModuleSpecifier::from_file_path(output_dir.join("import_map.json"))
       .unwrap(),
-    had_npm_packages,
+    try_add_node_modules_dir,
   );
   match result {
     Ok(modified_result) => modified_result,
@@ -198,7 +232,7 @@ fn update_config_file(
   config_file: &ConfigFile,
   fmt_options: &FmtOptionsConfig,
   import_map_specifier: &ModuleSpecifier,
-  had_npm_packages: bool,
+  try_add_node_modules_dir: bool,
 ) -> Result<ModifiedResult, AnyError> {
   let config_path = specifier_to_file_path(&config_file.specifier)?;
   let config_text = std::fs::read_to_string(&config_path)?;
@@ -208,7 +242,7 @@ fn update_config_file(
     &config_text,
     fmt_options,
     import_map_specifier.as_deref(),
-    had_npm_packages,
+    try_add_node_modules_dir,
   )?;
   if let Some(new_text) = &modified_result.new_text {
     std::fs::write(config_path, new_text)?;
@@ -219,7 +253,7 @@ fn update_config_file(
 #[derive(Default)]
 struct ModifiedResult {
   updated_import_map: bool,
-  updated_node_modules_dir: bool,
+  added_node_modules_dir: bool,
   new_text: Option<String>,
 }
 
@@ -227,7 +261,7 @@ fn update_config_text(
   text: &str,
   fmt_options: &FmtOptionsConfig,
   import_map_specifier: Option<&str>,
-  had_npm_packages: bool,
+  try_add_node_modules_dir: bool,
 ) -> Result<ModifiedResult, AnyError> {
   use jsonc_parser::ast::ObjectProp;
   use jsonc_parser::ast::Value;
@@ -241,7 +275,7 @@ fn update_config_text(
   let mut text_changes = Vec::new();
   let mut should_format = false;
 
-  if had_npm_packages {
+  if try_add_node_modules_dir {
     // Only modify the nodeModulesDir property if it's not set
     // as this allows people to opt-out of this when vendoring
     // by specifying `nodeModulesDir: false`
@@ -252,7 +286,7 @@ fn update_config_text(
         new_text: r#""nodeModulesDir": true"#.to_string(),
       });
       should_format = true;
-      modified_result.updated_node_modules_dir = true;
+      modified_result.added_node_modules_dir = true;
     }
   }
 
@@ -341,7 +375,7 @@ mod internal_test {
     )
     .unwrap();
     assert!(result.updated_import_map);
-    assert!(!result.updated_node_modules_dir);
+    assert!(!result.added_node_modules_dir);
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
@@ -358,7 +392,7 @@ mod internal_test {
     )
     .unwrap();
     assert!(result.updated_import_map);
-    assert!(result.updated_node_modules_dir);
+    assert!(result.added_node_modules_dir);
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
@@ -371,7 +405,7 @@ mod internal_test {
     let result =
       update_config_text("{\n}", &Default::default(), None, true).unwrap();
     assert!(!result.updated_import_map);
-    assert!(result.updated_node_modules_dir);
+    assert!(result.added_node_modules_dir);
     assert_eq!(
       result.new_text.unwrap(),
       r#"{
@@ -465,7 +499,7 @@ mod internal_test {
       true,
     )
     .unwrap();
-    assert!(!result.updated_node_modules_dir);
+    assert!(!result.added_node_modules_dir);
     assert!(!result.updated_import_map);
     assert_eq!(result.new_text, None);
 
@@ -479,7 +513,7 @@ mod internal_test {
       true,
     )
     .unwrap();
-    assert!(!result.updated_node_modules_dir);
+    assert!(!result.added_node_modules_dir);
     assert!(!result.updated_import_map);
     assert_eq!(result.new_text, None);
   }

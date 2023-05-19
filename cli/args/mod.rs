@@ -881,6 +881,15 @@ impl CliOptions {
     self.maybe_node_modules_folder.clone()
   }
 
+  pub fn node_modules_dir_enablement(&self) -> Option<bool> {
+    self.flags.node_modules_dir.or_else(|| {
+      self
+        .maybe_config_file
+        .as_ref()
+        .and_then(|c| c.node_modules_dir())
+    })
+  }
+
   pub fn node_modules_dir_specifier(&self) -> Option<ModuleSpecifier> {
     self
       .maybe_node_modules_folder
