@@ -2906,8 +2906,9 @@ Deno.test(
 );
 
 // TODO(mmastrac): This test should eventually use fetch, when we support trailers there.
+// This test is ignored because it's flaky and relies on cURL's verbose output.
 Deno.test(
-  { permissions: { net: true, run: true, read: true } },
+  { permissions: { net: true, run: true, read: true }, ignore: true },
   async function httpServerTrailers() {
     const ac = new AbortController();
     const listeningPromise = deferred();
