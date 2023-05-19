@@ -122,7 +122,7 @@ type ParentPort = typeof self & NodeEventTarget;
 // deno-lint-ignore no-explicit-any
 let parentPort: ParentPort = null as any;
 
-globalThis.__bootstrap.internals.__initWorkerThreads = async () => {
+globalThis.__bootstrap.internals.__initWorkerThreads = () => {
   isMainThread =
     // deno-lint-ignore no-explicit-any
     (globalThis as any).name !== PRIVATE_WORKER_THREAD_NAME;
@@ -186,7 +186,7 @@ globalThis.__bootstrap.internals.__initWorkerThreads = async () => {
     parentPort.once = function (this: ParentPort, name, listener) {
       initPromise.then(() => {
         // deno-lint-ignore no-explicit-any
-        const _listener = async (ev: any) => listener(ev.data);
+        const _listener = (ev: any) => listener(ev.data);
         listeners.set(listener, _listener);
         this.addEventListener(name, _listener);
       });

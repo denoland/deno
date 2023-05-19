@@ -9,20 +9,24 @@ import {
 import { once } from "node:events";
 
 async function message(expectedMessage: string) {
+  // deno-lint-ignore no-explicit-any
   const [message] = await once(parentPort as any, "message");
   if (message !== expectedMessage) {
     console.log(`Expected the message "${expectedMessage}", but got`, message);
     // fail test
+    // deno-lint-ignore no-explicit-any
     (parentPort as any).close();
   }
 }
 
 await message("Hello, how are you my thread?");
 
+// deno-lint-ignore no-explicit-any
 (parentPort as any).postMessage("I'm fine!");
 
 await new Promise((resolve) => setTimeout(resolve, 100));
 
+// deno-lint-ignore no-explicit-any
 (parentPort as any).postMessage({
   isMainThread,
   threadId,
