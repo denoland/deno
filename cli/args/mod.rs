@@ -8,7 +8,7 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
-use self::lockfile::snapshot_from_lockfile;
+pub use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
@@ -1348,7 +1348,7 @@ pub fn resolve_no_prompt(flags: &Flags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
-fn has_flag_env_var(name: &str) -> bool {
+pub fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }

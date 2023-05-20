@@ -1089,6 +1089,26 @@ impl ConfigFile {
       Ok(None)
     }
   }
+
+  pub fn resolve_lockfile_path(&self) -> Result<Option<PathBuf>, AnyError> {
+    match self.to_lock_config()? {
+      Some(LockConfig::Bool(lock)) if !lock => Ok(None),
+      Some(LockConfig::PathBuf(lock)) => Ok(Some(
+        self
+          .specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap()
+          .join(lock),
+      )),
+      _ => {
+        let mut path = self.specifier.to_file_path().unwrap();
+        path.set_file_name("deno.lock");
+        Ok(Some(path))
+      }
+    }
+  }
 }
 
 /// Represents the "default" type library that should be used when type

@@ -4,12 +4,15 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
+use deno_lockfile::Lockfile;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
@@ -71,6 +74,7 @@ use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
+use crate::args::snapshot_from_lockfile;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -152,6 +156,8 @@ pub struct Inner {
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
   maybe_import_map_uri: Option<Url>,
+  /// An optional deno.lock file, which is resolved relative to the config file.
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   /// An optional package.json configuration file.
   maybe_package_json: Option<PackageJson>,
   /// Configuration for formatter which has been taken from specified config file.
@@ -223,7 +229,7 @@ impl LanguageServer {
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => {
         // do as much as possible in a read, then do a write outside
-        let maybe_cache_result = {
+        let maybe_prepare_cache_result = {
           let inner = self.0.read().await; // ensure dropped
           match inner.prepare_cache(params) {
             Ok(maybe_cache_result) => maybe_cache_result,
@@ -238,7 +244,7 @@ impl LanguageServer {
             }
           }
         };
-        if let Some(result) = maybe_cache_result {
+        if let Some(result) = maybe_prepare_cache_result {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
@@ -431,17 +437,33 @@ impl LanguageServer {
   }
 }
 
-fn create_lsp_structs(
+fn resolve_node_modules_dir(
+  maybe_config_file: Option<&ConfigFile>,
+  maybe_package_json: Option<&PackageJson>,
+) -> Option<PathBuf> {
+  if let Some(use_node_modules_dir) =
+    maybe_config_file.and_then(|c| c.node_modules_dir())
+  {
+    if !use_node_modules_dir {
+      return None; // explicitly disabled
+    }
+  } else if maybe_package_json.is_none() {
+    return None; // no package.json
+  }
+
+  maybe_config_file
+    .filter(|c| c.specifier.scheme() == "file")
+    .and_then(|c| c.specifier.to_file_path().ok())
+    .or_else(|| maybe_package_json.map(|c| c.path.clone()))
+    .map(|p| p.parent().unwrap().join("node_modules"))
+}
+
+fn create_npm_api_and_cache(
   dir: &DenoDir,
   http_client: Arc<HttpClient>,
-) -> (
-  Arc<CliNpmRegistryApi>,
-  Arc<NpmCache>,
-  Arc<CliNpmResolver>,
-  Arc<NpmResolution>,
-) {
-  let registry_url = CliNpmRegistryApi::default_url();
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+  registry_url: &ModuleSpecifier,
+  progress_bar: &ProgressBar,
+) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
   let npm_cache = Arc::new(NpmCache::new(
     dir.npm_folder_path(),
     // Use an "only" cache setting in order to make the
@@ -458,8 +480,23 @@ fn create_lsp_structs(
     http_client,
     progress_bar.clone(),
   ));
-  let resolution =
-    Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
+  (api, npm_cache)
+}
+
+fn create_npm_resolver_and_resolution(
+  registry_url: &ModuleSpecifier,
+  progress_bar: ProgressBar,
+  api: Arc<CliNpmRegistryApi>,
+  npm_cache: Arc<NpmCache>,
+  node_modules_dir_path: Option<PathBuf>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
+  let resolution = Arc::new(NpmResolution::from_serialized(
+    api.clone(),
+    maybe_snapshot,
+    maybe_lockfile.clone(),
+  ));
   let fs = Arc::new(deno_fs::RealFs);
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
@@ -467,17 +504,15 @@ fn create_lsp_structs(
     &progress_bar,
     registry_url.clone(),
     resolution.clone(),
-    None,
+    node_modules_dir_path,
     NpmSystemInfo::default(),
   );
   (
-    api,
-    npm_cache,
     Arc::new(CliNpmResolver::new(
       fs,
       resolution.clone(),
       fs_resolver,
-      None,
+      maybe_lockfile,
     )),
     resolution,
   )
@@ -505,8 +540,24 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let (npm_api, npm_cache, npm_resolver, npm_resolution) =
-      create_lsp_structs(&dir, http_client.clone());
+    let registry_url = CliNpmRegistryApi::default_url();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+
+    let (npm_api, npm_cache) = create_npm_api_and_cache(
+      &dir,
+      http_client.clone(),
+      registry_url,
+      &progress_bar,
+    );
+    let (npm_resolver, npm_resolution) = create_npm_resolver_and_resolution(
+      registry_url,
+      progress_bar,
+      npm_api.clone(),
+      npm_cache.clone(),
+      None,
+      None,
+      None,
+    );
 
     Self {
       assets,
@@ -521,6 +572,7 @@ impl Inner {
       maybe_config_file: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
+      maybe_lockfile: None,
       maybe_package_json: None,
       fmt_options: Default::default(),
       lint_options: Default::default(),
@@ -649,6 +701,10 @@ impl Inner {
     &self,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<PackageJson>, AnyError> {
+    if crate::args::has_flag_env_var("DENO_NO_PACKAGE_JSON") {
+      return Ok(None);
+    }
+
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
@@ -714,7 +770,7 @@ impl Inner {
     let npm_resolution = Arc::new(NpmResolution::new(
       self.npm_api.clone(),
       self.npm_resolution.snapshot(),
-      None,
+      self.maybe_lockfile.clone(),
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
@@ -726,10 +782,10 @@ impl Inner {
         &ProgressBar::new(ProgressBarStyle::TextOnly),
         self.npm_api.base_url().clone(),
         npm_resolution,
-        None,
+        self.maybe_node_modules_dir_path(),
         NpmSystemInfo::default(),
       ),
-      None,
+      self.maybe_lockfile.clone(),
     ));
     let node_resolver =
       Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
@@ -743,7 +799,7 @@ impl Inner {
     })
   }
 
-  pub fn update_cache(&mut self) -> Result<(), AnyError> {
+  pub async fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
@@ -773,20 +829,19 @@ impl Inner {
       None
     };
     if self.maybe_cache_path != maybe_cache_path {
-      self.recreate_http_client_and_dependents(maybe_cache_path)?;
+      self
+        .recreate_http_client_and_dependents(maybe_cache_path)
+        .await?;
     }
     Ok(())
   }
 
   /// Recreates the http client and all dependent structs.
-  fn recreate_http_client_and_dependents(
+  async fn recreate_http_client_and_dependents(
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
-    let maybe_custom_root = new_cache_path
-      .clone()
-      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    let dir = DenoDir::new(maybe_custom_root)?;
+    let dir = self.deno_dir_from_maybe_cache_path(new_cache_path.clone())?;
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -812,18 +867,67 @@ impl Inner {
       self.http_client.clone(),
     );
     self.module_registries_location = module_registries_location;
-    (
-      self.npm_api,
-      self.npm_cache,
-      self.npm_resolver,
-      self.npm_resolution,
-    ) = create_lsp_structs(&dir, self.http_client.clone());
+    self.recreate_npm_structs_from_deno_dir(&dir).await;
     // update the cache path
     let location = dir.deps_folder_path();
     self.documents.set_location(&location);
     self.cache_metadata.set_location(&location);
     self.maybe_cache_path = new_cache_path;
     Ok(())
+  }
+
+  fn deno_dir_from_maybe_cache_path(
+    &self,
+    cache_path: Option<PathBuf>,
+  ) -> std::io::Result<DenoDir> {
+    let maybe_custom_root =
+      cache_path.or_else(|| env::var("DENO_DIR").map(String::into).ok());
+    DenoDir::new(maybe_custom_root)
+  }
+
+  async fn attempt_recreate_npm_structs(&mut self) {
+    // the npm structs are dependent on the lockfile and whether there is a node_modules folder or not
+    match self.deno_dir_from_maybe_cache_path(self.maybe_cache_path.clone()) {
+      Ok(deno_dir) => {
+        self.recreate_npm_structs_from_deno_dir(&deno_dir).await;
+      }
+      Err(err) => {
+        lsp_warn!("Error getting deno dir: {}", err);
+      }
+    }
+  }
+
+  async fn recreate_npm_structs_from_deno_dir(&mut self, deno_dir: &DenoDir) {
+    let registry_url = CliNpmRegistryApi::default_url();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+    (self.npm_api, self.npm_cache) = create_npm_api_and_cache(
+      &deno_dir,
+      self.http_client.clone(),
+      registry_url,
+      &progress_bar,
+    );
+    let maybe_snapshot = match &self.maybe_lockfile {
+      Some(lockfile) => {
+        match snapshot_from_lockfile(lockfile.clone(), &self.npm_api).await {
+          Ok(snapshot) => Some(snapshot),
+          Err(err) => {
+            lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+            None
+          }
+        }
+      }
+      None => None,
+    };
+    (self.npm_resolver, self.npm_resolution) =
+      create_npm_resolver_and_resolution(
+        registry_url,
+        progress_bar,
+        self.npm_api.clone(),
+        self.npm_cache.clone(),
+        self.maybe_node_modules_dir_path(),
+        self.maybe_lockfile.clone(),
+        maybe_snapshot,
+      );
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
@@ -968,7 +1072,9 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
+    self
+      .recreate_http_client_and_dependents(self.maybe_cache_path.clone())
+      .await?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
@@ -982,8 +1088,9 @@ impl Inner {
     Ok(())
   }
 
-  fn update_config_file(&mut self) -> Result<(), AnyError> {
+  async fn update_config_file(&mut self) -> Result<(), AnyError> {
     self.maybe_config_file = None;
+    self.maybe_lockfile = None;
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
 
@@ -1005,12 +1112,50 @@ impl Inner {
           anyhow!("Unable to update formatter configuration: {:?}", err)
         })?;
 
+      self.maybe_lockfile = self.resolve_lockfile_from_config(&config_file);
       self.maybe_config_file = Some(config_file);
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
     }
 
+    self.attempt_recreate_npm_structs().await;
+
     Ok(())
+  }
+
+  fn resolve_lockfile_from_config(
+    &self,
+    config_file: &ConfigFile,
+  ) -> Option<Arc<Mutex<Lockfile>>> {
+    let lockfile_path = match config_file.resolve_lockfile_path() {
+      Ok(Some(value)) => value,
+      Ok(None) => return None,
+      Err(err) => {
+        lsp_warn!("Error resolving lockfile: {:#}", err);
+        return None;
+      }
+    };
+    self.resolve_lockfile_from_path(lockfile_path)
+  }
+
+  fn resolve_lockfile_from_path(
+    &self,
+    lockfile_path: PathBuf,
+  ) -> Option<Arc<Mutex<Lockfile>>> {
+    match Lockfile::new(lockfile_path, false) {
+      Ok(value) => Some(Arc::new(Mutex::new(value))),
+      Err(err) => {
+        lsp_warn!("Error loading lockfile: {:#}", err);
+        return None;
+      }
+    }
+  }
+
+  fn maybe_node_modules_dir_path(&self) -> Option<PathBuf> {
+    resolve_node_modules_dir(
+      self.maybe_config_file.as_ref(),
+      self.maybe_package_json.as_ref(),
+    )
   }
 
   /// Updates the package.json. Always ensure this is done after updating
@@ -1126,10 +1271,10 @@ impl Inner {
 
     self.update_debug_flag();
     // Check to see if we need to change the cache path
-    if let Err(err) = self.update_cache() {
+    if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file() {
+    if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
@@ -1304,13 +1449,13 @@ impl Inner {
     }
 
     self.update_debug_flag();
-    if let Err(err) = self.update_cache() {
+    if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file() {
+    if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
@@ -1346,13 +1491,27 @@ impl Inner {
     // if the current deno.json has changed, we need to reload it
     if let Some(config_file) = &self.maybe_config_file {
       if changes.contains(&config_file.specifier) {
-        if let Err(err) = self.update_config_file() {
+        if let Err(err) = self.update_config_file().await {
           self.client.show_message(MessageType::WARNING, err);
         }
         if let Err(err) = self.update_tsconfig().await {
           self.client.show_message(MessageType::WARNING, err);
         }
         touched = true;
+      }
+    }
+    if let Some(lockfile) = &self.maybe_lockfile {
+      let lockfile_path = {
+        let lockfile = lockfile.lock();
+        lockfile.filename.clone()
+      };
+      let maybe_specifier =
+        ModuleSpecifier::from_file_path(&lockfile_path).ok();
+      if let Some(specifier) = maybe_specifier {
+        if changes.contains(&specifier) {
+          self.maybe_lockfile = self.resolve_lockfile_from_path(lockfile_path);
+          touched = true;
+        }
       }
     }
     if let Some(package_json) = &self.maybe_package_json {
@@ -1375,6 +1534,7 @@ impl Inner {
       }
     }
     if touched {
+      self.attempt_recreate_npm_structs().await;
       self.refresh_documents_config();
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();
@@ -3161,10 +3321,8 @@ impl Inner {
       },
       std::env::current_dir().with_context(|| "Failed getting cwd.")?,
       self.maybe_config_file.clone(),
-      // TODO(#16510): add support for lockfile
-      None,
-      // TODO(bartlomieju): handle package.json dependencies here
-      None,
+      self.maybe_lockfile.as_ref().map(|l| l.lock().clone()),
+      self.maybe_package_json.clone(),
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
