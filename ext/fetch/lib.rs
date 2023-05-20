@@ -778,7 +778,7 @@ pub fn create_http_client(
     (false, true) => builder = builder.http2_prior_knowledge(),
     (true, true) => {}
     (false, false) => {
-      return Err(type_error("At least http1 or http2 need to be enabled"))
+      return Err(type_error("Either `http1` or `http2` needs to be true"))
     }
   }
 

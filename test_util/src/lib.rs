@@ -1492,37 +1492,23 @@ async fn wrap_https_h2_only_tls_server() {
 async fn wrap_https_h1_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
 
-  loop {
-    let main_server_http_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_http = Server::bind(&main_server_http_addr)
-      .http1_only(true)
-      .serve(main_server_http_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_http.await.is_err() {
-      continue;
-    }
-  }
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http1_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
 }
 
 async fn wrap_https_h2_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
 
-  loop {
-    let main_server_http_svc = make_service_fn(|_| async {
-      Ok::<_, Infallible>(service_fn(main_server))
-    });
-    let main_server_http = Server::bind(&main_server_http_addr)
-      .http2_only(true)
-      .serve(main_server_http_svc);
-
-    //continue to prevent TLS error stopping the server
-    if main_server_http.await.is_err() {
-      continue;
-    }
-  }
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http2_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
 }
 
 async fn wrap_client_auth_https_server() {
