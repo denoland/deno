@@ -1532,7 +1532,11 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: true } },
+  {
+    permissions: { net: true, read: true },
+    // Doesn't pass on linux CI for unknown reasons (works fine locally on linux)
+    ignore: Deno.build.os !== "darwin",
+  },
   async function fetchForceHttp1OnHttp2Server() {
     const client = Deno.createHttpClient({ http2: false, http1: true });
     await assertRejects(
@@ -1562,11 +1566,7 @@ Deno.test(
 );
 
 Deno.test(
-  {
-    permissions: { net: true, read: true },
-    // Doesn't pass on linux CI for unknown reasons (works fine locally on linux)
-    ignore: Deno.build.os !== "darwin",
-  },
+  { permissions: { net: true, read: true } },
   async function fetchPrefersHttp2() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
