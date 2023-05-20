@@ -1343,7 +1343,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(lock_arg())
     .arg(config_arg())
     .arg(import_map_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1862,6 +1862,7 @@ Remote modules and multiple modules may also be specified:
     .arg(config_arg())
     .arg(import_map_arg())
     .arg(lock_arg())
+    .arg(node_modules_dir_arg())
     .arg(reload_arg())
     .arg(ca_file_arg())
 }
@@ -1875,7 +1876,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -2424,14 +2425,14 @@ fn no_npm_arg() -> Arg {
     .help("Do not resolve npm modules")
 }
 
-fn local_npm_arg() -> Arg {
+fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("Creates a local node_modules folder")
+    .help("Enables or disables the use of a local node_modules folder for npm packages")
 }
 
 fn unsafely_ignore_certificate_errors_arg() -> Arg {
@@ -2719,7 +2720,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -2975,6 +2976,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
@@ -3000,7 +3002,7 @@ fn compile_args_without_check_parse(
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3254,7 +3256,7 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn local_npm_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn node_modules_dir_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
 }
 

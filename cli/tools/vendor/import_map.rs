@@ -304,7 +304,7 @@ fn handle_dep_specifier(
       referrer,
       mappings,
     )
-  } else {
+  } else if specifier.scheme() == "file" {
     handle_local_dep_specifier(
       text,
       unresolved_specifier,

@@ -116,6 +116,7 @@ deno_core::extension!(
     http_next::op_http_set_response_body_text,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
     http_next::op_http_track,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,

@@ -1577,7 +1577,7 @@ class ServerImpl extends EventEmitter {
           this.emit("listening");
         },
       },
-    ).then(() => this.#servePromise!.resolve());
+    ).finished.then(() => this.#servePromise!.resolve());
   }
 
   setTimeout() {
