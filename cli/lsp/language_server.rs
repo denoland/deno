@@ -84,6 +84,7 @@ use crate::args::FmtOptions;
 use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
@@ -166,14 +167,8 @@ pub struct Inner {
   lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  /// Npm's registry api.
-  npm_api: Arc<CliNpmRegistryApi>,
-  /// Npm cache
-  npm_cache: Arc<NpmCache>,
-  /// Npm resolution that is stored in memory.
-  npm_resolution: Arc<NpmResolution>,
-  /// Resolver for npm packages.
-  npm_resolver: Arc<CliNpmResolver>,
+  /// Services used for dealing with npm related functionality.
+  npm: LspNpmServices,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -489,14 +484,14 @@ fn create_npm_resolver_and_resolution(
   maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
 ) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
   let resolution = Arc::new(NpmResolution::from_serialized(
-    api.clone(),
+    api,
     maybe_snapshot,
     maybe_lockfile.clone(),
   ));
   let fs = Arc::new(deno_fs::RealFs);
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
-    npm_cache.clone(),
+    npm_cache,
     &progress_bar,
     registry_url.clone(),
     resolution.clone(),
@@ -512,6 +507,49 @@ fn create_npm_resolver_and_resolution(
     )),
     resolution,
   )
+}
+
+#[derive(Debug)]
+struct LspNpmServices {
+  /// When this hash changes, the services need updating
+  config_hash: LspNpmConfigHash,
+  /// Npm's registry api.
+  api: Arc<CliNpmRegistryApi>,
+  /// Npm cache
+  cache: Arc<NpmCache>,
+  /// Npm resolution that is stored in memory.
+  resolution: Arc<NpmResolution>,
+  /// Resolver for npm packages.
+  resolver: Arc<CliNpmResolver>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct LspNpmConfigHash(u64);
+
+impl LspNpmConfigHash {
+  pub fn from_inner(inner: &Inner) -> Self {
+    let mut hasher = FastInsecureHasher::new();
+    hasher.write_hashable(&inner.maybe_node_modules_dir_path());
+    hasher.write_hashable(&inner.maybe_cache_path);
+    hash_lockfile_with_hasher(&mut hasher, inner.maybe_lockfile.as_ref());
+    Self(hasher.finish())
+  }
+}
+
+fn hash_lockfile(maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>) -> u64 {
+  let mut hasher = FastInsecureHasher::new();
+  hash_lockfile_with_hasher(&mut hasher, maybe_lockfile);
+  hasher.finish()
+}
+
+fn hash_lockfile_with_hasher(
+  hasher: &mut FastInsecureHasher,
+  maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
+) {
+  if let Some(lockfile) = &maybe_lockfile {
+    let lockfile = lockfile.lock();
+    hasher.write_hashable(&*lockfile);
+  }
 }
 
 impl Inner {
@@ -575,10 +613,13 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
-      npm_api,
-      npm_cache,
-      npm_resolution,
-      npm_resolver,
+      npm: LspNpmServices {
+        config_hash: LspNpmConfigHash(0), // this will be updated in initialize
+        api: npm_api,
+        cache: npm_cache,
+        resolution: npm_resolution,
+        resolver: npm_resolver,
+      },
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -764,8 +805,8 @@ impl Inner {
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     // create a new snapshotted npm resolution and resolver
     let npm_resolution = Arc::new(NpmResolution::new(
-      self.npm_api.clone(),
-      self.npm_resolution.snapshot(),
+      self.npm.api.clone(),
+      self.npm.resolution.snapshot(),
       self.maybe_lockfile.clone(),
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
@@ -774,9 +815,9 @@ impl Inner {
       npm_resolution.clone(),
       create_npm_fs_resolver(
         node_fs.clone(),
-        self.npm_cache.clone(),
+        self.npm.cache.clone(),
         &ProgressBar::new(ProgressBarStyle::TextOnly),
-        self.npm_api.base_url().clone(),
+        self.npm.api.base_url().clone(),
         npm_resolution,
         self.maybe_node_modules_dir_path(),
         NpmSystemInfo::default(),
@@ -863,7 +904,6 @@ impl Inner {
       self.http_client.clone(),
     );
     self.module_registries_location = module_registries_location;
-    self.recreate_npm_structs_from_deno_dir(&dir).await;
     // update the cache path
     let location = dir.deps_folder_path();
     self.documents.set_location(&location);
@@ -881,22 +921,24 @@ impl Inner {
     DenoDir::new(maybe_custom_root)
   }
 
-  async fn attempt_recreate_npm_structs(&mut self) {
-    // the npm structs are dependent on the lockfile and whether there is a node_modules folder or not
-    match self.deno_dir_from_maybe_cache_path(self.maybe_cache_path.clone()) {
-      Ok(deno_dir) => {
-        self.recreate_npm_structs_from_deno_dir(&deno_dir).await;
-      }
+  async fn recreate_npm_services_if_necessary(&mut self) {
+    let deno_dir = match self
+      .deno_dir_from_maybe_cache_path(self.maybe_cache_path.clone())
+    {
+      Ok(deno_dir) => deno_dir,
       Err(err) => {
         lsp_warn!("Error getting deno dir: {}", err);
+        return;
       }
+    };
+    let config_hash = LspNpmConfigHash::from_inner(self);
+    if config_hash == self.npm.config_hash {
+      return; // no need to do anything
     }
-  }
 
-  async fn recreate_npm_structs_from_deno_dir(&mut self, deno_dir: &DenoDir) {
     let registry_url = CliNpmRegistryApi::default_url();
     let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-    (self.npm_api, self.npm_cache) = create_npm_api_and_cache(
+    (self.npm.api, self.npm.cache) = create_npm_api_and_cache(
       &deno_dir,
       self.http_client.clone(),
       registry_url,
@@ -904,7 +946,7 @@ impl Inner {
     );
     let maybe_snapshot = match &self.maybe_lockfile {
       Some(lockfile) => {
-        match snapshot_from_lockfile(lockfile.clone(), &self.npm_api).await {
+        match snapshot_from_lockfile(lockfile.clone(), &self.npm.api).await {
           Ok(snapshot) => Some(snapshot),
           Err(err) => {
             lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
@@ -914,16 +956,19 @@ impl Inner {
       }
       None => None,
     };
-    (self.npm_resolver, self.npm_resolution) =
+    (self.npm.resolver, self.npm.resolution) =
       create_npm_resolver_and_resolution(
         registry_url,
         progress_bar,
-        self.npm_api.clone(),
-        self.npm_cache.clone(),
+        self.npm.api.clone(),
+        self.npm.cache.clone(),
         self.maybe_node_modules_dir_path(),
         self.maybe_lockfile.clone(),
         maybe_snapshot,
       );
+
+    // update the hash
+    self.npm.config_hash = config_hash;
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
@@ -1114,8 +1159,6 @@ impl Inner {
       self.fmt_options = fmt_options;
     }
 
-    self.attempt_recreate_npm_structs().await;
-
     Ok(())
   }
 
@@ -1142,7 +1185,7 @@ impl Inner {
       Ok(value) => Some(Arc::new(Mutex::new(value))),
       Err(err) => {
         lsp_warn!("Error loading lockfile: {:#}", err);
-        return None;
+        None
       }
     }
   }
@@ -1294,6 +1337,7 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
+    self.recreate_npm_services_if_necessary().await;
     self.assets.intitialize(self.snapshot()).await;
 
     self.performance.measure(mark);
@@ -1314,8 +1358,8 @@ impl Inner {
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_config_file: self.maybe_config_file.as_ref(),
       maybe_package_json: self.maybe_package_json.as_ref(),
-      npm_registry_api: self.npm_api.clone(),
-      npm_resolution: self.npm_resolution.clone(),
+      npm_registry_api: self.npm.api.clone(),
+      npm_resolution: self.npm.resolution.clone(),
     });
   }
 
@@ -1383,7 +1427,7 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    let npm_resolver = self.npm_resolver.clone();
+    let npm_resolver = self.npm.resolver.clone();
     // spawn to avoid the LSP's Send requirements
     let handle = spawn(async move {
       npm_resolver.set_package_reqs((*package_reqs).clone()).await
@@ -1461,6 +1505,7 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
+    self.recreate_npm_services_if_necessary().await;
     self.refresh_documents_config();
 
     self.send_diagnostics_update();
@@ -1494,16 +1539,18 @@ impl Inner {
       }
     }
     if let Some(lockfile) = &self.maybe_lockfile {
-      let lockfile_path = {
-        let lockfile = lockfile.lock();
-        lockfile.filename.clone()
-      };
+      let lockfile_path = lockfile.lock().filename.clone();
       let maybe_specifier =
         ModuleSpecifier::from_file_path(&lockfile_path).ok();
       if let Some(specifier) = maybe_specifier {
         if changes.contains(&specifier) {
-          self.maybe_lockfile = self.resolve_lockfile_from_path(lockfile_path);
-          touched = true;
+          let lockfile_hash = hash_lockfile(self.maybe_lockfile.as_ref());
+          let new_lockfile = self.resolve_lockfile_from_path(lockfile_path);
+          // only update if the lockfile has changed
+          if lockfile_hash != hash_lockfile(new_lockfile.as_ref()) {
+            self.maybe_lockfile = new_lockfile;
+            touched = true;
+          }
         }
       }
     }
@@ -1527,7 +1574,7 @@ impl Inner {
       }
     }
     if touched {
-      self.attempt_recreate_npm_structs().await;
+      self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config();
       self.refresh_npm_specifiers().await;
       self.diagnostics_server.invalidate_all();

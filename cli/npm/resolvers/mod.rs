@@ -3,7 +3,6 @@
 mod common;
 mod global;
 mod local;
-mod lsp;
 
 use std::path::Path;
 use std::path::PathBuf;
