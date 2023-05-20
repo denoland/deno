@@ -65,6 +65,12 @@ impl PackageJsonDepsInstaller {
     }))
   }
 
+  /// Creates an installer that never installs local packages during
+  /// resolution. A top level install will be a no-op.
+  pub fn no_op() -> Self {
+    Self(None)
+  }
+
   /// Installs the top level dependencies in the package.json file
   /// without going through and resolving the descendant dependencies yet.
   pub async fn ensure_top_level_install(&self) -> Result<(), AnyError> {

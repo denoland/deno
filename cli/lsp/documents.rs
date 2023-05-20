@@ -1224,11 +1224,7 @@ impl Documents {
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
-      deps_provider.clone(),
-      options.npm_registry_api.clone(),
-      options.npm_resolution.clone(),
-    ));
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
       options.maybe_import_map,

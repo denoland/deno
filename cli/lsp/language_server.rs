@@ -439,22 +439,18 @@ impl LanguageServer {
 
 fn resolve_node_modules_dir(
   maybe_config_file: Option<&ConfigFile>,
-  maybe_package_json: Option<&PackageJson>,
 ) -> Option<PathBuf> {
-  if let Some(use_node_modules_dir) =
-    maybe_config_file.and_then(|c| c.node_modules_dir())
-  {
-    if !use_node_modules_dir {
-      return None; // explicitly disabled
-    }
-  } else if maybe_package_json.is_none() {
-    return None; // no package.json
+  // For the language server, require an explicit opt-in via the
+  // `nodeModulesDir: true` setting in the deno.json file. This is to
+  // reduce the chance of modifying someone's node_modules directory
+  // without them having asked us to do so.
+  if maybe_config_file.and_then(|c| c.node_modules_dir()) != Some(true) {
+    return None;
   }
 
   maybe_config_file
     .filter(|c| c.specifier.scheme() == "file")
     .and_then(|c| c.specifier.to_file_path().ok())
-    .or_else(|| maybe_package_json.map(|c| c.path.clone()))
     .map(|p| p.parent().unwrap().join("node_modules"))
 }
 
@@ -1152,10 +1148,7 @@ impl Inner {
   }
 
   fn maybe_node_modules_dir_path(&self) -> Option<PathBuf> {
-    resolve_node_modules_dir(
-      self.maybe_config_file.as_ref(),
-      self.maybe_package_json.as_ref(),
-    )
+    resolve_node_modules_dir(self.maybe_config_file.as_ref())
   }
 
   /// Updates the package.json. Always ensure this is done after updating
