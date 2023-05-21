@@ -214,7 +214,7 @@ fn op_ctx_function<'s>(
       .data(external.into())
       .length(op_ctx.decl.arg_count as i32);
 
-  let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
+  let template = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
       scope,
       fast_function,
@@ -226,7 +226,7 @@ fn op_ctx_function<'s>(
     builder.build(scope)
   };
 
-  let v8fn = templ.get_function(scope).unwrap();
+  let v8fn = template.get_function(scope).unwrap();
   v8fn.set_name(v8name);
   v8fn
 }
