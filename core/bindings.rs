@@ -206,6 +206,9 @@ fn op_ctx_function<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let v8name =
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
     v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
       .data(external.into())
@@ -222,7 +225,10 @@ fn op_ctx_function<'s>(
   } else {
     builder.build(scope)
   };
-  templ.get_function(scope).unwrap()
+
+  let v8fn = templ.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
