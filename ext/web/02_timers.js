@@ -99,6 +99,7 @@ function initializeTimer(
   args,
   repeat,
   prevId,
+  respectNesting = true,
 ) {
   // 2. If previousId was given, let id be previousId; otherwise, let
   // previousId be an implementation-defined integer than is greater than zero
@@ -131,7 +132,7 @@ function initializeTimer(
   // The nesting level of 5 and minimum of 4 ms are spec-mandated magic
   // constants.
   if (timeout < 0) timeout = 0;
-  if (timerNestingLevel > 5 && timeout < 4) timeout = 4;
+  if (timerNestingLevel > 5 && timeout < 4 && respectNesting) timeout = 4;
 
   // 9. Let task be a task that runs the following steps:
   const task = {
@@ -169,7 +170,7 @@ function initializeTimer(
           // calling clearTimeout() or clearInterval().
           // 5. If repeat is true, then perform the timer initialization steps
           // again, given global, handler, timeout, arguments, true, and id.
-          initializeTimer(callback, timeout, args, true, id);
+          initializeTimer(callback, timeout, args, true, id, respectNesting);
         }
       } else {
         // 6. Otherwise, remove global's map of active timers[id].
@@ -343,6 +344,26 @@ function setInterval(callback, timeout = 0, ...args) {
   return initializeTimer(callback, timeout, args, true);
 }
 
+function setTimeoutUnclamped(callback, timeout = 0, ...args) {
+  checkThis(this);
+  if (typeof callback !== "function") {
+    callback = webidl.converters.DOMString(callback);
+  }
+  timeout = webidl.converters.long(timeout);
+
+  return initializeTimer(callback, timeout, args, false, undefined, false);
+}
+
+function setIntervalUnclamped(callback, timeout = 0, ...args) {
+  checkThis(this);
+  if (typeof callback !== "function") {
+    callback = webidl.converters.DOMString(callback);
+  }
+  timeout = webidl.converters.long(timeout);
+
+  return initializeTimer(callback, timeout, args, true, undefined, false);
+}
+
 function clearTimeout(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
@@ -383,6 +404,8 @@ export {
   opNow,
   refTimer,
   setInterval,
+  setIntervalUnclamped,
   setTimeout,
+  setTimeoutUnclamped,
   unrefTimer,
 };
