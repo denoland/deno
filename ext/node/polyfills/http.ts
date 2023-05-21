@@ -548,6 +548,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     const client = this._getClient() ?? createHttpClient({ http2: false });
+    this._client = client;
 
     const req = core.ops.op_node_http_request(
       this.method,
@@ -658,6 +659,7 @@ class ClientRequest extends OutgoingMessage {
     this.controller.close();
 
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
+      this._client.close();
       const incoming = new IncomingMessageForClient(this.socket);
 
       // TODO(@crowlKats):
