@@ -4904,6 +4904,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       throw new Error();
     }
     "#;
-    runtime.execute_script_static("test", src.into()).unwrap();
+    runtime.execute_script_static("test", src).unwrap();
   }
 }
