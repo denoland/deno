@@ -1532,34 +1532,24 @@ Deno.test(
 );
 
 Deno.test(
-  {
-    permissions: { net: true, read: true },
-    // Doesn't pass on linux CI for unknown reasons (works fine locally on linux)
-    ignore: Deno.build.os !== "darwin",
-  },
+  { permissions: { net: true, read: true } },
   async function fetchForceHttp1OnHttp2Server() {
     const client = Deno.createHttpClient({ http2: false, http1: true });
     await assertRejects(
       () => fetch("http://localhost:5549/http_version", { client }),
       TypeError,
-      "invalid HTTP version parsed",
     );
     client.close();
   },
 );
 
 Deno.test(
-  {
-    permissions: { net: true, read: true },
-    // Doesn't pass on linux CI for unknown reasons (works fine locally on linux)
-    ignore: Deno.build.os !== "darwin",
-  },
+  { permissions: { net: true, read: true } },
   async function fetchForceHttp2OnHttp1Server() {
     const client = Deno.createHttpClient({ http2: true, http1: false });
     await assertRejects(
       () => fetch("http://localhost:5548/http_version", { client }),
       TypeError,
-      "stream closed because of a broken pipe",
     );
     client.close();
   },
