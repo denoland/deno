@@ -348,7 +348,7 @@ declare namespace WebAssembly {
   export function validate(bytes: BufferSource): boolean;
 }
 
-/** Sets a timer which executes a function once after the timer expires. Returns
+/** Sets a timer which executes a function after the delay (in milliseconds). Returns
  * an id which may be used to cancel the timeout.
  *
  * ```ts
