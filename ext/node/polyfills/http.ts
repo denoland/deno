@@ -668,7 +668,10 @@ class ClientRequest extends OutgoingMessage {
       incoming.statusCode = res.status;
       incoming.statusMessage = res.statusText;
 
-      incoming._addHeaderLines(res.headers);
+      incoming._addHeaderLines(
+        res.headers,
+        Object.entries(res.headers).flat().length,
+      );
       incoming._bodyRid = res.responseRid;
 
       if (this._req.cancelHandleRid !== null) {
@@ -863,7 +866,7 @@ function isCookieField(s) {
 
 function isContentDispositionField(s) {
   return s.length === 19 &&
-    StringPrototypeToLowerCase(s) === "content-disposition";
+    s.toLowerCase() === "content-disposition";
 }
 
 const kHeaders = Symbol("kHeaders");
@@ -1114,7 +1117,7 @@ export class IncomingMessageForClient extends NodeReadable {
   }
 
   _addHeaderLineDistinct(field, value, dest) {
-    field = StringPrototypeToLowerCase(field);
+    field = field.toLowerCase();
     if (!dest[field]) {
       dest[field] = [value];
     } else {
@@ -1259,7 +1262,7 @@ function matchKnownFields(field, lowercased) {
   if (lowercased) {
     return "\u0000" + field;
   }
-  return matchKnownFields(StringPrototypeToLowerCase(field), true);
+  return matchKnownFields(field.toLowerCase(), true);
 }
 
 function onError(self, error, cb) {

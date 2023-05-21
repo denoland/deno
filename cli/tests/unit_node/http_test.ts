@@ -463,12 +463,13 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
 });
 
 Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
-  let data = "";
+  let headers: Record<string, string>;
   const def = deferred();
-  const req = http.request("http://localhost:4545/http_version", (resp) => {
-    resp.on("data", (chunk) => {
-      data += chunk;
-    });
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    headers = resp.headers;
 
     resp.on("end", () => {
       def.resolve();
@@ -476,5 +477,5 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   });
   req.end();
   await def;
-  assertEquals(data, "HTTP/1.1");
+  assertEquals(headers!["1"], "2");
 });
