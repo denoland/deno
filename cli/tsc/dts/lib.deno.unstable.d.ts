@@ -821,6 +821,15 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /** Whether HTTP/1.1 is allowed or not. */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not. */
+    http2?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
