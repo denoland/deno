@@ -320,7 +320,6 @@ class ClientRequest extends OutgoingMessage {
       ], agent);
     }
     this.agent = agent;
-    console.log(options, this.agent, defaultAgent);
 
     const protocol = options!.protocol || defaultAgent.protocol;
     let expectedProtocol = defaultAgent.protocol;
@@ -328,16 +327,12 @@ class ClientRequest extends OutgoingMessage {
       expectedProtocol = this.agent!.protocol;
     }
 
-    console.log(this.agent?.protocol);
-
     if (options!.path) {
       const path = String(options.path);
       if (INVALID_PATH_REGEX.exec(path) !== null) {
         throw new ERR_UNESCAPED_CHARACTERS("Request path");
       }
     }
-
-    console.log(protocol, expectedProtocol);
 
     if (protocol !== expectedProtocol) {
       throw new ERR_INVALID_PROTOCOL(protocol, expectedProtocol);
