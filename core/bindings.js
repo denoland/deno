@@ -20,7 +20,7 @@ Deno.__op__registerOp = function (isAsync, op, opName) {
       return;
     }
     core.asyncOps[opName] = op;
-    core.ops[opName] = function (...args) {
+    const fn = function (...args) {
       if (this !== core.ops) {
         // deno-lint-ignore prefer-primordials
         throw new Error(
@@ -29,6 +29,8 @@ Deno.__op__registerOp = function (isAsync, op, opName) {
       }
       return core.asyncStub(opName, args);
     };
+    fn.name = opName;
+    core.ops[opName] = fn;
   } else {
     core.ops[opName] = op;
   }

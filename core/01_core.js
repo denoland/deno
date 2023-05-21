@@ -14,6 +14,7 @@
     MapPrototypeHas,
     MapPrototypeSet,
     ObjectAssign,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -561,6 +562,11 @@ for (let i = 0; i < 10; i++) {
           })`,
         );
     }
+    ObjectDefineProperty(fn, "name", {
+      value: opName,
+      configurable: false,
+      writable: false,
+    });
     return (ops[opName] = fn);
   }
 
