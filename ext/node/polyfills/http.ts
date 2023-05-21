@@ -547,7 +547,7 @@ class ClientRequest extends OutgoingMessage {
       }
     }
 
-    const client = this._getClient() ?? createHttpClient({ http2: true });
+    const client = this._getClient() ?? createHttpClient({ http2: false });
 
     const req = core.ops.op_node_http_request(
       this.method,

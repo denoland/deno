@@ -81,7 +81,7 @@ class HttpsClientRequest extends ClientRequest {
       return undefined;
     }
     if (caCerts !== undefined) {
-      return createHttpClient({ caCerts, http2: true });
+      return createHttpClient({ caCerts, http2: false });
     }
     // const status = await Deno.permissions.query({
     //   name: "env",
@@ -98,7 +98,7 @@ class HttpsClientRequest extends ClientRequest {
     }
     const caCert = Deno.readTextFileSync(certFilename);
     caCerts = [caCert];
-    return createHttpClient({ caCerts, http2: true });
+    return createHttpClient({ caCerts, http2: false });
   }
 }
 
