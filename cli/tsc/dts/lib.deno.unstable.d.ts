@@ -829,12 +829,12 @@ declare namespace Deno {
     /**
      * Whether HTTP/1.1 is allowed or not.
      *
-     * @default {false}
+     * @default {true}
      */
     http1?: boolean;
     /** Whether HTTP/2 is allowed or not.
      *
-     * @default {false}
+     * @default {true}
      */
     http2?: boolean;
   }
