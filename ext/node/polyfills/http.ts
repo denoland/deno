@@ -48,6 +48,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -319,6 +320,7 @@ class ClientRequest extends OutgoingMessage {
       ], agent);
     }
     this.agent = agent;
+    console.log(options, this.agent, defaultAgent);
 
     const protocol = options!.protocol || defaultAgent.protocol;
     let expectedProtocol = defaultAgent.protocol;
@@ -326,12 +328,16 @@ class ClientRequest extends OutgoingMessage {
       expectedProtocol = this.agent!.protocol;
     }
 
+    console.log(this.agent?.protocol);
+
     if (options!.path) {
       const path = String(options.path);
       if (INVALID_PATH_REGEX.exec(path) !== null) {
         throw new ERR_UNESCAPED_CHARACTERS("Request path");
       }
     }
+
+    console.log(protocol, expectedProtocol);
 
     if (protocol !== expectedProtocol) {
       throw new ERR_INVALID_PROTOCOL(protocol, expectedProtocol);
@@ -541,13 +547,13 @@ class ClientRequest extends OutgoingMessage {
       }
     }
 
-    const client = this._getClient();
+    const client = this._getClient() ?? createHttpClient({ http2: true });
 
     const req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
-      client,
+      client.rid,
       this.method === "POST" || this.method === "PATCH",
     );
 
