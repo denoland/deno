@@ -2524,6 +2524,8 @@ fn napi_set_instance_data(
 ) -> napi_status {
   let env = &mut *(env as *mut Env);
   let shared = env.shared_mut();
+  // TODO(bartlomieju): this should first check if there's previous instace
+  // data and if so delete it
   shared.instance_data = data;
   shared.data_finalize = if finalize_cb.is_some() {
     finalize_cb
