@@ -559,6 +559,7 @@ impl Flags {
       || self.allow_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_env.is_some()
+      || self.deny_read.is_some()
   }
 
   pub fn has_permission_in_argv(&self) -> bool {
@@ -573,6 +574,7 @@ impl Flags {
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-env")
+        || arg.starts_with("--deny-read")
     })
   }
 }
@@ -1994,6 +1996,16 @@ static DENY_ENV_HELP: &str = concat!(
   "  --deny-env=\"PORT,HOME,PATH\""
 );
 
+static DENY_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify denied paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --deny-read\n",
+  "  --deny-read=\"/etc,/var/log.txt\""
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -2111,6 +2123,17 @@ fn permission_args(app: Command) -> Command {
             key.to_string()
           })
         }),
+    )
+    .arg(
+      Arg::new("deny-read")
+        .long("deny-read")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("PATH")
+        .help(DENY_READ_HELP)
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("prompt")
@@ -3105,6 +3128,10 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(env_wl) = matches.remove_many::<String>("deny-env") {
     flags.deny_env = Some(env_wl.collect());
     debug!("env denylist: {:#?}", &flags.deny_env);
+  }
+
+  if let Some(read_wl) = matches.remove_many::<PathBuf>("deny-read") {
+    flags.deny_read = Some(read_wl.collect());
   }
 
   if matches.get_flag("no-prompt") {
@@ -4815,6 +4842,45 @@ mod tests {
       flags_from_vec(svec!["deno", "run", "--deny-env=H\0ME", "script.ts"]);
     assert!(r.is_err());
   }
+
+  #[test]
+  fn deny_read() {
+    let r = flags_from_vec(svec!["deno", "run", "--deny-read", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "gist.ts".to_string(),
+        }),
+        deny_read: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_read_denylist() {
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      format!("--deny-read=.,{}", temp_dir.to_str().unwrap()),
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        deny_read: Some(vec![PathBuf::from("."), temp_dir]),
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        ..Flags::default()
+      }
+    );
+  } 
 
   #[test]
   fn reload_validator() {

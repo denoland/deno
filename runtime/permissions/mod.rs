@@ -43,11 +43,11 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
 )]
 pub enum PermissionState {
-  Granted = 0,
-  GrantedPartial = 1,
+  Granted,
+  GrantedPartial,
   #[default]
-  Prompt = 2,
-  Denied = 3,
+  Prompt,
+  Denied,
 }
 
 impl PermissionState {
