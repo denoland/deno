@@ -577,7 +577,7 @@ impl CliOptions {
     flags: Flags,
     initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
-    maybe_lockfile: Option<Lockfile>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_package_json: Option<PackageJson>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -594,7 +594,6 @@ impl CliOptions {
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let maybe_lockfile = maybe_lockfile.map(|l| Arc::new(Mutex::new(l)));
     let maybe_node_modules_folder = resolve_local_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -647,7 +646,7 @@ impl CliOptions {
       flags,
       initial_cwd,
       maybe_config_file,
-      maybe_lock_file,
+      maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       maybe_package_json,
     )
   }

@@ -199,7 +199,8 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let cli_options = Arc::new(cli_options);
+      let factory = CliFactory::from_cli_options(cli_options.clone());
       let module_graph_builder = factory.module_graph_builder().await?;
       let mut inner_loader = module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
@@ -218,6 +219,16 @@ impl LanguageServer {
           check_js: false,
         },
       )?;
+
+      // Update the lockfile on the file system with anything new
+      // found after caching
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
+        let lockfile = lockfile.lock();
+        if let Err(err) = lockfile.write() {
+          lsp_warn!("Error writing lockfile: {}", err);
+        }
+      }
+
       Ok(())
     }
 
@@ -480,13 +491,14 @@ fn create_npm_resolver_and_resolution(
   api: Arc<CliNpmRegistryApi>,
   npm_cache: Arc<NpmCache>,
   node_modules_dir_path: Option<PathBuf>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
 ) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
   let resolution = Arc::new(NpmResolution::from_serialized(
     api,
     maybe_snapshot,
-    maybe_lockfile.clone(),
+    // Don't provide the lockfile. We don't want these resolvers
+    // updating it. Only the cache request should update the lockfile.
+    None,
   ));
   let fs = Arc::new(deno_fs::RealFs);
   let fs_resolver = create_npm_fs_resolver(
@@ -503,7 +515,9 @@ fn create_npm_resolver_and_resolution(
       fs,
       resolution.clone(),
       fs_resolver,
-      maybe_lockfile,
+      // Don't provide the lockfile. We don't want these resolvers
+      // updating it. Only the cache request should update the lockfile.
+      None,
     )),
     resolution,
   )
@@ -588,7 +602,6 @@ impl Inner {
       progress_bar,
       npm_api.clone(),
       npm_cache.clone(),
-      None,
       None,
       None,
     );
@@ -963,7 +976,6 @@ impl Inner {
         self.npm.api.clone(),
         self.npm.cache.clone(),
         self.maybe_node_modules_dir_path(),
-        self.maybe_lockfile.clone(),
         maybe_snapshot,
       );
 
@@ -3361,7 +3373,7 @@ impl Inner {
       },
       std::env::current_dir().with_context(|| "Failed getting cwd.")?,
       self.maybe_config_file.clone(),
-      self.maybe_lockfile.as_ref().map(|l| l.lock().clone()),
+      self.maybe_lockfile.clone(),
       self.maybe_package_json.clone(),
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
