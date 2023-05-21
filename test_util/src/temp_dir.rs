@@ -58,6 +58,10 @@ impl TempDir {
     fs::create_dir_all(self.path().join(path)).unwrap();
   }
 
+  pub fn remove_file(&self, path: impl AsRef<Path>) {
+    fs::remove_file(self.path().join(path)).unwrap();
+  }
+
   pub fn remove_dir_all(&self, path: impl AsRef<Path>) {
     fs::remove_dir_all(self.path().join(path)).unwrap();
   }

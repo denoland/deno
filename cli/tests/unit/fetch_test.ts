@@ -1533,6 +1533,30 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
+  async function fetchForceHttp1OnHttp2Server() {
+    const client = Deno.createHttpClient({ http2: false, http1: true });
+    await assertRejects(
+      () => fetch("http://localhost:5549/http_version", { client }),
+      TypeError,
+    );
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function fetchForceHttp2OnHttp1Server() {
+    const client = Deno.createHttpClient({ http2: true, http1: false });
+    await assertRejects(
+      () => fetch("http://localhost:5548/http_version", { client }),
+      TypeError,
+    );
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
   async function fetchPrefersHttp2() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });

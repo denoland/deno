@@ -36,10 +36,11 @@ use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
-use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+
+pub use self::common::NpmPackageFsResolver;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
