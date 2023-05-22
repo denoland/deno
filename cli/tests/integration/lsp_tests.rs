@@ -7587,9 +7587,6 @@ fn lsp_node_modules_dir() {
 
   cache(&mut client);
 
-  let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.viewed().len(), 0);
-
   assert!(!temp_dir.path().join("node_modules").exists());
 
   temp_dir.write(
@@ -7649,6 +7646,9 @@ fn lsp_node_modules_dir() {
   refresh_config(&mut client);
   cache(&mut client);
 
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.viewed().len(), 0, "{:#?}", diagnostics);
+
   assert!(temp_dir.path().join("deno.lock").exists());
 
   // the declaration should be found in the node_modules directory
@@ -7667,13 +7667,7 @@ fn lsp_node_modules_dir() {
 
   // ensure that it's using the node_modules directory
   let declarations = res.as_array().unwrap();
-  assert_eq!(
-    declarations.len(),
-    2,
-    "declarations: {:#?}\ndiagnostics: {:#?}",
-    declarations,
-    client.read_diagnostics(),
-  );
+  assert_eq!(declarations.len(), 2, "declarations: {:#?}", declarations,);
   let uri = declarations[1]
     .as_object()
     .unwrap()

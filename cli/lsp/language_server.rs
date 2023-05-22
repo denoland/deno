@@ -432,12 +432,6 @@ impl LanguageServer {
       if ls.config.update_enabled_paths() {
         touched = true;
       }
-
-      if touched {
-        ls.refresh_documents_config();
-        ls.diagnostics_server.invalidate_all();
-        ls.send_diagnostics_update();
-      }
     }
     touched
   }
@@ -1519,6 +1513,7 @@ impl Inner {
     self.recreate_npm_services_if_necessary().await;
     self.refresh_documents_config();
 
+    self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -3005,9 +3000,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
     }
 
-    if !self.refresh_specifiers_from_client().await {
-      // force update config
-      self.0.write().await.refresh_documents_config();
+    self.refresh_specifiers_from_client().await;
+
+    {
+      let mut ls = self.0.write().await;
+      ls.refresh_documents_config();
+      ls.diagnostics_server.invalidate_all();
+      ls.send_diagnostics_update();
     }
 
     lsp_log!("Server ready.");
@@ -3161,7 +3160,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
       (ls.performance.clone(), mark)
     };
 
-    self.refresh_specifiers_from_client().await;
+    if self.refresh_specifiers_from_client().await {
+      let mut ls = self.0.write().await;
+      ls.refresh_documents_config();
+      ls.diagnostics_server.invalidate_all();
+      ls.send_diagnostics_update();
+    }
     performance.measure(mark);
   }
 
