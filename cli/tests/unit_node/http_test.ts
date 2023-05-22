@@ -482,6 +482,7 @@ Deno.test("[node/http] server unref", async () => {
 });
 
 Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
+  // deno-lint-ignore no-explicit-any
   let headers: any;
   const def = deferred();
   const req = http.request("http://localhost:4545/echo_server", {
