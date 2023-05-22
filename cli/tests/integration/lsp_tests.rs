@@ -7675,9 +7675,11 @@ fn lsp_node_modules_dir() {
     .unwrap()
     .as_str()
     .unwrap();
+  // canonicalize for mac
+  let path = temp_dir.path().join("node_modules").canonicalize().unwrap();
   assert_starts_with!(
     uri,
-    temp_dir.uri().join("node_modules").unwrap().as_str()
+    ModuleSpecifier::from_file_path(&path).unwrap().as_str()
   );
 
   client.shutdown();
