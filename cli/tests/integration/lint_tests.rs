@@ -118,5 +118,6 @@ itest!(lint_with_malformed_config2 {
 itest!(lint_with_config_and_globs {
   args: "lint --config lint/deno.glob.json",
   output: "lint/glob.out",
+  envs: vec![("DENO_JOBS".to_string(), "1".to_string())],
   exit_code: 1,
 });
