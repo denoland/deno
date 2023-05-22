@@ -723,6 +723,19 @@ itest!(deno_run_bin_cjs {
   http_server: true,
 });
 
+#[test]
+fn deno_run_bin_lockfile() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}");
+  let output = context
+    .new_command()
+    .args("run -A --quiet npm:@denotest/bin/cli-esm this is a test")
+    .run();
+  output.assert_matches_file("npm/deno_run_esm.out");
+  assert!(temp_dir.path().join("deno.lock").exists());
+}
+
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",

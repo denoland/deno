@@ -89,7 +89,7 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -107,12 +107,12 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
 
-    let reqs_set = package_reqs.iter().cloned().collect::<HashSet<_>>();
+    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
@@ -144,7 +144,7 @@ impl NpmResolution {
 
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
-      Vec::new(),
+      &Vec::new(),
       self.maybe_lockfile.clone(),
       || self.snapshot.read().clone(),
     )
@@ -275,10 +275,7 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
-  // todo(18079): it should be possible to pass &[NpmPackageReq] in here
-  // and avoid all these clones, but the LSP complains because of its
-  // `Send` requirement
-  package_reqs: Vec<NpmPackageReq>,
+  package_reqs: &[NpmPackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
@@ -288,10 +285,11 @@ async fn add_package_reqs_to_snapshot(
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    return Ok(snapshot); // already up to date
+    log::debug!("Snapshot already up to date. Skipping pending resolution.");
+    return Ok(snapshot);
   }
 
-  let result = snapshot.resolve_pending(package_reqs.clone()).await;
+  let result = snapshot.resolve_pending(package_reqs).await;
   api.clear_memory_cache();
   let snapshot = match result {
     Ok(snapshot) => snapshot,

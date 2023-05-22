@@ -163,7 +163,7 @@ impl ModuleLoadPreparer {
       // validate the integrity of all the modules
       graph_lock_or_exit(graph, &mut lockfile);
       // update it with anything new
-      lockfile.write()?;
+      lockfile.write().context("Failed writing lockfile.")?;
     }
 
     // save the graph and get a reference to the new graph
