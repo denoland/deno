@@ -27,7 +27,7 @@ struct PackageJsonDepsInstallerInner {
 impl PackageJsonDepsInstallerInner {
   pub fn reqs_with_info_futures<'a>(
     &self,
-    reqs: &'a Vec<&'a NpmPackageReq>,
+    reqs: &'a [&'a NpmPackageReq],
   ) -> FuturesOrdered<
     impl Future<
       Output = Result<

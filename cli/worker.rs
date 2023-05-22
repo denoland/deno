@@ -366,7 +366,7 @@ impl CliMainWorkerFactory {
     {
       shared
         .npm_resolver
-        .add_package_reqs(&vec![package_ref.req.clone()])
+        .add_package_reqs(&[package_ref.req.clone()])
         .await?;
       let node_resolution =
         shared.node_resolver.resolve_binary_export(&package_ref)?;

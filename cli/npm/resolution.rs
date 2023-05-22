@@ -115,7 +115,7 @@ impl NpmResolution {
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
-      &package_reqs,
+      package_reqs,
       self.maybe_lockfile.clone(),
       || {
         let snapshot = self.snapshot.read().clone();
