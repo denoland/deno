@@ -470,11 +470,11 @@ Deno.test("[node/http] server unref", async () => {
     res.statusCode = status;
     res.end("");
   });
-  
-  // This should let the program to exit without waiting for the 
+
+  // This should let the program to exit without waiting for the
   // server to close.
   server.unref();
-  
+
   server.listen(async () => {
   });
   `);
@@ -482,7 +482,7 @@ Deno.test("[node/http] server unref", async () => {
 });
 
 Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
-  let headers: Record<string, string>;
+  let headers: any;
   const def = deferred();
   const req = http.request("http://localhost:4545/echo_server", {
     method: "POST",

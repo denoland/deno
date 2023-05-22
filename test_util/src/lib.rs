@@ -734,7 +734,6 @@ async fn main_server(
         *response.status_mut() =
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
-      dbg!(&parts.headers);
       response.headers_mut().extend(parts.headers);
       Ok(response)
     }
