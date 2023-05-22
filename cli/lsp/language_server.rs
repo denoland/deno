@@ -98,6 +98,7 @@ use crate::npm::NpmCache;
 use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
+use crate::util::fs::canonicalize_path;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
@@ -717,9 +718,21 @@ impl Inner {
           ))
         }?;
         lsp_log!("  Resolved configuration file: \"{}\"", config_url);
-
-        let config_file = ConfigFile::from_specifier(&config_url)?;
-        return Ok(Some(config_file));
+        match config_url.to_file_path() {
+          Ok(path) => {
+            let path = canonicalize_path(&path).with_context(|| {
+              format!("Error reading config file '{}'", path.display())
+            })?;
+            let config_file = ConfigFile::from_canonicalized_path(&path)?;
+            return Ok(Some(config_file));
+          }
+          Err(()) => {
+            return Err(anyhow!(
+              "The path to the configuration file (\"{}\") is not a file path.",
+              config_url,
+            ));
+          }
+        };
       }
     }
 

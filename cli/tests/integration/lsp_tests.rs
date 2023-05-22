@@ -7666,9 +7666,9 @@ fn lsp_node_modules_dir() {
   );
 
   // ensure that it's using the node_modules directory
-  let declarations = res.as_array().unwrap();
-  assert_eq!(declarations.len(), 2, "declarations: {:#?}", declarations,);
-  let uri = declarations[1]
+  let references = res.as_array().unwrap();
+  assert_eq!(references.len(), 2, "references: {:#?}", references);
+  let uri = references[1]
     .as_object()
     .unwrap()
     .get("uri")

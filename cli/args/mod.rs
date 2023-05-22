@@ -1374,7 +1374,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1395,7 +1395,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1418,7 +1418,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1442,7 +1442,7 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -1464,7 +1464,8 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file =
+      ConfigFile::new(config_text, config_specifier.clone()).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1480,7 +1481,7 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
