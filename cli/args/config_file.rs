@@ -299,24 +299,19 @@ impl SerializedFilesConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<FilesConfig, AnyError> {
-    let config_dir = specifier_parent(config_file_specifier);
+    let config_dir =
+      specifier_to_file_path(&specifier_parent(config_file_specifier))?;
     Ok(FilesConfig {
       include: self
         .include
         .into_iter()
-        .map(|p| {
-          let url = config_dir.join(&p)?;
-          specifier_to_file_path(&url)
-        })
-        .collect::<Result<Vec<_>, _>>()?,
+        .map(|p| config_dir.join(&p))
+        .collect::<Vec<_>>(),
       exclude: self
         .exclude
         .into_iter()
-        .map(|p| {
-          let url = config_dir.join(&p)?;
-          specifier_to_file_path(&url)
-        })
-        .collect::<Result<Vec<_>, _>>()?,
+        .map(|p| config_dir.join(&p))
+        .collect::<Vec<_>>(),
     })
   }
 

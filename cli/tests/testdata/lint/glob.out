@@ -1,0 +1,55 @@
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/fizz/fizz.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/pages/[id].ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/fizz/bar.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/foo/foo.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/data/test1.js:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/foo/bar.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/foo/fizz.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/nested/fizz/foo.ts:1:10
+[WILDCARD]
+
+(no-unused-vars) `foo` is never used
+function foo() {
+         ^^^
+    at [WILDCARD]/glob/data/test1.ts:1:10
+[WILDCARD]
+Found 9 problems
+Checked 9 files

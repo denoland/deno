@@ -1374,7 +1374,7 @@ fn resolve_files(
     }
   }
 
-  eprintln!("FIXME(bartlomieju): data/test?.ts in the deno.json will be stripped to data/test here. This needs to be fixes");
+  // eprintln!("FIXME(bartlomieju): data/test?.ts in the deno.json will be stripped to data/test here. This needs to be fixes");
   // eprintln!("resolve_files {:#?}", result);
 
   // Now expand globs if there are any

@@ -114,3 +114,9 @@ itest!(lint_with_malformed_config2 {
   output: "lint/with_malformed_config2.out",
   exit_code: 1,
 });
+
+itest!(lint_with_config_and_globs {
+  args: "lint --config lint/deno.glob.json",
+  output: "lint/glob.out",
+  exit_code: 1,
+});
