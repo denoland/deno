@@ -247,7 +247,8 @@ impl ResponseBytesInner {
         // https://github.com/google/ngx_brotli#brotli_comp_level
         // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
         // (~4MB)
-        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        let mut writer =
+          brotli::CompressorWriter::new(Vec::new(), bytes.len(), 6, 22);
         writer.write_all(bytes).unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
       }
@@ -264,7 +265,8 @@ impl ResponseBytesInner {
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
-        let mut writer = brotli::CompressorWriter::new(Vec::new(), 4096, 6, 22);
+        let mut writer =
+          brotli::CompressorWriter::new(Vec::new(), vec.len(), 6, 22);
         writer.write_all(&vec).unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
       }
@@ -496,7 +498,7 @@ impl PollFrame for BrotliResponseStream {
       ResponseStreamResult::NonEmptyBuf(buf) => {
         let mut writer = brotli::CompressorWriter::new(
           Vec::new(),
-          4096, /* buffer size */
+          buf.len(), /* buffer size */
           6,
           22,
         );
@@ -756,7 +758,7 @@ mod tests {
     vec![v, v2].into_iter()
   }
 
-  async fn test(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
+  async fn test_gzip(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
     let v = i.collect::<Vec<_>>();
     let mut expected: Vec<u8> = vec![];
     for v in &v {
@@ -798,19 +800,68 @@ mod tests {
     handle.await.unwrap();
   }
 
+  async fn test_brotli(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
+    let v = i.collect::<Vec<_>>();
+    let mut expected: Vec<u8> = vec![];
+    for v in &v {
+      expected.extend(v);
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let underlying = ResponseStream::V8Stream(rx);
+    let mut resp = BrotliResponseStream::new(underlying);
+    let handle = tokio::task::spawn(async move {
+      for chunk in v {
+        tx.send(chunk.into()).await.ok().unwrap();
+      }
+    });
+    // Limit how many times we'll loop
+    const LIMIT: usize = 1000;
+    let mut v: Vec<u8> = vec![];
+    for i in 0..=LIMIT {
+      assert_ne!(i, LIMIT);
+      let frame = poll_fn(|cx| Pin::new(&mut resp).poll_frame(cx)).await;
+      if matches!(frame, ResponseStreamResult::EndOfStream) {
+        break;
+      }
+      if matches!(frame, ResponseStreamResult::NoData) {
+        continue;
+      }
+      let ResponseStreamResult::NonEmptyBuf(buf) = frame else {
+        panic!("Unexpected stream type");
+      };
+      assert_ne!(buf.len(), 0);
+      v.extend(&*buf);
+    }
+
+    let mut gz = brotli::Decompressor::new(&*v, v.len());
+    let mut v = vec![];
+    if (expected.is_empty()) {
+      assert_eq!(gz.into_inner().len(), 0);
+    } else {
+      gz.read_to_end(&mut v).unwrap();
+    }
+
+    assert_eq!(v, expected);
+
+    handle.await.unwrap();
+  }
+
   #[tokio::test]
   async fn test_simple() {
-    test(vec![b"hello world".to_vec()].into_iter()).await
+    test_brotli(vec![b"hello world".to_vec()].into_iter()).await;
+    test_gzip(vec![b"hello world".to_vec()].into_iter()).await;
   }
 
   #[tokio::test]
   async fn test_empty() {
-    test(vec![].into_iter()).await
+    test_brotli(vec![].into_iter()).await;
+    test_gzip(vec![].into_iter()).await;
   }
 
   #[tokio::test]
   async fn test_simple_zeros() {
-    test(vec![vec![0; 0x10000]].into_iter()).await
+    test_brotli(vec![vec![0; 0x10000]].into_iter()).await;
+    test_gzip(vec![vec![0; 0x10000]].into_iter()).await;
   }
 
   macro_rules! test {
@@ -819,31 +870,31 @@ mod tests {
         #[tokio::test]
         async fn chunk() {
           let iter = super::chunk(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
         }
 
         #[tokio::test]
         async fn front_load() {
           let iter = super::front_load(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
         }
 
         #[tokio::test]
         async fn front_load_but_one() {
           let iter = super::front_load_but_one(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
         }
 
         #[tokio::test]
         async fn back_load() {
           let iter = super::back_load(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
         }
 
         #[tokio::test]
         async fn random() {
           let iter = super::random(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
         }
       }
     };
