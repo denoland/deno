@@ -1530,6 +1530,8 @@ class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
+  #server: Deno.Server;
+  #unref = false;
   #ac?: AbortController;
   #servePromise: Deferred<void>;
   listening = false;
@@ -1596,7 +1598,7 @@ class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    serve(
+    this.#server = serve(
       {
         handler: handler as Deno.ServeHandler,
         ...this.#addr,
@@ -1607,11 +1609,29 @@ class ServerImpl extends EventEmitter {
           this.emit("listening");
         },
       },
-    ).finished.then(() => this.#servePromise!.resolve());
+    );
+    if (this.#unref) {
+      this.#server.unref();
+    }
+    this.#server.finished.then(() => this.#servePromise!.resolve());
   }
 
   setTimeout() {
     console.error("Not implemented: Server.setTimeout()");
+  }
+
+  ref() {
+    if (this.#server) {
+      this.#server.ref();
+    }
+    this.#unref = false;
+  }
+
+  unref() {
+    if (this.#server) {
+      this.#server.unref();
+    }
+    this.#unref = true;
   }
 
   close(cb?: (err?: Error) => void): this {
@@ -1636,6 +1656,7 @@ class ServerImpl extends EventEmitter {
       this.#servePromise!.resolve();
     }
 
+    this.#server = undefined;
     return this;
   }
 
