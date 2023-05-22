@@ -7632,6 +7632,9 @@ fn lsp_node_modules_dir() {
   };
   refresh_config(&mut client);
 
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.viewed().len(), 2); // not cached
+
   cache(&mut client);
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
@@ -7667,7 +7670,7 @@ fn lsp_node_modules_dir() {
   assert_eq!(
     declarations.len(),
     2,
-    "declarations {:#?}\ndiagnostics: {:#?}",
+    "declarations: {:#?}\ndiagnostics: {:#?}",
     declarations,
     client.read_diagnostics(),
   );
