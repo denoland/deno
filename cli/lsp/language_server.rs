@@ -3360,15 +3360,18 @@ impl Inner {
       vec![referrer]
     };
 
+    let workspace_settings = self.config.workspace_settings();
     let mut cli_options = CliOptions::new(
       Flags {
         cache_path: self.maybe_cache_path.clone(),
-        ca_stores: None,
-        ca_data: None,
-        unsafely_ignore_certificate_errors: None,
-        // this is to allow loading npm specifiers, so we can remove this
-        // once stabilizing them
-        unstable: true,
+        ca_stores: workspace_settings.certificate_stores.clone(),
+        ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
+        unsafely_ignore_certificate_errors: workspace_settings
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        node_modules_dir: Some(self.maybe_node_modules_dir_path().is_some()),
+        // bit of a hack to force the lsp to cache the @types/node package
+        type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
       std::env::current_dir().with_context(|| "Failed getting cwd.")?,
