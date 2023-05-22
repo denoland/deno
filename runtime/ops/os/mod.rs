@@ -386,6 +386,39 @@ fn rss() -> usize {
   task_info.resident_size as usize
 }
 
+#[cfg(target_os = "openbsd")]
+fn rss() -> usize {
+  let pid = unsafe { libc::getpid() };
+  let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+  let mut kinfoproc: std::mem::MaybeUninit<libc::kinfo_proc> =
+    std::mem::MaybeUninit::uninit();
+  let mut size = std::mem::size_of_val(&kinfoproc) as libc::size_t;
+  let mut mib = [
+    libc::CTL_KERN,
+    libc::KERN_PROC,
+    libc::KERN_PROC_PID,
+    pid,
+    size.try_into().unwrap(),
+    1,
+  ];
+  let res = unsafe {
+    libc::sysctl(
+      mib.as_mut_ptr(),
+      mib.len() as _,
+      kinfoproc.as_mut_ptr() as *mut libc::c_void,
+      &mut size,
+      std::ptr::null_mut(),
+      0,
+    )
+  };
+
+  if res == 0 {
+    pagesize * unsafe { (*kinfoproc.as_mut_ptr()).p_vm_rssize as usize }
+  } else {
+    0
+  }
+}
+      
 #[cfg(windows)]
 fn rss() -> usize {
   use winapi::shared::minwindef::DWORD;
