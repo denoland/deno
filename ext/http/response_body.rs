@@ -486,7 +486,6 @@ impl PollFrame for BrotliResponseStream {
   ) -> std::task::Poll<ResponseStreamResult> {
     let this = self.get_mut();
     let state = &mut this.state;
-    //let orig_state = *state;
     let frame = match *state {
       BrotliState::Streaming => {
         ready!(Pin::new(&mut this.underlying).poll_frame(cx))
