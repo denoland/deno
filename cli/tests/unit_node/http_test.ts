@@ -491,10 +491,13 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   }, (resp) => {
     headers = resp.headers;
 
+    resp.on("data", () => {});
+
     resp.on("end", () => {
       def.resolve();
     });
   });
+  req.once("error", (e) => def.reject(e));
   req.end();
   await def;
   assertEquals(headers!["1"], "2");
