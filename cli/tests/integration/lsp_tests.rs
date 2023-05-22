@@ -7664,6 +7664,7 @@ fn lsp_node_modules_dir() {
 
   // ensure that it's using the node_modules directory
   let declarations = res.as_array().unwrap();
+  eprintln!("{:#?}", declarations);
   assert_eq!(declarations.len(), 2);
   let uri = declarations[1]
     .as_object()
