@@ -5087,6 +5087,7 @@ dependencies = [
  "fastwebsockets",
  "flate2",
  "futures",
+ "glob",
  "hyper 0.14.26",
  "lazy-regex",
  "lsp-types",
