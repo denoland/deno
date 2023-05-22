@@ -233,3 +233,57 @@ itest!(task_npx_on_own {
   exit_code: 1,
   http_server: true,
 });
+
+itest!(task_pre_post {
+  args: "task test",
+  cwd: Some("task/package_json_pre_post/"),
+  output: "task/package_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre {
+  args: "task test",
+  cwd: Some("task/package_json_pre/"),
+  output: "task/package_json_pre/bin.out",
+  copy_temp_dir: Some("task/package_json_pre/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post {
+  args: "task test",
+  cwd: Some("task/package_json_post/"),
+  output: "task/package_json_post/bin.out",
+  copy_temp_dir: Some("task/package_json_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post_only {
+  args: "task test",
+  cwd: Some("task/package_json_post_only/"),
+  output: "task/package_json_post_only/bin.out",
+  copy_temp_dir: Some("task/package_json_post_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre_only {
+  args: "task test",
+  cwd: Some("task/package_json_pre_only/"),
+  output: "task/package_json_pre_only/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_deno_no_pre_post {
+  args: "task test",
+  cwd: Some("task/deno_json_pre_post/"),
+  output: "task/deno_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/deno_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});

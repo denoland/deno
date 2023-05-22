@@ -4806,4 +4806,39 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ..Default::default()
     });
   }
+
+  #[test]
+  fn ops_in_js_have_proper_names() {
+    #[op]
+    fn op_test_sync() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    #[op]
+    async fn op_test_async() -> Result<String, Error> {
+      Ok(String::from("Test"))
+    }
+
+    deno_core::extension!(test_ext, ops = [op_test_sync, op_test_async]);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
+
+    let src = r#"
+    if (Deno.core.ops.op_test_sync.name !== "op_test_sync") {
+      throw new Error();
+    }
+
+    if (Deno.core.ops.op_test_async.name !== "op_test_async") {
+      throw new Error();
+    }
+
+    const { op_test_async } = Deno.core.generateAsyncOpHandler("op_test_async");
+    if (op_test_async.name !== "op_test_async") {
+      throw new Error();
+    }
+    "#;
+    runtime.execute_script_static("test", src).unwrap();
+  }
 }

@@ -29,6 +29,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -323,6 +324,23 @@ impl CliFactory {
         )))
       })
       .await
+  }
+
+  pub async fn create_node_modules_npm_fs_resolver(
+    &self,
+    node_modules_dir_path: PathBuf,
+  ) -> Result<Arc<dyn NpmPackageFsResolver>, AnyError> {
+    Ok(create_npm_fs_resolver(
+      self.fs().clone(),
+      self.npm_cache()?.clone(),
+      self.text_only_progress_bar(),
+      CliNpmRegistryApi::default_url().to_owned(),
+      self.npm_resolution().await?.clone(),
+      // when an explicit path is provided here, it will create the
+      // local node_modules variant of an npm fs resolver
+      Some(node_modules_dir_path),
+      self.options.npm_system_info(),
+    ))
   }
 
   pub fn package_json_deps_provider(&self) -> &Arc<PackageJsonDepsProvider> {
