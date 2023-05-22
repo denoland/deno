@@ -27,7 +27,10 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep } = core.generateAsyncOpHandler("op_sleep");
+const { op_sleep, op_void_async_deferred } = core.generateAsyncOpHandler(
+  "op_sleep",
+  "op_void_async_deferred",
+);
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -218,7 +221,16 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(cb, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = op_sleep(millis, cancelRid);
+  let sleepPromise;
+  // If this timeout is scheduled for 0ms it means we want it to run at the
+  // end of the event loop turn. There's no point in setting up a Tokio timer,
+  // since its lowest resolution is 1ms. Firing of a "void async" op is better
+  // in this case, because the timer will take closer to 0ms instead of >1ms.
+  if (millis === 0) {
+    sleepPromise = op_void_async_deferred();
+  } else {
+    sleepPromise = op_sleep(millis, cancelRid);
+  }
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);
@@ -246,7 +258,8 @@ function runAfterTimeout(cb, millis, timerInfo) {
   PromisePrototypeThen(
     sleepPromise,
     (cancelled) => {
-      if (!cancelled) {
+      // "op_void_async_deferred" returns null
+      if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
         removeFromScheduledTimers(timerObject);
         return;
