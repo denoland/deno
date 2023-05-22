@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::anyhow::anyhow;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
@@ -26,25 +25,6 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
-
-/// Check that a resolved specifier isn't an `ext:` URL. Normally scheme checks
-/// are done on load rather than resolve. This is needed because `ext:` modules
-/// are preloaded in deno_core and won't be requested from the embedder, so we
-/// need to catch them on resolution instead.
-///
-/// TODO(nayeemrmn): Maybe use a separate module map for `ext:` modules to avoid
-/// this problem. As of writing this is blocked by the way `node:` specifiers
-/// are implemented.
-pub fn validate_scheme_for_resolution(
-  specifier: &ModuleSpecifier,
-) -> Result<(), AnyError> {
-  if specifier.scheme() == "ext" {
-    return Err(type_error(
-      "Cannot load extension module from external code",
-    ));
-  }
-  Ok(())
-}
 
 /// Result of checking if a specifier is mapped via
 /// an import map or package.json.
@@ -237,23 +217,15 @@ impl Resolver for CliGraphResolver {
       .mapped_specifier_resolver
       .resolve(specifier, referrer)?
     {
-      ImportMap(specifier) => {
-        validate_scheme_for_resolution(&specifier)?;
-        Ok(specifier)
-      }
+      ImportMap(specifier) => Ok(specifier),
       PackageJson(specifier) => {
         // found a specifier in the package.json, so mark that
         // we need to do an "npm install" later
         self.found_package_json_dep_flag.raise();
         Ok(specifier)
       }
-      None => match deno_graph::resolve_import(specifier, referrer) {
-        Ok(specifier) => {
-          validate_scheme_for_resolution(&specifier)?;
-          Ok(specifier)
-        }
-        Err(err) => Err(err.into()),
-      },
+      None => deno_graph::resolve_import(specifier, referrer)
+        .map_err(|err| err.into()),
     }
   }
 }

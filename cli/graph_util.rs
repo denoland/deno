@@ -372,9 +372,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 pub fn get_resolution_error_bare_node_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
-  get_resolution_error_bare_specifier(error).filter(|specifier| {
-    deno_node::resolve_builtin_node_module(specifier).is_ok()
-  })
+  get_resolution_error_bare_specifier(error)
+    .filter(|specifier| deno_node::is_builtin_node_module(specifier))
 }
 
 fn get_resolution_error_bare_specifier(

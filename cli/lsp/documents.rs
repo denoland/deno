@@ -1090,7 +1090,7 @@ impl Documents {
         }
       }
       if let Some(module_name) = specifier.strip_prefix("node:") {
-        if deno_node::resolve_builtin_node_module(module_name).is_ok() {
+        if deno_node::is_builtin_node_module(module_name) {
           // return itself for node: specifiers because during type checking
           // we resolve to the ambient modules in the @types/node package
           // rather than deno_std/node

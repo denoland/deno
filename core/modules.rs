@@ -1509,6 +1509,29 @@ impl ModuleMap {
     Ok(id)
   }
 
+  pub(crate) fn clear(&mut self) {
+    *self = Self::new(self.loader.clone(), self.op_state.clone())
+  }
+
+  pub(crate) fn get_handle_by_name(
+    &self,
+    name: impl AsRef<str>,
+  ) -> Option<v8::Global<v8::Module>> {
+    let id = self
+      .get_id(name.as_ref(), AssertedModuleType::JavaScriptOrWasm)
+      .or_else(|| self.get_id(name.as_ref(), AssertedModuleType::Json))?;
+    self.get_handle(id)
+  }
+
+  pub(crate) fn inject_handle(
+    &mut self,
+    name: ModuleName,
+    module_type: ModuleType,
+    handle: v8::Global<v8::Module>,
+  ) {
+    self.create_module_info(name, module_type, handle, false, vec![]);
+  }
+
   fn create_module_info(
     &mut self,
     name: FastString,

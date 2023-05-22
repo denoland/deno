@@ -320,6 +320,21 @@ impl MainWorker {
       ..Default::default()
     });
 
+    // TODO(nayeemrmn): This should be per-realm once we support `ShadowRealm`,
+    // move it to something like `RuntimeOptions::realm_init_cb`.
+    let handles = deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|p| (p, js_runtime.get_module_handle(p.ext_specifier).unwrap()))
+      .collect::<Vec<_>>();
+    js_runtime.clear_module_map();
+    for (p, handle) in handles {
+      js_runtime.inject_module_handle(
+        format!("node:{}", p.name).into(),
+        deno_core::ModuleType::JavaScript,
+        handle,
+      )
+    }
+
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
         main_module.to_string(),

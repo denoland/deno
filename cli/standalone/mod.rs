@@ -39,7 +39,6 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -126,11 +125,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .shared
         .npm_module_loader
         .resolve_req_reference(&reference, permissions);
-    }
-
-    // Built-in Node modules
-    if let Some(module_name) = specifier_text.strip_prefix("node:") {
-      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     match maybe_mapped {

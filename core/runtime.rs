@@ -17,6 +17,7 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
+use crate::modules::ModuleName;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
@@ -25,6 +26,7 @@ use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ModuleType;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -1842,6 +1844,36 @@ impl JsRuntime {
     }
 
     receiver
+  }
+
+  // TODO(nayeemrmn): This should be on `JsRealm` once we support `ShadowRealm`.
+  pub fn clear_module_map(&self) {
+    self.module_map.as_ref().unwrap().borrow_mut().clear();
+  }
+
+  // TODO(nayeemrmn): This should be on `JsRealm` once we support `ShadowRealm`.
+  pub fn get_module_handle(
+    &self,
+    name: impl AsRef<str>,
+  ) -> Option<v8::Global<v8::Module>> {
+    let module_map = self.module_map.as_ref().unwrap().borrow();
+    module_map.get_handle_by_name(name)
+  }
+
+  // TODO(nayeemrmn): This should be on `JsRealm` once we support `ShadowRealm`.
+  pub fn inject_module_handle(
+    &mut self,
+    name: ModuleName,
+    module_type: ModuleType,
+    handle: v8::Global<v8::Module>,
+  ) {
+    #[cfg(debug_assertions)]
+    {
+      let handle = handle.open(&mut self.handle_scope());
+      assert_eq!(handle.get_status(), v8::ModuleStatus::Evaluated);
+    }
+    let mut module_map = self.module_map.as_ref().unwrap().borrow_mut();
+    module_map.inject_handle(name, module_type, handle);
   }
 
   fn dynamic_import_reject(

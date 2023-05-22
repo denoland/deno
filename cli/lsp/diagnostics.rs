@@ -918,7 +918,7 @@ fn diagnose_resolution(
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
       {
-        if deno_node::resolve_builtin_node_module(module_name).is_err() {
+        if !deno_node::is_builtin_node_module(module_name) {
           diagnostics
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
