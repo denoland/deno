@@ -3434,8 +3434,9 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
+#[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
+  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 
