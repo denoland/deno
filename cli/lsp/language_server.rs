@@ -1146,7 +1146,6 @@ impl Inner {
     self.maybe_lockfile = None;
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
-
     if let Some(config_file) = self.get_config_file()? {
       let lint_options = config_file
         .to_lint_config()
