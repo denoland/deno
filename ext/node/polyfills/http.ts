@@ -654,6 +654,9 @@ class ClientRequest extends OutgoingMessage {
     this.controller.close();
 
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
+      if (this._timeout) {
+        this._timeout.onabort = null;
+      }
       this._client.close();
       const incoming = new IncomingMessageForClient(this.socket);
 
@@ -800,37 +803,18 @@ class ClientRequest extends OutgoingMessage {
   }
 
   setTimeout(msecs: number, callback?: () => void) {
-    if (this._ended) {
+    if (this._ended || this._timeout) {
       return this;
     }
 
-    this._listenSocketTimeout();
     msecs = getTimerDuration(msecs, "msecs");
     if (callback) this.once("timeout", callback);
 
-    if (this.socket) {
-      setSocketTimeout(this.socket, msecs);
-    } else {
-      this.once("socket", (sock) => setSocketTimeout(sock, msecs));
-    }
+    const timeout = AbortSignal.timeout(msecs);
+    timeout.onabort = () => this.emit("timeout");
+    this._timeout = timeout;
 
     return this;
-  }
-
-  _listenSocketTimeout() {
-    if (this.timeoutCb) {
-      return;
-    }
-    // Set timeoutCb so it will get cleaned up on request end.
-    this.timeoutCb = emitRequestTimeout;
-    // Delegate socket timeout event.
-    if (this.socket) {
-      this.socket.once("timeout", emitRequestTimeout);
-    } else {
-      this.on("socket", (socket) => {
-        socket.once("timeout", emitRequestTimeout);
-      });
-    }
   }
 
   _processHeader(headers, key, value, validate) {
@@ -865,20 +849,7 @@ class ClientRequest extends OutgoingMessage {
 }
 
 function emitRequestTimeout() {
-  const req = this._httpMessage;
-  if (req) {
-    req.emit("timeout");
-  }
-}
-
-function setSocketTimeout(sock, msecs) {
-  if (sock.connecting) {
-    sock.once("connect", function () {
-      sock.setTimeout(msecs);
-    });
-  } else {
-    sock.setTimeout(msecs);
-  }
+  req.emit("timeout");
 }
 
 // isCookieField performs a case-insensitive comparison of a provided string
