@@ -329,7 +329,7 @@ impl MainWorker {
     js_runtime.clear_module_map();
     for (p, handle) in handles {
       js_runtime.inject_module_handle(
-        format!("node:{}", p.name).into(),
+        deno_core::FastString::from_static(p.specifier),
         deno_core::ModuleType::JavaScript,
         handle,
       )
