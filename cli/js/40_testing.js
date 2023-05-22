@@ -50,7 +50,7 @@ function opSanitizerDelay() {
   return new Promise((resolve) => {
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 0);
+    }, 1);
   });
 }
 
