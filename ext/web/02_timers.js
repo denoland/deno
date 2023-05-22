@@ -99,6 +99,8 @@ function initializeTimer(
   args,
   repeat,
   prevId,
+  // TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+  // in Node compat are cleaned up
   respectNesting = true,
 ) {
   // 2. If previousId was given, let id be previousId; otherwise, let
@@ -170,7 +172,7 @@ function initializeTimer(
           // calling clearTimeout() or clearInterval().
           // 5. If repeat is true, then perform the timer initialization steps
           // again, given global, handler, timeout, arguments, true, and id.
-          initializeTimer(callback, timeout, args, true, id, respectNesting);
+          initializeTimer(callback, timeout, args, true, id);
         }
       } else {
         // 6. Otherwise, remove global's map of active timers[id].
@@ -344,6 +346,8 @@ function setInterval(callback, timeout = 0, ...args) {
   return initializeTimer(callback, timeout, args, true);
 }
 
+// TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+// in Node compat are cleaned up
 function setTimeoutUnclamped(callback, timeout = 0, ...args) {
   checkThis(this);
   if (typeof callback !== "function") {
@@ -352,16 +356,6 @@ function setTimeoutUnclamped(callback, timeout = 0, ...args) {
   timeout = webidl.converters.long(timeout);
 
   return initializeTimer(callback, timeout, args, false, undefined, false);
-}
-
-function setIntervalUnclamped(callback, timeout = 0, ...args) {
-  checkThis(this);
-  if (typeof callback !== "function") {
-    callback = webidl.converters.DOMString(callback);
-  }
-  timeout = webidl.converters.long(timeout);
-
-  return initializeTimer(callback, timeout, args, true, undefined, false);
 }
 
 function clearTimeout(id = 0) {
@@ -404,7 +398,6 @@ export {
   opNow,
   refTimer,
   setInterval,
-  setIntervalUnclamped,
   setTimeout,
   setTimeoutUnclamped,
   unrefTimer,

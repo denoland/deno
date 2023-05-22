@@ -6,9 +6,9 @@ import { validateFunction, validateNumber } from "ext:deno_node/internal/validat
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
 import { emitWarning } from "ext:deno_node/process.ts";
 import {
-  setTimeoutUnclamped as setTimeout_,
+  setTimeout as setTimeout_,
   clearTimeout as clearTimeout_,
-  setIntervalUnclamped as setInterval_,
+  setInterval as setInterval_,
 } from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
