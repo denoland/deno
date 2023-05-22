@@ -51,7 +51,7 @@ export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
 ): Timeout {
-  setTimeoutUnclamped(cb, 0, ...args);
+  return setTimeoutUnclamped(cb, 0, ...args);
 }
 export const clearImmediate = clearTimeout;
 
