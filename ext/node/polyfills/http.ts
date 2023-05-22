@@ -848,10 +848,6 @@ class ClientRequest extends OutgoingMessage {
   }
 }
 
-function emitRequestTimeout() {
-  req.emit("timeout");
-}
-
 // isCookieField performs a case-insensitive comparison of a provided string
 // against the word "cookie." As of V8 6.6 this is faster than handrolling or
 // using a case-insensitive RegExp.
