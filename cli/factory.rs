@@ -603,6 +603,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?.clone();
     let npm_resolver = self.npm_resolver().await?.clone();
     let maybe_inspector_server = self.maybe_inspector_server().clone();
+    let maybe_lockfile = self.maybe_lockfile().clone();
     Ok(Arc::new(move || {
       CliMainWorkerFactory::new(
         StorageKeyResolver::from_options(&options),
@@ -627,6 +628,7 @@ impl CliFactory {
         root_cert_store_provider.clone(),
         fs.clone(),
         maybe_inspector_server.clone(),
+        maybe_lockfile.clone(),
         main_worker_options.clone(),
       )
     }))
@@ -660,6 +662,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       self.maybe_inspector_server().clone(),
+      self.maybe_lockfile().clone(),
       self.create_cli_main_worker_options()?,
     ))
   }
