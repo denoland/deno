@@ -723,6 +723,19 @@ itest!(deno_run_bin_cjs {
   http_server: true,
 });
 
+#[test]
+fn deno_run_bin_lockfile() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}");
+  let output = context
+    .new_command()
+    .args("run -A --quiet npm:@denotest/bin/cli-esm this is a test")
+    .run();
+  output.assert_matches_file("npm/deno_run_esm.out");
+  assert!(temp_dir.path().join("deno.lock").exists());
+}
+
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
@@ -1879,4 +1892,35 @@ fn binary_package_with_optional_dependencies() {
         .exists());
     }
   }
+}
+
+#[test]
+pub fn node_modules_dir_config_file() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": true }"#);
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
+
+  let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
+  deno_cache_cmd.run();
+
+  assert!(node_modules_dir.exists());
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
+
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  temp_dir.write("package.json", r#"{}"#);
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir main.ts")
+    .run();
+  assert!(node_modules_dir.exists());
 }

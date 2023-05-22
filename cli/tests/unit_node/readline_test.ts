@@ -12,3 +12,16 @@ Deno.test("[node/readline] createInstance", () => {
   // deno-lint-ignore no-explicit-any
   assertInstanceOf(rl, Interface as any);
 });
+
+// Test for https://github.com/denoland/deno/issues/19183
+Deno.test("[node/readline] don't throw on rl.question()", () => {
+  const rli = createInterface({
+    input: new Readable({ read() {} }),
+    output: new Writable({ write() {} }),
+    terminal: true,
+  });
+
+  // Calling this would throw
+  rli.question("foo", () => rli.close());
+  rli.close();
+});

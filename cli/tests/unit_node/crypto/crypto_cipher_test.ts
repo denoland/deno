@@ -6,13 +6,13 @@ import { buffer, text } from "node:stream/consumers";
 import {
   assertEquals,
   assertThrows,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 
 const rsaPrivateKey = Deno.readTextFileSync(
-  new URL("./testdata/rsa_private.pem", import.meta.url),
+  new URL("../testdata/rsa_private.pem", import.meta.url),
 );
 const rsaPublicKey = Deno.readTextFileSync(
-  new URL("./testdata/rsa_public.pem", import.meta.url),
+  new URL("../testdata/rsa_public.pem", import.meta.url),
 );
 
 const input = new TextEncoder().encode("hello world");

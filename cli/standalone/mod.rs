@@ -408,6 +408,7 @@ pub async fn run(
     root_cert_store_provider,
     fs,
     None,
+    None,
     CliMainWorkerOptions {
       argv: metadata.argv,
       debug: false,

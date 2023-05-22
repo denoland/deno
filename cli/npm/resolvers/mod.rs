@@ -36,10 +36,11 @@ use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
-use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+
+pub use self::common::NpmPackageFsResolver;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -158,7 +159,7 @@ impl CliNpmResolver {
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     if packages.is_empty() {
       return Ok(());
@@ -181,7 +182,7 @@ impl CliNpmResolver {
   /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     self.resolution.set_package_reqs(packages).await
   }
@@ -211,7 +212,7 @@ impl CliNpmResolver {
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
     let package_reqs = vec![NpmPackageReq::from_str("@types/node").unwrap()];
-    self.resolution.add_package_reqs(package_reqs).await?;
+    self.resolution.add_package_reqs(&package_reqs).await?;
     self.fs_resolver.cache_packages().await?;
 
     Ok(())
