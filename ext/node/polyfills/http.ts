@@ -799,31 +799,38 @@ class ClientRequest extends OutgoingMessage {
     }${path}${search}${hash}`;
   }
 
-  setTimeout(timeout: number, callback?: () => void) {
-    if (timeout == 0) {
-      // Node's underlying Socket implementation expects a 0 value to disable the
-      // existing timeout.
-      if (this.opts.timeout) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-        this.opts.signal = undefined;
-      }
-
-      return;
+  setTimeout(msecs: number, callback?: () => void) {
+    if (this._ended) {
+      return this;
     }
 
-    const controller = new AbortController();
-    this.opts.signal = controller.signal;
+    this._listenSocketTimeout();
+    msecs = getTimerDuration(msecs, "msecs");
+    if (callback) this.once("timeout", callback);
 
-    this.opts.timeout = setTimeout(() => {
-      controller.abort();
+    if (this.socket) {
+      setSocketTimeout(this.socket, msecs);
+    } else {
+      this.once("socket", (sock) => setSocketTimeout(sock, msecs));
+    }
 
-      this.emit("timeout");
+    return this;
+  }
 
-      if (callback !== undefined) {
-        callback();
-      }
-    }, timeout);
+  _listenSocketTimeout() {
+    if (this.timeoutCb) {
+      return;
+    }
+    // Set timeoutCb so it will get cleaned up on request end.
+    this.timeoutCb = emitRequestTimeout;
+    // Delegate socket timeout event.
+    if (this.socket) {
+      this.socket.once("timeout", emitRequestTimeout);
+    } else {
+      this.on("socket", (socket) => {
+        socket.once("timeout", emitRequestTimeout);
+      });
+    }
   }
 
   _processHeader(headers, key, value, validate) {
@@ -854,6 +861,23 @@ class ClientRequest extends OutgoingMessage {
       value = value.join("; ");
     }
     headers.push([key, value]);
+  }
+}
+
+function emitRequestTimeout() {
+  const req = this._httpMessage;
+  if (req) {
+    req.emit("timeout");
+  }
+}
+
+function setSocketTimeout(sock, msecs) {
+  if (sock.connecting) {
+    sock.once("connect", function () {
+      sock.setTimeout(msecs);
+    });
+  } else {
+    sock.setTimeout(msecs);
   }
 }
 
