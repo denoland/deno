@@ -1375,7 +1375,7 @@ fn resolve_files(
   }
 
   eprintln!("FIXME(bartlomieju): data/test?.ts in the deno.json will be stripped to data/test here. This needs to be fixes");
-  eprintln!("resolve_files {:#?}", result);
+  // eprintln!("resolve_files {:#?}", result);
 
   // Now expand globs if there are any
   if !result.include.is_empty() {
@@ -1386,7 +1386,7 @@ fn resolve_files(
     result.exclude = expand_globs(&result.exclude)?;
   }
 
-  eprintln!("resolved files {:#?}", result);
+  // eprintln!("resolved files {:#?}", result);
   Ok(result)
 }
 
@@ -1570,6 +1570,69 @@ mod test {
 
   #[test]
   fn resolve_files_test() {
-    let context = TestContextBuilder::new().use_temp_cwd().build();
+    use test_util::TempDir;
+    let temp_dir_guard = TempDir::new();
+    let temp_dir = temp_dir_guard.path().to_path_buf();
+
+    std::fs::create_dir(temp_dir.join("data")).unwrap();
+    std::fs::create_dir(temp_dir.join("nested")).unwrap();
+    std::fs::create_dir(temp_dir.join("nested/foo")).unwrap();
+    std::fs::create_dir(temp_dir.join("nested/fizz")).unwrap();
+    std::fs::create_dir(temp_dir.join("pages")).unwrap();
+
+    std::fs::write(temp_dir.join("data/tes.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("data/test1.js"), "").unwrap();
+    std::fs::write(temp_dir.join("data/test1.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("data/test12.ts"), "").unwrap();
+
+    std::fs::write(temp_dir.join("nested/foo/foo.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/foo/bar.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/foo/fizz.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/foo/bazz.ts"), "").unwrap();
+
+    std::fs::write(temp_dir.join("nested/fizz/foo.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/fizz/bar.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/fizz/fizz.ts"), "").unwrap();
+    std::fs::write(temp_dir.join("nested/fizz/bazz.ts"), "").unwrap();
+
+    std::fs::write(temp_dir.join("pages/[id].ts"), "").unwrap();
+
+    let resolved_files = resolve_files(
+      Some(FilesConfig {
+        include: vec![
+          temp_dir.join("data/test1.?s"),
+          temp_dir.join("nested/foo/*.ts"),
+          temp_dir.join("nested/fizz/*.ts"),
+          temp_dir.join("pages/[id].ts"),
+        ],
+        exclude: vec![temp_dir.join("nested/**/*bazz.ts")],
+      }),
+      None,
+    )
+    .unwrap();
+
+    assert_eq!(
+      resolved_files.include,
+      vec![
+        temp_dir.join("data/test1.js"),
+        temp_dir.join("data/test1.ts"),
+        temp_dir.join("nested/foo/bar.ts"),
+        temp_dir.join("nested/foo/bazz.ts"),
+        temp_dir.join("nested/foo/fizz.ts"),
+        temp_dir.join("nested/foo/foo.ts"),
+        temp_dir.join("nested/fizz/bar.ts"),
+        temp_dir.join("nested/fizz/bazz.ts"),
+        temp_dir.join("nested/fizz/fizz.ts"),
+        temp_dir.join("nested/fizz/foo.ts"),
+        temp_dir.join("pages/[id].ts"),
+      ]
+    );
+    assert_eq!(
+      resolved_files.exclude,
+      vec![
+        temp_dir.join("nested/fizz/bazz.ts"),
+        temp_dir.join("nested/foo/bazz.ts"),
+      ]
+    )
   }
 }
