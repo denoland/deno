@@ -7,7 +7,6 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
-use brotli;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::bad_resource;

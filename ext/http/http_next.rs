@@ -359,11 +359,9 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
     )
   });
   match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
-    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => {
-      return Compression::Brotli
-    }
-    _ => return Compression::None,
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
+    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
+    _ => Compression::None,
   }
 }
 
