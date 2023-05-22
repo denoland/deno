@@ -194,6 +194,25 @@
     }
   }
 
+  // Fast event loop tick for a single promise and no nextTick.
+  function eventLoopTick1(promiseId, res) {
+    // Resolve the promise
+    getPromise(promiseId).resolve(res);
+    ops.op_run_microtasks();
+
+    // Finally drain macrotask queue.
+    for (let i = 0; i < macrotaskCallbacks.length; i++) {
+      const cb = macrotaskCallbacks[i];
+      while (true) {
+        const res = cb();
+        ops.op_run_microtasks();
+        if (res === true) {
+          break;
+        }
+      }
+    }
+  }
+
   function registerErrorClass(className, errorClass) {
     registerErrorBuilder(className, (msg) => new errorClass(msg));
   }
@@ -810,6 +829,7 @@ for (let i = 0; i < 10; i++) {
     registerErrorClass,
     buildCustomError,
     eventLoopTick,
+    eventLoopTick1,
     BadResource,
     BadResourcePrototype,
     Interrupted,

@@ -871,7 +871,7 @@ impl JsRuntime {
 
   /// Grabs a reference to core.js' eventLoopTick & buildCustomError
   fn init_cbs(&mut self, realm: &JsRealm) {
-    let (event_loop_tick_cb, build_custom_error_cb) = {
+    let (event_loop_tick_cb, event_loop_tick1_cb, build_custom_error_cb) = {
       let scope = &mut realm.handle_scope(self.v8_isolate());
       let context = realm.context();
       let context_local = v8::Local::new(scope, context);
@@ -882,6 +882,9 @@ impl JsRuntime {
         v8::String::new_external_onebyte_static(scope, b"core").unwrap();
       let event_loop_tick_str =
         v8::String::new_external_onebyte_static(scope, b"eventLoopTick")
+          .unwrap();
+      let event_loop_tick1_str =
+        v8::String::new_external_onebyte_static(scope, b"eventLoopTick1")
           .unwrap();
       let build_custom_error_str =
         v8::String::new_external_onebyte_static(scope, b"buildCustomError")
@@ -903,6 +906,11 @@ impl JsRuntime {
         .unwrap()
         .try_into()
         .unwrap();
+      let event_loop_tick1_cb: v8::Local<v8::Function> = core_obj
+        .get(scope, event_loop_tick1_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap();
       let build_custom_error_cb: v8::Local<v8::Function> = core_obj
         .get(scope, build_custom_error_str.into())
         .unwrap()
@@ -910,6 +918,7 @@ impl JsRuntime {
         .unwrap();
       (
         v8::Global::new(scope, event_loop_tick_cb),
+        v8::Global::new(scope, event_loop_tick1_cb),
         v8::Global::new(scope, build_custom_error_cb),
       )
     };
@@ -920,6 +929,9 @@ impl JsRuntime {
     state
       .js_event_loop_tick_cb
       .replace(Rc::new(event_loop_tick_cb));
+    state
+      .js_event_loop_tick1_cb
+      .replace(Rc::new(event_loop_tick1_cb));
     state
       .js_build_custom_error_cb
       .replace(Rc::new(build_custom_error_cb));
@@ -1050,6 +1062,7 @@ impl JsRuntime {
           let realm_state_rc = realm.state(scope);
           let mut realm_state = realm_state_rc.borrow_mut();
           std::mem::take(&mut realm_state.js_event_loop_tick_cb);
+          std::mem::take(&mut realm_state.js_event_loop_tick1_cb);
           std::mem::take(&mut realm_state.js_build_custom_error_cb);
           std::mem::take(&mut realm_state.js_promise_reject_cb);
           std::mem::take(&mut realm_state.js_format_exception_cb);
@@ -2408,8 +2421,45 @@ impl JsRuntime {
       }
     }
 
-    let has_tick_scheduled =
-      v8::Boolean::new(scope, self.state.borrow().has_tick_scheduled);
+    let has_tick_scheduled = self.state.borrow().has_tick_scheduled;
+    if !has_tick_scheduled {
+      if args.is_empty() {
+        // If no tick is scheduled and no promises are pending, the only thing the callback would do is
+        // perform microtasks.
+        scope.perform_microtask_checkpoint();
+        return Ok(());
+      }
+      if args.len() == 2 {
+        let js_event_loop_tick_cb_handle = {
+          let state = self.state.borrow_mut();
+          let realm_state_rc =
+            state.global_realm.as_ref().unwrap().state(scope);
+          let handle = realm_state_rc
+            .borrow()
+            .js_event_loop_tick1_cb
+            .clone()
+            .unwrap();
+          handle
+        };
+
+        let tc_scope = &mut v8::TryCatch::new(scope);
+        let js_event_loop_tick_cb = js_event_loop_tick_cb_handle.open(tc_scope);
+        let this = v8::undefined(tc_scope).into();
+        js_event_loop_tick_cb.call(tc_scope, this, args.as_slice());
+
+        if let Some(exception) = tc_scope.exception() {
+          return exception_to_err_result(tc_scope, exception, false);
+        }
+
+        if tc_scope.has_terminated() || tc_scope.is_execution_terminating() {
+          return Ok(());
+        }
+
+        return Ok(());
+      }
+    }
+
+    let has_tick_scheduled = v8::Boolean::new(scope, has_tick_scheduled);
     args.push(has_tick_scheduled.into());
 
     let js_event_loop_tick_cb_handle = {
