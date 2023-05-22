@@ -2,7 +2,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
-use std::io::BufWriter;
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -463,7 +462,6 @@ impl GZipResponseStream {
 #[derive(Copy, Clone, Debug)]
 enum BrotliState {
   Streaming,
-  EndOfStream,
 }
 
 #[pin_project]
@@ -491,9 +489,6 @@ impl PollFrame for BrotliResponseStream {
     let state = &mut this.state;
     //let orig_state = *state;
     let frame = match *state {
-      BrotliState::EndOfStream => {
-        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
-      }
       BrotliState::Streaming => {
         ready!(Pin::new(&mut this.underlying).poll_frame(cx))
       }
@@ -507,7 +502,7 @@ impl PollFrame for BrotliResponseStream {
           6,
           22,
         );
-        writer.write_all(buf.as_ref());
+        writer.write_all(buf.as_ref()).unwrap();
 
         ResponseStreamResult::NonEmptyBuf(BufView::from(writer.into_inner()))
       }
