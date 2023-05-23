@@ -130,15 +130,27 @@ fn lint_with_glob_config() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
-  assert_contains!(output, "glob/pages/[id].ts:1:10");
-  assert_contains!(output, "glob/nested/fizz/bar.ts:1:10");
-  assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
-  assert_contains!(output, "glob/data/test1.js:1:10");
-  assert_contains!(output, "glob/nested/foo/bar.ts:1:10");
-  assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
-  assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
-  assert_contains!(output, "glob/data/test1.ts:1:10");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\bar.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\bar.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+    assert_contains!(output, "glob/pages/[id].ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/bar.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/nested/foo/bar.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
   assert_contains!(output, "Found 9 problems");
   assert_contains!(output, "Checked 9 files");
 }
@@ -155,15 +167,27 @@ fn lint_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
-  assert_contains!(output, "glob/pages/[id].ts:1:10");
-  assert_contains!(output, "glob/nested/fizz/bazz.ts:1:10");
-  assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
-  assert_contains!(output, "glob/data/test1.js:1:10");
-  assert_contains!(output, "glob/nested/foo/bazz.ts:1:10");
-  assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
-  assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
-  assert_contains!(output, "glob/data/test1.ts:1:10");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\bazz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\bazz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+    assert_contains!(output, "glob/pages/[id].ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/bazz.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/nested/foo/bazz.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
   assert_contains!(output, "Found 9 problems");
   assert_contains!(output, "Checked 9 files");
 
@@ -175,8 +199,13 @@ fn lint_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/data/test1.js:1:10");
-  assert_contains!(output, "glob/data/test1.ts:1:10");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
   assert_contains!(output, "Found 2 problems");
   assert_contains!(output, "Checked 2 files");
 }

@@ -272,15 +272,28 @@ fn fmt_with_glob_config() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/nested/fizz/fizz.ts");
-  assert_contains!(output, "glob/pages/[id].ts");
-  assert_contains!(output, "glob/nested/fizz/bar.ts");
-  assert_contains!(output, "glob/nested/foo/foo.ts");
-  assert_contains!(output, "glob/data/test1.js");
-  assert_contains!(output, "glob/nested/foo/bar.ts");
-  assert_contains!(output, "glob/nested/foo/fizz.ts");
-  assert_contains!(output, "glob/nested/fizz/foo.ts");
-  assert_contains!(output, "glob/data/test1.ts");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
+    assert_contains!(output, r#"glob\pages\[id].ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\bar.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\nested\foo\bar.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts");
+    assert_contains!(output, "glob/pages/[id].ts");
+    assert_contains!(output, "glob/nested/fizz/bar.ts");
+    assert_contains!(output, "glob/nested/foo/foo.ts");
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/nested/foo/bar.ts");
+    assert_contains!(output, "glob/nested/foo/fizz.ts");
+    assert_contains!(output, "glob/nested/fizz/foo.ts");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
+
   assert_contains!(output, "Found 9 not formatted files in 9 files");
 }
 
@@ -296,17 +309,28 @@ fn fmt_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/nested/fizz/fizz.ts");
-  assert_contains!(output, "glob/pages/[id].ts");
-  assert_contains!(output, "glob/nested/fizz/bazz.ts");
-  assert_contains!(output, "glob/nested/foo/foo.ts");
-  assert_contains!(output, "glob/data/test1.js");
-  assert_contains!(output, "glob/nested/foo/bazz.ts");
-  assert_contains!(output, "glob/nested/foo/fizz.ts");
-  assert_contains!(output, "glob/nested/fizz/foo.ts");
-  assert_contains!(output, "glob/data/test1.ts");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
+    assert_contains!(output, r#"glob\pages\[id].ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\bazz.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\nested\foo\bazz.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts");
+    assert_contains!(output, "glob/pages/[id].ts");
+    assert_contains!(output, "glob/nested/fizz/bazz.ts");
+    assert_contains!(output, "glob/nested/foo/foo.ts");
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/nested/foo/bazz.ts");
+    assert_contains!(output, "glob/nested/foo/fizz.ts");
+    assert_contains!(output, "glob/nested/fizz/foo.ts");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
   assert_contains!(output, "Found 9 not formatted files in 9 files");
-
   let cmd_output = context
     .new_command()
     .args("fmt --check --config deno.glob.json glob/data/test1.?s")
@@ -315,7 +339,13 @@ fn fmt_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert_contains!(output, "glob/data/test1.js");
-  assert_contains!(output, "glob/data/test1.ts");
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
+
   assert_contains!(output, "Found 2 not formatted files in 2 files");
 }
