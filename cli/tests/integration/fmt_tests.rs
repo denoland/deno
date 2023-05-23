@@ -271,7 +271,6 @@ fn fmt_with_glob_config() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  eprintln!("output {}", output);
   assert!(output.contains("glob/nested/fizz/fizz.ts"));
   assert!(output.contains("glob/pages/[id].ts"));
   assert!(output.contains("glob/nested/fizz/bar.ts"));
