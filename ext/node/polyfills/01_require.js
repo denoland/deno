@@ -607,6 +607,11 @@ Module._findPath = function (request, paths, isMain, parentPath) {
   return false;
 };
 
+/**
+ * Get a list of potential module directories
+ * @param {string} fromPath The directory name of the module
+ * @returns {string[]} List of module directories
+ */
 Module._nodeModulePaths = function (fromPath) {
   return ops.op_require_node_module_paths(fromPath);
 };
