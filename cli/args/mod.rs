@@ -8,7 +8,7 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
-use self::lockfile::snapshot_from_lockfile;
+pub use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
@@ -577,7 +577,7 @@ impl CliOptions {
     flags: Flags,
     initial_cwd: PathBuf,
     maybe_config_file: Option<ConfigFile>,
-    maybe_lockfile: Option<Lockfile>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     maybe_package_json: Option<PackageJson>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -594,7 +594,6 @@ impl CliOptions {
       eprintln!("{}", colors::yellow(msg));
     }
 
-    let maybe_lockfile = maybe_lockfile.map(|l| Arc::new(Mutex::new(l)));
     let maybe_node_modules_folder = resolve_local_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -647,7 +646,7 @@ impl CliOptions {
       flags,
       initial_cwd,
       maybe_config_file,
-      maybe_lock_file,
+      maybe_lock_file.map(|l| Arc::new(Mutex::new(l))),
       maybe_package_json,
     )
   }
@@ -1348,7 +1347,7 @@ pub fn resolve_no_prompt(flags: &Flags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
-fn has_flag_env_var(name: &str) -> bool {
+pub fn has_flag_env_var(name: &str) -> bool {
   let value = env::var(name);
   matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
@@ -1375,7 +1374,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1396,7 +1395,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1419,7 +1418,7 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("https://example.com/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1443,7 +1442,7 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -1465,7 +1464,8 @@ mod test {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file =
+      ConfigFile::new(config_text, config_specifier.clone()).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -1481,7 +1481,7 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),

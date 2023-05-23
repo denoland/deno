@@ -91,6 +91,16 @@ impl CliNpmResolver {
     self.fs_resolver.node_modules_path()
   }
 
+  /// Checks if the provided package req's folder is cached.
+  pub fn is_pkg_req_folder_cached(&self, req: &NpmPackageReq) -> bool {
+    self
+      .resolve_pkg_id_from_pkg_req(req)
+      .ok()
+      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .map(|folder| folder.exists())
+      .unwrap_or(false)
+  }
+
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
     req: &NpmPackageReq,
