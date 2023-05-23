@@ -1924,3 +1924,50 @@ pub fn node_modules_dir_config_file() {
     .run();
   assert!(node_modules_dir.exists());
 }
+
+#[test]
+fn top_level_install_package_json_explicit_opt_in() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
+
+  // when the node_modules_dir is explicitly opted into, we should always
+  // ensure a top level package.json install occurs
+  temp_dir.write("deno.json", "{ \"nodeModulesDir\": true }");
+  temp_dir.write(
+    "package.json",
+    "{ \"dependencies\": { \"@denotest/esm-basic\": \"1.0\" }}",
+  );
+
+  temp_dir.write("main.ts", "console.log(5);");
+  let output = test_context.new_command().args("cache main.ts").run();
+  output.assert_matches_text(
+    concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+    )
+  );
+
+  rm_node_modules();
+  let output = test_context
+    .new_command()
+    .args_vec(["eval", "console.log(5)"])
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+
+  rm_node_modules();
+  let output = test_context
+    .new_command()
+    .args("run -")
+    .stdin("console.log(5)")
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+}
