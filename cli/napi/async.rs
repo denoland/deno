@@ -76,12 +76,14 @@ fn napi_async_init(
   _env: *mut Env,
   _async_resource: napi_value,
   _async_resource_name: napi_value,
-  _result: *mut *mut (),
+  result: *mut *mut (),
 ) -> napi_status {
-  todo!()
+  *result = ptr::null_mut();
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
-fn napi_async_destroy(_env: *mut Env, _async_context: *mut ()) -> napi_status {
-  todo!()
+fn napi_async_destroy(_env: *mut Env, async_context: *mut ()) -> napi_status {
+  assert!(async_context.is_null());
+  napi_ok
 }
