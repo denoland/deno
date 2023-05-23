@@ -1345,7 +1345,7 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
         },
       )
       .with_context(|| {
-        format!("Failed to expand glob: \"{}\"", escaped_path_str)
+        format!("Failed to expand glob: \"{}\"", path_str)
       })?;
 
       for globbed_path_result in globbed_paths {
