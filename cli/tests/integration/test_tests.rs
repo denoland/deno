@@ -522,15 +522,15 @@ fn test_with_glob_config() {
   cmd_output.assert_exit_code(0);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/nested/fizz/fizz.ts"));
-  assert!(output.contains("glob/pages/[id].ts"));
-  assert!(output.contains("glob/nested/fizz/bar.ts"));
-  assert!(output.contains("glob/nested/foo/foo.ts"));
-  assert!(output.contains("glob/data/test1.js"));
-  assert!(output.contains("glob/nested/foo/bar.ts"));
-  assert!(output.contains("glob/nested/foo/fizz.ts"));
-  assert!(output.contains("glob/nested/fizz/foo.ts"));
-  assert!(output.contains("glob/data/test1.ts"));
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bar.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bar.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
 }
 
 #[test]
@@ -545,15 +545,15 @@ fn test_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(0);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/nested/fizz/fizz.ts"));
-  assert!(output.contains("glob/pages/[id].ts"));
-  assert!(output.contains("glob/nested/fizz/bazz.ts"));
-  assert!(output.contains("glob/nested/foo/foo.ts"));
-  assert!(output.contains("glob/data/test1.js"));
-  assert!(output.contains("glob/nested/foo/bazz.ts"));
-  assert!(output.contains("glob/nested/foo/fizz.ts"));
-  assert!(output.contains("glob/nested/fizz/foo.ts"));
-  assert!(output.contains("glob/data/test1.ts"));
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
 
   let cmd_output = context
     .new_command()
@@ -563,6 +563,6 @@ fn test_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(0);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/data/test1.js"));
-  assert!(output.contains("glob/data/test1.ts"));
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/data/test1.ts");
 }

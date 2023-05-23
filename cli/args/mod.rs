@@ -1328,7 +1328,7 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
   let mut new_paths = vec![];
   for path in paths {
     let path_str = path.to_string_lossy();
-    if path_str.contains('*') || path_str.contains('?') {
+    if path_str.chars().any(|c| matches!(c, '*' | '?')) {
       // Escape brackets - we currently don't support them, because with introduction
       // of glob expansion paths like "pages/[id].ts" would suddenly start giving
       // wrong results. We might want to revisit that in the future.
@@ -1373,10 +1373,6 @@ fn resolve_files(
       result.exclude = file_flags.ignore;
     }
   }
-
-  // eprintln!("FIXME(bartlomieju): data/test?.ts in the deno.json will be stripped to data/test here. This needs to be fixes");
-  // eprintln!("resolve_files {:#?}", result);
-
   // Now expand globs if there are any
   if !result.include.is_empty() {
     result.include = expand_globs(&result.include)?;
@@ -1386,7 +1382,6 @@ fn resolve_files(
     result.exclude = expand_globs(&result.exclude)?;
   }
 
-  // eprintln!("resolved files {:#?}", result);
   Ok(result)
 }
 
@@ -1413,6 +1408,7 @@ pub fn npm_pkg_req_ref_to_binary_command(
 #[cfg(test)]
 mod test {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[cfg(not(windows))]
   #[test]
@@ -1571,41 +1567,40 @@ mod test {
   #[test]
   fn resolve_files_test() {
     use test_util::TempDir;
-    let temp_dir_guard = TempDir::new();
-    let temp_dir = temp_dir_guard.path().to_path_buf();
+    let temp_dir = TempDir::new();
 
-    std::fs::create_dir(temp_dir.join("data")).unwrap();
-    std::fs::create_dir(temp_dir.join("nested")).unwrap();
-    std::fs::create_dir(temp_dir.join("nested/foo")).unwrap();
-    std::fs::create_dir(temp_dir.join("nested/fizz")).unwrap();
-    std::fs::create_dir(temp_dir.join("pages")).unwrap();
+    temp_dir.create_dir_all("data");
+    temp_dir.create_dir_all("nested");
+    temp_dir.create_dir_all("nested/foo");
+    temp_dir.create_dir_all("nested/fizz");
+    temp_dir.create_dir_all("pages");
 
-    std::fs::write(temp_dir.join("data/tes.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("data/test1.js"), "").unwrap();
-    std::fs::write(temp_dir.join("data/test1.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("data/test12.ts"), "").unwrap();
+    temp_dir.write("data/tes.ts", "");
+    temp_dir.write("data/test1.js", "");
+    temp_dir.write("data/test1.ts", "");
+    temp_dir.write("data/test12.ts", "");
 
-    std::fs::write(temp_dir.join("nested/foo/foo.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/foo/bar.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/foo/fizz.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/foo/bazz.ts"), "").unwrap();
+    temp_dir.write("nested/foo/foo.ts", "");
+    temp_dir.write("nested/foo/bar.ts", "");
+    temp_dir.write("nested/foo/fizz.ts", "");
+    temp_dir.write("nested/foo/bazz.ts", "");
 
-    std::fs::write(temp_dir.join("nested/fizz/foo.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/fizz/bar.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/fizz/fizz.ts"), "").unwrap();
-    std::fs::write(temp_dir.join("nested/fizz/bazz.ts"), "").unwrap();
+    temp_dir.write("nested/fizz/foo.ts", "");
+    temp_dir.write("nested/fizz/bar.ts", "");
+    temp_dir.write("nested/fizz/fizz.ts", "");
+    temp_dir.write("nested/fizz/bazz.ts", "");
 
-    std::fs::write(temp_dir.join("pages/[id].ts"), "").unwrap();
+    temp_dir.write("pages/[id].ts", "");
 
     let resolved_files = resolve_files(
       Some(FilesConfig {
         include: vec![
-          temp_dir.join("data/test1.?s"),
-          temp_dir.join("nested/foo/*.ts"),
-          temp_dir.join("nested/fizz/*.ts"),
-          temp_dir.join("pages/[id].ts"),
+          temp_dir.path().join("data/test1.?s"),
+          temp_dir.path().join("nested/foo/*.ts"),
+          temp_dir.path().join("nested/fizz/*.ts"),
+          temp_dir.path().join("pages/[id].ts"),
         ],
-        exclude: vec![temp_dir.join("nested/**/*bazz.ts")],
+        exclude: vec![temp_dir.path().join("nested/**/*bazz.ts")],
       }),
       None,
     )
@@ -1614,24 +1609,24 @@ mod test {
     assert_eq!(
       resolved_files.include,
       vec![
-        temp_dir.join("data/test1.js"),
-        temp_dir.join("data/test1.ts"),
-        temp_dir.join("nested/foo/bar.ts"),
-        temp_dir.join("nested/foo/bazz.ts"),
-        temp_dir.join("nested/foo/fizz.ts"),
-        temp_dir.join("nested/foo/foo.ts"),
-        temp_dir.join("nested/fizz/bar.ts"),
-        temp_dir.join("nested/fizz/bazz.ts"),
-        temp_dir.join("nested/fizz/fizz.ts"),
-        temp_dir.join("nested/fizz/foo.ts"),
-        temp_dir.join("pages/[id].ts"),
+        temp_dir.path().join("data/test1.js"),
+        temp_dir.path().join("data/test1.ts"),
+        temp_dir.path().join("nested/foo/bar.ts"),
+        temp_dir.path().join("nested/foo/bazz.ts"),
+        temp_dir.path().join("nested/foo/fizz.ts"),
+        temp_dir.path().join("nested/foo/foo.ts"),
+        temp_dir.path().join("nested/fizz/bar.ts"),
+        temp_dir.path().join("nested/fizz/bazz.ts"),
+        temp_dir.path().join("nested/fizz/fizz.ts"),
+        temp_dir.path().join("nested/fizz/foo.ts"),
+        temp_dir.path().join("pages/[id].ts"),
       ]
     );
     assert_eq!(
       resolved_files.exclude,
       vec![
-        temp_dir.join("nested/fizz/bazz.ts"),
-        temp_dir.join("nested/foo/bazz.ts"),
+        temp_dir.path().join("nested/fizz/bazz.ts"),
+        temp_dir.path().join("nested/foo/bazz.ts"),
       ]
     )
   }

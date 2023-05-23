@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use test_util::assert_contains;
 use test_util::TestContextBuilder;
 
 itest!(ignore_unexplicit_files {
@@ -129,17 +130,17 @@ fn lint_with_glob_config() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/nested/fizz/fizz.ts:1:10"));
-  assert!(output.contains("glob/pages/[id].ts:1:10"));
-  assert!(output.contains("glob/nested/fizz/bar.ts:1:10"));
-  assert!(output.contains("glob/nested/foo/foo.ts:1:10"));
-  assert!(output.contains("glob/data/test1.js:1:10"));
-  assert!(output.contains("glob/nested/foo/bar.ts:1:10"));
-  assert!(output.contains("glob/nested/foo/fizz.ts:1:10"));
-  assert!(output.contains("glob/nested/fizz/foo.ts:1:10"));
-  assert!(output.contains("glob/data/test1.ts:1:10"));
-  assert!(output.contains("Found 9 problems"));
-  assert!(output.contains("Checked 9 files"));
+  assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+  assert_contains!(output, "glob/pages/[id].ts:1:10");
+  assert_contains!(output, "glob/nested/fizz/bar.ts:1:10");
+  assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+  assert_contains!(output, "glob/data/test1.js:1:10");
+  assert_contains!(output, "glob/nested/foo/bar.ts:1:10");
+  assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+  assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+  assert_contains!(output, "glob/data/test1.ts:1:10");
+  assert_contains!(output, "Found 9 problems");
+  assert_contains!(output, "Checked 9 files");
 }
 
 #[test]
@@ -154,17 +155,17 @@ fn lint_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/nested/fizz/fizz.ts:1:10"));
-  assert!(output.contains("glob/pages/[id].ts:1:10"));
-  assert!(output.contains("glob/nested/fizz/bazz.ts:1:10"));
-  assert!(output.contains("glob/nested/foo/foo.ts:1:10"));
-  assert!(output.contains("glob/data/test1.js:1:10"));
-  assert!(output.contains("glob/nested/foo/bazz.ts:1:10"));
-  assert!(output.contains("glob/nested/foo/fizz.ts:1:10"));
-  assert!(output.contains("glob/nested/fizz/foo.ts:1:10"));
-  assert!(output.contains("glob/data/test1.ts:1:10"));
-  assert!(output.contains("Found 9 problems"));
-  assert!(output.contains("Checked 9 files"));
+  assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+  assert_contains!(output, "glob/pages/[id].ts:1:10");
+  assert_contains!(output, "glob/nested/fizz/bazz.ts:1:10");
+  assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+  assert_contains!(output, "glob/data/test1.js:1:10");
+  assert_contains!(output, "glob/nested/foo/bazz.ts:1:10");
+  assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+  assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+  assert_contains!(output, "glob/data/test1.ts:1:10");
+  assert_contains!(output, "Found 9 problems");
+  assert_contains!(output, "Checked 9 files");
 
   let cmd_output = context
     .new_command()
@@ -174,8 +175,8 @@ fn lint_with_glob_config_and_flags() {
   cmd_output.assert_exit_code(1);
 
   let output = cmd_output.combined_output();
-  assert!(output.contains("glob/data/test1.js:1:10"));
-  assert!(output.contains("glob/data/test1.ts:1:10"));
-  assert!(output.contains("Found 2 problems"));
-  assert!(output.contains("Checked 2 files"));
+  assert_contains!(output, "glob/data/test1.js:1:10");
+  assert_contains!(output, "glob/data/test1.ts:1:10");
+  assert_contains!(output, "Found 2 problems");
+  assert_contains!(output, "Checked 2 files");
 }
