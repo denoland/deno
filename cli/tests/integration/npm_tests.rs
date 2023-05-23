@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
@@ -1970,4 +1971,24 @@ fn top_level_install_package_json_explicit_opt_in() {
     "Initialize @denotest/esm-basic@1.0.0\n",
     "5\n"
   ));
+
+  // now ensure this is cached in the lsp
+  rm_node_modules();
+  let mut client = test_context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.write_request(
+    "deno/cache",
+    json!({ "referrer": { "uri": file_uri }, "uris": [] }),
+  );
+
+  assert!(node_modules_dir.join("@denotest").exists());
 }
