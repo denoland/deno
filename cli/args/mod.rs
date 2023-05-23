@@ -1343,7 +1343,8 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
           // true because it copies with sh does—these files are considered "hidden"
           require_literal_leading_dot: true,
         },
-      )?;
+      )
+      .with_context(|| format!("Failed to expand glob: \"{}\"", path_str))?;
 
       for globbed_path_result in globbed_paths {
         new_paths.push(globbed_path_result?);
@@ -1591,6 +1592,16 @@ mod test {
     temp_dir.write("nested/fizz/bazz.ts", "");
 
     temp_dir.write("pages/[id].ts", "");
+
+    let error = resolve_files(
+      Some(FilesConfig {
+        include: vec![temp_dir.path().join("data/**********.ts")],
+        exclude: vec![],
+      }),
+      None,
+    )
+    .unwrap_err();
+    assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
       Some(FilesConfig {
