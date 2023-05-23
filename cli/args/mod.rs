@@ -1344,9 +1344,7 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
           require_literal_leading_dot: true,
         },
       )
-      .with_context(|| {
-        format!("Failed to expand glob: \"{}\"", path_str)
-      })?;
+      .with_context(|| format!("Failed to expand glob: \"{}\"", path_str))?;
 
       for globbed_path_result in globbed_paths {
         new_paths.push(globbed_path_result?);
