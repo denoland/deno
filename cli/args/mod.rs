@@ -138,7 +138,7 @@ impl BenchOptions {
       files: resolve_files(
         maybe_bench_config.map(|c| c.files),
         Some(bench_flags.files),
-      ),
+      )?,
       filter: bench_flags.filter,
       json: bench_flags.json,
       no_run: bench_flags.no_run,
@@ -183,7 +183,7 @@ impl FmtOptions {
       files: resolve_files(
         maybe_config_files,
         maybe_fmt_flags.map(|f| f.files),
-      ),
+      )?,
     })
   }
 }
@@ -253,7 +253,7 @@ impl TestOptions {
       files: resolve_files(
         maybe_test_config.map(|c| c.files),
         Some(test_flags.files),
-      ),
+      )?,
       allow_none: test_flags.allow_none,
       concurrent_jobs: test_flags
         .concurrent_jobs
@@ -348,7 +348,7 @@ impl LintOptions {
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
       is_stdin,
-      files: resolve_files(maybe_config_files, Some(maybe_file_flags)),
+      files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
         maybe_rules_tags,
@@ -1323,13 +1323,46 @@ impl StorageKeyResolver {
   }
 }
 
+fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
+  let mut new_paths = vec![];
+  for path in paths {
+    let path_str = path.to_string_lossy();
+    if path_str.chars().any(|c| matches!(c, '*' | '?')) {
+      // Escape brackets - we currently don't support them, because with introduction
+      // of glob expansion paths like "pages/[id].ts" would suddenly start giving
+      // wrong results. We might want to revisit that in the future.
+      let escaped_path_str = path_str.replace('[', "[[]").replace(']', "[]]");
+      let globbed_paths = glob::glob_with(
+        &escaped_path_str,
+        // Matches what `deno_task_shell` does
+        glob::MatchOptions {
+          // false because it should work the same way on case insensitive file systems
+          case_sensitive: false,
+          // true because it copies what sh does
+          require_literal_separator: true,
+          // true because it copies with sh does—these files are considered "hidden"
+          require_literal_leading_dot: true,
+        },
+      )?;
+
+      for globbed_path_result in globbed_paths {
+        new_paths.push(globbed_path_result?);
+      }
+    } else {
+      new_paths.push(path.clone());
+    }
+  }
+
+  Ok(new_paths)
+}
+
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
 fn resolve_files(
   maybe_files_config: Option<FilesConfig>,
   maybe_file_flags: Option<FileFlags>,
-) -> FilesConfig {
+) -> Result<FilesConfig, AnyError> {
   let mut result = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
@@ -1339,7 +1372,16 @@ fn resolve_files(
       result.exclude = file_flags.ignore;
     }
   }
-  result
+  // Now expand globs if there are any
+  if !result.include.is_empty() {
+    result.include = expand_globs(&result.include)?;
+  }
+
+  if !result.exclude.is_empty() {
+    result.exclude = expand_globs(&result.exclude)?;
+  }
+
+  Ok(result)
 }
 
 /// Resolves the no_prompt value based on the cli flags and environment.
@@ -1365,6 +1407,7 @@ pub fn npm_pkg_req_ref_to_binary_command(
 #[cfg(test)]
 mod test {
   use super::*;
+  use pretty_assertions::assert_eq;
 
   #[cfg(not(windows))]
   #[test]
@@ -1519,5 +1562,72 @@ mod test {
     // test empty
     let resolver = StorageKeyResolver::empty();
     assert_eq!(resolver.resolve_storage_key(&specifier), None);
+  }
+
+  #[test]
+  fn resolve_files_test() {
+    use test_util::TempDir;
+    let temp_dir = TempDir::new();
+
+    temp_dir.create_dir_all("data");
+    temp_dir.create_dir_all("nested");
+    temp_dir.create_dir_all("nested/foo");
+    temp_dir.create_dir_all("nested/fizz");
+    temp_dir.create_dir_all("pages");
+
+    temp_dir.write("data/tes.ts", "");
+    temp_dir.write("data/test1.js", "");
+    temp_dir.write("data/test1.ts", "");
+    temp_dir.write("data/test12.ts", "");
+
+    temp_dir.write("nested/foo/foo.ts", "");
+    temp_dir.write("nested/foo/bar.ts", "");
+    temp_dir.write("nested/foo/fizz.ts", "");
+    temp_dir.write("nested/foo/bazz.ts", "");
+
+    temp_dir.write("nested/fizz/foo.ts", "");
+    temp_dir.write("nested/fizz/bar.ts", "");
+    temp_dir.write("nested/fizz/fizz.ts", "");
+    temp_dir.write("nested/fizz/bazz.ts", "");
+
+    temp_dir.write("pages/[id].ts", "");
+
+    let resolved_files = resolve_files(
+      Some(FilesConfig {
+        include: vec![
+          temp_dir.path().join("data/test1.?s"),
+          temp_dir.path().join("nested/foo/*.ts"),
+          temp_dir.path().join("nested/fizz/*.ts"),
+          temp_dir.path().join("pages/[id].ts"),
+        ],
+        exclude: vec![temp_dir.path().join("nested/**/*bazz.ts")],
+      }),
+      None,
+    )
+    .unwrap();
+
+    assert_eq!(
+      resolved_files.include,
+      vec![
+        temp_dir.path().join("data/test1.js"),
+        temp_dir.path().join("data/test1.ts"),
+        temp_dir.path().join("nested/foo/bar.ts"),
+        temp_dir.path().join("nested/foo/bazz.ts"),
+        temp_dir.path().join("nested/foo/fizz.ts"),
+        temp_dir.path().join("nested/foo/foo.ts"),
+        temp_dir.path().join("nested/fizz/bar.ts"),
+        temp_dir.path().join("nested/fizz/bazz.ts"),
+        temp_dir.path().join("nested/fizz/fizz.ts"),
+        temp_dir.path().join("nested/fizz/foo.ts"),
+        temp_dir.path().join("pages/[id].ts"),
+      ]
+    );
+    assert_eq!(
+      resolved_files.exclude,
+      vec![
+        temp_dir.path().join("nested/fizz/bazz.ts"),
+        temp_dir.path().join("nested/foo/bazz.ts"),
+      ]
+    )
   }
 }
