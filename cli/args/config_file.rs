@@ -305,12 +305,12 @@ impl SerializedFilesConfig {
       include: self
         .include
         .into_iter()
-        .map(|p| config_dir.join(&p))
+        .map(|p| config_dir.join(p))
         .collect::<Vec<_>>(),
       exclude: self
         .exclude
         .into_iter()
-        .map(|p| config_dir.join(&p))
+        .map(|p| config_dir.join(p))
         .collect::<Vec<_>>(),
     })
   }
