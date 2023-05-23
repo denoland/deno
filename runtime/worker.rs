@@ -60,7 +60,7 @@ impl ExitCode {
 
 // TODO(nayeemrmn): This should be done per-realm once we support `ShadowRealm`,
 // move it to something like `RuntimeOptions::realm_init_cb`.
-pub fn runtime_init_node_specifiers(js_runtime: &mut JsRuntime) {
+pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
   let handles = deno_node::SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
     .map(|p| (p, js_runtime.get_module_handle(p.ext_specifier).unwrap()))
@@ -337,7 +337,7 @@ impl MainWorker {
       is_main: true,
       ..Default::default()
     });
-    runtime_init_node_specifiers(&mut js_runtime);
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
