@@ -251,7 +251,8 @@ export class OutgoingMessage extends Stream {
       this[kOutHeaders] = headers = Object.create(null);
     }
 
-    headers[name.toLowerCase()] = [name, value];
+    name = name.toString();
+    headers[name.toLowerCase()] = [name, value.toString()];
     return this;
   }
 
@@ -261,6 +262,8 @@ export class OutgoingMessage extends Stream {
     }
     validateHeaderName(name);
     validateHeaderValue(name, value);
+
+    name = name.toString();
 
     const field = name.toLowerCase();
     const headers = this[kOutHeaders];
@@ -276,10 +279,10 @@ export class OutgoingMessage extends Stream {
     const existingValues = headers[field][1];
     if (Array.isArray(value)) {
       for (let i = 0, length = value.length; i < length; i++) {
-        existingValues.push(value[i]);
+        existingValues.push(value[i].toString());
       }
     } else {
-      existingValues.push(value);
+      existingValues.push(value.toString());
     }
 
     return this;
