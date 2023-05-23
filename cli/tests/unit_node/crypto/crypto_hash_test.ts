@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { createHash, createHmac } from "node:crypto";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({

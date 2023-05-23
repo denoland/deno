@@ -37,6 +37,7 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::ResolutionKind;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -350,6 +351,7 @@ pub async fn run(
     npm_registry_url,
     npm_resolution.clone(),
     node_modules_path,
+    NpmSystemInfo::default(),
   );
   let npm_resolver = Arc::new(CliNpmResolver::new(
     fs.clone(),
@@ -405,6 +407,7 @@ pub async fn run(
     Box::new(module_loader_factory),
     root_cert_store_provider,
     fs,
+    None,
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,

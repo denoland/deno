@@ -29,6 +29,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
@@ -313,6 +314,7 @@ impl CliFactory {
           CliNpmRegistryApi::default_url().to_owned(),
           npm_resolution.clone(),
           self.options.node_modules_dir_path(),
+          self.options.npm_system_info(),
         );
         Ok(Arc::new(CliNpmResolver::new(
           fs.clone(),
@@ -322,6 +324,23 @@ impl CliFactory {
         )))
       })
       .await
+  }
+
+  pub async fn create_node_modules_npm_fs_resolver(
+    &self,
+    node_modules_dir_path: PathBuf,
+  ) -> Result<Arc<dyn NpmPackageFsResolver>, AnyError> {
+    Ok(create_npm_fs_resolver(
+      self.fs().clone(),
+      self.npm_cache()?.clone(),
+      self.text_only_progress_bar(),
+      CliNpmRegistryApi::default_url().to_owned(),
+      self.npm_resolution().await?.clone(),
+      // when an explicit path is provided here, it will create the
+      // local node_modules variant of an npm fs resolver
+      Some(node_modules_dir_path),
+      self.options.npm_system_info(),
+    ))
   }
 
   pub fn package_json_deps_provider(&self) -> &Arc<PackageJsonDepsProvider> {
@@ -557,8 +576,9 @@ impl CliFactory {
       self.deno_dir()?,
       self.npm_api()?,
       self.npm_cache()?,
-      self.npm_resolver().await?,
       self.npm_resolution().await?,
+      self.npm_resolver().await?,
+      self.options.npm_system_info(),
       self.package_json_deps_provider(),
     ))
   }
@@ -583,6 +603,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?.clone();
     let npm_resolver = self.npm_resolver().await?.clone();
     let maybe_inspector_server = self.maybe_inspector_server().clone();
+    let maybe_lockfile = self.maybe_lockfile().clone();
     Ok(Arc::new(move || {
       CliMainWorkerFactory::new(
         StorageKeyResolver::from_options(&options),
@@ -607,6 +628,7 @@ impl CliFactory {
         root_cert_store_provider.clone(),
         fs.clone(),
         maybe_inspector_server.clone(),
+        maybe_lockfile.clone(),
         main_worker_options.clone(),
       )
     }))
@@ -640,6 +662,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       self.maybe_inspector_server().clone(),
+      self.maybe_lockfile().clone(),
       self.create_cli_main_worker_options()?,
     ))
   }

@@ -12,6 +12,7 @@ import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { serve } from "../../../test_util/std/http/server.ts";
+import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
   {
@@ -460,4 +461,44 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   });
 
   await d;
+});
+
+Deno.test("[node/http] server unref", async () => {
+  const [statusCode, _output] = await execCode(`
+  import http from "node:http";
+  const server = http.createServer((_req, res) => {
+    res.statusCode = status;
+    res.end("");
+  });
+
+  // This should let the program to exit without waiting for the
+  // server to close.
+  server.unref();
+
+  server.listen(async () => {
+  });
+  `);
+  assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
+  // deno-lint-ignore no-explicit-any
+  let headers: any;
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    headers = resp.headers;
+
+    resp.on("data", () => {});
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(headers!["1"], "2");
 });
