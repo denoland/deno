@@ -94,7 +94,8 @@ pub(crate) struct ContextState {
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+#[repr(transparent)]
 pub struct JsRealm(Rc<v8::Global<v8::Context>>);
 impl JsRealm {
   pub fn new(context: v8::Global<v8::Context>) -> Self {
@@ -104,6 +105,20 @@ impl JsRealm {
   #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
     &self.0
+  }
+
+  /// Attempt to destroy this realm, if there are no other clones of it alive.
+  pub fn try_destroy(self, isolate: &mut v8::Isolate) -> Result<(), Self> {
+    // SAFETY: repr(transparent) allows us to take rc without triggering drop
+    let rc: Rc<v8::Global<v8::Context>> = unsafe { std::mem::transmute(self) }; 
+    match Rc::try_unwrap(rc) {
+      Ok(context) => {
+        // Force any circular references to clear
+        context.open(isolate).clear_all_slots(isolate);
+        Ok(())
+      }
+      Err(rc) => Err(Self(rc))
+    }
   }
 
   #[inline(always)]

@@ -152,11 +152,16 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
+enum JsRealmState {
+  Disposed,
+  Active(v8::Weak<v8::Context>, FuturesUnordered<OpCall>),
+}
+
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
-  known_realms: Vec<v8::Weak<v8::Context>>,
+  known_realms: Vec<JsRealmState>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
   pub(crate) pending_mod_evaluate: Option<ModEvaluate>,
@@ -165,8 +170,6 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  // pub(crate) pending_ops: FuturesUnordered<OpCall>,
-  pub(crate) pending_ops_per_realm: Vec<FuturesUnordered<OpCall>>,
   pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
@@ -179,6 +182,57 @@ pub struct JsRuntimeState {
   pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
   waker: AtomicWaker,
+}
+
+impl JsRuntimeState {
+  pub(crate) fn pending_ops(&self, realm_idx: usize) -> &FuturesUnordered<OpCall> {
+    let JsRealmState::Active(_, ops) = self.known_realms.get(realm_idx).unwrap() else {
+      unreachable!()
+    };
+    ops
+  }
+
+  pub(crate) fn pending_ops_mut(&mut self, realm_idx: usize) -> &mut FuturesUnordered<OpCall> {
+    let JsRealmState::Active(_, ops) = self.known_realms.get_mut(realm_idx).unwrap() else {
+      unreachable!()
+    };
+    ops
+  }
+
+  pub(crate) fn context<'s>(&self, realm_idx: usize, scope: &mut v8::HandleScope<'s, ()>) -> Option<v8::Local<'s, v8::Context>> {
+    let JsRealmState::Active(weak, _) = self.known_realms.get(realm_idx).unwrap() else {
+      return None;
+    };
+    weak.to_local(scope)
+  }
+
+  pub(crate) fn context_global(&self, realm_idx: usize, isolate: &mut v8::OwnedIsolate) -> Option<v8::Global<v8::Context>> {
+    let JsRealmState::Active(weak, _) = self.known_realms.get(realm_idx).unwrap() else {
+      return None;
+    };
+    weak.to_global(isolate)
+  }
+
+  pub(crate) fn destroy_realms(&mut self, isolate: &mut v8::Isolate) {
+    let mut scope = self.global_realm.as_mut().unwrap().handle_scope(isolate);
+    for realm_idx in 0..self.known_realms.len() {
+      if let Some(context) = self.context(realm_idx, &mut scope) {
+        let realm = JsRealmLocal::new(context);
+        let realm_state_rc = realm.state(&mut scope);
+        let mut realm_state = realm_state_rc.borrow_mut();
+        std::mem::take(&mut realm_state.js_event_loop_tick_cb);
+        std::mem::take(&mut realm_state.js_build_custom_error_cb);
+        std::mem::take(&mut realm_state.js_promise_reject_cb);
+        std::mem::take(&mut realm_state.js_format_exception_cb);
+        std::mem::take(&mut realm_state.js_wasm_streaming_cb);
+        context.clear_all_slots(&mut scope);
+      }
+    }
+
+    self.known_realms.clear();
+    let global = self.global_realm.take().unwrap();
+    global.try_destroy(&mut scope).unwrap();    
+  }
 }
 
 fn v8_init(
@@ -342,8 +396,6 @@ impl JsRuntime {
       has_tick_scheduled: false,
       source_map_getter: options.source_map_getter.map(Rc::new),
       source_map_cache: Default::default(),
-      // pending_ops: FuturesUnordered::new(),
-      pending_ops_per_realm: vec![FuturesUnordered::new()],
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
@@ -492,7 +544,7 @@ impl JsRuntime {
       state.inspector = inspector;
       state
         .known_realms
-        .push(v8::Weak::new(&mut isolate, &global_context));
+        .push(JsRealmState::Active(v8::Weak::new(&mut isolate, &global_context), FuturesUnordered::new()));
     }
     isolate.set_data(
       Self::STATE_DATA_OFFSET,
@@ -619,11 +671,13 @@ impl JsRuntime {
           ..Default::default()
         })),
       );
-
       {
+        let state_rc = self.state.clone();
         let mut state = self.state.borrow_mut();
-        state.known_realms.push(v8::Weak::new(scope, context));
-        state.pending_ops_per_realm.push(FuturesUnordered::new());
+        state.known_realms.push(JsRealmState::Active(v8::Weak::with_guaranteed_finalizer(scope, context, Box::new(move || {
+          // Clear the pending ops from this realm
+          *state_rc.borrow_mut().known_realms.get_mut(realm_idx as usize).unwrap() = JsRealmState::Disposed;
+        })), FuturesUnordered::new()));
       }
 
       JsRealm::new(v8::Global::new(scope, context))
@@ -1045,24 +1099,8 @@ impl JsRuntime {
 
     // Drop other v8::Global handles before snapshotting
     {
-      for weak_context in &self.state.clone().borrow().known_realms {
-        let scope = &mut self.handle_scope();
-        if let Some(context) = weak_context.to_local(scope) {
-          let realm = JsRealmLocal::new(context);
-          let realm_state_rc = realm.state(scope);
-          let mut realm_state = realm_state_rc.borrow_mut();
-          std::mem::take(&mut realm_state.js_event_loop_tick_cb);
-          std::mem::take(&mut realm_state.js_build_custom_error_cb);
-          std::mem::take(&mut realm_state.js_promise_reject_cb);
-          std::mem::take(&mut realm_state.js_format_exception_cb);
-          std::mem::take(&mut realm_state.js_wasm_streaming_cb);
-          context.clear_all_slots(scope);
-        }
-      }
-
-      let mut state = self.state.borrow_mut();
-      state.known_realms.clear();
-      state.global_realm.take();
+      let state = self.state.clone();
+      state.borrow_mut().destroy_realms(&mut self.v8_isolate());
     }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
@@ -1500,13 +1538,13 @@ impl EventLoopPendingState {
     if state.known_realms.len() == 1 {
       let realm = state.global_realm.as_ref().unwrap();
       num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
-      num_pending_ops += state.pending_ops_per_realm[0].len();
+      num_pending_ops += state.pending_ops(0).len();
     } else {
-      for (idx, weak_context) in state.known_realms.iter().enumerate() {
-        if let Some(context) = weak_context.to_local(scope) {
+      for realm_idx in 0..state.known_realms.len() {
+        if let Some(context) = state.context(realm_idx, scope) {
           let realm = JsRealmLocal::new(context);
           num_unrefed_ops += realm.state(scope).borrow().unrefed_ops.len();
-          num_pending_ops += state.pending_ops_per_realm[idx].len();
+          num_pending_ops += state.pending_ops(realm_idx).len();
         }
       }
     }
@@ -2262,8 +2300,8 @@ impl JsRuntime {
     let state = self.state.clone();
     let scope = &mut self.handle_scope();
     let state = state.borrow();
-    for weak_context in &state.known_realms {
-      if let Some(context) = weak_context.to_local(scope) {
+    for realm_idx in 0..state.known_realms.len() {
+      if let Some(context) = state.context(realm_idx, scope) {
         JsRealmLocal::new(context).check_promise_rejections(scope)?;
       }
     }
@@ -2290,7 +2328,7 @@ impl JsRuntime {
     for realm_idx in 0..num_realms {
       let mut state = self.state.borrow_mut();
       let realm = {
-        let context = state.known_realms[realm_idx].to_global(isolate).unwrap();
+        let context = state.context_global(realm_idx, isolate).unwrap();
         JsRealm::new(context)
       };
       let context_state_rc = realm.state(isolate);
@@ -2311,7 +2349,7 @@ impl JsRuntime {
         SmallVec::with_capacity(32);
 
       while let Poll::Ready(Some(item)) =
-        state.pending_ops_per_realm[realm_idx].poll_next_unpin(cx)
+        state.pending_ops_mut(realm_idx).poll_next_unpin(cx)
       {
         let (promise_id, op_id, mut resp) = item;
         state.op_state.borrow().tracker.track_async_completed(op_id);
@@ -2386,7 +2424,7 @@ impl JsRuntime {
       let mut realm_state = realm_state_rc.borrow_mut();
 
       while let Poll::Ready(Some(item)) =
-        state.pending_ops_per_realm[0].poll_next_unpin(cx)
+        state.pending_ops_mut(0).poll_next_unpin(cx)
       {
         let (promise_id, op_id, mut resp) = item;
         realm_state.unrefed_ops.remove(&promise_id);
@@ -2452,7 +2490,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops_per_realm[ctx.realm_idx as usize]
+  state.pending_ops(ctx.realm_idx as usize)
     .push(OpCall::pending(ctx, promise_id, fut));
   state.have_unpolled_ops = true;
 }
@@ -2544,7 +2582,7 @@ pub fn queue_async_op<'s>(
   // deno_core doesn't currently support such exposure, even though embedders
   // can cause them, so we panic in debug mode (since the check is expensive).
   debug_assert_eq!(
-    runtime_state.borrow().known_realms[ctx.realm_idx as usize].to_local(scope),
+    runtime_state.borrow().context(ctx.realm_idx as usize, scope),
     Some(scope.get_current_context())
   );
 
@@ -2576,7 +2614,7 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  state.pending_ops_per_realm[ctx.realm_idx as usize].push(op_call);
+  state.pending_ops(ctx.realm_idx as usize).push(op_call);
   state.have_unpolled_ops = true;
   None
 }
@@ -2710,7 +2748,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops(0).len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
     }
     runtime
@@ -2726,7 +2764,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops(0).len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 2);
     }
     runtime
@@ -2742,7 +2780,7 @@ pub mod tests {
       let realm = runtime.global_realm();
       let isolate = runtime.v8_isolate();
       let state_rc = JsRuntime::state(isolate);
-      assert_eq!(state_rc.borrow().pending_ops_per_realm[0].len(), 2);
+      assert_eq!(state_rc.borrow().pending_ops(0).len(), 2);
       assert_eq!(realm.state(isolate).borrow().unrefed_ops.len(), 0);
     }
   }
@@ -4685,6 +4723,49 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       let result = promise.result(scope);
 
       assert!(result.is_boolean() && result.is_true());
+    }
+  }
+
+  #[tokio::test]
+  async fn js_realm_gc() {
+    static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
+    struct PendingFuture {
+    }
+
+    impl Future for PendingFuture {
+      type Output = ();
+      fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+        Poll::Pending
+      }
+    }
+
+    impl Drop for PendingFuture {
+      fn drop(&mut self) {
+        assert_eq!(INVOKE_COUNT.fetch_sub(1, Ordering::SeqCst), 1);
+      }
+    }
+
+    // Never resolves.
+    #[op]
+    async fn op_pending() {
+      assert_eq!(INVOKE_COUNT.fetch_add(1, Ordering::SeqCst), 0);
+      PendingFuture {}.await
+    }
+
+    deno_core::extension!(test_ext, ops = [op_pending]);
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
+
+    let other_realm = runtime.create_realm().unwrap();
+    other_realm.execute_script(&mut runtime.v8_isolate(), "future", ModuleCode::from_static("Deno.core.opAsync('op_pending')")).unwrap();
+    while INVOKE_COUNT.load(Ordering::SeqCst) == 0 {
+      poll_fn(|cx| runtime.poll_event_loop(cx, false)).await.unwrap();
+    }
+    other_realm.try_destroy(&mut runtime.handle_scope()).unwrap();
+    while INVOKE_COUNT.load(Ordering::SeqCst) == 1 {
+      poll_fn(|cx| runtime.poll_event_loop(cx, false)).await.unwrap();
     }
   }
 
