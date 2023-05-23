@@ -52,7 +52,14 @@ class _Worker extends EventEmitter {
     if (options?.eval === true) {
       specifier = `data:text/javascript,${specifier}`;
     } else if (typeof specifier === "string") {
-      specifier = toFileUrl(resolve(specifier));
+      specifier = resolve(specifier);
+      if (!specifier.toString().endsWith(".mjs")) {
+        const cwdFileUrl = toFileUrl(Deno.cwd());
+        specifier =
+          `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
+      } else {
+        specifier = toFileUrl(specifier);
+      }
     }
     const handle = this[kHandle] = new Worker(
       specifier,

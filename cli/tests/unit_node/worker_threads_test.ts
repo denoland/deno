@@ -65,7 +65,7 @@ Deno.test({
   name: "[worker_threads] Worker threadId",
   async fn() {
     const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_threads.ts", import.meta.url),
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
     );
     worker.postMessage("Hello, how are you my thread?");
     await once(worker, "message");
@@ -74,7 +74,7 @@ Deno.test({
     worker.terminate();
 
     const worker1 = new workerThreads.Worker(
-      new URL("./testdata/worker_threads.ts", import.meta.url),
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
     );
     worker1.postMessage("Hello, how are you my thread?");
     await once(worker1, "message");
@@ -93,7 +93,7 @@ Deno.test({
     });
     const { port1 } = new MessageChannel();
     const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_threads.ts", import.meta.url),
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
       {
         workerData: ["hey", true, false, 2, port1],
         // deno-lint-ignore no-explicit-any
@@ -160,7 +160,7 @@ Deno.test({
   name: "[worker_threads] Worker workerData",
   async fn() {
     const worker = new workerThreads.Worker(
-      new URL("./testdata/worker_threads.ts", import.meta.url),
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
       {
         workerData: null,
       },
@@ -171,7 +171,7 @@ Deno.test({
     worker.terminate();
 
     const worker1 = new workerThreads.Worker(
-      new URL("./testdata/worker_threads.ts", import.meta.url),
+      new URL("./testdata/worker_threads.mjs", import.meta.url),
     );
     worker1.postMessage("Hello, how are you my thread?");
     await once(worker1, "message");
@@ -185,7 +185,7 @@ Deno.test({
   async fn() {
     const worker = new workerThreads.Worker(relative(
       Deno.cwd(),
-      fromFileUrl(new URL("./testdata/worker_threads.ts", import.meta.url)),
+      fromFileUrl(new URL("./testdata/worker_threads.mjs", import.meta.url)),
     ));
     worker.postMessage("Hello, how are you my thread?");
     assertEquals((await once(worker, "message"))[0], "I'm fine!");
