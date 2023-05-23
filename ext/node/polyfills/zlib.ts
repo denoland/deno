@@ -58,6 +58,18 @@ export class ZlibBase {
   }
 }
 export { constants };
+
+function brotliMaxCompressedSize(input: number): number {
+  if (input == 0) return 2;
+
+  // [window bits / empty metadata] + N * [uncompressed] + [last empty]
+  const numLargeBlocks = input >> 24;
+  const overhead = 2 + (4 * numLargeBlocks) + 3 + 1;
+  const result = input + overhead;
+
+  return result < input ? 0 : result;
+}
+
 export function createBrotliCompress() {
   notImplemented("createBrotliCompress");
 }
@@ -67,9 +79,13 @@ export function createBrotliDecompress() {
 export function brotliCompress() {
   notImplemented("brotliCompress");
 }
-export function brotliCompressSync() {
-  notImplemented("brotliCompressSync");
+
+export function brotliCompressSync(
+  input: Uint8Array,
+) {
+  const output = new Uint8Array(brotliMaxCompressedSize(input.length));
 }
+
 export function brotliDecompress() {
   notImplemented("brotliDecompress");
 }

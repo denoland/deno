@@ -12,6 +12,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 mod alloc;
+mod brotli;
 mod mode;
 mod stream;
 

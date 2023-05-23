@@ -83,6 +83,7 @@ async-trait = "0.1.51"
 atty = "=0.2.14"
 base64 = "=0.13.1"
 bencher = "0.1"
+brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
