@@ -783,17 +783,18 @@ impl ConfigFile {
         ),
       )
     })?;
-    Self::from_canonicalized_path(&config_path)
-  }
-
-  pub fn from_canonicalized_path(config_path: &Path) -> Result<Self, AnyError> {
-    let specifier =
-      ModuleSpecifier::from_file_path(config_path).map_err(|_| {
+    let config_specifier = ModuleSpecifier::from_file_path(&config_path)
+      .map_err(|_| {
         anyhow!(
           "Could not convert path to specifier. Path: {}",
           config_path.display()
         )
       })?;
+    Self::from_specifier(config_specifier)
+  }
+
+  pub fn from_specifier(specifier: ModuleSpecifier) -> Result<Self, AnyError> {
+    let config_path = specifier_to_file_path(&specifier)?;
     let config_text = match std::fs::read_to_string(config_path) {
       Ok(text) => text,
       Err(err) => bail!(
