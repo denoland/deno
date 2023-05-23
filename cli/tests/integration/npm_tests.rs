@@ -1931,7 +1931,10 @@ fn top_level_install_package_json_explicit_opt_in() {
   let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
   let node_modules_dir = temp_dir.path().join("node_modules");
-  let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
+  let rm_created_files = || {
+    std::fs::remove_dir_all(&node_modules_dir).unwrap();
+    std::fs::remove_file(temp_dir.path().join("deno.lock")).unwrap();
+  };
 
   // when the node_modules_dir is explicitly opted into, we should always
   // ensure a top level package.json install occurs
@@ -1951,7 +1954,7 @@ fn top_level_install_package_json_explicit_opt_in() {
     )
   );
 
-  rm_node_modules();
+  rm_created_files();
   let output = test_context
     .new_command()
     .args_vec(["eval", "console.log(5)"])
@@ -1961,7 +1964,7 @@ fn top_level_install_package_json_explicit_opt_in() {
     "5\n"
   ));
 
-  rm_node_modules();
+  rm_created_files();
   let output = test_context
     .new_command()
     .args("run -")
@@ -1973,7 +1976,7 @@ fn top_level_install_package_json_explicit_opt_in() {
   ));
 
   // now ensure this is cached in the lsp
-  rm_node_modules();
+  rm_created_files();
   let mut client = test_context.new_lsp_command().build();
   client.initialize_default();
   let file_uri = temp_dir.uri().join("file.ts").unwrap();
