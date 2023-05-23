@@ -470,13 +470,35 @@ Deno.test("[node/http] server unref", async () => {
     res.statusCode = status;
     res.end("");
   });
-  
-  // This should let the program to exit without waiting for the 
+
+  // This should let the program to exit without waiting for the
   // server to close.
   server.unref();
-  
+
   server.listen(async () => {
   });
   `);
   assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
+  // deno-lint-ignore no-explicit-any
+  let headers: any;
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    headers = resp.headers;
+
+    resp.on("data", () => {});
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(headers!["1"], "2");
 });
