@@ -1,7 +1,7 @@
 {
   "nodeVersion": "18.12.1",
   "ignore": {
-    "common": ["index.js", "internet.js", "tmpdir.js"],
+    "common": ["index.js", "internet.js"],
     "fixtures": [
       "child-process-spawn-node.js",
       "echo.js",
@@ -121,7 +121,8 @@
       "fixtures.js",
       "hijackstdio.js",
       "index.mjs",
-      "internet.js"
+      "internet.js",
+      "tmpdir.js"
     ],
     "fixtures": [
       "GH-1899-output.js",
