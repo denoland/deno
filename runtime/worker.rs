@@ -57,6 +57,24 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
+// TODO(nayeemrmn): This should be done per-realm once we support `ShadowRealm`,
+// move it to something like `RuntimeOptions::realm_init_cb`.
+pub fn runtime_init_node_specifiers(js_runtime: &mut JsRuntime) {
+  let handles = deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+    .iter()
+    .map(|p| (p, js_runtime.get_module_handle(p.ext_specifier).unwrap()))
+    .collect::<Vec<_>>();
+  js_runtime.clear_module_map();
+  for (p, handle) in handles {
+    js_runtime.inject_module_handle(
+      deno_core::FastString::from_static(p.specifier),
+      deno_core::ModuleType::JavaScript,
+      handle,
+    )
+  }
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -319,21 +337,7 @@ impl MainWorker {
       is_main: true,
       ..Default::default()
     });
-
-    // TODO(nayeemrmn): This should be per-realm once we support `ShadowRealm`,
-    // move it to something like `RuntimeOptions::realm_init_cb`.
-    let handles = deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|p| (p, js_runtime.get_module_handle(p.ext_specifier).unwrap()))
-      .collect::<Vec<_>>();
-    js_runtime.clear_module_map();
-    for (p, handle) in handles {
-      js_runtime.inject_module_handle(
-        deno_core::FastString::from_static(p.specifier),
-        deno_core::ModuleType::JavaScript,
-        handle,
-      )
-    }
+    runtime_init_node_specifiers(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
