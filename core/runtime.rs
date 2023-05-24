@@ -301,7 +301,13 @@ pub struct RuntimeOptions {
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
-    println!("drop");
+    for realm in self.state.borrow_mut().known_realms.drain(..) {
+      realm.destroy();
+    }
+    if let Some(realm) = self.state.borrow_mut().global_realm.take() {
+      realm.destroy();
+    }
+    // debug_assert_eq!(Rc::strong_count(&self.state), 1);
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
     }
@@ -4609,7 +4615,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   }
 
   #[tokio::test]
-  async fn js_realm_gc() {
+  async fn js_realm_gc() {    
     static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
     struct PendingFuture {}
 
@@ -4639,6 +4645,10 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ..Default::default()
     });
 
+    let opstate_detect = Rc::new(());
+    runtime.op_state().borrow_mut().put(opstate_detect.clone());
+    assert_eq!(Rc::strong_count(&opstate_detect), 2);
+
     let other_realm = runtime.create_realm().unwrap();
     other_realm
       .execute_script(
@@ -4658,6 +4668,9 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         .await
         .unwrap();
     }
+
+    drop(runtime);
+    assert_eq!(Rc::strong_count(&opstate_detect), 1);
   }
 
   #[tokio::test]

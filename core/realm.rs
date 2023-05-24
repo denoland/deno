@@ -102,6 +102,7 @@ pub(crate) struct ContextState {
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
 #[derive(Clone)]
+#[repr(transparent)]
 pub struct JsRealm(JsRealmInner);
 
 impl Deref for JsRealm {
@@ -224,6 +225,12 @@ impl JsRealmInner {
 impl JsRealm {
   pub(crate) fn new(inner: JsRealmInner) -> Self {
     Self(inner)
+  }
+
+  pub(crate) fn destroy(self) {
+    // SAFETY: #[repr(transparent)] allows this
+    let inner: JsRealmInner = unsafe { std::mem::transmute(self) };
+    inner.destroy()
   }
 
   #[inline(always)]
