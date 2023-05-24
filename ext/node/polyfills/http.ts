@@ -803,11 +803,11 @@ class ClientRequest extends OutgoingMessage {
   }
 
   setTimeout(msecs: number, callback?: () => void) {
-    if (msecs == 0) {
+    if (msecs === 0) {
       if (this._timeout) {
         this.removeAllListeners("timeout");
+        this._timeout.onabort = () => {};
         this._timeout = undefined;
-        return this;
       }
 
       return this;
