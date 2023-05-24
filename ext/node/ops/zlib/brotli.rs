@@ -1,10 +1,11 @@
+use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::*;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::ZeroCopyBuf;
-use std::ffi::c_void;
 use std::alloc;
+use std::ffi::c_void;
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   if mode > 6 {
@@ -171,7 +172,7 @@ extern "C" fn brotli_free(
 }
 
 #[op]
-pub fn op_create_brotli_compress() {
+pub fn op_create_brotli_compress(params: Vec<(u8, i32)>) {
   let inst = unsafe {
     BrotliEncoderCreateInstance(
       Some(brotli_alloc),
@@ -179,4 +180,15 @@ pub fn op_create_brotli_compress() {
       std::ptr::null_mut(),
     )
   };
+
+  for (key, value) in params {
+    unsafe {
+      BrotliEncoderSetParameter(inst, encoder_param(key), value as u32);
+    }
+  }
+}
+
+fn encoder_param(param: u8) -> BrotliEncoderParameter {
+  // SAFETY: BrotliEncoderParam is valid for 0-255
+  unsafe { std::mem::transmute(param as u32) }
 }

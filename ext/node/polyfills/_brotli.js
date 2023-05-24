@@ -33,7 +33,7 @@ export class BrotliCompress extends Transform {
       },
       flush(cb) {
         cb();
-      }
+      },
     });
 
     this.#context = ops.op_create_brotli_compress();
