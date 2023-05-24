@@ -588,9 +588,14 @@ impl JsRuntime {
 
   #[inline]
   pub fn global_context(&mut self) -> v8::Global<v8::Context> {
-    let state = self.state.borrow();
-    let global_realm = state.global_realm.as_ref().unwrap();
-    global_realm.context().clone()
+    self
+      .state
+      .borrow()
+      .known_realms
+      .get(0)
+      .unwrap()
+      .context()
+      .clone()
   }
 
   #[inline]
@@ -618,6 +623,7 @@ impl JsRuntime {
       let context_state = Rc::new(RefCell::new(ContextState::default()));
       let op_ctxs: Box<[OpCtx]> = self
         .global_realm()
+        .0
         .state()
         .borrow()
         .op_ctxs
@@ -948,7 +954,7 @@ impl JsRuntime {
     };
 
     // Put global handles in the realm's ContextState
-    let state_rc = realm.state();
+    let state_rc = realm.0.state();
     let mut state = state_rc.borrow_mut();
     state
       .js_event_loop_tick_cb
@@ -1833,6 +1839,7 @@ impl JsRuntime {
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
           global_realm
+            .0
             .state()
             .borrow_mut()
             .pending_promise_rejections
@@ -2472,6 +2479,7 @@ pub fn queue_async_op<'s>(
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
   // can cause them, so we panic in debug mode (since the check is expensive).
+  // TODO(mmastrac): Restore this
   // debug_assert_eq!(
   //   runtime_state.borrow().context(ctx.realm_idx as usize, scope),
   //   Some(scope.get_current_context())
