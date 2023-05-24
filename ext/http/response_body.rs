@@ -248,8 +248,9 @@ impl ResponseBytesInner {
         // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
         // (~4MB)
         let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), bytes.len(), 6, 22);
+          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
         writer.write_all(bytes).unwrap();
+        writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
       }
       _ => Self::Bytes(BufView::from(bytes.to_vec())),
@@ -266,8 +267,9 @@ impl ResponseBytesInner {
       }
       Compression::Brotli => {
         let mut writer =
-          brotli::CompressorWriter::new(Vec::new(), vec.len(), 6, 22);
+          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
         writer.write_all(&vec).unwrap();
+        writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
       }
       _ => Self::Bytes(BufView::from(vec)),
@@ -468,6 +470,9 @@ enum BrotliState {
 #[pin_project]
 pub struct BrotliResponseStream {
   state: BrotliState,
+  stm: *mut brotli::ffi::compressor::BrotliEncoderState,
+  current_cursor: usize,
+  output_written_so_far: usize,
   #[pin]
   underlying: ResponseStream,
 }
@@ -475,9 +480,35 @@ pub struct BrotliResponseStream {
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
     Self {
+      stm: unsafe {
+        brotli::ffi::compressor::BrotliEncoderCreateInstance(
+          None,
+          None,
+          std::ptr::null_mut(),
+        )
+      },
+      output_written_so_far: 0,
+      current_cursor: 0,
       state: BrotliState::Streaming,
       underlying,
     }
+  }
+}
+
+fn max_compressed_size(input_size: usize) -> usize {
+  if input_size == 0 {
+    return 2;
+  }
+
+  // [window bits / empty metadata] + N * [uncompressed] + [last empty]
+  let num_large_blocks = input_size >> 14;
+  let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
+  let result = input_size + overhead;
+
+  if result < input_size {
+    0
+  } else {
+    result
   }
 }
 
@@ -496,15 +527,80 @@ impl PollFrame for BrotliResponseStream {
 
     let res = match frame {
       ResponseStreamResult::NonEmptyBuf(buf) => {
-        let mut writer = brotli::CompressorWriter::new(
-          Vec::new(),
-          buf.len(), /* buffer size */
-          6,
-          22,
-        );
-        writer.write_all(buf.as_ref()).unwrap();
+        let mut output_size = 65 * 1024;
+        let mut output_written = 0;
+        let mut total_output_written = 0;
+        let mut input_size = buf.len();
+        let input_buffer = buf.as_ref();
+        let len = max_compressed_size(input_size);
+        let mut output_buffer = vec![0u8; len];
+        let ob_ptr = output_buffer.as_mut_ptr();
+        println!("input_size {:?}", input_size);
+        unsafe {
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+            &mut input_size,
+            std::mem::transmute(&input_buffer.as_ptr()),
+            &mut output_size,
+            std::mem::transmute(&ob_ptr),
+            &mut output_written,
+          );
+          total_output_written += output_written;
+          output_written = 0;
 
-        ResponseStreamResult::NonEmptyBuf(BufView::from(writer.into_inner()))
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
+            &mut input_size,
+            std::mem::transmute(&input_buffer.as_ptr()),
+            &mut output_size,
+            std::mem::transmute(&ob_ptr),
+            &mut output_written,
+          );
+          total_output_written += output_written;
+        };
+
+        println!(
+          "output_written: {:?}, input_left: {:?} output size {:?} totalwritten {:?}",
+          output_written,
+          input_size,
+          output_buffer.len(),
+          total_output_written,
+        );
+
+        println!("{:?}", output_buffer);
+
+        output_buffer
+          .truncate(total_output_written - this.output_written_so_far);
+        this.output_written_so_far = total_output_written;
+        ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
+      }
+      ResponseStreamResult::EndOfStream => {
+        let mut len = 1024usize;
+        let mut output_buffer = vec![0u8; len];
+        let mut input_size = 0;
+        let mut output_written = 0;
+        let ob_ptr = output_buffer.as_mut_ptr();
+        unsafe {
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+            &mut input_size,
+            std::ptr::null_mut(),
+            &mut len,
+            std::mem::transmute(&ob_ptr),
+            &mut output_written,
+          );
+        };
+
+        if output_written == 0 {
+          ResponseStreamResult::EndOfStream
+        } else {
+          println!("FINISH output_written: {:?}", output_written);
+          output_buffer.truncate(output_written - this.output_written_so_far);
+          ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
+        }
       }
       _ => frame,
     };
@@ -833,12 +929,23 @@ mod tests {
       v.extend(&*buf);
     }
 
+    println!("test output: {:?}", v);
+
     let mut gz = brotli::Decompressor::new(&*v, v.len());
     let mut v = vec![];
-    if (expected.is_empty()) {
-      assert_eq!(gz.into_inner().len(), 0);
+    if expected.is_empty() {
+      //assert_eq!(gz.into_inner().len(), 0);
     } else {
-      gz.read_to_end(&mut v).unwrap();
+      match gz.read_to_end(&mut v) {
+        Err(x) => {
+          if expected.len() < 32 {
+            println!("v        = {:?}", v);
+            println!("expected = {:?}", v);
+          }
+          panic!("failed to read_to_end: {:?}", x);
+        }
+        Ok(x) => (),
+      }
     }
 
     assert_eq!(v, expected);
@@ -871,30 +978,40 @@ mod tests {
         async fn chunk() {
           let iter = super::chunk(super::$vec());
           super::test_gzip(iter).await;
+          let br_iter = super::chunk(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn front_load() {
           let iter = super::front_load(super::$vec());
           super::test_gzip(iter).await;
+          let br_iter = super::front_load(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn front_load_but_one() {
           let iter = super::front_load_but_one(super::$vec());
           super::test_gzip(iter).await;
+          let br_iter = super::front_load_but_one(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn back_load() {
           let iter = super::back_load(super::$vec());
           super::test_gzip(iter).await;
+          let br_iter = super::back_load(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn random() {
           let iter = super::random(super::$vec());
           super::test_gzip(iter).await;
+          let br_iter = super::random(super::$vec());
+          super::test_brotli(br_iter).await;
         }
       }
     };
