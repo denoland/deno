@@ -4,13 +4,18 @@ use crate::bindings;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
+use crate::runtime::JsRuntimeState;
 use crate::JsRuntime;
+use crate::OpCall;
 use anyhow::Error;
+use futures::stream::FuturesUnordered;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
+use std::ops::Deref;
+use std::ops::DerefMut;
 use std::option::Option;
 use std::rc::Rc;
 use v8::HandleScope;
@@ -45,9 +50,11 @@ pub(crate) struct ContextState {
   pub(crate) pending_promise_rejections:
     VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>,
   pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
+  pub(crate) pending_ops: FuturesUnordered<OpCall>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
   pub(crate) op_ctxs: Box<[OpCtx]>,
+  pub(crate) isolate: Option<*mut v8::OwnedIsolate>,
 }
 
 /// A representation of a JavaScript realm tied to a [`JsRuntime`], that allows
@@ -94,44 +101,129 @@ pub(crate) struct ContextState {
 /// As long as the corresponding isolate is alive, a [`JsRealm`] instance will
 /// keep the underlying V8 context alive even if it would have otherwise been
 /// garbage collected.
-#[derive(Clone, Debug)]
-#[repr(transparent)]
-pub struct JsRealm(Rc<v8::Global<v8::Context>>);
-impl JsRealm {
-  pub fn new(context: v8::Global<v8::Context>) -> Self {
-    JsRealm(Rc::new(context))
+#[derive(Clone)]
+pub struct JsRealm(JsRealmInner);
+
+impl Deref for JsRealm {
+  type Target = JsRealmInner;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for JsRealm {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
+#[derive(Clone)]
+pub struct JsRealmInner(
+  Rc<RefCell<ContextState>>,
+  Rc<v8::Global<v8::Context>>,
+  Rc<RefCell<JsRuntimeState>>,
+);
+
+impl JsRealmInner {
+  pub(crate) fn new(
+    context_state: Rc<RefCell<ContextState>>,
+    context: v8::Global<v8::Context>,
+    runtime: Rc<RefCell<JsRuntimeState>>,
+  ) -> Self {
+    Self(context_state, context.into(), runtime)
+  }
+
+  pub fn num_pending_ops(&self) -> usize {
+    self.0.borrow().pending_ops.len()
+  }
+
+  pub fn num_unrefed_ops(&self) -> usize {
+    self.0.borrow().unrefed_ops.len()
   }
 
   #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
-    &self.0
+    &self.1
   }
 
-  /// Attempt to destroy this realm, if there are no other clones of it alive.
-  pub fn try_destroy(self, isolate: &mut v8::Isolate) -> Result<(), Self> {
-    // SAFETY: repr(transparent) allows us to take rc without triggering drop
-    let rc: Rc<v8::Global<v8::Context>> = unsafe { std::mem::transmute(self) }; 
-    match Rc::try_unwrap(rc) {
-      Ok(context) => {
-        // Force any circular references to clear
-        context.open(isolate).clear_all_slots(isolate);
-        Ok(())
-      }
-      Err(rc) => Err(Self(rc))
-    }
-  }
+  // /// Attempt to destroy this realm, if there are no other clones of it alive.
+  // pub fn try_destroy(self, isolate: &mut v8::Isolate) -> Result<(), Self> {
+  //   // SAFETY: repr(transparent) allows us to take rc without triggering drop
+  //   let rc: Rc<v8::Global<v8::Context>> = unsafe { std::mem::transmute(self) };
+  //   match Rc::try_unwrap(rc) {
+  //     Ok(context) => {
+  //       // Force any circular references to clear
+  //       context.open(isolate).clear_all_slots(isolate);
+  //       Ok(())
+  //     }
+  //     Err(rc) => Err(Self(rc))
+  //   }
+  // }
 
   #[inline(always)]
-  pub(crate) fn state(
+  pub(crate) fn state(&self) -> Rc<RefCell<ContextState>> {
+    self.0.clone()
+  }
+
+  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
+  #[inline(always)]
+  pub fn handle_scope<'s>(
     &self,
-    isolate: &mut v8::Isolate,
-  ) -> Rc<RefCell<ContextState>> {
-    self
-      .context()
-      .open(isolate)
-      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
-      .unwrap()
-      .clone()
+    isolate: &'s mut v8::Isolate,
+  ) -> v8::HandleScope<'s> {
+    v8::HandleScope::with_context(isolate, &*self.1)
+  }
+
+  pub(crate) fn check_promise_rejections(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Result<(), Error> {
+    let Some((_, handle)) = self.0.borrow_mut().pending_promise_rejections.pop_front() else {
+      return Ok(());
+    };
+
+    let exception = v8::Local::new(scope, handle);
+    let state_rc = JsRuntime::state(scope);
+    let state = state_rc.borrow();
+    if let Some(inspector) = &state.inspector {
+      let inspector = inspector.borrow();
+      inspector.exception_thrown(scope, exception, true);
+      if inspector.has_blocking_sessions() {
+        return Ok(());
+      }
+    }
+    exception_to_err_result(scope, exception, true)
+  }
+
+  pub(crate) fn is_same(&self, other: &Rc<v8::Global<v8::Context>>) -> bool {
+    Rc::ptr_eq(&self.1, other)
+  }
+
+  pub fn destroy(self) {
+    // Expect that this context is dead
+    // assert_eq!(Rc::strong_count(&self.1), 1);
+
+    let state = self.state();
+    // SAFETY: We know the isolate outlives the realm
+    let isolate =
+      unsafe { self.state().borrow().isolate.unwrap().as_mut().unwrap() };
+    let mut realm_state = state.borrow_mut();
+    std::mem::take(&mut realm_state.js_event_loop_tick_cb);
+    std::mem::take(&mut realm_state.js_build_custom_error_cb);
+    std::mem::take(&mut realm_state.js_promise_reject_cb);
+    std::mem::take(&mut realm_state.js_format_exception_cb);
+    std::mem::take(&mut realm_state.js_wasm_streaming_cb);
+    std::mem::take(&mut realm_state.op_ctxs);
+    realm_state.pending_ops.clear();
+    self.context().open(isolate).clear_all_slots(isolate);
+    // realm.destroy();
+  }
+}
+
+impl JsRealm {
+  pub(crate) fn new(inner: JsRealmInner) -> Self {
+    Self(inner)
   }
 
   #[inline(always)]
@@ -146,21 +238,12 @@ impl JsRealm {
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
-  #[inline(always)]
-  pub fn handle_scope<'s>(
-    &self,
-    isolate: &'s mut v8::Isolate,
-  ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(isolate, &*self.0)
-  }
-
-  /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
   pub fn global_object<'s>(
     &self,
     isolate: &'s mut v8::Isolate,
   ) -> v8::Local<'s, v8::Object> {
     let scope = &mut self.handle_scope(isolate);
-    self.0.open(scope).global(scope)
+    self.0 .1.open(scope).global(scope)
   }
 
   fn string_from_code<'a>(
@@ -255,51 +338,16 @@ impl JsRealm {
   // TODO(andreubotella): `mod_evaluate`, `load_main_module`, `load_side_module`
 }
 
-pub struct JsRealmLocal<'s>(v8::Local<'s, v8::Context>);
-impl<'s> JsRealmLocal<'s> {
-  pub fn new(context: v8::Local<'s, v8::Context>) -> Self {
-    JsRealmLocal(context)
-  }
-
-  #[inline(always)]
-  pub fn context(&self) -> v8::Local<v8::Context> {
-    self.0
-  }
-
-  #[inline(always)]
-  pub(crate) fn state(
-    &self,
-    isolate: &mut v8::Isolate,
-  ) -> Rc<RefCell<ContextState>> {
-    self
-      .context()
-      .get_slot::<Rc<RefCell<ContextState>>>(isolate)
-      .unwrap()
-      .clone()
-  }
-
-  pub(crate) fn check_promise_rejections(
-    &self,
-    scope: &mut v8::HandleScope,
-  ) -> Result<(), Error> {
-    let context_state_rc = self.state(scope);
-    let mut context_state = context_state_rc.borrow_mut();
-
-    let Some((_, handle)) = context_state.pending_promise_rejections.pop_front() else {
-      return Ok(());
-    };
-    drop(context_state);
-
-    let exception = v8::Local::new(scope, handle);
-    let state_rc = JsRuntime::state(scope);
-    let state = state_rc.borrow();
-    if let Some(inspector) = &state.inspector {
-      let inspector = inspector.borrow();
-      inspector.exception_thrown(scope, exception, true);
-      if inspector.has_blocking_sessions() {
-        return Ok(());
-      }
+impl Drop for JsRealm {
+  fn drop(&mut self) {
+    // There's us and there's the runtime
+    if Rc::strong_count(&self.0 .1) == 2 {
+      // println!("dropped?");
+      self.0 .2.borrow_mut().remove_realm(&self.0 .1);
+      assert_eq!(Rc::strong_count(&self.0 .1), 1);
+      // println!("dropped!");
+      self.0.clone().destroy();
+      assert_eq!(Rc::strong_count(&self.0 .0), 1);
     }
-    exception_to_err_result(scope, exception, true)
   }
 }

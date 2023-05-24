@@ -2,6 +2,7 @@
 
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::realm::ContextState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use crate::runtime::JsRuntimeState;
@@ -23,7 +24,6 @@ use std::rc::Weak;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
-pub type RealmIdx = u16;
 pub type PromiseId = i32;
 pub type OpId = u16;
 
@@ -141,14 +141,13 @@ pub struct OpCtx {
   pub decl: Rc<OpDecl>,
   pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
-  // Index of the current realm into `JsRuntimeState::known_realms`.
-  pub realm_idx: RealmIdx,
+  pub(crate) context_state: Rc<RefCell<ContextState>>,
 }
 
 impl OpCtx {
-  pub fn new(
+  pub(crate) fn new(
     id: OpId,
-    realm_idx: RealmIdx,
+    context_state: Rc<RefCell<ContextState>>,
     decl: Rc<OpDecl>,
     state: Rc<RefCell<OpState>>,
     runtime_state: Weak<RefCell<JsRuntimeState>>,
@@ -172,7 +171,7 @@ impl OpCtx {
       state,
       runtime_state,
       decl,
-      realm_idx,
+      context_state,
       fast_fn_c_info,
     }
   }
