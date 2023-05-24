@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { Module } from "node:module";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../test_util/std/testing/asserts.ts";
 import process from "node:process";
+import * as path from "node:path";
 
 Deno.test("[node/module _preloadModules] has internal require hook", () => {
   // Check if it's there
@@ -24,4 +28,33 @@ Deno.test("[node/module runMain] loads module using the current process.argv", (
   (Module as any).runMain();
   // deno-lint-ignore no-explicit-any
   assertEquals((globalThis as any).calledViaRunMain, true);
+});
+
+Deno.test("[node/module _nodeModulePaths] prevents duplicate /node_modules/node_modules suffix", () => {
+  // deno-lint-ignore no-explicit-any
+  const actual: string[] = (Module as any)._nodeModulePaths(
+    path.join(process.cwd(), "testdata", "node_modules", "foo"),
+  );
+
+  assert(
+    !actual.some((dir) => /node_modules[/\\]node_modules/g.test(dir)),
+    "Duplicate 'node_modules/node_modules' suffix found",
+  );
+});
+
+Deno.test("[node/module _nodeModulePaths] prevents duplicate root /node_modules", () => {
+  // deno-lint-ignore no-explicit-any
+  const actual: string[] = (Module as any)._nodeModulePaths(
+    path.join(process.cwd(), "testdata", "node_modules", "foo"),
+  );
+
+  assert(
+    new Set(actual).size === actual.length,
+    "Duplicate path entries found",
+  );
+  const root = path.parse(actual[0]).root;
+  assert(
+    actual.includes(path.join(root, "node_modules")),
+    "Missing root 'node_modules' directory",
+  );
 });

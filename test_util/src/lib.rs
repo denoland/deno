@@ -735,16 +735,7 @@ async fn main_server(
         *response.status_mut() =
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
-      if let Some(content_type) = parts.headers.get("content-type") {
-        response
-          .headers_mut()
-          .insert("content-type", content_type.clone());
-      }
-      if let Some(user_agent) = parts.headers.get("user-agent") {
-        response
-          .headers_mut()
-          .insert("user-agent", user_agent.clone());
-      }
+      response.headers_mut().extend(parts.headers);
       Ok(response)
     }
     (&hyper::Method::POST, "/echo_multipart_file") => {

@@ -2,7 +2,9 @@
 
 use test_util as util;
 use test_util::TempDir;
+use util::assert_contains;
 use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn fmt_test() {
@@ -257,3 +259,93 @@ itest!(fmt_with_malformed_config2 {
   output: "fmt/fmt_with_malformed_config2.out",
   exit_code: 1,
 });
+
+#[test]
+fn fmt_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("fmt").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("fmt --check --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
+    assert_contains!(output, r#"glob\pages\[id].ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\bar.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\nested\foo\bar.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts");
+    assert_contains!(output, "glob/pages/[id].ts");
+    assert_contains!(output, "glob/nested/fizz/bar.ts");
+    assert_contains!(output, "glob/nested/foo/foo.ts");
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/nested/foo/bar.ts");
+    assert_contains!(output, "glob/nested/foo/fizz.ts");
+    assert_contains!(output, "glob/nested/fizz/foo.ts");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
+
+  assert_contains!(output, "Found 9 not formatted files in 9 files");
+}
+
+#[test]
+fn fmt_with_glob_config_and_flags() {
+  let context = TestContextBuilder::new().cwd("fmt").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("fmt --check --config deno.glob.json --ignore=glob/nested/**/bar.ts")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts"#);
+    assert_contains!(output, r#"glob\pages\[id].ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\bazz.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\nested\foo\bazz.ts"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts");
+    assert_contains!(output, "glob/pages/[id].ts");
+    assert_contains!(output, "glob/nested/fizz/bazz.ts");
+    assert_contains!(output, "glob/nested/foo/foo.ts");
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/nested/foo/bazz.ts");
+    assert_contains!(output, "glob/nested/foo/fizz.ts");
+    assert_contains!(output, "glob/nested/fizz/foo.ts");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
+  assert_contains!(output, "Found 9 not formatted files in 9 files");
+  let cmd_output = context
+    .new_command()
+    .args("fmt --check --config deno.glob.json glob/data/test1.?s")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\data\test1.js"#);
+    assert_contains!(output, r#"glob\data\test1.ts"#);
+  } else {
+    assert_contains!(output, "glob/data/test1.js");
+    assert_contains!(output, "glob/data/test1.ts");
+  }
+
+  assert_contains!(output, "Found 2 not formatted files in 2 files");
+}

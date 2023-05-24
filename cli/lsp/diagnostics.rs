@@ -908,10 +908,7 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          if npm_resolver
-            .resolve_pkg_id_from_pkg_req(&pkg_ref.req)
-            .is_err()
-          {
+          if !npm_resolver.is_pkg_req_folder_cached(&pkg_ref.req) {
             diagnostics
               .push(DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone()));
           }
@@ -925,10 +922,7 @@ fn diagnose_resolution(
           // check that a @types/node package exists in the resolver
           let types_node_ref =
             NpmPackageReqReference::from_str("npm:@types/node").unwrap();
-          if npm_resolver
-            .resolve_pkg_id_from_pkg_req(&types_node_ref.req)
-            .is_err()
-          {
+          if !npm_resolver.is_pkg_req_folder_cached(&types_node_ref.req) {
             diagnostics.push(DenoDiagnostic::NoCacheNpm(
               types_node_ref,
               ModuleSpecifier::parse("npm:@types/node").unwrap(),

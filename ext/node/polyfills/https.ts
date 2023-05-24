@@ -9,6 +9,7 @@ import {
   type RequestOptions,
 } from "ext:deno_node/http.ts";
 import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 
 export class Server {
   constructor() {
@@ -80,7 +81,7 @@ class HttpsClientRequest extends ClientRequest {
       return undefined;
     }
     if (caCerts !== undefined) {
-      return Deno.createHttpClient({ caCerts });
+      return createHttpClient({ caCerts, http2: false });
     }
     // const status = await Deno.permissions.query({
     //   name: "env",
@@ -97,13 +98,8 @@ class HttpsClientRequest extends ClientRequest {
     }
     const caCert = Deno.readTextFileSync(certFilename);
     caCerts = [caCert];
-    return Deno.createHttpClient({ caCerts });
+    return createHttpClient({ caCerts, http2: false });
   }
-
-  /*override _createSocket(): Socket {
-    // deno-lint-ignore no-explicit-any
-    return { authorized: true } as any;
-  }*/
 }
 
 /** Makes a request to an https server. */
