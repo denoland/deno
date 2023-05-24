@@ -58,21 +58,14 @@ impl ExitCode {
   }
 }
 
-// TODO(nayeemrmn): This should be done per-realm once we support `ShadowRealm`,
-// move it to something like `RuntimeOptions::realm_init_cb`.
+/// Clear extension modules from the module map, except preserve `ext:deno_node`
+/// modules as `node:` specifiers.
 pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
-  let handles = deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-    .iter()
-    .map(|p| (p, js_runtime.get_module_handle(p.ext_specifier).unwrap()))
-    .collect::<Vec<_>>();
-  js_runtime.clear_module_map();
-  for (p, handle) in handles {
-    js_runtime.inject_module_handle(
-      deno_core::FastString::from_static(p.specifier),
-      deno_core::ModuleType::JavaScript,
-      handle,
-    )
-  }
+  js_runtime.clear_module_map(
+    deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|p| (p.ext_specifier, p.specifier)),
+  );
 }
 
 /// This worker is created and used by almost all
