@@ -462,6 +462,123 @@ impl GZipResponseStream {
   }
 }
 
+/// This is a minimal GZip header suitable for serving data from a webserver. We don't need to provide
+/// most of the information. We're skipping header name, CRC, etc, and providing a null timestamp.
+///
+/// We're using compression level 1, as higher levels don't produce significant size differences. This
+/// is probably the reason why nginx's default gzip compression level is also 1:
+///
+/// https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+static GZIP_HEADER: Bytes =
+  Bytes::from_static(&[0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0x01, 0xff]);
+
+impl PollFrame for GZipResponseStream {
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<ResponseStreamResult> {
+    let this = self.get_mut();
+    let state = &mut this.state;
+    let orig_state = *state;
+    let frame = match *state {
+      GZipState::EndOfStream => {
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
+      }
+      GZipState::Header => {
+        *state = GZipState::Streaming;
+        return std::task::Poll::Ready(ResponseStreamResult::NonEmptyBuf(
+          BufView::from(GZIP_HEADER.clone()),
+        ));
+      }
+      GZipState::Trailer => {
+        *state = GZipState::EndOfStream;
+        let mut v = Vec::with_capacity(8);
+        v.extend(&this.crc.sum().to_le_bytes());
+        v.extend(&this.crc.amount().to_le_bytes());
+        return std::task::Poll::Ready(ResponseStreamResult::NonEmptyBuf(
+          BufView::from(v),
+        ));
+      }
+      GZipState::Streaming => {
+        if let Some(partial) = this.partial.take() {
+          ResponseStreamResult::NonEmptyBuf(partial)
+        } else {
+          ready!(Pin::new(&mut this.underlying).poll_frame(cx))
+        }
+      }
+      GZipState::Flushing => ResponseStreamResult::EndOfStream,
+    };
+
+    let stm = &mut this.stm;
+
+    // Ideally we could use MaybeUninit here, but flate2 requires &[u8]. We should also try
+    // to dynamically adjust this buffer.
+    let mut buf = this
+      .next_buf
+      .take()
+      .unwrap_or_else(|| BytesMut::zeroed(64 * 1024));
+
+    let start_in = stm.total_in();
+    let start_out = stm.total_out();
+    let res = match frame {
+      // Short-circuit these and just return
+      x @ (ResponseStreamResult::NoData
+      | ResponseStreamResult::Error(..)
+      | ResponseStreamResult::Trailers(..)) => {
+        return std::task::Poll::Ready(x)
+      }
+      ResponseStreamResult::EndOfStream => {
+        *state = GZipState::Flushing;
+        stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
+      }
+      ResponseStreamResult::NonEmptyBuf(mut input) => {
+        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
+        let len_in = (stm.total_in() - start_in) as usize;
+        debug_assert!(len_in <= input.len());
+        this.crc.update(&input[..len_in]);
+        if len_in < input.len() {
+          input.advance_cursor(len_in);
+          this.partial = Some(input);
+        }
+        res
+      }
+    };
+    let len = stm.total_out() - start_out;
+    let res = match res {
+      Err(err) => ResponseStreamResult::Error(err.into()),
+      Ok(flate2::Status::BufError) => {
+        // This should not happen
+        unreachable!("old={orig_state:?} new={state:?} buf_len={}", buf.len());
+      }
+      Ok(flate2::Status::Ok) => {
+        if len == 0 {
+          this.next_buf = Some(buf);
+          ResponseStreamResult::NoData
+        } else {
+          buf.truncate(len as usize);
+          ResponseStreamResult::NonEmptyBuf(BufView::from(buf.freeze()))
+        }
+      }
+      Ok(flate2::Status::StreamEnd) => {
+        *state = GZipState::Trailer;
+        if len == 0 {
+          this.next_buf = Some(buf);
+          ResponseStreamResult::NoData
+        } else {
+          buf.truncate(len as usize);
+          ResponseStreamResult::NonEmptyBuf(BufView::from(buf.freeze()))
+        }
+      }
+    };
+
+    std::task::Poll::Ready(res)
+  }
+
+  fn size_hint(&self) -> SizeHint {
+    SizeHint::default()
+  }
+}
+
 #[derive(Copy, Clone, Debug)]
 enum BrotliState {
   Streaming,
@@ -603,123 +720,6 @@ impl PollFrame for BrotliResponseStream {
         }
       }
       _ => frame,
-    };
-
-    std::task::Poll::Ready(res)
-  }
-
-  fn size_hint(&self) -> SizeHint {
-    SizeHint::default()
-  }
-}
-
-/// This is a minimal GZip header suitable for serving data from a webserver. We don't need to provide
-/// most of the information. We're skipping header name, CRC, etc, and providing a null timestamp.
-///
-/// We're using compression level 1, as higher levels don't produce significant size differences. This
-/// is probably the reason why nginx's default gzip compression level is also 1:
-///
-/// https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
-static GZIP_HEADER: Bytes =
-  Bytes::from_static(&[0x1f, 0x8b, 0x08, 0, 0, 0, 0, 0, 0x01, 0xff]);
-
-impl PollFrame for GZipResponseStream {
-  fn poll_frame(
-    self: Pin<&mut Self>,
-    cx: &mut std::task::Context<'_>,
-  ) -> std::task::Poll<ResponseStreamResult> {
-    let this = self.get_mut();
-    let state = &mut this.state;
-    let orig_state = *state;
-    let frame = match *state {
-      GZipState::EndOfStream => {
-        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
-      }
-      GZipState::Header => {
-        *state = GZipState::Streaming;
-        return std::task::Poll::Ready(ResponseStreamResult::NonEmptyBuf(
-          BufView::from(GZIP_HEADER.clone()),
-        ));
-      }
-      GZipState::Trailer => {
-        *state = GZipState::EndOfStream;
-        let mut v = Vec::with_capacity(8);
-        v.extend(&this.crc.sum().to_le_bytes());
-        v.extend(&this.crc.amount().to_le_bytes());
-        return std::task::Poll::Ready(ResponseStreamResult::NonEmptyBuf(
-          BufView::from(v),
-        ));
-      }
-      GZipState::Streaming => {
-        if let Some(partial) = this.partial.take() {
-          ResponseStreamResult::NonEmptyBuf(partial)
-        } else {
-          ready!(Pin::new(&mut this.underlying).poll_frame(cx))
-        }
-      }
-      GZipState::Flushing => ResponseStreamResult::EndOfStream,
-    };
-
-    let stm = &mut this.stm;
-
-    // Ideally we could use MaybeUninit here, but flate2 requires &[u8]. We should also try
-    // to dynamically adjust this buffer.
-    let mut buf = this
-      .next_buf
-      .take()
-      .unwrap_or_else(|| BytesMut::zeroed(64 * 1024));
-
-    let start_in = stm.total_in();
-    let start_out = stm.total_out();
-    let res = match frame {
-      // Short-circuit these and just return
-      x @ (ResponseStreamResult::NoData
-      | ResponseStreamResult::Error(..)
-      | ResponseStreamResult::Trailers(..)) => {
-        return std::task::Poll::Ready(x)
-      }
-      ResponseStreamResult::EndOfStream => {
-        *state = GZipState::Flushing;
-        stm.compress(&[], &mut buf, flate2::FlushCompress::Finish)
-      }
-      ResponseStreamResult::NonEmptyBuf(mut input) => {
-        let res = stm.compress(&input, &mut buf, flate2::FlushCompress::None);
-        let len_in = (stm.total_in() - start_in) as usize;
-        debug_assert!(len_in <= input.len());
-        this.crc.update(&input[..len_in]);
-        if len_in < input.len() {
-          input.advance_cursor(len_in);
-          this.partial = Some(input);
-        }
-        res
-      }
-    };
-    let len = stm.total_out() - start_out;
-    let res = match res {
-      Err(err) => ResponseStreamResult::Error(err.into()),
-      Ok(flate2::Status::BufError) => {
-        // This should not happen
-        unreachable!("old={orig_state:?} new={state:?} buf_len={}", buf.len());
-      }
-      Ok(flate2::Status::Ok) => {
-        if len == 0 {
-          this.next_buf = Some(buf);
-          ResponseStreamResult::NoData
-        } else {
-          buf.truncate(len as usize);
-          ResponseStreamResult::NonEmptyBuf(BufView::from(buf.freeze()))
-        }
-      }
-      Ok(flate2::Status::StreamEnd) => {
-        *state = GZipState::Trailer;
-        if len == 0 {
-          this.next_buf = Some(buf);
-          ResponseStreamResult::NoData
-        } else {
-          buf.truncate(len as usize);
-          ResponseStreamResult::NonEmptyBuf(BufView::from(buf.freeze()))
-        }
-      }
     };
 
     std::task::Poll::Ready(res)
