@@ -2666,7 +2666,7 @@ pub mod tests {
     {
       let realm = runtime.global_realm();
       assert_eq!(realm.num_pending_ops(), 2);
-      assert_eq!(realm.state().borrow().unrefed_ops.len(), 0);
+      assert_eq!(realm.num_unrefed_ops.len(), 0);
     }
   }
 

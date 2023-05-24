@@ -150,20 +150,6 @@ impl JsRealmInner {
     &self.1
   }
 
-  // /// Attempt to destroy this realm, if there are no other clones of it alive.
-  // pub fn try_destroy(self, isolate: &mut v8::Isolate) -> Result<(), Self> {
-  //   // SAFETY: repr(transparent) allows us to take rc without triggering drop
-  //   let rc: Rc<v8::Global<v8::Context>> = unsafe { std::mem::transmute(self) };
-  //   match Rc::try_unwrap(rc) {
-  //     Ok(context) => {
-  //       // Force any circular references to clear
-  //       context.open(isolate).clear_all_slots(isolate);
-  //       Ok(())
-  //     }
-  //     Err(rc) => Err(Self(rc))
-  //   }
-  // }
-
   #[inline(always)]
   pub(crate) fn state(&self) -> Rc<RefCell<ContextState>> {
     self.0.clone()
