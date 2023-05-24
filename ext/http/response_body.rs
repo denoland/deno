@@ -527,12 +527,11 @@ impl PollFrame for BrotliResponseStream {
 
     let res = match frame {
       ResponseStreamResult::NonEmptyBuf(buf) => {
-        let mut output_size = 65 * 1024;
         let mut output_written = 0;
         let mut total_output_written = 0;
         let mut input_size = buf.len();
         let input_buffer = buf.as_ref();
-        let len = max_compressed_size(input_size);
+        let mut len = max_compressed_size(input_size);
         let mut output_buffer = vec![0u8; len];
         let ob_ptr = output_buffer.as_mut_ptr();
         println!("input_size {:?}", input_size);
@@ -542,7 +541,7 @@ impl PollFrame for BrotliResponseStream {
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
             &mut input_size,
             std::mem::transmute(&input_buffer.as_ptr()),
-            &mut output_size,
+            &mut len,
             std::mem::transmute(&ob_ptr),
             &mut output_written,
           );
@@ -554,7 +553,7 @@ impl PollFrame for BrotliResponseStream {
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
             &mut input_size,
             std::mem::transmute(&input_buffer.as_ptr()),
-            &mut output_size,
+            &mut len,
             std::mem::transmute(&ob_ptr),
             &mut output_written,
           );
