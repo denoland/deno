@@ -480,6 +480,7 @@ pub struct BrotliResponseStream {
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
     Self {
+      // SAFETY: creating an FFI instance should be OK with these args.
       stm: unsafe {
         brotli::ffi::compressor::BrotliEncoderCreateInstance(
           None,
@@ -533,16 +534,17 @@ impl PollFrame for BrotliResponseStream {
         let input_buffer = buf.as_ref();
         let mut len = max_compressed_size(input_size);
         let mut output_buffer = vec![0u8; len];
-        let ob_ptr = output_buffer.as_mut_ptr();
-        println!("input_size {:?}", input_size);
+        let mut ob_ptr = output_buffer.as_mut_ptr();
+
+        // SAFETY: these are okay arguments to these FFI calls.
         unsafe {
           brotli::ffi::compressor::BrotliEncoderCompressStream(
             this.stm,
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
             &mut input_size,
-            std::mem::transmute(&input_buffer.as_ptr()),
+            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
             &mut len,
-            std::mem::transmute(&ob_ptr),
+            &mut ob_ptr,
             &mut output_written,
           );
           total_output_written += output_written;
@@ -552,23 +554,13 @@ impl PollFrame for BrotliResponseStream {
             this.stm,
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
             &mut input_size,
-            std::mem::transmute(&input_buffer.as_ptr()),
+            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
             &mut len,
-            std::mem::transmute(&ob_ptr),
+            &mut ob_ptr,
             &mut output_written,
           );
           total_output_written += output_written;
         };
-
-        println!(
-          "output_written: {:?}, input_left: {:?} output size {:?} totalwritten {:?}",
-          output_written,
-          input_size,
-          output_buffer.len(),
-          total_output_written,
-        );
-
-        println!("{:?}", output_buffer);
 
         output_buffer
           .truncate(total_output_written - this.output_written_so_far);
@@ -581,6 +573,8 @@ impl PollFrame for BrotliResponseStream {
         let mut input_size = 0;
         let mut output_written = 0;
         let ob_ptr = output_buffer.as_mut_ptr();
+
+        // SAFETY: these are okay arguments to these FFI calls.
         unsafe {
           brotli::ffi::compressor::BrotliEncoderCompressStream(
             this.stm,
@@ -588,7 +582,7 @@ impl PollFrame for BrotliResponseStream {
             &mut input_size,
             std::ptr::null_mut(),
             &mut len,
-            std::mem::transmute(&ob_ptr),
+            &ob_ptr as *const *mut u8 as *mut *mut u8,
             &mut output_written,
           );
         };
@@ -596,7 +590,6 @@ impl PollFrame for BrotliResponseStream {
         if output_written == 0 {
           ResponseStreamResult::EndOfStream
         } else {
-          println!("FINISH output_written: {:?}", output_written);
           output_buffer.truncate(output_written - this.output_written_so_far);
           ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
         }
@@ -932,19 +925,8 @@ mod tests {
 
     let mut gz = brotli::Decompressor::new(&*v, v.len());
     let mut v = vec![];
-    if expected.is_empty() {
-      //assert_eq!(gz.into_inner().len(), 0);
-    } else {
-      match gz.read_to_end(&mut v) {
-        Err(x) => {
-          if expected.len() < 32 {
-            println!("v        = {:?}", v);
-            println!("expected = {:?}", v);
-          }
-          panic!("failed to read_to_end: {:?}", x);
-        }
-        Ok(x) => (),
-      }
+    if !expected.is_empty() {
+      gz.read_to_end(&mut v).unwrap();
     }
 
     assert_eq!(v, expected);
