@@ -274,9 +274,7 @@ async fn sync_resolution_with_fs(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    package_partitions
-      .packages
-      .sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
+    package_partitions.packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
   let mut handles: Vec<JoinHandle<Result<(), AnyError>>> =
     Vec::with_capacity(package_partitions.packages.len());
@@ -284,13 +282,13 @@ async fn sync_resolution_with_fs(
     HashMap::with_capacity(package_partitions.packages.len());
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
-      newest_packages_by_name.get_mut(&package.pkg_id.nv.name)
+      newest_packages_by_name.get_mut(&package.id.nv.name)
     {
-      if current_pkg.pkg_id.nv.cmp(&package.pkg_id.nv) == Ordering::Less {
+      if current_pkg.id.nv.cmp(&package.id.nv) == Ordering::Less {
         *current_pkg = package;
       }
     } else {
-      newest_packages_by_name.insert(&package.pkg_id.nv.name, package);
+      newest_packages_by_name.insert(&package.id.nv.name, package);
     };
 
     let folder_name =
@@ -299,7 +297,7 @@ async fn sync_resolution_with_fs(
     let initialized_file = folder_path.join(".initialized");
     if !cache
       .cache_setting()
-      .should_use_for_npm_package(&package.pkg_id.nv.name)
+      .should_use_for_npm_package(&package.id.nv.name)
       || !initialized_file.exists()
     {
       let pb = progress_bar.clone();
@@ -308,21 +306,19 @@ async fn sync_resolution_with_fs(
       let package = package.clone();
       let handle = spawn(async move {
         cache
-          .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
+          .ensure_package(&package.id.nv, &package.dist, &registry_url)
           .await?;
         let pb_guard = pb.update_with_prompt(
           ProgressMessagePrompt::Initialize,
-          &package.pkg_id.nv.to_string(),
+          &package.id.nv.to_string(),
         );
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
+          join_package_name(&sub_node_modules, &package.id.nv.name);
         fs::create_dir_all(&package_path)
           .with_context(|| format!("Creating '{}'", folder_path.display()))?;
-        let cache_folder = cache.package_folder_for_name_and_version(
-          &package.pkg_id.nv,
-          &registry_url,
-        );
+        let cache_folder = cache
+          .package_folder_for_name_and_version(&package.id.nv, &registry_url);
         // for now copy, but in the future consider hard linking
         copy_dir_recursive(&cache_folder, &package_path)?;
         // write out a file that indicates this folder has been initialized
@@ -353,7 +349,7 @@ async fn sync_resolution_with_fs(
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
-        join_package_name(&sub_node_modules, &package.pkg_id.nv.name);
+        join_package_name(&sub_node_modules, &package.id.nv.name);
       fs::create_dir_all(&package_path).with_context(|| {
         format!("Creating '{}'", destination_path.display())
       })?;
@@ -363,7 +359,7 @@ async fn sync_resolution_with_fs(
             &package_cache_folder_id.with_no_count(),
           ))
           .join("node_modules"),
-        &package.pkg_id.nv.name,
+        &package.id.nv.name,
       );
       hard_link_dir_recursive(&source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
@@ -375,11 +371,7 @@ async fn sync_resolution_with_fs(
   //
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
-  for package in package_partitions
-    .packages
-    .iter()
-    .chain(package_partitions.copy_packages.iter())
-  {
+  for package in package_partitions.iter_all() {
     let sub_node_modules = deno_local_registry_dir
       .join(get_package_folder_id_folder_name(
         &package.get_package_cache_folder_id(),
@@ -435,7 +427,7 @@ async fn sync_resolution_with_fs(
   // 5. Create a node_modules/.deno/node_modules/<package-name> directory with
   // the remaining packages
   for package in newest_packages_by_name.values() {
-    if !found_names.insert(&package.pkg_id.nv.name) {
+    if !found_names.insert(&package.id.nv.name) {
       continue; // skip, already handled
     }
 
@@ -445,12 +437,12 @@ async fn sync_resolution_with_fs(
           &package.get_package_cache_folder_id(),
         ))
         .join("node_modules"),
-      &package.pkg_id.nv.name,
+      &package.id.nv.name,
     );
 
     symlink_package_dir(
       &local_registry_package_path,
-      &join_package_name(&deno_node_modules_dir, &package.pkg_id.nv.name),
+      &join_package_name(&deno_node_modules_dir, &package.id.nv.name),
     )?;
   }
 
