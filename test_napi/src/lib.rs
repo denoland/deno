@@ -16,6 +16,7 @@ pub mod date;
 pub mod env;
 pub mod error;
 pub mod finalizer;
+pub mod make_callback;
 pub mod mem;
 pub mod numbers;
 pub mod object_wrap;
@@ -162,6 +163,7 @@ unsafe extern "C" fn napi_register_module_v1(
   mem::init(env, exports);
   bigint::init(env, exports);
   symbol::init(env, exports);
+  make_callback::init(env, exports);
 
   init_cleanup_hook(env, exports);
 

@@ -346,7 +346,8 @@ function promiseRejectCallback(type, promise, reason) {
   }
 
   return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0;
+    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
 }
 
 function promiseRejectMacrotaskCallback() {
@@ -382,6 +383,15 @@ function promiseRejectMacrotaskCallback() {
     globalThis_.addEventListener("error", errorEventCb);
     globalThis_.dispatchEvent(rejectionEvent);
     globalThis_.removeEventListener("error", errorEventCb);
+
+    // If event was not yet prevented, try handing it off to Node compat layer
+    // (if it was initialized)
+    if (
+      !rejectionEvent.defaultPrevented &&
+      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+    ) {
+      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
+    }
 
     // If event was not prevented (or "unhandledrejection" listeners didn't
     // throw) we will let Rust side handle it.

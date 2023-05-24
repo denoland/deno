@@ -716,9 +716,9 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
-  // We should use a specialized API in 99_main.js instead
-  globalThis.addEventListener("unhandledrejection", (event) => {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  internals.nodeProcessUnhandledRejectionCallback = (event) => {
     if (process.listenerCount("unhandledRejection") === 0) {
       // The Node.js default behavior is to raise an uncaught exception if
       // an unhandled rejection occurs and there are no unhandledRejection
@@ -734,7 +734,7 @@ internals.__bootstrapNodeProcess = function (
 
     event.preventDefault();
     process.emit("unhandledRejection", event.reason, event.promise);
-  });
+  };
 
   globalThis.addEventListener("error", (event) => {
     if (process.listenerCount("uncaughtException") > 0) {
