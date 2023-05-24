@@ -349,7 +349,10 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      this.timeout = getTimerDuration(options.timeout, "timeout");
+      const msecs = getTimerDuration(options.timeout, "timeout");
+      const timeout = AbortSignal.timeout(msecs);
+      timeout.onabort = () => this.emit("timeout");
+      this._timeout = timeout;
     }
 
     const signal = options!.signal;
@@ -414,7 +417,6 @@ class ClientRequest extends OutgoingMessage {
     this._ended = false;
     this.res = null;
     this.aborted = false;
-    this.timeoutCb = null;
     this.upgradeOrConnect = false;
     this.parser = null;
     this.maxHeadersCount = null;
@@ -803,6 +805,15 @@ class ClientRequest extends OutgoingMessage {
   }
 
   setTimeout(msecs: number, callback?: () => void) {
+    if (msecs === 0) {
+      if (this._timeout) {
+        this.removeAllListeners("timeout");
+        this._timeout.onabort = () => {};
+        this._timeout = undefined;
+      }
+
+      return this;
+    }
     if (this._ended || this._timeout) {
       return this;
     }
