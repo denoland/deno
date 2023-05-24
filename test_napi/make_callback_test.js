@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert, assertEquals, loadTestLibrary } from "./common.js";
+import { assertEquals, loadTestLibrary } from "./common.js";
 
 const mc = loadTestLibrary();
 

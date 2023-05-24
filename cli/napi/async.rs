@@ -2,6 +2,8 @@
 
 use deno_runtime::deno_napi::*;
 
+use crate::check_env;
+
 #[repr(C)]
 pub struct AsyncWork {
   pub data: *mut c_void,
@@ -69,21 +71,22 @@ fn napi_queue_async_work(
   napi_ok
 }
 
-// TODO: Custom async operations.
-
+// NOTE: we don't support "async_hooks::AsyncContext" so these APIs are noops.
 #[napi_sym::napi_sym]
 fn napi_async_init(
-  _env: *mut Env,
+  env: *mut Env,
   _async_resource: napi_value,
   _async_resource_name: napi_value,
   result: *mut *mut (),
 ) -> napi_status {
+  check_env!(env);
   *result = ptr::null_mut();
   napi_ok
 }
 
 #[napi_sym::napi_sym]
-fn napi_async_destroy(_env: *mut Env, async_context: *mut ()) -> napi_status {
+fn napi_async_destroy(env: *mut Env, async_context: *mut ()) -> napi_status {
+  check_env!(env);
   assert!(async_context.is_null());
   napi_ok
 }
