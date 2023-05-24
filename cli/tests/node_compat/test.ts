@@ -66,9 +66,15 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
 
       const v8Flags = ["--stack-size=4000"];
       const testSource = await Deno.readTextFile(testCase);
+      const envVars: Record<string, string> = {};
       // TODO(kt3k): Parse `Flags` directive correctly
       if (testSource.includes("Flags: --expose_externalize_string")) {
         v8Flags.push("--expose-externalize-string");
+        // TODO(bartlomieju): disable verifying globals if that V8 flag is
+        // present. Even though we should be able to pass a list of globals
+        // that are allowed, it doesn't work, because the list is expected to
+        // contain actual JS objects, not strings :)).
+        envVars["NODE_TEST_KNOWN_GLOBALS"] = "0";
       }
 
       const args = [
@@ -88,6 +94,7 @@ async function runTest(t: Deno.TestContext, path: string): Promise<void> {
         args,
         env: {
           TEST_SERIAL_ID: String(testSerialId++),
+          ...envVars,
         },
         cwd,
       });
