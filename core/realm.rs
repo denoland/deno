@@ -124,6 +124,7 @@ pub struct JsRealmInner(
   Rc<RefCell<ContextState>>,
   Rc<v8::Global<v8::Context>>,
   Rc<RefCell<JsRuntimeState>>,
+  bool,
 );
 
 impl JsRealmInner {
@@ -131,8 +132,9 @@ impl JsRealmInner {
     context_state: Rc<RefCell<ContextState>>,
     context: v8::Global<v8::Context>,
     runtime: Rc<RefCell<JsRuntimeState>>,
+    global: bool,
   ) -> Self {
-    Self(context_state, context.into(), runtime)
+    Self(context_state, context.into(), runtime, global)
   }
 
   pub fn num_pending_ops(&self) -> usize {
@@ -203,22 +205,23 @@ impl JsRealmInner {
 
   pub fn destroy(self) {
     // Expect that this context is dead
-    // assert_eq!(Rc::strong_count(&self.1), 1);
+    assert_eq!(Rc::strong_count(&self.1), 1);
 
     let state = self.state();
     let raw_ptr = self.state().borrow().isolate.unwrap();
     // SAFETY: We know the isolate outlives the realm
     let isolate = unsafe { raw_ptr.as_mut().unwrap() };
     let mut realm_state = state.borrow_mut();
+    // These globals will prevent snapshots from completing, take them
     std::mem::take(&mut realm_state.js_event_loop_tick_cb);
     std::mem::take(&mut realm_state.js_build_custom_error_cb);
     std::mem::take(&mut realm_state.js_promise_reject_cb);
     std::mem::take(&mut realm_state.js_format_exception_cb);
     std::mem::take(&mut realm_state.js_wasm_streaming_cb);
+    // The OpCtx slice may contain a circular reference
     std::mem::take(&mut realm_state.op_ctxs);
-    realm_state.pending_ops.clear();
+
     self.context().open(isolate).clear_all_slots(isolate);
-    // realm.destroy();
   }
 }
 
@@ -347,12 +350,15 @@ impl JsRealm {
 
 impl Drop for JsRealm {
   fn drop(&mut self) {
+    // Don't do anything special with the global realm
+    if self.0 .3 {
+      return;
+    }
+
     // There's us and there's the runtime
     if Rc::strong_count(&self.0 .1) == 2 {
-      // println!("dropped?");
       self.0 .2.borrow_mut().remove_realm(&self.0 .1);
       assert_eq!(Rc::strong_count(&self.0 .1), 1);
-      // println!("dropped!");
       self.0.clone().destroy();
       assert_eq!(Rc::strong_count(&self.0 .0), 1);
     }

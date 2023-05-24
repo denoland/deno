@@ -180,10 +180,10 @@ pub struct JsRuntimeState {
 
 impl JsRuntimeState {
   pub(crate) fn destroy_all_realms(&mut self) {
+    self.global_realm.take();
     for realm in self.known_realms.drain(..) {
       realm.destroy()
     }
-    self.global_realm.take();
   }
 
   pub(crate) fn remove_realm(
@@ -301,13 +301,10 @@ pub struct RuntimeOptions {
 
 impl Drop for JsRuntime {
   fn drop(&mut self) {
-    for realm in self.state.borrow_mut().known_realms.drain(..) {
-      realm.destroy();
-    }
-    if let Some(realm) = self.state.borrow_mut().global_realm.take() {
-      realm.destroy();
-    }
-    // debug_assert_eq!(Rc::strong_count(&self.state), 1);
+    // Forcibly destroy all outstanding realms
+    self.state.borrow_mut().destroy_all_realms();
+    // Ensure that we've correctly dropped all references
+    debug_assert_eq!(Rc::strong_count(&self.state), 1);
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
     }
@@ -522,6 +519,7 @@ impl JsRuntime {
         context_state,
         global_context.clone(),
         state_rc.clone(),
+        true,
       );
       let mut state = state_rc.borrow_mut();
       state.global_realm = Some(JsRealm::new(global_realm.clone()));
@@ -655,6 +653,7 @@ impl JsRuntime {
         context_state,
         v8::Global::new(scope, context),
         self.state.clone(),
+        false,
       );
       let mut state = self.state.borrow_mut();
       state.known_realms.push(realm.clone());
