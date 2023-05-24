@@ -2735,6 +2735,7 @@ fn napi_typeof(
 ) -> napi_status {
   eprintln!("napi_typeof {:?}", value);
   check_env!(env);
+  panic!();
   check_arg_option!(env, value);
   check_arg!(env, result);
   eprintln!("napi_typeof2");
