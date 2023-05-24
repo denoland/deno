@@ -120,39 +120,44 @@ impl DerefMut for JsRealm {
 }
 
 #[derive(Clone)]
-pub struct JsRealmInner(
-  Rc<RefCell<ContextState>>,
-  Rc<v8::Global<v8::Context>>,
-  Rc<RefCell<JsRuntimeState>>,
-  bool,
-);
+pub struct JsRealmInner {
+  context_state: Rc<RefCell<ContextState>>,
+  context: Rc<v8::Global<v8::Context>>,
+  runtime_state: Rc<RefCell<JsRuntimeState>>,
+  is_global: bool,
+}
 
 impl JsRealmInner {
   pub(crate) fn new(
     context_state: Rc<RefCell<ContextState>>,
     context: v8::Global<v8::Context>,
-    runtime: Rc<RefCell<JsRuntimeState>>,
-    global: bool,
+    runtime_state: Rc<RefCell<JsRuntimeState>>,
+    is_global: bool,
   ) -> Self {
-    Self(context_state, context.into(), runtime, global)
+    Self {
+      context_state,
+      context: context.into(),
+      runtime_state,
+      is_global,
+    }
   }
 
   pub fn num_pending_ops(&self) -> usize {
-    self.0.borrow().pending_ops.len()
+    self.context_state.borrow().pending_ops.len()
   }
 
   pub fn num_unrefed_ops(&self) -> usize {
-    self.0.borrow().unrefed_ops.len()
+    self.context_state.borrow().unrefed_ops.len()
   }
 
   #[inline(always)]
   pub fn context(&self) -> &v8::Global<v8::Context> {
-    &self.1
+    &self.context
   }
 
   #[inline(always)]
   pub(crate) fn state(&self) -> Rc<RefCell<ContextState>> {
-    self.0.clone()
+    self.context_state.clone()
   }
 
   /// For info on the [`v8::Isolate`] parameter, check [`JsRealm#panics`].
@@ -161,14 +166,14 @@ impl JsRealmInner {
     &self,
     isolate: &'s mut v8::Isolate,
   ) -> v8::HandleScope<'s> {
-    v8::HandleScope::with_context(isolate, &*self.1)
+    v8::HandleScope::with_context(isolate, &*self.context)
   }
 
   pub(crate) fn check_promise_rejections(
     &self,
     scope: &mut v8::HandleScope,
   ) -> Result<(), Error> {
-    let Some((_, handle)) = self.0.borrow_mut().pending_promise_rejections.pop_front() else {
+    let Some((_, handle)) = self.context_state.borrow_mut().pending_promise_rejections.pop_front() else {
       return Ok(());
     };
 
@@ -186,12 +191,12 @@ impl JsRealmInner {
   }
 
   pub(crate) fn is_same(&self, other: &Rc<v8::Global<v8::Context>>) -> bool {
-    Rc::ptr_eq(&self.1, other)
+    Rc::ptr_eq(&self.context, other)
   }
 
   pub fn destroy(self) {
     // Expect that this context is dead
-    assert_eq!(Rc::strong_count(&self.1), 1);
+    assert_eq!(Rc::strong_count(&self.context), 1);
 
     let state = self.state();
     let raw_ptr = self.state().borrow().isolate.unwrap();
@@ -216,12 +221,6 @@ impl JsRealm {
     Self(inner)
   }
 
-  pub(crate) fn destroy(self) {
-    // SAFETY: #[repr(transparent)] allows this
-    let inner: JsRealmInner = unsafe { std::mem::transmute(self) };
-    inner.destroy()
-  }
-
   #[inline(always)]
   pub(crate) fn state_from_scope(
     scope: &mut v8::HandleScope,
@@ -239,7 +238,7 @@ impl JsRealm {
     isolate: &'s mut v8::Isolate,
   ) -> v8::Local<'s, v8::Object> {
     let scope = &mut self.handle_scope(isolate);
-    self.0 .1.open(scope).global(scope)
+    self.0.context.open(scope).global(scope)
   }
 
   fn string_from_code<'a>(
@@ -337,16 +336,20 @@ impl JsRealm {
 impl Drop for JsRealm {
   fn drop(&mut self) {
     // Don't do anything special with the global realm
-    if self.0 .3 {
+    if self.0.is_global {
       return;
     }
 
     // There's us and there's the runtime
-    if Rc::strong_count(&self.0 .1) == 2 {
-      self.0 .2.borrow_mut().remove_realm(&self.0 .1);
-      assert_eq!(Rc::strong_count(&self.0 .1), 1);
+    if Rc::strong_count(&self.0.context) == 2 {
+      self
+        .0
+        .runtime_state
+        .borrow_mut()
+        .remove_realm(&self.0.context);
+      assert_eq!(Rc::strong_count(&self.0.context), 1);
       self.0.clone().destroy();
-      assert_eq!(Rc::strong_count(&self.0 .0), 1);
+      assert_eq!(Rc::strong_count(&self.0.context_state), 1);
     }
   }
 }

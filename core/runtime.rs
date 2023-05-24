@@ -303,11 +303,11 @@ impl Drop for JsRuntime {
   fn drop(&mut self) {
     // Forcibly destroy all outstanding realms
     self.state.borrow_mut().destroy_all_realms();
-    // Ensure that we've correctly dropped all references
-    debug_assert_eq!(Rc::strong_count(&self.state), 1);
     if let Some(v8_isolate) = self.v8_isolate.as_mut() {
       Self::drop_state_and_module_map(v8_isolate);
     }
+    // Ensure that we've correctly dropped all references
+    debug_assert_eq!(Rc::strong_count(&self.state), 1);
   }
 }
 
@@ -2666,7 +2666,7 @@ pub mod tests {
     {
       let realm = runtime.global_realm();
       assert_eq!(realm.num_pending_ops(), 2);
-      assert_eq!(realm.num_unrefed_ops.len(), 0);
+      assert_eq!(realm.num_unrefed_ops(), 0);
     }
   }
 
