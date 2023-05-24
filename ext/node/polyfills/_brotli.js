@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { constants } from "ext:deno_node/internal_binding/constants.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
@@ -14,11 +15,29 @@ const toU8 = (input) => {
   return input;
 };
 
-export function createBrotliCompress() {
-  notImplemented("createBrotliCompress");
+export function createBrotliCompress(options) {
+  return new BrotliCompress(options);
 }
+
 export function createBrotliDecompress() {
   notImplemented("createBrotliDecompress");
+}
+
+export class BrotliCompress extends Transform {
+  #context;
+
+  constructor(options = {}) {
+    super({
+      transform(chunk, encoding) {
+        const input = toU8(chunk);
+      },
+      flush(cb) {
+        cb();
+      }
+    });
+
+    this.#context = ops.op_create_brotli_compress();
+  }
 }
 
 function oneOffCompressOptions(options) {
