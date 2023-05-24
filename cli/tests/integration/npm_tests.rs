@@ -245,6 +245,25 @@ itest!(tarball_with_global_header {
   http_server: true,
 });
 
+itest!(node_modules_deno_node_modules {
+  args: "run --quiet npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(node_modules_deno_node_modules_local {
+  args:
+    "run --quiet --node-modules-dir npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(nonexistent_file {
   args: "run -A --quiet npm/nonexistent_file/main.js",
   output: "npm/nonexistent_file/main.out",
