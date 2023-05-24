@@ -2722,6 +2722,7 @@ pub fn get_value_type(value: v8::Local<v8::Value>) -> Option<napi_valuetype> {
   } else if value.is_object() {
     Some(napi_object)
   } else {
+    eprintln!("get value type returns None");
     None
   }
 }
@@ -2732,11 +2733,13 @@ fn napi_typeof(
   value: napi_value,
   result: *mut napi_valuetype,
 ) -> napi_status {
+  eprintln!("napi_typeof {:?}", value);
   check_env!(env);
   check_arg_option!(env, value);
   check_arg!(env, result);
-
+  eprintln!("napi_typeof2");
   let Some(ty) = get_value_type(value.unwrap()) else {
+    eprintln!("returning invalid arg");
     return napi_invalid_arg;
   };
   *result = ty;
