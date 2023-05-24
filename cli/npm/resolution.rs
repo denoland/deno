@@ -198,7 +198,7 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_pkg_from_pkg_req(req)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
   }
 
   pub fn resolve_pkg_id_from_deno_module(
@@ -209,7 +209,7 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_package_from_deno_module(id)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
   }
 
   /// Resolves a package requirement for deno graph. This should only be
@@ -326,7 +326,7 @@ fn populate_lockfile_from_snapshot(
       snapshot
         .resolve_package_from_deno_module(nv)
         .unwrap()
-        .pkg_id
+        .id
         .as_serialized(),
     );
   }
@@ -350,8 +350,8 @@ fn npm_package_to_lockfile_info(
     .collect();
 
   NpmPackageLockfileInfo {
-    display_id: pkg.pkg_id.nv.to_string(),
-    serialized_id: pkg.pkg_id.as_serialized(),
+    display_id: pkg.id.nv.to_string(),
+    serialized_id: pkg.id.as_serialized(),
     integrity: pkg.dist.integrity().to_string(),
     dependencies,
   }
