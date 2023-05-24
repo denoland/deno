@@ -9,10 +9,8 @@ https://github.com/denoland/deno_install
 ### 1.34.0 / 2023.05.24
 
 - BREAKING(unstable): change return type of Deno.serve() API (#19189)
-- Revert "perf: use jemalloc as global allocator (#18957)" (#19187)
 - feat(cli): add `nodeModulesDir` option to config file (#19095)
 - feat(cli): top-level `exclude` field in `deno.json` (#17778)
-- feat(compile): remove need for `--unstable` with npm specifiers (#19185)
 - feat(ext/fs): add isBlockDevice, isCharDevice, isFifo, isSocket to FileInfo
   (#19008)
 - feat(ext/http): Add support for trailers w/internal API (HTTP/2 only) (#19182)
@@ -28,8 +26,6 @@ https://github.com/denoland/deno_install
   (#19102)
 - feat: top level package.json install when node_modules dir is explicitly opted
   into (#19233)
-- fix(ci): simplify test assertion for http version enforcing with
-  Deno.createHttpClient (#19210)
 - fix(ext/node): ClientRequest.setTimeout(0) should remove listeners (#19240)
 - fix(ext/node): add basic node:worker_threads support (#19192)
 - fix(ext/web): improve timers resolution for 0ms timeouts (#19212)
@@ -44,8 +40,6 @@ https://github.com/denoland/deno_install
 - fix(npm): create `node_modules/.deno/node_modules` folder (#19242)
 - fix(npm): run pre and post tasks if present (#19178)
 - fix(npm): store npm binary command resolution in lockfile (#19219)
-- fix(runtime): JS debug log to stderr (#19217)
-- fix: better error message for malformed glob (#19225)
 
 ### 1.33.4 / 2023.05.18
 
