@@ -465,6 +465,7 @@ impl GZipResponseStream {
 #[derive(Copy, Clone, Debug)]
 enum BrotliState {
   Streaming,
+  EndOfStream,
 }
 
 #[pin_project]
@@ -523,6 +524,9 @@ impl PollFrame for BrotliResponseStream {
     let frame = match *state {
       BrotliState::Streaming => {
         ready!(Pin::new(&mut this.underlying).poll_frame(cx))
+      }
+      BrotliState::EndOfStream => {
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream)
       }
     };
 
@@ -588,6 +592,7 @@ impl PollFrame for BrotliResponseStream {
         };
 
         if output_written == 0 {
+          this.state = BrotliState::EndOfStream;
           ResponseStreamResult::EndOfStream
         } else {
           output_buffer.truncate(output_written - this.output_written_so_far);
