@@ -4642,14 +4642,18 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       ..Default::default()
     });
 
-    let opstate_detect = Rc::new(());
-    runtime.op_state().borrow_mut().put(opstate_detect.clone());
-    assert_eq!(Rc::strong_count(&opstate_detect), 2);
+    // Detect a drop in OpState
+    let opstate_drop_detect = Rc::new(());
+    runtime
+      .op_state()
+      .borrow_mut()
+      .put(opstate_drop_detect.clone());
+    assert_eq!(Rc::strong_count(&opstate_drop_detect), 2);
 
     let other_realm = runtime.create_realm().unwrap();
     other_realm
       .execute_script(
-        &mut runtime.v8_isolate(),
+        runtime.v8_isolate(),
         "future",
         ModuleCode::from_static("Deno.core.opAsync('op_pending')"),
       )
@@ -4667,7 +4671,9 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     }
 
     drop(runtime);
-    assert_eq!(Rc::strong_count(&opstate_detect), 1);
+
+    // Make sure the OpState was dropped properly when the runtime dropped
+    assert_eq!(Rc::strong_count(&opstate_drop_detect), 1);
   }
 
   #[tokio::test]
