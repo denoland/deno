@@ -179,7 +179,7 @@ pub struct JsRuntimeState {
 }
 
 impl JsRuntimeState {
-  pub(crate) fn destroy_all_realms(&mut self, isolate: &mut v8::Isolate) {
+  pub(crate) fn destroy_all_realms(&mut self) {
     for realm in self.known_realms.drain(..) {
       realm.destroy()
     }
@@ -637,13 +637,13 @@ impl JsRuntime {
       context_state.borrow_mut().op_ctxs = op_ctxs;
       context_state.borrow_mut().isolate = Some(self.v8_isolate() as _);
 
+      let raw_ptr = self.v8_isolate() as *mut v8::OwnedIsolate;
       // SAFETY: Having the scope tied to self's lifetime makes it impossible to
       // reference JsRuntimeState::op_ctxs while the scope is alive. Here we
       // turn it into an unbound lifetime, which is sound because 1. it only
       // lives until the end of this block, and 2. the HandleScope only has
       // access to the isolate, and nothing else we're accessing from self does.
-      let isolate =
-        unsafe { &mut *(self.v8_isolate() as *mut v8::OwnedIsolate) };
+      let isolate = unsafe { raw_ptr.as_mut() }.unwrap();
       let scope = &mut v8::HandleScope::new(isolate);
       let context = bindings::initialize_context(
         scope,
@@ -1078,9 +1078,7 @@ impl JsRuntime {
     // Drop other v8::Global handles before snapshotting
     {
       let state = self.state.clone();
-      state
-        .borrow_mut()
-        .destroy_all_realms(&mut self.v8_isolate());
+      state.borrow_mut().destroy_all_realms();
     }
 
     let snapshot_creator = self.v8_isolate.take().unwrap();
@@ -4615,7 +4613,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   }
 
   #[tokio::test]
-  async fn js_realm_gc() {    
+  async fn js_realm_gc() {
     static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
     struct PendingFuture {}
 

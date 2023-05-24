@@ -206,9 +206,9 @@ impl JsRealmInner {
     // assert_eq!(Rc::strong_count(&self.1), 1);
 
     let state = self.state();
+    let raw_ptr = self.state().borrow().isolate.unwrap();
     // SAFETY: We know the isolate outlives the realm
-    let isolate =
-      unsafe { self.state().borrow().isolate.unwrap().as_mut().unwrap() };
+    let isolate = unsafe { raw_ptr.as_mut().unwrap() };
     let mut realm_state = state.borrow_mut();
     std::mem::take(&mut realm_state.js_event_loop_tick_cb);
     std::mem::take(&mut realm_state.js_build_custom_error_cb);
