@@ -1,15 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+/// e.g. `is_builtin_node_module("assert")`
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
-    .any(|m| m.specifier.strip_prefix("node:").unwrap() == module_name)
+    .any(|m| m.module_name() == module_name)
 }
 
 pub struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
   pub specifier: &'static str,
   pub ext_specifier: &'static str,
+}
+
+impl NodeModulePolyfill {
+  pub fn module_name(&self) -> &'static str {
+    debug_assert!(self.specifier.starts_with("node:"));
+    &self.specifier[5..]
+  }
 }
 
 // NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
