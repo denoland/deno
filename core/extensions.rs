@@ -21,13 +21,6 @@ pub enum ExtensionFileSourceCode {
   // embedder is creating snapshots. Files will be loaded from the filesystem
   // during the build time and they will only be present in the V8 snapshot.
   LoadedFromFsDuringSnapshot(PathBuf),
-
-  /// Source code has already been evaluated via the snapshot, and should not be
-  /// loaded. This variant is used to avoid storing snapshot-evaluated code in
-  /// the CLI binary -- however it would most likely need to be removed once we
-  /// support `ShadowRealm`s in which case the extension code always needs to be
-  /// available for bootstrapping other realms.
-  AlreadyEvaluated,
 }
 
 #[derive(Clone, Debug)]
@@ -62,9 +55,6 @@ impl ExtensionFileSource {
           Self::find_non_ascii(&s)
         );
         Ok(s.into())
-      }
-      ExtensionFileSourceCode::AlreadyEvaluated => {
-        panic!("Attempt to load a module which is supposed to be already instantiated.");
       }
     }
   }
@@ -221,22 +211,21 @@ macro_rules! extension {
       /// If ESM or JS was specified, add those files to the extension.
       #[inline(always)]
       #[allow(unused_variables)]
-      fn with_js(ext: &mut $crate::ExtensionBuilder, js_already_evaluated: bool) {
-
+      fn with_js(ext: &mut $crate::ExtensionBuilder) {
         $( ext.esm(
-          $crate::include_js_files!( js_already_evaluated, $name $( dir $dir_esm , )? $( $esm , )* )
+          $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
         ); )?
         $(
           ext.esm(vec![ExtensionFileSource {
             specifier: "ext:setup",
-            code: if js_already_evaluated { ExtensionFileSourceCode::AlreadyEvaluated }ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
+            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
           }]);
         )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
         $( ext.js(
-          $crate::include_js_files!( js_already_evaluated, $name $( dir $dir_js , )? $( $js , )* )
+          $crate::include_js_files!( $name $( dir $dir_js , )? $( $js , )* )
         ); )?
       }
 
@@ -290,7 +279,7 @@ macro_rules! extension {
       {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
-        Self::with_js(&mut ext, false);
+        Self::with_js(&mut ext);
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_customizer(&mut ext);
         ext.take()
@@ -302,7 +291,7 @@ macro_rules! extension {
       {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
-        Self::with_js(&mut ext, false);
+        Self::with_js(&mut ext);
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
@@ -314,8 +303,6 @@ macro_rules! extension {
       $( where $( $bound : $bound_type ),+ )?
       {
         let mut ext = Self::ext();
-        Self::with_js(&mut ext, true);
-        ext.js_already_evaluated();
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
@@ -365,13 +352,6 @@ pub struct Extension {
   js_files: Option<Vec<ExtensionFileSource>>,
   esm_files: Option<Vec<ExtensionFileSource>>,
   esm_entry_point: Option<&'static str>,
-  /// Whether or not the JS from this extension has already been evaluated via
-  /// a snapshot.
-  /// This information must be passed by embedders either by calling
-  /// `ext_name.init_ops()` instead of `ext_name.init_ops_and_esm()` on the
-  /// macro or with `ExtensionBuilder.js_already_evaluated()`.
-  /// TODO(nayeemrmn): Maybe it can be remembered by core instead.
-  js_already_evaluated: bool,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
   middleware_fn: Option<Box<OpMiddlewareFn>>,
@@ -424,10 +404,6 @@ impl Extension {
         panic!("Extension '{}' is missing dependency '{dep}'", self.name);
       }
     }
-  }
-
-  pub fn has_js_already_evaluated(&self) -> bool {
-    self.js_already_evaluated
   }
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
@@ -503,7 +479,6 @@ pub struct ExtensionBuilder {
   js: Vec<ExtensionFileSource>,
   esm: Vec<ExtensionFileSource>,
   esm_entry_point: Option<&'static str>,
-  js_already_evaluated: bool,
   ops: Vec<OpDecl>,
   state: Option<Box<OpStateFn>>,
   middleware: Option<Box<OpMiddlewareFn>>,
@@ -527,11 +502,6 @@ impl ExtensionBuilder {
 
   pub fn esm_entry_point(&mut self, entry_point: &'static str) -> &mut Self {
     self.esm_entry_point = Some(entry_point);
-    self
-  }
-
-  pub fn js_already_evaluated(&mut self) -> &mut Self {
-    self.js_already_evaluated = true;
     self
   }
 
@@ -583,7 +553,6 @@ impl ExtensionBuilder {
       js_files,
       esm_files,
       esm_entry_point: self.esm_entry_point,
-      js_already_evaluated: self.js_already_evaluated,
       ops,
       opstate_fn: self.state,
       middleware_fn: self.middleware,
@@ -606,7 +575,6 @@ impl ExtensionBuilder {
       js_files,
       esm_files,
       esm_entry_point: self.esm_entry_point.take(),
-      js_already_evaluated: self.js_already_evaluated,
       ops,
       opstate_fn: self.state.take(),
       middleware_fn: self.middleware.take(),
@@ -658,32 +626,24 @@ impl ExtensionBuilder {
 #[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
-  ($js_already_evaluated:expr, $name:ident dir $dir:literal, $($file:literal,)+) => {
+  ($name:ident dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: if $js_already_evaluated {
-          $crate::ExtensionFileSourceCode::AlreadyEvaluated
-        } else {
-          $crate::ExtensionFileSourceCode::IncludedInBinary(
-            include_str!(concat!($dir, "/", $file)
-          ))
-        },
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!(concat!($dir, "/", $file)
+        )),
       },)+
     ]
   };
 
-  ($js_already_evaluated:expr, $name:ident $($file:literal,)+) => {
+  ($name:ident $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: if $js_already_evaluated {
-          $crate::ExtensionFileSourceCode::AlreadyEvaluated
-        } else {
-          $crate::ExtensionFileSourceCode::IncludedInBinary(
-            include_str!($file)
-          )
-        },
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!($file)
+        ),
       },)+
     ]
   };
@@ -692,32 +652,24 @@ macro_rules! include_js_files {
 #[cfg(feature = "include_js_files_for_snapshotting")]
 #[macro_export]
 macro_rules! include_js_files {
-  ($js_already_evaluated:expr, $name:ident dir $dir:literal, $($file:literal,)+) => {
+  ($name:ident dir $dir:literal, $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: if $js_already_evaluated {
-          $crate::ExtensionFileSourceCode::AlreadyEvaluated
-        } else {
-          $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
-          )
-        },
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
+        ),
       },)+
     ]
   };
 
-  ($js_already_evaluated:expr, $name:ident $($file:literal,)+) => {
+  ($name:ident $($file:literal,)+) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: if $js_already_evaluated {
-          $crate::ExtensionFileSourceCode::AlreadyEvaluated
-        } else {
-          $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
-          )
-        },
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
+        ),
       },)+
     ]
   };

@@ -10,9 +10,9 @@ use crate::resolve_import;
 use crate::resolve_url;
 use crate::snapshot_util::SnapshottedData;
 use crate::Extension;
-use crate::ExtensionFileSourceCode;
 use crate::JsRuntime;
 use crate::OpState;
+use anyhow::anyhow;
 use anyhow::Error;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -386,20 +386,18 @@ pub type ExtModuleLoaderCb =
   Box<dyn Fn(&ExtensionFileSource) -> Result<ModuleCode, Error>>;
 
 pub(crate) struct ExtModuleLoader {
-  module_loader: Rc<dyn ModuleLoader>,
   maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
-  resolutions: RefCell<HashMap<String, ExtensionFileSource>>,
+  sources: RefCell<HashMap<String, ExtensionFileSource>>,
   used_specifiers: RefCell<HashSet<String>>,
 }
 
 impl ExtModuleLoader {
   pub fn new(
-    module_loader: Rc<dyn ModuleLoader>,
     extensions: &[Extension],
     maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
   ) -> Self {
-    let mut resolutions = HashMap::new();
-    resolutions.extend(
+    let mut sources = HashMap::new();
+    sources.extend(
       extensions
         .iter()
         .flat_map(|e| e.get_esm_sources())
@@ -407,9 +405,8 @@ impl ExtModuleLoader {
         .map(|s| (s.specifier.to_string(), s.clone())),
     );
     ExtModuleLoader {
-      module_loader,
       maybe_load_callback,
-      resolutions: RefCell::new(resolutions),
+      sources: RefCell::new(sources),
       used_specifiers: Default::default(),
     }
   }
@@ -420,72 +417,58 @@ impl ModuleLoader for ExtModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    if self.resolutions.borrow().contains_key(specifier) {
-      return Ok(ModuleSpecifier::parse(specifier)?);
-    }
-    self.module_loader.resolve(specifier, referrer, kind)
+    Ok(resolve_import(specifier, referrer)?)
   }
 
   fn load(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    is_dyn_import: bool,
+    _maybe_referrer: Option<&ModuleSpecifier>,
+    _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    if let Some(source) = self.resolutions.borrow().get(specifier.as_str()) {
-      self
-        .used_specifiers
-        .borrow_mut()
-        .insert(specifier.to_string());
-      let result = if let Some(load_callback) = &self.maybe_load_callback {
-        load_callback(source)
-      } else {
-        source.load()
-      };
-      match result {
-        Ok(code) => {
-          let res = ModuleSource::new(ModuleType::JavaScript, code, specifier);
-          return futures::future::ok(res).boxed_local();
-        }
-        Err(err) => return futures::future::err(err).boxed_local(),
-      }
-    }
+    let sources = self.sources.borrow();
+    let source = match sources.get(specifier.as_str()) {
+      Some(source) => source,
+      None => return futures::future::err(anyhow!("Specifier \"{}\" was not passed as an extension module and was not included in the snapshot.", specifier)).boxed_local(),
+    };
     self
-      .module_loader
-      .load(specifier, maybe_referrer, is_dyn_import)
+      .used_specifiers
+      .borrow_mut()
+      .insert(specifier.to_string());
+    let result = if let Some(load_callback) = &self.maybe_load_callback {
+      load_callback(source)
+    } else {
+      source.load()
+    };
+    match result {
+      Ok(code) => {
+        let res = ModuleSource::new(ModuleType::JavaScript, code, specifier);
+        return futures::future::ok(res).boxed_local();
+      }
+      Err(err) => return futures::future::err(err).boxed_local(),
+    }
   }
 
   fn prepare_load(
     &self,
-    op_state: Rc<RefCell<OpState>>,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<String>,
-    is_dyn_import: bool,
+    _op_state: Rc<RefCell<OpState>>,
+    _specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
-    if self.resolutions.borrow().contains_key(specifier.as_str()) {
-      return async { Ok(()) }.boxed_local();
-    }
-    self.module_loader.prepare_load(
-      op_state,
-      specifier,
-      maybe_referrer,
-      is_dyn_import,
-    )
+    async { Ok(()) }.boxed_local()
   }
 }
 
 impl Drop for ExtModuleLoader {
   fn drop(&mut self) {
-    let resolutions = self.resolutions.get_mut();
+    let sources = self.sources.get_mut();
     let used_specifiers = self.used_specifiers.get_mut();
-    let unused_modules: Vec<_> = resolutions
+    let unused_modules: Vec<_> = sources
       .iter()
-      .filter(|(k, v)| {
-        !used_specifiers.contains(k.as_str())
-          && !matches!(v.code, ExtensionFileSourceCode::AlreadyEvaluated)
-      })
+      .filter(|(k, _)| !used_specifiers.contains(k.as_str()))
       .collect();
 
     if !unused_modules.is_empty() {
