@@ -921,8 +921,6 @@ mod tests {
       v.extend(&*buf);
     }
 
-    println!("test output: {:?}", v);
-
     let mut gz = brotli::Decompressor::new(&*v, v.len());
     let mut v = vec![];
     if !expected.is_empty() {
