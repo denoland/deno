@@ -480,7 +480,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "29-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              "31-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
         },
         {
