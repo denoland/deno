@@ -615,73 +615,62 @@ where
     slot.take()
   });
 
-  let obj = match maybe_module {
-    Some(nm) => {
-      // SAFETY: napi_register_module guarantees that `nm` is valid.
-      let nm = unsafe { &*nm };
-      assert_eq!(nm.nm_version, 1);
-      // SAFETY: we are going blind, calling the register function on the other side.
-      let maybe_exports = unsafe {
-        (nm.nm_register_func)(
-          env_ptr,
-          std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-            exports.into(),
-          ),
-        )
-      };
+  if let Some(module_to_register) = maybe_module {
+    // SAFETY: napi_register_module guarantees that `module_to_register` is valid.
+    let nm = unsafe { &*module_to_register };
+    assert_eq!(nm.nm_version, 1);
+    // SAFETY: we are going blind, calling the register function on the other side.
+    let maybe_exports = unsafe {
+      (nm.nm_register_func)(
+        env_ptr,
+        std::mem::transmute::<v8::Local<v8::Value>, napi_value>(exports.into()),
+      )
+    };
 
-      let exports = maybe_exports
-        .as_ref()
-        .map(|_| unsafe {
-          // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-          // to a value, they have the same layout
-          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(maybe_exports)
-        })
-        .unwrap_or_else(|| {
-          // If the module didn't return anything, we use the exports object.
-          exports.into()
-        });
-
-      Ok(serde_v8::Value { v8_value: exports })
-    }
-    None => {
-      // Initializer callback.
-      // SAFETY: we are going blind, calling the register function on the other side.
+    let exports = if maybe_exports.is_some() {
+      // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+      // to a value, they have the same layout
       unsafe {
-        let init =
-          library
-            .get::<unsafe extern "C" fn(
-              env: napi_env,
-              exports: napi_value,
-            ) -> napi_value>(b"napi_register_module_v1")
-            .expect("napi_register_module_v1 not found");
-        let maybe_exports = init(
-          env_ptr,
-          std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-            exports.into(),
-          ),
-        );
-
-        let exports = maybe_exports
-          .as_ref()
-          .map(|_| {
-            // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-            // to a value, they have the same layout
-            std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
-              maybe_exports,
-            )
-          })
-          .unwrap_or_else(|| {
-            // If the module didn't return anything, we use the exports object.
-            exports.into()
-          });
-
-        Ok(serde_v8::Value { v8_value: exports })
+        std::mem::transmute::<napi_value, v8::Local<v8::Value>>(maybe_exports)
       }
-    }
+    } else {
+      exports.into()
+    };
+
+    // NAPI addons can't be unloaded, so we're going to "forget" the library
+    // object so it lives till the program exit.
+    std::mem::forget(library);
+    return Ok(serde_v8::Value { v8_value: exports });
+  }
+
+  // Initializer callback.
+  // SAFETY: we are going blind, calling the register function on the other side.
+
+  let maybe_exports = unsafe {
+    let init = library
+      .get::<unsafe extern "C" fn(
+        env: napi_env,
+        exports: napi_value,
+      ) -> napi_value>(b"napi_register_module_v1")
+      .expect("napi_register_module_v1 not found");
+    init(
+      env_ptr,
+      std::mem::transmute::<v8::Local<v8::Value>, napi_value>(exports.into()),
+    )
   };
+
+  let exports = if maybe_exports.is_some() {
+    // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+    // to a value, they have the same layout
+    unsafe {
+      std::mem::transmute::<napi_value, v8::Local<v8::Value>>(maybe_exports)
+    }
+  } else {
+    exports.into()
+  };
+
   // NAPI addons can't be unloaded, so we're going to "forget" the library
   // object so it lives till the program exit.
   std::mem::forget(library);
-  obj
+  Ok(serde_v8::Value { v8_value: exports })
 }
