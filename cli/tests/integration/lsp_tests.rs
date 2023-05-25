@@ -9,8 +9,10 @@ use deno_core::url::Url;
 use pretty_assertions::assert_eq;
 use std::fs;
 use std::process::Stdio;
+use test_util::assert_starts_with;
 use test_util::deno_cmd_with_deno_dir;
 use test_util::env_vars_for_npm_tests;
+use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
@@ -4713,7 +4715,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6806|file:///a/b",
+          "exportMapKey": "foo|6810|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -7536,6 +7538,148 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": {"line": 0, "character": 14 },
       },
     }])
+  );
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_node_modules_dir() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  // having a package.json should have no effect on whether
+  // a node_modules dir is created
+  temp_dir.write("package.json", "{}");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import chalk from 'npm:chalk';\nimport path from 'node:path';\n\nconsole.log(chalk.green(path.join('a', 'b')));",
+    }
+  }));
+  let cache = |client: &mut LspClient| {
+    client.write_request(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": file_uri,
+        },
+        "uris": [
+          {
+            "uri": "npm:chalk",
+          },
+          {
+            "uri": "npm:@types/node",
+          }
+        ]
+      }),
+    );
+  };
+
+  cache(&mut client);
+
+  assert!(!temp_dir.path().join("node_modules").exists());
+
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    "{ \"nodeModulesDir\": true, \"lock\": false }\n",
+  );
+  let refresh_config = |client: &mut LspClient| {
+    client.write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {
+          "enable": true,
+          "config": "./deno.json",
+        }
+      }),
+    );
+
+    let request = json!([{
+      "enable": true,
+      "config": "./deno.json",
+      "codeLens": {
+        "implementations": true,
+        "references": true
+      },
+      "importMap": null,
+      "lint": false,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {}
+      },
+      "unstable": false
+    }]);
+    // one for the workspace
+    client.handle_configuration_request(request.clone());
+    // one for the specifier
+    client.handle_configuration_request(request);
+  };
+  refresh_config(&mut client);
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.viewed().len(), 2); // not cached
+
+  cache(&mut client);
+
+  assert!(temp_dir.path().join("node_modules/chalk").exists());
+  assert!(temp_dir.path().join("node_modules/@types/node").exists());
+  assert!(!temp_dir.path().join("deno.lock").exists());
+
+  // now add a lockfile and cache
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    "{ \"nodeModulesDir\": true }\n",
+  );
+  refresh_config(&mut client);
+  cache(&mut client);
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.viewed().len(), 0, "{:#?}", diagnostics);
+
+  assert!(temp_dir.path().join("deno.lock").exists());
+
+  // the declaration should be found in the node_modules directory
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": file_uri,
+      },
+      "position": { "line": 0, "character": 7 }, // chalk
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // ensure that it's using the node_modules directory
+  let references = res.as_array().unwrap();
+  assert_eq!(references.len(), 2, "references: {:#?}", references);
+  let uri = references[1]
+    .as_object()
+    .unwrap()
+    .get("uri")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  // canonicalize for mac
+  let path = temp_dir.path().join("node_modules").canonicalize().unwrap();
+  assert_starts_with!(
+    uri,
+    ModuleSpecifier::from_file_path(&path).unwrap().as_str()
   );
 
   client.shutdown();

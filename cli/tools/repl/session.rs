@@ -518,7 +518,7 @@ impl ReplSession {
         self.has_initialized_node_runtime = true;
       }
 
-      self.npm_resolver.add_package_reqs(npm_imports).await?;
+      self.npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {

@@ -551,7 +551,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       {
         let folder = self
           .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
+          .resolve_pkg_folder_from_pkg_id(&package.id)?;
         builder.add_dir_recursive(&folder)?;
       }
       // overwrite the root directory's name to obscure the user's registry url

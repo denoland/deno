@@ -338,23 +338,30 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
   let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
     return Compression::None;
   };
-  // Firefox and Chrome send this -- no need to parse
-  if accept_encoding == "gzip, deflate, br" {
-    return Compression::GZip;
+
+  match accept_encoding.to_str().unwrap() {
+    // Firefox and Chrome send this -- no need to parse
+    "gzip, deflate, br" => return Compression::Brotli,
+    "gzip" => return Compression::GZip,
+    "br" => return Compression::Brotli,
+    _ => (),
   }
-  if accept_encoding == "gzip" {
-    return Compression::GZip;
-  }
+
   // Fall back to the expensive parser
   let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
+    matches!(
+      r,
+      Ok((
+        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+        _
+      ))
+    )
   });
-  #[allow(clippy::single_match)]
   match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
-    _ => {}
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
+    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
+    _ => Compression::None,
   }
-  Compression::None
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
@@ -402,9 +409,14 @@ fn modify_compressibility_from_response(
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  let encoding = match compression {
+    Compression::Brotli => "br",
+    Compression::GZip => "gzip",
+    _ => unreachable!(),
+  };
   weaken_etag(headers);
   headers.remove(CONTENT_LENGTH);
-  headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+  headers.insert(CONTENT_ENCODING, HeaderValue::from_static(encoding));
   compression
 }
 

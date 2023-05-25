@@ -2,6 +2,7 @@
 
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::realm::ContextState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use crate::runtime::JsRuntimeState;
@@ -23,13 +24,11 @@ use std::rc::Weak;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
-pub type RealmIdx = u16;
 pub type PromiseId = i32;
 pub type OpId = u16;
 
 #[pin_project]
 pub struct OpCall {
-  realm_idx: RealmIdx,
   promise_id: PromiseId,
   op_id: OpId,
   /// Future is not necessarily Unpin, so we need to pin_project.
@@ -45,7 +44,6 @@ impl OpCall {
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
   ) -> Self {
     Self {
-      realm_idx: op_ctx.realm_idx,
       op_id: op_ctx.id,
       promise_id,
       fut: MaybeDone::Future(fut),
@@ -56,7 +54,6 @@ impl OpCall {
   /// `async { value }` or `futures::future::ready(value)`.
   pub fn ready(op_ctx: &OpCtx, promise_id: PromiseId, value: OpResult) -> Self {
     Self {
-      realm_idx: op_ctx.realm_idx,
       op_id: op_ctx.id,
       promise_id,
       fut: MaybeDone::Done(value),
@@ -65,13 +62,12 @@ impl OpCall {
 }
 
 impl Future for OpCall {
-  type Output = (RealmIdx, PromiseId, OpId, OpResult);
+  type Output = (PromiseId, OpId, OpResult);
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let realm_idx = self.realm_idx;
     let promise_id = self.promise_id;
     let op_id = self.op_id;
     let fut = &mut *self.project().fut;
@@ -88,7 +84,7 @@ impl Future for OpCall {
       MaybeDone::Future(f) => f.poll_unpin(cx),
       MaybeDone::Gone => std::task::Poll::Pending,
     }
-    .map(move |res| (realm_idx, promise_id, op_id, res))
+    .map(move |res| (promise_id, op_id, res))
   }
 }
 
@@ -145,14 +141,13 @@ pub struct OpCtx {
   pub decl: Rc<OpDecl>,
   pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
-  // Index of the current realm into `JsRuntimeState::known_realms`.
-  pub realm_idx: RealmIdx,
+  pub(crate) context_state: Rc<RefCell<ContextState>>,
 }
 
 impl OpCtx {
-  pub fn new(
+  pub(crate) fn new(
     id: OpId,
-    realm_idx: RealmIdx,
+    context_state: Rc<RefCell<ContextState>>,
     decl: Rc<OpDecl>,
     state: Rc<RefCell<OpState>>,
     runtime_state: Weak<RefCell<JsRuntimeState>>,
@@ -176,7 +171,7 @@ impl OpCtx {
       state,
       runtime_state,
       decl,
-      realm_idx,
+      context_state,
       fast_fn_c_info,
     }
   }
