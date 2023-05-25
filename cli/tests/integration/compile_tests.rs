@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fs::File;
+use std::path::Path;
 use std::process::Command;
 use test_util as util;
 use test_util::TempDir;
@@ -8,8 +9,9 @@ use util::assert_contains;
 use util::TestContextBuilder;
 
 #[test]
-fn compile() {
-  let dir = TempDir::new();
+fn compile_basic() {
+  let context = TestContextBuilder::new().build();
+  let dir = context.temp_dir();
   let exe = if cfg!(windows) {
     dir.path().join("welcome.exe")
   } else {
@@ -17,26 +19,45 @@ fn compile() {
   };
   // try this twice to ensure it works with the cache
   for _ in 0..2 {
-    let output = util::deno_cmd_with_deno_dir(&dir)
-      .current_dir(util::root_path())
-      .arg("compile")
-      .arg("--output")
-      .arg(&exe)
-      .arg("./test_util/std/examples/welcome.ts")
-      .stdout(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(output.status.success());
-    let output = Command::new(&exe)
-      .stdout(std::process::Stdio::piped())
-      .spawn()
-      .unwrap()
-      .wait_with_output()
-      .unwrap();
-    assert!(output.status.success());
-    assert_eq!(output.stdout, "Welcome to Deno!\n".as_bytes());
+    let output = context
+      .new_command()
+      .args_vec([
+        "compile",
+        "--output",
+        &exe.to_string_lossy(),
+        "../../../test_util/std/examples/welcome.ts",
+      ])
+      .run();
+    output.assert_exit_code(0);
+    output.skip_output_check();
+    let output = context
+      .new_command()
+      .command_name(exe.to_string_lossy())
+      .run();
+    output.assert_matches_text("Welcome to Deno!\n");
+  }
+
+  // now ensure this works when the deno_dir is readonly
+  let readonly_dir = dir.path().join("readonly");
+  make_dir_readonly(&readonly_dir);
+  let readonly_sub_dir = readonly_dir.join("sub");
+
+  let output = context
+    .new_command()
+    // it should fail creating this, but still work
+    .env("DENO_DIR", readonly_sub_dir.to_string_lossy())
+    .command_name(exe.to_string_lossy())
+    .run();
+  output.assert_matches_text("Welcome to Deno!\n");
+}
+
+fn make_dir_readonly(dir: &Path) {
+  std::fs::create_dir_all(dir).unwrap();
+  eprintln!("DIR: {}", dir.display());
+  if cfg!(windows) {
+    Command::new("attrib").arg("+r").arg(dir).output().unwrap();
+  } else if cfg!(unix) {
+    Command::new("chmod").arg("555").arg(dir).output().unwrap();
   }
 }
 
