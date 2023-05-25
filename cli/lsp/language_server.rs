@@ -582,9 +582,7 @@ fn create_npm_resolver_and_resolution(
 
 impl Inner {
   fn new(client: Client) -> Self {
-    let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir =
-      DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
+    let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
     let module_registries =
@@ -904,7 +902,7 @@ impl Inner {
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
-    let dir = self.deno_dir_from_maybe_cache_path(new_cache_path.clone())?;
+    let dir = DenoDir::new(new_cache_path.clone())?;
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -938,19 +936,8 @@ impl Inner {
     Ok(())
   }
 
-  fn deno_dir_from_maybe_cache_path(
-    &self,
-    cache_path: Option<PathBuf>,
-  ) -> std::io::Result<DenoDir> {
-    let maybe_custom_root =
-      cache_path.or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    DenoDir::new(maybe_custom_root)
-  }
-
   async fn recreate_npm_services_if_necessary(&mut self) {
-    let deno_dir = match self
-      .deno_dir_from_maybe_cache_path(self.maybe_cache_path.clone())
-    {
+    let deno_dir = match DenoDir::new(self.maybe_cache_path.clone()) {
       Ok(deno_dir) => deno_dir,
       Err(err) => {
         lsp_warn!("Error getting deno dir: {}", err);
