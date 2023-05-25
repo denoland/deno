@@ -712,6 +712,10 @@ impl PollFrame for BrotliResponseStream {
 
         if output_written == 0 {
           this.state = BrotliState::EndOfStream;
+          // SAFETY: we are done with the stream, so we can safely deallocate it.
+          unsafe {
+            brotli::ffi::compressor::BrotliEncoderDestroyInstance(this.stm);
+          }
           ResponseStreamResult::EndOfStream
         } else {
           this.state = BrotliState::Flushing;
