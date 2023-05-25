@@ -3,6 +3,8 @@
 #![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::ffi::c_void;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use napi_sys::*;
 
@@ -126,11 +128,34 @@ pub fn init_cleanup_hook(env: napi_env, exports: napi_value) {
   ));
 }
 
+static INIT_CALLED: AtomicBool = AtomicBool::new(false);
+
+#[ctor::ctor]
+unsafe fn init_napi_module() {
+  const MODULE: napi_module = napi_module {
+    nm_version: 1,
+    nm_flags: 0,
+    nm_filename: "test_napi\0".as_ptr() as *const _,
+    nm_register_func: Some(napi_register_module_v1),
+    nm_modname: "test_napi\0".as_ptr() as *const _,
+    nm_priv: std::ptr::null_mut(),
+    reserved: [std::ptr::null_mut(); 4],
+  };
+
+  // This basically does nothing, actual initialization happens in
+  // napi_register_module_v1. This test makes sure that registration durin
+  // CRT initialization doesn't cause any issues.
+  napi_module_register(&MODULE as *const _ as *mut _);
+  INIT_CALLED.store(true, Ordering::SeqCst);
+}
+
 #[no_mangle]
 unsafe extern "C" fn napi_register_module_v1(
   env: napi_env,
   _: napi_value,
 ) -> napi_value {
+  assert!(INIT_CALLED.load(Ordering::SeqCst));
+
   #[cfg(windows)]
   {
     napi_sys::setup();
