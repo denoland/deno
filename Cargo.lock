@@ -5071,8 +5071,6 @@ dependencies = [
 name = "test_napi"
 version = "0.1.0"
 dependencies = [
- "cc",
- "ctor",
  "napi-build",
  "napi-sys",
  "test_util",
