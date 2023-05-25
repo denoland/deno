@@ -1783,10 +1783,12 @@ fn napi_get_cb_info(
     *argc = len;
   }
 
+  eprintln!("napi_get_cb_info argc {}", len);
   if !argv.is_null() {
     let mut v_argv = std::slice::from_raw_parts_mut(argv, v_argc as usize);
     for i in 0..v_argc {
       let mut arg = args.get(i);
+      eprintln!("napi_get_cb_info arg {:#?}", arg);
       v_argv[i as usize] = arg.into();
     }
   }

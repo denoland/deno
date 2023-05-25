@@ -39,9 +39,9 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
 
   {
     let arg_count = args.length();
-    for i in 0..arg_count {
+    for i in 0..arg_count + 1 {
       let arg = args.get(i);
-      eprintln!("arg {} {:?}", i, arg);
+      eprintln!("arg {} {:?} {}", i, arg, arg.is_undefined());
     }
   }
 
@@ -67,6 +67,7 @@ pub fn create_function<'a>(
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
 
+  eprintln!("cb {:#?}", cb);
   let external = v8::External::new(
     scope,
     CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
@@ -77,6 +78,7 @@ pub fn create_function<'a>(
     .unwrap();
 
   if let Some(v8str) = name {
+    eprintln!("function name {}", v8str.to_rust_string_lossy(scope));
     function.set_name(v8str);
   }
 
