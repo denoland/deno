@@ -231,7 +231,6 @@ pub fn check_for_upgrades(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
