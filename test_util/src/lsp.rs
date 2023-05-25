@@ -682,7 +682,6 @@ impl LspClient {
         all_diagnostics.push(response);
       }
     }
-    all_diagnostics.reverse(); // reverse because we read the latest notifications
 
     CollectedDiagnostics(all_diagnostics)
   }
