@@ -31,10 +31,19 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   let args = v8::FunctionCallbackArguments::from_function_callback_info(info);
   let mut rv = v8::ReturnValue::from_function_callback_info(info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
+  eprintln!("args data {:?}", args.data());
   let info_ptr: *mut CallbackInfo = unsafe {
     let external_value = v8::Local::<v8::External>::cast(args.data());
     external_value.value() as _
   };
+
+  {
+    let arg_count = args.length();
+    for i in 0..arg_count {
+      let arg = args.get(i);
+      eprintln!("arg {} {:?}", i, arg);
+    }
+  }
 
   // SAFETY: pointer from Box::into_raw.
   let mut info = unsafe { &mut *info_ptr };
