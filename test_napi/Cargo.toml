@@ -21,3 +21,4 @@ test_util.workspace = true
 
 [build-dependencies]
 napi-build = "1"
+cc = "1.0"

@@ -18,6 +18,29 @@ fn build() {
   }
   let build_plugin_output = build_plugin.output().unwrap();
   assert!(build_plugin_output.status.success());
+
+  // cc module.c -undefined dynamic_lookup -shared -Wl,-no_fixup_chains -dynamic -o module.dylib
+  #[cfg(not(target_os = "windows"))]
+  {
+    let out = if cfg!(target_os = "macos") {
+      "module.dylib"
+    } else {
+      "module.so"
+    };
+
+    let mut cc = Command::new("cc");
+    let c_module = cc
+      .arg("module.c")
+      .arg("-undefined")
+      .arg("dynamic_lookup")
+      .arg("-shared")
+      .arg("-Wl,-no_fixup_chains")
+      .arg("-dynamic")
+      .arg("-o")
+      .arg(out);
+    let c_module_output = c_module.output().unwrap();
+    assert!(c_module_output.status.success());
+  }
 }
 
 #[test]
