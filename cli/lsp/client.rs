@@ -62,6 +62,20 @@ impl Client {
     });
   }
 
+  /// This notification is sent to the client during internal testing
+  /// purposes only in order to tell when the latest diagnostics are
+  /// published.
+  pub fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_diagnostic_batch_notification(params).await;
+    });
+  }
+
   pub fn send_test_notification(&self, params: TestingNotification) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
@@ -160,6 +174,10 @@ trait ClientTrait: Send + Sync {
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
   );
+  async fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  );
   async fn send_test_notification(&self, params: TestingNotification);
   async fn specifier_configurations(
     &self,
@@ -194,6 +212,16 @@ impl ClientTrait for TowerClient {
     self
       .0
       .send_notification::<lsp_custom::RegistryStateNotification>(params)
+      .await
+  }
+
+  async fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DiagnosticBatchNotification>(params)
       .await
   }
 
@@ -308,6 +336,12 @@ impl ClientTrait for ReplClient {
   async fn send_registry_state_notification(
     &self,
     _params: lsp_custom::RegistryStateNotificationParams,
+  ) {
+  }
+
+  async fn send_diagnostic_batch_notification(
+    &self,
+    _params: lsp_custom::DiagnosticBatchNotificationParams,
   ) {
   }
 
