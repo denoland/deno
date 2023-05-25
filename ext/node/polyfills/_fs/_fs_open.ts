@@ -12,6 +12,7 @@ import { promisify } from "ext:deno_node/internal/util.mjs";
 import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import type { Buffer } from "ext:deno_node/buffer.ts";
 
 function existsSync(filePath: string | URL): boolean {
@@ -125,7 +126,7 @@ export function open(
       if (err) {
         (callback as (err: Error) => void)(err);
       } else {
-        callback(null, res!);
+        callback(null, new FileHandle(res!));
       }
       return;
     }
@@ -133,21 +134,21 @@ export function open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
-      (file) => callback!(null, file.rid),
+      (file) => callback!(null, new FileHandle(file.rid)),
       (err) => (callback as (err: Error) => void)(err),
     );
   }
 }
 
 export const openPromise = promisify(open) as (
-  & ((path: string | Buffer | URL) => Promise<number>)
-  & ((path: string | Buffer | URL, flags: openFlags) => Promise<number>)
-  & ((path: string | Buffer | URL, mode?: number) => Promise<number>)
+  & ((path: string | Buffer | URL) => Promise<FileHandle>)
+  & ((path: string | Buffer | URL, flags: openFlags) => Promise<FileHandle>)
+  & ((path: string | Buffer | URL, mode?: number) => Promise<FileHandle>)
   & ((
     path: string | Buffer | URL,
     flags?: openFlags,
     mode?: number,
-  ) => Promise<number>)
+  ) => Promise<FileHandle>)
 );
 
 export function openSync(path: string | Buffer | URL): number;
