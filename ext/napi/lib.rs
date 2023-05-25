@@ -82,8 +82,6 @@ pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
 
 thread_local! {
   pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
-  pub static ASYNC_WORK_SENDER: RefCell<Option<mpsc::UnboundedSender<PendingNapiAsyncWork>>> = RefCell::new(None);
-  pub static THREAD_SAFE_FN_SENDER: RefCell<Option<mpsc::UnboundedSender<ThreadSafeFunctionStatus>>> = RefCell::new(None);
 }
 
 type napi_addon_register_func =
@@ -346,15 +344,6 @@ impl Env {
     >,
     tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   ) -> Self {
-    let sc = sender.clone();
-    ASYNC_WORK_SENDER.with(|s| {
-      s.replace(Some(sc));
-    });
-    let ts = threadsafe_function_sender.clone();
-    THREAD_SAFE_FN_SENDER.with(|s| {
-      s.replace(Some(ts));
-    });
-
     Self {
       isolate_ptr,
       context: context.into_raw(),
