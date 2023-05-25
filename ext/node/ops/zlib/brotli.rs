@@ -3,6 +3,8 @@ use brotli::ffi::compressor::*;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::OpState;
+use deno_core::Resource;
 use deno_core::ZeroCopyBuf;
 use std::alloc;
 use std::ffi::c_void;
@@ -108,6 +110,8 @@ struct BrotliCompressCtx {
   inst: *mut BrotliEncoderState,
 }
 
+impl Resource for BrotliCompressCtx {}
+
 impl Drop for BrotliCompressCtx {
   fn drop(&mut self) {
     unsafe { BrotliEncoderDestroyInstance(self.inst) };
@@ -172,7 +176,10 @@ extern "C" fn brotli_free(
 }
 
 #[op]
-pub fn op_create_brotli_compress(params: Vec<(u8, i32)>) {
+pub fn op_create_brotli_compress(
+  state: &mut OpState,
+  params: Vec<(u8, i32)>,
+) -> u32 {
   let inst = unsafe {
     BrotliEncoderCreateInstance(
       Some(brotli_alloc),
@@ -186,9 +193,43 @@ pub fn op_create_brotli_compress(params: Vec<(u8, i32)>) {
       BrotliEncoderSetParameter(inst, encoder_param(key), value as u32);
     }
   }
+
+  state.resource_table.add(BrotliCompressCtx { inst })
 }
 
 fn encoder_param(param: u8) -> BrotliEncoderParameter {
   // SAFETY: BrotliEncoderParam is valid for 0-255
   unsafe { std::mem::transmute(param as u32) }
+}
+
+#[op]
+pub fn op_brotli_compress_stream(
+  state: &mut OpState,
+  input: &[u8]
+  output: &mut [u8],
+) -> Result<usize, AnyError> {
+  let ctx = state
+    .resource_table
+    .get::<BrotliCompressCtx>(state.rid)?;
+
+  unsafe {
+    let mut available_in = input.len();
+    let mut next_in = input.as_ptr();
+    let mut available_out = output.len();
+    let mut next_out = output.as_mut_ptr();
+
+    if BrotliEncoderCompressStream(
+      ctx.inst,
+      BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+      &mut available_in,
+      &mut next_in,
+      &mut available_out,
+      &mut next_out,
+      std::ptr::null_mut(),
+    ) != 1
+    {
+      return Err(type_error("Failed to compress"));
+    }
+
+  }
 }

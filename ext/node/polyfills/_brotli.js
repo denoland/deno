@@ -28,15 +28,18 @@ export class BrotliCompress extends Transform {
 
   constructor(options = {}) {
     super({
-      transform(chunk, encoding) {
+      transform(chunk, encoding, callback) {
         const input = toU8(chunk);
+        ops.op_brotli_compress_stream(context, input);
+        callback();
       },
-      flush(cb) {
-        cb();
+      flush(callback) {
+        callback();
       },
     });
 
     this.#context = ops.op_create_brotli_compress();
+    const context = this.#context;
   }
 }
 
