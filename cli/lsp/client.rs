@@ -63,8 +63,8 @@ impl Client {
   }
 
   /// This notification is sent to the client during internal testing
-  /// purposes only in order to tell when the latest diagnostics are
-  /// published.
+  /// purposes only in order to let the test client know when the latest
+  /// diagnostics have been published.
   pub fn send_diagnostic_batch_notification(
     &self,
     params: lsp_custom::DiagnosticBatchNotificationParams,
