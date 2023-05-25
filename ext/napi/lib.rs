@@ -81,7 +81,7 @@ pub const napi_would_deadlock: napi_status = 21;
 pub const NAPI_AUTO_LENGTH: usize = usize::MAX;
 
 thread_local! {
-  pub static MODULE: RefCell<Option<*const NapiModule>> = RefCell::new(None);
+  pub static MODULE_TO_REGISTER: RefCell<Option<*const NapiModule>> = RefCell::new(None);
 }
 
 type napi_addon_register_func =
@@ -548,7 +548,6 @@ where
 {
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
-
   let (
     async_work_sender,
     tsfn_sender,
@@ -611,26 +610,61 @@ where
     Err(e) => return Err(type_error(e.to_string())),
   };
 
-  MODULE.with(|cell| {
-    let slot = *cell.borrow();
-    let obj = match slot {
-      Some(nm) => {
-        // SAFETY: napi_register_module guarantees that `nm` is valid.
-        let nm = unsafe { &*nm };
-        assert_eq!(nm.nm_version, 1);
-        // SAFETY: we are going blind, calling the register function on the other side.
-        let maybe_exports = unsafe {
-          (nm.nm_register_func)(
-            env_ptr,
-            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-              exports.into(),
-            ),
-          )
-        };
+  let maybe_module = MODULE_TO_REGISTER.with(|cell| {
+    let mut slot = cell.borrow_mut();
+    slot.take()
+  });
+
+  let obj = match maybe_module {
+    Some(nm) => {
+      // SAFETY: napi_register_module guarantees that `nm` is valid.
+      let nm = unsafe { &*nm };
+      assert_eq!(nm.nm_version, 1);
+      // SAFETY: we are going blind, calling the register function on the other side.
+      let maybe_exports = unsafe {
+        (nm.nm_register_func)(
+          env_ptr,
+          std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+            exports.into(),
+          ),
+        )
+      };
+
+      let exports = maybe_exports
+        .as_ref()
+        .map(|_| unsafe {
+          // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+          // to a value, they have the same layout
+          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(maybe_exports)
+        })
+        .unwrap_or_else(|| {
+          // If the module didn't return anything, we use the exports object.
+          exports.into()
+        });
+
+      Ok(serde_v8::Value { v8_value: exports })
+    }
+    None => {
+      // Initializer callback.
+      // SAFETY: we are going blind, calling the register function on the other side.
+      unsafe {
+        let init =
+          library
+            .get::<unsafe extern "C" fn(
+              env: napi_env,
+              exports: napi_value,
+            ) -> napi_value>(b"napi_register_module_v1")
+            .expect("napi_register_module_v1 not found");
+        let maybe_exports = init(
+          env_ptr,
+          std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
+            exports.into(),
+          ),
+        );
 
         let exports = maybe_exports
           .as_ref()
-          .map(|_| unsafe {
+          .map(|_| {
             // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
             // to a value, they have the same layout
             std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
@@ -644,44 +678,10 @@ where
 
         Ok(serde_v8::Value { v8_value: exports })
       }
-      None => {
-        // Initializer callback.
-        // SAFETY: we are going blind, calling the register function on the other side.
-        unsafe {
-          let init = library
-            .get::<unsafe extern "C" fn(
-              env: napi_env,
-              exports: napi_value,
-            ) -> napi_value>(b"napi_register_module_v1")
-            .expect("napi_register_module_v1 not found");
-          let maybe_exports = init(
-            env_ptr,
-            std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
-              exports.into(),
-            ),
-          );
-
-          let exports = maybe_exports
-            .as_ref()
-            .map(|_| {
-              // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-              // to a value, they have the same layout
-              std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
-                maybe_exports,
-              )
-            })
-            .unwrap_or_else(|| {
-              // If the module didn't return anything, we use the exports object.
-              exports.into()
-            });
-
-          Ok(serde_v8::Value { v8_value: exports })
-        }
-      }
-    };
-    // NAPI addons can't be unloaded, so we're going to "forget" the library
-    // object so it lives till the program exit.
-    std::mem::forget(library);
-    obj
-  })
+    }
+  };
+  // NAPI addons can't be unloaded, so we're going to "forget" the library
+  // object so it lives till the program exit.
+  std::mem::forget(library);
+  obj
 }
