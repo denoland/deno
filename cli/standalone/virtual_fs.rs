@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -25,8 +24,18 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::util;
+
+#[derive(Error, Debug)]
+#[error(
+  "Failed to strip prefix '{}' from '{}'", root_path.display(), target.display()
+)]
+pub struct StripRootError {
+  root_path: PathBuf,
+  target: PathBuf,
+}
 
 pub struct VfsBuilder {
   root_path: PathBuf,
@@ -38,7 +47,7 @@ pub struct VfsBuilder {
 
 impl VfsBuilder {
   pub fn new(root_path: PathBuf) -> Self {
-    log::debug!("Building VFS with root '{}'", root_path.display());
+    log::debug!("Building vfs with root '{}'", root_path.display());
     Self {
       root_dir: VirtualDirectory {
         name: root_path
@@ -78,7 +87,28 @@ impl VfsBuilder {
       } else if file_type.is_symlink() {
         let target = util::fs::canonicalize_path(&path)
           .with_context(|| format!("Reading symlink {}", path.display()))?;
-        self.add_symlink(&path, &target)?;
+        if let Err(StripRootError { .. }) = self.add_symlink(&path, &target) {
+          if target.is_file() {
+            // this may change behavior, so warn the user about it
+            log::warn!(
+              "Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
+              self.root_path.display(),
+              path.display(),
+              target.display(),
+            );
+            // inline the symlink and make the target file
+            let file_bytes = std::fs::read(&target)
+              .with_context(|| format!("Reading {}", path.display()))?;
+            self.add_file(&path, file_bytes)?;
+          } else {
+            log::warn!(
+              "Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
+              self.root_path.display(),
+              path.display(),
+              target.display(),
+            );
+          }
+        }
       }
     }
 
@@ -88,7 +118,7 @@ impl VfsBuilder {
   pub fn add_dir(
     &mut self,
     path: &Path,
-  ) -> Result<&mut VirtualDirectory, AnyError> {
+  ) -> Result<&mut VirtualDirectory, StripRootError> {
     log::debug!("Ensuring directory '{}'", path.display());
     let path = self.path_relative_root(path)?;
     let mut current_dir = &mut self.root_dir;
@@ -167,7 +197,7 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
     target: &Path,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), StripRootError> {
     log::debug!(
       "Adding symlink '{}' to '{}'",
       path.display(),
@@ -198,17 +228,13 @@ impl VfsBuilder {
     (self.root_dir, self.files)
   }
 
-  fn path_relative_root(&self, path: &Path) -> Result<PathBuf, AnyError> {
+  fn path_relative_root(&self, path: &Path) -> Result<PathBuf, StripRootError> {
     match path.strip_prefix(&self.root_path) {
       Ok(p) => Ok(p.to_path_buf()),
-      Err(err) => {
-        bail!(
-          "Failed to strip prefix '{}' from '{}': {:#}",
-          self.root_path.display(),
-          path.display(),
-          err
-        )
-      }
+      Err(_) => Err(StripRootError {
+        root_path: self.root_path.clone(),
+        target: path.to_path_buf(),
+      }),
     }
   }
 }
