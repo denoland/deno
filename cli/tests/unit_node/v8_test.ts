@@ -51,8 +51,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "setFlagsFromString throws",
+  name: "setFlagsFromString",
   fn() {
-    assertThrows(() => setFlagsFromString("--allow_natives_syntax"));
+    setFlagsFromString("--allow_natives_syntax");
   },
 });
