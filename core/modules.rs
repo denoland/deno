@@ -136,7 +136,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = JsRuntime::module_map(tc_scope);
+  let module_map = JsRuntime::module_map_from(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map
@@ -2004,7 +2004,7 @@ import "/a.js";
       ]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map();
     let modules = module_map_rc.borrow();
 
     assert_eq!(
@@ -2116,7 +2116,7 @@ import "/a.js";
 
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map().clone();
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -2228,7 +2228,7 @@ import "/a.js";
       )
       .unwrap();
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map().clone();
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -2562,7 +2562,7 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc = runtime.module_map();
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2642,7 +2642,7 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc = runtime.module_map();
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2797,7 +2797,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map();
     let modules = module_map_rc.borrow();
 
     assert_eq!(

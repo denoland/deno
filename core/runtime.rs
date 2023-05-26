@@ -582,7 +582,7 @@ impl JsRuntime {
   }
 
   #[inline]
-  fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
+  pub(crate) fn module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
     self.module_map.as_ref().unwrap()
   }
 
@@ -715,7 +715,9 @@ impl JsRuntime {
     state
   }
 
-  pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
+  pub(crate) fn module_map_from(
+    isolate: &v8::Isolate,
+  ) -> Rc<RefCell<ModuleMap>> {
     let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
     let module_map_rc =
       // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -1100,7 +1102,7 @@ impl JsRuntime {
     &mut self,
     module_id: ModuleId,
   ) -> Result<v8::Global<v8::Object>, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map();
 
     let module_handle = module_map_rc
       .borrow()
@@ -1439,7 +1441,7 @@ impl JsRuntime {
     scope: &mut v8::HandleScope,
   ) -> EventLoopPendingState {
     let state = Self::state(scope);
-    let module_map = Self::module_map(scope);
+    let module_map = Self::module_map_from(scope);
     let state = EventLoopPendingState::new(
       scope,
       &mut state.borrow_mut(),
@@ -1453,7 +1455,7 @@ fn get_stalled_top_level_await_message_for_module(
   scope: &mut v8::HandleScope,
   module_id: ModuleId,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map(scope);
+  let module_map = JsRuntime::module_map_from(scope);
   let module_map = module_map.borrow();
   let module_handle = module_map.handles.get(module_id).unwrap();
 
@@ -1469,7 +1471,7 @@ fn get_stalled_top_level_await_message_for_module(
 fn find_stalled_top_level_await(
   scope: &mut v8::HandleScope,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map(scope);
+  let module_map = JsRuntime::module_map_from(scope);
   let module_map = module_map.borrow();
 
   // First check if that's root module
@@ -1628,7 +1630,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> Result<(), v8::Global<v8::Value>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1661,7 +1663,7 @@ impl JsRuntime {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map();
 
     let module_handle = module_map_rc
       .borrow()
@@ -1752,7 +1754,7 @@ impl JsRuntime {
   ) -> oneshot::Receiver<Result<(), Error>> {
     let global_realm = self.global_realm();
     let state_rc = self.state.clone();
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1870,7 +1872,7 @@ impl JsRuntime {
     id: ModuleLoadId,
     exception: v8::Global<v8::Value>,
   ) {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -1891,7 +1893,7 @@ impl JsRuntime {
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = self.state.clone();
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -1926,7 +1928,7 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
     if self
-      .get_module_map()
+      .module_map()
       .borrow()
       .preparing_dynamic_imports
       .is_empty()
@@ -1934,7 +1936,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.get_module_map().clone();
+    let module_map_rc = self.module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1969,7 +1971,7 @@ impl JsRuntime {
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
     if self
-      .get_module_map()
+      .module_map()
       .borrow()
       .pending_dynamic_imports
       .is_empty()
@@ -1977,7 +1979,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.get_module_map().clone();
+    let module_map_rc = self.module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -2173,7 +2175,7 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -2228,7 +2230,7 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -3407,7 +3409,7 @@ pub mod tests {
     }
 
     fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
-      let module_map_rc = runtime.get_module_map();
+      let module_map_rc = runtime.module_map();
       let module_map = module_map_rc.borrow();
       assert_eq!(module_map.handles.len(), modules.len());
       assert_eq!(module_map.info.len(), modules.len());
