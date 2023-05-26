@@ -31,19 +31,10 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   let args = v8::FunctionCallbackArguments::from_function_callback_info(info);
   let mut rv = v8::ReturnValue::from_function_callback_info(info);
   // SAFETY: create_function guarantees that the data is a CallbackInfo external.
-  eprintln!("args data {:?}", args.data());
   let info_ptr: *mut CallbackInfo = unsafe {
     let external_value = v8::Local::<v8::External>::cast(args.data());
     external_value.value() as _
   };
-
-  {
-    let arg_count = args.length();
-    for i in 0..arg_count + 1 {
-      let arg = args.get(i);
-      eprintln!("arg {} {:?} {}", i, arg, arg.is_undefined());
-    }
-  }
 
   // SAFETY: pointer from Box::into_raw.
   let mut info = unsafe { &mut *info_ptr };
@@ -66,7 +57,6 @@ pub fn create_function<'a>(
   let env: &mut Env = unsafe { &mut *env_ptr };
   let scope = &mut env.scope();
 
-  eprintln!("cb {:#?}", cb);
   let external = v8::External::new(
     scope,
     CallbackInfo::new_raw(env_ptr as _, cb, cb_info) as *mut _,
@@ -77,7 +67,6 @@ pub fn create_function<'a>(
     .unwrap();
 
   if let Some(v8str) = name {
-    eprintln!("function name {}", v8str.to_rust_string_lossy(scope));
     function.set_name(v8str);
   }
 

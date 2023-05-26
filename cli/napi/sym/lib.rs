@@ -30,7 +30,6 @@ pub fn napi_sym(_attr: TokenStream, item: TokenStream) -> TokenStream {
       // SAFETY: it's an NAPI function.
       #[no_mangle]
       pub unsafe extern "C" fn #name #generics (#inputs) -> napi_status {
-        eprintln!("calling {}", stringify!(#name));
         #block
       }
   })

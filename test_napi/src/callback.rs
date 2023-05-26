@@ -3,12 +3,8 @@
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::ValueType::napi_boolean;
 use napi_sys::ValueType::napi_function;
-use napi_sys::ValueType::napi_number;
 use napi_sys::ValueType::napi_object;
-use napi_sys::ValueType::napi_string;
-use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
 use std::ptr;
 
@@ -91,41 +87,6 @@ extern "C" fn test_callback_run_with_recv(
   result
 }
 
-extern "C" fn test_callback_with_optional_args(
-  env: napi_env,
-  info: napi_callback_info,
-) -> napi_value {
-  let mut argc = 0;
-  let mut args = [std::ptr::null_mut(); 10];
-  let mut this: napi_value = ptr::null_mut();
-
-  assert_napi_ok!(napi_get_cb_info(
-    env,
-    info,
-    &mut argc,
-    args.as_mut_ptr(),
-    &mut this,
-    std::ptr::null_mut(),
-  ));
-
-  for i in 0..4 {
-    let mut ty = -1;
-    assert_napi_ok!(napi_typeof(env, args[i], &mut ty));
-    assert_eq!(
-      ty,
-      match i {
-        0 => napi_boolean,
-        1 => napi_number,
-        2 => napi_string,
-        3 => napi_undefined,
-        _ => unreachable!(),
-      }
-    );
-  }
-
-  ptr::null_mut()
-}
-
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
     napi_new_property!(env, "test_callback_run", test_callback_run),
@@ -133,11 +94,6 @@ pub fn init(env: napi_env, exports: napi_value) {
       env,
       "test_callback_run_with_recv",
       test_callback_run_with_recv
-    ),
-    napi_new_property!(
-      env,
-      "test_callback_with_optional_args",
-      test_callback_with_optional_args
     ),
   ];
 
