@@ -1207,7 +1207,6 @@ fn napi_get_value_string_utf8(
   let v8str = value.to_string(&mut env.scope()).unwrap();
   let string_len = v8str.utf8_length(&mut env.scope());
 
-  eprintln!("v8str {}", v8str.to_rust_string_lossy(&mut env.scope()));
   if buf.is_null() {
     *result = string_len;
   } else if bufsize != 0 {
