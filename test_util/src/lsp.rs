@@ -470,6 +470,7 @@ pub struct LspClientBuilder {
   print_stderr: bool,
   deno_exe: PathBuf,
   context: Option<TestContext>,
+  use_diagnostic_sync: bool,
 }
 
 impl LspClientBuilder {
@@ -479,6 +480,7 @@ impl LspClientBuilder {
       print_stderr: false,
       deno_exe: deno_exe_path(),
       context: None,
+      use_diagnostic_sync: true,
     }
   }
 
@@ -492,6 +494,13 @@ impl LspClientBuilder {
   #[deprecated]
   pub fn print_stderr(&mut self) -> &mut Self {
     self.print_stderr = true;
+    self
+  }
+
+  /// Whether to use the synchronization messages to better sync diagnostics
+  /// between the test client and server.
+  pub fn use_diagnostic_sync(&mut self, value: bool) -> &mut Self {
+    self.use_diagnostic_sync = value;
     self
   }
 
@@ -511,7 +520,10 @@ impl LspClientBuilder {
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
       // turn on diagnostic synchronization communication
-      .env("DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG", "1")
+      .env(
+        "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
+        if self.use_diagnostic_sync { "1" } else { "" },
+      )
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
