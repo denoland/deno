@@ -369,27 +369,33 @@ export class OutgoingMessage extends Stream {
     return headers;
   }
 
-  controller: ReadableStreamDefaultController;
   write(
     chunk: string | Uint8Array | Buffer,
     encoding: string | null,
-    // TODO(crowlKats): use callback
-    _callback: () => void,
+    callback: () => void,
   ): boolean {
-    if (typeof chunk === "string") {
-      chunk = Buffer.from(chunk, encoding);
-    }
-    if (chunk instanceof Buffer) {
-      chunk = new Uint8Array(chunk.buffer);
+    if (
+      (typeof chunk === "string" && chunk.length > 0) ||
+      ((chunk instanceof Buffer || chunk instanceof Uint8Array) &&
+        chunk.buffer.byteLength > 0)
+    ) {
+      if (typeof chunk === "string") {
+        chunk = Buffer.from(chunk, encoding);
+      }
+      if (chunk instanceof Buffer) {
+        chunk = new Uint8Array(chunk.buffer);
+      }
+
+      try {
+        core.writeAllSync(this._bodyWriteRid, chunk);
+      } catch (e) {
+        this._requestSendErrorSet = e;
+      }
+
+      callback();
     }
 
-    try {
-      core.writeAllSync(this._bodyWriteRid, chunk);
-    } catch (e) {
-      this._requestSendErrorSet = e;
-    }
-
-    return false;
+    return true;
   }
 
   // deno-lint-ignore no-explicit-any
@@ -399,18 +405,8 @@ export class OutgoingMessage extends Stream {
   }
 
   // deno-lint-ignore no-explicit-any
-  end(chunk: any, encoding: any, _callback: any) {
-    if (typeof chunk === "function") {
-      callback = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = null;
-    }
-    // TODO(crowlKats): finish
-
-    return this;
+  end(_chunk: any, _encoding: any, _callback: any) {
+    notImplemented("OutgoingMessage.end");
   }
 
   flushHeaders() {

@@ -38,6 +38,7 @@ import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -500,6 +501,14 @@ class ClientRequest extends OutgoingMessage {
       delete optsWithoutSignal.signal;
     }
 
+    if (options!.createConnection) {
+      notImplemented("ClientRequest.options.createConnection");
+    }
+
+    if (options!.lookup) {
+      notImplemented("ClientRequest.options.lookup");
+    }
+
     // initiate connection
     // TODO(crowlKats): finish this
     /*if (this.agent) {
@@ -598,9 +607,8 @@ class ClientRequest extends OutgoingMessage {
     }
   }
 
-  // TODO(bartlomieju): use callback here
   // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, _cb?: any): this {
+  end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
 
     if (chunk !== undefined) {
@@ -613,6 +621,8 @@ class ClientRequest extends OutgoingMessage {
       } catch (err) {
         this._requestSendError = err;
       }
+
+      cb?.();
 
       const res = await core.opAsync("op_fetch_send", this._req.requestRid)
         .catch((err) => {
@@ -673,50 +683,6 @@ class ClientRequest extends OutgoingMessage {
       this.emit("response", incoming);
     })();
   }
-  /*
-    override async _final() {
-      if (this.controller) {
-        this.controller.close();
-      }
-
-      const body = await this._createBody(this.body, this.opts);
-      const client = await this._createCustomClient();
-      const opts = {
-        body,
-        method: this.opts.method,
-        client,
-        headers: this.opts.headers,
-        signal: this.opts.signal ?? undefined,
-      };
-      const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
-        .catch((e) => {
-          if (e.message.includes("connection closed before message completed")) {
-            // Node.js seems ignoring this error
-          } else if (e.message.includes("The signal has been aborted")) {
-            // Remap this error
-            this.emit("error", connResetException("socket hang up"));
-          } else {
-            this.emit("error", e);
-          }
-          return undefined;
-        });
-
-      const res = new IncomingMessageForClient(
-        await mayResponse,
-        this._createSocket(),
-      );
-      this.emit("response", res);
-      if (client) {
-        res.on("end", () => {
-          client.close();
-        });
-      }
-      if (this.opts.timeout != undefined) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-      }
-      this.cb?.(res);
-    }*/
 
   abort() {
     if (this.aborted) {
