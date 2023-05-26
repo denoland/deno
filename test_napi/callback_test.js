@@ -36,3 +36,13 @@ Deno.test("napi callback run with args & recv", function () {
   );
   assertEquals(result, 69);
 });
+
+// Regression test for https://github.com/denoland/deno/issues/17213
+Deno.test("napi callback with optional args", function () {
+  callback.test_callback_with_optional_args(
+    true,
+    1,
+    "hello",
+    // Last argument is optional, but it shouldn't crash the program.
+  );
+});
