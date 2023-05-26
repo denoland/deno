@@ -1444,18 +1444,21 @@ fn napi_define_class(
         None
       };
 
-      let mut accessor_property = v8::NONE;
+      let mut accessor_property = v8::PropertyAttribute::NONE;
       if getter.is_some()
         && setter.is_some()
         && (p.attributes & napi_writable) == 0
       {
-        accessor_property = accessor_property | v8::READ_ONLY;
+        accessor_property =
+          accessor_property | v8::PropertyAttribute::READ_ONLY;
       }
       if p.attributes & napi_enumerable == 0 {
-        accessor_property = accessor_property | v8::DONT_ENUM;
+        accessor_property =
+          accessor_property | v8::PropertyAttribute::DONT_ENUM;
       }
       if p.attributes & napi_configurable == 0 {
-        accessor_property = accessor_property | v8::DONT_DELETE;
+        accessor_property =
+          accessor_property | v8::PropertyAttribute::DONT_DELETE;
       }
 
       let proto = tpl.prototype_template(scope);

@@ -625,21 +625,21 @@ fn op_get_non_index_property_names<'a>(
     Err(_) => return None,
   };
 
-  let mut property_filter = v8::ALL_PROPERTIES;
+  let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 == 1 {
-    property_filter = property_filter | v8::ONLY_WRITABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE
   }
   if filter & 2 == 2 {
-    property_filter = property_filter | v8::ONLY_ENUMERABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_ENUMERABLE
   }
   if filter & 4 == 4 {
-    property_filter = property_filter | v8::ONLY_CONFIGURABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_CONFIGURABLE
   }
   if filter & 8 == 8 {
-    property_filter = property_filter | v8::SKIP_STRINGS
+    property_filter = property_filter | v8::PropertyFilter::SKIP_STRINGS
   }
   if filter & 16 == 16 {
-    property_filter = property_filter | v8::SKIP_SYMBOLS
+    property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS
   }
 
   let maybe_names = obj.get_property_names(
