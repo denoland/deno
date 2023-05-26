@@ -912,11 +912,13 @@ testing[WILDCARD]this
 fn compile_npm_file_system() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "compile/npm_fs/main.ts",
+    compile_args: vec!["-A"],
+    run_args: vec![],
     output_file: "compile/npm_fs/main.out",
     node_modules_dir: true,
     input_name: Some("binary"),
     expected_name: "binary",
-    run_args: vec![],
+    exit_code: 0,
   });
 }
 
@@ -924,11 +926,13 @@ fn compile_npm_file_system() {
 fn compile_npm_bin_esm() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-esm",
+    compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_esm.out",
     node_modules_dir: false,
     input_name: None,
     expected_name: "cli-esm",
+    exit_code: 0,
   });
 }
 
@@ -936,23 +940,55 @@ fn compile_npm_bin_esm() {
 fn compile_npm_bin_cjs() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-cjs",
+    compile_args: vec![],
     run_args: vec!["this", "is", "a", "test"],
     output_file: "npm/deno_run_cjs.out",
     node_modules_dir: false,
     input_name: None,
     expected_name: "cli-cjs",
+    exit_code: 0,
   });
 }
 
 #[test]
-fn compile_npm_cowsay() {
+fn compile_npm_cowsay_main() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0",
+    compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_dir: false,
     input_name: None,
     expected_name: "cowsay",
+    exit_code: 0,
+  });
+}
+
+#[test]
+fn compile_npm_vfs_implicit_read_permissions() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "compile/vfs_implicit_read_permission/main.ts",
+    compile_args: vec![],
+    run_args: vec![],
+    output_file: "compile/vfs_implicit_read_permission/main.out",
+    node_modules_dir: false,
+    input_name: Some("binary"),
+    expected_name: "binary",
+    exit_code: 0,
+  });
+}
+
+#[test]
+fn compile_npm_no_permissions() {
+  run_npm_bin_compile_test(RunNpmBinCompileOptions {
+    input_specifier: "npm:cowsay@1.5.0",
+    compile_args: vec![],
+    run_args: vec!["Hello"],
+    output_file: "npm/deno_run_cowsay_no_permissions.out",
+    node_modules_dir: false,
+    input_name: None,
+    expected_name: "cowsay",
+    exit_code: 1,
   });
 }
 
@@ -960,11 +996,13 @@ fn compile_npm_cowsay() {
 fn compile_npm_cowsay_explicit() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowsay",
+    compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowsay.out",
     node_modules_dir: false,
     input_name: None,
     expected_name: "cowsay",
+    exit_code: 0,
   });
 }
 
@@ -972,21 +1010,25 @@ fn compile_npm_cowsay_explicit() {
 fn compile_npm_cowthink() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:cowsay@1.5.0/cowthink",
+    compile_args: vec!["--allow-read"],
     run_args: vec!["Hello"],
     output_file: "npm/deno_run_cowthink.out",
     node_modules_dir: false,
     input_name: None,
     expected_name: "cowthink",
+    exit_code: 0,
   });
 }
 
 struct RunNpmBinCompileOptions<'a> {
   input_specifier: &'a str,
-  output_file: &'a str,
   node_modules_dir: bool,
+  output_file: &'a str,
   input_name: Option<&'a str>,
   expected_name: &'a str,
   run_args: Vec<&'a str>,
+  compile_args: Vec<&'a str>,
+  exit_code: i32,
 }
 
 fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
@@ -1006,7 +1048,9 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
       .to_string()
   };
 
-  let mut args = vec!["compile".to_string(), "-A".to_string()];
+  let mut args = vec!["compile".to_string()];
+
+  args.extend(opts.compile_args.iter().map(|s| s.to_string()));
 
   if opts.node_modules_dir {
     args.push("--node-modules-dir".to_string());
@@ -1036,4 +1080,5 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
     .args_vec(opts.run_args)
     .run();
   output.assert_matches_file(opts.output_file);
+  output.assert_exit_code(opts.exit_code);
 }
