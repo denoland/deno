@@ -29,15 +29,21 @@ fn build() {
     };
 
     let mut cc = Command::new("cc");
-    let c_module = cc
-      .arg("module.c")
-      .arg("-undefined")
-      .arg("dynamic_lookup")
-      .arg("-shared")
-      .arg("-Wl,-no_fixup_chains")
-      .arg("-dynamic")
-      .arg("-o")
-      .arg(out);
+
+    #[cfg(not(target_os = "macos"))]
+    let c_module = cc.arg("module.c").arg("-shared").arg("-o").arg(out);
+
+    #[cfg(target_os = "macos")]
+    let c_module = {
+      cc.arg("module.c")
+        .arg("-undefined")
+        .arg("dynamic_lookup")
+        .arg("-shared")
+        .arg("-Wl,-no_fixup_chains")
+        .arg("-dynamic")
+        .arg("-o")
+        .arg(out)
+    };
     let c_module_output = c_module.output().unwrap();
     assert!(c_module_output.status.success());
   }
