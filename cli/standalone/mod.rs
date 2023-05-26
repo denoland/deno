@@ -399,7 +399,7 @@ pub async fn run(
 
   let permissions = {
     let mut permissions = metadata.permissions;
-    // if running with a node_modules folder, grant read access to it
+    // if running with an npm vfs, grant read access to it
     if let Some(vfs_root) = vfs_root {
       match &mut permissions.allow_read {
         Some(vec) if vec.is_empty() => {
