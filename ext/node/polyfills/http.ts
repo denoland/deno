@@ -624,63 +624,63 @@ class ClientRequest extends OutgoingMessage {
 
       cb?.();
 
-      const res = await core.opAsync("op_fetch_send", this._req.requestRid)
-        .catch((err) => {
-          if (this._req.cancelHandleRid !== null) {
-            core.tryClose(this._req.cancelHandleRid);
-          }
+      try {
+        await core.opAsync("op_fetch_send", this._req.requestRid);
+        if (this._timeout) {
+          this._timeout.onabort = null;
+        }
+        this._client.close();
+        const incoming = new IncomingMessageForClient(this.socket);
 
-          if (this._requestSendErrorSet) {
-            // if the request body stream errored, we want to propagate that error
-            // instead of the original error from opFetchSend
-            throw new TypeError(
-              "Failed to fetch: request body stream errored",
-              {
-                cause: this._requestSendError,
-              },
-            );
-          }
+        // TODO(@crowlKats):
+        // incoming.httpVersionMajor = versionMajor;
+        // incoming.httpVersionMinor = versionMinor;
+        // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
+        // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
+        //  parser.joinDuplicateHeaders;
 
-          if (
-            err.message.includes("connection closed before message completed")
-          ) {
-            // Node.js seems ignoring this error
-          } else if (err.message.includes("The signal has been aborted")) {
-            // Remap this error
-            this.emit("error", connResetException("socket hang up"));
-          } else {
-            this.emit("error", err);
-          }
-        });
+        incoming.url = res.url;
+        incoming.statusCode = res.status;
+        incoming.statusMessage = res.statusText;
 
-      if (this._timeout) {
-        this._timeout.onabort = null;
+        incoming._addHeaderLines(
+          res.headers,
+          Object.entries(res.headers).flat().length,
+        );
+        incoming._bodyRid = res.responseRid;
+
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        this.emit("response", incoming);
+      } catch (e) {
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        if (this._requestSendError !== undefined) {
+          // if the request body stream errored, we want to propagate that error
+          // instead of the original error from opFetchSend
+          throw new TypeError(
+            "Failed to fetch: request body stream errored",
+            {
+              cause: this._requestSendError,
+            },
+          );
+        }
+
+        if (
+          err.message.includes("connection closed before message completed")
+        ) {
+          // Node.js seems ignoring this error
+        } else if (err.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
+        } else {
+          this.emit("error", err);
+        }
       }
-      this._client.close();
-      const incoming = new IncomingMessageForClient(this.socket);
-
-      // TODO(@crowlKats):
-      // incoming.httpVersionMajor = versionMajor;
-      // incoming.httpVersionMinor = versionMinor;
-      // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
-      // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
-      //  parser.joinDuplicateHeaders;
-
-      incoming.url = res.url;
-      incoming.statusCode = res.status;
-      incoming.statusMessage = res.statusText;
-
-      incoming._addHeaderLines(
-        res.headers,
-        Object.entries(res.headers).flat().length,
-      );
-      incoming._bodyRid = res.responseRid;
-
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
-      }
-
-      this.emit("response", incoming);
     })();
   }
 

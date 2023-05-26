@@ -389,7 +389,7 @@ export class OutgoingMessage extends Stream {
       try {
         core.writeAllSync(this._bodyWriteRid, chunk);
       } catch (e) {
-        this._requestSendErrorSet = e;
+        this._requestSendError = e;
       }
 
       callback();
