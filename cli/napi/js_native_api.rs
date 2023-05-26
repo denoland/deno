@@ -1758,7 +1758,7 @@ fn napi_get_cb_info(
   argc: *mut i32,
   argv: *mut napi_value,
   this_arg: *mut napi_value,
-  cb_data: *mut *mut c_void,
+  data: *mut *mut c_void,
 ) -> napi_status {
   check_env!(env);
   let env = unsafe { &mut *env };
@@ -1767,8 +1767,17 @@ fn napi_get_cb_info(
   let cbinfo: &CallbackInfo = &*(cbinfo as *const CallbackInfo);
   let args = &*(cbinfo.args as *const v8::FunctionCallbackArguments);
 
-  if !cb_data.is_null() {
-    *cb_data = cbinfo.cb_info;
+  if !argv.is_null() {
+    check_arg!(env, argc);
+    let mut v_argv = std::slice::from_raw_parts_mut(argv, argc as usize);
+    for i in 0..*argc {
+      let mut arg = args.get(i);
+      v_argv[i as usize] = arg.into();
+    }
+  }
+
+  if !argc.is_null() {
+    *argc = args.length();
   }
 
   if !this_arg.is_null() {
@@ -1776,20 +1785,11 @@ fn napi_get_cb_info(
     *this_arg = this.into();
   }
 
-  let len = args.length();
-  let mut v_argc = len;
-  if !argc.is_null() {
-    *argc = len;
+  if !data.is_null() {
+    *data = cbinfo.cb_info;
   }
 
-  if !argv.is_null() {
-    let mut v_argv = std::slice::from_raw_parts_mut(argv, v_argc as usize);
-    for i in 0..v_argc {
-      let mut arg = args.get(i);
-      v_argv[i as usize] = arg.into();
-    }
-  }
-
+  napi_clear_last_error(env);
   napi_ok
 }
 
