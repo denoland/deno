@@ -87,12 +87,6 @@ impl<'a> From<&'a [u8]> for LspMessage {
   }
 }
 
-#[derive(Debug, Deserialize)]
-struct DiagnosticBatchNotificationParams {
-  batch_index: usize,
-  messages_len: usize,
-}
-
 fn read_message<R>(reader: &mut R) -> Result<Option<Vec<u8>>>
 where
   R: io::Read + io::BufRead,
@@ -170,25 +164,6 @@ impl LspStdoutReader {
     let mut msg_queue = msg_queue.lock();
     loop {
       for i in 0..msg_queue.len() {
-        let msg = &msg_queue[i];
-        if let Some(result) = get_match(msg) {
-          let msg = msg_queue.remove(i);
-          self.read_messages.push(msg);
-          return result;
-        }
-      }
-      cvar.wait(&mut msg_queue);
-    }
-  }
-
-  pub fn read_latest_message<R>(
-    &mut self,
-    mut get_match: impl FnMut(&LspMessage) -> Option<R>,
-  ) -> R {
-    let (msg_queue, cvar) = &*self.pending_messages;
-    let mut msg_queue = msg_queue.lock();
-    loop {
-      for i in (0..msg_queue.len()).rev() {
         let msg = &msg_queue[i];
         if let Some(result) = get_match(msg) {
           let msg = msg_queue.remove(i);
@@ -510,8 +485,6 @@ impl LspClientBuilder {
     command
       .env("DENO_DIR", deno_dir.path())
       .env("NPM_CONFIG_REGISTRY", npm_registry_url())
-      // turn on diagnostic synchronization communication
-      .env("DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG", "1")
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
@@ -537,6 +510,7 @@ impl LspClientBuilder {
         .unwrap_or_else(|| TestContextBuilder::new().build()),
       writer,
       deno_dir,
+      diagnosable_open_file_count: 0,
     })
   }
 }
@@ -549,6 +523,7 @@ pub struct LspClient {
   writer: io::BufWriter<ChildStdin>,
   deno_dir: TempDir,
   context: TestContext,
+  diagnosable_open_file_count: usize,
 }
 
 impl Drop for LspClient {
@@ -634,6 +609,20 @@ impl LspClient {
   }
 
   pub fn did_open_raw(&mut self, params: Value) {
+    let text_doc = params
+      .as_object()
+      .unwrap()
+      .get("textDocument")
+      .unwrap()
+      .as_object()
+      .unwrap();
+    if matches!(
+      text_doc.get("languageId").unwrap().as_str().unwrap(),
+      "typescript" | "javascript"
+    ) {
+      self.diagnosable_open_file_count += 1;
+    }
+
     self.write_notification("textDocument/didOpen", params);
   }
 
@@ -643,46 +632,11 @@ impl LspClient {
     self.write_response(id, result);
   }
 
-  fn get_latest_diagnostic_batch_index(&mut self) -> usize {
-    let result = self
-      .write_request("deno/internalLatestDiagnosticBatchIndex", json!(null));
-    result.as_u64().unwrap() as usize
-  }
-
-  /// Reads the latest diagnostics. It's assumed that
   pub fn read_diagnostics(&mut self) -> CollectedDiagnostics {
-    // ask the server what the latest diagnostic batch index is
-    let latest_diagnostic_batch_index =
-      self.get_latest_diagnostic_batch_index();
-
-    // now wait for three (deno, lint, and typescript diagnostics) batch
-    // notification messages for that index
-    let mut read = 0;
-    let mut total_messages_len = 0;
-    while read < 3 {
-      let (method, response) =
-        self.read_notification::<DiagnosticBatchNotificationParams>();
-      assert_eq!(method, "deno/internalTestDiagnosticBatch");
-      let response = response.unwrap();
-      if response.batch_index == latest_diagnostic_batch_index {
-        read += 1;
-        total_messages_len += response.messages_len;
-      }
+    let mut all_diagnostics = Vec::new();
+    for _ in 0..self.diagnosable_open_file_count {
+      all_diagnostics.extend(read_diagnostics(self).0);
     }
-
-    // now read the latest diagnostic messages
-    let mut all_diagnostics = Vec::with_capacity(total_messages_len);
-    let mut seen_files = HashSet::new();
-    for _ in 0..total_messages_len {
-      let (method, response) =
-        self.read_latest_notification::<lsp::PublishDiagnosticsParams>();
-      assert_eq!(method, "textDocument/publishDiagnostics");
-      let response = response.unwrap();
-      if seen_files.insert(response.uri.to_string()) {
-        all_diagnostics.push(response);
-      }
-    }
-
     CollectedDiagnostics(all_diagnostics)
   }
 
@@ -706,19 +660,6 @@ impl LspClient {
     R: de::DeserializeOwned,
   {
     self.reader.read_message(|msg| match msg {
-      LspMessage::Notification(method, maybe_params) => {
-        let params = serde_json::from_value(maybe_params.clone()?).ok()?;
-        Some((method.to_string(), params))
-      }
-      _ => None,
-    })
-  }
-
-  pub fn read_latest_notification<R>(&mut self) -> (String, Option<R>)
-  where
-    R: de::DeserializeOwned,
-  {
-    self.reader.read_latest_message(|msg| match msg {
       LspMessage::Notification(method, maybe_params) => {
         let params = serde_json::from_value(maybe_params.clone()?).ok()?;
         Some((method.to_string(), params))
@@ -878,29 +819,35 @@ impl LspClient {
 }
 
 #[derive(Debug, Clone)]
-pub struct CollectedDiagnostics(Vec<lsp::PublishDiagnosticsParams>);
+pub struct CollectedDiagnostics(pub Vec<lsp::PublishDiagnosticsParams>);
 
 impl CollectedDiagnostics {
   /// Gets the diagnostics that the editor will see after all the publishes.
-  pub fn all(&self) -> Vec<lsp::Diagnostic> {
+  pub fn viewed(&self) -> Vec<lsp::Diagnostic> {
     self
-      .all_messages()
+      .viewed_messages()
       .into_iter()
       .flat_map(|m| m.diagnostics)
       .collect()
   }
 
   /// Gets the messages that the editor will see after all the publishes.
-  pub fn all_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
-    self.0.clone()
+  pub fn viewed_messages(&self) -> Vec<lsp::PublishDiagnosticsParams> {
+    // go over the publishes in reverse order in order to get
+    // the final messages that will be shown in the editor
+    let mut messages = Vec::new();
+    let mut had_specifier = HashSet::new();
+    for message in self.0.iter().rev() {
+      if had_specifier.insert(message.uri.clone()) {
+        messages.insert(0, message.clone());
+      }
+    }
+    messages
   }
 
-  pub fn messages_with_source(
-    &self,
-    source: &str,
-  ) -> lsp::PublishDiagnosticsParams {
+  pub fn with_source(&self, source: &str) -> lsp::PublishDiagnosticsParams {
     self
-      .all_messages()
+      .viewed_messages()
       .iter()
       .find(|p| {
         p.diagnostics
@@ -911,14 +858,14 @@ impl CollectedDiagnostics {
       .unwrap()
   }
 
-  pub fn messages_with_file_and_source(
+  pub fn with_file_and_source(
     &self,
     specifier: &str,
     source: &str,
   ) -> lsp::PublishDiagnosticsParams {
     let specifier = Url::parse(specifier).unwrap();
     self
-      .all_messages()
+      .viewed_messages()
       .iter()
       .find(|p| {
         p.uri == specifier
@@ -930,6 +877,18 @@ impl CollectedDiagnostics {
       .map(ToOwned::to_owned)
       .unwrap()
   }
+}
+
+fn read_diagnostics(client: &mut LspClient) -> CollectedDiagnostics {
+  // diagnostics come in batches of three unless they're cancelled
+  let mut diagnostics = vec![];
+  for _ in 0..3 {
+    let (method, response) =
+      client.read_notification::<lsp::PublishDiagnosticsParams>();
+    assert_eq!(method, "textDocument/publishDiagnostics");
+    diagnostics.push(response.unwrap());
+  }
+  CollectedDiagnostics(diagnostics)
 }
 
 #[cfg(test)]

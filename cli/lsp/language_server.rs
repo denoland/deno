@@ -46,7 +46,6 @@ use super::completions;
 use super::config::Config;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
-use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
@@ -341,22 +340,6 @@ impl LanguageServer {
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
     }
-  }
-
-  /// This request is only used by the lsp integration tests to
-  /// coordinate the tests receiving the latest diagnostics.
-  pub async fn latest_diagnostic_batch_index_request(
-    &self,
-  ) -> LspResult<Option<Value>> {
-    Ok(
-      self
-        .0
-        .read()
-        .await
-        .diagnostics_server
-        .latest_batch_index()
-        .map(|v| v.into()),
-    )
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
@@ -2949,11 +2932,11 @@ impl Inner {
   }
 
   fn send_diagnostics_update(&self) {
-    let snapshot = DiagnosticServerUpdateMessage {
-      snapshot: self.snapshot(),
-      config: self.config.snapshot(),
-      lint_options: self.lint_options.clone(),
-    };
+    let snapshot = (
+      self.snapshot(),
+      self.config.snapshot(),
+      self.lint_options.clone(),
+    );
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);
     }
