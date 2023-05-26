@@ -8,8 +8,6 @@ use crate::lsp::language_server::LanguageServer;
 pub use repl::ReplCompletionItem;
 pub use repl::ReplLanguageServer;
 
-use self::diagnostics::should_send_diagnostic_batch_index_notifications;
-
 mod analysis;
 mod cache;
 mod capabilities;
@@ -38,7 +36,7 @@ pub async fn start() -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();
 
-  let builder = LspService::build(|client| {
+  let (service, socket) = LspService::build(|client| {
     language_server::LanguageServer::new(client::Client::from_tower(client))
   })
   .custom_method(lsp_custom::CACHE_REQUEST, LanguageServer::cache_request)
@@ -60,18 +58,8 @@ pub async fn start() -> Result<(), AnyError> {
     lsp_custom::VIRTUAL_TEXT_DOCUMENT,
     LanguageServer::virtual_text_document,
   )
-  .custom_method(lsp_custom::INLAY_HINT, LanguageServer::inlay_hint);
-
-  let builder = if should_send_diagnostic_batch_index_notifications() {
-    builder.custom_method(
-      lsp_custom::LATEST_DIAGNOSTIC_BATCH_INDEX,
-      LanguageServer::latest_diagnostic_batch_index_request,
-    )
-  } else {
-    builder
-  };
-
-  let (service, socket) = builder.finish();
+  .custom_method(lsp_custom::INLAY_HINT, LanguageServer::inlay_hint)
+  .finish();
 
   Server::new(stdin, stdout, socket).serve(service).await;
 
