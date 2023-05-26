@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import * as io from "ext:deno_io/12_io.js";
 import {
   validateOffsetLengthRead,
   validatePosition,
@@ -121,10 +122,10 @@ export function read(
         // We use sync calls below to avoid being affected by others during
         // these calls.
         Deno.seekSync(fd, position, Deno.SeekMode.Start);
-        nread = Deno.readSync(fd, buffer);
+        nread = io.readSync(fd, buffer);
         Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
       } else {
-        nread = await Deno.read(fd, buffer);
+        nread = await io.read(fd, buffer);
       }
       cb(null, nread ?? 0, Buffer.from(buffer.buffer, offset, length));
     } catch (error) {
@@ -187,7 +188,7 @@ export function readSync(
     Deno.seekSync(fd, position, Deno.SeekMode.Start);
   }
 
-  const numberOfBytesRead = Deno.readSync(fd, buffer);
+  const numberOfBytesRead = io.readSync(fd, buffer);
 
   if (typeof position === "number" && position >= 0) {
     Deno.seekSync(fd, currentPosition, Deno.SeekMode.Start);
