@@ -106,7 +106,7 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
 
 fn bench_code_lens(deno_exe: &Path) -> Duration {
   let mut client = LspClientBuilder::new()
-    .use_diagnostic_sync(true)
+    .use_diagnostic_sync(false)
     .deno_exe(deno_exe)
     .build();
   client.initialize_default();
