@@ -547,61 +547,14 @@ class ClientRequest extends OutgoingMessage {
     const client = this._getClient() ?? createHttpClient({ http2: false });
     this._client = client;
 
-    const req = core.ops.op_node_http_request(
+    this._req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
       client.rid,
       this.method === "POST" || this.method === "PATCH",
     );
-
-    this._req = req;
-
-    if (req.requestBodyRid !== null) {
-      const reader = this.stream.getReader();
-      (async () => {
-        let done = false;
-        while (!done) {
-          let val;
-          try {
-            const res = await reader.read();
-            done = res.done;
-            val = res.value;
-          } catch (err) {
-            //if (terminator.aborted) break;
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-          if (done) break;
-          try {
-            await core.writeAll(req.requestBodyRid, val);
-          } catch (err) {
-            //if (terminator.aborted) break;
-            await reader.cancel(err);
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-        }
-        if (done /*&& !terminator.aborted*/) {
-          try {
-            await core.shutdown(req.requestBodyRid);
-          } catch (err) {
-            // TODO(bartlomieju): fix this conditional
-            // deno-lint-ignore no-constant-condition
-            if (true) {
-              this._requestSendError = err;
-              this._requestSendErrorSet = true;
-            }
-          }
-        }
-        //WeakMapPrototypeDelete(requestBodyReaders, req);
-        core.tryClose(req.requestBodyRid);
-      })();
-    }
+    this._bodyWriteRid = this._req.requestBodyRid;
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -653,9 +606,43 @@ class ClientRequest extends OutgoingMessage {
     if (chunk !== undefined) {
       this.write(chunk, encoding);
     }
-    this.controller.close();
 
-    core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
+    (async () => {
+      try {
+        await core.shutdown(this._bodyWriteRid);
+      } catch (err) {
+        this._requestSendError = err;
+      }
+
+      const res = await core.opAsync("op_fetch_send", this._req.requestRid)
+        .catch((err) => {
+          if (this._req.cancelHandleRid !== null) {
+            core.tryClose(this._req.cancelHandleRid);
+          }
+
+          if (this._requestSendErrorSet) {
+            // if the request body stream errored, we want to propagate that error
+            // instead of the original error from opFetchSend
+            throw new TypeError(
+              "Failed to fetch: request body stream errored",
+              {
+                cause: this._requestSendError,
+              },
+            );
+          }
+
+          if (
+            err.message.includes("connection closed before message completed")
+          ) {
+            // Node.js seems ignoring this error
+          } else if (err.message.includes("The signal has been aborted")) {
+            // Remap this error
+            this.emit("error", connResetException("socket hang up"));
+          } else {
+            this.emit("error", err);
+          }
+        });
+
       if (this._timeout) {
         this._timeout.onabort = null;
       }
@@ -684,28 +671,7 @@ class ClientRequest extends OutgoingMessage {
       }
 
       this.emit("response", incoming);
-    }).catch((err) => {
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
-      }
-
-      if (this._requestSendErrorSet) {
-        // if the request body stream errored, we want to propagate that error
-        // instead of the original error from opFetchSend
-        throw new TypeError("Failed to fetch: request body stream errored", {
-          cause: this._requestSendError,
-        });
-      }
-
-      if (err.message.includes("connection closed before message completed")) {
-        // Node.js seems ignoring this error
-      } else if (err.message.includes("The signal has been aborted")) {
-        // Remap this error
-        this.emit("error", connResetException("socket hang up"));
-      } else {
-        this.emit("error", err);
-      }
-    });
+    })();
   }
   /*
     override async _final() {

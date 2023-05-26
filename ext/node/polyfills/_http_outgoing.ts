@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+const core = globalThis.__bootstrap.core;
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import EE from "ext:deno_node/events.ts";
@@ -137,12 +138,6 @@ export class OutgoingMessage extends Stream {
     this._keepAliveTimeout = 0;
 
     this._onPendingData = nop;
-
-    this.stream = new ReadableStream({
-      start: (controller) => {
-        this.controller = controller;
-      },
-    });
   }
 
   get writableFinished() {
@@ -388,7 +383,11 @@ export class OutgoingMessage extends Stream {
       chunk = new Uint8Array(chunk.buffer);
     }
 
-    this.controller.enqueue(chunk);
+    try {
+      core.writeAllSync(this._bodyWriteRid, chunk);
+    } catch (e) {
+      this._requestSendErrorSet = e;
+    }
 
     return false;
   }
