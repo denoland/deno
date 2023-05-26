@@ -22,6 +22,25 @@ macro_rules! check_env {
   };
 }
 
+// Macros that use try_catch:
+//  - GET_RETURN_STATUS
+//  - RETURN_STATUS_IF_FALSE_WITH_PREAMBLE
+//  - CHECK_STATUS_IF_FALSE_WITH_PREAMBLE
+
+#[macro_export]
+macro_rules! napi_preamble {
+  ($env: expr) => {
+    $crate::check_env!($env);
+    // TODO(bartlomieju): Node also checks if "env.can_call_into_js()"
+    $crate::return_status_if_false!(
+      $env,
+      unsafe { &mut *$env }.last_exception.is_none(),
+      napi_pending_exception
+    );
+    $crate::napi::js_native_api::napi_clear_last_error($env);
+  };
+}
+
 #[inline]
 unsafe fn napi_value_unchecked(val: napi_value) -> v8::Local<v8::Value> {
   transmute::<napi_value, v8::Local<v8::Value>>(val)
@@ -120,12 +139,13 @@ macro_rules! check_arg_option {
   };
 }
 
-fn napi_clear_last_error(env: *mut Env) {
+fn napi_clear_last_error(env: *mut Env) -> napi_status {
   let env = unsafe { &mut *env };
   env.last_error.error_code = napi_ok;
   env.last_error.engine_error_code = 0;
   env.last_error.engine_reserved = std::ptr::null_mut();
   env.last_error.error_message = std::ptr::null_mut();
+  napi_ok
 }
 
 pub(crate) fn napi_set_last_error(
@@ -2601,11 +2621,12 @@ fn napi_strict_equals(
 
 #[napi_sym::napi_sym]
 fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
-  check_env!(env);
+  napi_preamble!(env);
+  check_arg_option!(env, error);
   let env = unsafe { &mut *env };
   let error = napi_value_unchecked(error);
   env.scope().throw_exception(error);
-  napi_ok
+  napi_clear_last_error(env)
 }
 
 #[napi_sym::napi_sym]

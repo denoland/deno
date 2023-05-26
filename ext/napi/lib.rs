@@ -326,6 +326,7 @@ pub struct Env {
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
   pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   pub last_error: napi_extended_error_info,
+  pub last_exception: Option<v8::Global<v8::Value>>,
   pub global: NonNull<v8::Value>,
 }
 
@@ -360,6 +361,7 @@ impl Env {
         engine_error_code: 0,
         error_code: napi_ok,
       },
+      last_exception: None,
     }
   }
 
