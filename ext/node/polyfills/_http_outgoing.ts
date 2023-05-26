@@ -390,7 +390,7 @@ export class OutgoingMessage extends Stream {
         callback();
         this.emit("drain");
       }).catch((e) => {
-        this._requestSendErrorSet = e;
+        this._requestSendError = e;
       });
     }
 
