@@ -386,16 +386,15 @@ export class OutgoingMessage extends Stream {
         chunk = new Uint8Array(chunk.buffer);
       }
 
-      try {
-        core.writeAllSync(this._bodyWriteRid, chunk);
-      } catch (e) {
-        this._requestSendError = e;
-      }
-
-      callback();
+      core.writeAll(this._bodyWriteRid, chunk).then(() => {
+        callback();
+        this.emit("drain");
+      }).catch((e) => {
+        this._requestSendErrorSet = e;
+      });
     }
 
-    return true;
+    return false;
   }
 
   // deno-lint-ignore no-explicit-any
