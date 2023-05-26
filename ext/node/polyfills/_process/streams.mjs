@@ -216,7 +216,7 @@ export const initStdin = () => {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(Deno.stdin.rid);
+      return Deno.isatty?.(io.stdin.rid);
     },
   });
   stdin._isRawMode = false;
