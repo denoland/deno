@@ -2735,6 +2735,7 @@ fn napi_typeof(
   check_env!(env);
   check_arg_option!(env, value);
   check_arg!(env, result);
+
   let Some(ty) = get_value_type(value.unwrap()) else {
     return napi_invalid_arg;
   };
