@@ -53,7 +53,7 @@ fn lsp_init_tsconfig() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   client.shutdown();
 }
@@ -93,7 +93,7 @@ fn lsp_tsconfig_types() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   client.shutdown();
 }
@@ -121,7 +121,7 @@ fn lsp_tsconfig_bad_config_path() {
       "text": "console.log(Deno.args);\n"
     }
   }));
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 }
 
 #[test]
@@ -142,7 +142,7 @@ fn lsp_triple_slash_types() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   client.shutdown();
 }
@@ -176,7 +176,7 @@ fn lsp_import_map() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   let res = client.write_request(
     "textDocument/hover",
@@ -223,7 +223,7 @@ fn lsp_import_map_data_url() {
   }));
 
   // This indicates that the import map is applied correctly.
-  assert!(diagnostics.viewed().iter().any(|diagnostic| diagnostic.code
+  assert!(diagnostics.all().iter().any(|diagnostic| diagnostic.code
     == Some(lsp::NumberOrString::String("no-cache".to_string()))
     && diagnostic
       .message
@@ -268,7 +268,7 @@ fn lsp_import_map_config_file() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   let res = client.write_request(
     "textDocument/hover",
@@ -329,7 +329,7 @@ fn lsp_import_map_embedded_in_config_file() {
     }
   }));
 
-  assert_eq!(diagnostics.viewed().len(), 0);
+  assert_eq!(diagnostics.all().len(), 0);
 
   let res = client.write_request(
     "textDocument/hover",
@@ -431,7 +431,7 @@ fn lsp_import_assertions() {
   assert_eq!(
     json!(
       diagnostics
-        .with_file_and_source("file:///a/a.ts", "deno")
+        .messages_with_file_and_source("file:///a/a.ts", "deno")
         .diagnostics
     ),
     json!([
@@ -3692,7 +3692,7 @@ fn lsp_code_actions_deno_cache() {
       }
     }));
   assert_eq!(
-    diagnostics.with_source("deno"),
+    diagnostics.messages_with_source("deno"),
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [{
@@ -3782,7 +3782,7 @@ fn lsp_code_actions_deno_cache_npm() {
     }
   }));
   assert_eq!(
-    diagnostics.with_source("deno"),
+    diagnostics.messages_with_source("deno"),
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [{
@@ -5139,7 +5139,7 @@ fn lsp_completions_node_specifier() {
   }));
 
   let non_existent_diagnostics = diagnostics
-    .with_file_and_source("file:///a/file.ts", "deno")
+    .messages_with_file_and_source("file:///a/file.ts", "deno")
     .diagnostics
     .into_iter()
     .filter(|d| {
@@ -5183,7 +5183,7 @@ fn lsp_completions_node_specifier() {
   );
   let diagnostics = client.read_diagnostics();
   let diagnostics = diagnostics
-    .with_file_and_source("file:///a/file.ts", "deno")
+    .messages_with_file_and_source("file:///a/file.ts", "deno")
     .diagnostics
     .into_iter()
     .filter(|d| {
@@ -5269,7 +5269,7 @@ fn lsp_completions_node_specifier() {
 
   let diagnostics = client.read_diagnostics();
   let cache_diagnostics = diagnostics
-    .with_file_and_source("file:///a/file.ts", "deno")
+    .messages_with_file_and_source("file:///a/file.ts", "deno")
     .diagnostics
     .into_iter()
     .filter(|d| {
@@ -5539,7 +5539,7 @@ fn lsp_cache_location() {
         "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
       }
     }));
-  assert_eq!(diagnostics.viewed().len(), 7);
+  assert_eq!(diagnostics.all().len(), 7);
   client.write_request(
     "deno/cache",
     json!({
@@ -5634,7 +5634,7 @@ fn lsp_tls_cert() {
       "text": "import * as a from \"https://localhost:5545/xTypeScriptTypes.js\";\n// @deno-types=\"https://localhost:5545/type_definitions/foo.d.ts\"\nimport * as b from \"https://localhost:5545/type_definitions/foo.js\";\nimport * as c from \"https://localhost:5545/subdir/type_reference.js\";\nimport * as d from \"https://localhost:5545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
     }
   }));
-  let diagnostics = diagnostics.viewed();
+  let diagnostics = diagnostics.all();
   assert_eq!(diagnostics.len(), 7);
   client.write_request(
     "deno/cache",
@@ -5725,7 +5725,7 @@ fn lsp_diagnostics_warn_redirect() {
   );
   let diagnostics = client.read_diagnostics();
   assert_eq!(
-    diagnostics.with_source("deno"),
+    diagnostics.messages_with_source("deno"),
     lsp::PublishDiagnosticsParams {
       uri: Url::parse("file:///a/file.ts").unwrap(),
       diagnostics: vec![
@@ -5802,7 +5802,10 @@ fn lsp_redirect_quick_fix() {
       ],
     }),
   );
-  let diagnostics = client.read_diagnostics().with_source("deno").diagnostics;
+  let diagnostics = client
+    .read_diagnostics()
+    .messages_with_source("deno")
+    .diagnostics;
   let res = client.write_request(
     "textDocument/codeAction",
     json!(json!({
@@ -5872,35 +5875,25 @@ fn lsp_diagnostics_deprecated() {
     },
   }));
   assert_eq!(
-    json!(diagnostics.0),
-    json!([
-      {
-        "uri": "file:///a/file.ts",
-        "diagnostics": [],
-        "version": 1
-      }, {
-        "uri": "file:///a/file.ts",
-        "diagnostics": [],
-        "version": 1
-      }, {
-        "uri": "file:///a/file.ts",
-        "diagnostics": [
-          {
-            "range": {
-              "start": { "line": 3, "character": 0 },
-              "end": { "line": 3, "character": 1 }
-            },
-            "severity": 4,
-            "code": 6385,
-            "source": "deno-ts",
-            "message": "'a' is deprecated.",
-            "relatedInformation": [],
-            "tags": [2]
-          }
-        ],
-        "version": 1
-      }
-    ])
+    json!(diagnostics.all_messages()),
+    json!([{
+      "uri": "file:///a/file.ts",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 3, "character": 0 },
+            "end": { "line": 3, "character": 1 }
+          },
+          "severity": 4,
+          "code": 6385,
+          "source": "deno-ts",
+          "message": "'a' is deprecated.",
+          "relatedInformation": [],
+          "tags": [2]
+        }
+      ],
+      "version": 1
+    }])
   );
   client.shutdown();
 }
@@ -5929,7 +5922,7 @@ fn lsp_diagnostics_deno_types() {
       }
     }),
   );
-  assert_eq!(diagnostics.viewed().len(), 5);
+  assert_eq!(diagnostics.all().len(), 5);
   client.shutdown();
 }
 
@@ -5963,7 +5956,8 @@ fn lsp_diagnostics_refresh_dependents() {
     }
   }));
   assert_eq!(
-    json!(diagnostics.with_file_and_source("file:///a/file_02.ts", "deno-ts")),
+    json!(diagnostics
+      .messages_with_file_and_source("file:///a/file_02.ts", "deno-ts")),
     json!({
       "uri": "file:///a/file_02.ts",
       "diagnostics": [
@@ -6002,7 +5996,7 @@ fn lsp_diagnostics_refresh_dependents() {
     }),
   );
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.viewed().len(), 0); // no diagnostics now
+  assert_eq!(diagnostics.all().len(), 0); // no diagnostics now
 
   client.shutdown();
   assert_eq!(client.queue_len(), 0);
@@ -7056,7 +7050,7 @@ fn lsp_lint_with_config() {
       "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
     }
   }));
-  let diagnostics = diagnostics.viewed();
+  let diagnostics = diagnostics.all();
   assert_eq!(diagnostics.len(), 1);
   assert_eq!(
     diagnostics[0].code,
@@ -7101,7 +7095,7 @@ fn lsp_lint_exclude_with_config() {
       }
     }),
   );
-  let diagnostics = diagnostics.viewed();
+  let diagnostics = diagnostics.all();
   assert_eq!(diagnostics, Vec::new());
   client.shutdown();
 }
@@ -7484,7 +7478,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
       "version": 1,
       "text": "import a from \"data:application/typescript,export default 5;\";\na;"
     }
-  })).viewed();
+  })).all();
 
   // there will be a diagnostic about not having cached the data url
   assert_eq!(diagnostics.len(), 1);
@@ -7630,7 +7624,7 @@ fn lsp_node_modules_dir() {
   refresh_config(&mut client);
 
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.viewed().len(), 2); // not cached
+  assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
 
@@ -7647,7 +7641,7 @@ fn lsp_node_modules_dir() {
   cache(&mut client);
 
   let diagnostics = client.read_diagnostics();
-  assert_eq!(diagnostics.viewed().len(), 0, "{:#?}", diagnostics);
+  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   assert!(temp_dir.path().join("deno.lock").exists());
 

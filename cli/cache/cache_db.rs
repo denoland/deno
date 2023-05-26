@@ -109,7 +109,6 @@ impl Drop for CacheDB {
 }
 
 impl CacheDB {
-  #[cfg(test)]
   pub fn in_memory(
     config: &'static CacheDBConfiguration,
     version: &'static str,
