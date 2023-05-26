@@ -37,8 +37,8 @@ import {
   brotliCompressSync,
   brotliDecompress,
   brotliDecompressSync,
-  createBrotilDecompress,
   createBrotliCompress,
+  createBrotliDecompress,
 } from "ext:deno_node/_brotli.js";
 
 export class Options {
@@ -122,7 +122,13 @@ export default {
 };
 
 export {
+  brotliCompress,
+  brotliCompressSync,
+  brotliDecompress,
+  brotliDecompressSync,
   codes,
+  createBrotliCompress,
+  createBrotliDecompress,
   createDeflate,
   createDeflateRaw,
   createGunzip,

@@ -205,18 +205,18 @@ fn encoder_param(param: u8) -> BrotliEncoderParameter {
 #[op]
 pub fn op_brotli_compress_stream(
   state: &mut OpState,
-  input: &[u8]
+  rid: u32,
+  input: &[u8],
   output: &mut [u8],
 ) -> Result<usize, AnyError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliCompressCtx>(state.rid)?;
+  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
 
   unsafe {
     let mut available_in = input.len();
     let mut next_in = input.as_ptr();
     let mut available_out = output.len();
     let mut next_out = output.as_mut_ptr();
+    let mut total_out = 0;
 
     if BrotliEncoderCompressStream(
       ctx.inst,
@@ -225,11 +225,13 @@ pub fn op_brotli_compress_stream(
       &mut next_in,
       &mut available_out,
       &mut next_out,
-      std::ptr::null_mut(),
+      &mut total_out,
     ) != 1
     {
       return Err(type_error("Failed to compress"));
     }
 
+    // On progress, next_out is advanced and available_out is reduced.
+    Ok(output.len() - available_out)
   }
 }

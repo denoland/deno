@@ -1,7 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { constants } from "ext:deno_node/internal_binding/constants.ts";
+import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Transform } from "ext:deno_node/stream.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
@@ -30,7 +31,8 @@ export class BrotliCompress extends Transform {
     super({
       transform(chunk, encoding, callback) {
         const input = toU8(chunk);
-        ops.op_brotli_compress_stream(context, input);
+        const avail = ops.op_brotli_compress_stream(context, input, output);
+        this.push(output.slice(0, avail));
         callback();
       },
       flush(callback) {
@@ -38,7 +40,8 @@ export class BrotliCompress extends Transform {
       },
     });
 
-    this.#context = ops.op_create_brotli_compress();
+    const params = Object.values(options?.params ?? {});
+    this.#context = ops.op_create_brotli_compress(params);
     const context = this.#context;
   }
 }
