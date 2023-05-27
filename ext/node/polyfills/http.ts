@@ -610,29 +610,23 @@ class ClientRequest extends OutgoingMessage {
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
-    console.log("starting end", chunk);
     if (chunk !== undefined && chunk !== null) {
       this.write(chunk, encoding);
     }
 
     (async () => {
-      console.log("starting async iife");
       try {
-        await core.shutdown(this._bodyWriteRid);
-      } catch (err) {
-        console.log("caught error", err);
-        this._requestSendError = err;
-      }
-
-      console.log("shutdown done");
-      try {
-        cb?.();
-      } catch (e) {
-        console.log("error in callback", e);
-      }
-
-      try {
-        await core.opAsync("op_fetch_send", this._req.requestRid);
+        const [res, _] = await Promise.all([
+          core.opAsync("op_fetch_send", this._req.requestRid),
+          core.shutdown(this._bodyWriteRid).then(() => {
+            try {
+              cb?.();
+            } catch (_) {
+            }
+          }).catch((err) => {
+            this._requestSendError = err;
+          }),
+        ]);
         if (this._timeout) {
           this._timeout.onabort = null;
         }
