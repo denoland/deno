@@ -1082,3 +1082,68 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   output.assert_matches_file(opts.output_file);
   output.assert_exit_code(opts.exit_code);
 }
+
+#[test]
+fn compile_node_modules_symlink_outside() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_copy_temp_dir("compile/node_modules_symlink_outside")
+    .cwd("compile/node_modules_symlink_outside")
+    .build();
+
+  let temp_dir = context.temp_dir();
+  let project_dir = temp_dir
+    .path()
+    .join("compile")
+    .join("node_modules_symlink_outside");
+  temp_dir.create_dir_all(project_dir.join("node_modules"));
+  temp_dir.create_dir_all(project_dir.join("some_folder"));
+  temp_dir.write(project_dir.join("test.txt"), "5");
+
+  // create a symlink in the node_modules directory that points to a folder in the cwd
+  temp_dir.symlink_dir(
+    project_dir.join("some_folder"),
+    project_dir.join("node_modules").join("some_folder"),
+  );
+  // compile folder
+  let output = context
+    .new_command()
+    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "compile/node_modules_symlink_outside/main_compile_folder.out",
+  );
+  assert!(project_dir.join("node_modules/some_folder").exists());
+
+  // Cleanup and remove the folder. The folder test is done separately from
+  // the file symlink test because different systems would traverse
+  // the directory items in different order.
+  temp_dir.remove_dir_all(project_dir.join("node_modules/some_folder"));
+
+  // create a symlink in the node_modules directory that points to a file in the cwd
+  temp_dir.symlink_file(
+    project_dir.join("test.txt"),
+    project_dir.join("node_modules").join("test.txt"),
+  );
+  assert!(project_dir.join("node_modules/test.txt").exists());
+
+  // compile
+  let output = context
+    .new_command()
+    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "compile/node_modules_symlink_outside/main_compile_file.out",
+  );
+
+  // run
+  let binary_path =
+    project_dir.join(if cfg!(windows) { "bin.exe" } else { "bin" });
+  let output = context
+    .new_command()
+    .command_name(binary_path.to_string_lossy())
+    .run();
+  output.assert_matches_file("compile/node_modules_symlink_outside/main.out");
+}

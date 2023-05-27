@@ -24,8 +24,18 @@ use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::util;
+
+#[derive(Error, Debug)]
+#[error(
+  "Failed to strip prefix '{}' from '{}'", root_path.display(), target.display()
+)]
+pub struct StripRootError {
+  root_path: PathBuf,
+  target: PathBuf,
+}
 
 pub struct VfsBuilder {
   root_path: PathBuf,
@@ -37,6 +47,7 @@ pub struct VfsBuilder {
 
 impl VfsBuilder {
   pub fn new(root_path: PathBuf) -> Self {
+    log::debug!("Building vfs with root '{}'", root_path.display());
     Self {
       root_dir: VirtualDirectory {
         name: root_path
@@ -58,7 +69,7 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    self.add_dir(path);
+    self.add_dir(path)?;
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
@@ -72,19 +83,44 @@ impl VfsBuilder {
       } else if file_type.is_file() {
         let file_bytes = std::fs::read(&path)
           .with_context(|| format!("Reading {}", path.display()))?;
-        self.add_file(&path, file_bytes);
+        self.add_file(&path, file_bytes)?;
       } else if file_type.is_symlink() {
-        let target = std::fs::read_link(&path)
+        let target = util::fs::canonicalize_path(&path)
           .with_context(|| format!("Reading symlink {}", path.display()))?;
-        self.add_symlink(&path, &target);
+        if let Err(StripRootError { .. }) = self.add_symlink(&path, &target) {
+          if target.is_file() {
+            // this may change behavior, so warn the user about it
+            log::warn!(
+              "Symlink target is outside '{}'. Inlining symlink at '{}' to '{}' as file.",
+              self.root_path.display(),
+              path.display(),
+              target.display(),
+            );
+            // inline the symlink and make the target file
+            let file_bytes = std::fs::read(&target)
+              .with_context(|| format!("Reading {}", path.display()))?;
+            self.add_file(&path, file_bytes)?;
+          } else {
+            log::warn!(
+              "Symlink target is outside '{}'. Excluding symlink at '{}' with target '{}'.",
+              self.root_path.display(),
+              path.display(),
+              target.display(),
+            );
+          }
+        }
       }
     }
 
     Ok(())
   }
 
-  pub fn add_dir(&mut self, path: &Path) -> &mut VirtualDirectory {
-    let path = self.path_relative_root(path);
+  pub fn add_dir(
+    &mut self,
+    path: &Path,
+  ) -> Result<&mut VirtualDirectory, StripRootError> {
+    log::debug!("Ensuring directory '{}'", path.display());
+    let path = self.path_relative_root(path)?;
     let mut current_dir = &mut self.root_dir;
 
     for component in path.components() {
@@ -113,10 +149,15 @@ impl VfsBuilder {
       };
     }
 
-    current_dir
+    Ok(current_dir)
   }
 
-  pub fn add_file(&mut self, path: &Path, data: Vec<u8>) {
+  pub fn add_file(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+  ) -> Result<(), AnyError> {
+    log::debug!("Adding file '{}'", path.display());
     let checksum = util::checksum::gen(&[&data]);
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
       // duplicate file, reuse an old offset
@@ -126,7 +167,7 @@ impl VfsBuilder {
       self.current_offset
     };
 
-    let dir = self.add_dir(path.parent().unwrap());
+    let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
     let data_len = data.len();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
@@ -148,11 +189,22 @@ impl VfsBuilder {
       self.files.push(data);
       self.current_offset += data_len as u64;
     }
+
+    Ok(())
   }
 
-  pub fn add_symlink(&mut self, path: &Path, target: &Path) {
-    let dest = self.path_relative_root(target);
-    let dir = self.add_dir(path.parent().unwrap());
+  pub fn add_symlink(
+    &mut self,
+    path: &Path,
+    target: &Path,
+  ) -> Result<(), StripRootError> {
+    log::debug!(
+      "Adding symlink '{}' to '{}'",
+      path.display(),
+      target.display()
+    );
+    let dest = self.path_relative_root(target)?;
+    let dir = self.add_dir(path.parent().unwrap())?;
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
       Ok(_) => unreachable!(),
@@ -169,23 +221,20 @@ impl VfsBuilder {
         );
       }
     }
+    Ok(())
   }
 
   pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
     (self.root_dir, self.files)
   }
 
-  fn path_relative_root(&self, path: &Path) -> PathBuf {
+  fn path_relative_root(&self, path: &Path) -> Result<PathBuf, StripRootError> {
     match path.strip_prefix(&self.root_path) {
-      Ok(p) => p.to_path_buf(),
-      Err(err) => {
-        panic!(
-          "Failed to strip prefix '{}' from '{}': {:#}",
-          self.root_path.display(),
-          path.display(),
-          err
-        )
-      }
+      Ok(p) => Ok(p.to_path_buf()),
+      Err(_) => Err(StripRootError {
+        root_path: self.root_path.clone(),
+        target: path.to_path_buf(),
+      }),
     }
   }
 }
@@ -457,7 +506,11 @@ impl FileBackedVfsFile {
       }
       SeekFrom::End(offset) => {
         if offset < 0 && -offset as u64 > self.file.len {
-          Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file.").into())
+          let msg = "An attempt was made to move the file pointer before the beginning of the file.";
+          Err(
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, msg)
+              .into(),
+          )
         } else {
           let mut current_pos = self.pos.lock();
           *current_pos = if offset >= 0 {
@@ -790,16 +843,28 @@ mod test {
     let temp_dir = TempDir::new();
     let src_path = temp_dir.path().join("src");
     let mut builder = VfsBuilder::new(src_path.clone());
-    builder.add_file(&src_path.join("a.txt"), "data".into());
-    builder.add_file(&src_path.join("b.txt"), "data".into());
+    builder
+      .add_file(&src_path.join("a.txt"), "data".into())
+      .unwrap();
+    builder
+      .add_file(&src_path.join("b.txt"), "data".into())
+      .unwrap();
     assert_eq!(builder.files.len(), 1); // because duplicate data
-    builder.add_file(&src_path.join("c.txt"), "c".into());
-    builder.add_file(&src_path.join("sub_dir").join("d.txt"), "d".into());
-    builder.add_file(&src_path.join("e.txt"), "e".into());
-    builder.add_symlink(
-      &src_path.join("sub_dir").join("e.txt"),
-      &src_path.join("e.txt"),
-    );
+    builder
+      .add_file(&src_path.join("c.txt"), "c".into())
+      .unwrap();
+    builder
+      .add_file(&src_path.join("sub_dir").join("d.txt"), "d".into())
+      .unwrap();
+    builder
+      .add_file(&src_path.join("e.txt"), "e".into())
+      .unwrap();
+    builder
+      .add_symlink(
+        &src_path.join("sub_dir").join("e.txt"),
+        &src_path.join("e.txt"),
+      )
+      .unwrap();
 
     // get the virtual fs
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
@@ -923,9 +988,15 @@ mod test {
     let temp_dir = TempDir::new();
     let src_path = temp_dir.path().join("src");
     let mut builder = VfsBuilder::new(src_path.clone());
-    builder.add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"));
-    builder.add_symlink(&src_path.join("b.txt"), &src_path.join("c.txt"));
-    builder.add_symlink(&src_path.join("c.txt"), &src_path.join("a.txt"));
+    builder
+      .add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"))
+      .unwrap();
+    builder
+      .add_symlink(&src_path.join("b.txt"), &src_path.join("c.txt"))
+      .unwrap();
+    builder
+      .add_symlink(&src_path.join("c.txt"), &src_path.join("a.txt"))
+      .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
     assert_eq!(
       virtual_fs
@@ -950,10 +1021,12 @@ mod test {
     let temp_dir = TempDir::new();
     let temp_path = temp_dir.path();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf());
-    builder.add_file(
-      &temp_path.join("a.txt"),
-      "0123456789".to_string().into_bytes(),
-    );
+    builder
+      .add_file(
+        &temp_path.join("a.txt"),
+        "0123456789".to_string().into_bytes(),
+      )
+      .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
     let virtual_fs = Arc::new(virtual_fs);
     let file = virtual_fs.open_file(&dest_path.join("a.txt")).unwrap();
