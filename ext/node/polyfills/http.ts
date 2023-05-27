@@ -622,6 +622,7 @@ class ClientRequest extends OutgoingMessage {
             try {
               cb?.();
             } catch (_) {
+              //
             }
           }).catch((err) => {
             this._requestSendError = err;
@@ -655,7 +656,7 @@ class ClientRequest extends OutgoingMessage {
         }
 
         this.emit("response", incoming);
-      } catch (e) {
+      } catch (err) {
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
