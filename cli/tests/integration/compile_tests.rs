@@ -1100,17 +1100,33 @@ fn compile_node_modules_symlink_outside() {
   temp_dir.create_dir_all(project_dir.join("some_folder"));
   temp_dir.write(project_dir.join("test.txt"), "5");
 
+  // create a symlink in the node_modules directory that points to a folder in the cwd
+  temp_dir.symlink_dir(
+    project_dir.join("some_folder"),
+    project_dir.join("node_modules").join("some_folder"),
+  );
+  // compile folder
+  let output = context
+    .new_command()
+    .args("compile --allow-read --node-modules-dir --output bin main.ts")
+    .run();
+  output.assert_exit_code(0);
+  output.assert_matches_file(
+    "compile/node_modules_symlink_outside/main_compile_folder.out",
+  );
+  assert!(project_dir.join("node_modules/some_folder").exists());
+
+  // Cleanup and remove the folder. The folder test is done separately from
+  // the file symlink test because different systems would traverse
+  // the directory items in different order.
+  temp_dir.remove_dir_all(project_dir.join("node_modules/some_folder"));
+
   // create a symlink in the node_modules directory that points to a file in the cwd
   temp_dir.symlink_file(
     project_dir.join("test.txt"),
     project_dir.join("node_modules").join("test.txt"),
   );
-  temp_dir.symlink_dir(
-    project_dir.join("some_folder"),
-    project_dir.join("node_modules").join("some_folder"),
-  );
   assert!(project_dir.join("node_modules/test.txt").exists());
-  assert!(project_dir.join("node_modules/some_folder").exists());
 
   // compile
   let output = context
@@ -1119,7 +1135,7 @@ fn compile_node_modules_symlink_outside() {
     .run();
   output.assert_exit_code(0);
   output.assert_matches_file(
-    "compile/node_modules_symlink_outside/main_compile.out",
+    "compile/node_modules_symlink_outside/main_compile_file.out",
   );
 
   // run
