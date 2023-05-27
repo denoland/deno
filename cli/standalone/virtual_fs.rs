@@ -71,7 +71,7 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
-    let path = canonicalize_path(&path)?;
+    let path = canonicalize_path(path)?;
     self.add_dir_recursive_internal(&path)
   }
 
