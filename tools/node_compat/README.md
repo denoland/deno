@@ -23,7 +23,7 @@ Node.js compat testing in Deno repository.
    example, if you want to add `test/paralles/test-foo.js` from Node.js test
    cases, then add `test-foo.js` entry in `tests.parallel` array property in
    `config.jsonc`
-1. Run `./tools/node_compat/setup.ts`
+1. Run `deno task setup`
 
 The above command copies the updated items from Node.js tarball to the Deno
 source tree.
@@ -40,4 +40,13 @@ If the test needs to be ignored in particular platform, then add them in
 
 Node.js compat tests are run as part of `cargo test` command. If you want to run
 only the Node.js compat test cases you can use the command
-`cargo test node_compat`.
+`cargo test node_compat`.\
+If you want to run specific tests you can use the command
+`TARGET=<file name> deno task test`.\
+For example, if you want to run all test files which contains `buffer` in
+filename you can use the command:
+
+```shellsession
+/path/to/cli/tests/node_compat
+$ TARGET=buffer deno task test
+```
