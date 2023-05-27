@@ -52,6 +52,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::CreateParams;
 use v8::OwnedIsolate;
 
 pub enum Snapshot {
@@ -399,70 +400,31 @@ impl JsRuntime {
     let refs = bindings::external_references(&context_state.borrow().op_ctxs);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let global_context;
     let mut maybe_snapshotted_data = None;
 
-    let mut isolate = if snapshot_options.will_snapshot() {
-      let snapshot_creator =
-        snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
-      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
-      {
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &context_state.borrow().op_ctxs,
-          snapshot_options,
-        );
+    let (mut isolate, global_context) = Self::create_isolate(
+      snapshot_options.will_snapshot(),
+      refs,
+      options.create_params.take(),
+      options.startup_snapshot.take(),
+    );
+    JsRuntime::setup_isolate(&mut isolate);
+    {
+      let scope = &mut v8::HandleScope::new(&mut isolate);
+      let context = v8::Local::new(scope, &global_context);
+      let context = bindings::initialize_context(
+        scope,
+        context,
+        &context_state.borrow().op_ctxs,
+        snapshot_options,
+      );
 
-        // Get module map data from the snapshot
-        if has_startup_snapshot {
-          maybe_snapshotted_data =
-            Some(snapshot_util::get_snapshotted_data(scope, context));
-        }
-
-        global_context = v8::Global::new(scope, context);
+      // Get module map data from the snapshot
+      if has_startup_snapshot {
+        maybe_snapshotted_data =
+          Some(snapshot_util::get_snapshotted_data(scope, context));
       }
-      isolate
-    } else {
-      let mut params = options
-        .create_params
-        .take()
-        .unwrap_or_default()
-        .embedder_wrapper_type_info_offsets(
-          V8_WRAPPER_TYPE_INDEX,
-          V8_WRAPPER_OBJECT_INDEX,
-        )
-        .external_references(&**refs);
-
-      if let Some(snapshot) = options.startup_snapshot {
-        params = match snapshot {
-          Snapshot::Static(data) => params.snapshot_blob(data),
-          Snapshot::JustCreated(data) => params.snapshot_blob(data),
-          Snapshot::Boxed(data) => params.snapshot_blob(data),
-        };
-      }
-
-      let isolate = v8::Isolate::new(params);
-      let mut isolate = JsRuntime::setup_isolate(isolate);
-      {
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &context_state.borrow().op_ctxs,
-          snapshot_options,
-        );
-
-        // Get module map data from the snapshot
-        if has_startup_snapshot {
-          maybe_snapshotted_data =
-            Some(snapshot_util::get_snapshotted_data(scope, context));
-        }
-
-        global_context = v8::Global::new(scope, context);
-      }
-
-      isolate
-    };
+    }
 
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
     // not overwriting an existing pointer.
@@ -565,6 +527,43 @@ impl JsRuntime {
     js_runtime
   }
 
+  /// Create a new [`v8::OwnedIsolate`] and its global [`v8::Context`] from optional parameters and snapshot.
+  fn create_isolate(
+    will_snapshot: bool,
+    refs: &'static v8::ExternalReferences,
+    params: Option<CreateParams>,
+    snapshot: Option<Snapshot>,
+  ) -> (v8::OwnedIsolate, v8::Global<v8::Context>) {
+    let mut isolate = if will_snapshot {
+      snapshot_util::create_snapshot_creator(refs, snapshot)
+    } else {
+      let mut params = params
+        .unwrap_or_default()
+        .embedder_wrapper_type_info_offsets(
+          V8_WRAPPER_TYPE_INDEX,
+          V8_WRAPPER_OBJECT_INDEX,
+        )
+        .external_references(&**refs);
+
+      if let Some(snapshot) = snapshot {
+        params = match snapshot {
+          Snapshot::Static(data) => params.snapshot_blob(data),
+          Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
+        };
+      }
+
+      v8::Isolate::new(params)
+    };
+
+    let context = {
+      let scope = &mut v8::HandleScope::new(&mut isolate);
+      let context = v8::Context::new(scope);
+      v8::Global::new(scope, context)
+    };
+    (isolate, context)
+  }
+
   fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
     let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
     let state_rc =
@@ -649,8 +648,10 @@ impl JsRuntime {
       // access to the isolate, and nothing else we're accessing from self does.
       let isolate = unsafe { raw_ptr.as_mut() }.unwrap();
       let scope = &mut v8::HandleScope::new(isolate);
+      let context = v8::Context::new(scope);
       let context = bindings::initialize_context(
         scope,
+        context,
         &context_state.borrow().op_ctxs,
         self.snapshot_options,
       );
@@ -689,7 +690,7 @@ impl JsRuntime {
     self.global_realm().handle_scope(self.v8_isolate())
   }
 
-  fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
+  fn setup_isolate(isolate: &mut v8::OwnedIsolate) {
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
     isolate.set_host_initialize_import_meta_object_callback(
@@ -701,7 +702,6 @@ impl JsRuntime {
     isolate.set_wasm_async_resolve_promise_callback(
       bindings::wasm_async_resolve_promise_callback,
     );
-    isolate
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
