@@ -22,6 +22,7 @@ console_static_text.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade"] }
 flate2.workspace = true
 futures.workspace = true
+glob.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy-regex.workspace = true
 lsp-types.workspace = true

@@ -110,7 +110,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .resolution
         .resolve_package_from_package(name, &referrer_pkg_id)?
     };
-    self.package_folder(&pkg.pkg_id)
+    self.package_folder(&pkg.id)
   }
 
   fn resolve_package_folder_from_specifier(

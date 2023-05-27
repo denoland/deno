@@ -84,7 +84,7 @@ impl VfsBuilder {
   }
 
   pub fn add_dir(&mut self, path: &Path) -> &mut VirtualDirectory {
-    let path = path.strip_prefix(&self.root_path).unwrap();
+    let path = self.path_relative_root(path);
     let mut current_dir = &mut self.root_dir;
 
     for component in path.components() {
@@ -151,7 +151,7 @@ impl VfsBuilder {
   }
 
   pub fn add_symlink(&mut self, path: &Path, target: &Path) {
-    let dest = target.strip_prefix(&self.root_path).unwrap().to_path_buf();
+    let dest = self.path_relative_root(target);
     let dir = self.add_dir(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
     match dir.entries.binary_search_by(|e| e.name().cmp(&name)) {
@@ -173,6 +173,20 @@ impl VfsBuilder {
 
   pub fn into_dir_and_files(self) -> (VirtualDirectory, Vec<Vec<u8>>) {
     (self.root_dir, self.files)
+  }
+
+  fn path_relative_root(&self, path: &Path) -> PathBuf {
+    match path.strip_prefix(&self.root_path) {
+      Ok(p) => p.to_path_buf(),
+      Err(err) => {
+        panic!(
+          "Failed to strip prefix '{}' from '{}': {:#}",
+          self.root_path.display(),
+          path.display(),
+          err
+        )
+      }
+    }
   }
 }
 
@@ -203,6 +217,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
       VfsEntryRef::File(file) => FsStat {
         is_directory: false,
@@ -221,6 +239,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
       VfsEntryRef::Symlink(_) => FsStat {
         is_directory: false,
@@ -239,6 +261,10 @@ impl<'a> VfsEntryRef<'a> {
         gid: 0,
         rdev: 0,
         blocks: 0,
+        is_block_device: false,
+        is_char_device: false,
+        is_fifo: false,
+        is_socket: false,
       },
     }
   }

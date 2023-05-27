@@ -7,7 +7,7 @@ use crate::args::CacheSetting;
 use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
-use crate::cache::DenoDir;
+use crate::cache::DenoDirProvider;
 use crate::cache::NodeAnalysisCache;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
@@ -282,7 +282,7 @@ pub async fn run(
   let current_exe_path = std::env::current_exe().unwrap();
   let current_exe_name =
     current_exe_path.file_name().unwrap().to_string_lossy();
-  let dir = DenoDir::new(None)?;
+  let deno_dir_provider = Arc::new(DenoDirProvider::new(None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -311,7 +311,7 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let (fs, node_modules_path, snapshot) = if let Some(snapshot) =
+  let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
     metadata.npm_snapshot
   {
     let vfs_root_dir_path = if metadata.node_modules_dir {
@@ -319,8 +319,8 @@ pub async fn run(
     } else {
       npm_cache.registry_folder(&npm_registry_url)
     };
-    let vfs =
-      load_npm_vfs(vfs_root_dir_path).context("Failed to load npm vfs.")?;
+    let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+      .context("Failed to load npm vfs.")?;
     let node_modules_path = if metadata.node_modules_dir {
       Some(vfs.root().to_path_buf())
     } else {
@@ -328,12 +328,14 @@ pub async fn run(
     };
     (
       Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
+      Some(vfs_root_dir_path),
       node_modules_path,
       Some(snapshot.into_valid()?),
     )
   } else {
     (
       Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
+      None,
       None,
       None,
     )
@@ -362,7 +364,7 @@ pub async fn run(
   let node_resolver =
     Arc::new(NodeResolver::new(fs.clone(), npm_resolver.clone()));
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
-  let cache_db = Caches::new(dir.clone());
+  let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let cjs_esm_code_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
@@ -395,9 +397,25 @@ pub async fn run(
     }),
   };
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &metadata.permissions,
-  )?);
+  let permissions = {
+    let mut permissions = metadata.permissions;
+    // if running with an npm vfs, grant read access to it
+    if let Some(vfs_root) = vfs_root {
+      match &mut permissions.allow_read {
+        Some(vec) if vec.is_empty() => {
+          // do nothing, already granted
+        }
+        Some(vec) => {
+          vec.push(vfs_root);
+        }
+        None => {
+          permissions.allow_read = Some(vec![vfs_root]);
+        }
+      }
+    }
+
+    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+  };
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
     npm_resolver.clone(),
@@ -407,6 +425,7 @@ pub async fn run(
     Box::new(module_loader_factory),
     root_cert_store_provider,
     fs,
+    None,
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,

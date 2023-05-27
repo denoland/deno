@@ -47,6 +47,8 @@ To grant permissions, set them before the script argument. For example:
 
   let main_module = cli_options.resolve_main_module()?;
 
+  maybe_npm_install(&factory).await?;
+
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options(),
   )?);
@@ -63,9 +65,11 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let main_module = cli_options.resolve_main_module()?;
+
+  maybe_npm_install(&factory).await?;
+
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-
   let permissions = PermissionsContainer::new(Permissions::from_options(
     &cli_options.permissions_options(),
   )?);
@@ -103,9 +107,11 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let cli_options = factory.cli_options();
   let clear_screen = !cli_options.no_clear_screen();
   let main_module = cli_options.resolve_main_module()?;
+
+  maybe_npm_install(&factory).await?;
+
   let create_cli_main_worker_factory =
     factory.create_cli_main_worker_factory_func().await?;
-
   let operation = |main_module: ModuleSpecifier| {
     file_watcher.reset();
     let permissions = PermissionsContainer::new(Permissions::from_options(
@@ -144,12 +150,10 @@ pub async fn eval_command(
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let file_fetcher = factory.file_fetcher()?;
-  let main_worker_factory = factory.create_cli_main_worker_factory().await?;
-
   let main_module = cli_options.resolve_main_module()?;
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &cli_options.permissions_options(),
-  )?);
+
+  maybe_npm_install(&factory).await?;
+
   // Create a dummy source file.
   let source_code = if eval_flags.print {
     format!("console.log({})", eval_flags.code)
@@ -171,9 +175,26 @@ pub async fn eval_command(
   // to allow module access by TS compiler.
   file_fetcher.insert_cached(file);
 
-  let mut worker = main_worker_factory
+  let permissions = PermissionsContainer::new(Permissions::from_options(
+    &cli_options.permissions_options(),
+  )?);
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
     .await?;
   let exit_code = worker.run().await?;
   Ok(exit_code)
+}
+
+async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
+  // ensure an "npm install" is done if the user has explicitly
+  // opted into using a node_modules directory
+  if factory.cli_options().node_modules_dir_enablement() == Some(true) {
+    factory
+      .package_json_deps_installer()
+      .await?
+      .ensure_top_level_install()
+      .await?;
+  }
+  Ok(())
 }

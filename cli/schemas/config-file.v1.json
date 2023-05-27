@@ -225,7 +225,7 @@
     },
     "exclude": {
       "type": "array",
-      "description": "List of files or directories that will be ignored by all other configurations.",
+      "description": "List of files, directories or globs that will be ignored by all other configurations. Requires Deno 1.34 or later.",
       "items": {
         "type": "string"
       }
@@ -236,14 +236,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be linted.",
+          "description": "List of files, directories or globs that will be linted.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be linted.",
+          "description": "List of files, directories or globs that will not be linted.",
           "items": {
             "type": "string"
           }
@@ -253,14 +253,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be linted.",
+              "description": "List of files, directories or globs that will be linted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be linted.",
+              "description": "List of files, directories or globs that will not be linted.",
               "items": {
                 "type": "string"
               }
@@ -316,14 +316,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be formatted.",
+          "description": "List of files, directories or globs that will be formatted.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be formatted.",
+          "description": "List of files, directories or globs that will not be formatted.",
           "items": {
             "type": "string"
           }
@@ -333,14 +333,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be formatted.",
+              "description": "List of files, directories or globs that will be formatted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be formatted.",
+              "description": "List of files, directories or globs that will not be formatted.",
               "items": {
                 "type": "string"
               }
@@ -423,7 +423,7 @@
       }
     },
     "nodeModulesDir": {
-      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag.",
+      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag. Requires Deno 1.34 or later.",
       "type": "boolean"
     },
     "tasks": {
@@ -443,14 +443,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be searched for tests.",
+          "description": "List of files, directories or globs that will be searched for tests.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be searched for tests.",
+          "description": "List of files, directories or globs that will not be searched for tests.",
           "items": {
             "type": "string"
           }
@@ -460,14 +460,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for tests.",
+              "description": "List of files, directories or globs that will be searched for tests.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for tests.",
+              "description": "List of files, directories or globs that will not be searched for tests.",
               "items": {
                 "type": "string"
               }
@@ -482,14 +482,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be searched for benchmarks.",
+          "description": "List of files, directories or globs that will be searched for benchmarks.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be searched for benchmarks.",
+          "description": "List of files, directories or globs that will not be searched for benchmarks.",
           "items": {
             "type": "string"
           }
@@ -499,14 +499,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for benchmarks.",
+              "description": "List of files, directories or globs that will be searched for benchmarks.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for benchmarks.",
+              "description": "List of files, directories or globs that will not be searched for benchmarks.",
               "items": {
                 "type": "string"
               }

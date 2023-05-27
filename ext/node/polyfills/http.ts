@@ -48,6 +48,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -348,7 +349,10 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      this.timeout = getTimerDuration(options.timeout, "timeout");
+      const msecs = getTimerDuration(options.timeout, "timeout");
+      const timeout = AbortSignal.timeout(msecs);
+      timeout.onabort = () => this.emit("timeout");
+      this._timeout = timeout;
     }
 
     const signal = options!.signal;
@@ -413,7 +417,6 @@ class ClientRequest extends OutgoingMessage {
     this._ended = false;
     this.res = null;
     this.aborted = false;
-    this.timeoutCb = null;
     this.upgradeOrConnect = false;
     this.parser = null;
     this.maxHeadersCount = null;
@@ -541,13 +544,14 @@ class ClientRequest extends OutgoingMessage {
       }
     }
 
-    const client = this._getClient();
+    const client = this._getClient() ?? createHttpClient({ http2: false });
+    this._client = client;
 
     const req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
-      client,
+      client.rid,
       this.method === "POST" || this.method === "PATCH",
     );
 
@@ -652,6 +656,10 @@ class ClientRequest extends OutgoingMessage {
     this.controller.close();
 
     core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
+      if (this._timeout) {
+        this._timeout.onabort = null;
+      }
+      this._client.close();
       const incoming = new IncomingMessageForClient(this.socket);
 
       // TODO(@crowlKats):
@@ -665,7 +673,10 @@ class ClientRequest extends OutgoingMessage {
       incoming.statusCode = res.status;
       incoming.statusMessage = res.statusText;
 
-      incoming._addHeaderLines(res.headers);
+      incoming._addHeaderLines(
+        res.headers,
+        Object.entries(res.headers).flat().length,
+      );
       incoming._bodyRid = res.responseRid;
 
       if (this._req.cancelHandleRid !== null) {
@@ -793,31 +804,28 @@ class ClientRequest extends OutgoingMessage {
     }${path}${search}${hash}`;
   }
 
-  setTimeout(timeout: number, callback?: () => void) {
-    if (timeout == 0) {
-      // Node's underlying Socket implementation expects a 0 value to disable the
-      // existing timeout.
-      if (this.opts.timeout) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-        this.opts.signal = undefined;
+  setTimeout(msecs: number, callback?: () => void) {
+    if (msecs === 0) {
+      if (this._timeout) {
+        this.removeAllListeners("timeout");
+        this._timeout.onabort = () => {};
+        this._timeout = undefined;
       }
 
-      return;
+      return this;
+    }
+    if (this._ended || this._timeout) {
+      return this;
     }
 
-    const controller = new AbortController();
-    this.opts.signal = controller.signal;
+    msecs = getTimerDuration(msecs, "msecs");
+    if (callback) this.once("timeout", callback);
 
-    this.opts.timeout = setTimeout(() => {
-      controller.abort();
+    const timeout = AbortSignal.timeout(msecs);
+    timeout.onabort = () => this.emit("timeout");
+    this._timeout = timeout;
 
-      this.emit("timeout");
-
-      if (callback !== undefined) {
-        callback();
-      }
-    }, timeout);
+    return this;
   }
 
   _processHeader(headers, key, value, validate) {
@@ -860,7 +868,7 @@ function isCookieField(s) {
 
 function isContentDispositionField(s) {
   return s.length === 19 &&
-    StringPrototypeToLowerCase(s) === "content-disposition";
+    s.toLowerCase() === "content-disposition";
 }
 
 const kHeaders = Symbol("kHeaders");
@@ -1111,7 +1119,7 @@ export class IncomingMessageForClient extends NodeReadable {
   }
 
   _addHeaderLineDistinct(field, value, dest) {
-    field = StringPrototypeToLowerCase(field);
+    field = field.toLowerCase();
     if (!dest[field]) {
       dest[field] = [value];
     } else {
@@ -1256,7 +1264,7 @@ function matchKnownFields(field, lowercased) {
   if (lowercased) {
     return "\u0000" + field;
   }
-  return matchKnownFields(StringPrototypeToLowerCase(field), true);
+  return matchKnownFields(field.toLowerCase(), true);
 }
 
 function onError(self, error, cb) {
@@ -1500,6 +1508,8 @@ class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
+  #server: Deno.Server;
+  #unref = false;
   #ac?: AbortController;
   #servePromise: Deferred<void>;
   listening = false;
@@ -1566,7 +1576,7 @@ class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    serve(
+    this.#server = serve(
       {
         handler: handler as Deno.ServeHandler,
         ...this.#addr,
@@ -1577,11 +1587,29 @@ class ServerImpl extends EventEmitter {
           this.emit("listening");
         },
       },
-    ).then(() => this.#servePromise!.resolve());
+    );
+    if (this.#unref) {
+      this.#server.unref();
+    }
+    this.#server.finished.then(() => this.#servePromise!.resolve());
   }
 
   setTimeout() {
     console.error("Not implemented: Server.setTimeout()");
+  }
+
+  ref() {
+    if (this.#server) {
+      this.#server.ref();
+    }
+    this.#unref = false;
+  }
+
+  unref() {
+    if (this.#server) {
+      this.#server.unref();
+    }
+    this.#unref = true;
   }
 
   close(cb?: (err?: Error) => void): this {
@@ -1606,6 +1634,7 @@ class ServerImpl extends EventEmitter {
       this.#servePromise!.resolve();
     }
 
+    this.#server = undefined;
     return this;
   }
 
