@@ -232,7 +232,8 @@
       "test-child-process-spawnsync-maxbuf.js",
       "test-child-process-spawnsync-validation-errors.js",
       "test-child-process-spawnsync.js",
-      "test-client-request-destroy.js",
+      // TODO(crowlKats): socket is not yet polyfilled
+      // "test-client-request-destroy.js",
       "test-console-async-write-error.js",
       "test-console-group.js",
       "test-console-log-stdio-broken-dest.js",

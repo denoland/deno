@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -41,12 +42,24 @@ pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
 
 pub trait NodePermissions {
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
   fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
   }
@@ -206,7 +219,7 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
-    ops::http::op_node_http_request,
+    ops::http::op_node_http_request<P>,
     op_node_build_os,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
