@@ -2360,16 +2360,37 @@ fn napi_new_instance(
   argv: *const napi_value,
   result: *mut napi_value,
 ) -> napi_status {
-  check_env!(env);
+  napi_preamble!(env);
+  check_arg_option!(env, constructor);
+  if argc > 0 {
+    check_arg!(env, argv);
+  }
+  check_arg!(env, result);
+  let env_ = env.clone();
   let env = unsafe { &mut *env };
+  let scope = &mut env.scope();
+  let tc_scope = v8::TryCatch::new(scope);
+
   let constructor = napi_value_unchecked(constructor);
-  let constructor = v8::Local::<v8::Function>::try_from(constructor).unwrap();
+  let Ok(constructor) = v8::Local::<v8::Function>::try_from(constructor) else {
+    return napi_invalid_arg
+  };
+
   let args: &[v8::Local<v8::Value>] =
     transmute(std::slice::from_raw_parts(argv, argc));
-  let inst = constructor.new_instance(&mut env.scope(), args).unwrap();
+
+  let Some(inst) = constructor.new_instance(&mut env.scope(), args) else {
+    return napi_set_last_error(env_, napi_pending_exception, 0, ptr::null_mut());
+  };
+
   let value: v8::Local<v8::Value> = inst.into();
   *result = value.into();
-  napi_ok
+
+  if tc_scope.has_caught() {
+    napi_set_last_error(env_, napi_pending_exception, 0, ptr::null_mut())
+  } else {
+    napi_ok
+  }
 }
 
 #[napi_sym::napi_sym]
