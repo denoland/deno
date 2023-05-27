@@ -1694,20 +1694,6 @@ fn napi_get_all_property_names(_env: *mut Env) -> napi_status {
 }
 
 #[napi_sym::napi_sym]
-fn napi_get_and_clear_last_exception(
-  env: *mut Env,
-  result: *mut napi_value,
-) -> napi_status {
-  check_env!(env);
-  let env = unsafe { &mut *env };
-  // TODO: just return undefined for now we don't cache
-  // exceptions in env.
-  let value: v8::Local<v8::Value> = v8::undefined(&mut env.scope()).into();
-  *result = value.into();
-  napi_ok
-}
-
-#[napi_sym::napi_sym]
 fn napi_get_array_length(
   _env: *mut Env,
   value: napi_value,
@@ -2315,10 +2301,33 @@ fn napi_is_error(
 
 #[napi_sym::napi_sym]
 fn napi_is_exception_pending(env: *mut Env, result: *mut bool) -> napi_status {
-  let mut _env = &mut *(env as *mut Env);
-  // TODO
-  *result = false;
-  napi_ok
+  check_env!(env);
+  check_arg!(env, result);
+  let env = unsafe { &mut *env };
+  *result = env.last_exception.is_some();
+  napi_clear_last_error(env)
+}
+
+#[napi_sym::napi_sym]
+fn napi_get_and_clear_last_exception(
+  env: *mut Env,
+  result: *mut napi_value,
+) -> napi_status {
+  check_env!(env);
+  check_arg!(env, result);
+
+  {
+    let env = unsafe { &mut *env };
+    let value: v8::Local<v8::Value> =
+      if let Some(last_exception) = env.last_exception.take() {
+        v8::Local::new(&mut env.scope(), last_exception).into()
+      } else {
+        v8::undefined(&mut env.scope()).into()
+      };
+    *result = value.into();
+  }
+
+  napi_clear_last_error(env)
 }
 
 #[napi_sym::napi_sym]
