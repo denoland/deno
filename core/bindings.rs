@@ -115,14 +115,12 @@ where
 }
 
 pub(crate) fn initialize_context<'s>(
-  scope: &mut v8::HandleScope<'s, ()>,
+  scope: &mut v8::HandleScope<'s>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
-
-  let scope = &mut v8::ContextScope::new(scope, context);
 
   let mut codegen = String::with_capacity(op_ctxs.len() * 200);
   codegen.push_str(include_str!("bindings.js"));

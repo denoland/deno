@@ -408,42 +408,37 @@ impl JsRuntime {
       options.create_params.take(),
       options.startup_snapshot.take(),
     );
-    JsRuntime::setup_isolate(&mut isolate);
-    {
-      let scope = &mut v8::HandleScope::new(&mut isolate);
-      let context = v8::Local::new(scope, &global_context);
-      let context = bindings::initialize_context(
-        scope,
-        context,
-        &context_state.borrow().op_ctxs,
-        snapshot_options,
-      );
-
-      // Get module map data from the snapshot
-      if has_startup_snapshot {
-        maybe_snapshotted_data =
-          Some(snapshot_util::get_snapshotted_data(scope, context));
-      }
-    }
-
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
     // not overwriting an existing pointer.
     isolate = unsafe {
       isolate_ptr.write(isolate);
       isolate_ptr.read()
     };
+    JsRuntime::setup_isolate(&mut isolate);
 
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, context_state.clone());
+    let mut context_scope =
+      v8::HandleScope::with_context(&mut isolate, global_context.clone());
+    let scope = &mut context_scope;
+    let context = v8::Local::new(scope, global_context.clone());
+
+    bindings::initialize_context(
+      scope,
+      context,
+      &context_state.borrow().op_ctxs,
+      snapshot_options,
+    );
+
+    // Get module map data from the snapshot
+    if has_startup_snapshot {
+      maybe_snapshotted_data =
+        Some(snapshot_util::get_snapshotted_data(scope, context));
+    }
+
+    context.set_slot(scope, context_state.clone());
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
-      Some(JsRuntimeInspector::new(
-        &mut isolate,
-        global_context.clone(),
-        options.is_main,
-      ))
+      Some(JsRuntimeInspector::new(scope, context, options.is_main))
     } else {
       None
     };
@@ -479,7 +474,7 @@ impl JsRuntime {
     {
       let global_realm = JsRealmInner::new(
         context_state,
-        global_context.clone(),
+        global_context,
         state_rc.clone(),
         true,
       );
@@ -488,22 +483,22 @@ impl JsRuntime {
       state.inspector = inspector;
       state.known_realms.push(global_realm);
     }
-    isolate.set_data(
+    scope.set_data(
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
     let module_map_rc =
       Rc::new(RefCell::new(ModuleMap::new(ext_loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
-      let scope =
-        &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
-    isolate.set_data(
+    scope.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
       Rc::into_raw(module_map_rc.clone()) as *mut c_void,
     );
+
+    drop(context_scope);
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -586,7 +581,7 @@ impl JsRuntime {
   }
 
   #[inline]
-  pub fn global_context(&mut self) -> v8::Global<v8::Context> {
+  pub fn global_context(&self) -> v8::Global<v8::Context> {
     self
       .state
       .borrow()
@@ -649,6 +644,8 @@ impl JsRuntime {
       let isolate = unsafe { raw_ptr.as_mut() }.unwrap();
       let scope = &mut v8::HandleScope::new(isolate);
       let context = v8::Context::new(scope);
+      let scope = &mut v8::ContextScope::new(scope, context);
+
       let context = bindings::initialize_context(
         scope,
         context,
@@ -1189,13 +1186,16 @@ impl JsRuntime {
       return;
     }
 
-    let global_context = self.global_context();
-    let mut state = self.state.borrow_mut();
-    state.inspector = Some(JsRuntimeInspector::new(
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(
       self.v8_isolate.as_mut().unwrap(),
-      global_context,
-      self.is_main,
-    ));
+      context.clone(),
+    );
+    let context = v8::Local::new(scope, context);
+
+    let mut state = self.state.borrow_mut();
+    state.inspector =
+      Some(JsRuntimeInspector::new(scope, context, self.is_main));
   }
 
   pub fn poll_value(
