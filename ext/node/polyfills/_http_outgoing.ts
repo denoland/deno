@@ -387,7 +387,7 @@ export class OutgoingMessage extends Stream {
       }
 
       core.writeAll(this._bodyWriteRid, chunk).then(() => {
-        callback();
+        callback?.();
         this.emit("drain");
       }).catch((e) => {
         this._requestSendError = e;
