@@ -833,6 +833,7 @@ mod test {
 
   use super::*;
 
+  #[track_caller]
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
     String::from_utf8(vfs.read_file_all(file).unwrap()).unwrap()
