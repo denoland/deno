@@ -20,9 +20,11 @@ extern "C" fn return_exception(
   assert_napi_ok!(napi_get_global(env, &mut global));
 
   let mut result: napi_value = ptr::null_mut();
+  // FIXME:
   let status = unsafe {
     napi_call_function(env, global, args[0], 0, ptr::null(), &mut result)
   };
+  eprintln!("status {:#?}", status);
   if status == napi_pending_exception {
     let mut ex: napi_value = ptr::null_mut();
     assert_napi_ok!(napi_get_and_clear_last_exception(env, &mut ex));
