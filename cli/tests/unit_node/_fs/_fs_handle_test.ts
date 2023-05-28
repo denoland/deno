@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
-import { open } from "node:fs/promises";
 import * as path from "../../../../test_util/std/path/mod.ts";
 import {
   assert,
@@ -11,7 +10,8 @@ const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
 
 Deno.test("readFileSuccess", async function () {
-  const fileHandle = await fs.open("./main.ts");
+  const fs = await import("node:fs/promises");
+  const fileHandle = await fs.open(testData)
   const data = await fileHandle.readFile();
 
   assert(data instanceof Uint8Array);
