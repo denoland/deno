@@ -24,14 +24,17 @@ use reqwest::Body;
 use reqwest::Method;
 
 #[op]
-pub fn op_node_http_request(
+pub fn op_node_http_request<P>(
   state: &mut OpState,
   method: ByteString,
   url: String,
   headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
-) -> Result<FetchReturn, AnyError> {
+) -> Result<FetchReturn, AnyError>
+where
+  P: crate::NodePermissions + 'static,
+{
   let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
@@ -41,6 +44,11 @@ pub fn op_node_http_request(
 
   let method = Method::from_bytes(&method)?;
   let url = Url::parse(&url)?;
+
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_net_url(&url, "ClientRequest")?;
+  }
 
   let mut header_map = HeaderMap::new();
   for (key, value) in headers {

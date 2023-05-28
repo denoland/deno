@@ -27,7 +27,10 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep } = core.generateAsyncOpHandler("op_sleep");
+const { op_sleep, op_void_async_deferred } = core.generateAsyncOpHandler(
+  "op_sleep",
+  "op_void_async_deferred",
+);
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -96,6 +99,9 @@ function initializeTimer(
   args,
   repeat,
   prevId,
+  // TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+  // in Node compat are cleaned up
+  respectNesting = true,
 ) {
   // 2. If previousId was given, let id be previousId; otherwise, let
   // previousId be an implementation-defined integer than is greater than zero
@@ -128,7 +134,7 @@ function initializeTimer(
   // The nesting level of 5 and minimum of 4 ms are spec-mandated magic
   // constants.
   if (timeout < 0) timeout = 0;
-  if (timerNestingLevel > 5 && timeout < 4) timeout = 4;
+  if (timerNestingLevel > 5 && timeout < 4 && respectNesting) timeout = 4;
 
   // 9. Let task be a task that runs the following steps:
   const task = {
@@ -218,7 +224,16 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(cb, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = op_sleep(millis, cancelRid);
+  let sleepPromise;
+  // If this timeout is scheduled for 0ms it means we want it to run at the
+  // end of the event loop turn. There's no point in setting up a Tokio timer,
+  // since its lowest resolution is 1ms. Firing of a "void async" op is better
+  // in this case, because the timer will take closer to 0ms instead of >1ms.
+  if (millis === 0) {
+    sleepPromise = op_void_async_deferred();
+  } else {
+    sleepPromise = op_sleep(millis, cancelRid);
+  }
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);
@@ -246,7 +261,8 @@ function runAfterTimeout(cb, millis, timerInfo) {
   PromisePrototypeThen(
     sleepPromise,
     (cancelled) => {
-      if (!cancelled) {
+      // "op_void_async_deferred" returns null
+      if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
         removeFromScheduledTimers(timerObject);
         return;
@@ -330,6 +346,18 @@ function setInterval(callback, timeout = 0, ...args) {
   return initializeTimer(callback, timeout, args, true);
 }
 
+// TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+// in Node compat are cleaned up
+function setTimeoutUnclamped(callback, timeout = 0, ...args) {
+  checkThis(this);
+  if (typeof callback !== "function") {
+    callback = webidl.converters.DOMString(callback);
+  }
+  timeout = webidl.converters.long(timeout);
+
+  return initializeTimer(callback, timeout, args, false, undefined, false);
+}
+
 function clearTimeout(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
@@ -371,5 +399,6 @@ export {
   refTimer,
   setInterval,
   setTimeout,
+  setTimeoutUnclamped,
   unrefTimer,
 };

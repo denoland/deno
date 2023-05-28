@@ -3,18 +3,18 @@
 import {
   assert,
   assertEquals,
-} from "../../../test_util/std/testing/asserts.ts";
+} from "../../../../test_util/std/testing/asserts.ts";
 import { createSign, createVerify, sign, verify } from "node:crypto";
 import { Buffer } from "node:buffer";
 
 const rsaPrivatePem = Buffer.from(
   await Deno.readFile(
-    new URL("./testdata/rsa_private.pem", import.meta.url),
+    new URL("../testdata/rsa_private.pem", import.meta.url),
   ),
 );
 const rsaPublicPem = Buffer.from(
   await Deno.readFile(
-    new URL("./testdata/rsa_public.pem", import.meta.url),
+    new URL("../testdata/rsa_public.pem", import.meta.url),
   ),
 );
 

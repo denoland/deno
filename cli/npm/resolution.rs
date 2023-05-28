@@ -89,7 +89,7 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -107,12 +107,12 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
 
-    let reqs_set = package_reqs.iter().cloned().collect::<HashSet<_>>();
+    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
@@ -144,7 +144,7 @@ impl NpmResolution {
 
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
-      Vec::new(),
+      &Vec::new(),
       self.maybe_lockfile.clone(),
       || self.snapshot.read().clone(),
     )
@@ -198,7 +198,7 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_pkg_from_pkg_req(req)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
   }
 
   pub fn resolve_pkg_id_from_deno_module(
@@ -209,7 +209,7 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_package_from_deno_module(id)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
   }
 
   /// Resolves a package requirement for deno graph. This should only be
@@ -275,10 +275,7 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
-  // todo(18079): it should be possible to pass &[NpmPackageReq] in here
-  // and avoid all these clones, but the LSP complains because of its
-  // `Send` requirement
-  package_reqs: Vec<NpmPackageReq>,
+  package_reqs: &[NpmPackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
@@ -288,10 +285,11 @@ async fn add_package_reqs_to_snapshot(
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    return Ok(snapshot); // already up to date
+    log::debug!("Snapshot already up to date. Skipping pending resolution.");
+    return Ok(snapshot);
   }
 
-  let result = snapshot.resolve_pending(package_reqs.clone()).await;
+  let result = snapshot.resolve_pending(package_reqs).await;
   api.clear_memory_cache();
   let snapshot = match result {
     Ok(snapshot) => snapshot,
@@ -328,7 +326,7 @@ fn populate_lockfile_from_snapshot(
       snapshot
         .resolve_package_from_deno_module(nv)
         .unwrap()
-        .pkg_id
+        .id
         .as_serialized(),
     );
   }
@@ -352,8 +350,8 @@ fn npm_package_to_lockfile_info(
     .collect();
 
   NpmPackageLockfileInfo {
-    display_id: pkg.pkg_id.nv.to_string(),
-    serialized_id: pkg.pkg_id.as_serialized(),
+    display_id: pkg.id.nv.to_string(),
+    serialized_id: pkg.id.as_serialized(),
     integrity: pkg.dist.integrity().to_string(),
     dependencies,
   }

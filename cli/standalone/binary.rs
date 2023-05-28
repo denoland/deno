@@ -536,7 +536,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
     if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
-      let mut builder = VfsBuilder::new(node_modules_path.clone());
+      let mut builder = VfsBuilder::new(node_modules_path.clone())?;
       builder.add_dir_recursive(&node_modules_path)?;
       Ok(builder)
     } else {
@@ -544,14 +544,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       // but also don't make this dependent on the registry url
       let registry_url = self.npm_api.base_url();
       let root_path = self.npm_cache.registry_folder(registry_url);
-      let mut builder = VfsBuilder::new(root_path);
+      let mut builder = VfsBuilder::new(root_path)?;
       for package in self
         .npm_resolution
         .all_system_packages(&self.npm_system_info)
       {
         let folder = self
           .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
+          .resolve_pkg_folder_from_pkg_id(&package.id)?;
         builder.add_dir_recursive(&folder)?;
       }
       // overwrite the root directory's name to obscure the user's registry url

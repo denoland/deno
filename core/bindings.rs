@@ -115,14 +115,12 @@ where
 }
 
 pub(crate) fn initialize_context<'s>(
-  scope: &mut v8::HandleScope<'s, ()>,
+  scope: &mut v8::HandleScope<'s>,
+  context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
   snapshot_options: SnapshotOptions,
 ) -> v8::Local<'s, v8::Context> {
-  let context = v8::Context::new(scope);
   let global = context.global(scope);
-
-  let scope = &mut v8::ContextScope::new(scope, context);
 
   let mut codegen = String::with_capacity(op_ctxs.len() * 200);
   codegen.push_str(include_str!("bindings.js"));
@@ -206,12 +204,15 @@ fn op_ctx_function<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let v8name =
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
     v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
       .data(external.into())
       .length(op_ctx.decl.arg_count as i32);
 
-  let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
+  let template = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
       scope,
       fast_function,
@@ -222,7 +223,10 @@ fn op_ctx_function<'s>(
   } else {
     builder.build(scope)
   };
-  templ.get_function(scope).unwrap()
+
+  let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
@@ -281,7 +285,7 @@ pub fn host_import_module_dynamically_callback<'s>(
   let resolver_handle = v8::Global::new(scope, resolver);
   {
     let state_rc = JsRuntime::state(scope);
-    let module_map_rc = JsRuntime::module_map(scope);
+    let module_map_rc = JsRuntime::module_map_from(scope);
 
     debug!(
       "dyn_import specifier {} referrer {} ",
@@ -317,7 +321,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 ) {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let module_map = module_map_rc.borrow();
 
   let module_global = v8::Global::new(scope, module);
@@ -360,7 +364,7 @@ fn import_meta_resolve(
     let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let loader = module_map_rc.borrow().loader.clone();
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -578,7 +582,7 @@ pub fn module_resolve_callback<'s>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let module_map = module_map_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);

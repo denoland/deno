@@ -200,11 +200,19 @@ pub fn get_or_create_client_from_state(
     let options = state.borrow::<Options>();
     let client = create_http_client(
       &options.user_agent,
-      options.root_cert_store()?,
-      vec![],
-      options.proxy.clone(),
-      options.unsafely_ignore_certificate_errors.clone(),
-      options.client_cert_chain_and_key.clone(),
+      CreateHttpClientOptions {
+        root_cert_store: options.root_cert_store()?,
+        ca_certs: vec![],
+        proxy: options.proxy.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+        pool_max_idle_per_host: None,
+        pool_idle_timeout: None,
+        http1: true,
+        http2: true,
+      },
     )?;
     state.put::<reqwest::Client>(client.clone());
     Ok(client)
@@ -606,19 +614,36 @@ impl HttpClientResource {
   }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolIdleTimeout {
+  State(bool),
+  Specify(u64),
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateHttpClientOptions {
+pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+  pool_max_idle_per_host: Option<usize>,
+  pool_idle_timeout: Option<PoolIdleTimeout>,
+  #[serde(default = "default_true")]
+  http1: bool,
+  #[serde(default = "default_true")]
+  http2: bool,
+}
+
+fn default_true() -> bool {
+  true
 }
 
 #[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientOptions,
+  args: CreateHttpClientArgs,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -653,32 +678,71 @@ where
 
   let client = create_http_client(
     &options.user_agent,
-    options.root_cert_store()?,
-    ca_certs,
-    args.proxy,
-    options.unsafely_ignore_certificate_errors.clone(),
-    client_cert_chain_and_key,
+    CreateHttpClientOptions {
+      root_cert_store: options.root_cert_store()?,
+      ca_certs,
+      proxy: args.proxy,
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      client_cert_chain_and_key,
+      pool_max_idle_per_host: args.pool_max_idle_per_host,
+      pool_idle_timeout: args.pool_idle_timeout.and_then(
+        |timeout| match timeout {
+          PoolIdleTimeout::State(true) => None,
+          PoolIdleTimeout::State(false) => Some(None),
+          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+        },
+      ),
+      http1: args.http1,
+      http2: args.http2,
+    },
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateHttpClientOptions {
+  pub root_cert_store: Option<RootCertStore>,
+  pub ca_certs: Vec<Vec<u8>>,
+  pub proxy: Option<Proxy>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub pool_max_idle_per_host: Option<usize>,
+  pub pool_idle_timeout: Option<Option<u64>>,
+  pub http1: bool,
+  pub http2: bool,
+}
+
+impl Default for CreateHttpClientOptions {
+  fn default() -> Self {
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: None,
+      unsafely_ignore_certificate_errors: None,
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    }
+  }
+}
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
   user_agent: &str,
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  proxy: Option<Proxy>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
+  options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
-    root_cert_store,
-    ca_certs,
-    unsafely_ignore_certificate_errors,
-    client_cert_chain_and_key,
+    options.root_cert_store,
+    options.ca_certs,
+    options.unsafely_ignore_certificate_errors,
+    options.client_cert_chain_and_key,
   )?;
 
   tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
@@ -690,7 +754,7 @@ pub fn create_http_client(
     .default_headers(headers)
     .use_preconfigured_tls(tls_config);
 
-  if let Some(proxy) = proxy {
+  if let Some(proxy) = options.proxy {
     let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
     if let Some(basic_auth) = &proxy.basic_auth {
       reqwest_proxy =
@@ -699,6 +763,24 @@ pub fn create_http_client(
     builder = builder.proxy(reqwest_proxy);
   }
 
-  // unwrap here because it can only fail when native TLS is used.
-  Ok(builder.build().unwrap())
+  if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
+    builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
+  }
+
+  if let Some(pool_idle_timeout) = options.pool_idle_timeout {
+    builder = builder.pool_idle_timeout(
+      pool_idle_timeout.map(std::time::Duration::from_millis),
+    );
+  }
+
+  match (options.http1, options.http2) {
+    (true, false) => builder = builder.http1_only(),
+    (false, true) => builder = builder.http2_prior_knowledge(),
+    (true, true) => {}
+    (false, false) => {
+      return Err(type_error("Either `http1` or `http2` needs to be true"))
+    }
+  }
+
+  builder.build().map_err(|e| e.into())
 }
