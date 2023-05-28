@@ -2,6 +2,11 @@
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { promises } from "ext:deno_node/fs.ts";
+import {
+  BinaryOptionsArgument,
+  FileOptionsArgument,
+  TextOptionsArgument,
+} from "ext:deno_node/_fs/_fs_common.ts";
 
 export class FileHandle extends EventEmitter {
   readonly rid: number;
@@ -14,10 +19,14 @@ export class FileHandle extends EventEmitter {
     return this.rid;
   }
 
+  readFile(opt: TextOptionsArgument): Promise<string>;
+  readFile(opt?: BinaryOptionsArgument): Promise<Buffer>;
+  readFile(opt?: FileOptionsArgument): Promise<Buffer>;
+
   readFile(
-    options: { encoding?: string | null; flag?: string } | null = null,
+    opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {
-    return promises.readFile(this, options);
+    return promises.readFile(this, opt);
   }
 }
 
