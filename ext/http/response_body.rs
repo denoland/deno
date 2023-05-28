@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
+use brotli::ffi::compressor::BrotliEncoderState;
 use bytes::Bytes;
 use bytes::BytesMut;
 use deno_core::error::bad_resource;
@@ -586,14 +587,28 @@ enum BrotliState {
   EndOfStream,
 }
 
+struct BrotliEncoderStateWrapper {
+  stm: *mut BrotliEncoderState,
+}
+
 #[pin_project]
 pub struct BrotliResponseStream {
   state: BrotliState,
-  stm: *mut brotli::ffi::compressor::BrotliEncoderState,
+  stm: BrotliEncoderStateWrapper,
   current_cursor: usize,
   output_written_so_far: usize,
   #[pin]
   underlying: ResponseStream,
+}
+
+impl Drop for BrotliEncoderStateWrapper {
+  fn drop(&mut self) {
+    // SAFETY: since we are dropping, we can be sure that this instance will not
+    // be used again.
+    unsafe {
+      brotli::ffi::compressor::BrotliEncoderDestroyInstance(self.stm);
+    }
+  }
 }
 
 impl BrotliResponseStream {
@@ -601,11 +616,13 @@ impl BrotliResponseStream {
     Self {
       // SAFETY: creating an FFI instance should be OK with these args.
       stm: unsafe {
-        brotli::ffi::compressor::BrotliEncoderCreateInstance(
-          None,
-          None,
-          std::ptr::null_mut(),
-        )
+        BrotliEncoderStateWrapper {
+          stm: brotli::ffi::compressor::BrotliEncoderCreateInstance(
+            None,
+            None,
+            std::ptr::null_mut(),
+          ),
+        }
       },
       output_written_so_far: 0,
       current_cursor: 0,
@@ -662,7 +679,7 @@ impl PollFrame for BrotliResponseStream {
         // SAFETY: these are okay arguments to these FFI calls.
         unsafe {
           brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm,
+            this.stm.stm,
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
             &mut input_size,
             &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
@@ -674,7 +691,7 @@ impl PollFrame for BrotliResponseStream {
           output_written = 0;
 
           brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm,
+            this.stm.stm,
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
             &mut input_size,
             &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
@@ -700,7 +717,7 @@ impl PollFrame for BrotliResponseStream {
         // SAFETY: these are okay arguments to these FFI calls.
         unsafe {
           brotli::ffi::compressor::BrotliEncoderCompressStream(
-            this.stm,
+            this.stm.stm,
             brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
             &mut input_size,
             std::ptr::null_mut(),
