@@ -190,15 +190,20 @@ Deno.test("[node/http] request default protocol", async () => {
   const server = http.createServer((_, res) => {
     res.end("ok");
   });
+
+  // @ts-ignore IncomingMessageForClient
+  let clientRes: any;
   server.listen(() => {
     const req = http.request(
       // deno-lint-ignore no-explicit-any
       { host: "localhost", port: (server.address() as any).port },
       (res) => {
+        assertEquals(res.complete, false);
         res.on("data", () => {});
         res.on("end", () => {
           server.close();
         });
+        clientRes = res;
         assertEquals(res.statusCode, 200);
         promise2.resolve();
       },
@@ -210,6 +215,7 @@ Deno.test("[node/http] request default protocol", async () => {
   });
   await promise;
   await promise2;
+  assertEquals(clientRes!.complete, true);
 });
 
 Deno.test("[node/http] request with headers", async () => {
