@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
@@ -820,6 +821,22 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /**
+     * Whether HTTP/1.1 is allowed or not.
+     *
+     * @default {true}
+     */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not.
+     *
+     * @default {true}
+     */
+    http2?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1304,6 +1321,28 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** A promise that resolves once server finishes - eg. when aborted using
+     * the signal passed to {@linkcode ServeOptions.signal}.
+     */
+    finished: Promise<void>;
+
+    /**
+     * Make the server block the event loop from finishing.
+     *
+     * Note: the server blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the server not block the event loop from finishing. */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -1330,8 +1369,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1361,7 +1403,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Promise<void>;
+  export function serve(handler: ServeHandler): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1390,8 +1432,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1424,7 +1469,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Promise<void>;
+  ): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1453,8 +1498,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1486,7 +1534,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Promise<void>;
+  ): Server;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -2050,10 +2098,10 @@ declare namespace Deno {
 
     /**
      * Close the database connection. This will prevent any further operations
-     * from being performed on the database, but will wait for any in-flight
-     * operations to complete before closing the underlying database connection.
+     * from being performed on the database, and interrupt any in-flight
+     * operations immediately.
      */
-    close(): Promise<void>;
+    close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

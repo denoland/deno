@@ -15,6 +15,7 @@ use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
+use deno_runtime::deno_fetch::CreateHttpClientOptions;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -219,18 +220,15 @@ impl CacheSemantics {
 }
 
 pub struct HttpClient {
+  options: CreateHttpClientOptions,
   root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
   cell: once_cell::sync::OnceCell<reqwest::Client>,
 }
 
 impl std::fmt::Debug for HttpClient {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("HttpClient")
-      .field(
-        "unsafely_ignore_certificate_errors",
-        &self.unsafely_ignore_certificate_errors,
-      )
+      .field("options", &self.options)
       .finish()
   }
 }
@@ -241,8 +239,11 @@ impl HttpClient {
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   ) -> Self {
     Self {
+      options: CreateHttpClientOptions {
+        unsafely_ignore_certificate_errors,
+        ..Default::default()
+      },
       root_cert_store_provider,
-      unsafely_ignore_certificate_errors,
       cell: Default::default(),
     }
   }
@@ -250,8 +251,8 @@ impl HttpClient {
   #[cfg(test)]
   pub fn from_client(client: reqwest::Client) -> Self {
     let result = Self {
+      options: Default::default(),
       root_cert_store_provider: Default::default(),
-      unsafely_ignore_certificate_errors: Default::default(),
       cell: Default::default(),
     };
     result.cell.set(client).unwrap();
@@ -262,14 +263,13 @@ impl HttpClient {
     self.cell.get_or_try_init(|| {
       create_http_client(
         get_user_agent(),
-        match &self.root_cert_store_provider {
-          Some(provider) => Some(provider.get_or_try_init()?.clone()),
-          None => None,
+        CreateHttpClientOptions {
+          root_cert_store: match &self.root_cert_store_provider {
+            Some(provider) => Some(provider.get_or_try_init()?.clone()),
+            None => None,
+          },
+          ..self.options.clone()
         },
-        vec![],
-        None,
-        self.unsafely_ignore_certificate_errors.clone(),
-        None,
       )
     })
   }

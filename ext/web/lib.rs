@@ -2,6 +2,7 @@
 
 mod blob;
 mod compression;
+mod hr_timer_lock;
 mod message_port;
 mod timers;
 

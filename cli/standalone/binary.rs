@@ -19,6 +19,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::permissions::PermissionsOptions;
 use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmVersionReqSpecifierParseError;
@@ -343,8 +344,9 @@ pub struct DenoCompileBinaryWriter<'a> {
   deno_dir: &'a DenoDir,
   npm_api: &'a CliNpmRegistryApi,
   npm_cache: &'a NpmCache,
+  npm_resolution: &'a NpmResolution,
   npm_resolver: &'a CliNpmResolver,
-  resolution: &'a NpmResolution,
+  npm_system_info: NpmSystemInfo,
   package_json_deps_provider: &'a PackageJsonDepsProvider,
 }
 
@@ -356,8 +358,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     deno_dir: &'a DenoDir,
     npm_api: &'a CliNpmRegistryApi,
     npm_cache: &'a NpmCache,
+    npm_resolution: &'a NpmResolution,
     npm_resolver: &'a CliNpmResolver,
-    resolution: &'a NpmResolution,
+    npm_system_info: NpmSystemInfo,
     package_json_deps_provider: &'a PackageJsonDepsProvider,
   ) -> Self {
     Self {
@@ -367,7 +370,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       npm_api,
       npm_cache,
       npm_resolver,
-      resolution,
+      npm_system_info,
+      npm_resolution,
       package_json_deps_provider,
     }
   }
@@ -488,13 +492,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       .resolve_import_map(self.file_fetcher)
       .await?
       .map(|import_map| (import_map.base_url().clone(), import_map.to_json()));
-    let (npm_snapshot, npm_vfs, npm_files) = if self.resolution.has_packages() {
-      let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
-      let snapshot = self.resolution.serialized_snapshot();
-      (Some(snapshot), Some(root_dir), files)
-    } else {
-      (None, None, Vec::new())
-    };
+    let (npm_snapshot, npm_vfs, npm_files) =
+      if self.npm_resolution.has_packages() {
+        let (root_dir, files) = self.build_vfs()?.into_dir_and_files();
+        let snapshot = self.npm_resolution.serialized_snapshot();
+        (Some(snapshot), Some(root_dir), files)
+      } else {
+        (None, None, Vec::new())
+      };
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),
@@ -531,7 +536,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   fn build_vfs(&self) -> Result<VfsBuilder, AnyError> {
     if let Some(node_modules_path) = self.npm_resolver.node_modules_path() {
-      let mut builder = VfsBuilder::new(node_modules_path.clone());
+      let mut builder = VfsBuilder::new(node_modules_path.clone())?;
       builder.add_dir_recursive(&node_modules_path)?;
       Ok(builder)
     } else {
@@ -539,11 +544,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       // but also don't make this dependent on the registry url
       let registry_url = self.npm_api.base_url();
       let root_path = self.npm_cache.registry_folder(registry_url);
-      let mut builder = VfsBuilder::new(root_path);
-      for package in self.resolution.all_packages() {
+      let mut builder = VfsBuilder::new(root_path)?;
+      for package in self
+        .npm_resolution
+        .all_system_packages(&self.npm_system_info)
+      {
         let folder = self
           .npm_resolver
-          .resolve_pkg_folder_from_pkg_id(&package.pkg_id)?;
+          .resolve_pkg_folder_from_pkg_id(&package.id)?;
         builder.add_dir_recursive(&folder)?;
       }
       // overwrite the root directory's name to obscure the user's registry url

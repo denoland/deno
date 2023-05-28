@@ -20,7 +20,6 @@ use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::hard_link_dir_recursive;
@@ -118,20 +117,6 @@ pub struct ReadonlyNpmCache {
   root_dir: PathBuf,
   // cached url representation of the root directory
   root_dir_url: Url,
-}
-
-// todo(dsherret): implementing Default for this is error prone because someone
-// might accidentally use the default implementation instead of getting the
-// correct location of the deno dir, which might be provided via a CLI argument.
-// That said, the rest of the LSP code does this at the moment and so this code
-// copies that.
-impl Default for ReadonlyNpmCache {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    Self::new(DenoDir::new(None).unwrap().npm_folder_path())
-  }
 }
 
 impl ReadonlyNpmCache {

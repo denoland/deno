@@ -35,6 +35,8 @@
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
     "cli/tests/testdata/fmt/*",
+    "cli/tests/testdata/lint/glob/*",
+    "cli/tests/testdata/test/glob/*",
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
     "cli/tests/testdata/run/inline_js_source_map*",
     "cli/tests/testdata/malformed_config/*",
@@ -48,7 +50,7 @@
     "test_util/wpt",
     "third_party",
     "tools/node_compat/TODO.md",
-    "tools/node_compat/versions",
+    "tools/node_compat/node",
     "tools/wpt/expectation.json",
     "tools/wpt/manifest.json",
     "ext/websocket/autobahn/reports"

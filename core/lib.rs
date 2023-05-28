@@ -23,6 +23,7 @@ mod resources;
 mod runtime;
 pub mod snapshot_util;
 mod source_map;
+pub mod task;
 mod task_queue;
 
 // Re-exports
@@ -78,7 +79,6 @@ pub use crate::module_specifier::resolve_url;
 pub use crate::module_specifier::resolve_url_or_path;
 pub use crate::module_specifier::ModuleResolutionError;
 pub use crate::module_specifier::ModuleSpecifier;
-pub use crate::modules::ExtModuleLoader;
 pub use crate::modules::ExtModuleLoaderCb;
 pub use crate::modules::FsModuleLoader;
 pub use crate::modules::ModuleCode;

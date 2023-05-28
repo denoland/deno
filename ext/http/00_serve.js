@@ -43,14 +43,13 @@ const {
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
+  SymbolFor,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
 } = primordials;
 
 const {
-  op_http_wait,
-  op_http_upgrade_next,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
   op_http_read_request_body,
@@ -62,11 +61,11 @@ const {
   op_http_set_response_body_text,
   op_http_set_response_header,
   op_http_set_response_headers,
+  op_http_set_response_trailers,
   op_http_upgrade_raw,
-  op_ws_server_create,
+  op_http_upgrade_websocket_next,
+  op_http_wait,
 } = core.generateAsyncOpHandler(
-  "op_http_wait",
-  "op_http_upgrade_next",
   "op_http_get_request_headers",
   "op_http_get_request_method_and_url",
   "op_http_read_request_body",
@@ -78,8 +77,10 @@ const {
   "op_http_set_response_body_text",
   "op_http_set_response_header",
   "op_http_set_response_headers",
+  "op_http_set_response_trailers",
   "op_http_upgrade_raw",
-  "op_ws_server_create",
+  "op_http_upgrade_websocket_next",
+  "op_http_wait",
 );
 const _upgraded = Symbol("_upgraded");
 
@@ -125,6 +126,11 @@ function upgradeHttpRaw(req, conn) {
     return inner._wantsUpgrade("upgradeHttpRaw", conn);
   }
   throw new TypeError("upgradeHttpRaw may only be used with Deno.serve");
+}
+
+function addTrailers(resp, headerList) {
+  const inner = toInnerResponse(resp);
+  op_http_set_response_trailers(inner.slabId, headerList);
 }
 
 class InnerRequest {
@@ -208,12 +214,11 @@ class InnerRequest {
       // Start the upgrade in the background.
       (async () => {
         try {
-          // Returns the connection and extra bytes, which we can pass directly to op_ws_server_create
-          const upgrade = await op_http_upgrade_next(
+          // Returns the upgraded websocket connection
+          const wsRid = await op_http_upgrade_websocket_next(
             slabId,
             response.headerList,
           );
-          const wsRid = op_ws_server_create(upgrade[0], upgrade[1]);
 
           // We have to wait for the go-ahead signal
           await goAhead;
@@ -537,6 +542,8 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
 
     // Did everything shut down while we were waiting?
     if (context.closed) {
+      // We're shutting down, so this status shouldn't make it back to the client but "Service Unavailable" seems appropriate
+      op_http_set_promise_complete(req, 503);
       innerRequest?.close();
       return;
     }
@@ -564,7 +571,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
   };
 }
 
-async function serve(arg1, arg2) {
+function serve(arg1, arg2) {
   let options = undefined;
   let handler = undefined;
   if (typeof arg1 === "function") {
@@ -654,35 +661,64 @@ async function serve(arg1, arg2) {
 
   onListen({ port: listenOpts.port });
 
-  while (true) {
-    const rid = context.serverRid;
-    let req;
-    try {
-      req = await op_http_wait(rid);
-    } catch (error) {
-      if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+  let ref = true;
+  let currentPromise = null;
+  const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
+
+  // Run the server
+  const finished = (async () => {
+    while (true) {
+      const rid = context.serverRid;
+      let req;
+      try {
+        currentPromise = op_http_wait(rid);
+        if (!ref) {
+          core.unrefOp(currentPromise[promiseIdSymbol]);
+        }
+        req = await currentPromise;
+        currentPromise = null;
+      } catch (error) {
+        if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+          break;
+        }
+        throw new Deno.errors.Http(error);
+      }
+      if (req === 0xffffffff) {
         break;
       }
-      throw new Deno.errors.Http(error);
+      PromisePrototypeCatch(callback(req), (error) => {
+        // Abnormal exit
+        console.error(
+          "Terminating Deno.serve loop due to unexpected error",
+          error,
+        );
+        context.close();
+      });
     }
-    if (req === 0xffffffff) {
-      break;
-    }
-    PromisePrototypeCatch(callback(req), (error) => {
-      // Abnormal exit
-      console.error(
-        "Terminating Deno.serve loop due to unexpected error",
-        error,
-      );
-      context.close();
-    });
-  }
 
-  for (const streamRid of new SafeSetIterator(responseBodies)) {
-    core.tryClose(streamRid);
-  }
+    for (const streamRid of new SafeSetIterator(responseBodies)) {
+      core.tryClose(streamRid);
+    }
+  })();
+
+  return {
+    finished,
+    ref() {
+      ref = true;
+      if (currentPromise) {
+        core.refOp(currentPromise[promiseIdSymbol]);
+      }
+    },
+    unref() {
+      ref = false;
+      if (currentPromise) {
+        core.unrefOp(currentPromise[promiseIdSymbol]);
+      }
+    },
+  };
 }
 
+internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
 
 export { serve, upgradeHttpRaw };

@@ -9,7 +9,6 @@ use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
-use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
@@ -3031,14 +3030,29 @@ itest!(package_json_auto_discovered_no_package_json_imports {
   copy_temp_dir: Some("run/with_package_json/no_deno_json"),
 });
 
-itest!(package_json_with_deno_json {
-  args: "run --quiet -A main.ts",
-  output: "package_json/deno_json/main.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
-  http_server: true,
-});
+#[test]
+fn package_json_with_deno_json() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/deno_json/")
+    .cwd("package_json/deno_json/")
+    .build();
+  let output = context.new_command().args("run --quiet -A main.ts").run();
+  output.assert_matches_file("package_json/deno_json/main.out");
+
+  assert!(context
+    .temp_dir()
+    .path()
+    .join("package_json/deno_json/deno.lock")
+    .exists());
+
+  // run again and ensure the top level install doesn't happen twice
+  let output = context
+    .new_command()
+    .args("run --log-level=debug -A main.ts")
+    .run();
+  let output = output.combined_output();
+  assert_contains!(output, "Skipping top level install.");
+}
 
 #[test]
 fn package_json_error_dep_value_test() {
@@ -3435,8 +3449,9 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
+#[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
+  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 
@@ -3886,50 +3901,44 @@ async fn test_resolve_dns() {
 
 #[tokio::test]
 async fn http2_request_url() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./run/http2_request_url.ts")
-        .arg("4506")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
-      assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./run/http2_request_url.ts")
+    .arg("4506")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
 
-      let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      ))
-      .unwrap();
+  let cert = reqwest::Certificate::from_pem(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  ))
+  .unwrap();
 
-      let client = reqwest::Client::builder()
-        .add_root_certificate(cert)
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
+  let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .http2_prior_knowledge()
+    .build()
+    .unwrap();
 
-      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
-      assert_eq!(200, res.status());
+  let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+  assert_eq!(200, res.status());
 
-      let body = res.text().await.unwrap();
-      assert_eq!(body, "http://127.0.0.1:4506/");
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "http://127.0.0.1:4506/");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
-    })
-    .await;
+  child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[cfg(not(windows))]
@@ -4173,7 +4182,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn(fut);
+    deno_core::task::spawn(fut);
   }
 }
 

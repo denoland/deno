@@ -17,7 +17,7 @@ const Runners = (() => {
 })();
 // bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "24-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  "31-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -363,6 +363,10 @@ const ci = {
           if: "matrix.wpt",
         },
         {
+          ...submoduleStep("./tools/node_compat/node"),
+          if: "matrix.job == 'lint'",
+        },
+        {
           name: "Create source tarballs (release, linux)",
           if: [
             "startsWith(matrix.os, 'ubuntu') &&",
@@ -476,7 +480,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "24-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              "31-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
           },
         },
         {
@@ -540,6 +544,12 @@ const ci = {
           if: "matrix.job == 'lint'",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+        },
+        {
+          name: "node_compat/setup.ts --check",
+          if: "matrix.job == 'lint'",
+          run:
+            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },
         {
           name: "Build debug",

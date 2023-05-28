@@ -12,6 +12,7 @@ import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { gzip } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { serve } from "../../../test_util/std/http/server.ts";
+import { execCode } from "../unit/test_util.ts";
 
 Deno.test("[node/http listen]", async () => {
   {
@@ -185,6 +186,7 @@ Deno.test("[node/http] server can respond with 101, 204, 205, 304 status", async
 
 Deno.test("[node/http] request default protocol", async () => {
   const promise = deferred<void>();
+  const promise2 = deferred<void>();
   const server = http.createServer((_, res) => {
     res.end("ok");
   });
@@ -198,6 +200,7 @@ Deno.test("[node/http] request default protocol", async () => {
           server.close();
         });
         assertEquals(res.statusCode, 200);
+        promise2.resolve();
       },
     );
     req.end();
@@ -206,6 +209,7 @@ Deno.test("[node/http] request default protocol", async () => {
     promise.resolve();
   });
   await promise;
+  await promise2;
 });
 
 Deno.test("[node/http] request with headers", async () => {
@@ -291,32 +295,6 @@ Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
   message.url = "https://example.com";
 });
 */
-
-Deno.test("[node/http] set http.IncomingMessage.statusMessage", () => {
-  // deno-lint-ignore no-explicit-any
-  const message = new (http as any).IncomingMessageForClient(
-    new Response(null, { status: 404, statusText: "Not Found" }),
-    {
-      encrypted: true,
-      readable: false,
-      remoteAddress: "foo",
-      address() {
-        return { port: 443, family: "IPv4" };
-      },
-      // deno-lint-ignore no-explicit-any
-      end(_cb: any) {
-        return this;
-      },
-      // deno-lint-ignore no-explicit-any
-      destroy(_e: any) {
-        return;
-      },
-    },
-  );
-  assertEquals(message.statusMessage, "Not Found");
-  message.statusMessage = "boom";
-  assertEquals(message.statusMessage, "boom");
-});
 
 Deno.test("[node/http] send request with non-chunked body", async () => {
   let requestHeaders: Headers;
@@ -483,4 +461,44 @@ Deno.test("[node/http] ServerResponse _implicitHeader", async () => {
   });
 
   await d;
+});
+
+Deno.test("[node/http] server unref", async () => {
+  const [statusCode, _output] = await execCode(`
+  import http from "node:http";
+  const server = http.createServer((_req, res) => {
+    res.statusCode = status;
+    res.end("");
+  });
+
+  // This should let the program to exit without waiting for the
+  // server to close.
+  server.unref();
+
+  server.listen(async () => {
+  });
+  `);
+  assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
+  // deno-lint-ignore no-explicit-any
+  let headers: any;
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    headers = resp.headers;
+
+    resp.on("data", () => {});
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(headers!["1"], "2");
 });

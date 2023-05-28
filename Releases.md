@@ -6,6 +6,95 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.34.0 / 2023.05.24
+
+- BREAKING(unstable): change return type of Deno.serve() API (#19189)
+- feat(cli): add `nodeModulesDir` option to config file (#19095)
+- feat(cli): top-level `exclude` field in `deno.json` (#17778)
+- feat(ext/fs): add isBlockDevice, isCharDevice, isFifo, isSocket to FileInfo
+  (#19008)
+- feat(ext/http): Add support for trailers w/internal API (HTTP/2 only) (#19182)
+- feat(ext/http): Brotli Compression (#19216)
+- feat(ext/http): ref/unref for server (#19197)
+- feat(lsp): support lockfile and node_modules directory (#19203)
+- feat(runtime): Provide environment-configurable options for tokio parameters
+  (#19173)
+- feat(task): glob expansion (#19084)
+- feat(unstable): add more options to Deno.createHttpClient (#17385)
+- feat(vendor): support for npm specifiers (#19186)
+- feat: add support for globs in the config file and CLI arguments for files
+  (#19102)
+- feat: top level package.json install when node_modules dir is explicitly opted
+  into (#19233)
+- fix(ext/node): ClientRequest.setTimeout(0) should remove listeners (#19240)
+- fix(ext/node): add basic node:worker_threads support (#19192)
+- fix(ext/web): improve timers resolution for 0ms timeouts (#19212)
+- fix(napi): add napi_async_init and napi_async_destroy (#19234)
+- fix(node): add http.Server.unref() (#19201)
+- fix(node): duplicate node_module suffixes (#19222)
+- fix(node): fire 'unhandledrejection' event when using node: or npm: imports
+  (#19235)
+- fix(node): make sure "setImmediate" is not clamped to 4ms (#19213)
+- fix(npm): `process` not defined in readline (#19184)
+- fix(npm): better handling of optional peer dependencies (#19236)
+- fix(npm): create `node_modules/.deno/node_modules` folder (#19242)
+- fix(npm): run pre and post tasks if present (#19178)
+- fix(npm): store npm binary command resolution in lockfile (#19219)
+
+### 1.33.4 / 2023.05.18
+
+- fix(ext/web): Request higher-resolution timer on Windows if user requests
+  setTimeout w/short delay (#19149)
+- feat(node/crypto): Builtin Diffie-Hellman Groups (#19137)
+- feat(node/crypto): Diffie Hellman Support (#18943)
+- fix(cli/napi): handle finalizers (#19168)
+- fix(deno/upgrade): allow --version vX.Y.Z (#19139)
+- fix(dts): move BroadcastChannel type to lib.deno.unstable.d.ts (#19108)
+- fix(ext/http): Ensure cancelled requests don't crash Deno.serve (#19154)
+- fix(ext/node): fix whatwg url formatting (#19146)
+- fix(ext/node): make nodeGlobalThis configurable (#19163)
+- fix(ext/webidl): change createPromiseConverter (#16367)
+- fix(ext/websocket): order of ws writes (#19131)
+- fix(fetch): Correctly decode `multipart/form-data` names and filenames
+  (#19145)
+- fix(kv): kv.close() interrupts in-flight operations (#19076)
+- fix(lsp): increase default max heap size to 3Gb (#19115)
+- fix(napi): BigInt related APIs (#19174)
+- fix(node): export diagnostics_channel module (#19167)
+- fix(node): export punycode module (#19151)
+- fix(node): support passing parent stdio streams (#19171)
+- fix(npm): add performance.markResourceTiming sham (#19123)
+- fix(npm): improved optional dependency support (#19135)
+- fix(runtime): Box the main future to avoid blowing up the stack (#19155)
+- fix(runtime): Example hello_runtime panic (#19125)
+- fix: support "fetch" over HTTPS for IP addresses (#18499)
+
+### 1.33.3 / 2023.05.12
+
+- feat(compile): unstable npm and node specifier support (#19005)
+- feat(ext/http): Automatic compression for Deno.serve (#19031)
+- feat(lsp): ability to configure document pre-load limit (#19097)
+- feat(node): add `Module.runMain()` (#19080)
+- fix(cli): upgrade to Typescript 5.0.4 (#19090)
+- fix(console): handle error when inspecting promise-like (#19083)
+- fix(core): always report the first error on unhandled rejection (#18992)
+- fix(core): let V8 drive extension ESM loads (#18997)
+- fix(dts): align `seekSync` `position` arg with `seek` (#19077)
+- fix(ext/ffi): Callbacks panic on returning isize (#19022)
+- fix(ext/ffi): UnsafeCallback can hang with 'deno test' (#19018)
+- fix(ext/fs): add more context_path (#19101)
+- fix(ext/http): Ensure Deno.serve works across --watch restarts (#18998)
+- fix(lsp): hard to soft error when unable to get completion info (#19091)
+- fix(lsp): preload documents when `deno.documentPreloadLimit` changes (#19103)
+- fix(node): conditional exports edge case (#19082)
+- fix(node): expose channels in worker_threads (#19086)
+- fix(npm): make http2 module available, make 'nodeGlobalThisName' writable
+  (#19092)
+- fix(runtime): `ChildProcess::kill()` doesn't require additional perms (#15339)
+- fix(vendor): better handling of redirects (#19063)
+- perf(ext/ffi): Use `Box<[NativeType]>` in CallbackInfo parameters (#19032)
+- perf(fmt): faster formatting for minified object literals (#19050)
+
 ### 1.33.2 / 2023.05.04
 
 - fix(core): Use primordials for methods (#18839)

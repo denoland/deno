@@ -6,6 +6,7 @@ use util::assert_contains;
 use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn no_color() {
@@ -508,3 +509,60 @@ itest!(test_no_lock {
   cwd: Some("lockfile/basic"),
   output: "lockfile/basic/test.nolock.out",
 });
+
+#[test]
+fn test_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bar.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bar.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn test_with_glob_config_and_flags() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json --ignore=glob/nested/**/bar.ts")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json glob/data/test1.?s")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/data/test1.ts");
+}

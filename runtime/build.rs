@@ -122,6 +122,13 @@ mod startup_snapshot {
   }
 
   impl deno_node::NodePermissions for Permissions {
+    fn check_net_url(
+      &mut self,
+      _url: &deno_core::url::Url,
+      _api_name: &str,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
     fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
