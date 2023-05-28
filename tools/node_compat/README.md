@@ -41,12 +41,11 @@ If the test needs to be ignored in particular platform, then add them in
 Node.js compat tests are run as part of `cargo test` command. If you want to run
 only the Node.js compat test cases you can use the command
 `cargo test node_compat`.\
-If you want to run specific tests you can use the command
-`TARGET=<file name> deno task test`.\
+If you want to run specific tests you can use the command `deno task test`.\
 For example, if you want to run all test files which contains `buffer` in
 filename you can use the command:
 
 ```shellsession
 /path/to/cli/tests/node_compat
-$ TARGET=buffer deno task test
+$ deno task test buffer
 ```
