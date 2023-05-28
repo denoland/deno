@@ -11,7 +11,7 @@ const testData = path.resolve(moduleDir, "testdata", "hello.txt");
 
 Deno.test("readFileSuccess", async function () {
   const fs = await import("node:fs/promises");
-  const fileHandle = await fs.open(testData)
+  const fileHandle = await fs.open(testData);
   const data = await fileHandle.readFile();
 
   assert(data instanceof Uint8Array);
