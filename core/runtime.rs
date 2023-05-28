@@ -55,6 +55,7 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
+use v8::CreateParams;
 use v8::OwnedIsolate;
 
 pub enum Snapshot {
@@ -403,71 +404,14 @@ impl JsRuntime {
     let refs = bindings::external_references(&context_state.borrow().op_ctxs);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let global_context;
     let mut maybe_snapshotted_data = None;
 
-    let mut isolate = if snapshot_options.will_snapshot() {
-      let snapshot_creator =
-        snapshot_util::create_snapshot_creator(refs, options.startup_snapshot);
-      let mut isolate = JsRuntime::setup_isolate(snapshot_creator);
-      {
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &context_state.borrow().op_ctxs,
-          snapshot_options,
-        );
-
-        // Get module map data from the snapshot
-        if has_startup_snapshot {
-          maybe_snapshotted_data =
-            Some(snapshot_util::get_snapshotted_data(scope, context));
-        }
-
-        global_context = v8::Global::new(scope, context);
-      }
-      isolate
-    } else {
-      let mut params = options
-        .create_params
-        .take()
-        .unwrap_or_default()
-        .embedder_wrapper_type_info_offsets(
-          V8_WRAPPER_TYPE_INDEX,
-          V8_WRAPPER_OBJECT_INDEX,
-        )
-        .external_references(&**refs);
-
-      if let Some(snapshot) = options.startup_snapshot {
-        params = match snapshot {
-          Snapshot::Static(data) => params.snapshot_blob(data),
-          Snapshot::JustCreated(data) => params.snapshot_blob(data),
-          Snapshot::Boxed(data) => params.snapshot_blob(data),
-        };
-      }
-
-      let isolate = v8::Isolate::new(params);
-      let mut isolate = JsRuntime::setup_isolate(isolate);
-      {
-        let scope = &mut v8::HandleScope::new(&mut isolate);
-        let context = bindings::initialize_context(
-          scope,
-          &context_state.borrow().op_ctxs,
-          snapshot_options,
-        );
-
-        // Get module map data from the snapshot
-        if has_startup_snapshot {
-          maybe_snapshotted_data =
-            Some(snapshot_util::get_snapshotted_data(scope, context));
-        }
-
-        global_context = v8::Global::new(scope, context);
-      }
-
-      isolate
-    };
-
+    let (mut isolate, global_context) = Self::create_isolate(
+      snapshot_options.will_snapshot(),
+      refs,
+      options.create_params.take(),
+      options.startup_snapshot.take(),
+    );
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
     // not overwriting an existing pointer.
     isolate = unsafe {
@@ -475,17 +419,29 @@ impl JsRuntime {
       isolate_ptr.read()
     };
 
-    global_context
-      .open(&mut isolate)
-      .set_slot(&mut isolate, context_state.clone());
+    let mut context_scope =
+      v8::HandleScope::with_context(&mut isolate, global_context.clone());
+    let scope = &mut context_scope;
+    let context = v8::Local::new(scope, global_context.clone());
+
+    bindings::initialize_context(
+      scope,
+      context,
+      &context_state.borrow().op_ctxs,
+      snapshot_options,
+    );
+
+    // Get module map data from the snapshot
+    if has_startup_snapshot {
+      maybe_snapshotted_data =
+        Some(snapshot_util::get_snapshotted_data(scope, context));
+    }
+
+    context.set_slot(scope, context_state.clone());
 
     op_state.borrow_mut().put(isolate_ptr);
     let inspector = if options.inspector {
-      Some(JsRuntimeInspector::new(
-        &mut isolate,
-        global_context.clone(),
-        options.is_main,
-      ))
+      Some(JsRuntimeInspector::new(scope, context, options.is_main))
     } else {
       None
     };
@@ -514,7 +470,7 @@ impl JsRuntime {
     {
       let global_realm = JsRealmInner::new(
         context_state,
-        global_context.clone(),
+        global_context,
         state_rc.clone(),
         true,
       );
@@ -523,21 +479,21 @@ impl JsRuntime {
       state.inspector = inspector;
       state.known_realms.push(global_realm);
     }
-    isolate.set_data(
+    scope.set_data(
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
-      let scope =
-        &mut v8::HandleScope::with_context(&mut isolate, global_context);
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
-    isolate.set_data(
+    scope.set_data(
       Self::MODULE_MAP_DATA_OFFSET,
       Rc::into_raw(module_map_rc.clone()) as *mut c_void,
     );
+
+    drop(context_scope);
 
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
@@ -560,6 +516,55 @@ impl JsRuntime {
     js_runtime
   }
 
+  /// Create a new [`v8::OwnedIsolate`] and its global [`v8::Context`] from optional parameters and snapshot.
+  fn create_isolate(
+    will_snapshot: bool,
+    refs: &'static v8::ExternalReferences,
+    params: Option<CreateParams>,
+    snapshot: Option<Snapshot>,
+  ) -> (v8::OwnedIsolate, v8::Global<v8::Context>) {
+    let mut isolate = if will_snapshot {
+      snapshot_util::create_snapshot_creator(refs, snapshot)
+    } else {
+      let mut params = params
+        .unwrap_or_default()
+        .embedder_wrapper_type_info_offsets(
+          V8_WRAPPER_TYPE_INDEX,
+          V8_WRAPPER_OBJECT_INDEX,
+        )
+        .external_references(&**refs);
+
+      if let Some(snapshot) = snapshot {
+        params = match snapshot {
+          Snapshot::Static(data) => params.snapshot_blob(data),
+          Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
+        };
+      }
+
+      v8::Isolate::new(params)
+    };
+
+    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
+    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
+    isolate.set_host_initialize_import_meta_object_callback(
+      bindings::host_initialize_import_meta_object_callback,
+    );
+    isolate.set_host_import_module_dynamically_callback(
+      bindings::host_import_module_dynamically_callback,
+    );
+    isolate.set_wasm_async_resolve_promise_callback(
+      bindings::wasm_async_resolve_promise_callback,
+    );
+
+    let context = {
+      let scope = &mut v8::HandleScope::new(&mut isolate);
+      let context = v8::Context::new(scope);
+      v8::Global::new(scope, context)
+    };
+    (isolate, context)
+  }
+
   fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
     let state_ptr = v8_isolate.get_data(Self::STATE_DATA_OFFSET);
     let state_rc =
@@ -577,12 +582,12 @@ impl JsRuntime {
   }
 
   #[inline]
-  fn get_module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
+  pub(crate) fn module_map(&mut self) -> &Rc<RefCell<ModuleMap>> {
     self.module_map.as_ref().unwrap()
   }
 
   #[inline]
-  pub fn global_context(&mut self) -> v8::Global<v8::Context> {
+  pub fn global_context(&self) -> v8::Global<v8::Context> {
     self
       .state
       .borrow()
@@ -644,8 +649,12 @@ impl JsRuntime {
       // access to the isolate, and nothing else we're accessing from self does.
       let isolate = unsafe { raw_ptr.as_mut() }.unwrap();
       let scope = &mut v8::HandleScope::new(isolate);
+      let context = v8::Context::new(scope);
+      let scope = &mut v8::ContextScope::new(scope, context);
+
       let context = bindings::initialize_context(
         scope,
+        context,
         &context_state.borrow().op_ctxs,
         self.snapshot_options,
       );
@@ -670,21 +679,6 @@ impl JsRuntime {
     self.global_realm().handle_scope(self.v8_isolate())
   }
 
-  fn setup_isolate(mut isolate: v8::OwnedIsolate) -> v8::OwnedIsolate {
-    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
-    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
-    isolate.set_host_initialize_import_meta_object_callback(
-      bindings::host_initialize_import_meta_object_callback,
-    );
-    isolate.set_host_import_module_dynamically_callback(
-      bindings::host_import_module_dynamically_callback,
-    );
-    isolate.set_wasm_async_resolve_promise_callback(
-      bindings::wasm_async_resolve_promise_callback,
-    );
-    isolate
-  }
-
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
     let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
     let state_rc =
@@ -696,7 +690,9 @@ impl JsRuntime {
     state
   }
 
-  pub(crate) fn module_map(isolate: &v8::Isolate) -> Rc<RefCell<ModuleMap>> {
+  pub(crate) fn module_map_from(
+    isolate: &v8::Isolate,
+  ) -> Rc<RefCell<ModuleMap>> {
     let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
     let module_map_rc =
       // SAFETY: We are sure that it's a valid pointer for whole lifetime of
@@ -1091,7 +1087,7 @@ impl JsRuntime {
     &mut self,
     module_id: ModuleId,
   ) -> Result<v8::Global<v8::Object>, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map();
 
     let module_handle = module_map_rc
       .borrow()
@@ -1178,13 +1174,16 @@ impl JsRuntime {
       return;
     }
 
-    let global_context = self.global_context();
-    let mut state = self.state.borrow_mut();
-    state.inspector = Some(JsRuntimeInspector::new(
+    let context = self.global_context();
+    let scope = &mut v8::HandleScope::with_context(
       self.v8_isolate.as_mut().unwrap(),
-      global_context,
-      self.is_main,
-    ));
+      context.clone(),
+    );
+    let context = v8::Local::new(scope, context);
+
+    let mut state = self.state.borrow_mut();
+    state.inspector =
+      Some(JsRuntimeInspector::new(scope, context, self.is_main));
   }
 
   pub fn poll_value(
@@ -1430,7 +1429,7 @@ impl JsRuntime {
     scope: &mut v8::HandleScope,
   ) -> EventLoopPendingState {
     let state = Self::state(scope);
-    let module_map = Self::module_map(scope);
+    let module_map = Self::module_map_from(scope);
     let state = EventLoopPendingState::new(
       scope,
       &mut state.borrow_mut(),
@@ -1444,7 +1443,7 @@ fn get_stalled_top_level_await_message_for_module(
   scope: &mut v8::HandleScope,
   module_id: ModuleId,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map(scope);
+  let module_map = JsRuntime::module_map_from(scope);
   let module_map = module_map.borrow();
   let module_handle = module_map.handles.get(module_id).unwrap();
 
@@ -1460,7 +1459,7 @@ fn get_stalled_top_level_await_message_for_module(
 fn find_stalled_top_level_await(
   scope: &mut v8::HandleScope,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map(scope);
+  let module_map = JsRuntime::module_map_from(scope);
   let module_map = module_map.borrow();
 
   // First check if that's root module
@@ -1619,7 +1618,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> Result<(), v8::Global<v8::Value>> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1652,7 +1651,7 @@ impl JsRuntime {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map();
 
     let module_handle = module_map_rc
       .borrow()
@@ -1743,7 +1742,7 @@ impl JsRuntime {
   ) -> oneshot::Receiver<Result<(), Error>> {
     let global_realm = self.global_realm();
     let state_rc = self.state.clone();
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1884,7 +1883,7 @@ impl JsRuntime {
     id: ModuleLoadId,
     exception: v8::Global<v8::Value>,
   ) {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -1905,7 +1904,7 @@ impl JsRuntime {
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = self.state.clone();
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -1940,7 +1939,7 @@ impl JsRuntime {
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
     if self
-      .get_module_map()
+      .module_map()
       .borrow()
       .preparing_dynamic_imports
       .is_empty()
@@ -1948,7 +1947,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.get_module_map().clone();
+    let module_map_rc = self.module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -1983,7 +1982,7 @@ impl JsRuntime {
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
     if self
-      .get_module_map()
+      .module_map()
       .borrow()
       .pending_dynamic_imports
       .is_empty()
@@ -1991,7 +1990,7 @@ impl JsRuntime {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.get_module_map().clone();
+    let module_map_rc = self.module_map().clone();
 
     loop {
       let poll_result = module_map_rc
@@ -2187,7 +2186,7 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -2242,7 +2241,7 @@ impl JsRuntime {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = Self::module_map(self.v8_isolate());
+    let module_map_rc = self.module_map().clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -3421,7 +3420,7 @@ pub mod tests {
     }
 
     fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
-      let module_map_rc = runtime.get_module_map();
+      let module_map_rc = runtime.module_map();
       let module_map = module_map_rc.borrow();
       assert_eq!(module_map.handles.len(), modules.len());
       assert_eq!(module_map.info.len(), modules.len());
