@@ -27,6 +27,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::util;
+use crate::util::fs::canonicalize_path;
 
 #[derive(Error, Debug)]
 #[error(
@@ -46,9 +47,10 @@ pub struct VfsBuilder {
 }
 
 impl VfsBuilder {
-  pub fn new(root_path: PathBuf) -> Self {
+  pub fn new(root_path: PathBuf) -> Result<Self, AnyError> {
+    let root_path = canonicalize_path(&root_path)?;
     log::debug!("Building vfs with root '{}'", root_path.display());
-    Self {
+    Ok(Self {
       root_dir: VirtualDirectory {
         name: root_path
           .file_stem()
@@ -61,7 +63,7 @@ impl VfsBuilder {
       files: Vec::new(),
       current_offset: 0,
       file_offsets: Default::default(),
-    }
+    })
   }
 
   pub fn set_root_dir_name(&mut self, name: String) {
@@ -69,6 +71,14 @@ impl VfsBuilder {
   }
 
   pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
+    let path = canonicalize_path(path)?;
+    self.add_dir_recursive_internal(&path)
+  }
+
+  fn add_dir_recursive_internal(
+    &mut self,
+    path: &Path,
+  ) -> Result<(), AnyError> {
     self.add_dir(path)?;
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
@@ -79,7 +89,7 @@ impl VfsBuilder {
       let path = entry.path();
 
       if file_type.is_dir() {
-        self.add_dir_recursive(&path)?;
+        self.add_dir_recursive_internal(&path)?;
       } else if file_type.is_file() {
         let file_bytes = std::fs::read(&path)
           .with_context(|| format!("Reading {}", path.display()))?;
@@ -115,7 +125,7 @@ impl VfsBuilder {
     Ok(())
   }
 
-  pub fn add_dir(
+  fn add_dir(
     &mut self,
     path: &Path,
   ) -> Result<&mut VirtualDirectory, StripRootError> {
@@ -152,11 +162,7 @@ impl VfsBuilder {
     Ok(current_dir)
   }
 
-  pub fn add_file(
-    &mut self,
-    path: &Path,
-    data: Vec<u8>,
-  ) -> Result<(), AnyError> {
+  fn add_file(&mut self, path: &Path, data: Vec<u8>) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
     let checksum = util::checksum::gen(&[&data]);
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
@@ -193,7 +199,7 @@ impl VfsBuilder {
     Ok(())
   }
 
-  pub fn add_symlink(
+  fn add_symlink(
     &mut self,
     path: &Path,
     target: &Path,
@@ -833,6 +839,7 @@ mod test {
 
   use super::*;
 
+  #[track_caller]
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
     String::from_utf8(vfs.read_file_all(file).unwrap()).unwrap()
@@ -841,8 +848,12 @@ mod test {
   #[test]
   fn builds_and_uses_virtual_fs() {
     let temp_dir = TempDir::new();
-    let src_path = temp_dir.path().join("src");
-    let mut builder = VfsBuilder::new(src_path.clone());
+    // we canonicalize the temp directory because the vfs builder
+    // will canonicalize the root path
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let src_path = temp_dir_path.join("src");
+    temp_dir.create_dir_all(&src_path);
+    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_file(&src_path.join("a.txt"), "data".into())
       .unwrap();
@@ -911,19 +922,20 @@ mod test {
   #[test]
   fn test_include_dir_recursive() {
     let temp_dir = TempDir::new();
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
     temp_dir.create_dir_all("src/nested/sub_dir");
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
-      &temp_dir.path().join("src/nested/sub_dir"),
-      &temp_dir.path().join("src/sub_dir_link"),
+      &temp_dir_path.join("src/nested/sub_dir"),
+      &temp_dir_path.join("src/sub_dir_link"),
     )
     .unwrap();
     temp_dir.write("src/nested/sub_dir/c.txt", "c");
 
     // build and create the virtual fs
-    let src_path = temp_dir.path().join("src");
-    let mut builder = VfsBuilder::new(src_path.clone());
+    let src_path = temp_dir_path.join("src");
+    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder.add_dir_recursive(&src_path).unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
 
@@ -986,8 +998,10 @@ mod test {
   #[test]
   fn circular_symlink() {
     let temp_dir = TempDir::new();
-    let src_path = temp_dir.path().join("src");
-    let mut builder = VfsBuilder::new(src_path.clone());
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let src_path = temp_dir_path.join("src");
+    temp_dir.create_dir_all(&src_path);
+    let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"))
       .unwrap();
@@ -1019,8 +1033,8 @@ mod test {
   #[tokio::test]
   async fn test_open_file() {
     let temp_dir = TempDir::new();
-    let temp_path = temp_dir.path();
-    let mut builder = VfsBuilder::new(temp_path.to_path_buf());
+    let temp_path = canonicalize_path(temp_dir.path()).unwrap();
+    let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
       .add_file(
         &temp_path.join("a.txt"),
