@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2934
+Total: 2935
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -359,6 +359,7 @@ Total: 2934
 - [parallel/test-cli-syntax-eval.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-eval.js)
 - [parallel/test-cli-syntax-piped-bad.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-bad.js)
 - [parallel/test-cli-syntax-piped-good.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-good.js)
+- [parallel/test-client-request-destroy.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-client-request-destroy.js)
 - [parallel/test-cluster-accept-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-accept-fail.js)
 - [parallel/test-cluster-advanced-serialization.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-advanced-serialization.js)
 - [parallel/test-cluster-basic.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-basic.js)

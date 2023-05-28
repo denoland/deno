@@ -9,6 +9,7 @@ use crate::extensions::OpEventLoopFn;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::AssertedModuleType;
+use crate::modules::ExtModuleLoader;
 use crate::modules::ExtModuleLoaderCb;
 use crate::modules::ModuleCode;
 use crate::modules::ModuleError;
@@ -16,6 +17,7 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
+use crate::modules::ModuleName;
 use crate::ops::*;
 use crate::realm::ContextState;
 use crate::realm::JsRealm;
@@ -24,6 +26,7 @@ use crate::snapshot_util;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ModuleType;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -89,6 +92,7 @@ pub struct JsRuntime {
   // a safety issue with SnapshotCreator. See JsRuntime::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
   snapshot_options: snapshot_util::SnapshotOptions,
+  snapshot_module_load_cb: Option<Rc<ExtModuleLoaderCb>>,
   allocations: IsolateAllocations,
   extensions: Rc<RefCell<Vec<Extension>>>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
@@ -462,13 +466,6 @@ impl JsRuntime {
         }
       }
     }
-    let num_extensions = options.extensions.len();
-    let extensions = Rc::new(RefCell::new(options.extensions));
-    let ext_loader = Rc::new(crate::modules::ExtModuleLoader::new(
-      Some(loader.clone()),
-      extensions.clone(),
-      options.snapshot_module_load_cb,
-    ));
 
     {
       let global_realm = JsRealmInner::new(
@@ -486,8 +483,7 @@ impl JsRuntime {
       Self::STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-    let module_map_rc =
-      Rc::new(RefCell::new(ModuleMap::new(ext_loader, op_state)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
     if let Some(snapshotted_data) = maybe_snapshotted_data {
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
@@ -502,11 +498,12 @@ impl JsRuntime {
     let mut js_runtime = Self {
       v8_isolate: Some(isolate),
       snapshot_options,
+      snapshot_module_load_cb: options.snapshot_module_load_cb.map(Rc::new),
       allocations: IsolateAllocations::default(),
-      event_loop_middlewares: Vec::with_capacity(num_extensions),
-      extensions,
+      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
+      extensions: Rc::new(RefCell::new(options.extensions)),
       state: state_rc,
-      module_map: Some(module_map_rc.clone()),
+      module_map: Some(module_map_rc),
       is_main: options.is_main,
     };
 
@@ -514,9 +511,7 @@ impl JsRuntime {
     // available during the initialization process.
     js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
-    module_map_rc.borrow().loader.allow_ext_resolution();
     js_runtime.init_extension_js(&realm).unwrap();
-    module_map_rc.borrow().loader.disallow_ext_resolution();
 
     js_runtime
   }
@@ -675,21 +670,7 @@ impl JsRuntime {
       JsRealm::new(realm)
     };
 
-    self
-      .module_map
-      .as_ref()
-      .unwrap()
-      .borrow()
-      .loader
-      .allow_ext_resolution();
     self.init_extension_js(&realm)?;
-    self
-      .module_map
-      .as_ref()
-      .unwrap()
-      .borrow()
-      .loader
-      .disallow_ext_resolution();
     Ok(realm)
   }
 
@@ -730,6 +711,15 @@ impl JsRuntime {
     //  b. Load all extension "module" JS files (but do not execute them yet)
     // 2. Iterate through all extensions:
     //  a. If an extension has a `esm_entry_point`, execute it.
+
+    // TODO(nayeemrmn): Module maps should be per-realm.
+    let module_map = self.module_map.as_ref().unwrap();
+    let loader = module_map.borrow().loader.clone();
+    let ext_loader = Rc::new(ExtModuleLoader::new(
+      &self.extensions.borrow(),
+      self.snapshot_module_load_cb.clone(),
+    ));
+    module_map.borrow_mut().loader = ext_loader;
 
     let mut esm_entrypoints = vec![];
 
@@ -812,6 +802,7 @@ impl JsRuntime {
     // Restore extensions
     self.extensions = extensions;
 
+    self.module_map.as_ref().unwrap().borrow_mut().loader = loader;
     Ok(())
   }
 
@@ -1862,6 +1853,29 @@ impl JsRuntime {
     }
 
     receiver
+  }
+
+  /// Clear the module map, meant to be used after initializing extensions.
+  /// Optionally pass a list of exceptions `(old_name, new_name)` representing
+  /// specifiers which will be renamed and preserved in the module map.
+  pub fn clear_module_map(
+    &self,
+    exceptions: impl Iterator<Item = (&'static str, &'static str)>,
+  ) {
+    let mut module_map = self.module_map.as_ref().unwrap().borrow_mut();
+    let handles = exceptions
+      .map(|(old_name, new_name)| {
+        (module_map.get_handle_by_name(old_name).unwrap(), new_name)
+      })
+      .collect::<Vec<_>>();
+    module_map.clear();
+    for (handle, new_name) in handles {
+      module_map.inject_handle(
+        ModuleName::from_static(new_name),
+        ModuleType::JavaScript,
+        handle,
+      )
+    }
   }
 
   fn dynamic_import_reject(
@@ -4771,67 +4785,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         }",
       )
       .is_ok());
-  }
-
-  #[tokio::test]
-  async fn cant_load_internal_module_when_snapshot_is_loaded_and_not_snapshotting(
-  ) {
-    #[derive(Default)]
-    struct ModsLoader;
-
-    impl ModuleLoader for ModsLoader {
-      fn resolve(
-        &self,
-        specifier: &str,
-        referrer: &str,
-        _kind: ResolutionKind,
-      ) -> Result<ModuleSpecifier, Error> {
-        assert_eq!(specifier, "file:///main.js");
-        assert_eq!(referrer, ".");
-        let s = crate::resolve_import(specifier, referrer).unwrap();
-        Ok(s)
-      }
-
-      fn load(
-        &self,
-        _module_specifier: &ModuleSpecifier,
-        _maybe_referrer: Option<&ModuleSpecifier>,
-        _is_dyn_import: bool,
-      ) -> Pin<Box<ModuleSourceFuture>> {
-        let code = r#"
-        // This module doesn't really exist, just verifying that we'll get
-        // an error when specifier starts with "ext:".
-        import { core } from "ext:core.js";
-        "#;
-
-        async move { Ok(ModuleSource::for_test(code, "file:///main.js")) }
-          .boxed_local()
-      }
-    }
-
-    let snapshot = {
-      let runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
-      let snap: &[u8] = &runtime.snapshot();
-      Vec::from(snap).into_boxed_slice()
-    };
-
-    let mut runtime2 = JsRuntime::new(RuntimeOptions {
-      module_loader: Some(Rc::new(ModsLoader)),
-      startup_snapshot: Some(Snapshot::Boxed(snapshot)),
-      ..Default::default()
-    });
-
-    let err = runtime2
-      .load_main_module(&crate::resolve_url("file:///main.js").unwrap(), None)
-      .await
-      .unwrap_err();
-    assert_eq!(
-      err.to_string(),
-      "Cannot load extension module from external code"
-    );
   }
 
   #[cfg(debug_assertions)]
