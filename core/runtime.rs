@@ -414,7 +414,6 @@ impl JsRuntime {
       isolate_ptr.write(isolate);
       isolate_ptr.read()
     };
-    JsRuntime::setup_isolate(&mut isolate);
 
     let mut context_scope =
       v8::HandleScope::with_context(&mut isolate, global_context.clone());
@@ -551,6 +550,18 @@ impl JsRuntime {
       v8::Isolate::new(params)
     };
 
+    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
+    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
+    isolate.set_host_initialize_import_meta_object_callback(
+      bindings::host_initialize_import_meta_object_callback,
+    );
+    isolate.set_host_import_module_dynamically_callback(
+      bindings::host_import_module_dynamically_callback,
+    );
+    isolate.set_wasm_async_resolve_promise_callback(
+      bindings::wasm_async_resolve_promise_callback,
+    );
+
     let context = {
       let scope = &mut v8::HandleScope::new(&mut isolate);
       let context = v8::Context::new(scope);
@@ -685,20 +696,6 @@ impl JsRuntime {
   #[inline]
   pub fn handle_scope(&mut self) -> v8::HandleScope {
     self.global_realm().handle_scope(self.v8_isolate())
-  }
-
-  fn setup_isolate(isolate: &mut v8::OwnedIsolate) {
-    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
-    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
-    isolate.set_host_initialize_import_meta_object_callback(
-      bindings::host_initialize_import_meta_object_callback,
-    );
-    isolate.set_host_import_module_dynamically_callback(
-      bindings::host_import_module_dynamically_callback,
-    );
-    isolate.set_wasm_async_resolve_promise_callback(
-      bindings::wasm_async_resolve_promise_callback,
-    );
   }
 
   pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
