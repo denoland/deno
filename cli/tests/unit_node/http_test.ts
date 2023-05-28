@@ -192,6 +192,7 @@ Deno.test("[node/http] request default protocol", async () => {
   });
 
   // @ts-ignore IncomingMessageForClient
+  // deno-lint-ignore no-explicit-any
   let clientRes: any;
   server.listen(() => {
     const req = http.request(
