@@ -848,7 +848,10 @@ mod test {
   #[test]
   fn builds_and_uses_virtual_fs() {
     let temp_dir = TempDir::new();
-    let src_path = temp_dir.path().join("src");
+    // we canonicalize the temp directory because the vfs builder
+    // will canonicalize the root path
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let src_path = temp_dir_path.join("src");
     temp_dir.create_dir_all(&src_path);
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
@@ -919,18 +922,19 @@ mod test {
   #[test]
   fn test_include_dir_recursive() {
     let temp_dir = TempDir::new();
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
     temp_dir.create_dir_all("src/nested/sub_dir");
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
-      &temp_dir.path().join("src/nested/sub_dir"),
-      &temp_dir.path().join("src/sub_dir_link"),
+      &temp_dir_path.join("src/nested/sub_dir"),
+      &temp_dir_path.join("src/sub_dir_link"),
     )
     .unwrap();
     temp_dir.write("src/nested/sub_dir/c.txt", "c");
 
     // build and create the virtual fs
-    let src_path = temp_dir.path().join("src");
+    let src_path = temp_dir_path.join("src");
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder.add_dir_recursive(&src_path).unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
@@ -994,7 +998,8 @@ mod test {
   #[test]
   fn circular_symlink() {
     let temp_dir = TempDir::new();
-    let src_path = temp_dir.path().join("src");
+    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let src_path = temp_dir_path.join("src");
     temp_dir.create_dir_all(&src_path);
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
@@ -1028,7 +1033,7 @@ mod test {
   #[tokio::test]
   async fn test_open_file() {
     let temp_dir = TempDir::new();
-    let temp_path = temp_dir.path();
+    let temp_path = canonicalize_path(temp_dir.path()).unwrap();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
       .add_file(
