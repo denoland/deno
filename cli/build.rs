@@ -40,7 +40,7 @@ mod ts {
 
     let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
       .iter()
-      .map(|s| s.name)
+      .map(|p| p.module_name())
       .collect::<Vec<&str>>();
     let build_libs = state.borrow::<Vec<&str>>();
     json!({
