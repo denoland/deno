@@ -6,7 +6,7 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
-import { FileHandle } from "ext:deno_node/internal/fs/handle.ts"
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import {
   BinaryEncodings,
@@ -33,7 +33,7 @@ type TextCallback = (err: Error | null, data?: string) => void;
 type BinaryCallback = (err: Error | null, data?: Buffer) => void;
 type GenericCallback = (err: Error | null, data?: string | Buffer) => void;
 type Callback = TextCallback | BinaryCallback | GenericCallback;
-type Path = string | URL | FileHandle
+type Path = string | URL | FileHandle;
 
 export function readFile(
   path: Path,
