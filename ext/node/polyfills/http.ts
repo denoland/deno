@@ -970,6 +970,7 @@ export class IncomingMessageForClient extends NodeReadable {
   // any messages, before ever calling this.  In that case, just skip
   // it, since something else is destroying this connection anyway.
   _destroy(err, cb) {
+    this.complete = true;
     if (!this.readableEnded || !this.complete) {
       this.aborted = true;
       this.emit("aborted");
