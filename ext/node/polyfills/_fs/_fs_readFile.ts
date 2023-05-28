@@ -6,6 +6,7 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
+import { readAll } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import { fromFileUrl } from "ext:deno_node/path.ts";
 import {
@@ -69,7 +70,7 @@ export function readFile(
   let p: Promise<Uint8Array>;
   if (path instanceof FileHandle) {
     const fsFile = new Deno.FsFile(path.fd);
-    p = Deno.readAll(fsFile);
+    p = readAll(fsFile);
   } else {
     p = Deno.readFile(path);
   }
