@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import https from "node:https";
 import {
   assert,
   assertEquals,
@@ -513,7 +514,7 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
 Deno.test("[node/http] ClientRequest use HTTP/1.1", async () => {
   let body = "";
   const def = deferred();
-  const req = http.request("https://localhost:5545/http_version", {
+  const req = https.request("https://localhost:5545/http_version", {
     method: "POST",
     headers: { 1: 2 },
   }, (resp) => {
