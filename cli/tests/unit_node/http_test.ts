@@ -511,7 +511,7 @@ Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
   assertEquals(headers!["1"], "2");
 });
 
-Deno.test("[node/http] ClientRequest use HTTP/1.1", async () => {
+Deno.test("[node/http] ClientRequest uses HTTP/1.1", async () => {
   let body = "";
   const def = deferred();
   const req = https.request("https://localhost:5545/http_version", {
