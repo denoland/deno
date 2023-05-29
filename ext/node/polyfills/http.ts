@@ -641,6 +641,7 @@ class ClientRequest extends OutgoingMessage {
         }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
+        incoming.req = this;
 
         // TODO(@crowlKats):
         // incoming.httpVersionMajor = versionMajor;
@@ -1211,6 +1212,8 @@ function matchKnownFields(field, lowercased) {
 }
 
 function onError(self, error, cb) {
+  console.log("foo");
+  console.log(self);
   // This is to keep backward compatible behavior.
   // An error is emitted only if there are listeners attached to the event.
   if (self.listenerCount("error") === 0) {

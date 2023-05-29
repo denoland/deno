@@ -1540,6 +1540,7 @@ Deno.test(
     await assertRejects(
       () => fetch("http://localhost:5549/http_version", { client }),
       TypeError,
+      "invalid HTTP version parsed",
     );
     client.close();
   },
