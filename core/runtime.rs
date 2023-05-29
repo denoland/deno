@@ -353,53 +353,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     DENO_INIT.call_once(move || v8_init(v8_platform, predictable));
   }
 
-  pub fn new_for_snapshot(
-    mut options: RuntimeOptions,
-    runtime_snapshot_options: RuntimeSnapshotOptions,
-  ) -> JsRuntimeImpl<true> {
-    Self::init_v8(options.v8_platform.take(), true);
-
-    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
-      options.startup_snapshot.take(),
-      true,
-    );
-
-    // TODO(mmastrac): We should not be printing here
-    #[cfg(feature = "include_js_files_for_snapshotting")]
-    for source in options
-      .extensions
-      .iter()
-      .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
-      .flatten()
-      .flatten()
-    {
-      use crate::ExtensionFileSourceCode;
-      if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-        &source.code
-      {
-        println!("cargo:rerun-if-changed={}", path.display())
-      }
-    }
-
-    JsRuntimeImpl::<true>::new_runtime(
-      options,
-      snapshot_options,
-      runtime_snapshot_options.snapshot_module_load_cb,
-    )
-  }
-
-  /// Only constructor, configuration is done through `options`.
-  pub fn new(mut options: RuntimeOptions) -> JsRuntimeImpl<false> {
-    Self::init_v8(options.v8_platform.take(), false);
-
-    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
-      options.startup_snapshot.take(),
-      false,
-    );
-
-    JsRuntimeImpl::<false>::new_runtime(options, snapshot_options, None)
-  }
-
   fn new_runtime(
     mut options: RuntimeOptions,
     snapshot_options: SnapshotOptions,
@@ -1494,6 +1447,43 @@ impl JsRuntime {
   }
 }
 
+impl JsRuntimeImpl<true> {
+  pub fn new(
+    mut options: RuntimeOptions,
+    runtime_snapshot_options: RuntimeSnapshotOptions,
+  ) -> JsRuntimeImpl<true> {
+    Self::init_v8(options.v8_platform.take(), true);
+
+    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
+      options.startup_snapshot.take(),
+      true,
+    );
+
+    // TODO(mmastrac): We should not be printing here
+    #[cfg(feature = "include_js_files_for_snapshotting")]
+    for source in options
+      .extensions
+      .iter()
+      .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+      .flatten()
+      .flatten()
+    {
+      use crate::ExtensionFileSourceCode;
+      if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+        &source.code
+      {
+        println!("cargo:rerun-if-changed={}", path.display())
+      }
+    }
+
+    JsRuntimeImpl::<true>::new_runtime(
+      options,
+      snapshot_options,
+      runtime_snapshot_options.snapshot_module_load_cb,
+    )
+  }
+}
+
 impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
   fn create_raw_isolate(
     refs: &'static v8::ExternalReferences,
@@ -1501,6 +1491,20 @@ impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
     snapshot: SnapshotOptions,
   ) -> v8::OwnedIsolate {
     snapshot_util::create_snapshot_creator(refs, snapshot)
+  }
+}
+
+impl JsRuntimeImpl<false> {
+  /// Only constructor, configuration is done through `options`.
+  pub fn new(mut options: RuntimeOptions) -> JsRuntimeImpl<false> {
+    Self::init_v8(options.v8_platform.take(), false);
+
+    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
+      options.startup_snapshot.take(),
+      false,
+    );
+
+    JsRuntimeImpl::<false>::new_runtime(options, snapshot_options, None)
   }
 }
 
@@ -3148,7 +3152,7 @@ pub mod tests {
   fn will_snapshot() {
     let snapshot = {
       let mut runtime =
-        JsRuntime::new_for_snapshot(Default::default(), Default::default());
+        JsRuntimeForSnapshot::new(Default::default(), Default::default());
       runtime.execute_script_static("a.js", "a = 1 + 2").unwrap();
       runtime.snapshot()
     };
@@ -3167,7 +3171,7 @@ pub mod tests {
   fn will_snapshot2() {
     let startup_data = {
       let mut runtime =
-        JsRuntime::new_for_snapshot(Default::default(), Default::default());
+        JsRuntimeForSnapshot::new(Default::default(), Default::default());
       runtime
         .execute_script_static("a.js", "let a = 1 + 2")
         .unwrap();
@@ -3175,7 +3179,7 @@ pub mod tests {
     };
 
     let snapshot = Snapshot::JustCreated(startup_data);
-    let mut runtime = JsRuntime::new_for_snapshot(
+    let mut runtime = JsRuntimeForSnapshot::new(
       RuntimeOptions {
         startup_snapshot: Some(snapshot),
         ..Default::default()
@@ -3210,7 +3214,7 @@ pub mod tests {
   fn test_snapshot_callbacks() {
     let snapshot = {
       let mut runtime =
-        JsRuntime::new_for_snapshot(Default::default(), Default::default());
+        JsRuntimeForSnapshot::new(Default::default(), Default::default());
       runtime
         .execute_script_static(
           "a.js",
@@ -3245,7 +3249,7 @@ pub mod tests {
   fn test_from_boxed_snapshot() {
     let snapshot = {
       let mut runtime =
-        JsRuntime::new_for_snapshot(Default::default(), Default::default());
+        JsRuntimeForSnapshot::new(Default::default(), Default::default());
       runtime.execute_script_static("a.js", "a = 1 + 2").unwrap();
       let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
@@ -3541,7 +3545,7 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new_for_snapshot(
+    let mut runtime = JsRuntimeForSnapshot::new(
       RuntimeOptions {
         module_loader: Some(loader.clone()),
         extensions: vec![Extension::builder("text_ext")
@@ -3579,7 +3583,7 @@ pub mod tests {
 
     let snapshot = runtime.snapshot();
 
-    let mut runtime2 = JsRuntime::new_for_snapshot(
+    let mut runtime2 = JsRuntimeForSnapshot::new(
       RuntimeOptions {
         module_loader: Some(loader.clone()),
         startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
@@ -4572,7 +4576,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   fn js_realm_init_snapshot() {
     let snapshot = {
       let runtime =
-        JsRuntime::new_for_snapshot(Default::default(), Default::default());
+        JsRuntimeForSnapshot::new(Default::default(), Default::default());
       let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };

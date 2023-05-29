@@ -7,7 +7,7 @@ use std::time::Instant;
 use crate::runtime::RuntimeSnapshotOptions;
 use crate::ExtModuleLoaderCb;
 use crate::Extension;
-use crate::JsRuntime;
+use crate::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 
@@ -25,7 +25,7 @@ pub struct CreateSnapshotOptions {
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   let mut mark = Instant::now();
 
-  let js_runtime = JsRuntime::new_for_snapshot(
+  let js_runtime = JsRuntimeForSnapshot::new(
     RuntimeOptions {
       startup_snapshot: create_snapshot_options.startup_snapshot,
       extensions: create_snapshot_options.extensions,

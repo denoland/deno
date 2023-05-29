@@ -3,7 +3,7 @@ use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::JsRuntime;
+use deno_core::JsRuntimeForSnapshot;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -103,7 +103,7 @@ fn create_js_runtime() -> JsRuntimeForSnapshot {
     ])
     .build();
 
-  JsRuntime::new_for_snapshot(
+  JsRuntimeForSnapshot::new(
     deno_core::RuntimeOptions {
       extensions: vec![ext],
       ..Default::default()

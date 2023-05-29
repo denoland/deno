@@ -1719,6 +1719,7 @@ mod tests {
   use super::*;
   use crate::ascii_str;
   use crate::JsRuntime;
+  use crate::JsRuntimeForSnapshot;
   use crate::RuntimeOptions;
   use crate::Snapshot;
   use deno_ops::op;
@@ -2889,7 +2890,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new_for_snapshot(
+      let mut runtime = JsRuntimeForSnapshot::new(
         RuntimeOptions {
           module_loader: Some(loader),
           ..Default::default()
@@ -2933,7 +2934,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new_for_snapshot(
+      let mut runtime = JsRuntimeForSnapshot::new(
         RuntimeOptions {
           module_loader: Some(loader),
           ..Default::default()
