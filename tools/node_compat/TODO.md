@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
 
-Total: 2935
+Total: 2934
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -88,7 +88,6 @@ Total: 2935
 - [internet/test-dns-cares-domains.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-cares-domains.js)
 - [internet/test-dns-txt-sigsegv.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-txt-sigsegv.js)
 - [internet/test-http-dns-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-dns-fail.js)
-- [internet/test-http-https-default-ports.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-https-default-ports.js)
 - [internet/test-http2-issue-32922.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http2-issue-32922.js)
 - [internet/test-https-issue-43963.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-https-issue-43963.js)
 - [internet/test-inspector-help-page.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-inspector-help-page.js)
