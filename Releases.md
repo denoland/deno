@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 1.34.1 / 2023.05.29
 
-- Revert "chore(lsp/tests): diagnostic synchronization (#19264)" (#19268)
 - fix(compile): handle when DENO_DIR is readonly (#19257)
 - fix(compile): implicit read permission to npm vfs (#19281)
 - fix(compile): improve panic message when stripping root path fails (#19258)
