@@ -53,11 +53,11 @@ use std::ffi::c_void;
 use std::option::Option;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Once;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::task::Context;
 use std::task::Poll;
 use v8::CreateParams;
@@ -314,7 +314,7 @@ trait JsRuntimeInternalTrait {
   fn create_raw_isolate(
     refs: &'static v8::ExternalReferences,
     params: Option<CreateParams>,
-    snapshot: Option<Snapshot>,
+    snapshot: SnapshotOptions,
   ) -> v8::OwnedIsolate;
 }
 
@@ -334,7 +334,10 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   const STATE_DATA_OFFSET: u32 = 0;
   const MODULE_MAP_DATA_OFFSET: u32 = 1;
 
-  fn init_v8(v8_platform: Option<v8::SharedRef<v8::Platform>>, for_snapshotting: bool) {
+  fn init_v8(
+    v8_platform: Option<v8::SharedRef<v8::Platform>>,
+    for_snapshotting: bool,
+  ) {
     static DENO_INIT: Once = Once::new();
     static DENO_PREDICTABLE: AtomicBool = AtomicBool::new(false);
     static DENO_PREDICTABLE_SET: AtomicBool = AtomicBool::new(false);
@@ -405,7 +408,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   where
     JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait,
   {
-    let (op_state, ops) = Self::create_opstate(&mut options);
+    let (op_state, ops) = Self::create_opstate(&mut options, &snapshot_options);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -470,10 +473,17 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
 
+    let bindings_mode = match snapshot_options {
+      SnapshotOptions::None => bindings::BindingsMode::New,
+      SnapshotOptions::Create => bindings::BindingsMode::New,
+      SnapshotOptions::Load(_) => bindings::BindingsMode::LoadedFinal,
+      SnapshotOptions::CreateFromExisting(_) => bindings::BindingsMode::Loaded,
+    };
+
     let (mut isolate, global_context, snapshotted_data) = Self::create_isolate(
       refs,
       options.create_params.take(),
-      options.startup_snapshot.take(),
+      snapshot_options,
     );
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
     // not overwriting an existing pointer.
@@ -486,13 +496,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       v8::HandleScope::with_context(&mut isolate, global_context.clone());
     let scope = &mut context_scope;
     let context = v8::Local::new(scope, global_context.clone());
-
-    let bindings_mode = match snapshot_options {
-      SnapshotOptions::None => bindings::BindingsMode::New,
-      SnapshotOptions::Create => bindings::BindingsMode::New,
-      SnapshotOptions::Load(_) => bindings::BindingsMode::LoadedFinal,
-      SnapshotOptions::CreateFromExisting(_) => bindings::BindingsMode::Loaded,
-    };
 
     bindings::initialize_context(
       scope,
@@ -565,7 +568,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   fn create_isolate(
     refs: &'static v8::ExternalReferences,
     params: Option<CreateParams>,
-    snapshot: Option<Snapshot>,
+    snapshot: SnapshotOptions,
   ) -> (
     v8::OwnedIsolate,
     v8::Global<v8::Context>,
@@ -574,7 +577,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   where
     JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait,
   {
-    let has_snapshot = snapshot.is_some();
+    let has_snapshot = snapshot.loaded();
     let mut isolate = Self::create_raw_isolate(refs, params, snapshot);
 
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
@@ -749,7 +752,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
     futures::executor::block_on(async {
       for extension in &extensions {
-        println!("{} {:?} {:?}", extension.name, extension.get_esm_sources(), extension.get_js_sources());
         let maybe_esm_entry_point = extension.get_esm_entry_point();
 
         if let Some(esm_files) = extension.get_esm_sources() {
@@ -876,11 +878,12 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   }
 
   /// Initializes ops of provided Extensions
-  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
+  fn create_opstate(
+    options: &mut RuntimeOptions,
+    snapshot_options: &SnapshotOptions,
+  ) -> (OpState, Vec<OpDecl>) {
     // Add builtins extension
-    // TODO(bartlomieju): remove this in favor of `SnapshotOptions`.
-    let has_startup_snapshot = options.startup_snapshot.is_some();
-    if has_startup_snapshot {
+    if snapshot_options.loaded() {
       options
         .extensions
         .insert(0, crate::ops_builtin::core::init_ops());
@@ -1495,7 +1498,7 @@ impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
   fn create_raw_isolate(
     refs: &'static v8::ExternalReferences,
     _params: Option<CreateParams>,
-    snapshot: Option<Snapshot>,
+    snapshot: SnapshotOptions,
   ) -> v8::OwnedIsolate {
     snapshot_util::create_snapshot_creator(refs, snapshot)
   }
@@ -1505,7 +1508,7 @@ impl JsRuntimeInternalTrait for JsRuntimeImpl<false> {
   fn create_raw_isolate(
     refs: &'static v8::ExternalReferences,
     params: Option<CreateParams>,
-    snapshot: Option<Snapshot>,
+    snapshot: SnapshotOptions,
   ) -> v8::OwnedIsolate {
     let mut params = params
       .unwrap_or_default()
@@ -1515,7 +1518,7 @@ impl JsRuntimeInternalTrait for JsRuntimeImpl<false> {
       )
       .external_references(&**refs);
 
-    if let Some(snapshot) = snapshot {
+    if let Some(snapshot) = snapshot.snapshot() {
       params = match snapshot {
         Snapshot::Static(data) => params.snapshot_blob(data),
         Snapshot::JustCreated(data) => params.snapshot_blob(data),

@@ -141,6 +141,18 @@ impl SnapshotOptions {
       (None, false) => Self::None,
     }
   }
+
+  pub fn loaded(&self) -> bool {
+    matches!(self, Self::Load(_) | Self::CreateFromExisting(_))
+  }
+
+  pub fn snapshot(self) -> Option<Snapshot> {
+    match self {
+      Self::CreateFromExisting(snapshot) => Some(snapshot),
+      Self::Load(snapshot) => Some(snapshot),
+      _ => None,
+    }
+  }
 }
 
 pub(crate) struct SnapshottedData {
@@ -213,9 +225,9 @@ pub(crate) fn set_snapshotted_data(
 /// Returns an isolate set up for snapshotting.
 pub(crate) fn create_snapshot_creator(
   external_refs: &'static v8::ExternalReferences,
-  maybe_startup_snapshot: Option<Snapshot>,
+  maybe_startup_snapshot: SnapshotOptions,
 ) -> v8::OwnedIsolate {
-  if let Some(snapshot) = maybe_startup_snapshot {
+  if let Some(snapshot) = maybe_startup_snapshot.snapshot() {
     match snapshot {
       Snapshot::Static(data) => {
         v8::Isolate::snapshot_creator_from_existing_snapshot(
