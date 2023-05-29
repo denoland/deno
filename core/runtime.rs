@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
+use crate::bindings::BindingsMode;
 use crate::error::generic_error;
 use crate::error::to_v8_type_error;
 use crate::error::JsError;
@@ -23,6 +24,8 @@ use crate::realm::ContextState;
 use crate::realm::JsRealm;
 use crate::realm::JsRealmInner;
 use crate::snapshot_util;
+use crate::snapshot_util::SnapshotOptions;
+use crate::snapshot_util::SnapshottedData;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
@@ -76,29 +79,31 @@ struct IsolateAllocations {
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. A JsRuntime is a Future that can be used with
+/// Worker" concept in the DOM. A JsRuntimeImpl is a Future that can be used with
 /// an event loop (Tokio, async_std).
 ////
-/// The JsRuntime future completes when there is an error or when all
+/// The JsRuntimeImpl future completes when there is an error or when all
 /// pending ops have completed.
 ///
 /// Pending ops are created in JavaScript by calling Deno.core.opAsync(), and in Rust
 /// by implementing an async function that takes a serde::Deserialize "control argument"
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
-pub struct JsRuntime {
+pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
   state: Rc<RefCell<JsRuntimeState>>,
   module_map: Option<Rc<RefCell<ModuleMap>>>,
   // This is an Option<OwnedIsolate> instead of just OwnedIsolate to workaround
-  // a safety issue with SnapshotCreator. See JsRuntime::drop.
+  // a safety issue with SnapshotCreator. See JsRuntimeImpl::drop.
   v8_isolate: Option<v8::OwnedIsolate>,
-  snapshot_options: snapshot_util::SnapshotOptions,
-  snapshot_module_load_cb: Option<Rc<ExtModuleLoaderCb>>,
   allocations: IsolateAllocations,
   extensions: Rc<RefCell<Vec<Extension>>>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
+  bindings_mode: BindingsMode,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
 }
+
+pub type JsRuntime = JsRuntimeImpl<false>;
+pub type JsRuntimeForSnapshot = JsRuntimeImpl<true>;
 
 pub(crate) struct DynImportModEvaluate {
   load_id: ModuleLoadId,
@@ -156,7 +161,7 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
-/// Internal state for JsRuntime which is stored in one of v8::Isolate's
+/// Internal state for JsRuntimeImpl which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
@@ -253,7 +258,7 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntime extensions, not to be confused with ES modules.
+  /// JsRuntimeImpl extensions, not to be confused with ES modules.
   /// Only ops registered by extensions will be initialized. If you need
   /// to execute JS code from extensions, pass source files in `js` or `esm`
   /// option on `ExtensionBuilder`.
@@ -264,15 +269,6 @@ pub struct RuntimeOptions {
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
-
-  /// Prepare runtime to take snapshot of loaded code.
-  /// The snapshot is deterministic and uses predictable random numbers.
-  pub will_snapshot: bool,
-
-  /// An optional callback that will be called for each module that is loaded
-  /// during snapshotting. This callback can be used to transpile source on the
-  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
-  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 
   /// Isolate creation parameters.
   pub create_params: Option<v8::CreateParams>,
@@ -304,7 +300,22 @@ pub struct RuntimeOptions {
   pub is_main: bool,
 }
 
-impl Drop for JsRuntime {
+#[derive(Default)]
+pub struct RuntimeSnapshotOptions {
+  /// An optional callback that will be called for each module that is loaded
+  /// during snapshotting. This callback can be used to transpile source on the
+  /// fly, during snapshotting, eg. to transpile TypeScript to JavaScript.
+  pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
+}
+
+trait JsRuntimeInternalTrait {
+  fn create_raw_isolate(refs: &'static v8::ExternalReferences,
+    params: Option<CreateParams>,
+    snapshot: Option<Snapshot>,
+  ) -> v8::OwnedIsolate;
+}
+
+impl <const FOR_SNAPSHOT: bool> Drop for JsRuntimeImpl<FOR_SNAPSHOT> {
   fn drop(&mut self) {
     // Forcibly destroy all outstanding realms
     self.state.borrow_mut().destroy_all_realms();
@@ -316,37 +327,67 @@ impl Drop for JsRuntime {
   }
 }
 
-impl JsRuntime {
+impl <const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   const STATE_DATA_OFFSET: u32 = 0;
   const MODULE_MAP_DATA_OFFSET: u32 = 1;
 
-  /// Only constructor, configuration is done through `options`.
-  pub fn new(mut options: RuntimeOptions) -> Self {
+  pub fn new_for_snapshot(mut options: RuntimeOptions, runtime_snapshot_options: RuntimeSnapshotOptions) -> JsRuntimeImpl<true> {
     let v8_platform = options.v8_platform.take();
 
     static DENO_INIT: Once = Once::new();
-    DENO_INIT.call_once(move || v8_init(v8_platform, options.will_snapshot));
+    DENO_INIT.call_once(move || v8_init(v8_platform, true));
 
-    // Add builtins extension
-    // TODO(bartlomieju): remove this in favor of `SnapshotOptions`.
-    let has_startup_snapshot = options.startup_snapshot.is_some();
-    if !has_startup_snapshot {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
-    } else {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops());
+    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
+      options.startup_snapshot.take(),
+      true,
+    );
+
+    // TODO(mmastrac): We should not be printing here
+    #[cfg(feature = "include_js_files_for_snapshotting")]
+    for source in options
+      .extensions
+      .iter()
+      .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+      .flatten()
+      .flatten()
+    {
+      use crate::ExtensionFileSourceCode;
+      if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+        &source.code
+      {
+        println!("cargo:rerun-if-changed={}", path.display())
+      }
     }
 
-    let ops = Self::collect_ops(&mut options.extensions);
-    let mut op_state = OpState::new(ops.len());
+    JsRuntimeImpl::<true>::new_runtime(options, snapshot_options, runtime_snapshot_options.snapshot_module_load_cb)
+  }
 
-    if let Some(get_error_class_fn) = options.get_error_class_fn {
-      op_state.get_error_class_fn = get_error_class_fn;
-    }
+  /// Only constructor, configuration is done through `options`.
+  pub fn new(mut options: RuntimeOptions) -> JsRuntimeImpl<false> {
+    let v8_platform = options.v8_platform.take();
+
+    static DENO_INIT: Once = Once::new();
+    DENO_INIT.call_once(move || v8_init(v8_platform, false));
+
+    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
+      options.startup_snapshot.take(),
+      false,
+    );
+
+    JsRuntimeImpl::<false>::new_runtime(options, snapshot_options, None)
+  }
+
+  fn new_runtime(mut options: RuntimeOptions, snapshot_options: SnapshotOptions, maybe_load_callback: Option<ExtModuleLoaderCb>) -> JsRuntimeImpl<FOR_SNAPSHOT> where JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait {
+    let (op_state, ops) = Self::create_opstate(&mut options);
     let op_state = Rc::new(RefCell::new(op_state));
+
+    // Collect event-loop middleware
+    let mut event_loop_middlewares = Vec::with_capacity(options.extensions.len());
+    for extension in &mut options.extensions {
+      if let Some(middleware) = extension.init_event_loop_middleware() {
+        event_loop_middlewares.push(middleware);
+      }      
+    }
 
     let align = std::mem::align_of::<usize>();
     let layout = std::alloc::Layout::from_size_align(
@@ -397,17 +438,11 @@ impl JsRuntime {
     context_state.borrow_mut().op_ctxs = op_ctxs;
     context_state.borrow_mut().isolate = Some(isolate_ptr);
 
-    let snapshot_options = snapshot_util::SnapshotOptions::from_bools(
-      options.startup_snapshot.is_some(),
-      options.will_snapshot,
-    );
     let refs = bindings::external_references(&context_state.borrow().op_ctxs);
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
-    let mut maybe_snapshotted_data = None;
 
-    let (mut isolate, global_context) = Self::create_isolate(
-      snapshot_options.will_snapshot(),
+    let (mut isolate, global_context, snapshotted_data) = Self::create_isolate(
       refs,
       options.create_params.take(),
       options.startup_snapshot.take(),
@@ -424,18 +459,19 @@ impl JsRuntime {
     let scope = &mut context_scope;
     let context = v8::Local::new(scope, global_context.clone());
 
+    let bindings_mode = match snapshot_options {
+      SnapshotOptions::None => bindings::BindingsMode::New,
+      SnapshotOptions::Create => bindings::BindingsMode::New,
+      SnapshotOptions::Load(_) => bindings::BindingsMode::LoadedFinal,
+      SnapshotOptions::CreateFromExisting(_) => bindings::BindingsMode::Loaded,
+    };
+
     bindings::initialize_context(
       scope,
       context,
       &context_state.borrow().op_ctxs,
-      snapshot_options,
+      bindings_mode,
     );
-
-    // Get module map data from the snapshot
-    if has_startup_snapshot {
-      maybe_snapshotted_data =
-        Some(snapshot_util::get_snapshotted_data(scope, context));
-    }
 
     context.set_slot(scope, context_state.clone());
 
@@ -449,23 +485,6 @@ impl JsRuntime {
     let loader = options
       .module_loader
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
-    #[cfg(feature = "include_js_files_for_snapshotting")]
-    if snapshot_options.will_snapshot() {
-      for source in options
-        .extensions
-        .iter()
-        .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
-        .flatten()
-        .flatten()
-      {
-        use crate::ExtensionFileSourceCode;
-        if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-          &source.code
-        {
-          println!("cargo:rerun-if-changed={}", path.display())
-        }
-      }
-    }
 
     {
       let global_realm = JsRealmInner::new(
@@ -484,7 +503,7 @@ impl JsRuntime {
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
     let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
-    if let Some(snapshotted_data) = maybe_snapshotted_data {
+    if let Some(snapshotted_data) = snapshotted_data {
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
     }
@@ -495,55 +514,31 @@ impl JsRuntime {
 
     drop(context_scope);
 
-    let mut js_runtime = Self {
+    let mut js_runtime = JsRuntimeImpl {
       v8_isolate: Some(isolate),
-      snapshot_options,
-      snapshot_module_load_cb: options.snapshot_module_load_cb.map(Rc::new),
+      bindings_mode,
       allocations: IsolateAllocations::default(),
-      event_loop_middlewares: Vec::with_capacity(options.extensions.len()),
+      event_loop_middlewares,
       extensions: Rc::new(RefCell::new(options.extensions)),
       state: state_rc,
       module_map: Some(module_map_rc),
       is_main: options.is_main,
     };
 
-    // Init resources and ops before extensions to make sure they are
-    // available during the initialization process.
-    js_runtime.init_extension_ops().unwrap();
     let realm = js_runtime.global_realm();
-    js_runtime.init_extension_js(&realm).unwrap();
+    js_runtime.init_extension_js(&realm, maybe_load_callback).unwrap();
 
     js_runtime
   }
 
   /// Create a new [`v8::OwnedIsolate`] and its global [`v8::Context`] from optional parameters and snapshot.
   fn create_isolate(
-    will_snapshot: bool,
     refs: &'static v8::ExternalReferences,
     params: Option<CreateParams>,
     snapshot: Option<Snapshot>,
-  ) -> (v8::OwnedIsolate, v8::Global<v8::Context>) {
-    let mut isolate = if will_snapshot {
-      snapshot_util::create_snapshot_creator(refs, snapshot)
-    } else {
-      let mut params = params
-        .unwrap_or_default()
-        .embedder_wrapper_type_info_offsets(
-          V8_WRAPPER_TYPE_INDEX,
-          V8_WRAPPER_OBJECT_INDEX,
-        )
-        .external_references(&**refs);
-
-      if let Some(snapshot) = snapshot {
-        params = match snapshot {
-          Snapshot::Static(data) => params.snapshot_blob(data),
-          Snapshot::JustCreated(data) => params.snapshot_blob(data),
-          Snapshot::Boxed(data) => params.snapshot_blob(data),
-        };
-      }
-
-      v8::Isolate::new(params)
-    };
+  ) -> (v8::OwnedIsolate, v8::Global<v8::Context>, Option<SnapshottedData>) where JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait {
+    let has_snapshot = snapshot.is_some();
+    let mut isolate = Self::create_raw_isolate(refs, params, snapshot);
 
     isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
     isolate.set_promise_reject_callback(bindings::promise_reject_callback);
@@ -557,12 +552,21 @@ impl JsRuntime {
       bindings::wasm_async_resolve_promise_callback,
     );
 
-    let context = {
+    let (context, snapshotted_data) = {
       let scope = &mut v8::HandleScope::new(&mut isolate);
       let context = v8::Context::new(scope);
-      v8::Global::new(scope, context)
+
+      // Get module map data from the snapshot
+      let snapshotted_data = if has_snapshot {
+        Some(snapshot_util::get_snapshotted_data(scope, context))
+      } else {
+        None
+      };
+
+      (v8::Global::new(scope, context), snapshotted_data)
     };
-    (isolate, context)
+
+    (isolate, context, snapshotted_data)
   }
 
   fn drop_state_and_module_map(v8_isolate: &mut OwnedIsolate) {
@@ -616,7 +620,7 @@ impl JsRuntime {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntimeImpl`] was
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
@@ -656,7 +660,7 @@ impl JsRuntime {
         scope,
         context,
         &context_state.borrow().op_ctxs,
-        self.snapshot_options,
+        self.bindings_mode,
       );
       context.set_slot(scope, context_state.clone());
       let realm = JsRealmInner::new(
@@ -670,7 +674,7 @@ impl JsRuntime {
       JsRealm::new(realm)
     };
 
-    self.init_extension_js(&realm)?;
+    self.init_extension_js(&realm, None)?;
     Ok(realm)
   }
 
@@ -679,33 +683,9 @@ impl JsRuntime {
     self.global_realm().handle_scope(self.v8_isolate())
   }
 
-  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
-    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
-    let state_rc =
-      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
-      // the runtime.
-      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
-    let state = state_rc.clone();
-    Rc::into_raw(state_rc);
-    state
-  }
-
-  pub(crate) fn module_map_from(
-    isolate: &v8::Isolate,
-  ) -> Rc<RefCell<ModuleMap>> {
-    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
-    let module_map_rc =
-      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
-      // the runtime.
-      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
-    let module_map = module_map_rc.clone();
-    Rc::into_raw(module_map_rc);
-    module_map
-  }
-
   /// Initializes JS of provided Extensions in the given realm.
-  fn init_extension_js(&mut self, realm: &JsRealm) -> Result<(), Error> {
-    // Initalization of JS happens in phases:
+  fn init_extension_js(&mut self, realm: &JsRealm, maybe_load_callback: Option<ExtModuleLoaderCb>) -> Result<(), Error> {
+    // Initialization of JS happens in phases:
     // 1. Iterate through all extensions:
     //  a. Execute all extension "script" JS files
     //  b. Load all extension "module" JS files (but do not execute them yet)
@@ -717,7 +697,7 @@ impl JsRuntime {
     let loader = module_map.borrow().loader.clone();
     let ext_loader = Rc::new(ExtModuleLoader::new(
       &self.extensions.borrow(),
-      self.snapshot_module_load_cb.clone(),
+      maybe_load_callback.map(Rc::new),
     ));
     module_map.borrow_mut().loader = ext_loader;
 
@@ -866,19 +846,35 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn init_extension_ops(&mut self) -> Result<(), Error> {
-    let op_state = self.op_state();
-    // Setup state
-    for e in self.extensions.borrow_mut().iter_mut() {
-      // ops are already registered during in bindings::initialize_context();
-      e.init_state(&mut op_state.borrow_mut());
-
-      // Setup event-loop middleware
-      if let Some(middleware) = e.init_event_loop_middleware() {
-        self.event_loop_middlewares.push(middleware);
-      }
+  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
+    // Add builtins extension
+    // TODO(bartlomieju): remove this in favor of `SnapshotOptions`.
+    let has_startup_snapshot = options.startup_snapshot.is_some();
+    if !has_startup_snapshot {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::core::init_ops());
     }
-    Ok(())
+
+    let ops = Self::collect_ops(&mut options.extensions);
+
+    let mut op_state = OpState::new(ops.len());
+
+    if let Some(get_error_class_fn) = options.get_error_class_fn {
+      op_state.get_error_class_fn = get_error_class_fn;
+    }
+
+    // Setup state
+    for e in options.extensions.iter_mut() {
+      // ops are already registered during in bindings::initialize_context();
+      e.init_state(&mut op_state);
+    }
+
+    (op_state, ops)
   }
 
   pub fn eval<'s, T>(
@@ -1428,14 +1424,74 @@ impl JsRuntime {
   pub(crate) fn event_loop_pending_state_from_scope(
     scope: &mut v8::HandleScope,
   ) -> EventLoopPendingState {
-    let state = Self::state(scope);
-    let module_map = Self::module_map_from(scope);
+    let state = JsRuntime::state(scope);
+    let module_map = JsRuntime::module_map_from(scope);
     let state = EventLoopPendingState::new(
       scope,
       &mut state.borrow_mut(),
       &module_map.borrow(),
     );
     state
+  }
+}
+
+impl JsRuntime {
+  pub(crate) fn state(isolate: &v8::Isolate) -> Rc<RefCell<JsRuntimeState>> {
+    let state_ptr = isolate.get_data(Self::STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    Rc::into_raw(state_rc);
+    state
+  }
+
+  pub(crate) fn module_map_from(
+    isolate: &v8::Isolate,
+  ) -> Rc<RefCell<ModuleMap>> {
+    let module_map_ptr = isolate.get_data(Self::MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    Rc::into_raw(module_map_rc);
+    module_map
+  }
+}
+
+impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
+  fn create_raw_isolate(refs: &'static v8::ExternalReferences,
+    _params: Option<CreateParams>,
+    snapshot: Option<Snapshot>,
+  ) -> v8::OwnedIsolate {
+    snapshot_util::create_snapshot_creator(refs, snapshot)
+  }
+}
+
+impl JsRuntimeInternalTrait for JsRuntimeImpl<false> {
+  fn create_raw_isolate(refs: &'static v8::ExternalReferences,
+    params: Option<CreateParams>,
+    snapshot: Option<Snapshot>,
+  ) -> v8::OwnedIsolate {
+    let mut params = params
+    .unwrap_or_default()
+    .embedder_wrapper_type_info_offsets(
+      V8_WRAPPER_TYPE_INDEX,
+      V8_WRAPPER_OBJECT_INDEX,
+    )
+    .external_references(&**refs);
+
+    if let Some(snapshot) = snapshot {
+      params = match snapshot {
+        Snapshot::Static(data) => params.snapshot_blob(data),
+        Snapshot::JustCreated(data) => params.snapshot_blob(data),
+        Snapshot::Boxed(data) => params.snapshot_blob(data),
+      };
+    }
+
+    v8::Isolate::new(params)
   }
 }
 
@@ -1459,7 +1515,7 @@ fn get_stalled_top_level_await_message_for_module(
 fn find_stalled_top_level_await(
   scope: &mut v8::HandleScope,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map_from(scope);
+  let module_map = JsRuntimeImpl::module_map_from(scope);
   let module_map = module_map.borrow();
 
   // First check if that's root module
@@ -1544,7 +1600,7 @@ where
   F: FnMut(usize, usize) -> usize,
 {
   // SAFETY: The data is a pointer to the Rust callback function. It is stored
-  // in `JsRuntime::allocations` and thus is guaranteed to outlive the isolate.
+  // in `JsRuntimeImpl::allocations` and thus is guaranteed to outlive the isolate.
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
 }
@@ -1567,7 +1623,7 @@ pub(crate) fn exception_to_err_result<T>(
   exception: v8::Local<v8::Value>,
   in_promise: bool,
 ) -> Result<T, Error> {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRuntimeImpl::state(scope);
 
   let was_terminating_execution = scope.is_execution_terminating();
   // Disable running microtasks for a moment. When upgrading to V8 v11.4
@@ -1613,7 +1669,7 @@ pub(crate) fn exception_to_err_result<T>(
 }
 
 // Related to module loading
-impl JsRuntime {
+impl <const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   pub(crate) fn instantiate_module(
     &mut self,
     id: ModuleId,
@@ -1729,11 +1785,11 @@ impl JsRuntime {
   /// Evaluates an already instantiated ES module.
   ///
   /// Returns a receiver handle that resolves when module promise resolves.
-  /// Implementors must manually call [`JsRuntime::run_event_loop`] to drive
+  /// Implementors must manually call [`JsRuntimeImpl::run_event_loop`] to drive
   /// module evaluation future.
   ///
   /// `Error` can usually be downcast to `JsError` and should be awaited and
-  /// checked after [`JsRuntime::run_event_loop`] completion.
+  /// checked after [`JsRuntimeImpl::run_event_loop`] completion.
   ///
   /// This function panics if module has not been instantiated.
   pub fn mod_evaluate(
@@ -1766,7 +1822,7 @@ impl JsRuntime {
     // Because that promise is created internally by V8, when error occurs during
     // module evaluation the promise is rejected, and since the promise has no rejection
     // handler it will result in call to `bindings::promise_reject_callback` adding
-    // the promise to pending promise rejection table - meaning JsRuntime will return
+    // the promise to pending promise rejection table - meaning JsRuntimeImpl will return
     // error on next poll().
     //
     // This situation is not desirable as we want to manually return error at the
@@ -2179,7 +2235,7 @@ impl JsRuntime {
   /// The module will be marked as "main", and because of that
   /// "import.meta.main" will return true when checked inside that module.
   ///
-  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
+  /// User must call [`JsRuntimeImpl::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_main_module(
     &mut self,
@@ -2234,7 +2290,7 @@ impl JsRuntime {
   /// This method is meant to be used when loading some utility code that
   /// might be later imported by the main module (ie. an entry point module).
   ///
-  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
+  /// User must call [`JsRuntimeImpl::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_side_module(
     &mut self,
@@ -2386,7 +2442,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
 ) {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
-    // atleast 1 Rc is held by the JsRuntime.
+    // atleast 1 Rc is held by the JsRuntimeImpl.
     None => unreachable!(),
   };
   let get_class = {
@@ -2484,7 +2540,7 @@ pub fn queue_async_op<'s>(
 ) -> Option<v8::Local<'s, v8::Value>> {
   let runtime_state = match ctx.runtime_state.upgrade() {
     Some(rc_state) => rc_state,
-    // atleast 1 Rc is held by the JsRuntime.
+    // atleast 1 Rc is held by the JsRuntimeImpl.
     None => unreachable!(),
   };
 
@@ -2602,7 +2658,7 @@ pub mod tests {
     }
   }
 
-  fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
+  fn setup(mode: Mode) -> (JsRuntimeImpl, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     deno_core::extension!(
       test_ext,
@@ -3056,10 +3112,7 @@ pub mod tests {
   #[test]
   fn will_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntime::new_for_snapshot(Default::default(), Default::default());
       runtime.execute_script_static("a.js", "a = 1 + 2").unwrap();
       runtime.snapshot()
     };
@@ -3077,10 +3130,7 @@ pub mod tests {
   #[test]
   fn will_snapshot2() {
     let startup_data = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntime::new_for_snapshot(Default::default(), Default::default());
       runtime
         .execute_script_static("a.js", "let a = 1 + 2")
         .unwrap();
@@ -3088,11 +3138,10 @@ pub mod tests {
     };
 
     let snapshot = Snapshot::JustCreated(startup_data);
-    let mut runtime = JsRuntime::new(RuntimeOptions {
-      will_snapshot: true,
+    let mut runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
       startup_snapshot: Some(snapshot),
       ..Default::default()
-    });
+    }, Default::default());
 
     let startup_data = {
       runtime
@@ -3120,10 +3169,7 @@ pub mod tests {
   #[test]
   fn test_snapshot_callbacks() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntime::new_for_snapshot(Default::default(), Default::default());
       runtime
         .execute_script_static(
           "a.js",
@@ -3157,10 +3203,7 @@ pub mod tests {
   #[test]
   fn test_from_boxed_snapshot() {
     let snapshot = {
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntime::new_for_snapshot(Default::default(), Default::default());
       runtime.execute_script_static("a.js", "a = 1 + 2").unwrap();
       let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
@@ -3375,8 +3418,8 @@ pub mod tests {
       }
     }
 
-    fn create_module(
-      runtime: &mut JsRuntime,
+    fn create_module<const FOR_SNAPSHOT: bool>(
+      runtime: &mut JsRuntimeImpl<FOR_SNAPSHOT>,
       i: usize,
       main: bool,
     ) -> ModuleInfo {
@@ -3419,7 +3462,7 @@ pub mod tests {
       }
     }
 
-    fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
+    fn assert_module_map<const FOR_SNAPSHOT: bool>(runtime: &mut JsRuntimeImpl<FOR_SNAPSHOT>, modules: &Vec<ModuleInfo>) {
       let module_map_rc = runtime.module_map();
       let module_map = module_map_rc.borrow();
       assert_eq!(module_map.handles.len(), modules.len());
@@ -3453,14 +3496,13 @@ pub mod tests {
     }
 
     let loader = Rc::new(ModsLoader::default());
-    let mut runtime = JsRuntime::new(RuntimeOptions {
+    let mut runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
       module_loader: Some(loader.clone()),
-      will_snapshot: true,
       extensions: vec![Extension::builder("text_ext")
         .ops(vec![op_test::decl()])
         .build()],
       ..Default::default()
-    });
+    }, Default::default());
 
     let specifier = crate::resolve_url("file:///0.js").unwrap();
     let source_code =
@@ -3489,15 +3531,14 @@ pub mod tests {
 
     let snapshot = runtime.snapshot();
 
-    let mut runtime2 = JsRuntime::new(RuntimeOptions {
+    let mut runtime2 = JsRuntime::new_for_snapshot(RuntimeOptions {
       module_loader: Some(loader.clone()),
-      will_snapshot: true,
       startup_snapshot: Some(Snapshot::JustCreated(snapshot)),
       extensions: vec![Extension::builder("text_ext")
         .ops(vec![op_test::decl()])
         .build()],
       ..Default::default()
-    });
+    }, Default::default());
 
     assert_module_map(&mut runtime2, &modules);
 
@@ -3997,7 +4038,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     assert!(matches!(runtime.poll_event_loop(cx, false), Poll::Pending));
     assert_eq!(awoken_times.swap(0, Ordering::Relaxed), 1);
 
-    let state_rc = JsRuntime::state(runtime.v8_isolate());
+    let state_rc = JsRuntimeImpl::state(runtime.v8_isolate());
     state_rc.borrow_mut().has_tick_scheduled = false;
     assert!(matches!(
       runtime.poll_event_loop(cx, false),
@@ -4479,10 +4520,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
   #[test]
   fn js_realm_init_snapshot() {
     let snapshot = {
-      let runtime = JsRuntime::new(RuntimeOptions {
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let runtime = JsRuntime::new_for_snapshot(Default::default(), Default::default());
       let snap: &[u8] = &runtime.snapshot();
       Vec::from(snap).into_boxed_slice()
     };

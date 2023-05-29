@@ -2889,11 +2889,10 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let mut runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
         module_loader: Some(loader),
-        will_snapshot: true,
         ..Default::default()
-      });
+      }, Default::default());
       // In default resolution code should be empty.
       // Instead we explicitly pass in our own code.
       // The behavior should be very similar to /a.js.
@@ -2931,11 +2930,10 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
+      let mut runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
         module_loader: Some(loader),
-        will_snapshot: true,
         ..Default::default()
-      });
+      }, Default::default());
       // In default resolution code should be empty.
       // Instead we explicitly pass in our own code.
       // The behavior should be very similar to /a.js.

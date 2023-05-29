@@ -93,7 +93,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
   }
 }
 
-fn create_js_runtime() -> JsRuntime {
+fn create_js_runtime() -> JsRuntimeForSnapshot {
   let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![
       op_listen::decl(),
@@ -103,11 +103,10 @@ fn create_js_runtime() -> JsRuntime {
     ])
     .build();
 
-  JsRuntime::new(deno_core::RuntimeOptions {
+  JsRuntime::new_for_snapshot(deno_core::RuntimeOptions {
     extensions: vec![ext],
-    will_snapshot: false,
     ..Default::default()
-  })
+  }, Default::default())
 }
 
 #[op]

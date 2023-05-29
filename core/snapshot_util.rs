@@ -9,6 +9,7 @@ use crate::Extension;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
+use crate::runtime::RuntimeSnapshotOptions;
 
 pub type CompressionCb = dyn Fn(&mut Vec<u8>, &[u8]);
 
@@ -24,12 +25,12 @@ pub struct CreateSnapshotOptions {
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   let mut mark = Instant::now();
 
-  let js_runtime = JsRuntime::new(RuntimeOptions {
-    will_snapshot: true,
+  let js_runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
     startup_snapshot: create_snapshot_options.startup_snapshot,
     extensions: create_snapshot_options.extensions,
-    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
     ..Default::default()
+  }, RuntimeSnapshotOptions {
+    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
   });
   println!(
     "JsRuntime for snapshot prepared, took {:#?} ({})",
@@ -121,29 +122,20 @@ fn data_error_to_panic(err: v8::DataError) -> ! {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SnapshotOptions {
-  Load,
-  CreateFromExisting,
+  Load(Snapshot),
+  CreateFromExisting(Snapshot),
   Create,
   None,
 }
 
 impl SnapshotOptions {
-  pub fn loaded(&self) -> bool {
-    matches!(self, Self::Load | Self::CreateFromExisting)
-  }
-
-  pub fn will_snapshot(&self) -> bool {
-    matches!(self, Self::Create | Self::CreateFromExisting)
-  }
-
-  pub fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
-    match (snapshot_loaded, will_snapshot) {
-      (true, true) => Self::CreateFromExisting,
-      (false, true) => Self::Create,
-      (true, false) => Self::Load,
-      (false, false) => Self::None,
+  pub fn new_from(snapshot: Option<Snapshot>, will_snapshot: bool) -> Self {
+    match (snapshot, will_snapshot) {
+      (Some(snapshot), true) => Self::CreateFromExisting(snapshot),
+      (None, true) => Self::Create,
+      (Some(snapshot), false) => Self::Load(snapshot),
+      (None, false) => Self::None,
     }
   }
 }
