@@ -2,7 +2,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import os from "node:os";
-import { assert, assertEquals, assertThrows } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertThrows,
+} from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test({
   name: "build architecture is a string",
