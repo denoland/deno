@@ -641,6 +641,8 @@ class ClientRequest extends OutgoingMessage {
         }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
+        incoming.req = this;
+        this.res = incoming;
 
         // TODO(@crowlKats):
         // incoming.httpVersionMajor = versionMajor;
