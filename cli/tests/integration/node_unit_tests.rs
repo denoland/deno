@@ -58,6 +58,7 @@ util::unit_test_factory!(
     pbkdf2_test = internal / pbkdf2_test,
     scrypt_test = internal / scrypt_test,
     module_test,
+    os_test,
     process_test,
     querystring_test,
     readline_test,
