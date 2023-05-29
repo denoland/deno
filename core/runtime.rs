@@ -1011,56 +1011,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     self.resolve_value(promise).await
   }
 
-  /// Takes a snapshot. The isolate should have been created with will_snapshot
-  /// set to true.
-  ///
-  /// `Error` can usually be downcast to `JsError`.
-  pub fn snapshot(mut self) -> v8::StartupData {
-    self.state.borrow_mut().inspector.take();
-
-    // Set the context to be snapshot's default context
-    {
-      let context = self.global_context();
-      let mut scope = self.handle_scope();
-      let local_context = v8::Local::new(&mut scope, context);
-      scope.set_default_context(local_context);
-    }
-
-    // Serialize the module map and store its data in the snapshot.
-    {
-      let snapshotted_data = {
-        let module_map_rc = self.module_map.take().unwrap();
-        let module_map = module_map_rc.borrow();
-        module_map.serialize_for_snapshotting(&mut self.handle_scope())
-      };
-
-      let context = self.global_context();
-      let mut scope = self.handle_scope();
-      snapshot_util::set_snapshotted_data(
-        &mut scope,
-        context,
-        snapshotted_data,
-      );
-    }
-
-    // Drop existing ModuleMap to drop v8::Global handles
-    {
-      let v8_isolate = self.v8_isolate();
-      Self::drop_state_and_module_map(v8_isolate);
-    }
-
-    // Drop other v8::Global handles before snapshotting
-    {
-      let state = self.state.clone();
-      state.borrow_mut().destroy_all_realms();
-    }
-
-    let snapshot_creator = self.v8_isolate.take().unwrap();
-    snapshot_creator
-      .create_blob(v8::FunctionCodeHandling::Keep)
-      .unwrap()
-  }
-
   /// Returns the namespace object of a module.
   ///
   /// This is only available after module evaluation has completed.
@@ -1481,6 +1431,55 @@ impl JsRuntimeImpl<true> {
       snapshot_options,
       runtime_snapshot_options.snapshot_module_load_cb,
     )
+  }
+
+  /// Takes a snapshot and consumes the runtime.
+  ///
+  /// `Error` can usually be downcast to `JsError`.
+  pub fn snapshot(mut self) -> v8::StartupData {
+    self.state.borrow_mut().inspector.take();
+
+    // Set the context to be snapshot's default context
+    {
+      let context = self.global_context();
+      let mut scope = self.handle_scope();
+      let local_context = v8::Local::new(&mut scope, context);
+      scope.set_default_context(local_context);
+    }
+
+    // Serialize the module map and store its data in the snapshot.
+    {
+      let snapshotted_data = {
+        let module_map_rc = self.module_map.take().unwrap();
+        let module_map = module_map_rc.borrow();
+        module_map.serialize_for_snapshotting(&mut self.handle_scope())
+      };
+
+      let context = self.global_context();
+      let mut scope = self.handle_scope();
+      snapshot_util::set_snapshotted_data(
+        &mut scope,
+        context,
+        snapshotted_data,
+      );
+    }
+
+    // Drop existing ModuleMap to drop v8::Global handles
+    {
+      let v8_isolate = self.v8_isolate();
+      Self::drop_state_and_module_map(v8_isolate);
+    }
+
+    // Drop other v8::Global handles before snapshotting
+    {
+      let state = self.state.clone();
+      state.borrow_mut().destroy_all_realms();
+    }
+
+    let snapshot_creator = self.v8_isolate.take().unwrap();
+    snapshot_creator
+      .create_blob(v8::FunctionCodeHandling::Keep)
+      .unwrap()
   }
 }
 
