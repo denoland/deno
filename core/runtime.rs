@@ -126,7 +126,7 @@ impl InnerIsolateState {
 
 impl Drop for InnerIsolateState {
   fn drop(&mut self) {
-    self.cleanup()
+    self.cleanup();
   }
 }
 
@@ -854,7 +854,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     options: &mut RuntimeOptions,
     snapshot_options: &SnapshotOptions,
   ) -> (OpState, Vec<OpDecl>) {
-    // Add builtins extension
+    // Add built-in extension
     if snapshot_options.loaded() {
       options
         .extensions
