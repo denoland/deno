@@ -4,12 +4,12 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::runtime::RuntimeSnapshotOptions;
 use crate::ExtModuleLoaderCb;
 use crate::Extension;
 use crate::JsRuntime;
 use crate::RuntimeOptions;
 use crate::Snapshot;
-use crate::runtime::RuntimeSnapshotOptions;
 
 pub type CompressionCb = dyn Fn(&mut Vec<u8>, &[u8]);
 
@@ -25,13 +25,16 @@ pub struct CreateSnapshotOptions {
 pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
   let mut mark = Instant::now();
 
-  let js_runtime = JsRuntime::new_for_snapshot(RuntimeOptions {
-    startup_snapshot: create_snapshot_options.startup_snapshot,
-    extensions: create_snapshot_options.extensions,
-    ..Default::default()
-  }, RuntimeSnapshotOptions {
-    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
-  });
+  let js_runtime = JsRuntime::new_for_snapshot(
+    RuntimeOptions {
+      startup_snapshot: create_snapshot_options.startup_snapshot,
+      extensions: create_snapshot_options.extensions,
+      ..Default::default()
+    },
+    RuntimeSnapshotOptions {
+      snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
+    },
+  );
   println!(
     "JsRuntime for snapshot prepared, took {:#?} ({})",
     Instant::now().saturating_duration_since(mark),
