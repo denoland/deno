@@ -1212,8 +1212,6 @@ function matchKnownFields(field, lowercased) {
 }
 
 function onError(self, error, cb) {
-  console.log("foo");
-  console.log(self);
   // This is to keep backward compatible behavior.
   // An error is emitted only if there are listeners attached to the event.
   if (self.listenerCount("error") === 0) {
