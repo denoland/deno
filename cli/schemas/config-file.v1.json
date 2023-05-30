@@ -426,6 +426,10 @@
       "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag. Requires Deno 1.34 or later.",
       "type": "boolean"
     },
+    "npmRegistry": {
+      "description": "The npm registry to use for npm specifiers.",
+      "type": "string"
+    },
     "tasks": {
       "description": "Configuration for deno task",
       "type": "object",

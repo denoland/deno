@@ -46,6 +46,7 @@ use crate::worker::HasNodeSpecifierChecker;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
 
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -266,6 +267,17 @@ impl CliFactory {
       .get_or_init(|| self.options.maybe_lockfile())
   }
 
+  fn npm_registry(&self) -> Url {
+    if let Some(url) = CliNpmRegistryApi::npm_registry_override() {
+      url.to_owned()
+    } else {
+      self
+        .options
+        .maybe_npm_registry()
+        .unwrap_or_else(|| CliNpmRegistryApi::default_npm_registry().to_owned())
+    }
+  }
+
   pub fn npm_cache(&self) -> Result<&Arc<NpmCache>, AnyError> {
     self.services.npm_cache.get_or_try_init(|| {
       Ok(Arc::new(NpmCache::new(
@@ -280,7 +292,7 @@ impl CliFactory {
   pub fn npm_api(&self) -> Result<&Arc<CliNpmRegistryApi>, AnyError> {
     self.services.npm_api.get_or_try_init(|| {
       Ok(Arc::new(CliNpmRegistryApi::new(
-        CliNpmRegistryApi::default_url().to_owned(),
+        self.npm_registry(),
         self.npm_cache()?.clone(),
         self.http_client().clone(),
         self.text_only_progress_bar().clone(),
@@ -317,7 +329,7 @@ impl CliFactory {
           fs.clone(),
           self.npm_cache()?.clone(),
           self.text_only_progress_bar(),
-          CliNpmRegistryApi::default_url().to_owned(),
+          self.npm_registry(),
           npm_resolution.clone(),
           self.options.node_modules_dir_path(),
           self.options.npm_system_info(),
@@ -340,7 +352,7 @@ impl CliFactory {
       self.fs().clone(),
       self.npm_cache()?.clone(),
       self.text_only_progress_bar(),
-      CliNpmRegistryApi::default_url().to_owned(),
+      self.npm_registry(),
       self.npm_resolution().await?.clone(),
       // when an explicit path is provided here, it will create the
       // local node_modules variant of an npm fs resolver

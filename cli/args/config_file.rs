@@ -16,6 +16,7 @@ use deno_core::serde::Serializer;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use indexmap::IndexMap;
 use std::borrow::Cow;
@@ -664,6 +665,7 @@ pub struct ConfigFileJson {
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
+  pub npm_registry: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -857,6 +859,24 @@ impl ConfigFile {
 
   pub fn node_modules_dir(&self) -> Option<bool> {
     self.json.node_modules_dir
+  }
+
+  pub fn to_npm_registry(&self) -> Option<Url> {
+    self.json.npm_registry.as_ref().and_then(|registry_url| {
+      let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+      match Url::parse(&registry_url) {
+        Ok(url) => {
+          return Some(url);
+        }
+        Err(err) => {
+          log::debug!(
+            "Invalid \"npmRegistry\" configuration option: {:#}",
+            err,
+          );
+        }
+      }
+      None
+    })
   }
 
   pub fn to_import_map_value(&self) -> Value {
@@ -1329,7 +1349,8 @@ mod tests {
       "tasks": {
         "build": "deno run --allow-read --allow-write build.ts",
         "server": "deno run --allow-net --allow-read server.ts"
-      }
+      },
+      "npmRegistry": "https://deno.land"
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
@@ -1389,6 +1410,11 @@ mod tests {
     assert_eq!(
       tasks_config["server"],
       "deno run --allow-net --allow-read server.ts"
+    );
+
+    assert_eq!(
+      config_file.to_npm_registry().unwrap(),
+      Url::parse("https://deno.land/").unwrap()
     );
   }
 

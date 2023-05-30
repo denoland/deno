@@ -655,6 +655,13 @@ impl CliOptions {
     &self.initial_cwd
   }
 
+  pub fn maybe_npm_registry(&self) -> Option<Url> {
+    self
+      .maybe_config_file
+      .as_ref()
+      .and_then(|f| f.to_npm_registry())
+  }
+
   pub fn maybe_config_file_specifier(&self) -> Option<ModuleSpecifier> {
     self.maybe_config_file.as_ref().map(|f| f.specifier.clone())
   }

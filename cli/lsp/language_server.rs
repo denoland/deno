@@ -966,12 +966,13 @@ impl Inner {
       return; // no need to do anything
     }
 
-    let registry_url = CliNpmRegistryApi::default_url();
+    let registry_url = self.npm_registry();
+
     let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
     (self.npm.api, self.npm.cache) = create_npm_api_and_cache(
       &deno_dir,
       self.http_client.clone(),
-      registry_url,
+      &registry_url,
       &progress_bar,
     );
     let maybe_snapshot = match self.maybe_lockfile() {
@@ -988,7 +989,7 @@ impl Inner {
     };
     (self.npm.resolver, self.npm.resolution) =
       create_npm_resolver_and_resolution(
-        registry_url,
+        &registry_url,
         progress_bar,
         self.npm.api.clone(),
         self.npm.cache.clone(),
@@ -1216,6 +1217,17 @@ impl Inner {
 
   fn maybe_config_file(&self) -> Option<&ConfigFile> {
     self.maybe_config_file_info.as_ref().map(|c| &c.config_file)
+  }
+
+  fn npm_registry(&self) -> Url {
+    if let Some(url) = CliNpmRegistryApi::npm_registry_override() {
+      url.to_owned()
+    } else {
+      self
+        .maybe_config_file()
+        .and_then(|f| f.to_npm_registry())
+        .unwrap_or_else(|| CliNpmRegistryApi::default_npm_registry().clone())
+    }
   }
 
   fn maybe_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {

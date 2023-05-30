@@ -34,30 +34,42 @@ use crate::util::sync::AtomicFlag;
 use super::cache::should_sync_download;
 use super::cache::NpmCache;
 
-static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
+static NPM_REGISTRY_OVERRIDE: Lazy<Option<Url>> = Lazy::new(|| {
   let env_var_name = "NPM_CONFIG_REGISTRY";
   if let Ok(registry_url) = std::env::var(env_var_name) {
     // ensure there is a trailing slash for the directory
     let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
     match Url::parse(&registry_url) {
       Ok(url) => {
-        return url;
+        return Some(url);
       }
       Err(err) => {
         log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
       }
     }
   }
-
-  Url::parse("https://registry.npmjs.org").unwrap()
+  None
 });
+
+static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> =
+  Lazy::new(|| Url::parse("https://registry.npmjs.org").unwrap());
 
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
 impl CliNpmRegistryApi {
-  pub fn default_url() -> &'static Url {
+  pub fn npm_registry_override() -> &'static Option<Url> {
+    &NPM_REGISTRY_OVERRIDE
+  }
+  pub fn default_npm_registry() -> &'static Url {
     &NPM_REGISTRY_DEFAULT_URL
+  }
+  pub fn default_url() -> &'static Url {
+    if let Some(url) = Self::npm_registry_override() {
+      url
+    } else {
+      Self::default_npm_registry()
+    }
   }
 
   pub fn new(
