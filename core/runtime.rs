@@ -90,7 +90,12 @@ pub struct InnerIsolateState {
 
 impl InnerIsolateState {
   pub fn cleanup(&mut self) {
-    self.state.borrow_mut().destroy_all_realms();
+    // Clean out the opstate and take the inspector to prevent the inspector from getting destroyed
+    // after we're torn down the contexts
+    self.state.borrow_mut().inspector.take();
+    std::mem::take(
+      &mut self.state.borrow_mut().op_state.borrow_mut().gotham_state,
+    );
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     let state_rc =
@@ -105,6 +110,8 @@ impl InnerIsolateState {
     // the runtime.
     unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
     drop(module_map_rc);
+
+    self.state.borrow_mut().destroy_all_realms();
 
     debug_assert_eq!(Rc::strong_count(&self.state), 1);
   }
@@ -1456,6 +1463,7 @@ impl JsRuntimeImpl<true> {
   ///
   /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(mut self) -> v8::StartupData {
+    // TODO(mmastrac): Why are we doing this?
     self.inner.state.borrow_mut().inspector.take();
 
     // Set the context to be snapshot's default context
@@ -3157,6 +3165,17 @@ pub mod tests {
       Poll::Ready(())
     })
     .await;
+  }
+
+  /// Ensure that putting the inspector into OpState doesn't cause issues.
+  #[test]
+  fn inspector() {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      inspector: true,
+      ..Default::default()
+    });
+    runtime.op_state().borrow_mut().put(runtime.inspector());
+    runtime.execute_script_static("check.js", "null").unwrap();
   }
 
   #[test]

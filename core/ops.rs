@@ -183,7 +183,7 @@ pub struct OpState {
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
-  gotham_state: GothamState,
+  pub(crate) gotham_state: GothamState,
 }
 
 impl OpState {
