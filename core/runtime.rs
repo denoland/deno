@@ -83,19 +83,34 @@ struct IsolateAllocations {
     Option<(Box<RefCell<dyn Any>>, v8::NearHeapLimitCallback)>,
 }
 
-pub struct InnerIsolateState {
+/// This struct contains the [`JsRuntimeState`] and [`v8::OwnedIsolate`] that are required
+/// to do an orderly shutdown of V8. We keep these in a separate struct to allow us to control
+/// the destruction more closely, as snapshots require the isolate to be destroyed by the
+/// snapshot process, not the destructor.
+struct InnerIsolateState {
   state: Rc<RefCell<JsRuntimeState>>,
   v8_isolate: v8::OwnedIsolate,
 }
 
 impl InnerIsolateState {
+  /// Clean out the opstate and take the inspector to prevent the inspector from getting destroyed
+  /// after we're torn down the contexts. If the inspect is not correctly torn down, random crashes
+  /// happen in tests (and possibly for users using the inspector).
+  pub fn prepare_for_cleanup(&mut self) {
+    let mut state = self.state.borrow_mut();
+    let inspector = state.inspector.take();
+    state.op_state.borrow_mut().clear();
+    if let Some(inspector) = inspector {
+      assert_eq!(
+        Rc::strong_count(&inspector),
+        1,
+        "The inspector must be dropped before the runtime"
+      );
+    }
+  }
+
   pub fn cleanup(&mut self) {
-    // Clean out the opstate and take the inspector to prevent the inspector from getting destroyed
-    // after we're torn down the contexts
-    self.state.borrow_mut().inspector.take();
-    std::mem::take(
-      &mut self.state.borrow_mut().op_state.borrow_mut().gotham_state,
-    );
+    self.prepare_for_cleanup();
 
     let state_ptr = self.v8_isolate.get_data(STATE_DATA_OFFSET);
     let state_rc =
@@ -147,6 +162,9 @@ impl Drop for InnerIsolateState {
 /// Pending ops are created in JavaScript by calling Deno.core.opAsync(), and in Rust
 /// by implementing an async function that takes a serde::Deserialize "control argument"
 /// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
+///
+/// API consumers will want to use either the [`JsRuntime`] or [`JsRuntimeForSnapshot`]
+/// type aliases.
 pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
   inner: InnerIsolateState,
   module_map: Option<Rc<RefCell<ModuleMap>>>,
@@ -158,7 +176,9 @@ pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
   is_main: bool,
 }
 
+/// The runtime type that most users will use when not creating a snapshot.
 pub type JsRuntime = JsRuntimeImpl<false>;
+/// The runtime type used for snapshot creation.
 pub type JsRuntimeForSnapshot = JsRuntimeImpl<true>;
 
 pub(crate) struct DynImportModEvaluate {
@@ -1451,8 +1471,8 @@ impl JsRuntimeImpl<true> {
   ///
   /// `Error` can usually be downcast to `JsError`.
   pub fn snapshot(mut self) -> v8::StartupData {
-    // TODO(mmastrac): Why are we doing this?
-    self.inner.state.borrow_mut().inspector.take();
+    // Ensure there are no live inspectors to prevent crashes.
+    self.inner.prepare_for_cleanup();
 
     // Set the context to be snapshot's default context
     {
@@ -3155,13 +3175,15 @@ pub mod tests {
     .await;
   }
 
-  /// Ensure that putting the inspector into OpState doesn't cause issues.
+  /// Ensure that putting the inspector into OpState doesn't cause crashes. The only valid place we currently allow
+  /// the inspector to be stashed without cleanup is the OpState, and this should not actually cause crashes.
   #[test]
   fn inspector() {
     let mut runtime = JsRuntime::new(RuntimeOptions {
       inspector: true,
       ..Default::default()
     });
+    // This was causing a crash
     runtime.op_state().borrow_mut().put(runtime.inspector());
     runtime.execute_script_static("check.js", "null").unwrap();
   }

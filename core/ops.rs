@@ -196,6 +196,12 @@ impl OpState {
       tracker: OpsTracker::new(ops_count),
     }
   }
+
+  /// Clear all user-provided resources and state.
+  pub(crate) fn clear(&mut self) {
+    std::mem::take(&mut self.gotham_state);
+    std::mem::take(&mut self.resource_table);
+  }
 }
 
 impl Deref for OpState {
