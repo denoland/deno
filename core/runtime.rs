@@ -637,6 +637,11 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     state.global_realm.clone().unwrap()
   }
 
+  /// Returns the extensions that this runtime is using (including internal ones).
+  pub fn extensions(&self) -> &Vec<Extension> {
+    &self.extensions
+  }
+
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
   /// [`RuntimeOptions::extensions`] when the [`JsRuntimeImpl`] was
@@ -1434,23 +1439,6 @@ impl JsRuntimeImpl<true> {
       options.startup_snapshot.take(),
       true,
     );
-
-    // TODO(mmastrac): We should not be printing here
-    #[cfg(feature = "include_js_files_for_snapshotting")]
-    for source in options
-      .extensions
-      .iter()
-      .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
-      .flatten()
-      .flatten()
-    {
-      use crate::ExtensionFileSourceCode;
-      if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-        &source.code
-      {
-        println!("cargo:rerun-if-changed={}", path.display())
-      }
-    }
 
     JsRuntimeImpl::<true>::new_runtime(
       options,
