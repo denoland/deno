@@ -120,7 +120,7 @@ struct InnerIsolateState {
 
 impl InnerIsolateState {
   /// Clean out the opstate and take the inspector to prevent the inspector from getting destroyed
-  /// after we're torn down the contexts. If the inspect is not correctly torn down, random crashes
+  /// after we've torn down the contexts. If the inspector is not correctly torn down, random crashes
   /// happen in tests (and possibly for users using the inspector).
   pub fn prepare_for_cleanup(&mut self) {
     let mut state = self.state.borrow_mut();
