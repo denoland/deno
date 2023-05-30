@@ -45,6 +45,7 @@ fn setup() -> Vec<Extension> {
       .state(|state| {
         state.put(Permissions {});
       })
+      .esm_entry_point("ext:bench_setup/setup")
       .build(),
   ]
 }

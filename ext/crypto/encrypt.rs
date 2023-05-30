@@ -19,6 +19,7 @@ use ctr::Ctr64BE;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
@@ -99,7 +100,7 @@ pub async fn op_crypto_encrypt(
       key_length,
     } => encrypt_aes_ctr(key, key_length, &counter, ctr_length, &data),
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

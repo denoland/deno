@@ -11,6 +11,7 @@ use std::task::Poll;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::Future;
@@ -29,10 +30,11 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
@@ -55,6 +57,17 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
+/// Clear extension modules from the module map, except preserve `ext:deno_node`
+/// modules as `node:` specifiers.
+pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
+  js_runtime.clear_module_map(
+    deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|p| (p.ext_specifier, p.specifier)),
+  );
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -83,16 +96,17 @@ pub struct WorkerOptions {
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -147,6 +161,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -161,7 +176,7 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
-      root_cert_store: Default::default(),
+      root_cert_store_provider: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
@@ -225,7 +240,7 @@ impl MainWorker {
       deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -236,7 +251,7 @@ impl MainWorker {
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops(
@@ -249,7 +264,7 @@ impl MainWorker {
       ),
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -261,12 +276,15 @@ impl MainWorker {
         unstable,
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_flash::deno_flash::init_ops::<PermissionsContainer>(unstable),
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
       deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
+        options.fs,
       ),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
@@ -312,6 +330,7 @@ impl MainWorker {
       is_main: true,
       ..Default::default()
     });
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
@@ -361,21 +380,20 @@ impl MainWorker {
 
   pub fn bootstrap(&mut self, options: &BootstrapOptions) {
     let scope = &mut self.js_runtime.handle_scope();
-    let options_v8 =
-      deno_core::serde_v8::to_v8(scope, options.as_json()).unwrap();
+    let args = options.as_v8(scope);
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
     bootstrap_fn
-      .call(scope, undefined.into(), &[options_v8])
+      .call(scope, undefined.into(), &[args.into()])
       .unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)
-  pub fn execute_script<S: Into<ModuleCode>>(
+  pub fn execute_script(
     &mut self,
     script_name: &'static str,
-    source_code: S,
+    source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
@@ -512,12 +530,12 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('load'))",
+      ascii_str!("dispatchEvent(new Event('load'))"),
     )?;
     Ok(())
   }
@@ -529,12 +547,12 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
   ) -> Result<(), AnyError> {
-    self.execute_script(
+    self.js_runtime.execute_script(
       script_name,
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('unload'))",
+      ascii_str!("dispatchEvent(new Event('unload'))"),
     )?;
     Ok(())
   }
@@ -551,7 +569,9 @@ impl MainWorker {
       // NOTE(@bartlomieju): not using `globalThis` here, because user might delete
       // it. Instead we're using global `dispatchEvent` function which will
       // used a saved reference to global scope.
-      "dispatchEvent(new Event('beforeunload', { cancelable: true }));",
+      ascii_str!(
+        "dispatchEvent(new Event('beforeunload', { cancelable: true }));"
+      ),
     )?;
     let local_value = value.open(&mut self.js_runtime.handle_scope());
     Ok(local_value.is_false())

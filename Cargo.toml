@@ -18,7 +18,6 @@ members = [
   "ext/console",
   "ext/crypto",
   "ext/fetch",
-  "ext/flash",
   "ext/ffi",
   "ext/fs",
   "ext/http",
@@ -32,7 +31,6 @@ members = [
   "ext/websocket",
   "ext/webstorage",
   "ext/napi",
-  "lockfile",
 ]
 exclude = ["test_util/std/hash/_wasm"]
 
@@ -43,39 +41,41 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.66.0", default-features = false }
-deno_ast = { version = "0.25.0", features = ["transpiling"] }
+v8 = { version = "0.73.0", default-features = false }
+deno_ast = { version = "0.26.0", features = ["transpiling"] }
 
-deno_core = { version = "0.177.0", path = "./core" }
-deno_ops = { version = "0.55.0", path = "./ops" }
-serde_v8 = { version = "0.88.0", path = "./serde_v8" }
-deno_runtime = { version = "0.103.0", path = "./runtime" }
-napi_sym = { version = "0.25.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.89.0", path = "./bench_util" }
+deno_core = { version = "0.189.0", path = "./core" }
+deno_ops = { version = "0.67.0", path = "./ops" }
+serde_v8 = { version = "0.100.0", path = "./serde_v8" }
+deno_runtime = { version = "0.115.0", path = "./runtime" }
+napi_sym = { version = "0.37.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.101.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
-deno_lockfile = { version = "0.11.0", path = "./lockfile" }
+deno_lockfile = "0.14.1"
+deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
+deno_npm = "0.6.0"
+deno_semver = "0.2.1"
 
 # exts
-deno_broadcast_channel = { version = "0.89.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.27.0", path = "./ext/cache" }
-deno_console = { version = "0.95.0", path = "./ext/console" }
-deno_crypto = { version = "0.109.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.119.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.82.0", path = "./ext/ffi" }
-deno_flash = { version = "0.31.0", path = "./ext/flash" }
-deno_fs = { version = "0.5.0", path = "./ext/fs" }
-deno_http = { version = "0.90.0", path = "./ext/http" }
-deno_io = { version = "0.5.0", path = "./ext/io" }
-deno_net = { version = "0.87.0", path = "./ext/net" }
-deno_node = { version = "0.32.0", path = "./ext/node" }
-deno_kv = { version = "0.3.0", path = "./ext/kv" }
-deno_tls = { version = "0.82.0", path = "./ext/tls" }
-deno_url = { version = "0.95.0", path = "./ext/url" }
-deno_web = { version = "0.126.0", path = "./ext/web" }
-deno_webidl = { version = "0.95.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.100.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.90.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.25.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.101.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.39.0", path = "./ext/cache" }
+deno_console = { version = "0.107.0", path = "./ext/console" }
+deno_crypto = { version = "0.121.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.131.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.94.0", path = "./ext/ffi" }
+deno_fs = { version = "0.17.0", path = "./ext/fs" }
+deno_http = { version = "0.102.0", path = "./ext/http" }
+deno_io = { version = "0.17.0", path = "./ext/io" }
+deno_net = { version = "0.99.0", path = "./ext/net" }
+deno_node = { version = "0.44.0", path = "./ext/node" }
+deno_kv = { version = "0.15.0", path = "./ext/kv" }
+deno_tls = { version = "0.94.0", path = "./ext/tls" }
+deno_url = { version = "0.107.0", path = "./ext/url" }
+deno_web = { version = "0.138.0", path = "./ext/web" }
+deno_webidl = { version = "0.107.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.112.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.102.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.37.0", path = "./ext/napi" }
 
 aes = "=0.8.2"
 anyhow = "1.0.57"
@@ -86,23 +86,28 @@ bencher = "0.1"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-console_static_text = "=0.7.1"
+console_static_text = "=0.8.1"
 data-url = "=0.2.0"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.31"
 ecb = "=0.1.1"
+fastwebsockets = "=0.3.1"
+filetime = "0.2.16"
 flate2 = "=1.0.24"
 fs3 = "0.5.0"
 futures = "0.3.21"
+glob = "0.3.1"
 hex = "0.4"
 http = "0.2.9"
-hyper = "0.14.18"
+httparse = "1.8.0"
+hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
 log = "=0.4.17"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
+memmem = "0.1.1"
 notify = "=5.0.0"
-num-bigint = "0.4"
+num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = "=1.0.1"
 parking_lot = "0.12.0"
@@ -111,32 +116,39 @@ pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.3.0"
 rand = "=0.8.5"
 regex = "^1.7.0"
-reqwest = { version = "0.11.11", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
+lazy-regex = "2.5.0"
+reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.28.0", features = ["unlock_notify", "bundled"] }
-rustls = "0.20.5"
+rustls = "0.21.0"
 rustls-pemfile = "1.0.0"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.9"
 sha2 = { version = "0.10.6", features = ["oid"] }
+signature = "=1.6.4"
+slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
 tempfile = "3.4.0"
-thiserror = "=1.0.38"
-tokio = { version = "=1.25.0", features = ["full"] }
-tokio-rustls = "0.23.3"
-tokio-tungstenite = "0.16.1"
+thiserror = "1.0.40"
+tokio = { version = "1.28.1", features = ["full"] }
+tokio-rustls = "0.24.0"
 tokio-util = "0.7.4"
 tower-lsp = { version = "=0.17.0", features = ["proposed"] }
 url = { version = "2.3.1", features = ["serde", "expose_internals"] }
 uuid = { version = "1.3.0", features = ["v4"] }
 zstd = "=0.11.2"
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem"] }
+p224 = { version = "0.13.0", features = ["ecdh"] }
+p256 = { version = "0.13.2", features = ["ecdh"] }
+p384 = { version = "0.13.0", features = ["ecdh"] }
 
 # crypto
-rsa = { version = "0.7.0", default-features = false, features = ["std", "pem"] }
+rsa = { version = "0.7.0", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+hkdf = "0.12.3"
 
 # macros
 proc-macro2 = "1"
@@ -150,6 +162,7 @@ nix = "=0.24.2"
 fwdansi = "=1.1.0"
 winres = "=0.1.12"
 winapi = "=0.3.9"
+windows-sys = { version = "0.48.0", features = ["Win32_Media"] }
 
 # NB: the `bench` and `release` profiles must remain EXACTLY the same.
 [profile.release]
@@ -261,8 +274,6 @@ opt-level = 3
 [profile.release.package.deno_runtime]
 opt-level = 3
 [profile.release.package.deno_http]
-opt-level = 3
-[profile.release.package.deno_flash]
 opt-level = 3
 [profile.release.package.deno_net]
 opt-level = 3

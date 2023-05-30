@@ -13,6 +13,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
@@ -663,6 +664,40 @@ impl UnaryPermission<WriteDescriptor> {
         self.global_state = PermissionState::Granted;
       } else {
         self.global_state = PermissionState::Denied;
+      }
+    }
+    result
+  }
+
+  /// As `check()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  pub fn check_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    let resolved_path = resolve_from_cwd(path)?;
+    let (result, prompted, is_allow_all) =
+      self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(api_name),
+        Some(&format!("<{display}>")),
+        self.prompt,
+      );
+    if prompted {
+      if result.is_ok() {
+        if is_allow_all {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.granted_list.insert(WriteDescriptor(resolved_path));
+        }
+      } else {
+        self.global_state = PermissionState::Denied;
+        if !is_allow_all {
+          self.denied_list.insert(WriteDescriptor(resolved_path));
+        }
       }
     }
     result
@@ -1793,6 +1828,16 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_write_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
   pub fn check_run(
     &mut self,
     cmd: &str,
@@ -1826,20 +1871,18 @@ impl PermissionsContainer {
   }
 }
 
-impl deno_flash::FlashPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    host: &(T, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().net.check(host, Some(api_name))
-  }
-}
-
 impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check_url(url, Some(api_name))
+  }
+
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)
   }
 }
@@ -1940,6 +1983,15 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().write.check(path, Some(api_name))
+  }
+
+  fn check_write_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(p, display, api_name)
   }
 
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {

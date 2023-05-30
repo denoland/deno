@@ -1,8 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -15,12 +13,36 @@ use deno_graph::CapturingModuleParser;
 use deno_graph::DefaultModuleAnalyzer;
 use deno_graph::ModuleInfo;
 use deno_graph::ModuleParser;
-use deno_graph::ParsedSourceStore;
 use deno_runtime::deno_webstorage::rusqlite::params;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
 
-use super::common::INITIAL_PRAGMAS;
+use super::cache_db::CacheDB;
+use super::cache_db::CacheDBConfiguration;
+use super::cache_db::CacheFailure;
 use super::FastInsecureHasher;
+
+const SELECT_MODULE_INFO: &str = "
+SELECT
+  module_info
+FROM
+  moduleinfocache
+WHERE
+  specifier=?1
+  AND media_type=?2
+  AND source_hash=?3
+LIMIT 1";
+
+pub static PARSED_SOURCE_CACHE_DB: CacheDBConfiguration =
+  CacheDBConfiguration {
+    table_initializer: "CREATE TABLE IF NOT EXISTS moduleinfocache (
+      specifier TEXT PRIMARY KEY,
+      media_type TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      module_info TEXT NOT NULL
+    );",
+    on_version_change: "DELETE FROM moduleinfocache;",
+    preheat_queries: &[SELECT_MODULE_INFO],
+    on_failure: CacheFailure::InMemory,
+  };
 
 #[derive(Clone, Default)]
 struct ParsedSourceCacheSources(
@@ -51,28 +73,29 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCacheSources {
 
 /// A cache of `ParsedSource`s, which may be used with `deno_graph`
 /// for cached dependency analysis.
-#[derive(Clone)]
 pub struct ParsedSourceCache {
-  db_cache_path: Option<PathBuf>,
-  cli_version: &'static str,
+  db: CacheDB,
   sources: ParsedSourceCacheSources,
 }
 
 impl ParsedSourceCache {
-  pub fn new(sql_cache_path: Option<PathBuf>) -> Self {
+  #[cfg(test)]
+  pub fn new_in_memory() -> Self {
     Self {
-      db_cache_path: sql_cache_path,
-      cli_version: crate::version::deno(),
+      db: CacheDB::in_memory(&PARSED_SOURCE_CACHE_DB, crate::version::deno()),
       sources: Default::default(),
     }
   }
 
-  pub fn reset_for_file_watcher(&self) -> Self {
+  pub fn new(db: CacheDB) -> Self {
     Self {
-      db_cache_path: self.db_cache_path.clone(),
-      cli_version: self.cli_version,
+      db,
       sources: Default::default(),
     }
+  }
+
+  pub fn clear(&self) {
+    self.sources.0.lock().clear();
   }
 
   pub fn get_parsed_source_from_esm_module(
@@ -104,31 +127,11 @@ impl ParsedSourceCache {
     self.sources.0.lock().remove(specifier);
   }
 
-  /// Gets this cache as a `deno_graph::ParsedSourceStore`.
-  pub fn as_store(&self) -> Box<dyn ParsedSourceStore> {
-    // This trait is not implemented directly on ParsedSourceCache
-    // in order to prevent its methods from being accidentally used.
-    // Generally, people should prefer the methods found that will
-    // lazily parse if necessary.
-    Box::new(self.sources.clone())
-  }
-
   pub fn as_analyzer(&self) -> Box<dyn deno_graph::ModuleAnalyzer> {
-    match ParsedSourceCacheModuleAnalyzer::new(
-      self.db_cache_path.as_deref(),
-      self.cli_version,
+    Box::new(ParsedSourceCacheModuleAnalyzer::new(
+      self.db.clone(),
       self.sources.clone(),
-    ) {
-      Ok(analyzer) => Box::new(analyzer),
-      Err(err) => {
-        log::debug!("Could not create cached module analyzer. {:#}", err);
-        // fallback to not caching if it can't be created
-        Box::new(deno_graph::CapturingModuleAnalyzer::new(
-          None,
-          Some(self.as_store()),
-        ))
-      }
-    }
+    ))
   }
 
   /// Creates a parser that will reuse a ParsedSource from the store
@@ -139,32 +142,13 @@ impl ParsedSourceCache {
 }
 
 struct ParsedSourceCacheModuleAnalyzer {
-  conn: Connection,
+  conn: CacheDB,
   sources: ParsedSourceCacheSources,
 }
 
 impl ParsedSourceCacheModuleAnalyzer {
-  pub fn new(
-    db_file_path: Option<&Path>,
-    cli_version: &'static str,
-    sources: ParsedSourceCacheSources,
-  ) -> Result<Self, AnyError> {
-    log::debug!("Loading cached module analyzer.");
-    let conn = match db_file_path {
-      Some(path) => Connection::open(path)?,
-      None => Connection::open_in_memory()?,
-    };
-    Self::from_connection(conn, cli_version, sources)
-  }
-
-  fn from_connection(
-    conn: Connection,
-    cli_version: &'static str,
-    sources: ParsedSourceCacheSources,
-  ) -> Result<Self, AnyError> {
-    initialize(&conn, cli_version)?;
-
-    Ok(Self { conn, sources })
+  pub fn new(conn: CacheDB, sources: ParsedSourceCacheSources) -> Self {
+    Self { conn, sources }
   }
 
   pub fn get_module_info(
@@ -173,29 +157,21 @@ impl ParsedSourceCacheModuleAnalyzer {
     media_type: MediaType,
     expected_source_hash: &str,
   ) -> Result<Option<ModuleInfo>, AnyError> {
-    let query = "
-      SELECT
-        module_info
-      FROM
-        moduleinfocache
-      WHERE
-        specifier=?1
-        AND media_type=?2
-        AND source_hash=?3
-      LIMIT 1";
-    let mut stmt = self.conn.prepare_cached(query)?;
-    let mut rows = stmt.query(params![
-      &specifier.as_str(),
-      serialize_media_type(media_type),
-      &expected_source_hash,
-    ])?;
-    if let Some(row) = rows.next()? {
-      let module_info: String = row.get(0)?;
-      let module_info = serde_json::from_str(&module_info)?;
-      Ok(Some(module_info))
-    } else {
-      Ok(None)
-    }
+    let query = SELECT_MODULE_INFO;
+    let res = self.conn.query_row(
+      query,
+      params![
+        &specifier.as_str(),
+        serialize_media_type(media_type),
+        &expected_source_hash,
+      ],
+      |row| {
+        let module_info: String = row.get(0)?;
+        let module_info = serde_json::from_str(&module_info)?;
+        Ok(module_info)
+      },
+    )?;
+    Ok(res)
   }
 
   pub fn set_module_info(
@@ -210,13 +186,15 @@ impl ParsedSourceCacheModuleAnalyzer {
         moduleinfocache (specifier, media_type, source_hash, module_info)
       VALUES
         (?1, ?2, ?3, ?4)";
-    let mut stmt = self.conn.prepare_cached(sql)?;
-    stmt.execute(params![
-      specifier.as_str(),
-      serialize_media_type(media_type),
-      &source_hash,
-      &serde_json::to_string(&module_info)?,
-    ])?;
+    self.conn.execute(
+      sql,
+      params![
+        specifier.as_str(),
+        serialize_media_type(media_type),
+        &source_hash,
+        &serde_json::to_string(&module_info)?,
+      ],
+    )?;
     Ok(())
   }
 }
@@ -287,46 +265,6 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
   }
 }
 
-fn initialize(
-  conn: &Connection,
-  cli_version: &'static str,
-) -> Result<(), AnyError> {
-  let query = format!(
-    "{INITIAL_PRAGMAS}
-  -- INT doesn't store up to u64, so use TEXT for source_hash
-  CREATE TABLE IF NOT EXISTS moduleinfocache (
-    specifier TEXT PRIMARY KEY,
-    media_type TEXT NOT NULL,
-    source_hash TEXT NOT NULL,
-    module_info TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS info (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-  "
-  );
-
-  conn.execute_batch(&query)?;
-
-  // delete the cache when the CLI version changes
-  let data_cli_version: Option<String> = conn
-    .query_row(
-      "SELECT value FROM info WHERE key='CLI_VERSION' LIMIT 1",
-      [],
-      |row| row.get(0),
-    )
-    .ok();
-  if data_cli_version.as_deref() != Some(cli_version) {
-    conn.execute("DELETE FROM moduleinfocache", params![])?;
-    let mut stmt = conn
-      .prepare("INSERT OR REPLACE INTO info (key, value) VALUES (?1, ?2)")?;
-    stmt.execute(params!["CLI_VERSION", &cli_version])?;
-  }
-
-  Ok(())
-}
-
 fn compute_source_hash(bytes: &[u8]) -> String {
   FastInsecureHasher::new().write(bytes).finish().to_string()
 }
@@ -340,13 +278,8 @@ mod test {
 
   #[test]
   pub fn parsed_source_cache_module_analyzer_general_use() {
-    let conn = Connection::open_in_memory().unwrap();
-    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
-      conn,
-      "1.0.0",
-      Default::default(),
-    )
-    .unwrap();
+    let conn = CacheDB::in_memory(&PARSED_SOURCE_CACHE_DB, "1.0.0");
+    let cache = ParsedSourceCacheModuleAnalyzer::new(conn, Default::default());
     let specifier1 =
       ModuleSpecifier::parse("https://localhost/mod.ts").unwrap();
     let specifier2 =
@@ -403,13 +336,8 @@ mod test {
     );
 
     // try recreating with the same version
-    let conn = cache.conn;
-    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
-      conn,
-      "1.0.0",
-      Default::default(),
-    )
-    .unwrap();
+    let conn = cache.conn.recreate_with_version("1.0.0");
+    let cache = ParsedSourceCacheModuleAnalyzer::new(conn, Default::default());
 
     // should get it
     assert_eq!(
@@ -420,13 +348,8 @@ mod test {
     );
 
     // try recreating with a different version
-    let conn = cache.conn;
-    let cache = ParsedSourceCacheModuleAnalyzer::from_connection(
-      conn,
-      "1.0.1",
-      Default::default(),
-    )
-    .unwrap();
+    let conn = cache.conn.recreate_with_version("1.0.1");
+    let cache = ParsedSourceCacheModuleAnalyzer::new(conn, Default::default());
 
     // should no longer exist
     assert_eq!(

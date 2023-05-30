@@ -66,14 +66,14 @@ export class Hash extends Transform {
         callback();
       },
       flush(callback: () => void) {
-        this.push(context.digest(undefined));
+        this.push(this.digest(undefined));
         callback();
       },
     });
 
     if (typeof algorithm === "string") {
       this.#context = ops.op_node_create_hash(
-        algorithm,
+        algorithm.toLowerCase(),
       );
       if (this.#context === 0) {
         throw new TypeError(`Unknown hash algorithm: ${algorithm}`);

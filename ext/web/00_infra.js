@@ -18,6 +18,7 @@ const {
   JSONStringify,
   NumberPrototypeToString,
   ObjectPrototypeIsPrototypeOf,
+  RegExpPrototypeTest,
   SafeArrayIterator,
   SafeRegExp,
   String,
@@ -26,6 +27,7 @@ const {
   StringPrototypeMatch,
   StringPrototypePadStart,
   StringPrototypeReplace,
+  StringPrototypeReplaceAll,
   StringPrototypeSlice,
   StringPrototypeSubstring,
   StringPrototypeToLowerCase,
@@ -274,17 +276,24 @@ function addPaddingToBase64url(base64url) {
   return base64url;
 }
 
+const BASE64URL_PATTERN = new SafeRegExp(/^[-_A-Z0-9]*?={0,2}$/i);
+
 /**
  * @param {string} base64url
  * @returns {string}
  */
 function convertBase64urlToBase64(base64url) {
-  if (!/^[-_A-Z0-9]*?={0,2}$/i.test(base64url)) {
+  if (!RegExpPrototypeTest(BASE64URL_PATTERN, base64url)) {
     // Contains characters not part of base64url spec.
     throw new TypeError("Failed to decode base64url: invalid character");
   }
-  return addPaddingToBase64url(base64url).replace(/\-/g, "+").replace(
-    /_/g,
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      addPaddingToBase64url(base64url),
+      "-",
+      "+",
+    ),
+    "_",
     "/",
   );
 }
@@ -295,9 +304,21 @@ function convertBase64urlToBase64(base64url) {
  * @returns {string}
  */
 function forgivingBase64UrlEncode(data) {
-  return forgivingBase64Encode(
-    typeof data === "string" ? new TextEncoder().encode(data) : data,
-  ).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return StringPrototypeReplaceAll(
+    StringPrototypeReplaceAll(
+      StringPrototypeReplaceAll(
+        forgivingBase64Encode(
+          typeof data === "string" ? new TextEncoder().encode(data) : data,
+        ),
+        "=",
+        "",
+      ),
+      "+",
+      "-",
+    ),
+    "/",
+    "_",
+  );
 }
 
 /**

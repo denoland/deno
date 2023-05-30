@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
 use test_util as util;
@@ -154,6 +157,16 @@ itest!(mixed_case_package_name_local_dir {
   temp_cwd: true,
 });
 
+itest!(local_dir_resolves_symlinks {
+  args: "run -A index.js",
+  output: "npm/local_dir_resolves_symlinks/index.out",
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  cwd: Some("npm/local_dir_resolves_symlinks/"),
+  copy_temp_dir: Some("npm/local_dir_resolves_symlinks/"),
+  http_server: true,
+});
+
 // FIXME(bartlomieju): npm: specifiers are not handled in dynamic imports
 // at the moment
 // itest!(dynamic_import {
@@ -228,6 +241,25 @@ itest!(remote_npm_specifier {
 itest!(tarball_with_global_header {
   args: "run -A --quiet npm/tarball_with_global_header/main.js",
   output: "npm/tarball_with_global_header/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(node_modules_deno_node_modules {
+  args: "run --quiet npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(node_modules_deno_node_modules_local {
+  args:
+    "run --quiet --node-modules-dir npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
@@ -404,7 +436,7 @@ fn cached_only_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -449,7 +481,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(output.status.success());
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
 }
 
 #[test]
@@ -474,7 +506,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -494,7 +526,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -514,7 +546,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -534,7 +566,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -554,7 +586,7 @@ fn reload_flag() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert!(stderr.is_empty());
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 }
 
@@ -603,7 +635,7 @@ fn no_npm_after_first_run() {
   let stderr = String::from_utf8_lossy(&output.stderr);
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(stderr, "Download");
-  assert_contains!(stdout, "createChalk: chalk");
+  assert_contains!(stdout, "[Function: chalk] createChalk");
   assert!(output.status.success());
 
   let deno = util::deno_cmd_with_deno_dir(&deno_dir)
@@ -663,6 +695,7 @@ itest!(deno_run_cowsay {
 
 itest!(deno_run_cowsay_with_node_modules_dir {
   args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
+  temp_cwd: true,
   output: "npm/deno_run_cowsay.out",
   envs: env_vars_for_npm_tests_no_sync_download(),
   http_server: true,
@@ -689,6 +722,13 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_special_chars {
+  args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
+  output: "npm/deno_run_special_chars_in_bin_name.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_no_ext {
   args: "run -A --quiet npm:@denotest/bin/cli-no-ext this is a test",
   output: "npm/deno_run_no_ext.out",
@@ -702,6 +742,19 @@ itest!(deno_run_bin_cjs {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+#[test]
+fn deno_run_bin_lockfile() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}");
+  let output = context
+    .new_command()
+    .args("run -A --quiet npm:@denotest/bin/cli-esm this is a test")
+    .run();
+  output.assert_matches_file("npm/deno_run_esm.out");
+  assert!(temp_dir.path().join("deno.lock").exists());
+}
 
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
@@ -722,6 +775,15 @@ itest!(node_modules_dir_require_added_node_modules_folder {
   args:
     "run --node-modules-dir -A --quiet $TESTDATA/npm/require_added_nm_folder/main.js",
   output: "npm/require_added_nm_folder/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 0,
+  temp_cwd: true,
+});
+
+itest!(node_modules_dir_require_main_entry {
+  args: "run --node-modules-dir -A --quiet $TESTDATA/npm/require_main/main.js",
+  output: "npm/require_main/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 0,
@@ -826,17 +888,9 @@ fn ensure_registry_files_local() {
   }
 }
 
-itest!(compile_errors {
-    args: "compile -A --quiet npm/cached_only/main.ts",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
-    exit_code: 1,
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-  });
-
 itest!(bundle_errors {
     args: "bundle --quiet npm/esm/main.js",
-    output_str: Some("error: npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
+    output_str: Some("error: npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: npm:chalk@5.0.1\n"),
     exit_code: 1,
     envs: env_vars_for_npm_tests(),
     http_server: true,
@@ -1103,7 +1157,13 @@ fn lock_file_missing_top_level_package() {
   let stderr = String::from_utf8(output.stderr).unwrap();
   assert_eq!(
     stderr,
-    "error: failed reading lockfile 'deno.lock'\n\nCaused by:\n    the lockfile is corrupt. You can recreate it with --lock-write\n"
+    concat!(
+      "error: failed reading lockfile 'deno.lock'\n",
+      "\n",
+      "Caused by:\n",
+      "    0: The lockfile is corrupt. You can recreate it with --lock-write\n",
+      "    1: Could not find referenced package 'cowsay@1.5.0' in the list of packages.\n"
+    )
   );
 }
 
@@ -1524,3 +1584,433 @@ itest!(node_modules_import_check {
   copy_temp_dir: Some("npm/node_modules_import/"),
   exit_code: 1,
 });
+
+itest!(non_existent_dep {
+  args: "cache npm:@denotest/non-existent-dep",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+  output_str: Some(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep\n",
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent\n",
+    "error: npm package '@denotest/non-existent' does not exist.\n"
+  )),
+});
+
+itest!(non_existent_dep_version {
+  args: "cache npm:@denotest/non-existent-dep-version",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+  output_str: Some(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    // does two downloads because when failing once it max tries to
+    // get the latest version a second time
+    "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
+  )),
+});
+
+#[test]
+fn reload_info_not_found_cache_but_exists_remote() {
+  fn remove_version(registry_json: &mut Value, version: &str) {
+    registry_json
+      .as_object_mut()
+      .unwrap()
+      .get_mut("versions")
+      .unwrap()
+      .as_object_mut()
+      .unwrap()
+      .remove(version);
+  }
+
+  fn remove_version_for_package(
+    deno_dir: &util::TempDir,
+    package: &str,
+    version: &str,
+  ) {
+    let registry_json_path =
+      format!("npm/localhost_4545/npm/registry/{}/registry.json", package);
+    let mut registry_json: Value =
+      serde_json::from_str(&deno_dir.read_to_string(&registry_json_path))
+        .unwrap();
+    remove_version(&mut registry_json, version);
+    deno_dir.write(
+      &registry_json_path,
+      serde_json::to_string(&registry_json).unwrap(),
+    );
+  }
+
+  // This tests that when a local machine doesn't have a version
+  // specified in a dependency that exists in the npm registry
+  let test_context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_temp_cwd()
+    .build();
+  let deno_dir = test_context.deno_dir();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write(
+    "main.ts",
+    "import 'npm:@denotest/esm-import-cjs-default@1.0.0';",
+  );
+
+  // cache successfully to the deno_dir
+  let output = test_context
+    .new_command()
+    .args("cache main.ts npm:@denotest/esm-basic@1.0.0")
+    .run();
+  output.assert_matches_text(concat!(
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+    "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export/1.0.0.tgz\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+    "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
+  ));
+
+  // test in dependency
+  {
+    // modify the package information in the cache to remove the latest version
+    remove_version_for_package(
+      deno_dir,
+      "@denotest/cjs-default-export",
+      "1.0.0",
+    );
+
+    // should error when `--cache-only` is used now because the version is not in the cache
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_exit_code(1);
+    output.assert_matches_text("error: Could not find npm package '@denotest/cjs-default-export' matching '^1.0.0'.\n");
+
+    // now try running without it, it should download the package now
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+
+  // test in npm specifier
+  {
+    // now remove the information for the top level package
+    remove_version_for_package(
+      deno_dir,
+      "@denotest/esm-import-cjs-default",
+      "1.0.0",
+    );
+
+    // should error for --cached-only
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_matches_text(concat!(
+      "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+      "    at file:///[WILDCARD]/main.ts:1:8\n",
+    ));
+    output.assert_exit_code(1);
+
+    // now try running, it should work
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+
+  // test matched specifier in package.json
+  {
+    // write out a package.json and a new main.ts with a bare specifier
+    temp_dir.write("main.ts", "import '@denotest/esm-import-cjs-default';");
+    temp_dir.write(
+      "package.json",
+      r#"{ "dependencies": { "@denotest/esm-import-cjs-default": "1.0.0" }}"#,
+    );
+
+    // remove the top level package information again
+    remove_version_for_package(
+      deno_dir,
+      "@denotest/esm-import-cjs-default",
+      "1.0.0",
+    );
+
+    // should error for --cached-only
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_matches_text(concat!(
+      "error: Could not find npm package '@denotest/esm-import-cjs-default' matching '1.0.0'.\n",
+    ));
+    output.assert_exit_code(1);
+
+    // now try running, it should work
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Initialize @denotest/cjs-default-export@1.0.0\n",
+      "Initialize @denotest/esm-import-cjs-default@1.0.0\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+
+  // temp other dependency in package.json
+  {
+    // write out a package.json that has another dependency
+    temp_dir.write(
+      "package.json",
+      r#"{ "dependencies": { "@denotest/esm-import-cjs-default": "1.0.0", "@denotest/esm-basic": "1.0.0" }}"#,
+    );
+
+    // remove the dependency's version
+    remove_version_for_package(deno_dir, "@denotest/esm-basic", "1.0.0");
+
+    // should error for --cached-only
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_matches_text(concat!(
+      "error: Could not find npm package '@denotest/esm-basic' matching '1.0.0'.\n",
+    ));
+    output.assert_exit_code(1);
+
+    // now try running, it should work and only initialize the new package
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+
+  // now try using a lockfile
+  {
+    // create it
+    temp_dir.write("deno.json", r#"{}"#);
+    test_context.new_command().args("cache main.ts").run();
+    assert!(temp_dir.path().join("deno.lock").exists());
+
+    // remove a version found in the lockfile
+    remove_version_for_package(deno_dir, "@denotest/esm-basic", "1.0.0");
+
+    // should error for --cached-only
+    let output = test_context
+      .new_command()
+      .args("run --cached-only main.ts")
+      .run();
+    output.assert_matches_text(concat!(
+      "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
+      "\n",
+      "Caused by:\n",
+      "    Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n"
+    ));
+    output.assert_exit_code(1);
+
+    // now try running, it should work and only initialize the new package
+    let output = test_context.new_command().args("run main.ts").run();
+    output.assert_matches_text(concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "Node esm importing node cjs\n[WILDCARD]",
+    ));
+    output.assert_exit_code(0);
+  }
+}
+
+#[test]
+fn binary_package_with_optional_dependencies() {
+  let context = TestContextBuilder::for_npm()
+    .use_sync_npm_download()
+    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
+    .use_copy_temp_dir("npm/binary_package")
+    .cwd("npm/binary_package")
+    .build();
+
+  let temp_dir = context.temp_dir();
+  let temp_dir_path = temp_dir.path();
+  let project_path = temp_dir_path.join("npm/binary_package");
+
+  // write empty config file so a lockfile gets created
+  temp_dir.write("npm/binary_package/deno.json", "{}");
+
+  // run it twice, with the first time creating the lockfile and the second using it
+  for i in 0..2 {
+    if i == 1 {
+      assert!(project_path.join("deno.lock").exists());
+    }
+
+    let output = context
+      .new_command()
+      .args("run -A --node-modules-dir main.js")
+      .run();
+
+    #[cfg(target_os = "windows")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on windows[WILDCARD]",
+      );
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on mac[WILDCARD]",
+      );
+
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+      output.assert_exit_code(0);
+      output.assert_matches_text(
+        "[WILDCARD]Hello from binary package on linux[WILDCARD]",
+      );
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-windows@1.0.0")
+        .exists());
+      assert!(project_path
+        .join("node_modules/.deno/@denotest+binary-package-linux@1.0.0")
+        .exists());
+      assert!(!project_path
+        .join("node_modules/.deno/@denotest+binary-package-mac@1.0.0")
+        .exists());
+    }
+  }
+}
+
+#[test]
+pub fn node_modules_dir_config_file() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_node_modules = || std::fs::remove_dir_all(&node_modules_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": true }"#);
+  temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
+
+  let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
+  deno_cache_cmd.run();
+
+  assert!(node_modules_dir.exists());
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
+
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  temp_dir.write("package.json", r#"{}"#);
+  deno_cache_cmd.run();
+  assert!(!node_modules_dir.exists());
+
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir main.ts")
+    .run();
+  assert!(node_modules_dir.exists());
+}
+
+#[test]
+fn top_level_install_package_json_explicit_opt_in() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_created_files = || {
+    std::fs::remove_dir_all(&node_modules_dir).unwrap();
+    std::fs::remove_file(temp_dir.path().join("deno.lock")).unwrap();
+  };
+
+  // when the node_modules_dir is explicitly opted into, we should always
+  // ensure a top level package.json install occurs
+  temp_dir.write("deno.json", "{ \"nodeModulesDir\": true }");
+  temp_dir.write(
+    "package.json",
+    "{ \"dependencies\": { \"@denotest/esm-basic\": \"1.0\" }}",
+  );
+
+  temp_dir.write("main.ts", "console.log(5);");
+  let output = test_context.new_command().args("cache main.ts").run();
+  output.assert_matches_text(
+    concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+    )
+  );
+
+  rm_created_files();
+  let output = test_context
+    .new_command()
+    .args_vec(["eval", "console.log(5)"])
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+
+  rm_created_files();
+  let output = test_context
+    .new_command()
+    .args("run -")
+    .stdin("console.log(5)")
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+
+  // now ensure this is cached in the lsp
+  rm_created_files();
+  let mut client = test_context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.write_request(
+    "deno/cache",
+    json!({ "referrer": { "uri": file_uri }, "uris": [] }),
+  );
+
+  assert!(node_modules_dir.join("@denotest").exists());
+}

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ops"
-version = "0.55.0"
+version = "0.67.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,7 @@ path = "./lib.rs"
 proc-macro = true
 
 [dependencies]
+lazy-regex.workspace = true
 once_cell.workspace = true
 pmutil = "0.5.3"
 proc-macro-crate = "1.1.3"
@@ -24,6 +25,7 @@ regex.workspace = true
 syn.workspace = true
 
 [dev-dependencies]
+pretty_assertions.workspace = true
 prettyplease = "0.1.21"
 testing_macros = "0.2.7"
 trybuild = "1.0.71"

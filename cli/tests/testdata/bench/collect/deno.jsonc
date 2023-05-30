@@ -1,7 +1,5 @@
 {
-    "bench": {
-      "files": {
-        "exclude": ["./ignore"]
-      }
-    }
+  "bench": {
+    "exclude": ["./ignore"]
+  }
 }

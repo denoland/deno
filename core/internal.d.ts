@@ -588,6 +588,7 @@ declare namespace __bootstrap {
     export const MapLength: typeof Map.length;
     export const MapName: typeof Map.name;
     export const MapPrototype: typeof Map.prototype;
+    export const MapPrototypeGetSize: (map: Map) => number;
     export const MapPrototypeGet: UncurryThis<typeof Map.prototype.get>;
     export const MapPrototypeSet: UncurryThis<typeof Map.prototype.set>;
     export const MapPrototypeHas: UncurryThis<typeof Map.prototype.has>;
@@ -636,7 +637,6 @@ declare namespace __bootstrap {
     export const Object: typeof globalThis.Object;
     export const ObjectLength: typeof Object.length;
     export const ObjectName: typeof Object.name;
-    export const ObjectPrototype: typeof Object.prototype;
     export const ObjectAssign: typeof Object.assign;
     export const ObjectGetOwnPropertyDescriptor:
       typeof Object.getOwnPropertyDescriptor;
@@ -645,6 +645,7 @@ declare namespace __bootstrap {
     export const ObjectGetOwnPropertyNames: typeof Object.getOwnPropertyNames;
     export const ObjectGetOwnPropertySymbols:
       typeof Object.getOwnPropertySymbols;
+    export const ObjectHasOwn: typeof Object.hasOwn;
     export const ObjectIs: typeof Object.is;
     export const ObjectPreventExtensions: typeof Object.preventExtensions;
     export const ObjectSeal: typeof Object.seal;
@@ -661,6 +662,7 @@ declare namespace __bootstrap {
     export const ObjectEntries: typeof Object.entries;
     export const ObjectFromEntries: typeof Object.fromEntries;
     export const ObjectValues: typeof Object.values;
+    export const ObjectPrototype: typeof Object.prototype;
     export const ObjectPrototype__defineGetter__: UncurryThis<
       typeof Object.prototype.__defineGetter__
     >;
@@ -715,6 +717,7 @@ declare namespace __bootstrap {
     export const SetLength: typeof Set.length;
     export const SetName: typeof Set.name;
     export const SetPrototype: typeof Set.prototype;
+    export const SetPrototypeGetSize: (set: Set) => number;
     export const SetPrototypeHas: UncurryThis<typeof Set.prototype.has>;
     export const SetPrototypeAdd: UncurryThis<typeof Set.prototype.add>;
     export const SetPrototypeDelete: UncurryThis<typeof Set.prototype.delete>;
@@ -866,6 +869,7 @@ declare namespace __bootstrap {
     export const SymbolLength: typeof Symbol.length;
     export const SymbolName: typeof Symbol.name;
     export const SymbolPrototype: typeof Symbol.prototype;
+    export const SymbolPrototypeGetDescription: (symbol: symbol) => string;
     export const SymbolFor: typeof Symbol.for;
     export const SymbolKeyFor: typeof Symbol.keyFor;
     export const SymbolAsyncIterator: typeof Symbol.asyncIterator;

@@ -2,6 +2,7 @@
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
+/// <reference lib="deno.broadcast_channel" />
 
 declare namespace Deno {
   export {}; // stop default export type behavior
@@ -97,6 +98,8 @@ declare namespace Deno {
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * The native struct type for interfacing with foreign functions.
+   *
+   * @category FFI
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
@@ -271,6 +274,11 @@ declare namespace Deno {
      *
      * @default {false} */
     callback?: boolean;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -282,6 +290,11 @@ declare namespace Deno {
     name?: string;
     /** The type of the foreign static value. */
     type: Type;
+    /** When `true`, dlopen will not fail if the symbol is not found.
+     * Instead, the symbol will be set to `null`.
+     *
+     * @default {false} */
+    optional?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -336,10 +349,14 @@ declare namespace Deno {
    * @category FFI
    */
   type StaticForeignLibraryInterface<T extends ForeignLibraryInterface> = {
-    [K in keyof T]: StaticForeignSymbol<T[K]>;
+    [K in keyof T]: T[K]["optional"] extends true
+      ? StaticForeignSymbol<T[K]> | null
+      : StaticForeignSymbol<T[K]>;
   };
 
+  /** @category FFI */
   const brand: unique symbol;
+  /** @category FFI */
   type PointerObject = { [brand]: unknown };
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -631,8 +648,11 @@ declare namespace Deno {
 
   /**
    *  This magic code used to implement better type hints for {@linkcode Deno.dlopen}
+   *
+   *  @category FFI
    */
   type Cast<A, B> = A extends B ? A : B;
+  /** @category FFI */
   type Const<T> = Cast<
     T,
     | (T extends string | number | bigint | boolean ? T : never)
@@ -801,6 +821,22 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /**
+     * Whether HTTP/1.1 is allowed or not.
+     *
+     * @default {true}
+     */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not.
+     *
+     * @default {true}
+     */
+    http2?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1285,6 +1321,28 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** A promise that resolves once server finishes - eg. when aborted using
+     * the signal passed to {@linkcode ServeOptions.signal}.
+     */
+    finished: Promise<void>;
+
+    /**
+     * Make the server block the event loop from finishing.
+     *
+     * Note: the server blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the server not block the event loop from finishing. */
+    unref(): void;
+  }
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
    * Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -1311,8 +1369,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1342,10 +1403,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(
-    handler: ServeHandler,
-    options?: ServeOptions | ServeTlsOptions,
-  ): Promise<void>;
+  export function serve(handler: ServeHandler): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1374,8 +1432,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1408,7 +1469,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Promise<void>;
+  ): Server;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * Serves HTTP requests with the given handler.
@@ -1437,8 +1498,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *   { signal: ac.signal },
+   *   (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -1470,7 +1534,7 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Promise<void>;
+  ): Server;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1502,25 +1566,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Allows "hijacking" the connection that the request is associated with.
-   * This can be used to implement protocols that build on top of HTTP (eg.
-   * {@linkcode WebSocket}).
-   *
-   * Unlike {@linkcode Deno.upgradeHttp} this function does not require that you
-   * respond to the request with a {@linkcode Response} object. Instead this
-   * function returns the underlying connection and first packet received
-   * immediately, and then the caller is responsible for writing the response to
-   * the connection.
-   *
-   * This method can only be called on requests originating the
-   * {@linkcode Deno.serve} server.
-   *
-   * @category HTTP Server
-   */
-  export function upgradeHttpRaw(request: Request): [Deno.Conn, Uint8Array];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Open a new {@linkcode Deno.Kv} connection to persist data.
    *
    * When a path is provided, the database will be persisted to disk at that
@@ -1547,6 +1592,10 @@ declare namespace Deno {
    * the parts is determined by both the type and the value of the part. The
    * relative significance of the types can be found in documentation for the
    * {@linkcode Deno.KvKeyPart} type.
+   *
+   * Keys have a maximum size of 2048 bytes serialized. If the size of the key
+   * exceeds this limit, an error will be thrown on the operation that this key
+   * was passed to.
    *
    * @category KV
    */
@@ -1630,7 +1679,8 @@ declare namespace Deno {
    * - `sum` - Adds the given value to the existing value of the key. Both the
    *   value specified in the mutation, and any existing value must be of type
    *   `Deno.KvU64`. If the key does not exist, the value is set to the given
-   *   value (summed with 0).
+   *   value (summed with 0). If the result of the sum overflows an unsigned
+   *   64-bit integer, the result is wrapped around.
    * - `max` - Sets the value of the key to the maximum of the existing value
    *   and the given value. Both the value specified in the mutation, and any
    *   existing value must be of type `Deno.KvU64`. If the key does not exist,
@@ -1661,7 +1711,7 @@ declare namespace Deno {
    *
    * @category KV
    */
-  export class KvListIterator implements AsyncIterableIterator<KvEntry> {
+  export class KvListIterator<T> implements AsyncIterableIterator<KvEntry<T>> {
     /**
      * Returns the cursor of the current position in the iteration. This cursor
      * can be used to resume the iteration from the current position in the
@@ -1669,8 +1719,8 @@ declare namespace Deno {
      */
     get cursor(): string;
 
-    next(): Promise<IteratorResult<KvEntry, any>>;
-    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry>;
+    next(): Promise<IteratorResult<KvEntry<T>, undefined>>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<KvEntry<T>>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1680,16 +1730,26 @@ declare namespace Deno {
    * The `versionstamp` is a string that represents the current version of the
    * key-value pair. It can be used to perform atomic operations on the KV store
    * by passing it to the `check` method of a {@linkcode Deno.AtomicOperation}.
-   * A `null` versionstamp indicates that no value exists for the given key in
-   * the KV store.
    *
    * @category KV
    */
-  export interface KvEntry {
+  export type KvEntry<T> = { key: KvKey; value: T; versionstamp: string };
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * An optional versioned pair of key and value in a {@linkcode Deno.Kv}.
+   *
+   * This is the same as a {@linkcode KvEntry}, but the `value` and `versionstamp`
+   * fields may be `null` if no value exists for the given key in the KV store.
+   *
+   * @category KV
+   */
+  export type KvEntryMaybe<T> = KvEntry<T> | {
     key: KvKey;
-    value: unknown;
-    versionstamp: string | null;
-  }
+    value: null;
+    versionstamp: null;
+  };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -1748,6 +1808,18 @@ declare namespace Deno {
     batchSize?: number;
   }
 
+  /** @category KV */
+  export interface KvCommitResult {
+    ok: true;
+    /** The versionstamp of the value committed to KV. */
+    versionstamp: string;
+  }
+
+  /** @category KV */
+  export interface KvCommitError {
+    ok: false;
+  }
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A check to perform as part of a {@linkcode Deno.AtomicOperation}. The check
@@ -1787,11 +1859,15 @@ declare namespace Deno {
    * performed and the operation will fail. One can then retry the read-modify-
    * write operation in a loop until it succeeds.
    *
-   * The `commit` method of an atomic operation returns a boolean indicating
+   * The `commit` method of an atomic operation returns a value indicating
    * whether checks passed and mutations were performed. If the operation failed
-   * because of a failed check, the return value will be `false`. If the
+   * because of a failed check, the return value will be a
+   * {@linkcode Deno.KvCommitError} with an `ok: false` property. If the
    * operation failed for any other reason (storage error, invalid value, etc.),
-   * an exception will be thrown.
+   * an exception will be thrown. If the operation succeeded, the return value
+   * will be a {@linkcode Deno.KvCommitResult} object with a `ok: true` property
+   * and the versionstamp of the value committed to KV.
+
    *
    * @category KV
    */
@@ -1811,6 +1887,24 @@ declare namespace Deno {
      */
     mutate(...mutations: KvMutation[]): this;
     /**
+     * Shortcut for creating a `sum` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    sum(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `min` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    min(key: KvKey, n: bigint): this;
+    /**
+     * Shortcut for creating a `max` mutation. This method wraps `n` in a
+     * {@linkcode Deno.KvU64}, so the value of `n` must be in the range
+     * `[0, 2^64-1]`.
+     */
+    max(key: KvKey, n: bigint): this;
+    /**
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.
      */
@@ -1821,17 +1915,21 @@ declare namespace Deno {
      */
     delete(key: KvKey): this;
     /**
-     * Commit the operation to the KV store. Returns a boolean indicating
-     * whether checks passed and mutations were performed. If the operation
-     * failed because of a failed check, the return value will be `false`. If
-     * the operation failed for any other reason (storage error, invalid value,
-     * etc.), an exception will be thrown.
+     * Commit the operation to the KV store. Returns a value indicating whether
+     * checks passed and mutations were performed. If the operation failed
+     * because of a failed check, the return value will be a {@linkcode
+     * Deno.KvCommitError} with an `ok: false` property. If the operation failed
+     * for any other reason (storage error, invalid value, etc.), an exception
+     * will be thrown. If the operation succeeded, the return value will be a
+     * {@linkcode Deno.KvCommitResult} object with a `ok: true` property and the
+     * versionstamp of the value committed to KV.
      *
-     * If the commit returns `false`, one may create a new atomic operation with
-     * updated checks and mutations and attempt to commit it again. See the note
-     * on optimistic locking in the documentation for {@linkcode Deno.AtomicOperation}.
+     * If the commit returns `ok: false`, one may create a new atomic operation
+     * with updated checks and mutations and attempt to commit it again. See the
+     * note on optimistic locking in the documentation for
+     * {@linkcode Deno.AtomicOperation}.
      */
-    commit(): Promise<boolean>;
+    commit(): Promise<KvCommitResult | KvCommitError>;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1865,15 +1963,16 @@ declare namespace Deno {
    * maximum length of 64 KiB after serialization. Serialization of both keys
    * and values is somewhat opaque, but one can usually assume that the
    * serialization of any value is about the same length as the resulting string
-   * of a JSON serialization of that same value.
+   * of a JSON serialization of that same value. If theses limits are exceeded,
+   * an exception will be thrown.
    *
    * @category KV
    */
   export class Kv {
     /**
      * Retrieve the value and versionstamp for the given key from the database
-     * in the form of a {@linkcode Deno.KvEntry}. If no value exists for the key,
-     * the returned entry will have a `null` value and versionstamp.
+     * in the form of a {@linkcode Deno.KvEntryMaybe}. If no value exists for
+     * the key, the returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1889,17 +1988,17 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    get(
+    get<T = unknown>(
       key: KvKey,
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry>;
+    ): Promise<KvEntryMaybe<T>>;
 
     /**
      * Retrieve multiple values and versionstamps from the database in the form
-     * of an array of {@linkcode Deno.KvEntry} objects. The returned array will
-     * have the same length as the `keys` array, and the entries will be in the
-     * same order as the keys. If no value exists for a given key, the returned
-     * entry will have a `null` value and versionstamp.
+     * of an array of {@linkcode Deno.KvEntryMaybe} objects. The returned array
+     * will have the same length as the `keys` array, and the entries will be in
+     * the same order as the keys. If no value exists for a given key, the
+     * returned entry will have a `null` value and versionstamp.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -1918,11 +2017,10 @@ declare namespace Deno {
      * information on consistency levels, see the documentation for
      * {@linkcode Deno.KvConsistencyLevel}.
      */
-    getMany(
-      keys: KvKey[],
+    getMany<T extends readonly unknown[]>(
+      keys: readonly [...{ [K in keyof T]: KvKey }],
       options?: { consistency?: KvConsistencyLevel },
-    ): Promise<KvEntry[]>;
-
+    ): Promise<{ [K in keyof T]: KvEntryMaybe<T[K]> }>;
     /**
      * Set the value for the given key in the database. If a value already
      * exists for the key, it will be overwritten.
@@ -1932,7 +2030,7 @@ declare namespace Deno {
      * await db.set(["foo"], "bar");
      * ```
      */
-    set(key: KvKey, value: unknown): Promise<void>;
+    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
 
     /**
      * Delete the value for the given key from the database. If no value exists
@@ -1984,7 +2082,10 @@ declare namespace Deno {
      * list operation. See the documentation for {@linkcode Deno.KvListOptions}
      * for more information.
      */
-    list(selector: KvListSelector, options?: KvListOptions): KvListIterator;
+    list<T = unknown>(
+      selector: KvListSelector,
+      options?: KvListOptions,
+    ): KvListIterator<T>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
@@ -1997,10 +2098,10 @@ declare namespace Deno {
 
     /**
      * Close the database connection. This will prevent any further operations
-     * from being performed on the database, but will wait for any in-flight
-     * operations to complete before closing the underlying database connection.
+     * from being performed on the database, and interrupt any in-flight
+     * operations immediately.
      */
-    close(): Promise<void>;
+    close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

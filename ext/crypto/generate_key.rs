@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
@@ -56,7 +57,7 @@ pub async fn op_crypto_generate_key(
       generate_key_hmac(hash, length)
     }
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 
