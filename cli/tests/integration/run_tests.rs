@@ -2931,6 +2931,16 @@ itest!(delete_window {
   output_str: Some("true\n"),
 });
 
+itest!(window_global_deprecated {
+  args: "run run/window_global_deprecated/main.ts",
+  output: "run/window_global_deprecated/main.out",
+});
+
+itest!(window_global_deprecated_quiet {
+  args: "run --quiet run/window_global_deprecated/main.ts",
+  output_str: Some("undefined\nundefined\n"),
+});
+
 itest!(colors_without_global_this {
   args: "run run/colors_without_globalThis.js",
   output_str: Some("true\n"),

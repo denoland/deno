@@ -245,11 +245,25 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
 });
 const WorkerNavigatorPrototype = WorkerNavigator.prototype;
 
+let hasLoggedWindow = false;
+
 const mainRuntimeGlobalProperties = {
   Location: location.locationConstructorDescriptor,
   location: location.locationDescriptor,
   Window: globalInterfaces.windowConstructorDescriptor,
-  window: util.getterOnly(() => globalThis),
+  window: util.getterOnly(() => {
+    if (!hasLoggedWindow) {
+      hasLoggedWindow = true;
+      const stack = new Error().stack;
+      util.logWarn(
+        "%c[deprecated] The `window` global will be removed in Deno 2.0 (https://github.com/denoland/deno/issues/13367). Use `globalThis` instead." +
+          (stack == null ? "" : `\n${stack.split("\n").slice(2)}`),
+        "color: yellow",
+      );
+    }
+
+    return globalThis;
+  }),
   self: util.getterOnly(() => globalThis),
   Navigator: util.nonEnumerable(Navigator),
   navigator: util.getterOnly(() => navigator),

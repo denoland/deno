@@ -1,0 +1,4 @@
+[deprecated] The `window` global will be removed in Deno 2.0 (https://github.com/denoland/deno/issues/13367). Use `globalThis` instead.
+    at file:///[WILDCARD]/testdata/run/window_global_deprecated/main.ts:1:13
+undefined
+undefined

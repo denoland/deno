@@ -24,7 +24,7 @@ function setLogLevel(level, source) {
   }
 }
 
-function log(...args) {
+function logDebug(...args) {
   if (logLevel >= LogLevel.Debug) {
     // if we destructure `console` off `globalThis` too early, we don't bind to
     // the right console, therefore we don't log anything out.
@@ -32,6 +32,12 @@ function log(...args) {
       `DEBUG ${logSource} -`,
       ...new SafeArrayIterator(args),
     );
+  }
+}
+
+function logWarn(...args) {
+  if (logLevel >= LogLevel.Warn) {
+    globalThis.console.warn(...new SafeArrayIterator(args));
   }
 }
 
@@ -86,7 +92,8 @@ function getterOnly(getter) {
 export {
   createResolvable,
   getterOnly,
-  log,
+  logDebug,
+  logWarn,
   nonEnumerable,
   readOnly,
   setLogLevel,

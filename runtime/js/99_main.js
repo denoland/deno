@@ -527,7 +527,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   // `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
-  util.log("args", args);
+  util.logDebug("args", args);
 }
 
 function bootstrapWorkerRuntime(

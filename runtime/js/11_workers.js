@@ -16,7 +16,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { log } from "ext:runtime/06_util.js";
+import { logDebug } from "ext:runtime/06_util.js";
 import {
   defineEventHandler,
   ErrorEvent,
@@ -160,7 +160,7 @@ class Worker extends EventTarget {
           break;
         }
         case 3: { // Close
-          log(`Host got "close" message from worker: ${this.#name}`);
+          logDebug(`Host got "close" message from worker: ${this.#name}`);
           this.#status = "CLOSED";
           return;
         }
