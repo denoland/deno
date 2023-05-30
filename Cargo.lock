@@ -1152,6 +1152,7 @@ version = "0.99.0"
 dependencies = [
  "deno_core",
  "deno_tls",
+ "enum-as-inner",
  "log",
  "pin-project",
  "serde",
