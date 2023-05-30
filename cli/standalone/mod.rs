@@ -46,6 +46,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use std::pin::Pin;
@@ -423,7 +424,7 @@ pub async fn run(
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,
-      debug: false,
+      log_level: WorkerLogLevel::Info,
       coverage_dir: None,
       enable_testing_features: false,
       has_node_modules_dir,

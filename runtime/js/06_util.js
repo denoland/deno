@@ -5,18 +5,27 @@ const {
   Promise,
   SafeArrayIterator,
 } = primordials;
-let logDebug = false;
+
+// WARNING: Keep this in sync with Rust (search for LogLevel)
+const LogLevel = {
+  Error: 1,
+  Warn: 2,
+  Info: 3,
+  Debug: 4,
+};
+
+let logLevel = 3;
 let logSource = "JS";
 
-function setLogDebug(debug, source) {
-  logDebug = debug;
+function setLogLevel(level, source) {
+  logLevel = level;
   if (source) {
     logSource = source;
   }
 }
 
 function log(...args) {
-  if (logDebug) {
+  if (logLevel >= LogLevel.Debug) {
     // if we destructure `console` off `globalThis` too early, we don't bind to
     // the right console, therefore we don't log anything out.
     globalThis.console.error(
@@ -80,6 +89,6 @@ export {
   log,
   nonEnumerable,
   readOnly,
-  setLogDebug,
+  setLogLevel,
   writable,
 };
