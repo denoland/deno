@@ -4,9 +4,14 @@ import { DenoWorkspace } from "./deno_workspace.ts";
 import { $, GitLogOutput, semver } from "./deps.ts";
 
 const workspace = await DenoWorkspace.load();
+const generateScript = workspace.repo.folderPath.join(
+  ".github/workspace/ci.generate.ts",
+);
 const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
+
+await bumpCiCacheVersion();
 
 // increment the cli version
 if (Deno.args.some((a) => a === "--patch")) {
@@ -109,4 +114,21 @@ async function updateStdVersion() {
   await compatFilePath.writeText(
     text.replace(versionRe, `std@${newStdVersion}`),
   );
+}
+
+async function bumpCiCacheVersion() {
+  const fileText = generateScript.readTextSync();
+  const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
+  const version = fileText.match(cacheVersionRegex)?.[1];
+  if (version == null) {
+    throw new Error("Could not find cache version in text.");
+  }
+  const newText = fileText.replace(
+    cacheVersionRegex,
+    `const cacheVersion = ${parseInt(version, 10) + 1};`,
+  );
+  generateScript.writeTextSync(newText);
+
+  // run the script
+  await `${generateScript}`;
 }
