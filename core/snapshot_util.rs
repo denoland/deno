@@ -174,6 +174,10 @@ impl SnapshotOptions {
     matches!(self, Self::Load(_) | Self::CreateFromExisting(_))
   }
 
+  pub fn will_snapshot(&self) -> bool {
+    matches!(self, Self::Create | Self::CreateFromExisting(_))
+  }
+
   pub fn snapshot(self) -> Option<Snapshot> {
     match self {
       Self::CreateFromExisting(snapshot) => Some(snapshot),

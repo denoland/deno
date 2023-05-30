@@ -290,7 +290,7 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let module_map_rc = JsRuntime::module_map_from(scope);
 
     debug!(
@@ -490,7 +490,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
+      let state_rc = JsRuntime::state_from(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
