@@ -117,21 +117,123 @@ export class Http2Session extends EventEmitter {
   }
 }
 
-export class ServerHttp2Session {
+export class ServerHttp2Session extends Http2Session {
   constructor() {
-    notImplemented("ServerHttp2Session");
+    super();
+  }
+
+  altsvc(
+    _alt: string,
+    _originOrStream: number | string | URL | { origin: string },
+  ) {
+    notImplemented("ServerHttp2Session.altsvc");
+  }
+
+  origin(..._origins: (string | URL | { origin: string })[]) {
+    notImplemented("ServerHttp2Session.origins");
   }
 }
-export class ClientHttp2Session {
+
+export class ClientHttp2Session extends Http2Session {
   constructor() {
-    notImplemented("ClientHttp2Session");
+    super();
+  }
+
+  request(
+    _headers: Record<string, unknown>,
+    _options?: Record<string, unknown>,
+  ): ClientHttp2Stream {
+    notImplemented("ClientHttp2Session.request");
+    return new ClientHttp2Stream();
   }
 }
+
 export class Http2Stream {
   constructor() {
-    notImplemented("Http2Stream");
+  }
+
+  get aborted(): boolean {
+    notImplemented("Http2Stream.aborted");
+    return false;
+  }
+
+  get bufferSize(): number {
+    notImplemented("Http2Stream.bufferSize");
+    return 0;
+  }
+
+  close(_code: number, _callback: () => void) {
+    notImplemented("Http2Stream.close");
+  }
+
+  get closed(): boolean {
+    notImplemented("Http2Stream.closed");
+    return false;
+  }
+
+  get destroyed(): boolean {
+    notImplemented("Http2Stream.destroyed");
+    return false;
+  }
+
+  get endAfterHeaders(): boolean {
+    notImplemented("Http2Stream.endAfterHeaders");
+    return false;
+  }
+
+  get id(): number | undefined {
+    notImplemented("Http2Stream.id");
+    return undefined;
+  }
+
+  get pending(): boolean {
+    notImplemented("Http2Stream.pending");
+    return false;
+  }
+
+  priority(_options: Record<string, unknown>) {
+    notImplemented("Http2Stream.priority");
+  }
+
+  get rstCode(): number {
+    notImplemented("Http2Stream.rstCode");
+    return 0;
+  }
+
+  get sentHeaders(): boolean {
+    notImplemented("Http2Stream.sentHeaders");
+    return false;
+  }
+
+  get sentInfoHeaders(): Record<string, unknown> {
+    notImplemented("Http2Stream.sentInfoHeaders");
+    return {};
+  }
+
+  get sentTrailers(): Record<string, unknown> {
+    notImplemented("Http2Stream.sentTrailers");
+    return {};
+  }
+
+  get session(): Http2Session {
+    notImplemented("Http2Stream.session");
+    return new Http2Session();
+  }
+
+  setTimeout(_msecs: number, _callback: () => void) {
+    notImplemented("Http2Stream.setTimeout");
+  }
+
+  get state(): Record<string, unknown> {
+    notImplemented("Http2Stream.state");
+    return {};
+  }
+
+  sendTrailers(_headers: Record<string, unknown>) {
+    notImplemented("Http2Stream.sendTrailers");
   }
 }
+
 export class ClientHttp2Stream {
   constructor() {
     notImplemented("ClientHttp2Stream");
