@@ -536,7 +536,7 @@ Deno.test("[node/http] ClientRequest setTimeout", async () => {
   let body = "";
   const def = deferred();
   const timer = setTimeout(() => def.reject("timed out"), 50000);
-  const req = https.request("https://localhost:5545/http_version", (resp) => {
+  const req = http.request("http://localhost:4545/http_version", (resp) => {
     resp.on("data", (chunk) => {
       body += chunk;
     });
@@ -556,7 +556,7 @@ Deno.test("[node/http] ClientRequest setTimeout", async () => {
 Deno.test("[node/http] ClientRequest PATCH", async () => {
   let body = "";
   const def = deferred();
-  const req = https.request("https://localhost:5545/echo_server", {
+  const req = http.request("http://localhost:4545/echo_server", {
     method: "PATCH",
   }, (resp) => {
     resp.on("data", (chunk) => {
@@ -578,7 +578,7 @@ Deno.test("[node/http] ClientRequest PATCH", async () => {
 Deno.test("[node/http] ClientRequest PUT", async () => {
   let body = "";
   const def = deferred();
-  const req = https.request("https://localhost:5545/echo_server", {
+  const req = http.request("http://localhost:4545/echo_server", {
     method: "PUT",
   }, (resp) => {
     resp.on("data", (chunk) => {

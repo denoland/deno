@@ -50,6 +50,8 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { timerId } from "ext:deno_web/03_abort_signal.js";
+import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -636,6 +638,7 @@ class ClientRequest extends OutgoingMessage {
         ]);
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
+          webClearTimeout(this._timeout[timerId]);
         }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
