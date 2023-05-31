@@ -457,15 +457,12 @@ trait JsRuntimeInternalTrait {
 }
 
 impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
-  fn init_v8(
-    v8_platform: Option<v8::SharedRef<v8::Platform>>,
-    for_snapshotting: bool,
-  ) {
+  fn init_v8(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
     static DENO_INIT: Once = Once::new();
     static DENO_PREDICTABLE: AtomicBool = AtomicBool::new(false);
     static DENO_PREDICTABLE_SET: AtomicBool = AtomicBool::new(false);
 
-    let predictable = for_snapshotting || cfg!(test);
+    let predictable = FOR_SNAPSHOT || cfg!(test);
     if DENO_PREDICTABLE_SET.load(Ordering::SeqCst) {
       let current = DENO_PREDICTABLE.load(Ordering::SeqCst);
       assert_eq!(current, predictable, "V8 may only be initialized once in either snapshotting or non-snapshotting mode. Either snapshotting or non-snapshotting mode may be used in a single process, not both.");
@@ -1478,7 +1475,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 impl JsRuntime {
   /// Only constructor, configuration is done through `options`.
   pub fn new(mut options: RuntimeOptions) -> JsRuntime {
-    JsRuntimeImpl::<false>::init_v8(options.v8_platform.take(), false);
+    JsRuntimeImpl::<false>::init_v8(options.v8_platform.take());
 
     let snapshot_options = snapshot_util::SnapshotOptions::new_from(
       options.startup_snapshot.take(),
@@ -1537,7 +1534,7 @@ impl JsRuntimeForSnapshot {
     mut options: RuntimeOptions,
     runtime_snapshot_options: RuntimeSnapshotOptions,
   ) -> JsRuntimeForSnapshot {
-    JsRuntimeImpl::<true>::init_v8(options.v8_platform.take(), true);
+    JsRuntimeImpl::<true>::init_v8(options.v8_platform.take());
 
     let snapshot_options = snapshot_util::SnapshotOptions::new_from(
       options.startup_snapshot.take(),
