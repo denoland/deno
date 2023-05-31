@@ -112,6 +112,14 @@ impl<T> DerefMut for ManuallyDropRc<T> {
 /// to do an orderly shutdown of V8. We keep these in a separate struct to allow us to control
 /// the destruction more closely, as snapshots require the isolate to be destroyed by the
 /// snapshot process, not the destructor.
+///
+/// The way rusty_v8 works w/snapshots is that the [`v8::OwnedIsolate`] gets consumed by a
+/// [`v8::snapshot::SnapshotCreator`] that is stored in its annex. It's a bit awkward, because this
+/// means we cannot let it drop (because we don't have it after a snapshot). On top of that, we have
+/// to consume it in the snapshot creator because otherwise it panics.
+///
+/// This inner struct allows us to let the outer JsRuntime drop normally without a Drop impl, while we
+/// control dropping more closely here using ManuallyDrop.
 struct InnerIsolateState {
   snapshotting: bool,
   state: ManuallyDropRc<RefCell<JsRuntimeState>>,
@@ -185,15 +193,10 @@ impl Drop for InnerIsolateState {
 }
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
-/// Worker" concept in the DOM. A JsRuntimeImpl is a Future that can be used with
-/// an event loop (Tokio, async_std).
+/// Worker" concept in the DOM.
 ////
 /// The JsRuntimeImpl future completes when there is an error or when all
 /// pending ops have completed.
-///
-/// Pending ops are created in JavaScript by calling Deno.core.opAsync(), and in Rust
-/// by implementing an async function that takes a serde::Deserialize "control argument"
-/// and an optional zero copy buffer, each async Op is tied to a Promise in JavaScript.
 ///
 /// API consumers will want to use either the [`JsRuntime`] or [`JsRuntimeForSnapshot`]
 /// type aliases.
