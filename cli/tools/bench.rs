@@ -1069,13 +1069,13 @@ mod mitata {
       } else {
         if options.avg {
           s.push_str(&format!(
-            "{:>23}",
+            "{:>30}",
             format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
           ));
         }
         if options.min_max {
           s.push_str(&format!(
-            "{:>42}",
+            "{:>50}",
             format!(
               "({} … {})",
               colors::cyan(fmt_duration(stats.min)),
@@ -1085,7 +1085,7 @@ mod mitata {
         }
         if options.percentiles {
           s.push_str(&format!(
-            " {:>18} {:>18} {:>18}",
+            " {:>22} {:>22} {:>22}",
             colors::magenta(fmt_duration(stats.p75)),
             colors::magenta(fmt_duration(stats.p99)),
             colors::magenta(fmt_duration(stats.p995))
