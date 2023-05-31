@@ -810,6 +810,30 @@ where
   ))
 }
 
+/// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
+/// goes wrong in this method we return [`SlabId::MAX`] and let the async handler pick up the real error.
+#[op(fast)]
+pub fn op_http_try_wait(state: &mut OpState, rid: ResourceId) -> SlabId {
+  // The resource needs to exist.
+  let Ok(join_handle) = state
+    .resource_table
+    .get::<HttpJoinHandle>(rid) else {
+      return SlabId::MAX;
+  };
+
+  // If join handle is somehow locked, just abort.
+  let Some(mut handle) = RcRef::map(&join_handle, |this| &this.2).try_borrow_mut() else {
+    return SlabId::MAX;
+  };
+
+  // See if there are any requests waiting on this channel. If not, return.
+  let Ok(id) = handle.try_recv() else {
+    return SlabId::MAX;
+  };
+
+  id
+}
+
 #[op]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
