@@ -1,5 +1,5 @@
-[WILDCARD][Class: Location]
-Location {}
+[WILDCARD][class Location]
+Object [Location] {}
 Location {
   hash: "#bat",
   host: "foo",

@@ -249,69 +249,79 @@ fn validate(input: &str) -> ValidationResult {
   let mut in_template = false;
   let mut div_token_count_on_current_line = 0;
   let mut last_line_index = 0;
+  let mut queued_validation_error = None;
+  let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
+    .into_iter()
+    .filter_map(|item| match item.inner {
+      deno_ast::TokenOrComment::Token(token) => Some((token, item.range)),
+      deno_ast::TokenOrComment::Comment { .. } => None,
+    });
 
-  for item in deno_ast::lex(input, deno_ast::MediaType::TypeScript) {
-    let current_line_index = line_info.line_index(item.range.start);
+  for (token, range) in tokens {
+    let current_line_index = line_info.line_index(range.start);
     if current_line_index != last_line_index {
       div_token_count_on_current_line = 0;
       last_line_index = current_line_index;
+
+      if let Some(error) = queued_validation_error {
+        return error;
+      }
     }
-    if let deno_ast::TokenOrComment::Token(token) = item.inner {
-      match token {
-        Token::BinOp(BinOpToken::Div)
-        | Token::AssignOp(AssignOp::DivAssign) => {
-          // it's too complicated to write code to detect regular expression literals
-          // which are no longer tokenized, so if a `/` or `/=` happens twice on the same
-          // line, then we bail
-          div_token_count_on_current_line += 1;
-          if div_token_count_on_current_line >= 2 {
+    match token {
+      Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign) => {
+        // it's too complicated to write code to detect regular expression literals
+        // which are no longer tokenized, so if a `/` or `/=` happens twice on the same
+        // line, then we bail
+        div_token_count_on_current_line += 1;
+        if div_token_count_on_current_line >= 2 {
+          return ValidationResult::Valid(None);
+        }
+      }
+      Token::BackQuote => in_template = !in_template,
+      Token::LParen | Token::LBracket | Token::LBrace | Token::DollarLBrace => {
+        stack.push(token)
+      }
+      Token::RParen | Token::RBracket | Token::RBrace => {
+        match (stack.pop(), token) {
+          (Some(Token::LParen), Token::RParen)
+          | (Some(Token::LBracket), Token::RBracket)
+          | (Some(Token::LBrace), Token::RBrace)
+          | (Some(Token::DollarLBrace), Token::RBrace) => {}
+          (Some(left), _) => {
+            // queue up a validation error to surface once we've finished examininig the current line
+            queued_validation_error = Some(ValidationResult::Invalid(Some(
+              format!("Mismatched pairs: {left:?} is not properly closed"),
+            )));
+          }
+          (None, _) => {
+            // While technically invalid when unpaired, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
             return ValidationResult::Valid(None);
           }
         }
-        Token::BackQuote => in_template = !in_template,
-        Token::LParen
-        | Token::LBracket
-        | Token::LBrace
-        | Token::DollarLBrace => stack.push(token),
-        Token::RParen | Token::RBracket | Token::RBrace => {
-          match (stack.pop(), token) {
-            (Some(Token::LParen), Token::RParen)
-            | (Some(Token::LBracket), Token::RBracket)
-            | (Some(Token::LBrace), Token::RBrace)
-            | (Some(Token::DollarLBrace), Token::RBrace) => {}
-            (Some(left), _) => {
-              return ValidationResult::Invalid(Some(format!(
-                "Mismatched pairs: {left:?} is not properly closed"
-              )))
-            }
-            (None, _) => {
-              // While technically invalid when unpaired, it should be V8's task to output error instead.
-              // Thus marked as valid with no info.
-              return ValidationResult::Valid(None);
-            }
-          }
-        }
-        Token::Error(error) => {
-          match error.kind() {
-            // If there is unterminated template, it continues to read input.
-            SyntaxError::UnterminatedTpl => {}
-            _ => {
-              // If it failed parsing, it should be V8's task to output error instead.
-              // Thus marked as valid with no info.
-              return ValidationResult::Valid(None);
-            }
-          }
-        }
-        _ => {}
       }
+      Token::Error(error) => {
+        match error.kind() {
+          // If there is unterminated template, it continues to read input.
+          SyntaxError::UnterminatedTpl => {}
+          _ => {
+            // If it failed parsing, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
+            return ValidationResult::Valid(None);
+          }
+        }
+      }
+      _ => {}
     }
   }
 
-  if !stack.is_empty() || in_template {
-    return ValidationResult::Incomplete;
+  if let Some(error) = queued_validation_error {
+    error
+  } else if !stack.is_empty() || in_template {
+    ValidationResult::Incomplete
+  } else {
+    ValidationResult::Valid(None)
   }
-
-  ValidationResult::Valid(None)
 }
 
 impl Highlighter for EditorHelper {

@@ -14,12 +14,6 @@ use syn::GenericParam;
 use syn::Generics;
 use syn::Ident;
 use syn::ItemFn;
-use syn::ItemImpl;
-use syn::Path;
-use syn::PathArguments;
-use syn::PathSegment;
-use syn::Type;
-use syn::TypePath;
 
 use crate::optimizer::FastValue;
 use crate::optimizer::Optimizer;
@@ -62,13 +56,11 @@ pub(crate) fn generate(
     }
   };
 
-  // We've got 3 idents.
+  // We've got 2 idents.
   //
   // - op_foo, the public op declaration contains the user function.
-  // - op_foo_fast, the fast call type.
   // - op_foo_fast_fn, the fast call function.
   let ident = item_fn.sig.ident.clone();
-  let fast_ident = Ident::new(&format!("{ident}_fast"), Span::call_site());
   let fast_fn_ident =
     Ident::new(&format!("{ident}_fast_fn"), Span::call_site());
 
@@ -78,11 +70,6 @@ pub(crate) fn generate(
 
   // struct op_foo_fast <T, U> { ... }
   let struct_generics = exclude_lifetime_params(&generics.params);
-  // std::marker::PhantomData <A>
-  let phantom_generics: Quote = match struct_generics {
-    Some(ref params) => q!(Vars { params }, { params }),
-    None => q!({ <()> }),
-  };
   // op_foo_fast_fn :: <T>
   let caller_generics: Quote = match struct_generics {
     Some(ref params) => q!(Vars { params }, { ::params }),
@@ -90,28 +77,19 @@ pub(crate) fn generate(
   };
 
   // This goes in the FastFunction impl block.
-  let mut segments = Punctuated::new();
-  {
-    let mut arguments = PathArguments::None;
-    if let Some(ref struct_generics) = struct_generics {
-      arguments = PathArguments::AngleBracketed(parse_quote! {
-        #struct_generics
-      });
-    }
-    segments.push_value(PathSegment {
-      ident: fast_ident.clone(),
-      arguments,
-    });
-  }
-
-  // struct T <A> {
-  //   _phantom: ::std::marker::PhantomData<A>,
+  // let mut segments = Punctuated::new();
+  // {
+  //   let mut arguments = PathArguments::None;
+  //   if let Some(ref struct_generics) = struct_generics {
+  //     arguments = PathArguments::AngleBracketed(parse_quote! {
+  //       #struct_generics
+  //     });
+  //   }
+  //   segments.push_value(PathSegment {
+  //     ident: fast_ident.clone(),
+  //     arguments,
+  //   });
   // }
-  let fast_ty: Quote = q!(Vars { Type: &fast_ident, generics: &struct_generics, phantom_generics }, {
-    struct Type generics {
-      _phantom: ::std::marker::PhantomData phantom_generics,
-    }
-  });
 
   // Original inputs.
   let mut inputs = item_fn.sig.inputs.clone();
@@ -267,41 +245,16 @@ pub(crate) fn generate(
   }
 
   if optimizer.is_async {
-    // Referenced variables are declared in parent block.
-    let track_async = q!({
-      let __op_id = __ctx.id;
-      let __state = ::std::cell::RefCell::borrow(&__ctx.state);
-      __state.tracker.track_async(__op_id);
-    });
-
-    output_transforms.push_tokens(&track_async);
-
     let queue_future = if optimizer.returns_result {
       q!({
-        let realm_idx = __ctx.realm_idx;
-        let __get_class = __state.get_error_class_fn;
-        let result = _ops::queue_fast_async_op(__ctx, async move {
-          let result = result.await;
-          (
-            realm_idx,
-            __promise_id,
-            __op_id,
-            _ops::to_op_result(__get_class, result),
-          )
-        });
+        let result = _ops::queue_fast_async_op(__ctx, __promise_id, result);
       })
     } else {
       q!({
-        let realm_idx = __ctx.realm_idx;
-        let result = _ops::queue_fast_async_op(__ctx, async move {
-          let result = result.await;
-          (
-            realm_idx,
-            __promise_id,
-            __op_id,
-            _ops::OpResult::Ok(result.into()),
-          )
-        });
+        let result =
+          _ops::queue_fast_async_op(__ctx, __promise_id, async move {
+            Ok(result.await)
+          });
       })
     };
 
@@ -345,72 +298,21 @@ pub(crate) fn generate(
   let mut generics: Generics = parse_quote! { #impl_generics };
   generics.where_clause = where_clause.cloned();
 
-  // impl <A> fast_api::FastFunction for T <A> where A: B {
-  //   fn function(&self) -> *const ::std::ffi::c_void  {
-  //     f as *const ::std::ffi::c_void
-  //   }
-  //   fn args(&self) -> &'static [fast_api::Type] {
-  //     &[ CType::T, CType::U ]
-  //   }
-  //   fn return_type(&self) -> fast_api::CType {
-  //     CType::T
-  //   }
-  // }
-  let item: ItemImpl = ItemImpl {
-    attrs: vec![],
-    defaultness: None,
-    unsafety: None,
-    impl_token: Default::default(),
-    generics,
-    trait_: Some((
-      None,
-      parse_quote!(#core::v8::fast_api::FastFunction),
-      Default::default(),
-    )),
-    self_ty: Box::new(Type::Path(TypePath {
-      qself: None,
-      path: Path {
-        leading_colon: None,
-        segments,
-      },
-    })),
-    brace_token: Default::default(),
-    items: vec![
-      parse_quote! {
-        #[inline(always)]
-        fn function(&self) -> *const ::std::ffi::c_void {
-          #fast_fn_ident #caller_generics as *const ::std::ffi::c_void
-        }
-      },
-      parse_quote! {
-        #[inline(always)]
-        fn args(&self) -> &'static [#core::v8::fast_api::Type] {
-          use #core::v8::fast_api::Type::*;
-          use #core::v8::fast_api::CType;
-          &[ #input_variants ]
-        }
-      },
-      parse_quote! {
-        #[inline(always)]
-        fn return_type(&self) -> #core::v8::fast_api::CType {
-          #core::v8::fast_api::CType::#output_variant
-        }
-      },
-    ],
-  };
-
-  let mut tts = q!({});
-  tts.push_tokens(&fast_ty);
-  tts.push_tokens(&item);
-  tts.push_tokens(&fast_fn);
-
-  let impl_and_fn = tts.dump();
+  // fast_api::FastFunction::new(&[ CType::T, CType::U ], CType::T, f::<P> as *const ::std::ffi::c_void)
   let decl = q!(
-    Vars { fast_ident, caller_generics },
-    {
-      Some(Box::new(fast_ident caller_generics { _phantom: ::std::marker::PhantomData }))
-    }
+    Vars { core: core, fast_fn_ident: fast_fn_ident, generics: caller_generics, inputs: input_variants, output: output_variant },
+    {{
+      use core::v8::fast_api::Type::*;
+      use core::v8::fast_api::CType;
+      Some(core::v8::fast_api::FastFunction::new(
+        &[ inputs ],
+        CType :: output,
+        fast_fn_ident generics as *const ::std::ffi::c_void
+      ))
+    }}
   ).dump();
+
+  let impl_and_fn = fast_fn.dump();
 
   FastImplItems {
     impl_and_fn,

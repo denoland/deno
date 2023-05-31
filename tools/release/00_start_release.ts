@@ -42,7 +42,9 @@ function getNextVersion(originalVersion: semver.SemVer) {
 function buildDenoReleaseInstructionsDoc() {
   const templateText = currentDirPath
     .join("release_doc_template.md")
-    .readTextSync();
+    .readTextSync()
+    .replaceAll("$BRANCH_NAME", `v${nextVersion.major}.${nextVersion.minor}`)
+    .replaceAll("$VERSION", nextVersion.toString());
   return `# Deno CLI ${nextVersion.toString()} Release Checklist\n\n${templateText}`;
 }
 

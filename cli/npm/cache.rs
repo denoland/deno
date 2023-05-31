@@ -13,19 +13,19 @@ use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
-use deno_graph::npm::NpmPackageNv;
-use deno_graph::semver::Version;
+use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::Version;
 use once_cell::sync::Lazy;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::hard_link_dir_recursive;
 use crate::util::path::root_url_to_safe_local_dirname;
 use crate::util::progress_bar::ProgressBar;
 
-use super::registry::NpmPackageVersionDistInfo;
 use super::tarball::verify_and_extract_tarball;
 
 static SHOULD_SYNC_DOWNLOAD: Lazy<bool> =
@@ -112,51 +112,11 @@ pub fn with_folder_sync_lock(
   }
 }
 
-pub struct NpmPackageCacheFolderId {
-  pub nv: NpmPackageNv,
-  /// Peer dependency resolution may require us to have duplicate copies
-  /// of the same package.
-  pub copy_index: usize,
-}
-
-impl NpmPackageCacheFolderId {
-  pub fn with_no_count(&self) -> Self {
-    Self {
-      nv: self.nv.clone(),
-      copy_index: 0,
-    }
-  }
-}
-
-impl std::fmt::Display for NpmPackageCacheFolderId {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}", self.nv)?;
-    if self.copy_index > 0 {
-      write!(f, "_{}", self.copy_index)?;
-    }
-    Ok(())
-  }
-}
-
 #[derive(Clone, Debug)]
 pub struct ReadonlyNpmCache {
   root_dir: PathBuf,
   // cached url representation of the root directory
   root_dir_url: Url,
-}
-
-// todo(dsherret): implementing Default for this is error prone because someone
-// might accidentally use the default implementation instead of getting the
-// correct location of the deno dir, which might be provided via a CLI argument.
-// That said, the rest of the LSP code does this at the moment and so this code
-// copies that.
-impl Default for ReadonlyNpmCache {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    Self::from_deno_dir(&DenoDir::new(None).unwrap())
-  }
 }
 
 impl ReadonlyNpmCache {
@@ -179,10 +139,6 @@ impl ReadonlyNpmCache {
       root_dir,
       root_dir_url,
     }
-  }
-
-  pub fn from_deno_dir(dir: &DenoDir) -> Self {
-    Self::new(dir.npm_folder_path())
   }
 
   pub fn root_dir_url(&self) -> &Url {
@@ -302,7 +258,7 @@ impl ReadonlyNpmCache {
     let name = parts.join("/");
     let (version, copy_index) =
       if let Some((version, copy_count)) = version_part.split_once('_') {
-        (version, copy_count.parse::<usize>().ok()?)
+        (version, copy_count.parse::<u8>().ok()?)
       } else {
         (version_part, 0)
       };
@@ -321,25 +277,25 @@ impl ReadonlyNpmCache {
 }
 
 /// Stores a single copy of npm packages in a cache.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct NpmCache {
   readonly: ReadonlyNpmCache,
   cache_setting: CacheSetting,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
   /// ensures a package is only downloaded once per run
-  previously_reloaded_packages: Arc<Mutex<HashSet<NpmPackageNv>>>,
+  previously_reloaded_packages: Mutex<HashSet<NpmPackageNv>>,
 }
 
 impl NpmCache {
-  pub fn from_deno_dir(
-    dir: &DenoDir,
+  pub fn new(
+    cache_dir_path: PathBuf,
     cache_setting: CacheSetting,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      readonly: ReadonlyNpmCache::from_deno_dir(dir),
+      readonly: ReadonlyNpmCache::new(cache_dir_path),
       cache_setting,
       http_client,
       progress_bar,
@@ -515,8 +471,8 @@ pub fn mixed_case_package_name_decode(name: &str) -> Option<String> {
 #[cfg(test)]
 mod test {
   use deno_core::url::Url;
-  use deno_graph::npm::NpmPackageNv;
-  use deno_graph::semver::Version;
+  use deno_semver::npm::NpmPackageNv;
+  use deno_semver::Version;
 
   use super::ReadonlyNpmCache;
   use crate::npm::cache::NpmPackageCacheFolderId;

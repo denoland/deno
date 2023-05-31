@@ -6,6 +6,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -25,7 +26,6 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "listen",
   "listenDatagram",
   "dlopen",
-  "ppid",
   "removeSignalListener",
   "shutdown",
   "umask",
@@ -36,13 +36,11 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "osUptime",
 ];
 
-static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-    .unwrap()
-});
+static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> =
+  lazy_regex!(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#);
 
 static MSG_SUGGESTION: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
+  lazy_regex!(r#" Did you mean '([^']+)'\?"#);
 
 /// Potentially convert a "raw" diagnostic message from TSC to something that
 /// provides a more sensible error message given a Deno runtime context.

@@ -127,7 +127,6 @@ function teardown() {
 }
 
 // Check that multiline strings and object output are indented properly.
-/* TODO(kt3k): Enable this
 {
   setup();
   const expectedOut = 'not indented\n' +
@@ -155,7 +154,6 @@ function teardown() {
   assert.strictEqual(stderr, expectedErr);
   teardown();
 }
-*/
 
 // Check that the kGroupIndent symbol property is not enumerable
 {

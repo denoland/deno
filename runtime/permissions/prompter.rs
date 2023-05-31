@@ -4,10 +4,11 @@ use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use once_cell::sync::Lazy;
+use std::fmt::Write;
 
 /// Helper function to strip ansi codes and ASCII control characters.
 fn strip_ansi_codes_and_ascii_control(s: &str) -> std::borrow::Cow<str> {
-  console_static_text::strip_ansi_codes(s)
+  console_static_text::ansi::strip_ansi_codes(s)
     .chars()
     .filter(|c| !c.is_ascii_control())
     .collect()
@@ -221,17 +222,25 @@ impl PermissionPrompter for TtyPrompter {
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
-    eprint!("┌ {PERMISSION_EMOJI}  ");
-    eprint!("{}", colors::bold("Deno requests "));
-    eprint!("{}", colors::bold(message.clone()));
-    eprintln!("{}", colors::bold("."));
-    if let Some(api_name) = api_name.clone() {
-      eprintln!("├ Requested by `{api_name}` API");
+
+    // output everything in one shot to make the tests more reliable
+    {
+      let mut output = String::new();
+      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
+      write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
+      writeln!(&mut output, "{}", colors::bold(".")).unwrap();
+      if let Some(api_name) = api_name.clone() {
+        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+      }
+      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
+      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      write!(&mut output, " {opts} > ").unwrap();
+
+      eprint!("{}", output);
     }
-    let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-    eprintln!("├ {}", colors::italic(&msg));
-    eprint!("└ {}", colors::bold("Allow?"));
-    eprint!(" {opts} > ");
+
     let value = loop {
       let mut input = String::new();
       let stdin = std::io::stdin();

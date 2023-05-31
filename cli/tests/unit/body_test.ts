@@ -53,6 +53,59 @@ Deno.test(
   },
 );
 
+// FormData: non-ASCII names and filenames
+Deno.test(
+  { permissions: { net: true } },
+  async function bodyMultipartFormDataNonAsciiNames() {
+    const boundary = "----01230123";
+    const payload = [
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="文字"`,
+      "",
+      "文字",
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="file"; filename="文字"`,
+      "Content-Type: application/octet-stream",
+      "",
+      "",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assert(formData.has("文字"));
+    assertEquals(formData.get("文字"), "文字");
+    assert(formData.has("file"));
+    assert(formData.get("file") instanceof File);
+    assertEquals((formData.get("file") as File).name, "文字");
+  },
+);
+
+// FormData: non-ASCII names and filenames roundtrip
+Deno.test(
+  { permissions: { net: true } },
+  async function bodyMultipartFormDataNonAsciiRoundtrip() {
+    const inFormData = new FormData();
+    inFormData.append("文字", "文字");
+    inFormData.append("file", new File([], "文字"));
+
+    const body = buildBody(inFormData);
+
+    const formData = await body.formData();
+    assert(formData.has("文字"));
+    assertEquals(formData.get("文字"), "文字");
+    assert(formData.has("file"));
+    assert(formData.get("file") instanceof File);
+    assertEquals((formData.get("file") as File).name, "文字");
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function bodyURLEncodedFormData() {

@@ -115,13 +115,13 @@ defail!(
   de_tuple_wrong_len_short,
   (u64, bool, ()),
   "[123, true]",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(2, 3))
 );
 defail!(
   de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(4, 3))
 );
 detest!(
   de_mathop,
@@ -265,6 +265,16 @@ fn de_buffers() {
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+
+  dedo("(new ArrayBuffer(4))", |scope, v| {
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[0x0, 0x0, 0x0, 0x0]);
+  });
+
+  dedo("(new ArrayBuffer(8, { maxByteLength: 16}))", |scope, v| {
+    let result: Result<ZeroCopyBuf, Error> = serde_v8::from_v8(scope, v);
+    matches!(result, Err(Error::ResizableBackingStoreNotSupported));
+  });
 }
 
 // Structs
@@ -408,7 +418,7 @@ detest!(
 );
 
 defail!(defail_struct, MathOp, "123", |e| e
-  == Err(Error::ExpectedObject));
+  == Err(Error::ExpectedObject("Number")));
 
 #[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {

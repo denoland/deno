@@ -11,7 +11,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use log::error;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -42,7 +41,7 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
     }
     "data" | "blob" => (),
     scheme => {
-      error!("Don't know how to create cache name for scheme: {}", scheme);
+      log::debug!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
     }
   };
