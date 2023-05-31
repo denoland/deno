@@ -350,10 +350,7 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      const msecs = getTimerDuration(options.timeout, "timeout");
-      const timeout = AbortSignal.timeout(msecs);
-      timeout.onabort = () => this.emit("timeout");
-      this._timeout = timeout;
+      this.setTimeout(options.timeout);
     }
 
     const signal = options!.signal;
@@ -561,7 +558,7 @@ class ClientRequest extends OutgoingMessage {
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH",
+      this.method === "POST" || this.method === "PATCH" || this.method === "PUT",
     );
     this._bodyWriteRid = this._req.requestBodyRid;
   }
@@ -637,7 +634,7 @@ class ClientRequest extends OutgoingMessage {
           })(),
         ]);
         if (this._timeout) {
-          this._timeout.onabort = null;
+          this._timeout.removeEventListener("abort", this._timeoutCb);
         }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
@@ -752,7 +749,7 @@ class ClientRequest extends OutgoingMessage {
     if (msecs === 0) {
       if (this._timeout) {
         this.removeAllListeners("timeout");
-        this._timeout.onabort = () => {};
+        this._timeout.removeEventListener("abort", this._timeoutCb);
         this._timeout = undefined;
       }
 
@@ -766,7 +763,8 @@ class ClientRequest extends OutgoingMessage {
     if (callback) this.once("timeout", callback);
 
     const timeout = AbortSignal.timeout(msecs);
-    timeout.onabort = () => this.emit("timeout");
+    this._timeoutCb = () => this.emit("timeout");
+    timeout.addEventListener("abort", this._timeoutCb);
     this._timeout = timeout;
 
     return this;
