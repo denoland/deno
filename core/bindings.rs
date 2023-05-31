@@ -20,8 +20,11 @@ use crate::JsRuntime;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub(crate) enum BindingsMode {
+  /// We have no snapshot -- this is a pristine context.
   New,
+  /// We have initialized before, are reloading a snapshot, and will snapshot.
   Loaded,
+  /// We have initialized before, are reloading a snapshot, and will not snapshot again.
   LoadedFinal,
 }
 
