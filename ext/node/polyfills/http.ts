@@ -558,7 +558,8 @@ class ClientRequest extends OutgoingMessage {
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH" || this.method === "PUT",
+      this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT",
     );
     this._bodyWriteRid = this._req.requestBodyRid;
   }
