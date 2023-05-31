@@ -79,7 +79,7 @@ export function isInt32Array(value: unknown): value is Int32Array {
   return _getTypedArrayToStringTag.call(value) === "Int32Array";
 }
 
-export function isTypedArray(value: unknown): value is
+export type TypedArray =
   | BigInt64Array
   | BigUint64Array
   | Float32Array
@@ -90,7 +90,9 @@ export function isTypedArray(value: unknown): value is
   | Uint8Array
   | Uint8ClampedArray
   | Uint16Array
-  | Uint32Array {
+  | Uint32Array;
+
+export function isTypedArray(value: unknown): value is TypedArray {
   return _getTypedArrayToStringTag.call(value) !== undefined;
 }
 

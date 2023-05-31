@@ -5,6 +5,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { Socket } from "ext:deno_node/net.ts";
+import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -44,7 +45,11 @@ export class Http2Session extends EventEmitter {
     return false;
   }
 
-  goaway(_code: number, _lastStreamID: number, _opaqueData: Buffer | DataView) {
+  goaway(
+    _code: number,
+    _lastStreamID: number,
+    _opaqueData: Buffer | TypedArray | DataView,
+  ) {
     notImplemented("Http2Session.goaway");
   }
 
