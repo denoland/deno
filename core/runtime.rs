@@ -212,9 +212,38 @@ pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
 }
 
 /// The runtime type that most users will use when not creating a snapshot.
-pub type JsRuntime = JsRuntimeImpl<false>;
+pub struct JsRuntime(JsRuntimeImpl<false>);
+
+impl Deref for JsRuntime {
+  type Target = JsRuntimeImpl<false>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for JsRuntime {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
+
 /// The runtime type used for snapshot creation.
-pub type JsRuntimeForSnapshot = JsRuntimeImpl<true>;
+pub struct JsRuntimeForSnapshot(JsRuntimeImpl<true>);
+
+impl Deref for JsRuntimeForSnapshot {
+  type Target = JsRuntimeImpl<true>;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
+  }
+}
+
+impl DerefMut for JsRuntimeForSnapshot {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.0
+  }
+}
 
 pub(crate) struct DynImportModEvaluate {
   load_id: ModuleLoadId,
@@ -1444,22 +1473,25 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       &self.module_map.as_ref().unwrap().borrow(),
     )
   }
-
-  pub(crate) fn event_loop_pending_state_from_scope(
-    scope: &mut v8::HandleScope,
-  ) -> EventLoopPendingState {
-    let state = JsRuntime::state_from(scope);
-    let module_map = JsRuntime::module_map_from(scope);
-    let state = EventLoopPendingState::new(
-      scope,
-      &mut state.borrow_mut(),
-      &module_map.borrow(),
-    );
-    state
-  }
 }
 
 impl JsRuntime {
+  /// Only constructor, configuration is done through `options`.
+  pub fn new(mut options: RuntimeOptions) -> JsRuntime {
+    JsRuntimeImpl::<false>::init_v8(options.v8_platform.take(), false);
+
+    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
+      options.startup_snapshot.take(),
+      false,
+    );
+
+    JsRuntime(JsRuntimeImpl::<false>::new_runtime(
+      options,
+      snapshot_options,
+      None,
+    ))
+  }
+
   pub(crate) fn state_from(
     isolate: &v8::Isolate,
   ) -> Rc<RefCell<JsRuntimeState>> {
@@ -1485,25 +1517,38 @@ impl JsRuntime {
     std::mem::forget(module_map_rc);
     module_map
   }
+
+  pub(crate) fn event_loop_pending_state_from_scope(
+    scope: &mut v8::HandleScope,
+  ) -> EventLoopPendingState {
+    let state = JsRuntime::state_from(scope);
+    let module_map = JsRuntime::module_map_from(scope);
+    let state = EventLoopPendingState::new(
+      scope,
+      &mut state.borrow_mut(),
+      &module_map.borrow(),
+    );
+    state
+  }
 }
 
-impl JsRuntimeImpl<true> {
+impl JsRuntimeForSnapshot {
   pub fn new(
     mut options: RuntimeOptions,
     runtime_snapshot_options: RuntimeSnapshotOptions,
-  ) -> JsRuntimeImpl<true> {
-    Self::init_v8(options.v8_platform.take(), true);
+  ) -> JsRuntimeForSnapshot {
+    JsRuntimeImpl::<true>::init_v8(options.v8_platform.take(), true);
 
     let snapshot_options = snapshot_util::SnapshotOptions::new_from(
       options.startup_snapshot.take(),
       true,
     );
 
-    JsRuntimeImpl::<true>::new_runtime(
+    JsRuntimeForSnapshot(JsRuntimeImpl::<true>::new_runtime(
       options,
       snapshot_options,
       runtime_snapshot_options.snapshot_module_load_cb,
-    )
+    ))
   }
 
   /// Takes a snapshot and consumes the runtime.
@@ -1539,6 +1584,7 @@ impl JsRuntimeImpl<true> {
     }
 
     self
+      .0
       .inner
       .prepare_for_snapshot()
       .create_blob(v8::FunctionCodeHandling::Keep)
@@ -1553,20 +1599,6 @@ impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
     snapshot: SnapshotOptions,
   ) -> v8::OwnedIsolate {
     snapshot_util::create_snapshot_creator(refs, snapshot)
-  }
-}
-
-impl JsRuntimeImpl<false> {
-  /// Only constructor, configuration is done through `options`.
-  pub fn new(mut options: RuntimeOptions) -> JsRuntimeImpl<false> {
-    Self::init_v8(options.v8_platform.take(), false);
-
-    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
-      options.startup_snapshot.take(),
-      false,
-    );
-
-    JsRuntimeImpl::<false>::new_runtime(options, snapshot_options, None)
   }
 }
 
@@ -1616,7 +1648,7 @@ fn get_stalled_top_level_await_message_for_module(
 fn find_stalled_top_level_await(
   scope: &mut v8::HandleScope,
 ) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntimeImpl::module_map_from(scope);
+  let module_map = JsRuntime::module_map_from(scope);
   let module_map = module_map.borrow();
 
   // First check if that's root module
@@ -2755,7 +2787,7 @@ pub mod tests {
     }
   }
 
-  fn setup(mode: Mode) -> (JsRuntimeImpl, Arc<AtomicUsize>) {
+  fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     let dispatch_count = Arc::new(AtomicUsize::new(0));
     deno_core::extension!(
       test_ext,
