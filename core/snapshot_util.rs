@@ -4,9 +4,10 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::runtime::RuntimeSnapshotOptions;
 use crate::ExtModuleLoaderCb;
 use crate::Extension;
-use crate::JsRuntime;
+use crate::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 
@@ -21,22 +22,50 @@ pub struct CreateSnapshotOptions {
   pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 }
 
-pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
+pub struct CreateSnapshotOutput {
+  /// Any files marked as LoadedFromFsDuringSnapshot are collected here and should be
+  /// printed as 'cargo:rerun-if-changed' lines from your build script.
+  pub files_loaded_during_snapshot: Vec<PathBuf>,
+}
+
+#[must_use = "The files listed by create_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
+pub fn create_snapshot(
+  create_snapshot_options: CreateSnapshotOptions,
+) -> CreateSnapshotOutput {
   let mut mark = Instant::now();
 
-  let js_runtime = JsRuntime::new(RuntimeOptions {
-    will_snapshot: true,
-    startup_snapshot: create_snapshot_options.startup_snapshot,
-    extensions: create_snapshot_options.extensions,
-    snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
-    ..Default::default()
-  });
+  let js_runtime = JsRuntimeForSnapshot::new(
+    RuntimeOptions {
+      startup_snapshot: create_snapshot_options.startup_snapshot,
+      extensions: create_snapshot_options.extensions,
+      ..Default::default()
+    },
+    RuntimeSnapshotOptions {
+      snapshot_module_load_cb: create_snapshot_options.snapshot_module_load_cb,
+    },
+  );
   println!(
     "JsRuntime for snapshot prepared, took {:#?} ({})",
     Instant::now().saturating_duration_since(mark),
     create_snapshot_options.snapshot_path.display()
   );
   mark = Instant::now();
+
+  let mut files_loaded_during_snapshot = vec![];
+  for source in js_runtime
+    .extensions()
+    .iter()
+    .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+    .flatten()
+    .flatten()
+  {
+    use crate::ExtensionFileSourceCode;
+    if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+      &source.code
+    {
+      files_loaded_during_snapshot.push(path.clone());
+    }
+  }
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
@@ -83,6 +112,9 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     Instant::now().saturating_duration_since(mark),
     create_snapshot_options.snapshot_path.display(),
   );
+  CreateSnapshotOutput {
+    files_loaded_during_snapshot,
+  }
 }
 
 pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;
@@ -121,29 +153,36 @@ fn data_error_to_panic(err: v8::DataError) -> ! {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SnapshotOptions {
-  Load,
-  CreateFromExisting,
+  Load(Snapshot),
+  CreateFromExisting(Snapshot),
   Create,
   None,
 }
 
 impl SnapshotOptions {
+  pub fn new_from(snapshot: Option<Snapshot>, will_snapshot: bool) -> Self {
+    match (snapshot, will_snapshot) {
+      (Some(snapshot), true) => Self::CreateFromExisting(snapshot),
+      (None, true) => Self::Create,
+      (Some(snapshot), false) => Self::Load(snapshot),
+      (None, false) => Self::None,
+    }
+  }
+
   pub fn loaded(&self) -> bool {
-    matches!(self, Self::Load | Self::CreateFromExisting)
+    matches!(self, Self::Load(_) | Self::CreateFromExisting(_))
   }
 
   pub fn will_snapshot(&self) -> bool {
-    matches!(self, Self::Create | Self::CreateFromExisting)
+    matches!(self, Self::Create | Self::CreateFromExisting(_))
   }
 
-  pub fn from_bools(snapshot_loaded: bool, will_snapshot: bool) -> Self {
-    match (snapshot_loaded, will_snapshot) {
-      (true, true) => Self::CreateFromExisting,
-      (false, true) => Self::Create,
-      (true, false) => Self::Load,
-      (false, false) => Self::None,
+  pub fn snapshot(self) -> Option<Snapshot> {
+    match self {
+      Self::CreateFromExisting(snapshot) => Some(snapshot),
+      Self::Load(snapshot) => Some(snapshot),
+      _ => None,
     }
   }
 }
@@ -218,9 +257,9 @@ pub(crate) fn set_snapshotted_data(
 /// Returns an isolate set up for snapshotting.
 pub(crate) fn create_snapshot_creator(
   external_refs: &'static v8::ExternalReferences,
-  maybe_startup_snapshot: Option<Snapshot>,
+  maybe_startup_snapshot: SnapshotOptions,
 ) -> v8::OwnedIsolate {
-  if let Some(snapshot) = maybe_startup_snapshot {
+  if let Some(snapshot) = maybe_startup_snapshot.snapshot() {
     match snapshot {
       Snapshot::Static(data) => {
         v8::Isolate::snapshot_creator_from_existing_snapshot(

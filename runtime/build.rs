@@ -337,7 +337,7 @@ mod startup_snapshot {
       runtime_main::init_ops_and_esm(),
     ];
 
-    create_snapshot(CreateSnapshotOptions {
+    let output = create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
@@ -345,6 +345,9 @@ mod startup_snapshot {
       compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
+    for path in output.files_loaded_during_snapshot {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
   }
 }
 
