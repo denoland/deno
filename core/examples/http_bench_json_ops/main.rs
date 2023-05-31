@@ -3,7 +3,7 @@ use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
-use deno_core::JsRuntime;
+use deno_core::JsRuntimeForSnapshot;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -93,7 +93,7 @@ impl From<tokio::net::TcpStream> for TcpStream {
   }
 }
 
-fn create_js_runtime() -> JsRuntime {
+fn create_js_runtime() -> JsRuntimeForSnapshot {
   let ext = deno_core::Extension::builder("my_ext")
     .ops(vec![
       op_listen::decl(),
@@ -103,11 +103,13 @@ fn create_js_runtime() -> JsRuntime {
     ])
     .build();
 
-  JsRuntime::new(deno_core::RuntimeOptions {
-    extensions: vec![ext],
-    will_snapshot: false,
-    ..Default::default()
-  })
+  JsRuntimeForSnapshot::new(
+    deno_core::RuntimeOptions {
+      extensions: vec![ext],
+      ..Default::default()
+    },
+    Default::default(),
+  )
 }
 
 #[op]

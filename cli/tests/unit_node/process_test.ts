@@ -727,3 +727,22 @@ Deno.test({
     assertEquals(stripColor(decoder.decode(stdout).trim()), "exit");
   },
 });
+
+Deno.test({
+  name: "process.reallyExit",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--quiet",
+        "--unstable",
+        "./testdata/process_really_exit.ts",
+      ],
+      cwd: testDir,
+    });
+    const { stdout } = await command.output();
+
+    const decoder = new TextDecoder();
+    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+  },
+});
