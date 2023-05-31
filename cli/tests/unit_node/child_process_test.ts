@@ -599,3 +599,22 @@ Deno.test(
     assertStringIncludes(output, "close");
   },
 );
+
+Deno.test({
+  name: "[node/child_process spawn] supports SIGIOT signal",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdin.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    const p = withTimeout();
+    cp.on("exit", () => p.resolve());
+    cp.kill("SIGIOT");
+    await p;
+    assert(cp.killed);
+    assertEquals(cp.signalCode, "SIGIOT");
+  },
+});
