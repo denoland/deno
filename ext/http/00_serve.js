@@ -64,6 +64,7 @@ const {
   op_http_set_response_trailers,
   op_http_upgrade_raw,
   op_http_upgrade_websocket_next,
+  op_http_try_wait,
   op_http_wait,
 } = core.generateAsyncOpHandler(
   "op_http_get_request_headers",
@@ -80,6 +81,7 @@ const {
   "op_http_set_response_trailers",
   "op_http_upgrade_raw",
   "op_http_upgrade_websocket_next",
+  "op_http_try_wait",
   "op_http_wait",
 );
 const _upgraded = Symbol("_upgraded");
@@ -558,7 +560,7 @@ function mapToCallback(responseBodies, context, signal, callback, onError) {
       }
     }
 
-    // Attempt to response quickly to this request, otherwise extract the stream
+    // Attempt to respond quickly to this request, otherwise extract the stream
     const stream = fastSyncResponseOrStream(req, inner.body);
     if (stream !== null) {
       // Handle the stream asynchronously
@@ -671,6 +673,18 @@ function serve(arg1, arg2) {
       const rid = context.serverRid;
       let req;
       try {
+        // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
+        // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
+        while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
+          PromisePrototypeCatch(callback(req), (error) => {
+            // Abnormal exit
+            console.error(
+              "Terminating Deno.serve loop due to unexpected error",
+              error,
+            );
+            context.close();
+          });
+        }
         currentPromise = op_http_wait(rid);
         if (!ref) {
           core.unrefOp(currentPromise[promiseIdSymbol]);
