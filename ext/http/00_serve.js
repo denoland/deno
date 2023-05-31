@@ -54,6 +54,7 @@ const {
   op_http_get_request_method_and_url,
   op_http_read_request_body,
   op_http_serve,
+  op_http_serve_on,
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
   op_http_set_response_body_resource,
@@ -71,6 +72,7 @@ const {
   "op_http_get_request_method_and_url",
   "op_http_read_request_body",
   "op_http_serve",
+  "op_http_serve_on",
   "op_http_set_promise_complete",
   "op_http_set_response_body_bytes",
   "op_http_set_response_body_resource",
@@ -340,12 +342,21 @@ class InnerRequest {
 }
 
 class CallbackContext {
+  abortController;
+  responseBodies;
   scheme;
   fallbackHost;
   serverRid;
   closed;
 
-  initialize(args) {
+  constructor(signal, args) {
+    signal?.addEventListener(
+      "abort",
+      () => this.close(),
+      { once: true },
+    );
+    this.abortController = new AbortController();
+    this.responseBodies = new SafeSet();
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
@@ -500,7 +511,9 @@ async function asyncResponse(responseBodies, req, status, stream) {
  *
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
-function mapToCallback(responseBodies, context, signal, callback, onError) {
+function mapToCallback(context, callback, onError) {
+  const responseBodies = context.responseBodies;
+  const signal = context.abortController.signal;
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
@@ -611,18 +624,7 @@ function serve(arg1, arg2) {
     reusePort: options.reusePort ?? false,
   };
 
-  const abortController = new AbortController();
-
-  const responseBodies = new SafeSet();
-  const context = new CallbackContext();
-  const callback = mapToCallback(
-    responseBodies,
-    context,
-    abortController.signal,
-    handler,
-    onError,
-  );
-
+  let listener;
   if (wantsHttps) {
     if (!options.cert || !options.key) {
       throw new TypeError(
@@ -632,37 +634,56 @@ function serve(arg1, arg2) {
     listenOpts.cert = options.cert;
     listenOpts.key = options.key;
     listenOpts.alpnProtocols = ["h2", "http/1.1"];
-    const listener = Deno.listenTls(listenOpts);
+    listener = Deno.listenTls(listenOpts);
     listenOpts.port = listener.addr.port;
-    context.initialize(op_http_serve(
-      listener.rid,
-    ));
   } else {
-    const listener = Deno.listen(listenOpts);
+    listener = Deno.listen(listenOpts);
     listenOpts.port = listener.addr.port;
-    context.initialize(op_http_serve(
-      listener.rid,
-    ));
   }
 
-  signal?.addEventListener(
-    "abort",
-    () => context.close(),
-    { once: true },
-  );
-
-  const onListen = options.onListen ?? function ({ port }) {
-    // If the hostname is "0.0.0.0", we display "localhost" in console
-    // because browsers in Windows don't resolve "0.0.0.0".
-    // See the discussion in https://github.com/denoland/deno_std/issues/1165
-    const hostname = listenOpts.hostname == "0.0.0.0"
-      ? "localhost"
-      : listenOpts.hostname;
-    console.log(`Listening on ${context.scheme}${hostname}:${port}/`);
+  const onListen = (scheme) => {
+    const port = listenOpts.port;
+    if (options.onListen) {
+      options.onListen({ port });
+    } else {
+      // If the hostname is "0.0.0.0", we display "localhost" in console
+      // because browsers in Windows don't resolve "0.0.0.0".
+      // See the discussion in https://github.com/denoland/deno_std/issues/1165
+      const hostname = listenOpts.hostname == "0.0.0.0"
+        ? "localhost"
+        : listenOpts.hostname;
+      console.log(`Listening on ${scheme}${hostname}:${port}/`);
+    }
   };
 
-  onListen({ port: listenOpts.port });
+  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+}
 
+/**
+ * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
+ */
+function serveHttpOnListener(listener, signal, handler, onError, onListen) {
+  const context = new CallbackContext(signal, op_http_serve(listener.rid));
+  const callback = mapToCallback(context, handler, onError);
+
+  onListen(context.scheme);
+
+  return serveHttpOn(context, callback);
+}
+
+/**
+ * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary connection.
+ */
+function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
+  const context = new CallbackContext(signal, op_http_serve_on(connection.rid));
+  const callback = mapToCallback(context, handler, onError);
+
+  onListen(context.scheme);
+
+  return serveHttpOn(context, callback);
+}
+
+function serveHttpOn(context, callback) {
   let ref = true;
   let currentPromise = null;
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
@@ -710,7 +731,7 @@ function serve(arg1, arg2) {
       });
     }
 
-    for (const streamRid of new SafeSetIterator(responseBodies)) {
+    for (const streamRid of new SafeSetIterator(context.responseBodies)) {
       core.tryClose(streamRid);
     }
   })();
@@ -734,5 +755,7 @@ function serve(arg1, arg2) {
 
 internals.addTrailers = addTrailers;
 internals.upgradeHttpRaw = upgradeHttpRaw;
+internals.serveHttpOnListener = serveHttpOnListener;
+internals.serveHttpOnConnection = serveHttpOnConnection;
 
 export { serve, upgradeHttpRaw };
