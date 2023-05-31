@@ -35,3 +35,4 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+pub use worker_bootstrap::WorkerLogLevel;

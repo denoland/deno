@@ -38,6 +38,7 @@ import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -48,6 +49,9 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { timerId } from "ext:deno_web/03_abort_signal.js";
+import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -348,7 +352,7 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      this.timeout = getTimerDuration(options.timeout, "timeout");
+      this.setTimeout(options.timeout);
     }
 
     const signal = options!.signal;
@@ -413,7 +417,6 @@ class ClientRequest extends OutgoingMessage {
     this._ended = false;
     this.res = null;
     this.aborted = false;
-    this.timeoutCb = null;
     this.upgradeOrConnect = false;
     this.parser = null;
     this.maxHeadersCount = null;
@@ -497,6 +500,14 @@ class ClientRequest extends OutgoingMessage {
       delete optsWithoutSignal.signal;
     }
 
+    if (options!.createConnection) {
+      notImplemented("ClientRequest.options.createConnection");
+    }
+
+    if (options!.lookup) {
+      notImplemented("ClientRequest.options.lookup");
+    }
+
     // initiate connection
     // TODO(crowlKats): finish this
     /*if (this.agent) {
@@ -541,63 +552,18 @@ class ClientRequest extends OutgoingMessage {
       }
     }
 
-    const client = this._getClient();
+    const client = this._getClient() ?? createHttpClient({ http2: false });
+    this._client = client;
 
-    const req = core.ops.op_node_http_request(
+    this._req = core.ops.op_node_http_request(
       this.method,
       url,
       headers,
-      client,
-      this.method === "POST" || this.method === "PATCH",
+      client.rid,
+      this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT",
     );
-
-    this._req = req;
-
-    if (req.requestBodyRid !== null) {
-      const reader = this.stream.getReader();
-      (async () => {
-        let done = false;
-        while (!done) {
-          let val;
-          try {
-            const res = await reader.read();
-            done = res.done;
-            val = res.value;
-          } catch (err) {
-            //if (terminator.aborted) break;
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-          if (done) break;
-          try {
-            await core.writeAll(req.requestBodyRid, val);
-          } catch (err) {
-            //if (terminator.aborted) break;
-            await reader.cancel(err);
-            // TODO(lucacasonato): propagate error into response body stream
-            this._requestSendError = err;
-            this._requestSendErrorSet = true;
-            break;
-          }
-        }
-        if (done /*&& !terminator.aborted*/) {
-          try {
-            await core.shutdown(req.requestBodyRid);
-          } catch (err) {
-            // TODO(bartlomieju): fix this conditional
-            // deno-lint-ignore no-constant-condition
-            if (true) {
-              this._requestSendError = err;
-              this._requestSendErrorSet = true;
-            }
-          }
-        }
-        //WeakMapPrototypeDelete(requestBodyReaders, req);
-        core.tryClose(req.requestBodyRid);
-      })();
-    }
+    this._bodyWriteRid = this._req.requestBodyRid;
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -641,105 +607,95 @@ class ClientRequest extends OutgoingMessage {
     }
   }
 
-  // TODO(bartlomieju): use callback here
   // deno-lint-ignore no-explicit-any
-  end(chunk?: any, encoding?: any, _cb?: any): this {
+  end(chunk?: any, encoding?: any, cb?: any): this {
     this.finished = true;
-
-    if (chunk !== undefined) {
+    if (chunk !== undefined && chunk !== null) {
       this.write(chunk, encoding);
     }
-    this.controller.close();
 
-    core.opAsync("op_fetch_send", this._req.requestRid).then((res) => {
-      const incoming = new IncomingMessageForClient(this.socket);
+    (async () => {
+      try {
+        const [res, _] = await Promise.all([
+          core.opAsync("op_fetch_send", this._req.requestRid),
+          (async () => {
+            if (this._bodyWriteRid) {
+              try {
+                await core.shutdown(this._bodyWriteRid);
+              } catch (err) {
+                this._requestSendError = err;
+              }
 
-      // TODO(@crowlKats):
-      // incoming.httpVersionMajor = versionMajor;
-      // incoming.httpVersionMinor = versionMinor;
-      // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
-      // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
-      //  parser.joinDuplicateHeaders;
+              core.tryClose(this._bodyWriteRid);
 
-      incoming.url = res.url;
-      incoming.statusCode = res.status;
-      incoming.statusMessage = res.statusText;
+              try {
+                cb?.();
+              } catch (_) {
+                //
+              }
+            }
+          })(),
+        ]);
+        if (this._timeout) {
+          this._timeout.removeEventListener("abort", this._timeoutCb);
+          webClearTimeout(this._timeout[timerId]);
+        }
+        this._client.close();
+        const incoming = new IncomingMessageForClient(this.socket);
+        incoming.req = this;
+        this.res = incoming;
 
-      incoming._addHeaderLines(res.headers);
-      incoming._bodyRid = res.responseRid;
+        // TODO(@crowlKats):
+        // incoming.httpVersionMajor = versionMajor;
+        // incoming.httpVersionMinor = versionMinor;
+        // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
+        // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
+        //  parser.joinDuplicateHeaders;
 
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
+        incoming.url = res.url;
+        incoming.statusCode = res.status;
+        incoming.statusMessage = res.statusText;
+
+        incoming._addHeaderLines(
+          res.headers,
+          Object.entries(res.headers).flat().length,
+        );
+        incoming._bodyRid = res.responseRid;
+
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        this.emit("response", incoming);
+      } catch (err) {
+        if (this._req.cancelHandleRid !== null) {
+          core.tryClose(this._req.cancelHandleRid);
+        }
+
+        if (this._requestSendError !== undefined) {
+          // if the request body stream errored, we want to propagate that error
+          // instead of the original error from opFetchSend
+          throw new TypeError(
+            "Failed to fetch: request body stream errored",
+            {
+              cause: this._requestSendError,
+            },
+          );
+        }
+
+        if (
+          err.message.includes("connection closed before message completed")
+        ) {
+          // Node.js seems ignoring this error
+        } else if (err.message.includes("The signal has been aborted")) {
+          // Remap this error
+          this.emit("error", connResetException("socket hang up"));
+        } else {
+          this.emit("error", err);
+        }
       }
-
-      this.emit("response", incoming);
-    }).catch((err) => {
-      if (this._req.cancelHandleRid !== null) {
-        core.tryClose(this._req.cancelHandleRid);
-      }
-
-      if (this._requestSendErrorSet) {
-        // if the request body stream errored, we want to propagate that error
-        // instead of the original error from opFetchSend
-        throw new TypeError("Failed to fetch: request body stream errored", {
-          cause: this._requestSendError,
-        });
-      }
-
-      if (err.message.includes("connection closed before message completed")) {
-        // Node.js seems ignoring this error
-      } else if (err.message.includes("The signal has been aborted")) {
-        // Remap this error
-        this.emit("error", connResetException("socket hang up"));
-      } else {
-        this.emit("error", err);
-      }
-    });
+    })();
   }
-  /*
-    override async _final() {
-      if (this.controller) {
-        this.controller.close();
-      }
-
-      const body = await this._createBody(this.body, this.opts);
-      const client = await this._createCustomClient();
-      const opts = {
-        body,
-        method: this.opts.method,
-        client,
-        headers: this.opts.headers,
-        signal: this.opts.signal ?? undefined,
-      };
-      const mayResponse = fetch(this._createUrlStrFromOptions(this.opts), opts)
-        .catch((e) => {
-          if (e.message.includes("connection closed before message completed")) {
-            // Node.js seems ignoring this error
-          } else if (e.message.includes("The signal has been aborted")) {
-            // Remap this error
-            this.emit("error", connResetException("socket hang up"));
-          } else {
-            this.emit("error", e);
-          }
-          return undefined;
-        });
-
-      const res = new IncomingMessageForClient(
-        await mayResponse,
-        this._createSocket(),
-      );
-      this.emit("response", res);
-      if (client) {
-        res.on("end", () => {
-          client.close();
-        });
-      }
-      if (this.opts.timeout != undefined) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-      }
-      this.cb?.(res);
-    }*/
 
   abort() {
     if (this.aborted) {
@@ -793,31 +749,29 @@ class ClientRequest extends OutgoingMessage {
     }${path}${search}${hash}`;
   }
 
-  setTimeout(timeout: number, callback?: () => void) {
-    if (timeout == 0) {
-      // Node's underlying Socket implementation expects a 0 value to disable the
-      // existing timeout.
-      if (this.opts.timeout) {
-        clearTimeout(this.opts.timeout);
-        this.opts.timeout = undefined;
-        this.opts.signal = undefined;
+  setTimeout(msecs: number, callback?: () => void) {
+    if (msecs === 0) {
+      if (this._timeout) {
+        this.removeAllListeners("timeout");
+        this._timeout.removeEventListener("abort", this._timeoutCb);
+        this._timeout = undefined;
       }
 
-      return;
+      return this;
+    }
+    if (this._ended || this._timeout) {
+      return this;
     }
 
-    const controller = new AbortController();
-    this.opts.signal = controller.signal;
+    msecs = getTimerDuration(msecs, "msecs");
+    if (callback) this.once("timeout", callback);
 
-    this.opts.timeout = setTimeout(() => {
-      controller.abort();
+    const timeout = AbortSignal.timeout(msecs);
+    this._timeoutCb = () => this.emit("timeout");
+    timeout.addEventListener("abort", this._timeoutCb);
+    this._timeout = timeout;
 
-      this.emit("timeout");
-
-      if (callback !== undefined) {
-        callback();
-      }
-    }, timeout);
+    return this;
   }
 
   _processHeader(headers, key, value, validate) {
@@ -860,7 +814,7 @@ function isCookieField(s) {
 
 function isContentDispositionField(s) {
   return s.length === 19 &&
-    StringPrototypeToLowerCase(s) === "content-disposition";
+    s.toLowerCase() === "content-disposition";
 }
 
 const kHeaders = Symbol("kHeaders");
@@ -1020,6 +974,7 @@ export class IncomingMessageForClient extends NodeReadable {
   // any messages, before ever calling this.  In that case, just skip
   // it, since something else is destroying this connection anyway.
   _destroy(err, cb) {
+    this.complete = true;
     if (!this.readableEnded || !this.complete) {
       this.aborted = true;
       this.emit("aborted");
@@ -1111,7 +1066,7 @@ export class IncomingMessageForClient extends NodeReadable {
   }
 
   _addHeaderLineDistinct(field, value, dest) {
-    field = StringPrototypeToLowerCase(field);
+    field = field.toLowerCase();
     if (!dest[field]) {
       dest[field] = [value];
     } else {
@@ -1256,7 +1211,7 @@ function matchKnownFields(field, lowercased) {
   if (lowercased) {
     return "\u0000" + field;
   }
-  return matchKnownFields(StringPrototypeToLowerCase(field), true);
+  return matchKnownFields(field.toLowerCase(), true);
 }
 
 function onError(self, error, cb) {
@@ -1500,6 +1455,8 @@ class ServerImpl extends EventEmitter {
 
   #addr: Deno.NetAddr;
   #hasClosed = false;
+  #server: Deno.Server;
+  #unref = false;
   #ac?: AbortController;
   #servePromise: Deferred<void>;
   listening = false;
@@ -1566,7 +1523,7 @@ class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    serve(
+    this.#server = serve(
       {
         handler: handler as Deno.ServeHandler,
         ...this.#addr,
@@ -1577,11 +1534,29 @@ class ServerImpl extends EventEmitter {
           this.emit("listening");
         },
       },
-    ).finished.then(() => this.#servePromise!.resolve());
+    );
+    if (this.#unref) {
+      this.#server.unref();
+    }
+    this.#server.finished.then(() => this.#servePromise!.resolve());
   }
 
   setTimeout() {
     console.error("Not implemented: Server.setTimeout()");
+  }
+
+  ref() {
+    if (this.#server) {
+      this.#server.ref();
+    }
+    this.#unref = false;
+  }
+
+  unref() {
+    if (this.#server) {
+      this.#server.unref();
+    }
+    this.#unref = true;
   }
 
   close(cb?: (err?: Error) => void): this {
@@ -1606,6 +1581,7 @@ class ServerImpl extends EventEmitter {
       this.#servePromise!.resolve();
     }
 
+    this.#server = undefined;
     return this;
   }
 

@@ -1090,7 +1090,7 @@ impl Documents {
         }
       }
       if let Some(module_name) = specifier.strip_prefix("node:") {
-        if deno_node::resolve_builtin_node_module(module_name).is_ok() {
+        if deno_node::is_builtin_node_module(module_name) {
           // return itself for node: specifiers because during type checking
           // we resolve to the ambient modules in the @types/node package
           // rather than deno_std/node
@@ -1224,11 +1224,7 @@ impl Documents {
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
-      deps_provider.clone(),
-      options.npm_registry_api.clone(),
-      options.npm_resolution.clone(),
-    ));
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
       options.maybe_import_map,

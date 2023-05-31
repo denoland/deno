@@ -15,9 +15,18 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::snapshot_util::SnapshotOptions;
 use crate::JsRealm;
 use crate::JsRuntime;
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub(crate) enum BindingsMode {
+  /// We have no snapshot -- this is a pristine context.
+  New,
+  /// We have initialized before, are reloading a snapshot, and will snapshot.
+  Loaded,
+  /// We have initialized before, are reloading a snapshot, and will not snapshot again.
+  LoadedFinal,
+}
 
 pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
   // Overallocate a bit, it's better than having to resize the vector.
@@ -115,14 +124,12 @@ where
 }
 
 pub(crate) fn initialize_context<'s>(
-  scope: &mut v8::HandleScope<'s, ()>,
+  scope: &mut v8::HandleScope<'s>,
+  context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
+  bindings_mode: BindingsMode,
 ) -> v8::Local<'s, v8::Context> {
-  let context = v8::Context::new(scope);
   let global = context.global(scope);
-
-  let scope = &mut v8::ContextScope::new(scope, context);
 
   let mut codegen = String::with_capacity(op_ctxs.len() * 200);
   codegen.push_str(include_str!("bindings.js"));
@@ -130,13 +137,13 @@ pub(crate) fn initialize_context<'s>(
     codegen,
     "Deno.__op__ = function(opFns, callConsole, console) {{"
   );
-  if !snapshot_options.loaded() {
+  if bindings_mode == BindingsMode::New {
     _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
       // If we're loading from a snapshot, we can skip registration for most ops
-      if matches!(snapshot_options, SnapshotOptions::Load)
+      if bindings_mode == BindingsMode::LoadedFinal
         && !op_ctx.decl.force_registration
       {
         continue;
@@ -175,7 +182,7 @@ pub(crate) fn initialize_context<'s>(
     let op_fn = op_ctx_function(scope, op_ctx);
     op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
   }
-  if snapshot_options.loaded() {
+  if bindings_mode != BindingsMode::New {
     op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
     // Bind functions to Deno.core.*
@@ -206,12 +213,15 @@ fn op_ctx_function<'s>(
 ) -> v8::Local<'s, v8::Function> {
   let op_ctx_ptr = op_ctx as *const OpCtx as *const c_void;
   let external = v8::External::new(scope, op_ctx_ptr as *mut c_void);
+  let v8name =
+    v8::String::new_external_onebyte_static(scope, op_ctx.decl.name.as_bytes())
+      .unwrap();
   let builder: v8::FunctionBuilder<v8::FunctionTemplate> =
     v8::FunctionTemplate::builder_raw(op_ctx.decl.v8_fn_ptr)
       .data(external.into())
       .length(op_ctx.decl.arg_count as i32);
 
-  let templ = if let Some(fast_function) = &op_ctx.decl.fast_fn {
+  let template = if let Some(fast_function) = &op_ctx.decl.fast_fn {
     builder.build_fast(
       scope,
       fast_function,
@@ -222,7 +232,10 @@ fn op_ctx_function<'s>(
   } else {
     builder.build(scope)
   };
-  templ.get_function(scope).unwrap()
+
+  let v8fn = template.get_function(scope).unwrap();
+  v8fn.set_name(v8name);
+  v8fn
 }
 
 pub extern "C" fn wasm_async_resolve_promise_callback(
@@ -280,8 +293,8 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = JsRuntime::state(scope);
-    let module_map_rc = JsRuntime::module_map(scope);
+    let state_rc = JsRuntime::state_from(scope);
+    let module_map_rc = JsRuntime::module_map_from(scope);
 
     debug!(
       "dyn_import specifier {} referrer {} ",
@@ -317,7 +330,7 @@ pub extern "C" fn host_initialize_import_meta_object_callback(
 ) {
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let module_map = module_map_rc.borrow();
 
   let module_global = v8::Global::new(scope, module);
@@ -360,7 +373,7 @@ fn import_meta_resolve(
     let url_prop = args.data();
     url_prop.to_rust_string_lossy(scope)
   };
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let loader = module_map_rc.borrow().loader.clone();
   let specifier_str = specifier.to_rust_string_lossy(scope);
 
@@ -480,7 +493,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
+      let state_rc = JsRuntime::state_from(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
@@ -578,7 +591,7 @@ pub fn module_resolve_callback<'s>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
-  let module_map_rc = JsRuntime::module_map(scope);
+  let module_map_rc = JsRuntime::module_map_from(scope);
   let module_map = module_map_rc.borrow();
 
   let referrer_global = v8::Global::new(scope, referrer);

@@ -91,7 +91,7 @@ export const exit = (code?: number | string) => {
     process.emit("exit", process.exitCode || 0);
   }
 
-  Deno.exit(process.exitCode || 0);
+  process.reallyExit(process.exitCode || 0);
 };
 
 function addReadOnlyProcessAlias(
@@ -379,6 +379,13 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
+
+  // Undocumented Node API that is used by `signal-exit` which in turn
+  // is used by `node-tap`. It was marked for removal a couple of years
+  // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+  reallyExit = (code: number) => {
+    return Deno.exit(code || 0);
+  };
 
   _exiting = _exiting;
 
@@ -716,9 +723,9 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
-  // We should use a specialized API in 99_main.js instead
-  globalThis.addEventListener("unhandledrejection", (event) => {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  internals.nodeProcessUnhandledRejectionCallback = (event) => {
     if (process.listenerCount("unhandledRejection") === 0) {
       // The Node.js default behavior is to raise an uncaught exception if
       // an unhandled rejection occurs and there are no unhandledRejection
@@ -734,7 +741,7 @@ internals.__bootstrapNodeProcess = function (
 
     event.preventDefault();
     process.emit("unhandledRejection", event.reason, event.promise);
-  });
+  };
 
   globalThis.addEventListener("error", (event) => {
     if (process.listenerCount("uncaughtException") > 0) {

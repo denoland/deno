@@ -47,7 +47,6 @@ use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -163,7 +162,7 @@ impl ModuleLoadPreparer {
       // validate the integrity of all the modules
       graph_lock_or_exit(graph, &mut lockfile);
       // update it with anything new
-      lockfile.write()?;
+      lockfile.write().context("Failed writing lockfile.")?;
     }
 
     // save the graph and get a reference to the new graph
@@ -496,9 +495,7 @@ impl ModuleLoader for CliModuleLoader {
               .shared
               .npm_module_loader
               .resolve_nv_ref(&module.nv_reference, permissions),
-            Some(Module::Node(module)) => {
-              deno_node::resolve_builtin_node_module(&module.module_name)
-            }
+            Some(Module::Node(module)) => Ok(module.specifier.clone()),
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
             Some(Module::External(module)) => {
@@ -515,11 +512,6 @@ impl ModuleLoader for CliModuleLoader {
         }
         Some(Resolution::None) | None => {}
       }
-    }
-
-    // Built-in Node modules
-    if let Some(module_name) = specifier.strip_prefix("node:") {
-      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
@@ -802,8 +794,6 @@ impl NpmModuleLoader {
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
-    } else if let NodeResolution::BuiltIn(specifier) = &response {
-      return deno_node::resolve_builtin_node_module(specifier);
     }
     Ok(response.into_url())
   }

@@ -349,6 +349,7 @@ macro_rules! extension {
 
 #[derive(Default)]
 pub struct Extension {
+  pub(crate) name: &'static str,
   js_files: Option<Vec<ExtensionFileSource>>,
   esm_files: Option<Vec<ExtensionFileSource>>,
   esm_entry_point: Option<&'static str>,
@@ -358,7 +359,6 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
-  name: &'static str,
   deps: Option<&'static [&'static str]>,
   force_op_registration: bool,
   pub(crate) is_core: bool,
@@ -470,16 +470,6 @@ impl Extension {
 
   pub fn disable(self) -> Self {
     self.enabled(false)
-  }
-
-  pub(crate) fn find_esm(
-    &self,
-    specifier: &str,
-  ) -> Option<&ExtensionFileSource> {
-    self
-      .get_esm_sources()?
-      .iter()
-      .find(|s| s.specifier == specifier)
   }
 }
 

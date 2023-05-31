@@ -296,6 +296,12 @@ impl ModuleGraphBuilder {
     loader: &mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
   ) -> Result<(), AnyError> {
+    // ensure an "npm install" is done if the user has explicitly
+    // opted into using a node_modules directory
+    if self.options.node_modules_dir_enablement() == Some(true) {
+      self.resolver.force_top_level_package_json_install().await?;
+    }
+
     graph.build(roots, loader, options).await;
 
     // ensure that the top level package.json is installed if a
@@ -372,9 +378,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 pub fn get_resolution_error_bare_node_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
-  get_resolution_error_bare_specifier(error).filter(|specifier| {
-    deno_node::resolve_builtin_node_module(specifier).is_ok()
-  })
+  get_resolution_error_bare_specifier(error)
+    .filter(|specifier| deno_node::is_builtin_node_module(specifier))
 }
 
 fn get_resolution_error_bare_specifier(

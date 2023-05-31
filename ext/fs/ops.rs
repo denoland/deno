@@ -1596,6 +1596,10 @@ create_struct_writer! {
     rdev: u64,
     blksize: u64,
     blocks: u64,
+    is_block_device: bool,
+    is_char_device: bool,
+    is_fifo: bool,
+    is_socket: bool,
   }
 }
 
@@ -1623,6 +1627,10 @@ impl From<FsStat> for SerializableStat {
       rdev: stat.rdev,
       blksize: stat.blksize,
       blocks: stat.blocks,
+      is_block_device: stat.is_block_device,
+      is_char_device: stat.is_char_device,
+      is_fifo: stat.is_fifo,
+      is_socket: stat.is_socket,
     }
   }
 }

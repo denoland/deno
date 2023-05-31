@@ -6,6 +6,56 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.34.1 / 2023.05.29
+
+- fix(compile): handle when DENO_DIR is readonly (#19257)
+- fix(compile): implicit read permission to npm vfs (#19281)
+- fix(compile): improve panic message when stripping root path fails (#19258)
+- fix(compile): inline symlinks as files outside node_modules dir and warn for
+  directories (#19285)
+- fix(ext/http): fix a possible memleak in Brotli (#19250)
+- fix(napi): clear currently registering module slot (#19249)
+- fix(napi): properly handle arguments in napi_get_cb_info (#19269)
+- fix(node): http.IncomingMessageForClient.complete (#19302)
+- fix(node): make 'v8.setFlagsFromString' a noop (#19271)
+- fix: don't print release notes on version check prompt (#19252)
+- fix: use proper ALPN protocols if HTTP client is HTTP/1.1 only (#19303)
+
+### 1.34.0 / 2023.05.24
+
+- BREAKING(unstable): change return type of Deno.serve() API (#19189)
+- feat(cli): add `nodeModulesDir` option to config file (#19095)
+- feat(cli): top-level `exclude` field in `deno.json` (#17778)
+- feat(ext/fs): add isBlockDevice, isCharDevice, isFifo, isSocket to FileInfo
+  (#19008)
+- feat(ext/http): Add support for trailers w/internal API (HTTP/2 only) (#19182)
+- feat(ext/http): Brotli Compression (#19216)
+- feat(ext/http): ref/unref for server (#19197)
+- feat(lsp): support lockfile and node_modules directory (#19203)
+- feat(runtime): Provide environment-configurable options for tokio parameters
+  (#19173)
+- feat(task): glob expansion (#19084)
+- feat(unstable): add more options to Deno.createHttpClient (#17385)
+- feat(vendor): support for npm specifiers (#19186)
+- feat: add support for globs in the config file and CLI arguments for files
+  (#19102)
+- feat: top level package.json install when node_modules dir is explicitly opted
+  into (#19233)
+- fix(ext/node): ClientRequest.setTimeout(0) should remove listeners (#19240)
+- fix(ext/node): add basic node:worker_threads support (#19192)
+- fix(ext/web): improve timers resolution for 0ms timeouts (#19212)
+- fix(napi): add napi_async_init and napi_async_destroy (#19234)
+- fix(node): add http.Server.unref() (#19201)
+- fix(node): duplicate node_module suffixes (#19222)
+- fix(node): fire 'unhandledrejection' event when using node: or npm: imports
+  (#19235)
+- fix(node): make sure "setImmediate" is not clamped to 4ms (#19213)
+- fix(npm): `process` not defined in readline (#19184)
+- fix(npm): better handling of optional peer dependencies (#19236)
+- fix(npm): create `node_modules/.deno/node_modules` folder (#19242)
+- fix(npm): run pre and post tasks if present (#19178)
+- fix(npm): store npm binary command resolution in lockfile (#19219)
+
 ### 1.33.4 / 2023.05.18
 
 - fix(ext/web): Request higher-resolution timer on Windows if user requests

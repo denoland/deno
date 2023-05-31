@@ -10,6 +10,7 @@ use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
+use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::HttpCache;
 use crate::cache::NodeAnalysisCache;
@@ -130,7 +131,7 @@ impl<T> Deferred<T> {
 
 #[derive(Default)]
 struct CliFactoryServices {
-  dir: Deferred<DenoDir>,
+  deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
   http_client: Deferred<Arc<HttpClient>>,
@@ -182,16 +183,21 @@ impl CliFactory {
     &self.options
   }
 
+  pub fn deno_dir_provider(&self) -> &Arc<DenoDirProvider> {
+    self.services.deno_dir_provider.get_or_init(|| {
+      Arc::new(DenoDirProvider::new(
+        self.options.maybe_custom_root().clone(),
+      ))
+    })
+  }
+
   pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {
-    self
-      .services
-      .dir
-      .get_or_try_init(|| self.options.resolve_deno_dir())
+    Ok(self.deno_dir_provider().get_or_create()?)
   }
 
   pub fn caches(&self) -> Result<&Arc<Caches>, AnyError> {
     self.services.caches.get_or_try_init(|| {
-      let caches = Arc::new(Caches::new(self.deno_dir()?.clone()));
+      let caches = Arc::new(Caches::new(self.deno_dir_provider().clone()));
       // Warm up the caches we know we'll likely need based on the CLI mode
       match self.options.sub_command() {
         DenoSubcommand::Run(_) => {
@@ -603,6 +609,7 @@ impl CliFactory {
     let node_resolver = self.node_resolver().await?.clone();
     let npm_resolver = self.npm_resolver().await?.clone();
     let maybe_inspector_server = self.maybe_inspector_server().clone();
+    let maybe_lockfile = self.maybe_lockfile().clone();
     Ok(Arc::new(move || {
       CliMainWorkerFactory::new(
         StorageKeyResolver::from_options(&options),
@@ -627,6 +634,7 @@ impl CliFactory {
         root_cert_store_provider.clone(),
         fs.clone(),
         maybe_inspector_server.clone(),
+        maybe_lockfile.clone(),
         main_worker_options.clone(),
       )
     }))
@@ -660,6 +668,7 @@ impl CliFactory {
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
       self.maybe_inspector_server().clone(),
+      self.maybe_lockfile().clone(),
       self.create_cli_main_worker_options()?,
     ))
   }
@@ -669,11 +678,7 @@ impl CliFactory {
   ) -> Result<CliMainWorkerOptions, AnyError> {
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
-      debug: self
-        .options
-        .log_level()
-        .map(|l| l == log::Level::Debug)
-        .unwrap_or(false),
+      log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
