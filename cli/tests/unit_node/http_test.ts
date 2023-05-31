@@ -531,3 +531,68 @@ Deno.test("[node/http] ClientRequest uses HTTP/1.1", async () => {
   await def;
   assertEquals(body, "HTTP/1.1");
 });
+
+Deno.test("[node/http] ClientRequest setTimeout", async () => {
+  let body = "";
+  const def = deferred();
+  const timer = setTimeout(() => def.reject("timed out"), 50000);
+  const req = https.request("https://localhost:5545/http_version", (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.setTimeout(120000);
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  clearTimeout(timer);
+  assertEquals(body, "HTTP/1.1");
+});
+
+Deno.test("[node/http] ClientRequest PATCH", async () => {
+  let body = "";
+  const def = deferred();
+  const req = https.request("https://localhost:5545/echo_server", {
+    method: "PATCH",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.write("hello ");
+  req.write("world");
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "hello world");
+});
+
+Deno.test("[node/http] ClientRequest PUT", async () => {
+  let body = "";
+  const def = deferred();
+  const req = https.request("https://localhost:5545/echo_server", {
+    method: "PUT",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.write("hello ");
+  req.write("world");
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "hello world");
+});
