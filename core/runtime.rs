@@ -1564,7 +1564,8 @@ impl JsRuntimeForSnapshot {
     // Serialize the module map and store its data in the snapshot.
     {
       let snapshotted_data = {
-        let module_map = self.module_map.borrow();
+        let module_map_rc = self.module_map.clone();
+        let module_map = module_map_rc.borrow();
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
 
