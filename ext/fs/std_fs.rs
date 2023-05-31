@@ -66,7 +66,11 @@ impl FileSystem for RealFs {
     {
       Ok(r.bits())
     }
-    #[cfg(any(target_os = "macos", target_os = "openbsd", target_os = "freebsd"))]
+    #[cfg(any(
+      target_os = "macos",
+      target_os = "openbsd",
+      target_os = "freebsd"
+    ))]
     {
       Ok(r.bits() as u32)
     }
