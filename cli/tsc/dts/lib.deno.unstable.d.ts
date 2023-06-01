@@ -1915,6 +1915,14 @@ declare namespace Deno {
      */
     delete(key: KvKey): this;
     /**
+     * Add to the operation a mutation that enqueues a value into the queue
+     * if all checks pass during the commit.
+     */
+    enqueue(
+      value: unknown,
+      options?: { delay?: number, keys_if_undelivered?: Deno.KvKey[] },
+    ): this;
+    /**
      * Commit the operation to the KV store. Returns a value indicating whether
      * checks passed and mutations were performed. If the operation failed
      * because of a failed check, the return value will be a {@linkcode
@@ -2086,6 +2094,61 @@ declare namespace Deno {
       selector: KvListSelector,
       options?: KvListOptions,
     ): KvListIterator<T>;
+
+    /**
+     * Add a value into the database queue to be delivered to the queue
+     * listener via {@linkcode Deno.Kv.queueListen}.
+     * 
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar");
+     * ```
+     * 
+     * The `delay` option can be used to specify the delay (in milliseconds)
+     * of the value delivery. The default delay is 0, which means immediate
+     * delivery.
+     * 
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar", { delay: 60000 });
+     * ```
+     * 
+     * The `keys_if_undelivered` option can be used to specify the keys to
+     * be set if the value is not successfully delivered to the queue
+     * listener after several attempts. The values are set to the value of
+     * the queued message.
+     * 
+     * ```ts
+     * await db.enqueue("bar", { keys_if_undelivered: ["foo", "bar"] });
+     * ```
+     */
+    enqueue(
+      value: unknown,
+      options?: { delay?: number, keys_if_undelivered?: Deno.KvKey[] },
+    ): Promise<KvCommitResult>;
+
+    /**
+     * Listen for queue values to be delivered from the database queue, which
+     * were enqueued with {@linkcode Deno.Kv.enqueue}. The provided handler
+     * callback is invoked on every dequeued value. A failed callback
+     * invocation is automatically retried multiple times util it succeeds
+     * or until the maximum number of retries is reached.
+     * 
+     * ```ts
+     * db.queueListen((msg) => {
+     *   dequeuedMsg = msg;
+     * });
+     * ```
+     * 
+     * ```ts
+     * db.queueListen(async (msg) => {
+     *   await process(msg);
+     * });
+     * ```
+     */
+    queueListen(
+      handler: (value: unknown) => Promise<void> | void
+    ): Promise<void>;
 
     /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to

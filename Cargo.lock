@@ -1171,8 +1171,12 @@ dependencies = [
  "deno_core",
  "hex",
  "num-bigint",
+ "rand",
  "rusqlite",
  "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
