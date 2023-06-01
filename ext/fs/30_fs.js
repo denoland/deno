@@ -316,7 +316,7 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
 
 function parseFileInfo(response) {
   const unix = core.build.os === "darwin" || core.build.os === "linux" ||
-    Deno.build.os === "freebsd" || Deno.build.os === "openbsd";
+    core.build.os === "freebsd" || core.build.os === "openbsd";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
