@@ -202,7 +202,7 @@ impl Drop for InnerIsolateState {
 /// type aliases.
 pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
   inner: InnerIsolateState,
-  module_map: Option<Rc<RefCell<ModuleMap>>>,
+  module_map: Rc<RefCell<ModuleMap>>,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
@@ -607,7 +607,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       STATE_DATA_OFFSET,
       Rc::into_raw(state_rc.clone()) as *mut c_void,
     );
-    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader, op_state)));
+    let module_map_rc = Rc::new(RefCell::new(ModuleMap::new(loader)));
     if let Some(snapshotted_data) = snapshotted_data {
       let mut module_map = module_map_rc.borrow_mut();
       module_map.update_with_snapshotted_data(scope, snapshotted_data);
@@ -629,7 +629,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       allocations: IsolateAllocations::default(),
       event_loop_middlewares,
       extensions: options.extensions,
-      module_map: Some(module_map_rc),
+      module_map: module_map_rc,
       is_main: options.is_main,
     };
 
@@ -686,9 +686,10 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     (isolate, context, snapshotted_data)
   }
 
+  #[cfg(test)]
   #[inline]
   pub(crate) fn module_map(&self) -> &Rc<RefCell<ModuleMap>> {
-    self.module_map.as_ref().unwrap()
+    &self.module_map
   }
 
   #[inline]
@@ -807,13 +808,12 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     let extensions = std::mem::take(&mut self.extensions);
 
     // TODO(nayeemrmn): Module maps should be per-realm.
-    let module_map = self.module_map.as_ref().unwrap();
-    let loader = module_map.borrow().loader.clone();
+    let loader = self.module_map.borrow().loader.clone();
     let ext_loader = Rc::new(ExtModuleLoader::new(
       &extensions,
       maybe_load_callback.map(Rc::new),
     ));
-    module_map.borrow_mut().loader = ext_loader;
+    self.module_map.borrow_mut().loader = ext_loader;
 
     let mut esm_entrypoints = vec![];
 
@@ -853,9 +853,8 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
       for specifier in esm_entrypoints {
         let mod_id = {
-          let module_map = self.module_map.as_ref().unwrap();
-
-          module_map
+          self
+            .module_map
             .borrow()
             .get_id(specifier, AssertedModuleType::JavaScriptOrWasm)
             .unwrap_or_else(|| {
@@ -871,7 +870,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
       #[cfg(debug_assertions)]
       {
-        let module_map_rc = self.module_map.clone().unwrap();
+        let module_map_rc = self.module_map.clone();
         let mut scope = realm.handle_scope(self.v8_isolate());
         let module_map = module_map_rc.borrow();
         module_map.assert_all_modules_evaluated(&mut scope);
@@ -881,7 +880,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     })?;
 
     self.extensions = extensions;
-    self.module_map.as_ref().unwrap().borrow_mut().loader = loader;
+    self.module_map.borrow_mut().loader = loader;
     Ok(())
   }
 
@@ -1133,9 +1132,8 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     &mut self,
     module_id: ModuleId,
   ) -> Result<v8::Global<v8::Object>, Error> {
-    let module_map_rc = self.module_map();
-
-    let module_handle = module_map_rc
+    let module_handle = self
+      .module_map
       .borrow()
       .get_handle(module_id)
       .expect("ModuleInfo not found");
@@ -1467,7 +1465,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     EventLoopPendingState::new(
       &mut scope,
       &mut self.inner.state.borrow_mut(),
-      &self.module_map.as_ref().unwrap().borrow(),
+      &self.module_map.borrow(),
     )
   }
 }
@@ -1566,7 +1564,10 @@ impl JsRuntimeForSnapshot {
     // Serialize the module map and store its data in the snapshot.
     {
       let snapshotted_data = {
-        let module_map_rc = self.module_map.take().unwrap();
+        // `self.module_map` points directly to the v8 isolate data slot, which
+        // we must explicitly drop before destroying the isolate. We have to
+        // take and drop this `Rc` before that.
+        let module_map_rc = std::mem::take(&mut self.module_map);
         let module_map = module_map_rc.borrow();
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
@@ -1804,7 +1805,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     &mut self,
     id: ModuleId,
   ) -> Result<(), v8::Global<v8::Value>> {
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -1837,9 +1838,8 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     load_id: ModuleLoadId,
     id: ModuleId,
   ) -> Result<(), Error> {
-    let module_map_rc = self.module_map();
-
-    let module_handle = module_map_rc
+    let module_handle = self
+      .module_map
       .borrow()
       .get_handle(id)
       .expect("ModuleInfo not found");
@@ -1929,7 +1929,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   ) -> oneshot::Receiver<Result<(), Error>> {
     let global_realm = self.global_realm();
     let state_rc = self.inner.state.clone();
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     let scope = &mut self.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
 
@@ -2049,7 +2049,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     &self,
     exceptions: impl Iterator<Item = (&'static str, &'static str)>,
   ) {
-    let mut module_map = self.module_map.as_ref().unwrap().borrow_mut();
+    let mut module_map = self.module_map.borrow_mut();
     let handles = exceptions
       .map(|(old_name, new_name)| {
         (module_map.get_handle_by_name(old_name).unwrap(), new_name)
@@ -2070,7 +2070,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     id: ModuleLoadId,
     exception: v8::Global<v8::Value>,
   ) {
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -2091,7 +2091,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
   fn dynamic_import_resolve(&mut self, id: ModuleLoadId, mod_id: ModuleId) {
     let state_rc = self.inner.state.clone();
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     let scope = &mut self.handle_scope();
 
     let resolver_handle = module_map_rc
@@ -2126,7 +2126,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     cx: &mut Context,
   ) -> Poll<Result<(), Error>> {
     if self
-      .module_map()
+      .module_map
       .borrow()
       .preparing_dynamic_imports
       .is_empty()
@@ -2134,10 +2134,9 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.module_map().clone();
-
     loop {
-      let poll_result = module_map_rc
+      let poll_result = self
+        .module_map
         .borrow_mut()
         .preparing_dynamic_imports
         .poll_next_unpin(cx);
@@ -2148,7 +2147,8 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
         match prepare_result {
           Ok(load) => {
-            module_map_rc
+            self
+              .module_map
               .borrow_mut()
               .pending_dynamic_imports
               .push(load.into_future());
@@ -2168,19 +2168,13 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   }
 
   fn poll_dyn_imports(&mut self, cx: &mut Context) -> Poll<Result<(), Error>> {
-    if self
-      .module_map()
-      .borrow()
-      .pending_dynamic_imports
-      .is_empty()
-    {
+    if self.module_map.borrow().pending_dynamic_imports.is_empty() {
       return Poll::Ready(Ok(()));
     }
 
-    let module_map_rc = self.module_map().clone();
-
     loop {
-      let poll_result = module_map_rc
+      let poll_result = self
+        .module_map
         .borrow_mut()
         .pending_dynamic_imports
         .poll_next_unpin(cx);
@@ -2205,7 +2199,8 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
               match register_result {
                 Ok(()) => {
                   // Keep importing until it's fully drained
-                  module_map_rc
+                  self
+                    .module_map
                     .borrow_mut()
                     .pending_dynamic_imports
                     .push(load.into_future());
@@ -2374,7 +2369,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -2429,7 +2424,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     specifier: &ModuleSpecifier,
     code: Option<ModuleCode>,
   ) -> Result<ModuleId, Error> {
-    let module_map_rc = self.module_map().clone();
+    let module_map_rc = self.module_map.clone();
     if let Some(code) = code {
       let specifier = specifier.as_str().to_owned().into();
       let scope = &mut self.handle_scope();
@@ -3612,8 +3607,7 @@ pub mod tests {
       runtime: &mut JsRuntimeImpl<FOR_SNAPSHOT>,
       modules: &Vec<ModuleInfo>,
     ) {
-      let module_map_rc = runtime.module_map();
-      let module_map = module_map_rc.borrow();
+      let module_map = runtime.module_map.borrow();
       assert_eq!(module_map.handles.len(), modules.len());
       assert_eq!(module_map.info.len(), modules.len());
       assert_eq!(
