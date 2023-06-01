@@ -126,7 +126,7 @@ export function open(
       if (err) {
         (callback as (err: Error) => void)(err);
       } else {
-        callback(null, new res!);
+        callback(null, new res!());
       }
       return;
     }
@@ -140,12 +140,16 @@ export function open(
   }
 }
 
-export function openPromise(path: string | Buffer | URL, flags?: openFlags= 'r', mode?: number = 0o666): Promise<FileHandle> {
+export function openPromise(
+  path: string | Buffer | URL,
+  flags?: openFlags = "r",
+  mode?: number = 0o666,
+): Promise<FileHandle> {
   return new Promise((resolve, err) => {
     open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
-      else resolve(new FileHandle(fd))
-    })
+      else resolve(new FileHandle(fd));
+    });
   });
 }
 
