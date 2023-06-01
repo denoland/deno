@@ -8,7 +8,6 @@ import {
   O_WRONLY,
 } from "ext:deno_node/_fs/_fs_constants.ts";
 import { getOpenOptions } from "ext:deno_node/_fs/_fs_common.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
 import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
@@ -143,9 +142,9 @@ export function open(
 export function openPromise(
   path: string | Buffer | URL,
   flags?: openFlags = "r",
-  mode?: number = 0o666,
+  mode? = 0o666,
 ): Promise<FileHandle> {
-  return new Promise((resolve, err) => {
+  return new Promise((resolve, reject) => {
     open(path, flags, mode, (err, fd) => {
       if (err) reject(err);
       else resolve(new FileHandle(fd));
