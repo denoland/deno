@@ -20,6 +20,8 @@ import {
   httpTrim,
 } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
+const core = globalThis.Deno.core;
+const ops = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeMap,
@@ -105,8 +107,10 @@ function appendHeader(headers, name, value) {
   if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
     throw new TypeError("Header name is not valid.");
   }
-  if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+  if (ops.op_fetch_validate_header(name, value) === 1) {
     throw new TypeError("Header value is not valid.");
+    // if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+    // }
   }
 
   // 3.
