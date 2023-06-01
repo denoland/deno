@@ -245,9 +245,7 @@ pub fn op_http_get_request_header(
 }
 
 #[op]
-pub fn op_http_get_request_headers(
-  slab_id: SlabId,
-) -> Vec<(ByteString, ByteString)> {
+pub fn op_http_get_request_headers(slab_id: SlabId) -> Vec<ByteString> {
   let http = slab_get(slab_id);
   let headers = &http.request_parts().headers;
   let mut vec = Vec::with_capacity(headers.len());
@@ -261,7 +259,8 @@ pub fn op_http_get_request_headers(
       }
     } else {
       let name: &[u8] = name.as_ref();
-      vec.push((name.into(), value.as_bytes().into()))
+      vec.push(name.into());
+      vec.push(value.as_bytes().into());
     }
   }
 
@@ -272,11 +271,10 @@ pub fn op_http_get_request_headers(
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
     let cookie_sep = "; ".as_bytes();
-    vec.push((
-      ByteString::from(COOKIE.as_str()),
-      ByteString::from(cookies.join(cookie_sep)),
-    ));
+    vec.push(ByteString::from(COOKIE.as_str()));
+    vec.push(ByteString::from(cookies.join(cookie_sep)));
   }
+
   vec
 }
 
@@ -302,18 +300,15 @@ pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
 }
 
 #[op]
-pub fn op_http_set_response_headers(
-  slab_id: SlabId,
-  headers: Vec<(ByteString, ByteString)>,
-) {
+pub fn op_http_set_response_headers(slab_id: SlabId, headers: Vec<ByteString>) {
   let mut http = slab_get(slab_id);
   // TODO(mmastrac): Invalid headers should be handled?
   let resp_headers = http.response().headers_mut();
   resp_headers.reserve(headers.len());
-  for (name, value) in headers {
+  for header in headers.chunks_exact(2) {
     // These are valid latin-1 strings
-    let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
+    let name = HeaderName::from_bytes(&header[0]).unwrap();
+    let value = HeaderValue::from_bytes(&header[1]).unwrap();
     resp_headers.append(name, value);
   }
 }
