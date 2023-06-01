@@ -1696,6 +1696,12 @@ impl ModuleMap {
   }
 }
 
+impl Default for ModuleMap {
+  fn default() -> Self {
+    Self::new(Rc::new(NoopModuleLoader))
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

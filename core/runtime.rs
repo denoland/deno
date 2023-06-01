@@ -1564,7 +1564,10 @@ impl JsRuntimeForSnapshot {
     // Serialize the module map and store its data in the snapshot.
     {
       let snapshotted_data = {
-        let module_map_rc = self.module_map.clone();
+        // `self.module_map` points directly to the v8 isolate data slot, which
+        // we must explicitly drop before destroying the isolate. We have to
+        // take and drop this `Rc` before that.
+        let module_map_rc = std::mem::take(&mut self.module_map);
         let module_map = module_map_rc.borrow();
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
