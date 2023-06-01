@@ -397,8 +397,7 @@ fn rss() -> usize {
   // SAFETY: libc call (get system page size)
   let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
   // KERN_PROC_PID returns a struct libc::kinfo_proc
-  let mut kinfoproc: std::mem::MaybeUninit<libc::kinfo_proc> =
-    std::mem::MaybeUninit::uninit();
+  let mut kinfoproc = std::mem::MaybeUninit::<libc::kinfo_proc>::uninit();
   let mut size = std::mem::size_of_val(&kinfoproc) as libc::size_t;
   let mut mib = [
     libc::CTL_KERN,
