@@ -759,4 +759,4 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
-export { serve, upgradeHttpRaw };
+export { serve, serveHttpOnConnection, serveHttpOnListener, upgradeHttpRaw };

@@ -4,9 +4,12 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
-import { Socket } from "ext:deno_node/net.ts";
+import { Server, Socket } from "ext:deno_node/net.ts";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
+import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "ext:deno_node/fs/promises.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -90,8 +93,8 @@ export class Http2Session extends EventEmitter {
     notImplemented("Http2Session.setLocalWindowSize");
   }
 
-  setTimeout(_msecs: number, _callback: () => void) {
-    notImplemented("Http2Session.setTimeout");
+  setTimeout(msecs: number, callback?: () => void) {
+    setStreamTimeout(this, msecs, callback);
   }
 
   get socket(): Socket /*| TlsSocket*/ {
@@ -221,8 +224,8 @@ export class Http2Stream {
     return new Http2Session();
   }
 
-  setTimeout(_msecs: number, _callback: () => void) {
-    notImplemented("Http2Stream.setTimeout");
+  setTimeout(msecs: number, callback?: () => void) {
+    setStreamTimeout(this, msecs, callback);
   }
 
   get state(): Record<string, unknown> {
@@ -292,56 +295,99 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 }
 
-export class Http2Server {
-  constructor() {
+export class Http2Server extends Server {
+  #options: Record<string, unknown> = {};
+  timeout = 0;
+  constructor(
+    options: Record<string, unknown>,
+    requestListener: () => unknown,
+  ) {
+    debugger;
+    super(options, function (conn) {
+      const stream = conn[kStreamBaseField];
+      console.log("connection", conn, stream);
+      let abortController = new AbortController();
+      try {
+        serveHttpOnConnection(stream, abortController.signal, (req) => {
+          console.log(req);
+          return new Response("");
+        }, () => {
+          console.log("error");
+        }, () => {});
+      } catch (e) {
+        console.log(e);
+      }
+      notImplemented("connectionListener");
+    });
+    this.#options = options;
+    if (typeof requestListener === "function") {
+      this.on("request", requestListener);
+    }
+  }
+
+  // Prevent the TCP server from wrapping this in a socket, since we need it to serve HTTP
+  _createSocket(clientHandle) {
+    return clientHandle;
   }
 
   close(_callback?: () => unknown) {
     notImplemented("Http2Server.close");
   }
 
-  setTimeout(_msecs: number, _callback?: () => unknown) {
-    notImplemented("Http2Server.setTimeout");
+  setTimeout(msecs: number, callback?: () => unknown) {
+    this.timeout = msecs;
+    if (callback !== undefined) {
+      this.on("timeout", callback);
+    }
   }
 
-  get timeout(): number {
-    notImplemented("Http2Server.timeout");
-    return 0;
-  }
-
-  updateSettings(_settings: Record<string, unknown>) {
-    notImplemented("Http2Server.updateSettings");
+  updateSettings(settings: Record<string, unknown>) {
+    this.#options.settings = { ...this.#options.settings, ...settings };
   }
 }
 
-export class Http2SecureServer {
-  constructor() {
+export class Http2SecureServer extends Server {
+  #options: Record<string, unknown> = {};
+  timeout = 0;
+
+  constructor(
+    options: Record<string, unknown>,
+    requestListener: () => unknown,
+  ) {
+    super(options, function () {
+      notImplemented("connectionListener");
+    });
+    this.#options = options;
+    if (typeof requestListener === "function") {
+      this.on("request", requestListener);
+    }
   }
 
   close(_callback?: () => unknown) {
     notImplemented("Http2SecureServer.close");
   }
 
-  setTimeout(_msecs: number, _callback?: () => unknown) {
-    notImplemented("Http2SecureServer.setTimeout");
+  setTimeout(msecs: number, callback?: () => unknown) {
+    this.timeout = msecs;
+    if (callback !== undefined) {
+      this.on("timeout", callback);
+    }
   }
 
-  get timeout(): number {
-    notImplemented("Http2SecureServer.timeout");
-    return 0;
-  }
-
-  updateSettings(_settings: Record<string, unknown>) {
-    notImplemented("Http2SecureServer.updateSettings");
+  updateSettings(settings: Record<string, unknown>) {
+    this.#options.settings = { ...this.#options.settings, ...settings };
   }
 }
 
 export function createServer(
-  _options: Record<string, unknown>,
-  _onRequestHandler: () => unknown,
+  options: Record<string, unknown>,
+  onRequestHandler: () => unknown,
 ): Http2Server {
-  notImplemented("http2.createServer");
-  return new Http2Server();
+  if (typeof options === "function") {
+    onRequestHandler = options;
+    options = {};
+  }
+  return new Http2Server(options, onRequestHandler);
 }
 
 export function createSecureServer(
@@ -681,8 +727,8 @@ export class Http2ServerRequest {
     return "";
   }
 
-  setTimeout(_msecs: number, _callback: () => unknown) {
-    notImplemented("Http2ServerRequest.setTimeout");
+  setTimeout(msecs: number, callback?: () => unknown) {
+    this.stream.setTimeout(callback, msecs);
   }
 
   get socket(): Socket /*| TlsSocket*/ {
@@ -781,8 +827,8 @@ export class Http2ServerResponse {
     notImplemented("Http2ServerResponse.setHeader");
   }
 
-  setTimeout(_msecs: number, _callback: () => unknown) {
-    notImplemented("Http2ServerResponse.setTimeout");
+  setTimeout(msecs: number, callback?: () => unknown) {
+    this.stream.setTimeout(msecs, callback);
   }
 
   get socket(): Socket /*| TlsSocket*/ {
