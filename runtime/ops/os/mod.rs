@@ -418,7 +418,7 @@ fn rss() -> usize {
     0
   }
 }
-      
+
 #[cfg(windows)]
 fn rss() -> usize {
   use winapi::shared::minwindef::DWORD;
