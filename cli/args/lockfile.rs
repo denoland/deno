@@ -15,6 +15,7 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_semver::npm::NpmPackageReq;
 
 use crate::args::ConfigFile;
@@ -95,8 +96,7 @@ pub async fn snapshot_from_lockfile(
         id,
         dependencies,
         // temporarily empty
-        os: Default::default(),
-        cpu: Default::default(),
+        system: Default::default(),
         dist: Default::default(),
         optional_dependencies: Default::default(),
       });
@@ -124,8 +124,10 @@ pub async fn snapshot_from_lockfile(
       Ok(version_info) => {
         let mut package = &mut packages[i];
         package.dist = version_info.dist;
-        package.cpu = version_info.cpu;
-        package.os = version_info.os;
+        package.system = NpmResolutionPackageSystemInfo {
+          cpu: version_info.cpu,
+          os: version_info.os,
+        };
         package.optional_dependencies =
           version_info.optional_dependencies.into_keys().collect();
       }

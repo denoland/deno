@@ -201,6 +201,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         match module.kind {
           eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
           eszip::ModuleKind::Json => ModuleType::Json,
+          eszip::ModuleKind::Jsonc => {
+            return Err(type_error("jsonc modules not supported"))
+          }
         },
         code,
         &module_specifier,
@@ -270,7 +273,7 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 }
 
 pub async fn run(
-  eszip: eszip::EszipV2,
+  mut eszip: eszip::EszipV2,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
   let main_module = &metadata.entrypoint;
@@ -307,7 +310,7 @@ pub async fn run(
     progress_bar.clone(),
   ));
   let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
-    metadata.npm_snapshot
+    eszip.take_npm_snapshot()
   {
     let vfs_root_dir_path = if metadata.node_modules_dir {
       root_path
@@ -325,7 +328,7 @@ pub async fn run(
       Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
       Some(vfs_root_dir_path),
       node_modules_path,
-      Some(snapshot.into_valid()?),
+      Some(snapshot),
     )
   } else {
     (

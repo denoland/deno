@@ -51,6 +51,7 @@ deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "0.12.0"
+eszip = { path = "../../eszip" }
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -70,7 +71,6 @@ dprint-plugin-markdown = "=0.15.2"
 dprint-plugin-typescript = "=0.84.4"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.41.0"
 fancy-regex = "=0.10.0"
 fastwebsockets.workspace = true
 flate2.workspace = true
