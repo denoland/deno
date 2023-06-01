@@ -19,10 +19,6 @@ export class FileHandle extends EventEmitter {
     return this.rid;
   }
 
-  readFile(opt: TextOptionsArgument): Promise<string>;
-  readFile(opt?: BinaryOptionsArgument): Promise<Buffer>;
-  readFile(opt?: FileOptionsArgument): Promise<Buffer>;
-
   readFile(
     opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
   ): Promise<string | Buffer> {

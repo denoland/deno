@@ -126,7 +126,7 @@ export function open(
       if (err) {
         (callback as (err: Error) => void)(err);
       } else {
-        callback(null, new FileHandle(res!));
+        callback(null, new res!);
       }
       return;
     }
@@ -134,22 +134,20 @@ export function open(
       path as string,
       convertFlagAndModeToOptions(flags as openFlags, mode),
     ).then(
-      (file) => callback!(null, new FileHandle(file.rid)),
+      (file) => callback!(null, file.rid),
       (err) => (callback as (err: Error) => void)(err),
     );
   }
 }
 
-export const openPromise = promisify(open) as (
-  & ((path: string | Buffer | URL) => Promise<FileHandle>)
-  & ((path: string | Buffer | URL, flags: openFlags) => Promise<FileHandle>)
-  & ((path: string | Buffer | URL, mode?: number) => Promise<FileHandle>)
-  & ((
-    path: string | Buffer | URL,
-    flags?: openFlags,
-    mode?: number,
-  ) => Promise<FileHandle>)
-);
+export function openPromise(path: string | Buffer | URL, flags?: openFlags= 'r', mode?: number = 0o666): Promise<FileHandle> {
+  return new Promise((resolve, err) => {
+    open(path, flags, mode, (err, fd) => {
+      if (err) reject(err);
+      else resolve(new FileHandle(fd))
+    })
+  });
+}
 
 export function openSync(path: string | Buffer | URL): number;
 export function openSync(
