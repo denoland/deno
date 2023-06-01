@@ -194,6 +194,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGEMT" => Ok(7),
     "SIGFPE" => Ok(8),
