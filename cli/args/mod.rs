@@ -67,7 +67,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use thiserror::Error;
 
-use crate::cache::DenoDir;
 use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
@@ -724,10 +723,6 @@ impl CliOptions {
     }
   }
 
-  pub fn resolve_deno_dir(&self) -> Result<DenoDir, AnyError> {
-    Ok(DenoDir::new(self.maybe_custom_root())?)
-  }
-
   /// Based on an optional command line import map path and an optional
   /// configuration file, return a resolved module specifier to an import map
   /// and a boolean indicating if unknown keys should not result in diagnostics.
@@ -1114,12 +1109,8 @@ impl CliOptions {
     &self.flags.location
   }
 
-  pub fn maybe_custom_root(&self) -> Option<PathBuf> {
-    self
-      .flags
-      .cache_path
-      .clone()
-      .or_else(|| env::var("DENO_DIR").map(String::into).ok())
+  pub fn maybe_custom_root(&self) -> &Option<PathBuf> {
+    &self.flags.cache_path
   }
 
   pub fn no_clear_screen(&self) -> bool {
@@ -1343,7 +1334,8 @@ fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
           // true because it copies with sh does—these files are considered "hidden"
           require_literal_leading_dot: true,
         },
-      )?;
+      )
+      .with_context(|| format!("Failed to expand glob: \"{}\"", path_str))?;
 
       for globbed_path_result in globbed_paths {
         new_paths.push(globbed_path_result?);
@@ -1591,6 +1583,16 @@ mod test {
     temp_dir.write("nested/fizz/bazz.ts", "");
 
     temp_dir.write("pages/[id].ts", "");
+
+    let error = resolve_files(
+      Some(FilesConfig {
+        include: vec![temp_dir.path().join("data/**********.ts")],
+        exclude: vec![],
+      }),
+      None,
+    )
+    .unwrap_err();
+    assert!(error.to_string().starts_with("Failed to expand glob"));
 
     let resolved_files = resolve_files(
       Some(FilesConfig {

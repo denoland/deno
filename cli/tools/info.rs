@@ -170,10 +170,8 @@ fn add_npm_packages_to_json(
         });
       if let Some(pkg) = maybe_package {
         if let Some(module) = module.as_object_mut() {
-          module.insert(
-            "npmPackage".to_string(),
-            pkg.pkg_id.as_serialized().into(),
-          );
+          module
+            .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
         }
       }
     } else {
@@ -206,7 +204,7 @@ fn add_npm_packages_to_json(
                 {
                   dep.insert(
                     "npmPackage".to_string(),
-                    pkg.pkg_id.as_serialized().into(),
+                    pkg.id.as_serialized().into(),
                   );
                 }
               }
@@ -219,15 +217,12 @@ fn add_npm_packages_to_json(
 
   let mut sorted_packages =
     snapshot.all_packages_for_every_system().collect::<Vec<_>>();
-  sorted_packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
+  sorted_packages.sort_by(|a, b| a.id.cmp(&b.id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.pkg_id.nv.name.to_string().into());
-    kv.insert(
-      "version".to_string(),
-      pkg.pkg_id.nv.version.to_string().into(),
-    );
+    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
+    kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
@@ -236,7 +231,7 @@ fn add_npm_packages_to_json(
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
 
-    json_packages.insert(pkg.pkg_id.as_serialized(), kv.into());
+    json_packages.insert(pkg.id.as_serialized(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -335,8 +330,8 @@ impl NpmInfo {
       if let Module::Npm(module) = module {
         let nv = &module.nv_reference.nv;
         if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
-          info.resolved_ids.insert(nv.clone(), package.pkg_id.clone());
-          if !info.packages.contains_key(&package.pkg_id) {
+          info.resolved_ids.insert(nv.clone(), package.id.clone());
+          if !info.packages.contains_key(&package.id) {
             info.fill_package_info(package, npm_resolver, npm_snapshot);
           }
         }
@@ -352,11 +347,9 @@ impl NpmInfo {
     npm_resolver: &'a CliNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
-    self
-      .packages
-      .insert(package.pkg_id.clone(), package.clone());
-    if let Ok(size) = npm_resolver.package_size(&package.pkg_id) {
-      self.package_sizes.insert(package.pkg_id.clone(), size);
+    self.packages.insert(package.id.clone(), package.clone());
+    if let Ok(size) = npm_resolver.package_size(&package.id) {
+      self.package_sizes.insert(package.id.clone(), size);
     }
     for id in package.dependencies.values() {
       if !self.packages.contains_key(id) {
@@ -536,7 +529,7 @@ impl<'a> GraphDisplayContext<'a> {
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.pkg_id.as_serialized(),
+      Package(package) => package.id.as_serialized(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -554,7 +547,7 @@ impl<'a> GraphDisplayContext<'a> {
       };
       let maybe_size = match &package_or_specifier {
         Package(package) => {
-          self.npm_info.package_sizes.get(&package.pkg_id).copied()
+          self.npm_info.package_sizes.get(&package.id).copied()
         }
         Specifier(_) => match module {
           Module::Esm(module) => Some(module.size() as u64),
@@ -608,7 +601,7 @@ impl<'a> GraphDisplayContext<'a> {
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          let was_seen = !self.seen.insert(package.pkg_id.as_serialized());
+          let was_seen = !self.seen.insert(package.id.as_serialized());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {

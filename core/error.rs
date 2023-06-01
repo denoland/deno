@@ -209,7 +209,7 @@ impl JsStackFrame {
     let l = message.get_line_number(scope)? as i64;
     // V8's column numbers are 0-based, we want 1-based.
     let c = message.get_start_column() as i64 + 1;
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let (getter, cache) = {
       let state = state_rc.borrow();
       (
@@ -282,7 +282,7 @@ impl JsError {
       frames = vec![stack_frame];
     }
     {
-      let state_rc = JsRuntime::state(scope);
+      let state_rc = JsRuntime::state_from(scope);
       let (getter, cache) = {
         let state = state_rc.borrow();
         (
@@ -414,7 +414,7 @@ impl JsError {
         }
       }
       {
-        let state_rc = JsRuntime::state(scope);
+        let state_rc = JsRuntime::state_from(scope);
         let (getter, cache) = {
           let state = state_rc.borrow();
           (

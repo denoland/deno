@@ -182,14 +182,20 @@ impl CliGraphResolver {
     self
   }
 
+  pub async fn force_top_level_package_json_install(
+    &self,
+  ) -> Result<(), AnyError> {
+    self
+      .package_json_deps_installer
+      .ensure_top_level_install()
+      .await
+  }
+
   pub async fn top_level_package_json_install_if_necessary(
     &self,
   ) -> Result<(), AnyError> {
     if self.found_package_json_dep_flag.is_raised() {
-      self
-        .package_json_deps_installer
-        .ensure_top_level_install()
-        .await?;
+      self.force_top_level_package_json_install().await?;
     }
     Ok(())
   }

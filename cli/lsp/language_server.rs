@@ -46,6 +46,7 @@ use super::completions;
 use super::config::Config;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
+use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
@@ -342,6 +343,22 @@ impl LanguageServer {
     }
   }
 
+  /// This request is only used by the lsp integration tests to
+  /// coordinate the tests receiving the latest diagnostics.
+  pub async fn latest_diagnostic_batch_index_request(
+    &self,
+  ) -> LspResult<Option<Value>> {
+    Ok(
+      self
+        .0
+        .read()
+        .await
+        .diagnostics_server
+        .latest_batch_index()
+        .map(|v| v.into()),
+    )
+  }
+
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
     Ok(Some(self.0.read().await.get_performance()))
   }
@@ -582,9 +599,7 @@ fn create_npm_resolver_and_resolution(
 
 impl Inner {
   fn new(client: Client) -> Self {
-    let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir =
-      DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
+    let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
     let module_registries =
@@ -904,7 +919,7 @@ impl Inner {
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
-    let dir = self.deno_dir_from_maybe_cache_path(new_cache_path.clone())?;
+    let dir = DenoDir::new(new_cache_path.clone())?;
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -938,19 +953,8 @@ impl Inner {
     Ok(())
   }
 
-  fn deno_dir_from_maybe_cache_path(
-    &self,
-    cache_path: Option<PathBuf>,
-  ) -> std::io::Result<DenoDir> {
-    let maybe_custom_root =
-      cache_path.or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    DenoDir::new(maybe_custom_root)
-  }
-
   async fn recreate_npm_services_if_necessary(&mut self) {
-    let deno_dir = match self
-      .deno_dir_from_maybe_cache_path(self.maybe_cache_path.clone())
-    {
+    let deno_dir = match DenoDir::new(self.maybe_cache_path.clone()) {
       Ok(deno_dir) => deno_dir,
       Err(err) => {
         lsp_warn!("Error getting deno dir: {}", err);
@@ -2945,11 +2949,11 @@ impl Inner {
   }
 
   fn send_diagnostics_update(&self) {
-    let snapshot = (
-      self.snapshot(),
-      self.config.snapshot(),
-      self.lint_options.clone(),
-    );
+    let snapshot = DiagnosticServerUpdateMessage {
+      snapshot: self.snapshot(),
+      config: self.config.snapshot(),
+      lint_options: self.lint_options.clone(),
+    };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);
     }

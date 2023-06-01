@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
 use std::process::Stdio;
@@ -240,6 +241,25 @@ itest!(remote_npm_specifier {
 itest!(tarball_with_global_header {
   args: "run -A --quiet npm/tarball_with_global_header/main.js",
   output: "npm/tarball_with_global_header/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(node_modules_deno_node_modules {
+  args: "run --quiet npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(node_modules_deno_node_modules_local {
+  args:
+    "run --quiet --node-modules-dir npm/node_modules_deno_node_modules/main.ts",
+  output: "npm/node_modules_deno_node_modules/main.out",
+  copy_temp_dir: Some("npm/node_modules_deno_node_modules/"),
+  exit_code: 0,
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
@@ -1923,4 +1943,74 @@ pub fn node_modules_dir_config_file() {
     .args("cache --quiet --node-modules-dir main.ts")
     .run();
   assert!(node_modules_dir.exists());
+}
+
+#[test]
+fn top_level_install_package_json_explicit_opt_in() {
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let node_modules_dir = temp_dir.path().join("node_modules");
+  let rm_created_files = || {
+    std::fs::remove_dir_all(&node_modules_dir).unwrap();
+    std::fs::remove_file(temp_dir.path().join("deno.lock")).unwrap();
+  };
+
+  // when the node_modules_dir is explicitly opted into, we should always
+  // ensure a top level package.json install occurs
+  temp_dir.write("deno.json", "{ \"nodeModulesDir\": true }");
+  temp_dir.write(
+    "package.json",
+    "{ \"dependencies\": { \"@denotest/esm-basic\": \"1.0\" }}",
+  );
+
+  temp_dir.write("main.ts", "console.log(5);");
+  let output = test_context.new_command().args("cache main.ts").run();
+  output.assert_matches_text(
+    concat!(
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+      "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+      "Initialize @denotest/esm-basic@1.0.0\n",
+    )
+  );
+
+  rm_created_files();
+  let output = test_context
+    .new_command()
+    .args_vec(["eval", "console.log(5)"])
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+
+  rm_created_files();
+  let output = test_context
+    .new_command()
+    .args("run -")
+    .stdin("console.log(5)")
+    .run();
+  output.assert_matches_text(concat!(
+    "Initialize @denotest/esm-basic@1.0.0\n",
+    "5\n"
+  ));
+
+  // now ensure this is cached in the lsp
+  rm_created_files();
+  let mut client = test_context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "",
+    }
+  }));
+  client.write_request(
+    "deno/cache",
+    json!({ "referrer": { "uri": file_uri }, "uris": [] }),
+  );
+
+  assert!(node_modules_dir.join("@denotest").exists());
 }

@@ -299,7 +299,7 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  debugFlag,
+  logLevel,
   noColor,
   isTty,
   source,
@@ -315,7 +315,7 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogDebug(debugFlag, source);
+  util.setLogLevel(logLevel, source);
   setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
@@ -346,7 +346,8 @@ function promiseRejectCallback(type, promise, reason) {
   }
 
   return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0;
+    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
 }
 
 function promiseRejectMacrotaskCallback() {
@@ -383,6 +384,15 @@ function promiseRejectMacrotaskCallback() {
     globalThis_.dispatchEvent(rejectionEvent);
     globalThis_.removeEventListener("error", errorEventCb);
 
+    // If event was not yet prevented, try handing it off to Node compat layer
+    // (if it was initialized)
+    if (
+      !rejectionEvent.defaultPrevented &&
+      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+    ) {
+      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
+    }
+
     // If event was not prevented (or "unhandledrejection" listeners didn't
     // throw) we will let Rust side handle it.
     if (rejectionEvent.defaultPrevented) {
@@ -418,7 +428,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -485,7 +495,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
   );
@@ -532,7 +542,7 @@ function bootstrapWorkerRuntime(
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -600,7 +610,7 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
     internalName ?? name,

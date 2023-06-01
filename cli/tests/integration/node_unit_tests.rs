@@ -5,6 +5,7 @@ use std::process::Stdio;
 use std::time::Duration;
 use std::time::Instant;
 use test_util as util;
+use util::env_vars_for_npm_tests;
 
 util::unit_test_factory!(
   node_unit_test,
@@ -57,6 +58,7 @@ util::unit_test_factory!(
     pbkdf2_test = internal / pbkdf2_test,
     scrypt_test = internal / scrypt_test,
     module_test,
+    os_test,
     process_test,
     querystring_test,
     readline_test,
@@ -157,3 +159,20 @@ fn node_unit_test(test: String) {
 
   assert!(status.success());
 }
+
+// Regression test for https://github.com/denoland/deno/issues/16928
+itest!(unhandled_rejection_web {
+  args: "run -A node/unhandled_rejection_web.ts",
+  output: "node/unhandled_rejection_web.ts.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+// Ensure that Web `onunhandledrejection` is fired before
+// Node's `process.on('unhandledRejection')`.
+itest!(unhandled_rejection_web_process {
+  args: "run -A node/unhandled_rejection_web_process.ts",
+  output: "node/unhandled_rejection_web_process.ts.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});

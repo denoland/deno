@@ -82,7 +82,7 @@ pub async fn snapshot_from_lockfile(
     // now fill the packages except for the dist information
     let mut packages = Vec::with_capacity(lockfile.content.npm.packages.len());
     for (key, package) in &lockfile.content.npm.packages {
-      let pkg_id = NpmPackageId::from_serialized(key)?;
+      let id = NpmPackageId::from_serialized(key)?;
 
       // collect the dependencies
       let mut dependencies = HashMap::with_capacity(package.dependencies.len());
@@ -92,7 +92,7 @@ pub async fn snapshot_from_lockfile(
       }
 
       packages.push(SerializedNpmResolutionSnapshotPackage {
-        pkg_id,
+        id,
         dependencies,
         // temporarily empty
         os: Default::default(),
@@ -105,10 +105,7 @@ pub async fn snapshot_from_lockfile(
   };
 
   // now that the lockfile is dropped, fetch the package version information
-  let pkg_nvs = packages
-    .iter()
-    .map(|p| p.pkg_id.nv.clone())
-    .collect::<Vec<_>>();
+  let pkg_nvs = packages.iter().map(|p| p.id.nv.clone()).collect::<Vec<_>>();
   let get_version_infos = || {
     FuturesOrdered::from_iter(pkg_nvs.iter().map(|nv| async move {
       let package_info = api.package_info(&nv.name).await?;

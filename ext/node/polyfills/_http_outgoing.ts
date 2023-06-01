@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+const core = globalThis.__bootstrap.core;
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
 import EE from "ext:deno_node/events.ts";
@@ -137,12 +138,6 @@ export class OutgoingMessage extends Stream {
     this._keepAliveTimeout = 0;
 
     this._onPendingData = nop;
-
-    this.stream = new ReadableStream({
-      start: (controller) => {
-        this.controller = controller;
-      },
-    });
   }
 
   get writableFinished() {
@@ -374,21 +369,30 @@ export class OutgoingMessage extends Stream {
     return headers;
   }
 
-  controller: ReadableStreamDefaultController;
   write(
     chunk: string | Uint8Array | Buffer,
     encoding: string | null,
-    // TODO(crowlKats): use callback
-    _callback: () => void,
+    callback: () => void,
   ): boolean {
-    if (typeof chunk === "string") {
-      chunk = Buffer.from(chunk, encoding);
-    }
-    if (chunk instanceof Buffer) {
-      chunk = new Uint8Array(chunk.buffer);
-    }
+    if (
+      (typeof chunk === "string" && chunk.length > 0) ||
+      ((chunk instanceof Buffer || chunk instanceof Uint8Array) &&
+        chunk.buffer.byteLength > 0)
+    ) {
+      if (typeof chunk === "string") {
+        chunk = Buffer.from(chunk, encoding);
+      }
+      if (chunk instanceof Buffer) {
+        chunk = new Uint8Array(chunk.buffer);
+      }
 
-    this.controller.enqueue(chunk);
+      core.writeAll(this._bodyWriteRid, chunk).then(() => {
+        callback?.();
+        this.emit("drain");
+      }).catch((e) => {
+        this._requestSendError = e;
+      });
+    }
 
     return false;
   }
@@ -400,18 +404,8 @@ export class OutgoingMessage extends Stream {
   }
 
   // deno-lint-ignore no-explicit-any
-  end(chunk: any, encoding: any, _callback: any) {
-    if (typeof chunk === "function") {
-      callback = chunk;
-      chunk = null;
-      encoding = null;
-    } else if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = null;
-    }
-    // TODO(crowlKats): finish
-
-    return this;
+  end(_chunk: any, _encoding: any, _callback: any) {
+    notImplemented("OutgoingMessage.end");
   }
 
   flushHeaders() {

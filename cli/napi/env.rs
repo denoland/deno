@@ -136,9 +136,10 @@ fn node_api_get_module_file_name(
 
 #[napi_sym::napi_sym]
 fn napi_module_register(module: *const NapiModule) -> napi_status {
-  MODULE.with(|cell| {
+  MODULE_TO_REGISTER.with(|cell| {
     let mut slot = cell.borrow_mut();
-    slot.replace(module);
+    let prev = slot.replace(module);
+    assert!(prev.is_none());
   });
   napi_ok
 }
