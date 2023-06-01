@@ -248,7 +248,8 @@ pub fn op_http_get_request_header(
 pub fn op_http_get_request_headers(slab_id: SlabId) -> Vec<ByteString> {
   let http = slab_get(slab_id);
   let headers = &http.request_parts().headers;
-  let mut vec = Vec::with_capacity(headers.len());
+  // Two slots for each header key/value pair
+  let mut vec = Vec::with_capacity(headers.len() * 2);
   let mut cookies: Option<Vec<&[u8]>> = None;
   for (name, value) in headers {
     if name == COOKIE {
