@@ -449,6 +449,7 @@ impl CliMainWorkerFactory {
       },
       extensions,
       startup_snapshot: Some(crate::js::deno_isolate_init()),
+      create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
