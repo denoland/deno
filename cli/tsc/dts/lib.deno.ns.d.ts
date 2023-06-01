@@ -4240,6 +4240,14 @@ declare namespace Deno {
      *
      * @default {4} */
     depth?: number;
+    /** The maximum length for an inspection to take up a single line.
+     *
+     * @default {80} */
+    breakLength?: number;
+    /** Whether or not to escape sequences.
+     *
+     * @default {true} */
+    escapeSequences?: boolean;
     /** The maximum number of iterable entries to print.
      *
      * @default {100} */
