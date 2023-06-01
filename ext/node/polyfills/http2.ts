@@ -4,12 +4,13 @@
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
-import { Server, Socket } from "ext:deno_node/net.ts";
+import { Server, Socket, TCP } from "ext:deno_node/net.ts";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "ext:deno_node/fs/promises.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -98,8 +99,7 @@ export class Http2Session extends EventEmitter {
   }
 
   get socket(): Socket /*| TlsSocket*/ {
-    notImplemented("Http2Session.socket");
-    return null;
+    return {};
   }
 
   get state(): Record<string, unknown> {
@@ -153,7 +153,10 @@ export class ClientHttp2Session extends Http2Session {
 }
 
 export class Http2Stream {
-  constructor() {
+  #session: Http2Session;
+
+  constructor(session) {
+    this.#session = session;
   }
 
   get aborted(): boolean {
@@ -220,8 +223,7 @@ export class Http2Stream {
   }
 
   get session(): Http2Session {
-    notImplemented("Http2Stream.session");
-    return new Http2Session();
+    return this.#session;
   }
 
   setTimeout(msecs: number, callback?: () => void) {
@@ -245,8 +247,11 @@ export class ClientHttp2Stream extends Http2Stream {
 }
 
 export class ServerHttp2Stream extends Http2Stream {
-  constructor() {
-    super();
+  _promise: Deferred<Response>;
+
+  constructor(session: Http2Session) {
+    super(session);
+    this._promise = new deferred();
   }
 
   additionalHeaders(_headers: Record<string, unknown>) {
@@ -272,10 +277,16 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 
   respond(
-    _headers: Record<string, unknown>,
+    headers: Record<string, string | string[]>,
     _options: Record<string, unknown>,
   ) {
-    notImplemented("ServerHttp2Stream.respond");
+    const response: ResponseInit = {};
+    for (const [ name, value ] of Object.entries(headers)) {
+      if (name == constants.HTTP2_HEADER_STATUS) {
+        response.status = Number(value);
+      }
+    }
+    this._promise.resolve(new Response("", response));
   }
 
   respondWithFD(
@@ -302,14 +313,22 @@ export class Http2Server extends Server {
     options: Record<string, unknown>,
     requestListener: () => unknown,
   ) {
-    debugger;
-    super(options, function (conn) {
-      const stream = conn[kStreamBaseField];
-      console.log("connection", conn, stream);
-      let abortController = new AbortController();
+    super(options);
+    this.on("connection", function (conn) {
       try {
-        serveHttpOnConnection(stream, abortController.signal, (req) => {
-          console.log(req);
+        console.log("connection", conn);
+        const session = new ServerHttp2Session();
+        this.emit("session", session);
+        let abortController = new AbortController();
+        serveHttpOnConnection(conn, abortController.signal, async (req) => {
+          const stream = new ServerHttp2Stream(session);
+          try {
+            this.emit("stream", stream, req.headers);
+            console.log(req);
+            return await stream._promise;
+          } catch (e) {
+            console.log(e);
+          }
           return new Response("");
         }, () => {
           console.log("error");
@@ -318,7 +337,8 @@ export class Http2Server extends Server {
         console.log(e);
       }
       notImplemented("connectionListener");
-    });
+    }.bind(this));
+    this.on("newListener", (event) => console.trace(`event: ${event}`))
     this.#options = options;
     if (typeof requestListener === "function") {
       this.on("request", requestListener);
@@ -326,8 +346,8 @@ export class Http2Server extends Server {
   }
 
   // Prevent the TCP server from wrapping this in a socket, since we need it to serve HTTP
-  _createSocket(clientHandle) {
-    return clientHandle;
+  _createSocket(clientHandle: TCP) {
+    return clientHandle[kStreamBaseField];
   }
 
   close(_callback?: () => unknown) {
