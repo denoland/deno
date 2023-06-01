@@ -53,6 +53,7 @@ use hyper1::service::service_fn;
 use hyper1::service::HttpService;
 
 use hyper1::StatusCode;
+use once_cell::sync::Lazy;
 use pin_project::pin_project;
 use pin_project::pinned_drop;
 use std::borrow::Cow;
@@ -67,6 +68,16 @@ use tokio::io::AsyncWriteExt;
 
 type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
+
+static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
+  let disable_writev = std::env::var("DENO_HYPER_USE_WRITEV").ok();
+
+  if let Some(val) = disable_writev {
+    return val != "0";
+  }
+
+  true
+});
 
 /// All HTTP/2 connections start with this byte string.
 ///
@@ -597,6 +608,7 @@ fn serve_http11_unconditional(
 ) -> impl Future<Output = Result<(), AnyError>> + 'static {
   let conn = http1::Builder::new()
     .keep_alive(true)
+    .writev(*USE_WRITEV)
     .serve_connection(io, svc);
 
   conn.with_upgrades().map_err(AnyError::from)
