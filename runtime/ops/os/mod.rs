@@ -391,7 +391,7 @@ fn rss() -> usize {
   // Uses OpenBSD's KERN_PROC_PID sysctl(2)
   // to retrieve information about the current
   // process, part of which is the RSS (p_vm_rssize)
-  
+
   // SAFETY: libc call (get PID of own process)
   let pid = unsafe { libc::getpid() };
   // SAFETY: libc call (get system page size)
