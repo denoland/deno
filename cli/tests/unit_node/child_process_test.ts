@@ -600,6 +600,28 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "[node/child_process spawn] supports stdio [0, 1, 2] option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio_012.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
+
 Deno.test({
   name: "[node/child_process spawn] supports SIGIOT signal",
   ignore: Deno.build.os === "windows",
