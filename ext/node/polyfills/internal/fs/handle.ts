@@ -9,7 +9,7 @@ import {
 } from "ext:deno_node/_fs/_fs_common.ts";
 
 export class FileHandle extends EventEmitter {
-  private rid: number;
+  #rid: number;
   constructor(rid: number) {
     super();
     this.rid = rid;
