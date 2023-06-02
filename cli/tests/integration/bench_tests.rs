@@ -42,6 +42,12 @@ itest!(fail {
   output: "bench/fail.out",
 });
 
+itest!(bench_formatting {
+  args: "bench bench/bench_formatting.ts",
+  exit_code: 0,
+  output: "bench/bench_formatting.out",
+});
+
 itest!(collect {
   args: "bench --ignore=bench/collect/ignore bench/collect",
   exit_code: 0,
