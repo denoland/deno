@@ -20,6 +20,8 @@ const servePort = 4502;
 const {
   upgradeHttpRaw,
   addTrailers,
+  serveHttpOnListener,
+  serveHttpOnConnection,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
@@ -164,6 +166,98 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   ac.abort();
   await server;
 });
+
+// Test serving of HTTP on an arbitrary listener.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerOnListener() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const listeningPromise = deferred();
+    const listener = Deno.listen({ port: servePort });
+    const server = serveHttpOnListener(
+      listener,
+      ac.signal,
+      async (
+        request: Request,
+        { remoteAddr }: { remoteAddr: { hostname: string } },
+      ) => {
+        assertEquals(
+          new URL(request.url).href,
+          `http://127.0.0.1:${servePort}/`,
+        );
+        assertEquals(await request.text(), "");
+        assertEquals(remoteAddr.hostname, "127.0.0.1");
+        promise.resolve();
+        return new Response("Hello World", { headers: { "foo": "bar" } });
+      },
+      createOnErrorCb(ac),
+      onListen(listeningPromise),
+    );
+
+    await listeningPromise;
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+    await promise;
+    const clone = resp.clone();
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assertEquals(resp.headers.get("foo"), "bar");
+    const cloneText = await clone.text();
+    assertEquals(cloneText, "Hello World");
+    ac.abort();
+    await server;
+  },
+);
+
+// Test serving of HTTP on an arbitrary connection.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerOnConnection() {
+    const ac = new AbortController();
+    const promise = deferred();
+    const listeningPromise = deferred();
+    const listener = Deno.listen({ port: servePort });
+    const acceptPromise = listener.accept();
+    const fetchPromise = fetch(`http://127.0.0.1:${servePort}/`, {
+      headers: { "connection": "close" },
+    });
+
+    const server = serveHttpOnConnection(
+      await acceptPromise,
+      ac.signal,
+      async (
+        request: Request,
+        { remoteAddr }: { remoteAddr: { hostname: string } },
+      ) => {
+        assertEquals(
+          new URL(request.url).href,
+          `http://127.0.0.1:${servePort}/`,
+        );
+        assertEquals(await request.text(), "");
+        assertEquals(remoteAddr.hostname, "127.0.0.1");
+        promise.resolve();
+        return new Response("Hello World", { headers: { "foo": "bar" } });
+      },
+      createOnErrorCb(ac),
+      onListen(listeningPromise),
+    );
+
+    const resp = await fetchPromise;
+    await promise;
+    const clone = resp.clone();
+    const text = await resp.text();
+    assertEquals(text, "Hello World");
+    assertEquals(resp.headers.get("foo"), "bar");
+    const cloneText = await clone.text();
+    assertEquals(cloneText, "Hello World");
+    // Note that we don't need to abort this server -- it closes when the connection does
+    // ac.abort();
+    await server;
+    listener.close();
+  },
+);
 
 Deno.test({ permissions: { net: true } }, async function httpServerOnError() {
   const ac = new AbortController();

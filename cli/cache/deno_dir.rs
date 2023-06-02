@@ -1,9 +1,35 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use once_cell::sync::OnceCell;
+
 use super::DiskCache;
 
 use std::env;
 use std::path::PathBuf;
+
+/// Lazily creates the deno dir which might be useful in scenarios
+/// where functionality wants to continue if the DENO_DIR can't be created.
+pub struct DenoDirProvider {
+  maybe_custom_root: Option<PathBuf>,
+  deno_dir: OnceCell<std::io::Result<DenoDir>>,
+}
+
+impl DenoDirProvider {
+  pub fn new(maybe_custom_root: Option<PathBuf>) -> Self {
+    Self {
+      maybe_custom_root,
+      deno_dir: Default::default(),
+    }
+  }
+
+  pub fn get_or_create(&self) -> Result<&DenoDir, std::io::Error> {
+    self
+      .deno_dir
+      .get_or_init(|| DenoDir::new(self.maybe_custom_root.clone()))
+      .as_ref()
+      .map_err(|err| std::io::Error::new(err.kind(), err.to_string()))
+  }
+}
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
@@ -18,6 +44,8 @@ pub struct DenoDir {
 
 impl DenoDir {
   pub fn new(maybe_custom_root: Option<PathBuf>) -> std::io::Result<Self> {
+    let maybe_custom_root =
+      maybe_custom_root.or_else(|| env::var("DENO_DIR").map(String::into).ok());
     let root: PathBuf = if let Some(root) = maybe_custom_root {
       root
     } else if let Some(cache_dir) = dirs::cache_dir() {

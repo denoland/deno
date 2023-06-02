@@ -394,7 +394,7 @@ impl TestCommandBuilder {
       (Some(combined_reader), None)
     };
 
-    let mut process = command.spawn().unwrap();
+    let mut process = command.spawn().expect("Failed spawning command");
 
     if let Some(input) = &self.stdin {
       let mut p_stdin = process.stdin.take().unwrap();

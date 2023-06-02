@@ -299,7 +299,7 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  debugFlag,
+  logLevel,
   noColor,
   isTty,
   source,
@@ -315,7 +315,7 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogDebug(debugFlag, source);
+  util.setLogLevel(logLevel, source);
   setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
@@ -428,7 +428,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -495,7 +495,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
   );
@@ -542,7 +542,7 @@ function bootstrapWorkerRuntime(
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -610,7 +610,7 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
     internalName ?? name,
