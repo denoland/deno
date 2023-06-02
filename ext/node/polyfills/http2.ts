@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { Server, Socket, TCP } from "ext:deno_node/net.ts";
@@ -11,6 +11,7 @@ import { FileHandle } from "ext:deno_node/fs/promises.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -27,7 +28,6 @@ export class Http2Session extends EventEmitter {
   }
 
   get closed(): boolean {
-    notImplemented("Http2Session.closed");
     return false;
   }
 
@@ -41,7 +41,6 @@ export class Http2Session extends EventEmitter {
   }
 
   get destroyed(): boolean {
-    notImplemented("Http2Session.destroyed");
     return false;
   }
 
@@ -82,7 +81,7 @@ export class Http2Session extends EventEmitter {
   }
 
   ref() {
-    notImplemented("Http2Session.ref");
+    warnNotImplemented("Http2Session.ref");
   }
 
   get remoteSettings(): Record<string, unknown> {
@@ -103,7 +102,6 @@ export class Http2Session extends EventEmitter {
   }
 
   get state(): Record<string, unknown> {
-    notImplemented("Http2Session.state");
     return {};
   }
 
@@ -117,7 +115,7 @@ export class Http2Session extends EventEmitter {
   }
 
   unref() {
-    notImplemented("Http2Session.unref");
+    warnNotImplemented("Http2Session.unref");
   }
 }
 
@@ -139,24 +137,102 @@ export class ServerHttp2Session extends Http2Session {
 }
 
 export class ClientHttp2Session extends Http2Session {
-  constructor() {
+  constructor(authority: string | URL, options: Record<string, unknown>) {
     super();
+    nextTick(() => this.emit("connect", this));
   }
 
   request(
-    _headers: Record<string, unknown>,
+    headers: Record<string, string | string[]>,
     _options?: Record<string, unknown>,
   ): ClientHttp2Stream {
-    notImplemented("ClientHttp2Session.request");
-    return new ClientHttp2Stream();
+    const reqHeaders: string[][] = [];
+    const controllerPromise: Deferred<
+      ReadableStreamDefaultController<Uint8Array>
+    > = deferred();
+    const body = new ReadableStream({
+      start(controller) {
+        controllerPromise.resolve(controller);
+      },
+    });
+    const request: RequestInit = { headers: reqHeaders, body };
+    let authority = null;
+    let path = null;
+    for (const [name, value] of Object.entries(headers)) {
+      if (name == constants.HTTP2_HEADER_PATH) {
+        path = String(value);
+      } else if (name == constants.HTTP2_HEADER_METHOD) {
+        request.method = String(value);
+      } else if (name == constants.HTTP2_HEADER_AUTHORITY) {
+        authority = String(value);
+      } else {
+        reqHeaders.push([name, String(value)]);
+      }
+    }
+
+    debugger;
+    console.log(arguments, request);
+    let fetchPromise = fetch(`http://${authority}${path}`, request);
+    let readerPromise = deferred();
+    (async () => {
+      let fetch = await fetchPromise;
+      readerPromise.resolve(fetch.body);
+    });
+    return new ClientHttp2Stream(this, controllerPromise, readerPromise);
   }
 }
 
-export class Http2Stream {
+export class Http2Stream extends EventEmitter {
   #session: Http2Session;
+  #headers: Deferred<Headers>;
+  #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
+  #readerPromise: Deferred<ReadableStream<Uint8Array>>;
 
-  constructor(session) {
+  constructor(
+    session: Http2Session,
+    headers: Deferred<Headers>,
+    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
+    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+  ) {
+    super();
     this.#session = session;
+    this.#headers = headers;
+    this.#controllerPromise = controllerPromise;
+    this.#readerPromise = readerPromise;
+    (async () => {
+      let reader = await this.#readerPromise;
+      if (reader) {
+        for await (const data of reader) {
+          if (data.done) {
+            break;
+          }
+          console.log("emit", data);
+          this.emit("data", data.value);
+        }
+      }
+      this.emit("end");
+    })();
+  }
+
+  // TODO(mmastrac): Implement duplex
+  end() {
+    (async () => {
+      let controller = await this.#controllerPromise;
+      console.log("close");
+      controller.close();
+    })();
+  }
+
+  write(buffer, callback?: () => void) {
+    (async () => {
+      let controller = await this.#controllerPromise;
+      console.log("enqueue");
+      controller.enqueue(buffer);
+      callback?.();
+    })();
+  }
+
+  resume() {
   }
 
   get aborted(): boolean {
@@ -174,7 +250,6 @@ export class Http2Stream {
   }
 
   get closed(): boolean {
-    notImplemented("Http2Stream.closed");
     return false;
   }
 
@@ -232,6 +307,7 @@ export class Http2Stream {
 
   get state(): Record<string, unknown> {
     notImplemented("Http2Stream.state");
+    debugger;
     return {};
   }
 
@@ -241,16 +317,30 @@ export class Http2Stream {
 }
 
 export class ClientHttp2Stream extends Http2Stream {
-  constructor() {
-    super();
+  #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
+  #headers: Promise<Headers>;
+  #response;
+
+  constructor(
+    session: Http2Session,
+    headers: Promise<Headers>,
+    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
+    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+  ) {
+    super(session, headers, controllerPromise, readerPromise);
   }
 }
 
 export class ServerHttp2Stream extends Http2Stream {
   _promise: Deferred<Response>;
 
-  constructor(session: Http2Session) {
-    super(session);
+  constructor(
+    session: Http2Session,
+    headers: Promise<Headers>,
+    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
+    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+  ) {
+    super(session, headers, controllerPromise, readerPromise);
     this._promise = new deferred();
   }
 
@@ -281,7 +371,7 @@ export class ServerHttp2Stream extends Http2Stream {
     _options: Record<string, unknown>,
   ) {
     const response: ResponseInit = {};
-    for (const [ name, value ] of Object.entries(headers)) {
+    for (const [name, value] of Object.entries(headers)) {
       if (name == constants.HTTP2_HEADER_STATUS) {
         response.status = Number(value);
       }
@@ -314,31 +404,34 @@ export class Http2Server extends Server {
     requestListener: () => unknown,
   ) {
     super(options);
-    this.on("connection", function (conn) {
-      try {
-        console.log("connection", conn);
-        const session = new ServerHttp2Session();
-        this.emit("session", session);
-        let abortController = new AbortController();
-        serveHttpOnConnection(conn, abortController.signal, async (req) => {
-          const stream = new ServerHttp2Stream(session);
-          try {
-            this.emit("stream", stream, req.headers);
-            console.log(req);
-            return await stream._promise;
-          } catch (e) {
-            console.log(e);
-          }
-          return new Response("");
-        }, () => {
-          console.log("error");
-        }, () => {});
-      } catch (e) {
-        console.log(e);
-      }
-      notImplemented("connectionListener");
-    }.bind(this));
-    this.on("newListener", (event) => console.trace(`event: ${event}`))
+    this.on(
+      "connection",
+      function (conn) {
+        try {
+          console.log("connection", conn);
+          const session = new ServerHttp2Session();
+          this.emit("session", session);
+          let abortController = new AbortController();
+          serveHttpOnConnection(conn, abortController.signal, async (req) => {
+            const stream = new ServerHttp2Stream(session);
+            try {
+              this.emit("stream", stream, req.headers);
+              console.log(req);
+              return await stream._promise;
+            } catch (e) {
+              console.log(e);
+            }
+            return new Response("");
+          }, () => {
+            console.log("error");
+          }, () => {});
+        } catch (e) {
+          console.log(e);
+        }
+        notImplemented("connectionListener");
+      }.bind(this),
+    );
+    this.on("newListener", (event) => console.log(`event: ${event}`));
     this.#options = options;
     if (typeof requestListener === "function") {
       this.on("request", requestListener);
@@ -419,11 +512,11 @@ export function createSecureServer(
 }
 
 export function connect(
-  _authority: string | URL,
-  _options: Record<string, unknown>,
+  authority: string | URL,
+  options: Record<string, unknown>,
 ): ClientHttp2Session {
-  notImplemented("http2.connect");
-  return new ClientHttp2Session();
+  debugger;
+  return new ClientHttp2Session(authority, options);
 }
 
 export const constants = {
