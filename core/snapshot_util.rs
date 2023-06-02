@@ -153,40 +153,6 @@ fn data_error_to_panic(err: v8::DataError) -> ! {
   }
 }
 
-pub(crate) enum SnapshotOptions {
-  Load(Snapshot),
-  CreateFromExisting(Snapshot),
-  Create,
-  None,
-}
-
-impl SnapshotOptions {
-  pub fn new_from(snapshot: Option<Snapshot>, will_snapshot: bool) -> Self {
-    match (snapshot, will_snapshot) {
-      (Some(snapshot), true) => Self::CreateFromExisting(snapshot),
-      (None, true) => Self::Create,
-      (Some(snapshot), false) => Self::Load(snapshot),
-      (None, false) => Self::None,
-    }
-  }
-
-  pub fn loaded(&self) -> bool {
-    matches!(self, Self::Load(_) | Self::CreateFromExisting(_))
-  }
-
-  pub fn will_snapshot(&self) -> bool {
-    matches!(self, Self::Create | Self::CreateFromExisting(_))
-  }
-
-  pub fn snapshot(self) -> Option<Snapshot> {
-    match self {
-      Self::CreateFromExisting(snapshot) => Some(snapshot),
-      Self::Load(snapshot) => Some(snapshot),
-      _ => None,
-    }
-  }
-}
-
 pub(crate) struct SnapshottedData {
   pub module_map_data: v8::Global<v8::Array>,
   pub module_handles: Vec<v8::Global<v8::Module>>,
@@ -257,9 +223,9 @@ pub(crate) fn set_snapshotted_data(
 /// Returns an isolate set up for snapshotting.
 pub(crate) fn create_snapshot_creator(
   external_refs: &'static v8::ExternalReferences,
-  maybe_startup_snapshot: SnapshotOptions,
+  maybe_startup_snapshot: Option<Snapshot>,
 ) -> v8::OwnedIsolate {
-  if let Some(snapshot) = maybe_startup_snapshot.snapshot() {
+  if let Some(snapshot) = maybe_startup_snapshot {
     match snapshot {
       Snapshot::Static(data) => {
         v8::Isolate::snapshot_creator_from_existing_snapshot(
