@@ -125,7 +125,7 @@ export function open(
       if (err) {
         (callback as (err: Error) => void)(err);
       } else {
-        callback(null, new res!());
+        callback(null, res!);
       }
       return;
     }
