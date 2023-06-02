@@ -20,8 +20,10 @@ use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::serde_v8;
 use deno_core::task::spawn;
 use deno_core::task::JoinHandle;
+use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -51,11 +53,11 @@ use hyper1::server::conn::http1;
 use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
 use hyper1::service::HttpService;
-
 use hyper1::StatusCode;
 use once_cell::sync::Lazy;
 use pin_project::pin_project;
 use pin_project::pinned_drop;
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
@@ -255,12 +257,17 @@ pub fn op_http_get_request_header(
   value.map(|value| value.as_bytes().into())
 }
 
-#[op]
-pub fn op_http_get_request_headers(slab_id: SlabId) -> Vec<ByteString> {
+#[op(v8)]
+pub fn op_http_get_request_headers<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
+  slab_id: SlabId,
+) -> serde_v8::Value<'scope> {
   let http = slab_get(slab_id);
   let headers = &http.request_parts().headers;
   // Two slots for each header key/value pair
-  let mut vec = Vec::with_capacity(headers.len() * 2);
+  let mut vec: SmallVec<[v8::Local<v8::Value>; 32]> =
+    SmallVec::with_capacity(headers.len() * 2);
+
   let mut cookies: Option<Vec<&[u8]>> = None;
   for (name, value) in headers {
     if name == COOKIE {
@@ -270,9 +277,24 @@ pub fn op_http_get_request_headers(slab_id: SlabId) -> Vec<ByteString> {
         cookies = Some(vec![value.as_bytes()]);
       }
     } else {
-      let name: &[u8] = name.as_ref();
-      vec.push(name.into());
-      vec.push(value.as_bytes().into());
+      vec.push(
+        v8::String::new_from_one_byte(
+          scope,
+          name.as_ref(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap()
+        .into(),
+      );
+      vec.push(
+        v8::String::new_from_one_byte(
+          scope,
+          value.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap()
+        .into(),
+      );
     }
   }
 
@@ -283,11 +305,27 @@ pub fn op_http_get_request_headers(slab_id: SlabId) -> Vec<ByteString> {
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
     let cookie_sep = "; ".as_bytes();
-    vec.push(ByteString::from(COOKIE.as_str()));
-    vec.push(ByteString::from(cookies.join(cookie_sep)));
+
+    vec.push(
+      v8::String::new_external_onebyte_static(scope, COOKIE.as_ref())
+        .unwrap()
+        .into(),
+    );
+    vec.push(
+      v8::String::new_from_one_byte(
+        scope,
+        cookies.join(cookie_sep).as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into(),
+    );
   }
 
-  vec
+  let array = v8::Array::new_with_elements(scope, vec.as_slice());
+  let array_value: v8::Local<v8::Value> = array.into();
+
+  array_value.into()
 }
 
 #[op(fast)]
