@@ -183,7 +183,7 @@ pub struct OpState {
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
-  gotham_state: GothamState,
+  pub(crate) gotham_state: GothamState,
 }
 
 impl OpState {
@@ -195,6 +195,12 @@ impl OpState {
       last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
     }
+  }
+
+  /// Clear all user-provided resources and state.
+  pub(crate) fn clear(&mut self) {
+    std::mem::take(&mut self.gotham_state);
+    std::mem::take(&mut self.resource_table);
   }
 }
 

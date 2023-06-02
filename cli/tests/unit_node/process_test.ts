@@ -731,6 +731,25 @@ Deno.test({
 });
 
 Deno.test({
+  name: "process.reallyExit",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--quiet",
+        "--unstable",
+        "./testdata/process_really_exit.ts",
+      ],
+      cwd: testDir,
+    });
+    const { stdout } = await command.output();
+
+    const decoder = new TextDecoder();
+    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+  },
+});
+
+Deno.test({
   name: "process.stdout isn't closed when source stream ended",
   async fn() {
     const source = Readable.from(["foo", "bar"]);

@@ -2,6 +2,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
+// Bump this number when you want to purge the cache.
+// Note: the tools/release/01_bump_crate_versions.ts script will update this version
+// automatically via regex, so ensure that this line maintains this format.
+const cacheVersion = 32;
+
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
@@ -15,9 +20,8 @@ const Runners = (() => {
     windows: "windows-2022",
   };
 })();
-// bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "29-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
   "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
@@ -480,7 +484,7 @@ const ci = {
               "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "29-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
           },
         },
         {

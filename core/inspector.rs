@@ -147,12 +147,10 @@ impl JsRuntimeInspector {
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut v8::OwnedIsolate,
-    context: v8::Global<v8::Context>,
+    scope: &mut v8::HandleScope,
+    context: v8::Local<v8::Context>,
     is_main: bool,
   ) -> Rc<RefCell<Self>> {
-    let scope = &mut v8::HandleScope::new(isolate);
-
     let (new_session_tx, new_session_rx) =
       mpsc::unbounded::<InspectorSessionProxy>();
 
@@ -182,7 +180,6 @@ impl JsRuntimeInspector {
     ));
 
     // Tell the inspector about the global context.
-    let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
