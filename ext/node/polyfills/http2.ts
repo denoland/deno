@@ -12,6 +12,9 @@ import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts"
 import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+
+const ENCODER = new TextEncoder();
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -137,8 +140,15 @@ export class ServerHttp2Session extends Http2Session {
 }
 
 export class ClientHttp2Session extends Http2Session {
-  constructor(authority: string | URL, options: Record<string, unknown>) {
+  constructor(
+    authority: string | URL,
+    options: Record<string, unknown>,
+    callback: (Http2Session) => void,
+  ) {
     super();
+    if (callback) {
+      this.on("connect", callback);
+    }
     nextTick(() => this.emit("connect", this));
   }
 
@@ -174,31 +184,51 @@ export class ClientHttp2Session extends Http2Session {
     console.log(arguments, request);
     let fetchPromise = fetch(`http://${authority}${path}`, request);
     let readerPromise = deferred();
+    let headersPromise = deferred();
     (async () => {
       let fetch = await fetchPromise;
       readerPromise.resolve(fetch.body);
-    });
-    return new ClientHttp2Stream(this, controllerPromise, readerPromise);
+
+      const headers: Record<string, string | string[]> = {};
+      for (const [key, value] of fetch.headers) {
+        headers[key] = value;
+      }
+      headers[constants.HTTP2_HEADER_STATUS] = String(fetch.status);
+
+      headersPromise.resolve(headers);
+    })();
+    return new ClientHttp2Stream(
+      this,
+      headersPromise,
+      controllerPromise,
+      readerPromise,
+    );
   }
 }
 
 export class Http2Stream extends EventEmitter {
   #session: Http2Session;
-  #headers: Deferred<Headers>;
+  #headers: Deferred<Record<string, string | string[]>>;
   #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
   #readerPromise: Deferred<ReadableStream<Uint8Array>>;
 
   constructor(
     session: Http2Session,
-    headers: Deferred<Headers>,
+    headers: Deferred<Record<string, string | string[]>>,
     controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
     readerPromise: Deferred<ReadableStream<Uint8Array>>,
   ) {
+    console.log("stream");
     super();
     this.#session = session;
     this.#headers = headers;
     this.#controllerPromise = controllerPromise;
     this.#readerPromise = readerPromise;
+    (async () => {
+      let headers = await this.#headers;
+      console.log(headers);
+      this.emit("headers", headers);
+    })();
     (async () => {
       let reader = await this.#readerPromise;
       if (reader) {
@@ -227,7 +257,11 @@ export class Http2Stream extends EventEmitter {
     (async () => {
       let controller = await this.#controllerPromise;
       console.log("enqueue");
-      controller.enqueue(buffer);
+      if (typeof buffer === "string") {
+        controller.enqueue(ENCODER.encode(buffer));
+      } else {
+        controller.enqueue(buffer);
+      }
       callback?.();
     })();
   }
@@ -514,9 +548,10 @@ export function createSecureServer(
 export function connect(
   authority: string | URL,
   options: Record<string, unknown>,
+  callback: (session: ClientHttp2Session) => void,
 ): ClientHttp2Session {
   debugger;
-  return new ClientHttp2Session(authority, options);
+  return new ClientHttp2Session(authority, options, callback);
 }
 
 export const constants = {
