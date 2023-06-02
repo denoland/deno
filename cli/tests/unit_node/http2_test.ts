@@ -1,4 +1,5 @@
 import * as http2 from "node:http2";
+import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { assertEquals } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
 
@@ -9,7 +10,8 @@ const {
   HTTP2_HEADER_STATUS,
 } = http2.constants;
 
-Deno.test("[node/http2 fetch]", async () => {
+Deno.test("[node/http2 client]", async () => {
+  // Create a server to respond to the HTTP2 requests
   const portPromise = deferred();
   const reqPromise = deferred<Request>();
   const ready = deferred();
@@ -19,7 +21,6 @@ Deno.test("[node/http2 fetch]", async () => {
     signal: ac.signal,
     onListen: ({ port }: { port: number }) => portPromise.resolve(port),
     handler: async (req: Request) => {
-      console.log(req);
       reqPromise.resolve(req);
       await ready;
       return new Response("body", {
@@ -68,4 +69,27 @@ Deno.test("[node/http2 fetch]", async () => {
 
   ac.abort();
   await server.finished;
+});
+
+Deno.test("[node/http2 server]", async() => {
+  const server = http2.createServer(); 
+  server.listen(0);
+  const port = (<net.AddressInfo>server.address()).port; 
+  const sessionPromise = new Promise<http2.Http2Session>(resolve => server.on('session', resolve));
+
+  let responsePromise = fetch(`http://localhost:${port}/path`, { method: "POST", body: "body" });
+
+  const session = await sessionPromise;
+  const stream = await new Promise<http2.ServerHttp2Stream>(resolve => session.on('stream', resolve));
+  const headers = await new Promise(resolve => stream.on('headers', resolve));
+  console.log("headers", headers);
+  const data = await new Promise(resolve => stream.on('data', resolve));
+  console.log(data);
+  const end = await new Promise(resolve => stream.on('end', resolve));
+  console.log("end");
+  stream.respond();
+  stream.end();
+  await responsePromise;
+
+  await new Promise(resolve => server.close(resolve));
 });

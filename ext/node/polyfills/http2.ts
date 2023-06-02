@@ -15,6 +15,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 
 const ENCODER = new TextEncoder();
+type Http2Headers = Record<string, string | string[]>;
 
 export class Http2Session extends EventEmitter {
   constructor() {
@@ -141,9 +142,9 @@ export class ServerHttp2Session extends Http2Session {
 
 export class ClientHttp2Session extends Http2Session {
   constructor(
-    authority: string | URL,
-    options: Record<string, unknown>,
-    callback: (Http2Session) => void,
+    _authority: string | URL,
+    _options: Record<string, unknown>,
+    callback: (session: Http2Session) => void,
   ) {
     super();
     if (callback) {
@@ -153,7 +154,7 @@ export class ClientHttp2Session extends Http2Session {
   }
 
   request(
-    headers: Record<string, string | string[]>,
+    headers: Http2Headers,
     _options?: Record<string, unknown>,
   ): ClientHttp2Stream {
     const reqHeaders: string[][] = [];
@@ -180,16 +181,15 @@ export class ClientHttp2Session extends Http2Session {
       }
     }
 
-    debugger;
     console.log(arguments, request);
-    let fetchPromise = fetch(`http://${authority}${path}`, request);
-    let readerPromise = deferred();
-    let headersPromise = deferred();
+    const fetchPromise = fetch(`http://${authority}${path}`, request);
+    const readerPromise = deferred();
+    const headersPromise = deferred();
     (async () => {
       let fetch = await fetchPromise;
       readerPromise.resolve(fetch.body);
 
-      const headers: Record<string, string | string[]> = {};
+      const headers: Http2Headers = {};
       for (const [key, value] of fetch.headers) {
         headers[key] = value;
       }
@@ -208,15 +208,15 @@ export class ClientHttp2Session extends Http2Session {
 
 export class Http2Stream extends EventEmitter {
   #session: Http2Session;
-  #headers: Deferred<Record<string, string | string[]>>;
+  #headers: Deferred<Http2Headers>;
   #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
   #readerPromise: Deferred<ReadableStream<Uint8Array>>;
 
   constructor(
     session: Http2Session,
-    headers: Deferred<Record<string, string | string[]>>,
-    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
-    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+    headers: Promise<Http2Headers>,
+    controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>,
+    readerPromise: Promise<ReadableStream<Uint8Array>>,
   ) {
     console.log("stream");
     super();
@@ -341,7 +341,6 @@ export class Http2Stream extends EventEmitter {
 
   get state(): Record<string, unknown> {
     notImplemented("Http2Stream.state");
-    debugger;
     return {};
   }
 
@@ -352,12 +351,12 @@ export class Http2Stream extends EventEmitter {
 
 export class ClientHttp2Stream extends Http2Stream {
   #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
-  #headers: Promise<Headers>;
+  #headers: Promise<Http2Headers>;
   #response;
 
   constructor(
     session: Http2Session,
-    headers: Promise<Headers>,
+    headers: Promise<Http2Headers>,
     controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
     readerPromise: Deferred<ReadableStream<Uint8Array>>,
   ) {
@@ -367,15 +366,18 @@ export class ClientHttp2Stream extends Http2Stream {
 
 export class ServerHttp2Stream extends Http2Stream {
   _promise: Deferred<Response>;
+  #body;
 
   constructor(
     session: Http2Session,
-    headers: Promise<Headers>,
-    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
-    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+    headers: Promise<Http2Headers>,
+    controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>,
+    readerPromise: Promise<ReadableStream<Uint8Array>>,
+    body: ReadableStream<Uint8Array>,
   ) {
     super(session, headers, controllerPromise, readerPromise);
     this._promise = new deferred();
+    this.#body = body;
   }
 
   additionalHeaders(_headers: Record<string, unknown>) {
@@ -401,7 +403,7 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 
   respond(
-    headers: Record<string, string | string[]>,
+    headers: Http2Headers,
     _options: Record<string, unknown>,
   ) {
     const response: ResponseInit = {};
@@ -410,7 +412,7 @@ export class ServerHttp2Stream extends Http2Stream {
         response.status = Number(value);
       }
     }
-    this._promise.resolve(new Response("", response));
+    this._promise.resolve(new Response(this.#body, response));
   }
 
   respondWithFD(
@@ -432,23 +434,37 @@ export class ServerHttp2Stream extends Http2Stream {
 
 export class Http2Server extends Server {
   #options: Record<string, unknown> = {};
+  #abortController;
+  #server;
   timeout = 0;
+
   constructor(
     options: Record<string, unknown>,
     requestListener: () => unknown,
   ) {
     super(options);
+    this.#abortController = new AbortController();
     this.on(
       "connection",
-      function (conn) {
+      (conn: Deno.Conn) => {
         try {
           console.log("connection", conn);
           const session = new ServerHttp2Session();
           this.emit("session", session);
-          let abortController = new AbortController();
-          serveHttpOnConnection(conn, abortController.signal, async (req) => {
-            const stream = new ServerHttp2Stream(session);
+          this.#server = serveHttpOnConnection(conn, this.#abortController.signal, async (req: Request) => {
+            console.log("on req");
+            debugger;
+            const controllerPromise: Deferred<
+              ReadableStreamDefaultController<Uint8Array>
+            > = deferred();
+            const body = new ReadableStream({
+              start(controller) {
+                controllerPromise.resolve(controller);
+              },
+            });
+            const stream = new ServerHttp2Stream(session, Promise.resolve(req.headers), controllerPromise, Promise.resolve(req.body), body);
             try {
+              session.emit("stream", stream, req.headers);
               this.emit("stream", stream, req.headers);
               console.log(req);
               return await stream._promise;
@@ -462,8 +478,7 @@ export class Http2Server extends Server {
         } catch (e) {
           console.log(e);
         }
-        notImplemented("connectionListener");
-      }.bind(this),
+      },
     );
     this.on("newListener", (event) => console.log(`event: ${event}`));
     this.#options = options;
@@ -477,8 +492,12 @@ export class Http2Server extends Server {
     return clientHandle[kStreamBaseField];
   }
 
-  close(_callback?: () => unknown) {
-    notImplemented("Http2Server.close");
+  close(callback?: () => unknown) {
+    if (callback) {
+      this.on("close", callback);
+    }
+    this.#abortController.abort();
+    super.close();
   }
 
   setTimeout(msecs: number, callback?: () => unknown) {
@@ -550,7 +569,6 @@ export function connect(
   options: Record<string, unknown>,
   callback: (session: ClientHttp2Session) => void,
 ): ClientHttp2Session {
-  debugger;
   return new ClientHttp2Session(authority, options, callback);
 }
 
