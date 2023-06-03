@@ -1065,6 +1065,7 @@ dependencies = [
  "ring",
  "serde",
  "slab",
+ "smallvec",
  "thiserror",
  "tokio",
  "tokio-util",
