@@ -4601,13 +4601,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       Ok(String::from("Test"))
     }
 
-    deno_core::extension!(
-      test_ext,
-      ops = [op_test],
-      customizer = |ext: &mut deno_core::ExtensionBuilder| {
-        ext.force_op_registration();
-      },
-    );
+    deno_core::extension!(test_ext, ops = [op_test]);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(Snapshot::Boxed(snapshot)),
       extensions: vec![test_ext::init_ops()],

@@ -40,7 +40,6 @@ impl op_f64_buf {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
             arg_count: 1usize as u8,
         }
     }

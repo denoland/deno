@@ -133,11 +133,6 @@ pub(crate) fn initialize_context<'s>(
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
-      // If we're loading from a snapshot, we can skip registration for most ops
-      if init_mode == InitMode::FromSnapshot && !op_ctx.decl.force_registration
-      {
-        continue;
-      }
       _ = writeln!(
         codegen,
         "Deno.__op__registerOp({}, opFns[{}], \"{}\");",

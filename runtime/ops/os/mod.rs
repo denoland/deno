@@ -48,9 +48,6 @@ deno_core::extension!(
   state = |state, options| {
     state.put::<ExitCode>(options.exit_code);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
 
 deno_core::extension!(
@@ -63,9 +60,6 @@ deno_core::extension!(
     },
     _ => op,
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
 
 #[op]
