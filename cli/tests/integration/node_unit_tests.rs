@@ -25,6 +25,7 @@ util::unit_test_factory!(
     _fs_fsync_test = _fs / _fs_fsync_test,
     _fs_ftruncate_test = _fs / _fs_ftruncate_test,
     _fs_futimes_test = _fs / _fs_futimes_test,
+    _fs_handle_test = _fs / _fs_handle_test,
     _fs_link_test = _fs / _fs_link_test,
     _fs_lstat_test = _fs / _fs_lstat_test,
     _fs_mkdir_test = _fs / _fs_mkdir_test,
