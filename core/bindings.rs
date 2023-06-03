@@ -118,7 +118,6 @@ pub(crate) fn initialize_context<'s>(
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
   used_snapshot: bool,
-  will_snapshot: bool,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
 
@@ -134,7 +133,7 @@ pub(crate) fn initialize_context<'s>(
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
       // If we're loading from a snapshot, we can skip registration for most ops
-      if used_snapshot && !will_snapshot && !op_ctx.decl.force_registration {
+      if used_snapshot && !op_ctx.decl.force_registration {
         continue;
       }
       _ = writeln!(

@@ -202,7 +202,6 @@ pub struct JsRuntime {
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   used_snapshot: bool,
-  will_snapshot: bool,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
 }
@@ -629,7 +628,6 @@ impl JsRuntime {
       context,
       &context_state.borrow().op_ctxs,
       used_snapshot,
-      will_snapshot,
     );
 
     context.set_slot(scope, context_state.clone());
@@ -680,7 +678,6 @@ impl JsRuntime {
         v8_isolate: ManuallyDrop::new(isolate),
       },
       used_snapshot,
-      will_snapshot,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares,
       extensions: options.extensions,
@@ -779,7 +776,6 @@ impl JsRuntime {
         context,
         &context_state.borrow().op_ctxs,
         self.used_snapshot,
-        self.will_snapshot,
       );
       context.set_slot(scope, context_state.clone());
       let realm = JsRealmInner::new(
