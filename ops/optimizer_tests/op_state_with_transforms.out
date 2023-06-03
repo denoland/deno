@@ -46,7 +46,6 @@ impl op_now {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
             arg_count: 1usize as u8,
         }
     }
