@@ -15,6 +15,7 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
+use crate::runtime::InitMode;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -117,7 +118,7 @@ pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
-  used_snapshot: bool,
+  init_mode: InitMode,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
 
@@ -127,13 +128,14 @@ pub(crate) fn initialize_context<'s>(
     codegen,
     "Deno.__op__ = function(opFns, callConsole, console) {{"
   );
-  if !used_snapshot {
+  if init_mode == InitMode::New {
     _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
       // If we're loading from a snapshot, we can skip registration for most ops
-      if used_snapshot && !op_ctx.decl.force_registration {
+      if init_mode == InitMode::FromSnapshot && !op_ctx.decl.force_registration
+      {
         continue;
       }
       _ = writeln!(
@@ -170,7 +172,7 @@ pub(crate) fn initialize_context<'s>(
     let op_fn = op_ctx_function(scope, op_ctx);
     op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
   }
-  if used_snapshot {
+  if init_mode == InitMode::FromSnapshot {
     op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
     // Bind functions to Deno.core.*

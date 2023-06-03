@@ -188,6 +188,23 @@ impl Drop for InnerIsolateState {
   }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum InitMode {
+  /// We have no snapshot -- this is a pristine context.
+  New,
+  /// We are using a snapshot, thus certain initialization steps are skipped.
+  FromSnapshot,
+}
+
+impl InitMode {
+  fn from_options(options: &RuntimeOptions) -> Self {
+    match options.startup_snapshot {
+      None => Self::New,
+      Some(_) => Self::FromSnapshot,
+    }
+  }
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM.
 ////
@@ -201,7 +218,7 @@ pub struct JsRuntime {
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
-  used_snapshot: bool,
+  init_mode: InitMode,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
 }
@@ -495,8 +512,8 @@ impl JsRuntime {
     will_snapshot: bool,
     maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> JsRuntime {
-    let used_snapshot = options.startup_snapshot.is_some();
-    let (op_state, ops) = Self::create_opstate(&mut options, used_snapshot);
+    let init_mode = InitMode::from_options(&options);
+    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -602,7 +619,7 @@ impl JsRuntime {
       let context = v8::Context::new(scope);
 
       // Get module map data from the snapshot
-      let snapshotted_data = if used_snapshot {
+      let snapshotted_data = if init_mode == InitMode::FromSnapshot {
         Some(snapshot_util::get_snapshotted_data(scope, context))
       } else {
         None
@@ -627,7 +644,7 @@ impl JsRuntime {
       scope,
       context,
       &context_state.borrow().op_ctxs,
-      used_snapshot,
+      init_mode,
     );
 
     context.set_slot(scope, context_state.clone());
@@ -677,7 +694,7 @@ impl JsRuntime {
         state: ManuallyDropRc(ManuallyDrop::new(state_rc)),
         v8_isolate: ManuallyDrop::new(isolate),
       },
-      used_snapshot,
+      init_mode,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares,
       extensions: options.extensions,
@@ -775,7 +792,7 @@ impl JsRuntime {
         scope,
         context,
         &context_state.borrow().op_ctxs,
-        self.used_snapshot,
+        self.init_mode,
       );
       context.set_slot(scope, context_state.clone());
       let realm = JsRealmInner::new(
@@ -953,10 +970,10 @@ impl JsRuntime {
   /// Initializes ops of provided Extensions
   fn create_opstate(
     options: &mut RuntimeOptions,
-    used_snapshot: bool,
+    init_mode: InitMode,
   ) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    if used_snapshot {
+    if init_mode == InitMode::FromSnapshot {
       options
         .extensions
         .insert(0, crate::ops_builtin::core::init_ops());
