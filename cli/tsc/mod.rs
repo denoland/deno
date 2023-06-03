@@ -117,13 +117,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(
-    deno_cli_tsc,
-    ops_fn = deno_ops,
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
-  );
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -779,9 +773,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           .context("Unable to get CWD")
           .unwrap(),
       ));
-    },
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
     },
   );
 
