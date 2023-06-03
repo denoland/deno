@@ -215,10 +215,11 @@ pub fn op_http_set_promise_complete(slab_id: SlabId, status: u16) {
   http.complete();
 }
 
-#[op]
-pub fn op_http_get_request_method_and_url<HTTP>(
+#[op(v8)]
+pub fn op_http_get_request_method_and_url<'scope, HTTP>(
+  scope: &mut v8::HandleScope<'scope>,
   slab_id: SlabId,
-) -> (String, Option<String>, String, String, Option<u16>)
+) -> serde_v8::Value<'scope>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -231,20 +232,54 @@ where
     &request_parts.headers,
   );
 
+  let method: v8::Local<v8::Value> = v8::String::new_from_utf8(
+    scope,
+    request_parts.method.as_str().as_bytes(),
+    v8::NewStringType::Normal,
+  )
+  .unwrap()
+  .into();
+
+  let authority: v8::Local<v8::Value> = match request_properties.authority {
+    Some(authority) => v8::String::new_from_utf8(
+      scope,
+      authority.as_ref(),
+      v8::NewStringType::Normal,
+    )
+    .unwrap()
+    .into(),
+    None => v8::undefined(scope).into(),
+  };
+
   // Only extract the path part - we handle authority elsewhere
   let path = match &request_parts.uri.path_and_query() {
     Some(path_and_query) => path_and_query.to_string(),
     None => "".to_owned(),
   };
 
-  // TODO(mmastrac): Passing method can be optimized
-  (
-    request_parts.method.as_str().to_owned(),
-    request_properties.authority,
-    path,
-    String::from(request_info.peer_address.as_ref()),
-    request_info.peer_port,
+  let path: v8::Local<v8::Value> =
+    v8::String::new_from_utf8(scope, path.as_ref(), v8::NewStringType::Normal)
+      .unwrap()
+      .into();
+
+  let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
+    scope,
+    request_info.peer_address.as_bytes(),
+    v8::NewStringType::Normal,
   )
+  .unwrap()
+  .into();
+
+  let port: v8::Local<v8::Value> = match request_info.peer_port {
+    Some(port) => v8::Integer::new(scope, port.into()).into(),
+    None => v8::undefined(scope).into(),
+  };
+
+  let vec = [method, authority, path, peer_address, port];
+  let array = v8::Array::new_with_elements(scope, vec.as_slice());
+  let array_value: v8::Local<v8::Value> = array.into();
+
+  array_value.into()
 }
 
 #[op]
