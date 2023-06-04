@@ -33,6 +33,14 @@ export type BinaryOptionsArgument =
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
 
+export type ReadOptions = {
+  buffer: Buffer | Uint8Array;
+  offset: number;
+  length: number;
+  position: number | null;
+};
+
+
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
