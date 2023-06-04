@@ -36,7 +36,6 @@ const {
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeTest,
   RegExpPrototypeExec,
   StringPrototypeStartsWith,
   Symbol,

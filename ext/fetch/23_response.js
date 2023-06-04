@@ -37,7 +37,6 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   RangeError,
-  RegExpPrototypeTest,
   RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
