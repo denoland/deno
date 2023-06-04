@@ -21,6 +21,7 @@ import {
 } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const core = globalThis.Deno.core;
+const internals = globalThis.__bootstrap.internals;
 const ops = core.ops;
 const {
   ArrayIsArray,
@@ -33,6 +34,7 @@ const {
   ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
   Symbol,
@@ -99,18 +101,22 @@ const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
  * @param {string} name
  * @param {string} value
  */
+
+internals.HTTP_TOKEN_CODE_POINT_RE = HTTP_TOKEN_CODE_POINT_RE;
+internals.ILLEGAL_VALUE_CHARS = ILLEGAL_VALUE_CHARS;
+internals.RegExpPrototypeTest = RegExpPrototypeTest;
+internals.RegExpPrototypeExec = RegExpPrototypeExec;
+
 function appendHeader(headers, name, value) {
   // 1.
   value = normalizeHeaderValue(value);
 
   // 2.
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
     throw new TypeError("Header name is not valid.");
   }
-  if (ops.op_fetch_validate_header(name, value) === 1) {
+  if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
     throw new TypeError("Header value is not valid.");
-    // if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
-    // }
   }
 
   // 3.
@@ -286,7 +292,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
     if (this[_guard] == "immutable") {
@@ -311,7 +317,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -327,7 +333,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -355,10 +361,10 @@ class Headers {
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
-    if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+    if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
       throw new TypeError("Header value is not valid.");
     }
 

@@ -38,6 +38,7 @@ const {
   ObjectPrototypeIsPrototypeOf,
   RangeError,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
   Symbol,
@@ -179,7 +180,7 @@ function initializeAResponse(response, init, bodyWithType) {
   // 2.
   if (
     init.statusText &&
-    !RegExpPrototypeTest(REASON_PHRASE_RE, init.statusText)
+    RegExpPrototypeExec(REASON_PHRASE_RE, init.statusText) === null
   ) {
     throw new TypeError("Status text is not valid.");
   }

@@ -37,6 +37,7 @@ const {
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
@@ -227,7 +228,7 @@ function validateAndNormalizeMethod(m) {
   }
 
   // Regular path
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);
