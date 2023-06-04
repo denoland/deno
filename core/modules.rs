@@ -11,7 +11,6 @@ use crate::resolve_url;
 use crate::snapshot_util::SnapshottedData;
 use crate::Extension;
 use crate::JsRuntime;
-use crate::OpState;
 use anyhow::anyhow;
 use anyhow::Error;
 use futures::future::FutureExt;
@@ -340,7 +339,6 @@ pub trait ModuleLoader {
   /// It's not required to implement this method.
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
@@ -453,7 +451,6 @@ impl ModuleLoader for ExtModuleLoader {
 
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
@@ -567,9 +564,8 @@ pub(crate) struct RecursiveModuleLoad {
   module_map_rc: Rc<RefCell<ModuleMap>>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
   visited: HashSet<ModuleRequest>,
-  // These three fields are copied from `module_map_rc`, but they are cloned
+  // The loader is copied from `module_map_rc`, but its reference is cloned
   // ahead of time to avoid already-borrowed errors.
-  op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
 }
 
@@ -612,7 +608,6 @@ impl RecursiveModuleLoad {
       module_map.next_load_id += 1;
       id
     };
-    let op_state = module_map_rc.borrow().op_state.clone();
     let loader = module_map_rc.borrow().loader.clone();
     let asserted_module_type = match init {
       LoadInit::DynamicImport(_, _, module_type) => module_type,
@@ -626,7 +621,6 @@ impl RecursiveModuleLoad {
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
-      op_state,
       loader,
       pending: FuturesUnordered::new(),
       visited: HashSet::new(),
@@ -669,8 +663,6 @@ impl RecursiveModuleLoad {
   }
 
   async fn prepare(&self) -> Result<(), Error> {
-    let op_state = self.op_state.clone();
-
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
         let spec =
@@ -698,12 +690,7 @@ impl RecursiveModuleLoad {
 
     self
       .loader
-      .prepare_load(
-        op_state,
-        &module_specifier,
-        maybe_referrer,
-        self.is_dynamic_import(),
-      )
+      .prepare_load(&module_specifier, maybe_referrer, self.is_dynamic_import())
       .await
   }
 
@@ -997,7 +984,6 @@ pub(crate) struct ModuleMap {
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
-  op_state: Rc<RefCell<OpState>>,
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   pub(crate) preparing_dynamic_imports:
@@ -1304,10 +1290,7 @@ impl ModuleMap {
     self.handles = snapshotted_data.module_handles;
   }
 
-  pub(crate) fn new(
-    loader: Rc<dyn ModuleLoader>,
-    op_state: Rc<RefCell<OpState>>,
-  ) -> ModuleMap {
+  pub(crate) fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
     Self {
       handles: vec![],
       info: vec![],
@@ -1315,7 +1298,6 @@ impl ModuleMap {
       by_name_json: HashMap::new(),
       next_load_id: 1,
       loader,
-      op_state,
       dynamic_import_map: HashMap::new(),
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
@@ -1493,7 +1475,7 @@ impl ModuleMap {
   }
 
   pub(crate) fn clear(&mut self) {
-    *self = Self::new(self.loader.clone(), self.op_state.clone())
+    *self = Self::new(self.loader.clone())
   }
 
   pub(crate) fn get_handle_by_name(
@@ -1711,6 +1693,12 @@ impl ModuleMap {
     }
 
     None
+  }
+}
+
+impl Default for ModuleMap {
+  fn default() -> Self {
+    Self::new(Rc::new(NoopModuleLoader))
   }
 }
 
@@ -2339,7 +2327,6 @@ import "/a.js";
 
     fn prepare_load(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
