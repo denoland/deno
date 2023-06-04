@@ -24,6 +24,12 @@ export class FileHandle extends EventEmitter {
   ): Promise<string | Buffer> {
     return promises.readFile(this, opt);
   }
+
+  close(): Promise<void> {
+    return new Promise((resolve) => {
+      resolve(Deno.close(this.fd));
+    });
+  }
 }
 
 export default {
