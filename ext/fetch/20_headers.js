@@ -30,7 +30,6 @@ const {
   ArrayPrototypeFilter,
   ObjectEntries,
   ObjectHasOwn,
-  RegExpPrototypeTest,
   RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
@@ -98,11 +97,6 @@ const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
  * @param {string} name
  * @param {string} value
  */
-
-internals.HTTP_TOKEN_CODE_POINT_RE = HTTP_TOKEN_CODE_POINT_RE;
-internals.ILLEGAL_VALUE_CHARS = ILLEGAL_VALUE_CHARS;
-internals.RegExpPrototypeTest = RegExpPrototypeTest;
-internals.RegExpPrototypeExec = RegExpPrototypeExec;
 
 function appendHeader(headers, name, value) {
   // 1.
