@@ -745,7 +745,14 @@ pub fn create_http_client(
     options.client_cert_chain_and_key,
   )?;
 
-  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+  let mut alpn_protocols = vec![];
+  if options.http2 {
+    alpn_protocols.push("h2".into());
+  }
+  if options.http1 {
+    alpn_protocols.push("http/1.1".into());
+  }
+  tls_config.alpn_protocols = alpn_protocols;
 
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());

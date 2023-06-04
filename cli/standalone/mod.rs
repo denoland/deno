@@ -39,7 +39,6 @@ use deno_core::ModuleType;
 use deno_core::ResolutionKind;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -47,6 +46,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use import_map::parse_from_json;
 use std::pin::Pin;
@@ -126,11 +126,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .shared
         .npm_module_loader
         .resolve_req_reference(&reference, permissions);
-    }
-
-    // Built-in Node modules
-    if let Some(module_name) = specifier_text.strip_prefix("node:") {
-      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     match maybe_mapped {
@@ -311,7 +306,7 @@ pub async fn run(
     http_client.clone(),
     progress_bar.clone(),
   ));
-  let (fs, node_modules_path, snapshot) = if let Some(snapshot) =
+  let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
     metadata.npm_snapshot
   {
     let vfs_root_dir_path = if metadata.node_modules_dir {
@@ -319,8 +314,8 @@ pub async fn run(
     } else {
       npm_cache.registry_folder(&npm_registry_url)
     };
-    let vfs =
-      load_npm_vfs(vfs_root_dir_path).context("Failed to load npm vfs.")?;
+    let vfs = load_npm_vfs(vfs_root_dir_path.clone())
+      .context("Failed to load npm vfs.")?;
     let node_modules_path = if metadata.node_modules_dir {
       Some(vfs.root().to_path_buf())
     } else {
@@ -328,12 +323,14 @@ pub async fn run(
     };
     (
       Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
+      Some(vfs_root_dir_path),
       node_modules_path,
       Some(snapshot.into_valid()?),
     )
   } else {
     (
       Arc::new(deno_fs::RealFs) as Arc<dyn deno_fs::FileSystem>,
+      None,
       None,
       None,
     )
@@ -395,9 +392,25 @@ pub async fn run(
     }),
   };
 
-  let permissions = PermissionsContainer::new(Permissions::from_options(
-    &metadata.permissions,
-  )?);
+  let permissions = {
+    let mut permissions = metadata.permissions;
+    // if running with an npm vfs, grant read access to it
+    if let Some(vfs_root) = vfs_root {
+      match &mut permissions.allow_read {
+        Some(vec) if vec.is_empty() => {
+          // do nothing, already granted
+        }
+        Some(vec) => {
+          vec.push(vfs_root);
+        }
+        None => {
+          permissions.allow_read = Some(vec![vfs_root]);
+        }
+      }
+    }
+
+    PermissionsContainer::new(Permissions::from_options(&permissions)?)
+  };
   let worker_factory = CliMainWorkerFactory::new(
     StorageKeyResolver::empty(),
     npm_resolver.clone(),
@@ -411,7 +424,7 @@ pub async fn run(
     None,
     CliMainWorkerOptions {
       argv: metadata.argv,
-      debug: false,
+      log_level: WorkerLogLevel::Info,
       coverage_dir: None,
       enable_testing_features: false,
       has_node_modules_dir,

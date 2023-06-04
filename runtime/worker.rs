@@ -57,6 +57,17 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
+/// Clear extension modules from the module map, except preserve `ext:deno_node`
+/// modules as `node:` specifiers.
+pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
+  js_runtime.clear_module_map(
+    deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|p| (p.ext_specifier, p.specifier)),
+  );
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -319,6 +330,7 @@ impl MainWorker {
       is_main: true,
       ..Default::default()
     });
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

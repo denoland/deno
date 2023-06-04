@@ -151,7 +151,8 @@
       "test-dns-promises-resolve.js",
       "test-dns-regress-6244.js",
       "test-dns-setserver-in-callback-of-resolve4.js",
-      "test-dns.js"
+      "test-dns.js",
+      "test-http-https-default-ports.js"
     ],
     "parallel": [
       "test-assert-async.js",
@@ -232,7 +233,8 @@
       "test-child-process-spawnsync-maxbuf.js",
       "test-child-process-spawnsync-validation-errors.js",
       "test-child-process-spawnsync.js",
-      "test-client-request-destroy.js",
+      // TODO(crowlKats): socket is not yet polyfilled
+      // "test-client-request-destroy.js",
       "test-console-async-write-error.js",
       "test-console-group.js",
       "test-console-log-stdio-broken-dest.js",

@@ -80,4 +80,40 @@ impl TempDir {
   pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
     fs::write(self.path().join(path), text.as_ref()).unwrap();
   }
+
+  pub fn symlink_dir(
+    &self,
+    oldpath: impl AsRef<Path>,
+    newpath: impl AsRef<Path>,
+  ) {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::symlink;
+      symlink(self.path().join(oldpath), self.path().join(newpath)).unwrap();
+    }
+    #[cfg(not(unix))]
+    {
+      use std::os::windows::fs::symlink_dir;
+      symlink_dir(self.path().join(oldpath), self.path().join(newpath))
+        .unwrap();
+    }
+  }
+
+  pub fn symlink_file(
+    &self,
+    oldpath: impl AsRef<Path>,
+    newpath: impl AsRef<Path>,
+  ) {
+    #[cfg(unix)]
+    {
+      use std::os::unix::fs::symlink;
+      symlink(self.path().join(oldpath), self.path().join(newpath)).unwrap();
+    }
+    #[cfg(not(unix))]
+    {
+      use std::os::windows::fs::symlink_file;
+      symlink_file(self.path().join(oldpath), self.path().join(newpath))
+        .unwrap();
+    }
+  }
 }
