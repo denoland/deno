@@ -97,7 +97,6 @@ const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
  * @param {string} name
  * @param {string} value
  */
-
 function appendHeader(headers, name, value) {
   // 1.
   value = normalizeHeaderValue(value);
