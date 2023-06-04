@@ -40,7 +40,6 @@ export type ReadOptions = {
   position: number | null;
 };
 
-
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
 }
