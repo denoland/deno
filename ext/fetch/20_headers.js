@@ -20,9 +20,6 @@ import {
   httpTrim,
 } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
-const core = globalThis.Deno.core;
-const internals = globalThis.__bootstrap.internals;
-const ops = core.ops;
 const {
   ArrayIsArray,
   ArrayPrototypeMap,

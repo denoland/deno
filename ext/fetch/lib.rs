@@ -43,8 +43,6 @@ use deno_tls::RootCertStoreProvider;
 use data_url::DataUrl;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -111,7 +109,6 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
-    op_fetch_validate_header,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -417,18 +414,6 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
-}
-
-static ILLEGAL_VALUE_CHARS_RE: Lazy<Regex> =
-  lazy_regex::lazy_regex!(r#"[\x00\x0A\x0D]"#);
-
-#[op(fast)]
-fn op_fetch_validate_header(_name: &str, value: &str) -> u16 {
-  if ILLEGAL_VALUE_CHARS_RE.is_match(value) {
-    return 1;
-  }
-
-  0
 }
 
 #[op]
