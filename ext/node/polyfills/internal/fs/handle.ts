@@ -28,8 +28,8 @@ export class FileHandle extends EventEmitter {
 
   read(
     buffer: Buffer,
-    offset?: number ,
-    length?: number ,
+    offset?: number,
+    length?: number,
     position?: number | null,
   ): Promise<FileReadResult>;
   read(options?: ReadOptions): Promise<FileReadResult>;
@@ -46,9 +46,9 @@ export class FileHandle extends EventEmitter {
         offset,
         length,
         position,
-        (err, result) => {
+        (err, bytesRead, buffer) => {
           if (err) reject(err);
-          else resolve({ buffer: result.data, bytesRead: result.bytesRead });
+          else resolve({ buffer: buffer, bytesRead: bytesRead });
         },
       );
     });

@@ -8,9 +8,9 @@ import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
+const fs = await import("node:fs/promises");
 
 Deno.test("readFileSuccess", async function () {
-  const fs = await import("node:fs/promises");
   const fileHandle = await fs.open(testData);
   const data = await fileHandle.readFile();
 
@@ -20,13 +20,41 @@ Deno.test("readFileSuccess", async function () {
   Deno.close(fileHandle.fd);
 });
 
-Deno.test("readSuccess", async function () {
-  const fs = await import("node:fs/promises");
+Deno.test("read", async function () {
   const fileHandle = await fs.open(testData);
+  const byteLength = "hello world".length;
 
-  const buf = new Buffer(16);
+  const buf = new Buffer(byteLength);
   await fileHandle.read(buf);
 
-  assert(buf instanceof Uint8Array);
   assertEquals(new TextDecoder().decode(buf as Uint8Array), "hello world");
+
+  Deno.close(fileHandle.fd);
+});
+
+Deno.test("read specify opt", async function () {
+  const fileHandle = await fs.open(testData);
+  const byteLength = "hello world".length;
+
+  const opt = {
+    buffer: new Buffer(byteLength),
+    offset: 6,
+    length: 5,
+  };
+  let res = await fileHandle.read(opt);
+
+  assertEquals(res.bytesRead, byteLength);
+  assertEquals(new TextDecoder().decode(res.buffer as Uint8Array), "world");
+
+  const opt2 = {
+    buffer: new Buffer(byteLength),
+    length: 5,
+    position: 0,
+  };
+  res = await fileHandle.read(opt2);
+
+  assertEquals(res.bytesRead, byteLength);
+  assertEquals(new TextDecoder().decode(res.buffer as Uint8Array), "hello");
+
+  Deno.close(fileHandle.fd);
 });
