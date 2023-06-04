@@ -24,6 +24,7 @@ use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
 use deno_core::op;
+use deno_core::StringOrBuffer;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::task::spawn;
@@ -992,10 +993,10 @@ impl Resource for TlsListenerResource {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListenTlsArgs {
-  cert: Option<String>,
+  cert: Option<StringOrBuffer>,
   // TODO(kt3k): Remove this option at v2.0.
   cert_file: Option<String>,
-  key: Option<String>,
+  key: Option<StringOrBuffer>,
   // TODO(kt3k): Remove this option at v2.0.
   key_file: Option<String>,
   alpn_protocols: Option<Vec<String>>,
@@ -1037,7 +1038,7 @@ where
   } else if let Some(path) = cert_file {
     load_certs_from_file(path)?
   } else if let Some(cert) = cert {
-    load_certs(&mut BufReader::new(cert.as_bytes()))?
+    load_certs(&mut BufReader::new(cert))?
   } else {
     return Err(generic_error("`cert` is not specified."));
   };
@@ -1048,7 +1049,7 @@ where
   } else if let Some(path) = key_file {
     load_private_keys_from_file(path)?.remove(0)
   } else if let Some(key) = key {
-    load_private_keys(key.as_bytes())?.remove(0)
+    load_private_keys(key)?.remove(0)
   } else {
     return Err(generic_error("`key` is not specified."));
   };
