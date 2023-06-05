@@ -22,6 +22,7 @@
     PromiseReject,
     PromiseResolve,
     PromisePrototypeThen,
+    Proxy,
     RangeError,
     ReferenceError,
     ReflectHas,
