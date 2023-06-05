@@ -89,11 +89,8 @@ Deno.test("[node/http2 server]", async () => {
     session.on("stream", resolve)
   );
   const headers = await new Promise((resolve) => stream.on("headers", resolve));
-  console.log("headers", headers);
   const data = await new Promise((resolve) => stream.on("data", resolve));
-  console.log(data);
   const end = await new Promise((resolve) => stream.on("end", resolve));
-  console.log("end");
   stream.respond();
   stream.end();
   let resp = await responsePromise;

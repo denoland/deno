@@ -181,7 +181,6 @@ export class ClientHttp2Session extends Http2Session {
       }
     }
 
-    console.log(arguments, request);
     const fetchPromise = fetch(`http://${authority}${path}`, request);
     const readerPromise = deferred();
     const headersPromise = deferred();
@@ -218,7 +217,6 @@ export class Http2Stream extends EventEmitter {
     controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>,
     readerPromise: Promise<ReadableStream<Uint8Array>>,
   ) {
-    console.log("stream");
     super();
     this.#session = session;
     this.#headers = headers;
@@ -237,7 +235,6 @@ export class Http2Stream extends EventEmitter {
             if (data.done) {
               break;
             }
-            console.log("emit", data);
             this.emit("data", data.value);
           }
         }
@@ -250,7 +247,6 @@ export class Http2Stream extends EventEmitter {
   end() {
     (async () => {
       let controller = await this.#controllerPromise;
-      console.log("close");
       controller.close();
     })();
   }
@@ -258,7 +254,6 @@ export class Http2Stream extends EventEmitter {
   write(buffer, callback?: () => void) {
     (async () => {
       let controller = await this.#controllerPromise;
-      console.log("enqueue");
       if (typeof buffer === "string") {
         controller.enqueue(ENCODER.encode(buffer));
       } else {
@@ -404,7 +399,6 @@ export class ServerHttp2Stream extends Http2Stream {
     headers: Http2Headers,
     _options: Record<string, unknown>,
   ) {
-    console.log("response", headers);
     const response: ResponseInit = {};
     if (headers) {
       for (const [name, value] of Object.entries(headers)) {
@@ -449,7 +443,6 @@ export class Http2Server extends Server {
       "connection",
       (conn: Deno.Conn) => {
         try {
-          console.log("connection", conn);
           const session = new ServerHttp2Session();
           this.emit("session", session);
           this.#server = serveHttpOnConnection(
@@ -457,8 +450,6 @@ export class Http2Server extends Server {
             this.#abortController.signal,
             async (req: Request) => {
               try {
-                console.log("on req");
-                debugger;
                 const controllerPromise: Deferred<
                   ReadableStreamDefaultController<Uint8Array>
                 > = deferred();
@@ -475,7 +466,6 @@ export class Http2Server extends Server {
                 );
                 session.emit("stream", stream, req.headers);
                 this.emit("stream", stream, req.headers);
-                console.log("req", req);
                 return await stream._promise;
               } catch (e) {
                 console.log(e);
