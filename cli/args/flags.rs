@@ -301,6 +301,7 @@ pub struct Flags {
   pub allow_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
+  pub snapshot_path: Option<PathBuf>,
   pub cache_blocklist: Vec<String>,
   /// This is not exposed as an option in the CLI, it is used internally when
   /// the language server is configured with an explicit cache option.
@@ -1884,6 +1885,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(lock_write_arg())
     .arg(no_lock_arg())
     .arg(ca_file_arg())
+    .arg(snapshot_arg())
 }
 
 static ALLOW_READ_HELP: &str = concat!(
@@ -2194,6 +2196,14 @@ fn ca_file_arg() -> Arg {
     .long("cert")
     .value_name("FILE")
     .help("Load certificate authority from PEM encoded file")
+    .value_hint(ValueHint::FilePath)
+}
+
+fn snapshot_arg() -> Arg {
+  Arg::new("snapshot")
+    .long("snapshot")
+    .value_name("FILE")
+    .help("Use the provided snapshot for main and web workers")
     .value_hint(ValueHint::FilePath)
 }
 
@@ -2993,6 +3003,7 @@ fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   compile_args_without_check_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
+  snapshot_arg_parse(flags, matches);
 }
 
 fn compile_args_without_check_parse(
@@ -3144,6 +3155,10 @@ fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.ca_data = matches.remove_one::<String>("cert").map(CaData::File);
+}
+
+fn snapshot_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.snapshot_path = matches.remove_one::<PathBuf>("snapshot");
 }
 
 fn enable_testing_features_arg_parse(

@@ -1167,6 +1167,10 @@ impl CliOptions {
     self.flags.unstable
   }
 
+  pub fn snapshot_path(&self) -> &Option<PathBuf> {
+    &self.flags.snapshot_path
+  }
+
   pub fn v8_flags(&self) -> &Vec<String> {
     &self.flags.v8_flags
   }

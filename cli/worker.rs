@@ -17,6 +17,7 @@ use deno_core::Extension;
 use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
+use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
 use deno_lockfile::Lockfile;
 use deno_runtime::colors;
@@ -88,6 +89,7 @@ pub struct CliMainWorkerOptions {
   pub seed: Option<u64>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub unstable: bool,
+  pub startup_snapshot: Option<PathBuf>,
 }
 
 struct SharedWorkerState {
@@ -448,7 +450,13 @@ impl CliMainWorkerFactory {
         inspect: shared.options.is_inspecting,
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: shared.options.startup_snapshot.as_ref().map_or_else(
+        || Some(crate::js::deno_isolate_init()),
+        |path| {
+          let content = std::fs::read(path).unwrap();
+          Some(Snapshot::Boxed(content.into_boxed_slice()))
+        },
+      ),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -576,7 +584,13 @@ fn create_web_worker_callback(
         inspect: shared.options.is_inspecting,
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: shared.options.startup_snapshot.as_ref().map_or_else(
+        || Some(crate::js::deno_isolate_init()),
+        |path| {
+          let content = std::fs::read(path).unwrap();
+          Some(Snapshot::Boxed(content.into_boxed_slice()))
+        },
+      ),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors

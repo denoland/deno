@@ -443,6 +443,7 @@ pub async fn run(
       unsafely_ignore_certificate_errors: metadata
         .unsafely_ignore_certificate_errors,
       unstable: metadata.unstable,
+      startup_snapshot: None, // TODO
     },
   );
 

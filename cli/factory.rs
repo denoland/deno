@@ -706,6 +706,7 @@ impl CliFactory {
         .unsafely_ignore_certificate_errors()
         .clone(),
       unstable: self.options.unstable(),
+      startup_snapshot: self.options.snapshot_path().clone(),
     })
   }
 }
