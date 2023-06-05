@@ -224,24 +224,26 @@ export class Http2Stream extends EventEmitter {
     this.#headers = headers;
     this.#controllerPromise = controllerPromise;
     this.#readerPromise = readerPromise;
-    (async () => {
-      let headers = await this.#headers;
-      console.log(headers);
-      this.emit("headers", headers);
-    })();
-    (async () => {
-      let reader = await this.#readerPromise;
-      if (reader) {
-        for await (const data of reader) {
-          if (data.done) {
-            break;
+    nextTick(() => {
+      (async () => {
+        debugger;
+        let headers = await this.#headers;
+        this.emit("headers", headers);
+      })();
+      (async () => {
+        let reader = await this.#readerPromise;
+        if (reader) {
+          for await (const data of reader) {
+            if (data.done) {
+              break;
+            }
+            console.log("emit", data);
+            this.emit("data", data.value);
           }
-          console.log("emit", data);
-          this.emit("data", data.value);
         }
-      }
-      this.emit("end");
-    })();
+        this.emit("end");
+      })();
+    });
   }
 
   // TODO(mmastrac): Implement duplex
@@ -350,10 +352,6 @@ export class Http2Stream extends EventEmitter {
 }
 
 export class ClientHttp2Stream extends Http2Stream {
-  #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
-  #headers: Promise<Http2Headers>;
-  #response;
-
   constructor(
     session: Http2Session,
     headers: Promise<Http2Headers>,
@@ -366,16 +364,16 @@ export class ClientHttp2Stream extends Http2Stream {
 
 export class ServerHttp2Stream extends Http2Stream {
   _promise: Deferred<Response>;
-  #body;
+  #body: ReadableStream<Uint8Array>;
 
   constructor(
     session: Http2Session,
     headers: Promise<Http2Headers>,
     controllerPromise: Promise<ReadableStreamDefaultController<Uint8Array>>,
-    readerPromise: Promise<ReadableStream<Uint8Array>>,
+    reader: ReadableStream<Uint8Array>,
     body: ReadableStream<Uint8Array>,
   ) {
-    super(session, headers, controllerPromise, readerPromise);
+    super(session, headers, controllerPromise, Promise.resolve(reader));
     this._promise = new deferred();
     this.#body = body;
   }
@@ -406,10 +404,13 @@ export class ServerHttp2Stream extends Http2Stream {
     headers: Http2Headers,
     _options: Record<string, unknown>,
   ) {
+    console.log("response", headers);
     const response: ResponseInit = {};
-    for (const [name, value] of Object.entries(headers)) {
-      if (name == constants.HTTP2_HEADER_STATUS) {
-        response.status = Number(value);
+    if (headers) {
+      for (const [name, value] of Object.entries(headers)) {
+        if (name == constants.HTTP2_HEADER_STATUS) {
+          response.status = Number(value);
+        }
       }
     }
     this._promise.resolve(new Response(this.#body, response));
@@ -451,30 +452,41 @@ export class Http2Server extends Server {
           console.log("connection", conn);
           const session = new ServerHttp2Session();
           this.emit("session", session);
-          this.#server = serveHttpOnConnection(conn, this.#abortController.signal, async (req: Request) => {
-            console.log("on req");
-            debugger;
-            const controllerPromise: Deferred<
-              ReadableStreamDefaultController<Uint8Array>
-            > = deferred();
-            const body = new ReadableStream({
-              start(controller) {
-                controllerPromise.resolve(controller);
-              },
-            });
-            const stream = new ServerHttp2Stream(session, Promise.resolve(req.headers), controllerPromise, Promise.resolve(req.body), body);
-            try {
-              session.emit("stream", stream, req.headers);
-              this.emit("stream", stream, req.headers);
-              console.log(req);
-              return await stream._promise;
-            } catch (e) {
-              console.log(e);
-            }
-            return new Response("");
-          }, () => {
-            console.log("error");
-          }, () => {});
+          this.#server = serveHttpOnConnection(
+            conn,
+            this.#abortController.signal,
+            async (req: Request) => {
+              try {
+                console.log("on req");
+                debugger;
+                const controllerPromise: Deferred<
+                  ReadableStreamDefaultController<Uint8Array>
+                > = deferred();
+                const body = new ReadableStream({
+                  start(controller) {
+                    controllerPromise.resolve(controller);
+                  },
+                });
+                const stream = new ServerHttp2Stream(
+                  session,
+                  Promise.resolve(req.headers),
+                  controllerPromise,
+                  req.body,
+                );
+                session.emit("stream", stream, req.headers);
+                this.emit("stream", stream, req.headers);
+                console.log("req", req);
+                return await stream._promise;
+              } catch (e) {
+                console.log(e);
+              }
+              return new Response("");
+            },
+            () => {
+              console.log("error");
+            },
+            () => {},
+          );
         } catch (e) {
           console.log(e);
         }

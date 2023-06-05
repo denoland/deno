@@ -71,25 +71,33 @@ Deno.test("[node/http2 client]", async () => {
   await server.finished;
 });
 
-Deno.test("[node/http2 server]", async() => {
-  const server = http2.createServer(); 
+Deno.test("[node/http2 server]", async () => {
+  const server = http2.createServer();
   server.listen(0);
-  const port = (<net.AddressInfo>server.address()).port; 
-  const sessionPromise = new Promise<http2.Http2Session>(resolve => server.on('session', resolve));
+  const port = (<net.AddressInfo> server.address()).port;
+  const sessionPromise = new Promise<http2.Http2Session>((resolve) =>
+    server.on("session", resolve)
+  );
 
-  let responsePromise = fetch(`http://localhost:${port}/path`, { method: "POST", body: "body" });
+  let responsePromise = fetch(`http://localhost:${port}/path`, {
+    method: "POST",
+    body: "body",
+  });
 
   const session = await sessionPromise;
-  const stream = await new Promise<http2.ServerHttp2Stream>(resolve => session.on('stream', resolve));
-  const headers = await new Promise(resolve => stream.on('headers', resolve));
+  const stream = await new Promise<http2.ServerHttp2Stream>((resolve) =>
+    session.on("stream", resolve)
+  );
+  const headers = await new Promise((resolve) => stream.on("headers", resolve));
   console.log("headers", headers);
-  const data = await new Promise(resolve => stream.on('data', resolve));
+  const data = await new Promise((resolve) => stream.on("data", resolve));
   console.log(data);
-  const end = await new Promise(resolve => stream.on('end', resolve));
+  const end = await new Promise((resolve) => stream.on("end", resolve));
   console.log("end");
   stream.respond();
   stream.end();
-  await responsePromise;
+  let resp = await responsePromise;
+  await resp.text();
 
-  await new Promise(resolve => server.close(resolve));
+  await new Promise((resolve) => server.close(resolve));
 });
