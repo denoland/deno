@@ -9,7 +9,7 @@ import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "ext:deno_node/fs/promises.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { serveHttpOnConnection, addTrailers } from "ext:deno_http/00_serve.js";
+import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -28,7 +28,7 @@ export class Http2Session extends EventEmitter {
   }
 
   close(_callback?: () => void) {
-    // notImplemented("Http2Session.close");
+    warnNotImplemented("Http2Session.close");
   }
 
   get closed(): boolean {
@@ -227,7 +227,6 @@ export class Http2Stream extends EventEmitter {
     this.#closed = false;
     nextTick(() => {
       (async () => {
-        debugger;
         let headers = await this.#headers;
         this.emit("headers", headers);
       })();
@@ -235,7 +234,6 @@ export class Http2Stream extends EventEmitter {
         let reader = await this.#readerPromise;
         if (reader) {
           for await (const data of reader) {
-            console.log(data);
             this.emit("data", new Buffer(data));
           }
         }
@@ -246,7 +244,6 @@ export class Http2Stream extends EventEmitter {
 
   // TODO(mmastrac): Implement duplex
   end() {
-    console.log("end");
     (async () => {
       let controller = await this.#controllerPromise;
       controller.close();
@@ -254,7 +251,6 @@ export class Http2Stream extends EventEmitter {
   }
 
   write(buffer, callback?: () => void) {
-    console.log("write", buffer, callback);
     (async () => {
       let controller = await this.#controllerPromise;
       if (typeof buffer === "string") {
@@ -283,9 +279,8 @@ export class Http2Stream extends EventEmitter {
   }
 
   close(_code: number, _callback: () => void) {
-    console.log("close");
     this.#closed = true;
-    this.emit('close');
+    this.emit("close");
   }
 
   get closed(): boolean {
@@ -349,7 +344,7 @@ export class Http2Stream extends EventEmitter {
   }
 
   sendTrailers(headers: Record<string, unknown>) {
-    addTrailers(this._response, [ ["grpc-status", "0"], ["grpc-message", "OK"] ]);
+    addTrailers(this._response, [["grpc-status", "0"], ["grpc-message", "OK"]]);
   }
 }
 
@@ -389,7 +384,6 @@ export class ServerHttp2Stream extends Http2Stream {
   end(): void {
     super.end();
     if (this.#waitForTrailers) {
-      console.log("wantTrailers");
       this.emit("wantTrailers");
     }
   }
@@ -428,7 +422,9 @@ export class ServerHttp2Stream extends Http2Stream {
       this._promise.resolve(this._response = new Response("", response));
     } else {
       this.#waitForTrailers = options?.waitForTrailers;
-      this._promise.resolve(this._response = new Response(this.#body, response));
+      this._promise.resolve(
+        this._response = new Response(this.#body, response),
+      );
     }
   }
 
@@ -484,19 +480,20 @@ export class Http2Server extends Server {
                 for (const [name, value] of req.headers) {
                   headers[name] = value;
                 }
-                headers[constants.HTTP2_HEADER_PATH] = new URL(req.url).pathname;
+                headers[constants.HTTP2_HEADER_PATH] =
+                  new URL(req.url).pathname;
                 const stream = new ServerHttp2Stream(
                   session,
                   Promise.resolve(headers),
                   controllerPromise,
                   req.body,
-                  body
+                  body,
                 );
                 session.emit("stream", stream, headers);
                 this.emit("stream", stream, headers);
                 return await stream._promise;
               } catch (e) {
-                console.log(e);
+                console.log("Error in serveHttpOnConnection", e);
               }
               return new Response("");
             },
@@ -506,11 +503,14 @@ export class Http2Server extends Server {
             () => {},
           );
         } catch (e) {
-          console.log(e);
+          console.log("Error in Http2Server", e);
         }
       },
     );
-    this.on("newListener", (event) => console.log(`event: ${event}`));
+    this.on(
+      "newListener",
+      (event) => console.log(`Event in newListener: ${event}`),
+    );
     this.#options = options;
     if (typeof requestListener === "function") {
       this.on("request", requestListener);

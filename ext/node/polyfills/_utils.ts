@@ -20,8 +20,6 @@ export type TextEncodings =
 export type Encodings = BinaryEncodings | TextEncodings;
 
 export function notImplemented(msg: string): never {
-  debugger;
-  warnNotImplemented(msg);
   const message = msg ? `Not implemented: ${msg}` : "Not implemented";
   throw new Error(message);
 }
