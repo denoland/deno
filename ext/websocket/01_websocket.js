@@ -33,7 +33,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeSet,
   SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -256,7 +256,8 @@ class WebSocket extends EventTarget {
     if (
       ArrayPrototypeSome(
         protocols,
-        (protocol) => !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, protocol),
+        (protocol) =>
+          RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, protocol) === null,
       )
     ) {
       throw new DOMException(
