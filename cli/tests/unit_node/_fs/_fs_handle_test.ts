@@ -16,5 +16,5 @@ Deno.test("readFileSuccess", async function () {
   assert(data instanceof Uint8Array);
   assertEquals(new TextDecoder().decode(data as Uint8Array), "hello world");
 
-  Deno.close(fileHandle.fd);
+  await fileHandle.close();
 });
