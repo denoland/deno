@@ -9,10 +9,7 @@ const { op_listen } = Deno.core.ops;
 const {
   op_accept,
   op_read_socket,
-} = Deno.core.generateAsyncOpHandler(
-  "op_accept",
-  "op_read_socket",
-);
+} = Deno.core.ensureFastOps();
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
