@@ -15,7 +15,7 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::snapshot_util::SnapshotOptions;
+use crate::runtime::InitMode;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -118,7 +118,7 @@ pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
+  init_mode: InitMode,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
 
@@ -128,17 +128,11 @@ pub(crate) fn initialize_context<'s>(
     codegen,
     "Deno.__op__ = function(opFns, callConsole, console) {{"
   );
-  if !snapshot_options.loaded() {
+  if init_mode == InitMode::New {
     _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
-      // If we're loading from a snapshot, we can skip registration for most ops
-      if matches!(snapshot_options, SnapshotOptions::Load)
-        && !op_ctx.decl.force_registration
-      {
-        continue;
-      }
       _ = writeln!(
         codegen,
         "Deno.__op__registerOp({}, opFns[{}], \"{}\");",
@@ -173,7 +167,7 @@ pub(crate) fn initialize_context<'s>(
     let op_fn = op_ctx_function(scope, op_ctx);
     op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
   }
-  if snapshot_options.loaded() {
+  if init_mode == InitMode::FromSnapshot {
     op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
     // Bind functions to Deno.core.*
@@ -284,7 +278,7 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let module_map_rc = JsRuntime::module_map_from(scope);
 
     debug!(
@@ -484,7 +478,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
+      let state_rc = JsRuntime::state_from(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {

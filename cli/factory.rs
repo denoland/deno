@@ -679,11 +679,7 @@ impl CliFactory {
   ) -> Result<CliMainWorkerOptions, AnyError> {
     Ok(CliMainWorkerOptions {
       argv: self.options.argv().clone(),
-      debug: self
-        .options
-        .log_level()
-        .map(|l| l == log::Level::Debug)
-        .unwrap_or(false),
+      log_level: self.options.log_level().unwrap_or(log::Level::Info).into(),
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),

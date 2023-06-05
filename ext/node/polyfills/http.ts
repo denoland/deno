@@ -50,6 +50,8 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { timerId } from "ext:deno_web/03_abort_signal.js";
+import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -350,10 +352,7 @@ class ClientRequest extends OutgoingMessage {
     this.socketPath = options!.socketPath;
 
     if (options!.timeout !== undefined) {
-      const msecs = getTimerDuration(options.timeout, "timeout");
-      const timeout = AbortSignal.timeout(msecs);
-      timeout.onabort = () => this.emit("timeout");
-      this._timeout = timeout;
+      this.setTimeout(options.timeout);
     }
 
     const signal = options!.signal;
@@ -561,7 +560,8 @@ class ClientRequest extends OutgoingMessage {
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH",
+      this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT",
     );
     this._bodyWriteRid = this._req.requestBodyRid;
   }
@@ -637,10 +637,13 @@ class ClientRequest extends OutgoingMessage {
           })(),
         ]);
         if (this._timeout) {
-          this._timeout.onabort = null;
+          this._timeout.removeEventListener("abort", this._timeoutCb);
+          webClearTimeout(this._timeout[timerId]);
         }
         this._client.close();
         const incoming = new IncomingMessageForClient(this.socket);
+        incoming.req = this;
+        this.res = incoming;
 
         // TODO(@crowlKats):
         // incoming.httpVersionMajor = versionMajor;
@@ -750,7 +753,7 @@ class ClientRequest extends OutgoingMessage {
     if (msecs === 0) {
       if (this._timeout) {
         this.removeAllListeners("timeout");
-        this._timeout.onabort = () => {};
+        this._timeout.removeEventListener("abort", this._timeoutCb);
         this._timeout = undefined;
       }
 
@@ -764,7 +767,8 @@ class ClientRequest extends OutgoingMessage {
     if (callback) this.once("timeout", callback);
 
     const timeout = AbortSignal.timeout(msecs);
-    timeout.onabort = () => this.emit("timeout");
+    this._timeoutCb = () => this.emit("timeout");
+    timeout.addEventListener("abort", this._timeoutCb);
     this._timeout = timeout;
 
     return this;
@@ -970,6 +974,7 @@ export class IncomingMessageForClient extends NodeReadable {
   // any messages, before ever calling this.  In that case, just skip
   // it, since something else is destroying this connection anyway.
   _destroy(err, cb) {
+    this.complete = true;
     if (!this.readableEnded || !this.complete) {
       this.aborted = true;
       this.emit("aborted");

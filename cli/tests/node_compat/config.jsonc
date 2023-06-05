@@ -151,7 +151,8 @@
       "test-dns-promises-resolve.js",
       "test-dns-regress-6244.js",
       "test-dns-setserver-in-callback-of-resolve4.js",
-      "test-dns.js"
+      "test-dns.js",
+      "test-http-https-default-ports.js"
     ],
     "parallel": [
       "test-assert-async.js",

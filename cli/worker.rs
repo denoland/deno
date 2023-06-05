@@ -37,6 +37,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::StorageKeyResolver;
@@ -73,7 +74,7 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
 #[derive(Clone)]
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
-  pub debug: bool,
+  pub log_level: WorkerLogLevel,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -434,7 +435,7 @@ impl CliMainWorkerFactory {
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -448,6 +449,7 @@ impl CliMainWorkerFactory {
       },
       extensions,
       startup_snapshot: Some(crate::js::deno_isolate_init()),
+      create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -562,7 +564,7 @@ fn create_web_worker_callback(
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),

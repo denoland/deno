@@ -162,7 +162,7 @@ impl JsRealmInner {
     };
 
     let exception = v8::Local::new(scope, handle);
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow();
     if let Some(inspector) = &state.inspector {
       let inspector = inspector.borrow();

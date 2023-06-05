@@ -6,13 +6,42 @@ use std::thread;
 
 use crate::colors;
 
+/// The log level to use when printing diagnostic log messages, warnings,
+/// or errors in the worker.
+///
+/// Note: This is disconnected with the log crate's log level and the Rust code
+/// in this crate will respect that value instead. To specify that, use
+/// `log::set_max_level`.
+#[derive(Debug, Default, Clone, Copy)]
+pub enum WorkerLogLevel {
+  // WARNING: Ensure this is kept in sync with
+  // the JS values (search for LogLevel).
+  Error = 1,
+  Warn = 2,
+  #[default]
+  Info = 3,
+  Debug = 4,
+}
+
+impl From<log::Level> for WorkerLogLevel {
+  fn from(value: log::Level) -> Self {
+    match value {
+      log::Level::Error => WorkerLogLevel::Error,
+      log::Level::Warn => WorkerLogLevel::Warn,
+      log::Level::Info => WorkerLogLevel::Info,
+      log::Level::Debug => WorkerLogLevel::Debug,
+      log::Level::Trace => WorkerLogLevel::Debug,
+    }
+  }
+}
+
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
 pub struct BootstrapOptions {
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub cpu_count: usize,
-  pub debug_flag: bool,
+  pub log_level: WorkerLogLevel,
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
@@ -44,7 +73,7 @@ impl Default for BootstrapOptions {
       no_color: !colors::use_color(),
       is_tty: colors::is_tty(),
       enable_testing_features: Default::default(),
-      debug_flag: Default::default(),
+      log_level: Default::default(),
       ts_version: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
@@ -77,7 +106,7 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Boolean::new(scope, self.debug_flag);
+      let val = v8::Integer::new(scope, self.log_level as i32);
       array.set_index(scope, 2, val.into());
     }
 

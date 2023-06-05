@@ -95,6 +95,10 @@ pub struct WorkerOptions {
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
+
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
+
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
@@ -181,6 +185,7 @@ impl Default for WorkerOptions {
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
     }
@@ -321,6 +326,7 @@ impl MainWorker {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
+      create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),

@@ -262,7 +262,7 @@ mod ts {
     )
     .unwrap();
 
-    create_snapshot(CreateSnapshotOptions {
+    let output = create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
@@ -289,6 +289,9 @@ mod ts {
       })),
       snapshot_module_load_cb: None,
     });
+    for path in output.files_loaded_during_snapshot {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
   }
 
   pub(crate) fn version() -> String {
@@ -326,7 +329,8 @@ deno_core::extension!(
   }
 );
 
-fn create_cli_snapshot(snapshot_path: PathBuf) {
+#[must_use = "The files listed by create_cli_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
+fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let fs = Arc::new(deno_fs::RealFs);
@@ -481,7 +485,10 @@ fn main() {
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
   let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  create_cli_snapshot(cli_snapshot_path);
+  let output = create_cli_snapshot(cli_snapshot_path);
+  for path in output.files_loaded_during_snapshot {
+    println!("cargo:rerun-if-changed={}", path.display())
+  }
 
   #[cfg(target_os = "windows")]
   {

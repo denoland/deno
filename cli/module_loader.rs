@@ -37,7 +37,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
-use deno_core::OpState;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::Resolver;
@@ -54,7 +53,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -566,7 +564,6 @@ impl ModuleLoader for CliModuleLoader {
 
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
