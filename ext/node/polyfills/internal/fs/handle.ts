@@ -59,6 +59,11 @@ export class FileHandle extends EventEmitter {
   ): Promise<string | Buffer> {
     return promises.readFile(this, opt);
   }
+
+  close(): Promise<void> {
+    // Note that Deno.close is not async
+    return Promise.resolve(Deno.close(this.fd));
+  }
 }
 
 export default {
