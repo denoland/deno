@@ -424,6 +424,7 @@ function extractBody(object) {
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
     // TODO(@satyarohith): not sure what primordial here.
+    // deno-lint-ignore prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {

@@ -37,6 +37,7 @@ const {
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
+  ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
@@ -1578,7 +1579,7 @@ function inspectError(value, ctx) {
     if (stack?.includes("\n    at")) {
       finalMessage += stack;
     } else {
-      finalMessage += `[${stack || value.toString()}]`;
+      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
   finalMessage += ArrayPrototypeJoin(
