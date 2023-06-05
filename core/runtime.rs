@@ -2433,16 +2433,21 @@ impl JsRuntime {
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
         SmallVec::with_capacity(32);
 
-      while let Poll::Ready(Some(item)) =
-        context_state.pending_ops.poll_next_unpin(cx)
-      {
-        let (promise_id, op_id, mut resp) = item;
+      loop {
+        let mut join_fut = context_state.pending_ops.join_next();
+        // SAFETY: we are sure that the future won't move while it's being polled
+        let mut pinned_join_fut = unsafe { Pin::new_unchecked(&mut join_fut) };
+        let Poll::Ready(Some(item)) = pinned_join_fut.poll_unpin(cx) else {
+          break;
+        };
+        let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
         state
           .borrow()
           .op_state
           .borrow()
           .tracker
           .track_async_completed(op_id);
+        drop(join_fut);
         context_state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
@@ -2500,11 +2505,10 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
   let mut state = runtime_state.borrow_mut();
-  ctx
-    .context_state
-    .borrow_mut()
-    .pending_ops
-    .push(OpCall::pending(ctx, promise_id, fut));
+  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
+    crate::task::MaskFutureAsSend::new(OpCall::pending(ctx, promise_id, fut))
+  });
   state.have_unpolled_ops = true;
 }
 
@@ -2628,7 +2632,12 @@ pub fn queue_async_op<'s>(
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
   let mut state = runtime_state.borrow_mut();
-  ctx.context_state.borrow_mut().pending_ops.push(op_call);
+  ctx
+    .context_state
+    .borrow_mut()
+    .pending_ops
+    // SAFETY: this this is guaranteed to be running on a current-thread executor
+    .spawn(unsafe { crate::task::MaskFutureAsSend::new(op_call) });
   state.have_unpolled_ops = true;
   None
 }
