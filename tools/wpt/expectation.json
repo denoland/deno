@@ -1393,7 +1393,7 @@
         "Missing JWK 'crv' parameter: importKey(jwk (public) , {name: Ed25519}, true, [verify])",
         "Missing JWK 'crv' parameter: importKey(jwk (public) , {name: Ed25519}, false, [verify])",
         "Missing JWK 'crv' parameter: importKey(jwk (public) , {name: Ed25519}, true, [verify, verify])",
-        "Missing JWK 'crv' parameter: importKey(jwk (public) , {name: Ed25519}, false, [verify, verify])",
+        "Missing JWK 'crv' parameter: importKey(jwk (public) , {name: Ed25519}, false, [verify, verify])"
       ],
       "okp_importKey_failures_Ed25519.https.any.worker.html": [
         "Bad usages: importKey(spki, {name: Ed25519}, true, [encrypt])",
