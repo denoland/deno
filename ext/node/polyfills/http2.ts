@@ -28,7 +28,7 @@ export class Http2Session extends EventEmitter {
   }
 
   close(_callback?: () => void) {
-    notImplemented("Http2Session.close");
+    // notImplemented("Http2Session.close");
   }
 
   get closed(): boolean {
@@ -210,6 +210,7 @@ export class Http2Stream extends EventEmitter {
   #headers: Deferred<Http2Headers>;
   #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
   #readerPromise: Deferred<ReadableStream<Uint8Array>>;
+  #closed: boolean;
 
   constructor(
     session: Http2Session,
@@ -222,6 +223,7 @@ export class Http2Stream extends EventEmitter {
     this.#headers = headers;
     this.#controllerPromise = controllerPromise;
     this.#readerPromise = readerPromise;
+    this.#closed = false;
     nextTick(() => {
       (async () => {
         debugger;
@@ -232,10 +234,8 @@ export class Http2Stream extends EventEmitter {
         let reader = await this.#readerPromise;
         if (reader) {
           for await (const data of reader) {
-            if (data.done) {
-              break;
-            }
-            this.emit("data", data.value);
+            console.log(data);
+            this.emit("data", new Buffer(data));
           }
         }
         this.emit("end");
@@ -245,6 +245,7 @@ export class Http2Stream extends EventEmitter {
 
   // TODO(mmastrac): Implement duplex
   end() {
+    console.log("end");
     (async () => {
       let controller = await this.#controllerPromise;
       controller.close();
@@ -252,6 +253,7 @@ export class Http2Stream extends EventEmitter {
   }
 
   write(buffer, callback?: () => void) {
+    console.log("write", buffer, callback);
     (async () => {
       let controller = await this.#controllerPromise;
       if (typeof buffer === "string") {
@@ -266,6 +268,9 @@ export class Http2Stream extends EventEmitter {
   resume() {
   }
 
+  pause() {
+  }
+
   get aborted(): boolean {
     notImplemented("Http2Stream.aborted");
     return false;
@@ -277,15 +282,16 @@ export class Http2Stream extends EventEmitter {
   }
 
   close(_code: number, _callback: () => void) {
-    notImplemented("Http2Stream.close");
+    console.log("close");
+    this.#closed = true;
+    this.emit('close');
   }
 
   get closed(): boolean {
-    return false;
+    return this.#closed;
   }
 
   get destroyed(): boolean {
-    notImplemented("Http2Stream.destroyed");
     return false;
   }
 
@@ -309,7 +315,7 @@ export class Http2Stream extends EventEmitter {
   }
 
   get rstCode(): number {
-    notImplemented("Http2Stream.rstCode");
+    // notImplemented("Http2Stream.rstCode");
     return 0;
   }
 
@@ -360,6 +366,7 @@ export class ClientHttp2Stream extends Http2Stream {
 export class ServerHttp2Stream extends Http2Stream {
   _promise: Deferred<Response>;
   #body: ReadableStream<Uint8Array>;
+  #waitForTrailers: boolean;
 
   constructor(
     session: Http2Session,
@@ -377,8 +384,15 @@ export class ServerHttp2Stream extends Http2Stream {
     notImplemented("ServerHttp2Stream.additionalHeaders");
   }
 
+  end(): void {
+    super.end();
+    if (this.#waitForTrailers) {
+      console.log("wantTrailers");
+      this.emit("wantTrailers");
+    }
+  }
+
   get headersSent(): boolean {
-    notImplemented("ServerHttp2Stream.headersSent");
     return false;
   }
 
@@ -397,7 +411,7 @@ export class ServerHttp2Stream extends Http2Stream {
 
   respond(
     headers: Http2Headers,
-    _options: Record<string, unknown>,
+    options: Record<string, unknown>,
   ) {
     const response: ResponseInit = {};
     if (headers) {
@@ -407,7 +421,12 @@ export class ServerHttp2Stream extends Http2Stream {
         }
       }
     }
-    this._promise.resolve(new Response(this.#body, response));
+    if (options?.endStream) {
+      this._promise.resolve(new Response("", response));
+    } else {
+      this.#waitForTrailers = options?.waitForTrailers;
+      this._promise.resolve(new Response(this.#body, response));
+    }
   }
 
   respondWithFD(
@@ -458,14 +477,20 @@ export class Http2Server extends Server {
                     controllerPromise.resolve(controller);
                   },
                 });
+                const headers: Http2Headers = {};
+                for (const [name, value] of req.headers) {
+                  headers[name] = value;
+                }
+                headers[constants.HTTP2_HEADER_PATH] = new URL(req.url).pathname;
                 const stream = new ServerHttp2Stream(
                   session,
-                  Promise.resolve(req.headers),
+                  Promise.resolve(headers),
                   controllerPromise,
                   req.body,
+                  body
                 );
-                session.emit("stream", stream, req.headers);
-                this.emit("stream", stream, req.headers);
+                session.emit("stream", stream, headers);
+                this.emit("stream", stream, headers);
                 return await stream._promise;
               } catch (e) {
                 console.log(e);
