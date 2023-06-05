@@ -20,12 +20,14 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+const core = globalThis.__bootstrap.core;
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "ext:deno_node/process.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
+
 export const constants = os;
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno_std/issues/1436";
@@ -90,8 +92,8 @@ interface UserInfo {
   username: string;
   uid: number;
   gid: number;
-  shell: string;
-  homedir: string;
+  shell: string | null;
+  homedir: string | null;
 }
 
 export function arch(): string {
@@ -158,7 +160,7 @@ export function freemem(): number {
 /** Not yet implemented */
 export function getPriority(pid = 0): number {
   validateIntegerRange(pid, "pid");
-  notImplemented(SEE_GITHUB_ISSUE);
+  return core.ops.op_node_os_get_priority(pid);
 }
 
 /** Returns the string path of the current user's home directory. */
@@ -253,7 +255,7 @@ export function setPriority(pid: number, priority?: number) {
   validateIntegerRange(pid, "pid");
   validateIntegerRange(priority, "priority", -20, 19);
 
-  notImplemented(SEE_GITHUB_ISSUE);
+  core.ops.op_node_os_set_priority(pid, priority);
 }
 
 /** Returns the operating system's default directory for temporary files as a string. */
@@ -314,7 +316,31 @@ export function userInfo(
   // deno-lint-ignore no-unused-vars
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
-  notImplemented(SEE_GITHUB_ISSUE);
+  const uid = Deno.uid();
+  const gid = Deno.gid();
+
+  if (isWindows) {
+    uid = -1;
+    gid = -1;
+  }
+
+  let _homedir = homedir();
+  let shell = isWindows ? (Deno.env.get("SHELL") || null) : null;
+  let username = core.ops.op_node_os_username();
+
+  if (options?.encoding === "buffer") {
+    _homedir = _homedir ? Buffer.from(_homedir) : _homedir;
+    shell = shell ? Buffer.from(shell) : shell;
+    username = Buffer.from(username);
+  }
+
+  return {
+    uid,
+    gid,
+    homedir: _homedir,
+    shell,
+    username,
+  };
 }
 
 export const EOL = isWindows ? "\r\n" : "\n";
