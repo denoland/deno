@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -79,7 +81,7 @@ Deno.test("[node/http2 server]", async () => {
     server.on("session", resolve)
   );
 
-  let responsePromise = fetch(`http://localhost:${port}/path`, {
+  const responsePromise = fetch(`http://localhost:${port}/path`, {
     method: "POST",
     body: "body",
   });
@@ -88,12 +90,14 @@ Deno.test("[node/http2 server]", async () => {
   const stream = await new Promise<http2.ServerHttp2Stream>((resolve) =>
     session.on("stream", resolve)
   );
-  const headers = await new Promise((resolve) => stream.on("headers", resolve));
-  const data = await new Promise((resolve) => stream.on("data", resolve));
-  const end = await new Promise((resolve) => stream.on("end", resolve));
+  const _headers = await new Promise((resolve) =>
+    stream.on("headers", resolve)
+  );
+  const _data = await new Promise((resolve) => stream.on("data", resolve));
+  const _end = await new Promise((resolve) => stream.on("end", resolve));
   stream.respond();
   stream.end();
-  let resp = await responsePromise;
+  const resp = await responsePromise;
   await resp.text();
 
   await new Promise((resolve) => server.close(resolve));

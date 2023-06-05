@@ -185,7 +185,7 @@ export class ClientHttp2Session extends Http2Session {
     const readerPromise = deferred();
     const headersPromise = deferred();
     (async () => {
-      let fetch = await fetchPromise;
+      const fetch = await fetchPromise;
       readerPromise.resolve(fetch.body);
 
       const headers: Http2Headers = {};
@@ -227,11 +227,11 @@ export class Http2Stream extends EventEmitter {
     this.#closed = false;
     nextTick(() => {
       (async () => {
-        let headers = await this.#headers;
+        const headers = await this.#headers;
         this.emit("headers", headers);
       })();
       (async () => {
-        let reader = await this.#readerPromise;
+        const reader = await this.#readerPromise;
         if (reader) {
           for await (const data of reader) {
             this.emit("data", new Buffer(data));
@@ -245,14 +245,14 @@ export class Http2Stream extends EventEmitter {
   // TODO(mmastrac): Implement duplex
   end() {
     (async () => {
-      let controller = await this.#controllerPromise;
+      const controller = await this.#controllerPromise;
       controller.close();
     })();
   }
 
   write(buffer, callback?: () => void) {
     (async () => {
-      let controller = await this.#controllerPromise;
+      const controller = await this.#controllerPromise;
       if (typeof buffer === "string") {
         controller.enqueue(ENCODER.encode(buffer));
       } else {
@@ -343,7 +343,7 @@ export class Http2Stream extends EventEmitter {
     return {};
   }
 
-  sendTrailers(headers: Record<string, unknown>) {
+  sendTrailers(_headers: Record<string, unknown>) {
     addTrailers(this._response, [["grpc-status", "0"], ["grpc-message", "OK"]]);
   }
 }
