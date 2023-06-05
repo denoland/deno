@@ -59,6 +59,7 @@ const {
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeRegExp,
   SafeSet,
   SetPrototypeEntries,
@@ -406,7 +407,7 @@ converters.DOMString = function (V, prefix, context, opts = {}) {
 const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
 converters.ByteString = (V, prefix, context, opts) => {
   const x = converters.DOMString(V, prefix, context, opts);
-  if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+  if (RegExpPrototypeExec(IS_BYTE_STRING, x) === null) {
     throw makeException(
       TypeError,
       "is not a valid ByteString",
