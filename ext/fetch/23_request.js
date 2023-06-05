@@ -11,10 +11,7 @@
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
-import {
-  byteUpperCase,
-  HTTP_TOKEN_CODE_POINT_RE,
-} from "ext:deno_web/00_infra.js";
+import { byteUpperCase, isValidHTTPToken } from "ext:deno_web/00_infra.js";
 import { URL } from "ext:deno_url/00_url.js";
 import { extractBody, mixinBody } from "ext:deno_fetch/22_body.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
@@ -36,7 +33,6 @@ const {
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeExec,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
@@ -227,7 +223,7 @@ function validateAndNormalizeMethod(m) {
   }
 
   // Regular path
-  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
+  if (!isValidHTTPToken(m)) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);

@@ -19,8 +19,6 @@ declare module "ext:deno_web/00_infra.js" {
   const ASCII_ALPHANUMERIC: string[];
   const HTTP_TAB_OR_SPACE: string[];
   const HTTP_WHITESPACE: string[];
-  const HTTP_TOKEN_CODE_POINT: string[];
-  const HTTP_TOKEN_CODE_POINT_RE: RegExp;
   const HTTP_QUOTED_STRING_TOKEN_POINT: string[];
   const HTTP_QUOTED_STRING_TOKEN_POINT_RE: RegExp;
   const HTTP_TAB_OR_SPACE_PREFIX_RE: RegExp;
@@ -28,6 +26,7 @@ declare module "ext:deno_web/00_infra.js" {
   const HTTP_WHITESPACE_PREFIX_RE: RegExp;
   const HTTP_WHITESPACE_SUFFIX_RE: RegExp;
   function httpTrim(s: string): string;
+  function isValidHTTPToken(s: string): boolean;
   function regexMatcher(chars: string[]): string;
   function byteUpperCase(s: string): string;
   function byteLowerCase(s: string): string;

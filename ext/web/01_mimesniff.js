@@ -13,7 +13,6 @@ const {
   MapPrototypeHas,
   MapPrototypeSet,
   RegExpPrototypeTest,
-  RegExpPrototypeExec,
   SafeMap,
   SafeMapIterator,
   StringPrototypeReplaceAll,
@@ -23,10 +22,10 @@ import {
   collectHttpQuotedString,
   collectSequenceOfCodepoints,
   HTTP_QUOTED_STRING_TOKEN_POINT_RE,
-  HTTP_TOKEN_CODE_POINT_RE,
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
+  isValidHTTPToken,
 } from "ext:deno_web/00_infra.js";
 
 /**
@@ -59,7 +58,7 @@ function parseMimeType(input) {
   position = res1.position;
 
   // 4.
-  if (type === "" || !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, type)) {
+  if (type === "" || !isValidHTTPToken(type)) {
     return null;
   }
 
@@ -83,7 +82,7 @@ function parseMimeType(input) {
 
   // 9.
   if (
-    subtype === "" || !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, subtype)
+    subtype === "" || !isValidHTTPToken(subtype)
   ) {
     return null;
   }
@@ -166,7 +165,7 @@ function parseMimeType(input) {
     // 11.10.
     if (
       parameterName !== "" &&
-      RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, parameterName) &&
+      isValidHTTPToken(parameterName) &&
       RegExpPrototypeTest(
         HTTP_QUOTED_STRING_TOKEN_POINT_RE,
         parameterValue,
@@ -198,7 +197,7 @@ function serializeMimeType(mimeType) {
   for (const param of new SafeMapIterator(mimeType.parameters)) {
     serialization += `;${param[0]}=`;
     let value = param[1];
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, value) === null) {
+    if (!isValidHTTPToken(value)) {
       value = StringPrototypeReplaceAll(value, "\\", "\\\\");
       value = StringPrototypeReplaceAll(value, '"', '\\"');
       value = `"${value}"`;

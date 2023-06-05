@@ -54,28 +54,6 @@ const HTTP_WHITESPACE = [
   "\u000D",
   ...new SafeArrayIterator(HTTP_TAB_OR_SPACE),
 ];
-
-const HTTP_TOKEN_CODE_POINT = [
-  "\u0021",
-  "\u0023",
-  "\u0024",
-  "\u0025",
-  "\u0026",
-  "\u0027",
-  "\u002A",
-  "\u002B",
-  "\u002D",
-  "\u002E",
-  "\u005E",
-  "\u005F",
-  "\u0060",
-  "\u007C",
-  "\u007E",
-  ...new SafeArrayIterator(ASCII_ALPHANUMERIC),
-];
-const HTTP_TOKEN_CODE_POINT_RE = new SafeRegExp(
-  `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
-);
 const HTTP_QUOTED_STRING_TOKEN_POINT = [
   "\u0009",
   "\u0020-\u007E",
@@ -137,6 +115,57 @@ function regexMatcher(chars) {
     }
   });
   return ArrayPrototypeJoin(matchers, "");
+}
+
+/**
+ * See https://github.com/chromium/chromium/blob/df86ed1fbd70409440af0d2f284f402082430987/net/http/http_util.cc#L450
+ * @param {number} code Char code
+ * @returns {boolean}
+ */
+function isTokenChar(code) {
+  return !(
+    code >= 0x7F ||
+    code <= 0x20 ||
+    code === /* ( */ 40 ||
+    code === /* ) */ 41 ||
+    code === /* < */ 60 ||
+    code === /* > */ 62 ||
+    code === /* @ */ 64 ||
+    code === /* , */ 44 ||
+    code === /* ; */ 59 ||
+    code === /* : */ 58 ||
+    code === /* \ */ 92 ||
+    code === /* " */ 34 ||
+    code === /* / */ 47 ||
+    code === /* [ */ 91 ||
+    code === /* ] */ 93 ||
+    code === /* ? */ 63 ||
+    code === /* = */ 61 ||
+    code === /* { */ 123 ||
+    code === /* } */ 125
+  );
+}
+
+/**
+ * Check if a string consists of valid HTTP Tokens.
+ * See RFC 7230, Section 3.2.6 and
+ * https://github.com/chromium/chromium/blob/fd8a8914ca0183f0add65ae55f04e287543c7d4a/third_party/blink/renderer/platform/network/http_parsers.cc#L346-L355
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isValidHTTPToken(str) {
+  if (!str) {
+    return false;
+  }
+
+  for (let i = 0; i < str.length; i++) {
+    const char = StringPrototypeCharCodeAt(str, i);
+    if (char > 0x7F || !isTokenChar(char)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
@@ -479,12 +508,11 @@ export {
   HTTP_TAB_OR_SPACE,
   HTTP_TAB_OR_SPACE_PREFIX_RE,
   HTTP_TAB_OR_SPACE_SUFFIX_RE,
-  HTTP_TOKEN_CODE_POINT,
-  HTTP_TOKEN_CODE_POINT_RE,
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
   httpTrim,
+  isValidHTTPToken,
   pathFromURL,
   regexMatcher,
   serializeJSValueToJSONString,
