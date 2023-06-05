@@ -36,18 +36,6 @@ const {
 } = primordials;
 import { URLPrototype } from "ext:deno_url/00_url.js";
 
-const ASCII_DIGIT = ["\u0030-\u0039"];
-const ASCII_UPPER_ALPHA = ["\u0041-\u005A"];
-const ASCII_LOWER_ALPHA = ["\u0061-\u007A"];
-const ASCII_ALPHA = [
-  ...new SafeArrayIterator(ASCII_UPPER_ALPHA),
-  ...new SafeArrayIterator(ASCII_LOWER_ALPHA),
-];
-const ASCII_ALPHANUMERIC = [
-  ...new SafeArrayIterator(ASCII_DIGIT),
-  ...new SafeArrayIterator(ASCII_ALPHA),
-];
-
 const HTTP_TAB_OR_SPACE = ["\u0009", "\u0020"];
 const HTTP_WHITESPACE = [
   "\u000A",
@@ -488,11 +476,6 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 export {
-  ASCII_ALPHA,
-  ASCII_ALPHANUMERIC,
-  ASCII_DIGIT,
-  ASCII_LOWER_ALPHA,
-  ASCII_UPPER_ALPHA,
   assert,
   AssertionError,
   byteLowerCase,

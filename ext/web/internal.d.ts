@@ -12,11 +12,6 @@ declare module "ext:deno_web/00_infra.js" {
     result: string;
     position: number;
   };
-  const ASCII_DIGIT: string[];
-  const ASCII_UPPER_ALPHA: string[];
-  const ASCII_LOWER_ALPHA: string[];
-  const ASCII_ALPHA: string[];
-  const ASCII_ALPHANUMERIC: string[];
   const HTTP_TAB_OR_SPACE: string[];
   const HTTP_WHITESPACE: string[];
   const HTTP_QUOTED_STRING_TOKEN_POINT: string[];
