@@ -2278,3 +2278,27 @@ Deno.test(function inspectAnonymousFunctions() {
     "[AsyncGeneratorFunction (anonymous)]",
   );
 });
+
+Deno.test(function inspectBreakLengthOption() {
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 34 }),
+    `"123456789\\n123456789\\n123456789\\n"`,
+  );
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 33 }),
+    `"123456789\\n" +
+  "123456789\\n" +
+  "123456789\\n"`,
+  );
+});
+
+Deno.test(function inspectEscapeSequencesFalse() {
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: true }),
+    '"foo\\nbar"',
+  ); // default behavior
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: false }),
+    '"foo\nbar"',
+  );
+});

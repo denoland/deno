@@ -37,6 +37,8 @@ import {
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
+  ArrayPrototypeFlat,
+  ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeSet,
@@ -334,7 +336,12 @@ class InnerRequest {
     if (this.#slabId === undefined) {
       throw new TypeError("request closed");
     }
-    return op_http_get_request_headers(this.#slabId);
+    const headers = [];
+    const reqHeaders = op_http_get_request_headers(this.#slabId);
+    for (let i = 0; i < reqHeaders.length; i += 2) {
+      ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+    }
+    return headers;
   }
 
   get slabId() {
@@ -570,7 +577,7 @@ function mapToCallback(context, callback, onError) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
       } else {
-        op_http_set_response_headers(req, headers);
+        op_http_set_response_headers(req, ArrayPrototypeFlat(headers));
       }
     }
 
