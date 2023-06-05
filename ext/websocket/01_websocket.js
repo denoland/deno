@@ -23,12 +23,10 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
   ArrayBufferIsView,
-  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeJoin,
   ArrayPrototypeMap,
   ArrayPrototypeSome,
   DataView,
-  DataViewPrototypeGetByteLength,
   ErrorPrototypeToString,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
@@ -46,7 +44,6 @@ const {
   PromisePrototypeCatch,
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
-  TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
 const op_ws_check_permission_and_cancel_handle =
   core.ops.op_ws_check_permission_and_cancel_handle;
@@ -57,6 +54,7 @@ const {
   op_ws_send_text,
   op_ws_next_event,
   op_ws_send_ping,
+  op_ws_get_buffered_amount,
 } = core.generateAsyncOpHandler(
   "op_ws_create",
   "op_ws_close",
@@ -64,6 +62,7 @@ const {
   "op_ws_send_text",
   "op_ws_next_event",
   "op_ws_send_ping",
+  "op_ws_get_buffered_amount",
 );
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
@@ -118,7 +117,6 @@ const _role = Symbol("[[role]]");
 const _extensions = Symbol("[[extensions]]");
 const _protocol = Symbol("[[protocol]]");
 const _binaryType = Symbol("[[binaryType]]");
-const _bufferedAmount = Symbol("[[bufferedAmount]]");
 const _eventLoop = Symbol("[[eventLoop]]");
 
 const _server = Symbol("[[server]]");
@@ -186,10 +184,13 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [_bufferedAmount] = 0;
   get bufferedAmount() {
     webidl.assertBranded(this, WebSocketPrototype);
-    return this[_bufferedAmount];
+    if (this[_readyState] === OPEN) {
+      return op_ws_get_buffered_amount(this[_rid]);
+    } else {
+      return 0;
+    }
   }
 
   constructor(url, protocols = []) {
@@ -325,55 +326,25 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    /**
-     * @param {ArrayBufferView} view
-     * @param {number} byteLength
-     */
-    const sendTypedArray = (view, byteLength) => {
-      this[_bufferedAmount] += byteLength;
-      PromisePrototypeThen(
-        op_ws_send_binary(
-          this[_rid],
-          view,
-        ),
-        () => {
-          this[_bufferedAmount] -= byteLength;
-        },
-      );
-    };
-
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
         (ab) =>
-          sendTypedArray(
+          op_ws_send_binary(
+            this[_rid],
             new DataView(ab),
-            ArrayBufferPrototypeGetByteLength(ab),
           ),
       );
     } else if (ArrayBufferIsView(data)) {
-      if (TypedArrayPrototypeGetSymbolToStringTag(data) === undefined) {
-        // DataView
-        sendTypedArray(data, DataViewPrototypeGetByteLength(data));
-      } else {
-        // TypedArray
-        sendTypedArray(data, TypedArrayPrototypeGetByteLength(data));
-      }
+      op_ws_send_binary(this[_rid], data);
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      sendTypedArray(data, ArrayBufferPrototypeGetByteLength(data));
+      op_ws_send_binary(this[_rid], data);
     } else {
       const string = String(data);
-      const d = core.encode(string);
-      this[_bufferedAmount] += TypedArrayPrototypeGetByteLength(d);
-      PromisePrototypeThen(
-        op_ws_send_text(
-          this[_rid],
-          string,
-        ),
-        () => {
-          this[_bufferedAmount] -= TypedArrayPrototypeGetByteLength(d);
-        },
+      op_ws_send_text(
+        this[_rid],
+        string,
       );
     }
   }
