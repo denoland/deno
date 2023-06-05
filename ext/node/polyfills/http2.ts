@@ -9,7 +9,7 @@ import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "ext:deno_node/fs/promises.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
-import { serveHttpOnConnection } from "ext:deno_http/00_serve.js";
+import { serveHttpOnConnection, addTrailers } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
@@ -211,6 +211,7 @@ export class Http2Stream extends EventEmitter {
   #controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>;
   #readerPromise: Deferred<ReadableStream<Uint8Array>>;
   #closed: boolean;
+  _response: Response;
 
   constructor(
     session: Http2Session,
@@ -347,8 +348,8 @@ export class Http2Stream extends EventEmitter {
     return {};
   }
 
-  sendTrailers(_headers: Record<string, unknown>) {
-    notImplemented("Http2Stream.sendTrailers");
+  sendTrailers(headers: Record<string, unknown>) {
+    addTrailers(this._response, [ ["grpc-status", "0"], ["grpc-message", "OK"] ]);
   }
 }
 
@@ -367,6 +368,7 @@ export class ServerHttp2Stream extends Http2Stream {
   _promise: Deferred<Response>;
   #body: ReadableStream<Uint8Array>;
   #waitForTrailers: boolean;
+  #headersSent: boolean;
 
   constructor(
     session: Http2Session,
@@ -393,7 +395,7 @@ export class ServerHttp2Stream extends Http2Stream {
   }
 
   get headersSent(): boolean {
-    return false;
+    return this.#headersSent;
   }
 
   get pushAllowed(): boolean {
@@ -413,6 +415,7 @@ export class ServerHttp2Stream extends Http2Stream {
     headers: Http2Headers,
     options: Record<string, unknown>,
   ) {
+    this.#headersSent = true;
     const response: ResponseInit = {};
     if (headers) {
       for (const [name, value] of Object.entries(headers)) {
@@ -422,10 +425,10 @@ export class ServerHttp2Stream extends Http2Stream {
       }
     }
     if (options?.endStream) {
-      this._promise.resolve(new Response("", response));
+      this._promise.resolve(this._response = new Response("", response));
     } else {
       this.#waitForTrailers = options?.waitForTrailers;
-      this._promise.resolve(new Response(this.#body, response));
+      this._promise.resolve(this._response = new Response(this.#body, response));
     }
   }
 
