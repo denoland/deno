@@ -195,11 +195,14 @@ Deno.test("[node/http] request default protocol", async () => {
   // @ts-ignore IncomingMessageForClient
   // deno-lint-ignore no-explicit-any
   let clientRes: any;
+  // deno-lint-ignore no-explicit-any
+  let clientReq: any;
   server.listen(() => {
-    const req = http.request(
+    clientReq = http.request(
       // deno-lint-ignore no-explicit-any
       { host: "localhost", port: (server.address() as any).port },
       (res) => {
+        assert(res.socket instanceof EventEmitter);
         assertEquals(res.complete, false);
         res.on("data", () => {});
         res.on("end", () => {
@@ -210,13 +213,14 @@ Deno.test("[node/http] request default protocol", async () => {
         promise2.resolve();
       },
     );
-    req.end();
+    clientReq.end();
   });
   server.on("close", () => {
     promise.resolve();
   });
   await promise;
   await promise2;
+  assert(clientReq.socket instanceof EventEmitter);
   assertEquals(clientRes!.complete, true);
 });
 
@@ -595,4 +599,25 @@ Deno.test("[node/http] ClientRequest PUT", async () => {
   req.end();
   await def;
   assertEquals(body, "hello world");
+});
+
+Deno.test("[node/http] ClientRequest search params", async () => {
+  let body = "";
+  const def = deferred();
+  const req = http.request({
+    host: "localhost:4545",
+    path: "search_params?foo=bar",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "foo=bar");
 });
