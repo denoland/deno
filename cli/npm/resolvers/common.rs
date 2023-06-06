@@ -1,9 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
-use std::io::ErrorKind;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -56,6 +56,71 @@ pub trait NpmPackageFsResolver: Send + Sync {
   ) -> Result<(), AnyError>;
 }
 
+#[derive(Debug)]
+pub struct RegistryReadPermissionChecker {
+  fs: Arc<dyn FileSystem>,
+  cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  registry_path: PathBuf,
+}
+
+impl RegistryReadPermissionChecker {
+  pub fn new(fs: Arc<dyn FileSystem>, registry_path: PathBuf) -> Self {
+    Self {
+      fs,
+      registry_path,
+      cache: Default::default(),
+    }
+  }
+
+  pub fn ensure_registry_read_permission(
+    &self,
+    permissions: &dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    // allow reading if it's in the node_modules
+    let is_path_in_node_modules = path.starts_with(&self.registry_path)
+      && path
+        .components()
+        .all(|c| !matches!(c, std::path::Component::ParentDir));
+
+    if is_path_in_node_modules {
+      let mut cache = self.cache.lock().unwrap();
+      let registry_path_canon = match cache.get(&self.registry_path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(&self.registry_path)?;
+          cache.insert(self.registry_path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      let path_canon = match cache.get(path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(path);
+
+          if canon
+            .as_ref()
+            .is_err_and(|e| e.kind() == ErrorKind::NotFound)
+          {
+            return Ok(());
+          }
+
+          let canon = canon?;
+          cache.insert(path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      if path_canon.starts_with(&registry_path_canon) {
+        return Ok(());
+      }
+    }
+
+    permissions.check_read(path)
+  }
+}
+
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
@@ -90,58 +155,6 @@ pub async fn cache_packages(
     result??;
   }
   Ok(())
-}
-
-pub fn ensure_registry_read_permission(
-  fs: &Arc<dyn FileSystem>,
-  permissions: &dyn NodePermissions,
-  registry_path: &Path,
-  path: &Path,
-  registry_cache: &Mutex<HashMap<PathBuf, PathBuf>>,
-  path_cache: &Mutex<HashMap<PathBuf, PathBuf>>,
-) -> Result<(), AnyError> {
-  // allow reading if it's in the node_modules
-  if path.starts_with(registry_path)
-    && path
-      .components()
-      .all(|c| !matches!(c, std::path::Component::ParentDir))
-  {
-    let registry_path_canon =
-      match registry_cache.lock().unwrap().get(registry_path) {
-        Some(canon) => canon.clone(),
-        None => {
-          let canon = fs.realpath_sync(registry_path)?;
-          registry_cache
-            .lock()
-            .unwrap()
-            .insert(registry_path.to_path_buf(), canon.clone());
-          canon
-        }
-      };
-
-    let path_canon = match path_cache.lock().unwrap().get(path) {
-      Some(canon) => canon.clone(),
-      None => {
-        let canon = fs.realpath_sync(path);
-
-        if canon.as_ref().is_err_and(|e| e.kind() == ErrorKind::NotFound) {
-          return Ok(());
-        }
-        let canon = canon?;
-        path_cache
-          .lock()
-          .unwrap()
-          .insert(path.to_path_buf(), canon.clone());
-        canon
-      }
-    };
-
-    if path_canon.starts_with(&registry_path_canon) {
-      return Ok(());
-    }
-  }
-
-  permissions.check_read(path)
 }
 
 /// Gets the corresponding @types package for the provided package name.

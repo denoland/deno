@@ -2,11 +2,9 @@
 
 //! Code for global npm cache resolution.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -25,20 +23,18 @@ use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
 use crate::npm::NpmCache;
 
-use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
+use super::common::RegistryReadPermissionChecker;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  fs: Arc<dyn FileSystem>,
   cache: Arc<NpmCache>,
   resolution: Arc<NpmResolution>,
   registry_url: Url,
   system_info: NpmSystemInfo,
-  registry_cache: Mutex<HashMap<PathBuf, PathBuf>>,
-  path_cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  registry_read_permission_checker: RegistryReadPermissionChecker,
 }
 
 impl GlobalNpmPackageResolver {
@@ -50,13 +46,14 @@ impl GlobalNpmPackageResolver {
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      fs,
-      cache,
+      cache: cache.clone(),
       resolution,
-      registry_url,
+      registry_url: registry_url.clone(),
       system_info,
-      registry_cache: Mutex::default(),
-      path_cache: Mutex::default(),
+      registry_read_permission_checker: RegistryReadPermissionChecker::new(
+        fs,
+        cache.registry_folder(&registry_url),
+      ),
     }
   }
 
@@ -162,15 +159,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    let registry_path = self.cache.registry_folder(&self.registry_url);
-
-    ensure_registry_read_permission(
-      &self.fs,
-      permissions,
-      &registry_path,
-      path,
-      &self.registry_cache,
-      &self.path_cache,
-    )
+    self
+      .registry_read_permission_checker
+      .ensure_registry_read_permission(permissions, path)
   }
 }
