@@ -38,7 +38,6 @@ import * as net from "ext:deno_net/01_net.js";
 import { isLinux, isWindows } from "ext:deno_node/_util/os.ts";
 
 const DenoListenDatagram = net.createListenDatagram(
-  ops.op_node_unstable_net_listen_udp,
   ops.op_node_unstable_net_listen_unixpacket,
 );
 

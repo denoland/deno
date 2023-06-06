@@ -438,11 +438,11 @@ function listen(args) {
   }
 }
 
-function createListenDatagram(udpOpFn, unixOpFn) {
+function createListenDatagram(unixOpFn) {
   return function listenDatagram(args) {
     switch (args.transport) {
       case "udp": {
-        const { 0: rid, 1: addr } = udpOpFn(
+        const { 0: rid, 1: addr } = core.ops.op_net_listen_udp(
           {
             hostname: args.hostname ?? "127.0.0.1",
             port: args.port,

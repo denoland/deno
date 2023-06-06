@@ -309,6 +309,106 @@ declare namespace Deno {
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
 
+  /** Unstable options which can be set when opening a datagram listener via
+   * {@linkcode Deno.listenDatagram}.
+   *
+   * @category Network
+   */
+  export interface UdpListenOptions extends ListenOptions {
+    /** When `true` the specified address will be reused, even if another
+     * process has already bound a socket on it. This effectively steals the
+     * socket from the listener.
+     *
+     * @default {false} */
+    reuseAddress?: boolean;
+
+    /** When `true`, sent multicast packets will be looped back to the local socket.
+     *
+     * @default {false} */
+    loopback?: boolean;
+  }
+
+  /** Listen announces on the local transport address.
+   *
+   * ```ts
+   * const listener1 = Deno.listenDatagram({
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * const listener2 = Deno.listenDatagram({
+   *   hostname: "golang.org",
+   *   port: 80,
+   *   transport: "udp"
+   * });
+   * ```
+   *
+   * Requires `allow-net` permission.
+   *
+   * @tags allow-net
+   * @category Network
+   */
+  export function listenDatagram(
+    options: UdpListenOptions & { transport: "udp" },
+  ): DatagramConn;
+
+  /** Represents membership of a IPv4 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV4Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+    /** Sets the time-to-live of outgoing multicast packets for this socket. */
+    setTTL: (ttl: number) => Promise<void>;
+  }
+
+  /** Represents membership of a IPv6 multicast group.
+   *
+   * @category Network
+   */
+  interface MulticastV6Membership {
+    /** Leaves the multicast group. */
+    leave: () => Promise<void>;
+    /** Sets the multicast loopback option. If enabled, multicast packets will be looped back to the local socket. */
+    setLoopback: (loopback: boolean) => Promise<void>;
+  }
+
+  /** A generic transport listener for message-oriented protocols.
+   *
+   * @category Network
+   */
+  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+    /** Joins an IPv4 multicast group. */
+    joinMulticastV4(
+      address: string,
+      networkInterface: string,
+    ): Promise<MulticastV4Membership>;
+
+    /** Joins an IPv6 multicast group. */
+    joinMulticastV6(
+      address: string,
+      networkInterface: number,
+    ): Promise<MulticastV6Membership>;
+
+    /** Waits for and resolves to the next message to the instance.
+     *
+     * Messages are received in the format of a tuple containing the data array
+     * and the address information.
+     */
+    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    /** Sends a message to the target via the connection. The method resolves
+     * with the number of bytes sent. */
+    send(p: Uint8Array, addr: Addr): Promise<number>;
+    /** Close closes the socket. Any pending message promises will be rejected
+     * with errors. */
+    close(): void;
+    /** Return the address of the instance. */
+    readonly addr: Addr;
+    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+  }
+
   /** Shutdown socket send operations.
    *
    * Matches behavior of POSIX shutdown(3).

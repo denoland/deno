@@ -410,7 +410,8 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-fn net_listen_udp<NP>(
+#[op]
+fn op_net_listen_udp<NP>(
   state: &mut OpState,
   addr: IpAddr,
   reuse_address: bool,
@@ -471,33 +472,6 @@ where
   let rid = state.resource_table.add(socket_resource);
 
   Ok((rid, IpAddr::from(local_addr)))
-}
-
-#[op]
-fn op_net_listen_udp<NP>(
-  state: &mut OpState,
-  addr: IpAddr,
-  reuse_address: bool,
-  loopback: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
-  super::check_unstable(state, "Deno.listenDatagram");
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
-}
-
-#[op]
-fn op_node_unstable_net_listen_udp<NP>(
-  state: &mut OpState,
-  addr: IpAddr,
-  reuse_address: bool,
-  loopback: bool,
-) -> Result<(ResourceId, IpAddr), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
-  net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]

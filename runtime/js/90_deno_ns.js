@@ -109,6 +109,7 @@ const denoNs = {
   seekSync: fs.seekSync,
   connect: net.connect,
   listen: net.listen,
+  listenDatagram: net.createListenDatagram(ops.op_net_listen_unixpacket),
   loadavg: os.loadavg,
   connectTls: tls.connectTls,
   listenTls: tls.listenTls,
@@ -152,10 +153,6 @@ const denoNs = {
 };
 
 const denoNsUnstable = {
-  listenDatagram: net.createListenDatagram(
-    ops.op_net_listen_udp,
-    ops.op_net_listen_unixpacket,
-  ),
   umask: fs.umask,
   HttpClient: httpClient.HttpClient,
   createHttpClient: httpClient.createHttpClient,
