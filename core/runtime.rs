@@ -309,7 +309,6 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -547,7 +546,6 @@ impl JsRuntime {
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
       waker: AtomicWaker::new(),
-      have_unpolled_ops: false,
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
@@ -1419,8 +1417,7 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops
-      || pending_state.has_pending_background_tasks
+    if pending_state.has_pending_background_tasks
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
@@ -2404,12 +2401,6 @@ impl JsRuntime {
 
   // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
   fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
-    // Now handle actual ops.
-    {
-      let mut state = self.inner.state.borrow_mut();
-      state.have_unpolled_ops = false;
-    }
-
     // Handle responses for each realm.
     let state = self.inner.state.clone();
     let isolate = &mut self.inner.v8_isolate;
@@ -2491,11 +2482,6 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   promise_id: PromiseId,
   op: impl Future<Output = Result<R, Error>> + 'static,
 ) {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // at least 1 Rc is held by the JsRuntime.
-    None => unreachable!(),
-  };
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
@@ -2504,12 +2490,10 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let fut = op
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
-  let mut state = runtime_state.borrow_mut();
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
     crate::task::MaskFutureAsSend::new(OpCall::pending(ctx, promise_id, fut))
   });
-  state.have_unpolled_ops = true;
 }
 
 #[inline]
@@ -2588,12 +2572,6 @@ pub fn queue_async_op<'s>(
   promise_id: PromiseId,
   mut op: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // at least 1 Rc is held by the JsRuntime.
-    None => unreachable!(),
-  };
-
   // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
@@ -2631,14 +2609,12 @@ pub fn queue_async_op<'s>(
 
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
-  let mut state = runtime_state.borrow_mut();
   ctx
     .context_state
     .borrow_mut()
     .pending_ops
     // SAFETY: this this is guaranteed to be running on a current-thread executor
     .spawn(unsafe { crate::task::MaskFutureAsSend::new(op_call) });
-  state.have_unpolled_ops = true;
   None
 }
 
