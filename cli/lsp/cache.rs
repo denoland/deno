@@ -68,7 +68,10 @@ impl CacheMetadata {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if matches!(specifier.scheme(), "file" | "npm" | "node") {
+    if matches!(
+      specifier.scheme(),
+      "file" | "npm" | "node" | "data" | "blob"
+    ) {
       return None;
     }
     let version = self
@@ -84,7 +87,10 @@ impl CacheMetadata {
   }
 
   fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if matches!(specifier.scheme(), "file" | "npm" | "node") {
+    if matches!(
+      specifier.scheme(),
+      "file" | "npm" | "node" | "data" | "blob"
+    ) {
       return None;
     }
     let cache_filename = self.cache.get_cache_filename(specifier)?;

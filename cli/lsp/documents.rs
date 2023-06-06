@@ -803,7 +803,7 @@ fn get_document_path(
   specifier: &ModuleSpecifier,
 ) -> Option<PathBuf> {
   match specifier.scheme() {
-    "npm" | "node" | "data" => None,
+    "npm" | "node" | "data" | "blob" => None,
     "file" => specifier_to_file_path(specifier).ok(),
     _ => cache.get_cache_filename(specifier),
   }
