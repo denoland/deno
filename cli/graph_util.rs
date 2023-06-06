@@ -23,6 +23,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
 use deno_core::TaskQueuePermit;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
@@ -200,6 +201,7 @@ impl ModuleGraphBuilder {
 
   pub async fn create_graph_with_loader(
     &self,
+    graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
@@ -210,7 +212,7 @@ impl ModuleGraphBuilder {
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
 
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
@@ -249,7 +251,13 @@ impl ModuleGraphBuilder {
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
-    let mut graph = ModuleGraph::default();
+    let should_type_check =
+      self.options.type_check_mode() != TypeCheckMode::None;
+    let graph_kind = match should_type_check {
+      true => GraphKind::All,
+      false => GraphKind::CodeOnly,
+    };
+    let mut graph = ModuleGraph::new(graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
@@ -272,7 +280,7 @@ impl ModuleGraphBuilder {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    if should_type_check {
       self
         .type_checker
         .check(
@@ -338,10 +346,13 @@ impl ModuleGraphBuilder {
 
   pub async fn create_graph(
     &self,
+    graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.create_graph_loader();
-    self.create_graph_with_loader(roots, &mut cache).await
+    self
+      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .await
   }
 }
 
@@ -404,15 +415,15 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
   checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Default)]
 pub struct ModuleGraphContainer {
+  graph_kind: GraphKind,
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
@@ -421,8 +432,19 @@ pub struct ModuleGraphContainer {
 }
 
 impl ModuleGraphContainer {
+  pub fn new(graph_kind: GraphKind) -> Self {
+    Self {
+      graph_kind,
+      update_queue: Default::default(),
+      graph_data: Arc::new(RwLock::new(GraphData {
+        graph: Arc::new(ModuleGraph::new(graph_kind)),
+        checked_libs: Default::default(),
+      })),
+    }
+  }
+
   pub fn clear(&self) {
-    self.graph_data.write().graph = Default::default();
+    self.graph_data.write().graph = Arc::new(ModuleGraph::new(self.graph_kind));
   }
 
   /// Acquires a permit to modify the module graph without other code
