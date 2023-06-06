@@ -1085,6 +1085,12 @@ async fn main_server(
       ));
       Ok(res)
     }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res =
+        Response::new(Body::from(query.unwrap_or_default()));
+      Ok(res)
+    }
     _ => {
       let mut file_path = testdata_path();
       file_path.push(&req.uri().path()[1..]);

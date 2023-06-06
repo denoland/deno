@@ -268,7 +268,6 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
-
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -308,6 +307,7 @@ class ClientRequest extends OutgoingMessage {
     } else {
       options = Object.assign(input || {}, options);
     }
+
 
     let agent = options!.agent;
     const defaultAgent = options!._defaultAgent || globalAgent;
@@ -713,17 +713,17 @@ class ClientRequest extends OutgoingMessage {
     const auth = this.auth;
     const host = this.host ?? this.hostname ?? "localhost";
     const hash = this.hash ? `#${this.hash}` : "";
-    const search = this.search ? this.search : "";
     const defaultPort = this.agent?.defaultPort;
     const port = this.port ?? defaultPort ?? 80;
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    const url = new URL(`${protocol}//${auth ? `${auth}@` : ""}${host}${
-      port === 80 ? "" : `:${port}`
-    }${path}`);
-    url.search = search;
+    const url = new URL(
+      `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    );
     url.hash = hash;
     return url.href;
   }

@@ -600,3 +600,24 @@ Deno.test("[node/http] ClientRequest PUT", async () => {
   await def;
   assertEquals(body, "hello world");
 });
+
+Deno.test("[node/http] ClientRequest search params", async () => {
+  let body = "";
+  const def = deferred();
+  const req = http.request({
+    host: "localhost:4545",
+    path: "search_params?foo=bar",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "foo=bar");
+});
