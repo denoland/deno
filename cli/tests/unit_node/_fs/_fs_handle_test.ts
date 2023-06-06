@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as path from "../../../../test_util/std/path/mod.ts";
+import * as fs from "node:fs/promises";
 import {
   assert,
   assertEquals,
@@ -8,7 +9,6 @@ import { Buffer } from "node:buffer";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
-const fs = await import("node:fs/promises");
 
 Deno.test("readFileSuccess", async function () {
   const fileHandle = await fs.open(testData);
