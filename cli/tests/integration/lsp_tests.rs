@@ -7480,25 +7480,9 @@ fn lsp_data_urls_with_jsx_compiler_option() {
     }
   })).all();
 
-  // there will be a diagnostic about not having cached the data url
-  assert_eq!(diagnostics.len(), 1);
-  assert_eq!(
-    diagnostics[0].code,
-    Some(lsp::NumberOrString::String("no-cache-data".to_string()))
-  );
+  assert_eq!(diagnostics.len(), 0);
 
-  // so cache it
-  client.write_request(
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": uri,
-      },
-      "uris": [],
-    }),
-  );
-
-  let res = client.write_request(
+  let res: Value = client.write_request(
     "textDocument/references",
     json!({
       "textDocument": {
