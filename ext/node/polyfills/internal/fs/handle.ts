@@ -70,7 +70,7 @@ export class FileHandle extends EventEmitter {
       const position = offsetOrPotition;
       const encoding = lengthOrEncoding;
 
-      return new Promise((resolve, reject)=> {
+      return new Promise((resolve, reject) => {
         write(
           this.fd,
           str,
