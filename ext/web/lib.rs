@@ -143,7 +143,7 @@ fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
 fn forgiving_base64_decode_inplace(
   input: &mut [u8],
 ) -> Result<usize, AnyError> {
-  let error: _ =
+  let error =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
   let decoded =
     base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;

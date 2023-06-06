@@ -344,6 +344,7 @@ class WebSocket extends EventTarget {
 
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
+        // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
         (ab) =>
           sendTypedArray(
