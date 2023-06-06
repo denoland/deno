@@ -18,3 +18,38 @@ Deno.test("readFileSuccess", async function () {
 
   await fileHandle.close();
 });
+
+Deno.test("write", async function () {
+  const tempFile: string = await Deno.makeTempFile();
+  const fileHandle = await fs.open(tempFile);
+
+  const buffer = Buffer.from("hello world");
+  const bytesWrite = await filehandle.write(buffer, 0, 5, 0);
+  fileHandle.close();
+
+  const data = await fileHandle.readFile();
+  await Deno.remove(tempFile);
+
+  assertEquals(bytesWrite, 5);
+  assertEquals(decoder.decode(data), "hello");
+});
+
+Deno.test("write with opt", async function () {
+  const tempFile: string = await Deno.makeTempFile();
+  const fileHandle = await fs.open(tempFile);
+
+  const buffer = Buffer.from("hello world");
+  const opt = {
+    buffer,
+    offset: 0,
+    length: 5,
+  };
+
+  fileHandle.close();
+
+  const data = await fileHandle.readFile();
+  await Deno.remove(tempFile);
+
+  assertEquals(bytesWrite, 5);
+  assertEquals(decoder.decode(data), "hello");
+});

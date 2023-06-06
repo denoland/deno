@@ -8,9 +8,8 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 
-
 interface WriteResult {
-  bytesRead: number;
+  bytesWritten: number;
   buffer: Buffer;
 }
 
@@ -38,16 +37,41 @@ export class FileHandle extends EventEmitter {
     return promises.readFile(this, opt);
   }
 
-  write(buffer: Buffer, offset: number, length: number, position: number): promise<WriteResult> {
-    return new Promise((resolve, reject) => {
-      write(this.rid, buffer, offset, length, position, (err, bytesWritten, buffer) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve({ bytesRead: bytesWritten, buffer });
-        }
-      }
-    };
+  write(
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: number,
+  ): Promise<WriteResult>;
+  write(buffer: Buffer, opt: WriteOptions): Promise<WriteResult>;
+  write(
+    buffer: Buffer,
+    offsetOrOpt: number | WriteOptions,
+    length?: number,
+    position?: number,
+  ): Promise<WriteResult> {
+    if (offsetOrOpt instanceof number) {
+      return new Promise((resolve, reject) => {
+        write(
+          this.fd,
+          offsetOrOpt,
+          offset,
+          length,
+          position,
+          (err, bytesWritten, buffer) => {
+            if (err) reject(err);
+            else resolve({ buffer, bytesWritten });
+          },
+        );
+      });
+    } else {
+      return new Promise((resolve, reject) => {
+        write(this.fd, offsetOrOpt, (err, bytesWritten, buffer) => {
+          if (err) reject(err);
+          else resolve({ buffer, bytesWritten });
+        });
+      });
+    }
   }
 
   close(): Promise<void> {
