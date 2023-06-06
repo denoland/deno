@@ -10,7 +10,7 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 
-interface FileReadResult {
+interface ReadResult {
   bytesRead: number;
   buffer: Buffer;
 }
@@ -31,14 +31,14 @@ export class FileHandle extends EventEmitter {
     offset?: number,
     length?: number,
     position?: number | null,
-  ): Promise<FileReadResult>;
-  read(options?: ReadOptions): Promise<FileReadResult>;
+  ): Promise<ReadResult>;
+  read(options?: ReadOptions): Promise<ReadResult>;
   read(
     bufferOrOpt: Buffer | ReadOptions,
     offset?: number,
     length?: number,
     position?: number | null,
-  ): Promise<FileReadResult> {
+  ): Promise<ReadResult> {
     if (bufferOrOpt instanceof Buffer) {
       return new Promise((resolve, reject) => {
         read(
