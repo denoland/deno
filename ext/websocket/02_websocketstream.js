@@ -39,13 +39,7 @@ const {
   op_ws_next_event,
   op_ws_create,
   op_ws_close,
-} = core.generateAsyncOpHandler(
-  "op_ws_send_text",
-  "op_ws_send_binary",
-  "op_ws_next_event",
-  "op_ws_create",
-  "op_ws_close",
-);
+} = core.ensureFastOps();
 
 webidl.converters.WebSocketStreamOptions = webidl.createDictionaryConverter(
   "WebSocketStreamOptions",

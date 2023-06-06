@@ -27,10 +27,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep, op_void_async_deferred } = core.generateAsyncOpHandler(
-  "op_sleep",
-  "op_void_async_deferred",
-);
+const { op_sleep, op_void_async_deferred } = core.ensureFastOps();
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
