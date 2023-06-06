@@ -2205,6 +2205,7 @@ fn snapshot_arg() -> Arg {
     .value_name("FILE")
     .help("Use the provided snapshot for main and web workers")
     .value_hint(ValueHint::FilePath)
+    .hide(true)
 }
 
 fn cached_only_arg() -> Arg {
