@@ -4753,7 +4753,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     });
 
     // Detect a drop in OpState
-    eprintln!("here1");
     let opstate_drop_detect = Rc::new(());
     runtime
       .op_state()
@@ -4769,20 +4768,17 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         ModuleCode::from_static("Deno.core.opAsync('op_pending')"),
       )
       .unwrap();
-    eprintln!("here2");
     while INVOKE_COUNT.load(Ordering::SeqCst) == 0 {
       poll_fn(|cx: &mut Context| runtime.poll_event_loop(cx, false))
         .await
         .unwrap();
     }
-    eprintln!("here3");
     drop(other_realm);
     while INVOKE_COUNT.load(Ordering::SeqCst) == 1 {
       poll_fn(|cx| runtime.poll_event_loop(cx, false))
         .await
         .unwrap();
     }
-    eprintln!("here4");
     drop(runtime);
 
     // Make sure the OpState was dropped properly when the runtime dropped
