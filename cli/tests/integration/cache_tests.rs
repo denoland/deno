@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContext;
 use test_util::TestContextBuilder;
 
 itest!(_036_import_map_fetch {
@@ -180,4 +181,13 @@ fn cache_put_overwrite() {
   let output = run_command.run();
   output.assert_matches_text("res1\n");
   output.assert_exit_code(0);
+}
+
+#[test]
+fn loads_type_graph() {
+  let output = TestContext::default()
+    .new_command()
+    .args("cache --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
 }
