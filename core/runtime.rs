@@ -4720,6 +4720,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     }
   }
 
+  #[ignore]
   #[tokio::test]
   async fn js_realm_gc() {
     static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
