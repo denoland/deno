@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -95,6 +96,7 @@ pub fn ensure_registry_read_permission(
   permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
+  cache: &mut HashMap<PathBuf, Result<(), AnyError>>,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the node_modules
   if path.starts_with(registry_path)
@@ -102,13 +104,18 @@ pub fn ensure_registry_read_permission(
       .components()
       .all(|c| !matches!(c, std::path::Component::ParentDir))
   {
-    // todo(dsherret): cache this?
+    if let Some(_) = cache.get(path) {
+      return Ok(());
+    }
+
     if let Ok(registry_path) = fs.realpath_sync(registry_path) {
       match fs.realpath_sync(path) {
         Ok(path) if path.starts_with(registry_path) => {
+          cache.insert(path.to_path_buf(), Ok(()));
           return Ok(());
         }
         Err(e) if e.kind() == ErrorKind::NotFound => {
+          cache.insert(path.to_path_buf(), Ok(()));
           return Ok(());
         }
         _ => {} // ignore

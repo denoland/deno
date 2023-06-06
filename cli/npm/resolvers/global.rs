@@ -2,6 +2,7 @@
 
 //! Code for global npm cache resolution.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -157,6 +158,13 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    ensure_registry_read_permission(&self.fs, permissions, &registry_path, path)
+    let mut cache = HashMap::new();
+    ensure_registry_read_permission(
+      &self.fs,
+      permissions,
+      &registry_path,
+      path,
+      &mut cache,
+    )
   }
 }

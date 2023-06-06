@@ -227,11 +227,13 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
+    let mut cache = HashMap::new();
     ensure_registry_read_permission(
       &self.fs,
       permissions,
       &self.root_node_modules_path,
       path,
+      &mut cache,
     )
   }
 }
