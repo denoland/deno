@@ -8,6 +8,7 @@ use crate::args::Lockfile;
 use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
+use crate::args::TypeCheckMode;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
@@ -47,6 +48,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 
+use deno_graph::GraphKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -537,7 +539,19 @@ impl CliFactory {
   }
 
   pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
-    self.services.graph_container.get_or_init(Default::default)
+    self.services.graph_container.get_or_init(|| {
+      let graph_kind = match self.options.sub_command() {
+        DenoSubcommand::Cache(_) => GraphKind::All,
+        _ => {
+          if self.options.type_check_mode() == TypeCheckMode::None {
+            GraphKind::CodeOnly
+          } else {
+            GraphKind::All
+          }
+        }
+      };
+      Arc::new(ModuleGraphContainer::new(graph_kind))
+    })
   }
 
   pub fn maybe_inspector_server(&self) -> &Option<Arc<InspectorServer>> {
