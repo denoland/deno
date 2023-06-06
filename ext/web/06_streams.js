@@ -1261,6 +1261,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
       );
     } else {
       // TODO(lucacasonato): add SharedArrayBuffer to primordials
+      // deno-lint-ignore prefer-primordials
       cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
     }
   } catch (e) {

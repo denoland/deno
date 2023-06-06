@@ -23,9 +23,6 @@ deno_core::extension!(deno_cli,
   state = |state, options| {
     state.put(options.npm_resolver);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[op]

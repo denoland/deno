@@ -11,13 +11,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 
-deno_core::extension!(
-  hello_runtime,
-  ops = [op_hello],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
-);
+deno_core::extension!(hello_runtime, ops = [op_hello]);
 
 #[op]
 fn op_hello(text: &str) {

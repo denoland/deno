@@ -2193,6 +2193,31 @@ Deno.test(function inspectEmptyUint8Array() {
   );
 });
 
+Deno.test(function inspectLargeArrayBuffer() {
+  const arrayBuffer = new ArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    `ArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+  structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    "ArrayBuffer { (detached), byteLength: 0 }",
+  );
+
+  const sharedArrayBuffer = new SharedArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(sharedArrayBuffer),
+    `SharedArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+});
+
 Deno.test(function inspectStringAbbreviation() {
   const LONG_STRING =
     "This is a really long string which will be abbreviated with ellipsis.";
@@ -2276,5 +2301,29 @@ Deno.test(function inspectAnonymousFunctions() {
   assertEquals(
     Deno.inspect(async function* () {}),
     "[AsyncGeneratorFunction (anonymous)]",
+  );
+});
+
+Deno.test(function inspectBreakLengthOption() {
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 34 }),
+    `"123456789\\n123456789\\n123456789\\n"`,
+  );
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 33 }),
+    `"123456789\\n" +
+  "123456789\\n" +
+  "123456789\\n"`,
+  );
+});
+
+Deno.test(function inspectEscapeSequencesFalse() {
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: true }),
+    '"foo\\nbar"',
+  ); // default behavior
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: false }),
+    '"foo\nbar"',
   );
 });

@@ -13,6 +13,7 @@ const {
   MapPrototypeHas,
   MapPrototypeSet,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeMap,
   SafeMapIterator,
   StringPrototypeReplaceAll,
@@ -197,7 +198,7 @@ function serializeMimeType(mimeType) {
   for (const param of new SafeMapIterator(mimeType.parameters)) {
     serialization += `;${param[0]}=`;
     let value = param[1];
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, value)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, value) === null) {
       value = StringPrototypeReplaceAll(value, "\\", "\\\\");
       value = StringPrototypeReplaceAll(value, '"', '\\"');
       value = `"${value}"`;

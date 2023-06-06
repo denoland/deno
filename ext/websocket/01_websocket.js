@@ -33,7 +33,7 @@ const {
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeSet,
   SetPrototypeGetSize,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
@@ -57,14 +57,7 @@ const {
   op_ws_send_text,
   op_ws_next_event,
   op_ws_send_ping,
-} = core.generateAsyncOpHandler(
-  "op_ws_create",
-  "op_ws_close",
-  "op_ws_send_binary",
-  "op_ws_send_text",
-  "op_ws_next_event",
-  "op_ws_send_ping",
-);
+} = core.ensureFastOps();
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,
@@ -256,7 +249,8 @@ class WebSocket extends EventTarget {
     if (
       ArrayPrototypeSome(
         protocols,
-        (protocol) => !RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, protocol),
+        (protocol) =>
+          RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, protocol) === null,
       )
     ) {
       throw new DOMException(
@@ -343,6 +337,7 @@ class WebSocket extends EventTarget {
 
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
+        // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
         (ab) =>
           sendTypedArray(
