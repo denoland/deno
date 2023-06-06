@@ -2448,7 +2448,6 @@ impl JsRuntime {
           .borrow()
           .tracker
           .track_async_completed(op_id);
-        drop(join_fut);
         context_state.unrefed_ops.remove(&promise_id);
         args.push(v8::Integer::new(scope, promise_id).into());
         args.push(match resp.to_v8(scope) {
