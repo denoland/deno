@@ -14,7 +14,6 @@ interface WriteResult {
 }
 
 type WriteOptions = {
-  buffer: Buffer | Uint8Array;
   offset: number;
   length: number;
   position: number | null;
@@ -41,37 +40,34 @@ export class FileHandle extends EventEmitter {
     buffer: Buffer,
     offset: number,
     length: number,
-    position: number,
+    position: number | null,
   ): Promise<WriteResult>;
   write(buffer: Buffer, opt: WriteOptions): Promise<WriteResult>;
   write(
-    buffer: Buffer,
-    offsetOrOpt: number | WriteOptions,
+    buffer: string,
+    position: number | null,
+    encoding: string,
+  ): Promise<WriteResult>;
+  write(
+    buffer: Buffer | string,
+    offsetOrPotitionOrOpt?: number | WriteOptions | null,
     length?: number,
     position?: number,
   ): Promise<WriteResult> {
-    if (offsetOrOpt instanceof number) {
-      return new Promise((resolve, reject) => {
-        write(
-          this.fd,
-          offsetOrOpt,
-          offset,
-          length,
-          position,
-          (err, bytesWritten, buffer) => {
-            if (err) reject(err);
-            else resolve({ buffer, bytesWritten });
-          },
-        );
-      });
-    } else {
-      return new Promise((resolve, reject) => {
-        write(this.fd, offsetOrOpt, (err, bytesWritten, buffer) => {
+    console.log({ buffer, offsetOrOpt, length, position });
+    return new Promise((resolve, reject) => {
+      write(
+        this.fd,
+        buffer,
+        offsetOrPotitionOrOpt,
+        length,
+        position,
+        (err, bytesWritten, buffer) => {
           if (err) reject(err);
           else resolve({ buffer, bytesWritten });
-        });
-      });
-    }
+        },
+      );
+    });
   }
 
   close(): Promise<void> {
