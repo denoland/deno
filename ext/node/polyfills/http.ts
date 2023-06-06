@@ -575,7 +575,8 @@ class ClientRequest extends OutgoingMessage {
     return undefined;
   }
 
-  onSocket(socket, err) {
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
     nextTick(() => {
       this.socket = socket;
       this.emit("socket", socket);
