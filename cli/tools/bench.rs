@@ -2,7 +2,6 @@
 
 use crate::args::BenchOptions;
 use crate::args::CliOptions;
-use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
@@ -31,7 +30,6 @@ use deno_core::task::spawn;
 use deno_core::task::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_graph::GraphKind;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -694,11 +692,7 @@ pub async fn run_benchmarks_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
-  let type_check = cli_options.type_check_mode() != TypeCheckMode::None;
-  let graph_kind = match type_check {
-    true => GraphKind::All,
-    false => GraphKind::CodeOnly,
-  };
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = bench_options.files.include.clone();

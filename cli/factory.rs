@@ -8,7 +8,6 @@ use crate::args::Lockfile;
 use crate::args::PackageJsonDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
-use crate::args::TypeCheckMode;
 use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
@@ -541,14 +540,10 @@ impl CliFactory {
   pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
     self.services.graph_container.get_or_init(|| {
       let graph_kind = match self.options.sub_command() {
+        // todo(dsherret): ideally the graph container would not be used
+        // for deno cache because it doesn't dynamically load modules
         DenoSubcommand::Cache(_) => GraphKind::All,
-        _ => {
-          if self.options.type_check_mode() == TypeCheckMode::None {
-            GraphKind::CodeOnly
-          } else {
-            GraphKind::All
-          }
-        }
+        _ => self.options.type_check_mode().as_graph_kind(),
       };
       Arc::new(ModuleGraphContainer::new(graph_kind))
     })
