@@ -2852,7 +2852,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        const { op_test } = Deno.core.generateAsyncOpHandler("op_test");
+        const { op_test } = Deno.core.ensureFastOps();
         let zero_copy_a = new Uint8Array([0]);
         op_test(null, zero_copy_a);
         "#,
@@ -4942,7 +4942,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       throw new Error();
     }
 
-    const { op_test_async } = Deno.core.generateAsyncOpHandler("op_test_async");
+    const { op_test_async } = Deno.core.ensureFastOps();
     if (op_test_async.name !== "op_test_async") {
       throw new Error();
     }
