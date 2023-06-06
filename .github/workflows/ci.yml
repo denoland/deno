@@ -210,15 +210,15 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang-15, lld-15, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+          # Install clang-16, lld-16, and debootstrap.
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-16.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
+          sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -249,8 +249,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-15
-            -C link-arg=-fuse-ld=lld-15
+            -C linker=clang-16
+            -C link-arg=-fuse-ld=lld-16
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
@@ -260,8 +260,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-15
-            -C link-arg=-fuse-ld=lld-15
+            -C linker=clang-16
+            -C link-arg=-fuse-ld=lld-16
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
@@ -269,7 +269,7 @@ jobs:
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang-15
+          CC=clang-16
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
       - name: Log versions
@@ -293,7 +293,7 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '32-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          key: '34-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -305,7 +305,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '32-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '34-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -589,7 +589,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '32-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '34-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

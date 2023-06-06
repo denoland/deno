@@ -334,7 +334,7 @@ pub async fn upgrade(
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = latest_version.clone();
+        let latest_hash = &latest_version;
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
         let current = Version::parse_standard(crate::version::deno()).unwrap();

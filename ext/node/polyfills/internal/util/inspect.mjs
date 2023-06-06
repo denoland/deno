@@ -134,6 +134,7 @@ const inspectDefaultOptions = {
   colors: false,
   showProxy: false,
   breakLength: 80,
+  escapeSequences: true,
   compact: 3,
   sorted: false,
   getters: false,
