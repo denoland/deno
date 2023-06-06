@@ -21,7 +21,7 @@ Deno.test("readFileSuccess", async function () {
   await fileHandle.close();
 });
 
-Deno.test("write", async function () {
+Deno.test("[node/fs filehandle.write] Write from Buffer", async function () {
   const tempFile: string = await Deno.makeTempFile();
   const fileHandle = await fs.open(tempFile, "a+");
 
@@ -36,22 +36,17 @@ Deno.test("write", async function () {
   assertEquals(decoder.decode(data), "hello");
 });
 
-Deno.test("write with opt", async function () {
+Deno.test("[node/fs filehandle.write] Write from string", async function () {
   const tempFile: string = await Deno.makeTempFile();
-  const fileHandle = await fs.open(tempFile);
+  const fileHandle = await fs.open(tempFile, "a+");
 
-  const buffer = Buffer.from("hello world");
-  const opt = {
-    offset: 0,
-    length: 5,
-    potition: 0,
-  };
-  const res = await fileHandle.write(buffer, opt);
+  const str = "hello world";
+  const res = await fileHandle.write(str);
 
   const data = Deno.readFileSync(tempFile);
   await Deno.remove(tempFile);
   await fileHandle.close();
 
-  assertEquals(res.bytesWritten, 5);
-  assertEquals(decoder.decode(data), "hello");
+  assertEquals(res.bytesWritten, 11);
+  assertEquals(decoder.decode(data), "hello world");
 });

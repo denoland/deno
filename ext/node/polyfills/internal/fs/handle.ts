@@ -10,14 +10,8 @@ import {
 
 interface WriteResult {
   bytesWritten: number;
-  buffer: Buffer;
+  buffer: Buffer | string;
 }
-
-type WriteOptions = {
-  offset: number;
-  length: number;
-  position: number | null;
-};
 
 export class FileHandle extends EventEmitter {
   #rid: number;
@@ -40,34 +34,55 @@ export class FileHandle extends EventEmitter {
     buffer: Buffer,
     offset: number,
     length: number,
-    position: number | null,
+    position: number,
   ): Promise<WriteResult>;
-  write(buffer: Buffer, opt: WriteOptions): Promise<WriteResult>;
   write(
-    buffer: string,
-    position: number | null,
+    str: string,
+    position: number,
     encoding: string,
   ): Promise<WriteResult>;
   write(
-    buffer: Buffer | string,
-    offsetOrPotitionOrOpt?: number | WriteOptions | null,
-    length?: number,
+    bufferOrStr: Buffer | string,
+    offsetOrPotition: number,
+    lengthOrEncoding: number | string,
     position?: number,
   ): Promise<WriteResult> {
-    console.log({ buffer, offsetOrOpt, length, position });
-    return new Promise((resolve, reject) => {
-      write(
-        this.fd,
-        buffer,
-        offsetOrPotitionOrOpt,
-        length,
-        position,
-        (err, bytesWritten, buffer) => {
-          if (err) reject(err);
-          else resolve({ buffer, bytesWritten });
-        },
-      );
-    });
+    if (bufferOrStr instanceof Buffer) {
+      const buffer = bufferOrStr;
+      const offset = offsetOrPotition;
+      const length = lengthOrEncoding;
+
+      return new Promise((resolve, reject) => {
+        write(
+          this.fd,
+          buffer,
+          offset,
+          length,
+          position,
+          (err, bytesWritten, buffer) => {
+            if (err) reject(err);
+            else resolve({ buffer, bytesWritten });
+          },
+        );
+      });
+    } else {
+      const str = bufferOrStr;
+      const position = offsetOrPotition;
+      const encoding = lengthOrEncoding;
+
+      return new Promise((resolve, reject)=> {
+        write(
+          this.fd,
+          str,
+          position,
+          encoding,
+          (err, bytesWritten, buffer) => {
+            if (err) reject(err);
+            else resolve({ buffer, bytesWritten });
+          },
+        );
+      });
+    }
   }
 
   close(): Promise<void> {
