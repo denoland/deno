@@ -10,6 +10,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
@@ -57,6 +58,8 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
+  registry_cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  path_cache: Mutex<HashMap<PathBuf, PathBuf>>,
 }
 
 impl LocalNpmPackageResolver {
@@ -79,6 +82,8 @@ impl LocalNpmPackageResolver {
         .unwrap(),
       root_node_modules_path: node_modules_folder,
       system_info,
+      registry_cache: Mutex::default(),
+      path_cache: Mutex::default(),
     }
   }
 
@@ -227,13 +232,13 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    let mut cache = HashMap::new();
     ensure_registry_read_permission(
       &self.fs,
       permissions,
       &self.root_node_modules_path,
       path,
-      &mut cache,
+      &self.registry_cache,
+      &self.path_cache,
     )
   }
 }

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -36,6 +37,8 @@ pub struct GlobalNpmPackageResolver {
   resolution: Arc<NpmResolution>,
   registry_url: Url,
   system_info: NpmSystemInfo,
+  registry_cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  path_cache: Mutex<HashMap<PathBuf, PathBuf>>,
 }
 
 impl GlobalNpmPackageResolver {
@@ -52,6 +55,8 @@ impl GlobalNpmPackageResolver {
       resolution,
       registry_url,
       system_info,
+      registry_cache: Mutex::default(),
+      path_cache: Mutex::default(),
     }
   }
 
@@ -158,13 +163,14 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     path: &Path,
   ) -> Result<(), AnyError> {
     let registry_path = self.cache.registry_folder(&self.registry_url);
-    let mut cache = HashMap::new();
+
     ensure_registry_read_permission(
       &self.fs,
       permissions,
       &registry_path,
       path,
-      &mut cache,
+      &self.registry_cache,
+      &self.path_cache,
     )
   }
 }

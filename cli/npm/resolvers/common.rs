@@ -1,10 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::HashMap;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::io::ErrorKind;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -96,7 +97,8 @@ pub fn ensure_registry_read_permission(
   permissions: &dyn NodePermissions,
   registry_path: &Path,
   path: &Path,
-  cache: &mut HashMap<PathBuf, Result<(), AnyError>>,
+  registry_cache: &Mutex<HashMap<PathBuf, PathBuf>>,
+  path_cache: &Mutex<HashMap<PathBuf, PathBuf>>,
 ) -> Result<(), AnyError> {
   // allow reading if it's in the node_modules
   if path.starts_with(registry_path)
@@ -104,22 +106,38 @@ pub fn ensure_registry_read_permission(
       .components()
       .all(|c| !matches!(c, std::path::Component::ParentDir))
   {
-    if let Some(_) = cache.get(path) {
-      return Ok(());
-    }
+    let registry_path_canon =
+      match registry_cache.lock().unwrap().get(registry_path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = fs.realpath_sync(registry_path)?;
+          registry_cache
+            .lock()
+            .unwrap()
+            .insert(registry_path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
 
-    if let Ok(registry_path) = fs.realpath_sync(registry_path) {
-      match fs.realpath_sync(path) {
-        Ok(path) if path.starts_with(registry_path) => {
-          cache.insert(path.to_path_buf(), Ok(()));
+    let path_canon = match path_cache.lock().unwrap().get(path) {
+      Some(canon) => canon.clone(),
+      None => {
+        let canon = fs.realpath_sync(path);
+
+        if canon.as_ref().is_err_and(|e| e.kind() == ErrorKind::NotFound) {
           return Ok(());
         }
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-          cache.insert(path.to_path_buf(), Ok(()));
-          return Ok(());
-        }
-        _ => {} // ignore
+        let canon = canon?;
+        path_cache
+          .lock()
+          .unwrap()
+          .insert(path.to_path_buf(), canon.clone());
+        canon
       }
+    };
+
+    if path_canon.starts_with(&registry_path_canon) {
+      return Ok(());
     }
   }
 
