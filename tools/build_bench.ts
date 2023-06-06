@@ -1,3 +1,4 @@
+#!/usr/bin/env -S deno run --unstable --allow-env --allow-read --allow-write --allow-run
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import $ from "https://deno.land/x/dax@0.32.0/mod.ts";
@@ -54,12 +55,12 @@ async function runCommand(human: string, cmd) {
 }
 
 async function buildGitCommit(progress, commit) {
-  const tempDir = await Deno.makeTempDir();
+  const tempDir = $.path(await Deno.makeTempDir());
 
   const gitInfo =
     await $`git log --pretty=oneline --abbrev-commit -n1 ${commit}`.stdout(
       "piped",
-    ).stderr("piped");
+    ).stderr("piped").noThrow();
   if (gitInfo.code != 0) {
     $.log(gitInfo.stdout);
     $.log(gitInfo.stderr);
@@ -111,10 +112,10 @@ async function buildGitCommit(progress, commit) {
     file = `deno-${profile}-${hash}`;
   }
   progress.message(`copy ${hash}`);
-  await Deno.copyFile(`${tempDir}/target/${profile}/deno`, file);
+  await tempDir.join("target").join(profile).join("deno").copyFile(file);
 
   progress.message(`cleanup ${hash}`);
-  await Deno.remove(tempDir, { recursive: true });
+  await tempDir.remove({ recursive: true });
 
   progress.message("done");
   $.log(`Built ./${file} (${commit}) in ${elapsed}s: ${gitInfo.stdout}`);
