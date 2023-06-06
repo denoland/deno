@@ -197,6 +197,9 @@ function fromString(string, encoding) {
   if (!Buffer.isEncoding(encoding)) {
     throw new codes.ERR_UNKNOWN_ENCODING(encoding);
   }
+  if(encoding === "hex" && string.length % 2 !== 0) {
+    string = string.slice(0, -1);
+  }
   const length = byteLength(string, encoding) | 0;
   let buf = createBuffer(length);
   const actual = buf.write(string, encoding);
