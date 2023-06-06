@@ -308,7 +308,6 @@ class ClientRequest extends OutgoingMessage {
       options = Object.assign(input || {}, options);
     }
 
-
     let agent = options!.agent;
     const defaultAgent = options!._defaultAgent || globalAgent;
     if (agent === false) {

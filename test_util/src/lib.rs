@@ -1087,8 +1087,7 @@ async fn main_server(
     }
     (_, "/search_params") => {
       let query = req.uri().query().map(|s| s.to_string());
-      let res =
-        Response::new(Body::from(query.unwrap_or_default()));
+      let res = Response::new(Body::from(query.unwrap_or_default()));
       Ok(res)
     }
     _ => {
