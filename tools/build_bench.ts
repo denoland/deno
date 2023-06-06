@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import $ from "https://deno.land/x/dax/mod.ts";
 import { MultiProgressBar } from "https://deno.land/x/progress@v1.3.8/mod.ts";
 
