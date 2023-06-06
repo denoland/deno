@@ -4715,7 +4715,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6810|file:///a/b",
+          "exportMapKey": "foo|6844|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
