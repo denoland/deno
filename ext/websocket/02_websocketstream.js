@@ -34,8 +34,8 @@ const {
   Uint8ArrayPrototype,
 } = primordials;
 const {
-  op_ws_send_text,
-  op_ws_send_binary,
+  op_ws_send_text_async,
+  op_ws_send_binary_async,
   op_ws_next_event,
   op_ws_create,
   op_ws_close,
@@ -210,11 +210,11 @@ class WebSocketStream {
             const writable = new WritableStream({
               write: async (chunk) => {
                 if (typeof chunk === "string") {
-                  await op_ws_send_text(this[_rid], chunk);
+                  await op_ws_send_text_async(this[_rid], chunk);
                 } else if (
                   ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
                 ) {
-                  await op_ws_send_binary(this[_rid], chunk);
+                  await op_ws_send_binary_async(this[_rid], chunk);
                 } else {
                   throw new TypeError(
                     "A chunk may only be either a string or an Uint8Array",

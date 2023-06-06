@@ -37,7 +37,6 @@ import {
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
-  ArrayPrototypeFlat,
   ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
@@ -559,7 +558,7 @@ function mapToCallback(context, callback, onError) {
       if (headers.length == 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
       } else {
-        op_http_set_response_headers(req, ArrayPrototypeFlat(headers));
+        op_http_set_response_headers(req, headers);
       }
     }
 

@@ -11,6 +11,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::Dependency;
+use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
@@ -43,7 +44,7 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_builder
-      .create_graph_with_loader(vec![specifier], &mut loader)
+      .create_graph_with_loader(GraphKind::All, vec![specifier], &mut loader)
       .await?;
 
     if let Some(lockfile) = maybe_lockfile {

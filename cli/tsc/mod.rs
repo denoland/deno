@@ -839,6 +839,7 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
+  use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use std::fs;
 
@@ -882,7 +883,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &mut loader, Default::default())
       .await;
@@ -908,7 +909,7 @@ mod tests {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &mut loader, Default::default())
       .await;
