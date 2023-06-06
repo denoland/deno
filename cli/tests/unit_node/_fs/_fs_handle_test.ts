@@ -29,7 +29,7 @@ Deno.test("read", async function () {
 
   assertEquals(new TextDecoder().decode(buf as Uint8Array), "hello world");
 
-  Deno.close(fileHandle.fd);
+  await fileHandle.close();
 });
 
 Deno.test("read specify opt", async function () {
@@ -56,5 +56,5 @@ Deno.test("read specify opt", async function () {
   assertEquals(res.bytesRead, byteLength);
   assertEquals(new TextDecoder().decode(res.buffer as Uint8Array), "hello");
 
-  Deno.close(fileHandle.fd);
+  await fileHandle.close();
 });

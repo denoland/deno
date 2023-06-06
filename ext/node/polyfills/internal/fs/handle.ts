@@ -39,19 +39,28 @@ export class FileHandle extends EventEmitter {
     length?: number,
     position?: number | null,
   ): Promise<FileReadResult> {
-    return new Promise((resolve, reject) => {
-      read(
-        this.fd,
-        bufferOrOpt,
-        offset,
-        length,
-        position,
-        (err, bytesRead, buffer) => {
+    if (bufferOrOpt instanceof Buffer) {
+      return new Promise((resolve, reject) => {
+        read(
+          this.fd,
+          bufferOrOpt,
+          offset,
+          length,
+          position,
+          (err, bytesRead, buffer) => {
+            if (err) reject(err);
+            else resolve({ buffer: buffer, bytesRead: bytesRead });
+          },
+        );
+      });
+    } else {
+      return new Promise((resolve, reject) => {
+        read(this.fd, bufferOrOpt, (err, bytesRead, buffer) => {
           if (err) reject(err);
           else resolve({ buffer: buffer, bytesRead: bytesRead });
-        },
-      );
-    });
+        });
+      });
+    }
   }
 
   readFile(
