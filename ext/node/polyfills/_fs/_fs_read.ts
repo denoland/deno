@@ -65,7 +65,7 @@ export function read(
   } else if (typeof optOrBufferOrCb === "function") {
     cb = optOrBufferOrCb;
   } else {
-    offset = (offsetOrCallback as number) || offset;
+    offset = offsetOrCallback as number;
     validateInteger(offset, "offset", 0);
     cb = callback;
   }

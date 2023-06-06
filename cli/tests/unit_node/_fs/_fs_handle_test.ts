@@ -25,7 +25,7 @@ Deno.test("read", async function () {
   const byteLength = "hello world".length;
 
   const buf = new Buffer(byteLength);
-  await fileHandle.read(buf);
+  await fileHandle.read(buf, 0, byteLength, 0);
 
   assertEquals(new TextDecoder().decode(buf as Uint8Array), "hello world");
 
