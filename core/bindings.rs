@@ -15,18 +15,9 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
+use crate::runtime::InitMode;
 use crate::JsRealm;
 use crate::JsRuntime;
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub(crate) enum BindingsMode {
-  /// We have no snapshot -- this is a pristine context.
-  New,
-  /// We have initialized before, are reloading a snapshot, and will snapshot.
-  Loaded,
-  /// We have initialized before, are reloading a snapshot, and will not snapshot again.
-  LoadedFinal,
-}
 
 pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
   // Overallocate a bit, it's better than having to resize the vector.
@@ -127,7 +118,7 @@ pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
-  bindings_mode: BindingsMode,
+  init_mode: InitMode,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
 
@@ -137,17 +128,11 @@ pub(crate) fn initialize_context<'s>(
     codegen,
     "Deno.__op__ = function(opFns, callConsole, console) {{"
   );
-  if bindings_mode == BindingsMode::New {
+  if init_mode == InitMode::New {
     _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
-      // If we're loading from a snapshot, we can skip registration for most ops
-      if bindings_mode == BindingsMode::LoadedFinal
-        && !op_ctx.decl.force_registration
-      {
-        continue;
-      }
       _ = writeln!(
         codegen,
         "Deno.__op__registerOp({}, opFns[{}], \"{}\");",
@@ -182,7 +167,7 @@ pub(crate) fn initialize_context<'s>(
     let op_fn = op_ctx_function(scope, op_ctx);
     op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
   }
-  if bindings_mode != BindingsMode::New {
+  if init_mode == InitMode::FromSnapshot {
     op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
     // Bind functions to Deno.core.*
