@@ -737,13 +737,14 @@ function innerInvokeEventListeners(
   }
 
   let handlers = targetListeners[type];
+  const handlersLength = handlers.length;
 
   // Copy event listeners before iterating since the list can be modified during the iteration.
-  if (handlers.length > 1) {
+  if (handlersLength > 1) {
     handlers = ArrayPrototypeSlice(targetListeners[type]);
   }
 
-  for (let i = 0; i < handlers.length; i++) {
+  for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
     let capture, once, passive;

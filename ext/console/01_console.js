@@ -37,6 +37,7 @@ const {
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
+  ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
@@ -1578,7 +1579,7 @@ function inspectError(value, ctx) {
     if (stack?.includes("\n    at")) {
       finalMessage += stack;
     } else {
-      finalMessage += `[${stack || value.toString()}]`;
+      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
   finalMessage += ArrayPrototypeJoin(
@@ -2427,6 +2428,7 @@ const denoInspectDefaultOptions = {
   colors: false,
   showProxy: false,
   breakLength: 80,
+  escapeSequences: true,
   compact: 3,
   sorted: false,
   getters: false,
@@ -2500,7 +2502,9 @@ function quoteString(string, ctx) {
     ctx.quotes[0];
   const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
-  string = replaceEscapeSequences(string);
+  if (ctx.escapeSequences) {
+    string = replaceEscapeSequences(string);
+  }
   return `${quote}${string}${quote}`;
 }
 
