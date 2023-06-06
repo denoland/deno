@@ -1834,21 +1834,8 @@ function _onconnection(this: any, err: number, clientHandle?: Handle) {
     return;
   }
 
-  const socket = new Socket({
-    handle: clientHandle,
-    allowHalfOpen: self.allowHalfOpen,
-    pauseOnCreate: self.pauseOnConnect,
-    readable: true,
-    writable: true,
-  });
-
-  // TODO(@bartlomieju): implement noDelay and setKeepAlive
-
-  self._connections++;
-  socket.server = self;
-  socket._server = self;
-
-  DTRACE_NET_SERVER_CONNECTION(socket);
+  const socket = self._createSocket(clientHandle);
+  this._connections++;
   self.emit("connection", socket);
 
   if (netServerSocketChannel.hasSubscribers) {
@@ -2367,6 +2354,23 @@ export class Server extends EventEmitter {
    */
   get listening(): boolean {
     return !!this._handle;
+  }
+
+  _createSocket(clientHandle) {
+    const socket = new Socket({
+      handle: clientHandle,
+      allowHalfOpen: this.allowHalfOpen,
+      pauseOnCreate: this.pauseOnConnect,
+      readable: true,
+      writable: true,
+    });
+
+    // TODO(@bartlomieju): implement noDelay and setKeepAlive
+
+    socket.server = this;
+    socket._server = this;
+
+    DTRACE_NET_SERVER_CONNECTION(socket);
   }
 
   _listen2 = _setupListenHandle;
