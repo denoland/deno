@@ -12,13 +12,13 @@ import {
   _skipInternalInit,
   CloseEvent,
   defineEventHandler,
-  dispatch,
+  dispatchFast,
   ErrorEvent,
   Event,
   EventTarget,
   MessageEvent,
 } from "ext:deno_web/02_event.js";
-import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { blobFromBuffer, BlobPrototype } from "ext:deno_web/09_file.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -416,8 +416,9 @@ class WebSocket extends EventTarget {
           const event = new MessageEvent("message", {
             data: value,
             origin: this[_url],
+            [_skipInternalInit]: true,
           });
-          dispatch(this, event);
+          dispatchFast(this, event);
           break;
         }
         case 1: {
@@ -426,7 +427,7 @@ class WebSocket extends EventTarget {
           let data;
 
           if (this.binaryType === "blob") {
-            data = new Blob([value]);
+            data = blobFromBuffer(value);
           } else {
             data = value;
           }
@@ -436,7 +437,7 @@ class WebSocket extends EventTarget {
             origin: this[_url],
             [_skipInternalInit]: true,
           });
-          dispatch(this, event);
+          dispatchFast(this, event);
           break;
         }
         case 2: {

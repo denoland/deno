@@ -381,26 +381,8 @@ class Blob {
    */
   async text() {
     webidl.assertBranded(this, BlobPrototype);
-    const buffer = await this.#u8Array(this.size);
+    const buffer = await u8ArrayForBlob(this[_parts], this.size);
     return core.decode(buffer);
-  }
-
-  async #u8Array(size) {
-    const bytes = new Uint8Array(size);
-    const partIterator = toIterator(this[_parts]);
-    let offset = 0;
-    while (true) {
-      const { value, done } = await AsyncGeneratorPrototypeNext(
-        partIterator,
-      );
-      if (done) break;
-      const byteLength = TypedArrayPrototypeGetByteLength(value);
-      if (byteLength > 0) {
-        TypedArrayPrototypeSet(bytes, value, offset);
-        offset += byteLength;
-      }
-    }
-    return bytes;
   }
 
   /**
@@ -408,7 +390,7 @@ class Blob {
    */
   async arrayBuffer() {
     webidl.assertBranded(this, BlobPrototype);
-    const buf = await this.#u8Array(this.size);
+    const buf = await u8ArrayForBlob(this[_parts], this.size);
     return TypedArrayPrototypeGetBuffer(buf);
   }
 
@@ -422,6 +404,31 @@ class Blob {
       ],
     }));
   }
+}
+
+/**
+ * Concatenates the bytes for each part into a Uint8Array. Note that this isn't a private method because
+ * we create blobs without going through the constructor in some places.
+ *
+ * @param {BlobReference[]} parts
+ * @param {number} size
+ */
+async function u8ArrayForBlob(parts, size) {
+  const bytes = new Uint8Array(size);
+  const partIterator = toIterator(parts);
+  let offset = 0;
+  while (true) {
+    const { value, done } = await AsyncGeneratorPrototypeNext(
+      partIterator,
+    );
+    if (done) break;
+    const byteLength = TypedArrayPrototypeGetByteLength(value);
+    if (byteLength > 0) {
+      TypedArrayPrototypeSet(bytes, value, offset);
+      offset += byteLength;
+    }
+  }
+  return bytes;
 }
 
 webidl.configurePrototype(Blob);
@@ -583,6 +590,17 @@ class BlobReference {
   }
 
   /**
+   * Create a new blob part from an ArrayBuffer.
+   *
+   * @param {ArrayBuffer} data
+   * @returns {BlobReference}
+   */
+  static fromArrayBuffer(data) {
+    const id = ops.op_blob_create_part(data);
+    return new BlobReference(id, ArrayBufferPrototypeGetByteLength(data));
+  }
+
+  /**
    * Create a new BlobReference by slicing this BlobReference. This is a copy
    * free operation - the sliced reference will still reference the original
    * underlying bytes.
@@ -616,6 +634,19 @@ class BlobReference {
     //   yield core.opAsync("op_blob_read_part", chunk._id);
     // }
   }
+}
+
+/**
+ * Construct a new Blob object from am ArrayBuffer.
+ * @param {ArrayBuffer} buffer
+ * @returns {Blob}
+ */
+function blobFromBuffer(buffer) {
+  const blob = webidl.createBranded(Blob);
+  blob[_type] = "";
+  blob[_size] = ArrayBufferPrototypeGetByteLength(buffer);
+  blob[_parts] = [BlobReference.fromArrayBuffer(buffer)];
+  return blob;
 }
 
 /**
@@ -684,6 +715,7 @@ URL.revokeObjectURL = revokeObjectURL;
 
 export {
   Blob,
+  blobFromBuffer,
   blobFromObjectUrl,
   BlobPrototype,
   File,

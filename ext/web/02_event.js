@@ -551,6 +551,13 @@ function appendToEventPath(
   });
 }
 
+function dispatchFast(
+  targetImpl,
+  eventImpl,
+) {
+  innerInvokeEventListeners(eventImpl, getListeners(targetImpl));
+}
+
 function dispatch(
   targetImpl,
   eventImpl,
@@ -1543,6 +1550,7 @@ export {
   CustomEvent,
   defineEventHandler,
   dispatch,
+  dispatchFast,
   ErrorEvent,
   Event,
   EventTarget,
