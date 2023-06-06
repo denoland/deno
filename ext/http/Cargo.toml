@@ -46,6 +46,7 @@ pin-project.workspace = true
 ring.workspace = true
 serde.workspace = true
 slab.workspace = true
+smallvec.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util = { workspace = true, features = ["io"] }

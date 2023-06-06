@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-///!
-///! Provides information about what capabilities that are supported by the
-///! language server, which helps determine what messages are sent from the
-///! client.
-///!
+//!
+//! Provides information about what capabilities that are supported by the
+//! language server, which helps determine what messages are sent from the
+//! client.
+//!
 use deno_core::serde_json::json;
 use tower_lsp::lsp_types::*;
 
