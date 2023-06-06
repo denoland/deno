@@ -2434,11 +2434,12 @@ impl JsRuntime {
         SmallVec::with_capacity(32);
 
       loop {
-        let mut join_fut = context_state.pending_ops.join_next();
-        // SAFETY: we are sure that the future won't move while it's being polled
-        let mut pinned_join_fut = unsafe { Pin::new_unchecked(&mut join_fut) };
-        let Poll::Ready(Some(item)) = pinned_join_fut.poll_unpin(cx) else {
-          break;
+        let item = {
+          let next = std::pin::pin!(context_state.pending_ops.join_next());
+          let Poll::Ready(Some(item)) = next.poll(cx) else {
+            break;
+          };
+          item
         };
         let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
         state
