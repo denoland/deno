@@ -13,9 +13,6 @@ deno_core::extension!(
   state = |state, options| {
     state.put::<ModuleSpecifier>(options.main_module);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[op]

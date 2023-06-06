@@ -10,13 +10,7 @@ const {
   op_fs_truncate_async,
   op_fs_link_async,
   op_fs_flock_async,
-} = Deno.core.generateAsyncOpHandler(
-  "op_fs_chmod_async",
-  "op_fs_ftruncate_async",
-  "op_fs_truncate_async",
-  "op_fs_link_async",
-  "op_fs_flock_async",
-);
+} = Deno.core.ensureFastOps();
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
