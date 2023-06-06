@@ -55,15 +55,7 @@ const {
   op_ws_next_event,
   op_ws_send_ping,
   op_ws_get_buffered_amount,
-} = core.generateAsyncOpHandler(
-  "op_ws_create",
-  "op_ws_close",
-  "op_ws_send_binary",
-  "op_ws_send_text",
-  "op_ws_next_event",
-  "op_ws_send_ping",
-  "op_ws_get_buffered_amount",
-);
+} = core.ensureFastOps();
 
 webidl.converters["sequence<DOMString> or DOMString"] = (
   V,

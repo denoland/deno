@@ -248,6 +248,17 @@ defineColorAlias("doubleunderline", "doubleUnderline");
 // https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
 let _getSharedArrayBufferByteLength;
 
+function getSharedArrayBufferByteLength(value) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+}
+
 function isObjectLike(value) {
   return value !== null && typeof value === "object";
 }
@@ -428,15 +439,8 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value,
 ) {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    // deno-lint-ignore prefer-primordials
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   try {
-    FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+    getSharedArrayBufferByteLength(value);
     return true;
   } catch {
     return false;
@@ -1608,7 +1612,7 @@ const hexSliceLookupTable = function () {
 }();
 
 function hexSlice(buf, start, end) {
-  const len = buf.length;
+  const len = TypedArrayPrototypeGetLength(buf);
   if (!start || start < 0) {
     start = 0;
   }
@@ -1624,21 +1628,24 @@ function hexSlice(buf, start, end) {
 
 const arrayBufferRegExp = new SafeRegExp("(.{2})", "g");
 function formatArrayBuffer(ctx, value) {
+  let valLen;
+  try {
+    valLen = ArrayBufferPrototypeGetByteLength(value);
+  } catch {
+    valLen = getSharedArrayBufferByteLength(value);
+  }
+  const len = MathMin(MathMax(0, ctx.maxArrayLength), valLen);
   let buffer;
   try {
-    buffer = new Uint8Array(value);
+    buffer = new Uint8Array(value, 0, len);
   } catch {
     return [ctx.stylize("(detached)", "special")];
   }
   let str = StringPrototypeTrim(
-    StringPrototypeReplace(
-      hexSlice(buffer, 0, MathMin(ctx.maxArrayLength, buffer.length)),
-      arrayBufferRegExp,
-      "$1 ",
-    ),
+    StringPrototypeReplace(hexSlice(buffer), arrayBufferRegExp, "$1 "),
   );
 
-  const remaining = buffer.length - ctx.maxArrayLength;
+  const remaining = valLen - len;
   if (remaining > 0) {
     str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
   }
