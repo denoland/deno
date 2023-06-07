@@ -464,11 +464,6 @@ class WebSocket extends EventTarget {
           core.tryClose(rid);
           break;
         }
-        case 4: {
-          /* bad resource */
-          // TODO(mmastrac)
-          break;
-        }
         default: {
           /* close */
           const code = kind;

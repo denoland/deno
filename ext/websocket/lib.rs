@@ -315,7 +315,6 @@ pub enum MessageKind {
   Binary = 1,
   Pong = 2,
   Error = 3,
-  BadResource = 4,
   ClosedDefault = 1005,
 }
 
@@ -558,7 +557,8 @@ pub async fn op_ws_next_event(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid) else {
-    return MessageKind::BadResource as u16;
+    // op_ws_get_error will correctly handle a bad resource
+    return MessageKind::Error as u16;
   };
 
   // If there's a pending error, this always returns error
