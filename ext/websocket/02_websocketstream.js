@@ -37,6 +37,8 @@ const {
   op_ws_send_text_async,
   op_ws_send_binary_async,
   op_ws_next_event,
+  op_ws_get_buffer,
+  op_ws_get_error,
   op_ws_create,
   op_ws_close,
 } = core.ensureFastOps();
@@ -177,7 +179,7 @@ class WebSocketStream {
                 PromisePrototypeThen(
                   (async () => {
                     while (true) {
-                      const { 0: kind } = await op_ws_next_event(create.rid);
+                      const kind = await op_ws_next_event(create.rid);
 
                       if (kind > 5) {
                         /* close */
@@ -239,14 +241,14 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
-              const { 0: kind, 1: value } = await op_ws_next_event(this[_rid]);
+              const kind = await op_ws_next_event(this[_rid]);
 
               switch (kind) {
                 case 0:
                 case 1: {
                   /* string */
                   /* binary */
-                  controller.enqueue(value);
+                  controller.enqueue(op_ws_get_buffer(this[_rid]));
                   break;
                 }
                 case 2: {
@@ -255,7 +257,7 @@ class WebSocketStream {
                 }
                 case 3: {
                   /* error */
-                  const err = new Error(value);
+                  const err = new Error(op_ws_get_error(this[_rid]));
                   this[_closed].reject(err);
                   controller.error(err);
                   core.tryClose(this[_rid]);
@@ -271,7 +273,7 @@ class WebSocketStream {
                   /* close */
                   this[_closed].resolve({
                     code: kind,
-                    reason: value,
+                    reason: op_ws_get_error(this[_rid]),
                   });
                   core.tryClose(this[_rid]);
                   break;
@@ -289,7 +291,7 @@ class WebSocketStream {
                   return pull(controller);
                 }
 
-                this[_closed].resolve(value);
+                this[_closed].resolve(op_ws_get_error(this[_rid]));
                 core.tryClose(this[_rid]);
               }
             };
