@@ -177,7 +177,7 @@ function skipJobsIfPrAndMarkedSkip(
       run:
         `wmic /node:"%COMPUTERNAME%" LogicalDisk Where DriveType="3" Get DeviceID,FreeSpace|find /I "c:"`,
     }, {
-      if: "{{ !startsWith(matrix.os, 'windows') }}",
+      if: "${{ !startsWith(matrix.os, 'windows') }}",
       name: "Check space",
       run: "df -H",
     }, s];
