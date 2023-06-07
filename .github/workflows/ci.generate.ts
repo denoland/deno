@@ -164,12 +164,24 @@ function skipJobsIfPrAndMarkedSkip(
   // GitHub does not make skipping a specific matrix element easy
   // so just apply this condition to all the steps.
   // https://stackoverflow.com/questions/65384420/how-to-make-a-github-action-matrix-element-conditional
-  return steps.map((s) =>
+  steps = steps.map((s) =>
     withCondition(
       s,
       "!(github.event_name == 'pull_request' && matrix.skip_pr)",
     )
   );
+  return steps.map((s) => {
+    return [{
+      if: "startsWith(matrix.os, 'windows')",
+      name: "Check space",
+      run:
+        `wmic /node:"%COMPUTERNAME%" LogicalDisk Where DriveType="3" Get DeviceID,FreeSpace|find /I "c:"`,
+    }, {
+      if: "{{ !startsWith(matrix.os, 'windows') }}",
+      name: "Check space",
+      run: "df -H",
+    }, s];
+  }).reduce((a, b) => a.concat(b));
 }
 
 function onlyIfDraftPr(
