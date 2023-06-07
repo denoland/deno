@@ -176,7 +176,7 @@ function skipJobsIfPrAndMarkedSkip(
     }, {
       if: "${{ !startsWith(matrix.os, 'windows') }}",
       name: "Check space",
-      run: "df -H",
+      run: "df -h",
     }, s];
   }).reduce((a, b) => a.concat(b));
   return steps.map((s) =>

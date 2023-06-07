@@ -117,7 +117,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
@@ -127,7 +127,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Clone submodule ./third_party
         run: git submodule update --init --recursive --depth=1 -- ./third_party
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
@@ -137,7 +137,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
@@ -147,7 +147,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Clone submodule ./tools/node_compat/node
         run: git submodule update --init --recursive --depth=1 -- ./tools/node_compat/node
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
@@ -157,7 +157,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: 'Create source tarballs (release, linux)'
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
@@ -175,7 +175,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows''))'
@@ -184,7 +184,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' || matrix.job == ''test'')'
         name: Install Deno
         uses: denoland/setup-deno@v1
@@ -196,7 +196,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Install Python
         uses: actions/setup-python@v4
         with:
@@ -208,7 +208,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Remove unused versions of Python
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'' && (startsWith(matrix.os, ''windows'')))'
         shell: pwsh
@@ -223,7 +223,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'')'
         name: Install Node
         uses: actions/setup-node@v3
@@ -235,7 +235,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
@@ -255,7 +255,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Setup gcloud (unix)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
@@ -273,7 +273,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Setup gcloud (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
@@ -293,7 +293,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Configure canary build
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
@@ -307,7 +307,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.use_sysroot)'
         name: Set up incremental LTO and sysroot build
         run: |-
@@ -383,7 +383,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Log versions
         run: |-
           python --version
@@ -404,7 +404,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Cache Cargo home
         uses: actions/cache@v3
         with:
@@ -420,7 +420,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
@@ -438,7 +438,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -450,7 +450,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Shallow clone crates.io index
         run: |-
           if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
@@ -466,7 +466,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: test_format.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
@@ -476,7 +476,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Lint PR title
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && github.event_name == ''pull_request'')'
         env:
@@ -488,7 +488,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: lint.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
@@ -498,7 +498,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: node_compat/setup.ts --check
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check
@@ -508,7 +508,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Build debug
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
         run: cargo build --locked --all-targets
@@ -520,7 +520,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Build release
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && ((matrix.job == 'test' || matrix.job == 'bench') &&
@@ -535,7 +535,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload PR artifact (linux)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
@@ -553,7 +553,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Pre-release (linux)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
@@ -570,7 +570,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Pre-release (mac)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'macOS') &&
@@ -587,7 +587,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Pre-release (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'windows') &&
@@ -603,7 +603,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload canary to dl.deno.land (unix)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
@@ -618,7 +618,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload canary to dl.deno.land (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
@@ -635,7 +635,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Autobahn testsuite
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
@@ -647,7 +647,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Test debug
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
@@ -661,7 +661,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Test debug (fast)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' && 
@@ -677,7 +677,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Test release
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'release' &&
@@ -691,7 +691,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Check deno binary
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
         run: target/release/deno eval "console.log(1+2)" | grep 3
@@ -703,7 +703,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Check deno binary (in sysroot)
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && matrix.use_sysroot)'
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
@@ -713,7 +713,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Configure hosts file for WPT
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
@@ -724,7 +724,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Run web platform tests (debug)
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt && matrix.profile == ''debug'')'
         env:
@@ -744,7 +744,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Run web platform tests (release)
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt && matrix.profile == ''release'')'
         env:
@@ -767,7 +767,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload wpt results to dl.deno.land
         continue-on-error: true
         if: |-
@@ -788,7 +788,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload wpt results to wpt.fyi
         continue-on-error: true
         if: |-
@@ -810,7 +810,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Run benchmarks
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'' && !startsWith(github.ref, ''refs/tags/''))'
         run: cargo bench --locked
@@ -820,7 +820,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Post Benchmarks
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'bench' &&
@@ -846,7 +846,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Build product size info
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'' && matrix.profile != ''debug'' && github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')))'
         run: |-
@@ -858,7 +858,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Worker info
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''bench'')'
         run: |-
@@ -870,7 +870,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload release to dl.deno.land (unix)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os != 'Windows' &&
@@ -885,7 +885,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload release to dl.deno.land (windows)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (runner.os == 'Windows' &&
@@ -902,7 +902,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Create release notes
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
@@ -918,7 +918,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Upload release to GitHub
         uses: softprops/action-gh-release@v0.1.15
         if: |-
@@ -943,7 +943,7 @@ jobs:
         run: Get-Volume
       - if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (${{ !startsWith(matrix.os, ''windows'') }})'
         name: Check space
-        run: df -H
+        run: df -h
       - name: Save cache build output (main)
         uses: actions/cache/save@v3
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && ((matrix.job == ''test'' || matrix.job == ''lint'') && github.ref == ''refs/heads/main'')'
