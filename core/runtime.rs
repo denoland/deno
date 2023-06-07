@@ -41,7 +41,6 @@ use futures::future::FutureExt;
 use futures::future::MaybeDone;
 use futures::stream::StreamExt;
 use futures::task::noop_waker;
-use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -319,7 +318,6 @@ pub struct JsRuntimeState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
-  waker: AtomicWaker,
 }
 
 impl JsRuntimeState {
@@ -545,7 +543,6 @@ impl JsRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
-      waker: AtomicWaker::new(),
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
@@ -1326,7 +1323,7 @@ impl JsRuntime {
     {
       let state = self.inner.state.borrow();
       has_inspector = state.inspector.is_some();
-      state.waker.register(cx.waker());
+      state.op_state.borrow().waker.register(cx.waker());
     }
 
     if has_inspector {
@@ -1421,7 +1418,7 @@ impl JsRuntime {
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.waker.wake();
+      state.op_state.borrow().waker.wake();
     }
 
     drop(state);
@@ -1474,7 +1471,7 @@ impl JsRuntime {
         // evaluation may complete during this, in which case the counter will
         // reset.
         state.dyn_module_evaluate_idle_counter += 1;
-        state.waker.wake();
+        state.op_state.borrow().waker.wake();
       }
     }
 
@@ -1667,7 +1664,7 @@ impl JsRuntimeState {
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
     // Notify event loop to poll again soon.
-    self.waker.wake();
+    self.op_state.borrow().waker.wake();
   }
 }
 
