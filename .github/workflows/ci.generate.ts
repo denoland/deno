@@ -174,6 +174,7 @@ function skipJobsIfPrAndMarkedSkip(
     return [{
       if: "startsWith(matrix.os, 'windows')",
       name: "Check space",
+      shell: "cmd",
       run: `dir|find "bytes free"`,
     }, {
       if: "${{ !startsWith(matrix.os, 'windows') }}",

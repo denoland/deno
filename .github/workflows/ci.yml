@@ -102,6 +102,7 @@ jobs:
     steps:
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -113,6 +114,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -125,6 +127,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -134,6 +137,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -143,6 +147,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -152,6 +157,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -161,6 +167,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -178,6 +185,7 @@ jobs:
               -czvf target/release/deno_src.tar.gz -C .. deno
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -186,6 +194,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -197,6 +206,7 @@ jobs:
           deno-version: v1.x
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -208,6 +218,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job != ''lint'')'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -222,6 +233,7 @@ jobs:
             ForEach-Object { Move-Item "$_" "$_.disabled" }
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -233,6 +245,7 @@ jobs:
           node-version: 18
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -252,6 +265,7 @@ jobs:
           create_credentials_file: true
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -269,6 +283,7 @@ jobs:
           project_id: denoland
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -288,6 +303,7 @@ jobs:
           project_id: denoland
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -301,6 +317,7 @@ jobs:
         run: echo "DENO_CANARY=true" >> $GITHUB_ENV
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -376,6 +393,7 @@ jobs:
           __0
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -396,6 +414,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -411,6 +430,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -428,6 +448,7 @@ jobs:
           restore-keys: '34-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -439,6 +460,7 @@ jobs:
           cache-path: ./target
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -454,6 +476,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -463,6 +486,7 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -474,6 +498,7 @@ jobs:
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -483,6 +508,7 @@ jobs:
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -492,6 +518,7 @@ jobs:
         run: deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -503,6 +530,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -517,6 +545,7 @@ jobs:
         run: cargo build --release --locked --all-targets
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -534,6 +563,7 @@ jobs:
           path: target/release/deno
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -550,6 +580,7 @@ jobs:
           ./deno types > lib.deno.d.ts
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -566,6 +597,7 @@ jobs:
           zip -r deno-x86_64-apple-darwin.zip deno
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -581,6 +613,7 @@ jobs:
         run: Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-x86_64-pc-windows-msvc.zip
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -595,6 +628,7 @@ jobs:
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -611,6 +645,7 @@ jobs:
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -622,6 +657,7 @@ jobs:
         run: target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -635,6 +671,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -650,6 +687,7 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -663,6 +701,7 @@ jobs:
         run: cargo test --release --locked
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -674,6 +713,7 @@ jobs:
           NO_COLOR: 1
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -683,6 +723,7 @@ jobs:
         run: sudo chroot /sysroot "$(pwd)/target/release/deno" --version
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -693,6 +734,7 @@ jobs:
         working-directory: test_util/wpt/
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -712,6 +754,7 @@ jobs:
                    ./tools/wpt.ts run --quiet --binary="$DENO_BIN"
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -734,6 +777,7 @@ jobs:
                                       --wptreport=wptreport.json
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -754,6 +798,7 @@ jobs:
           gsutil -h "Cache-Control: no-cache" cp wpt-latest.txt gs://dl.deno.land/wpt-latest.txt
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -775,6 +820,7 @@ jobs:
               ./tools/upload_wptfyi.js $(git rev-parse HEAD) --ghstatus
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -784,6 +830,7 @@ jobs:
         run: cargo bench --locked
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -809,6 +856,7 @@ jobs:
           git push origin gh-pages
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -820,6 +868,7 @@ jobs:
           du -ha  "./target/${{ matrix.profile }}/deno"
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -831,6 +880,7 @@ jobs:
           cat /proc/meminfo
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -845,6 +895,7 @@ jobs:
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -861,6 +912,7 @@ jobs:
         run: 'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/release/${GITHUB_REF#refs/*/}/'
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -876,6 +928,7 @@ jobs:
           ./tools/release/05_create_release_notes.ts
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
@@ -900,6 +953,7 @@ jobs:
           draft: true
       - if: 'startsWith(matrix.os, ''windows'')'
         name: Check space
+        shell: cmd
         run: dir|find "bytes free"
       - if: '${{ !startsWith(matrix.os, ''windows'') }}'
         name: Check space
