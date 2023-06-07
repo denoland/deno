@@ -603,8 +603,8 @@ pub async fn op_ws_next_event(
             val.payload[0],
             val.payload[1],
           ]));
-          let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
-          resource.set_error(Some(reason));
+          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+          resource.set_error(reason);
           close_code.into()
         }
       }
