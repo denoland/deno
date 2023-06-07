@@ -1,3 +1,4 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::*;
 use deno_core::error::type_error;
