@@ -24,16 +24,16 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
 
-# Install clang-16, lld-16, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-16.list
+# Install clang-15, lld-15, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -70,8 +70,8 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-16
-  -C link-arg=-fuse-ld=lld-16
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -81,8 +81,8 @@ RUSTFLAGS<<__1
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-16
-  -C link-arg=-fuse-ld=lld-16
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -90,7 +90,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-16
+CC=clang-15
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
