@@ -9,6 +9,7 @@ use clap::Command;
 use clap::ValueHint;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
@@ -253,6 +254,25 @@ pub enum TypeCheckMode {
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
   Local,
+}
+
+impl TypeCheckMode {
+  /// Gets if type checking will occur under this mode.
+  pub fn is_true(&self) -> bool {
+    match self {
+      Self::None => false,
+      Self::Local | Self::All => true,
+    }
+  }
+
+  /// Gets the corresponding module `GraphKind` that should be created
+  /// for the current `TypeCheckMode`.
+  pub fn as_graph_kind(&self) -> GraphKind {
+    match self.is_true() {
+      true => GraphKind::All,
+      false => GraphKind::CodeOnly,
+    }
+  }
 }
 
 impl Default for TypeCheckMode {

@@ -2,7 +2,6 @@
 
 use crate::args::CompileFlags;
 use crate::args::Flags;
-use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::standalone::is_standalone_binary;
 use crate::util::path::path_has_trailing_slash;
@@ -50,15 +49,15 @@ pub async fn compile(
       .await?,
   )
   .unwrap();
-  let graph = if cli_options.type_check_mode() == TypeCheckMode::None {
-    graph
-  } else {
+  let graph = if cli_options.type_check_mode().is_true() {
     // In this case, the previous graph creation did type checking, which will
     // create a module graph with types information in it. We don't want to
     // store that in the eszip so create a code only module graph from scratch.
     module_graph_builder
       .create_graph(GraphKind::CodeOnly, module_roots)
       .await?
+  } else {
+    graph
   };
 
   let parser = parsed_source_cache.as_capturing_parser();
