@@ -28,6 +28,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
@@ -66,6 +67,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -1006,6 +1008,21 @@ pub async fn test_specifier(
       continue;
     }
     sender.send(TestEvent::Wait(desc.id))?;
+
+    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
+    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
+    // `JoinSet` all pending ops are immediately polled and that caused a problem
+    // when some async ops were fired and canceled before running tests (giving
+    // false positives in the ops sanitizer). We should probably rewrite sanitizers
+    // to be done in Rust instead of in JS (40_testing.js).
+    {
+      // Poll event loop once, this will allow all ops that are already resolved,
+      // but haven't responded to settle.
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+    }
+
     let earlier = SystemTime::now();
     let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
