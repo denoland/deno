@@ -116,78 +116,18 @@ const _idleTimeoutDuration = Symbol("[[idleTimeout]]");
 const _idleTimeoutTimeout = Symbol("[[idleTimeoutTimeout]]");
 const _serverHandleIdleTimeout = Symbol("[[serverHandleIdleTimeout]]");
 class WebSocket extends EventTarget {
-  [_rid];
-  [_role];
-
-  [_readyState] = CONNECTING;
-  get readyState() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_readyState];
-  }
-
-  get CONNECTING() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CONNECTING;
-  }
-  get OPEN() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return OPEN;
-  }
-  get CLOSING() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CLOSING;
-  }
-  get CLOSED() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return CLOSED;
-  }
-
-  [_extensions] = "";
-  get extensions() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_extensions];
-  }
-
-  [_protocol] = "";
-  get protocol() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_protocol];
-  }
-
-  [_url] = "";
-  get url() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_url];
-  }
-
-  [_binaryType] = "blob";
-  get binaryType() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    return this[_binaryType];
-  }
-  set binaryType(value) {
-    webidl.assertBranded(this, WebSocketPrototype);
-    value = webidl.converters.DOMString(
-      value,
-      "Failed to set 'binaryType' on 'WebSocket'",
-    );
-    if (value === "blob" || value === "arraybuffer") {
-      this[_binaryType] = value;
-    }
-  }
-
-  get bufferedAmount() {
-    webidl.assertBranded(this, WebSocketPrototype);
-    if (this[_readyState] === OPEN) {
-      return op_ws_get_buffered_amount(this[_rid]);
-    } else {
-      return 0;
-    }
-  }
-
   constructor(url, protocols = []) {
     super();
     this[webidl.brand] = webidl.brand;
+    this[_rid] = undefined;
+    this[_role] = undefined;
+    this[_readyState] = CONNECTING;
+    this[_extensions] = "";
+    this[_protocol] = "";
+    this[_url] = "";
+    this[_binaryType] = "blob";
+    this[_idleTimeoutDuration] = 0;
+    this[_idleTimeoutTimeout] = undefined;
     const prefix = "Failed to construct 'WebSocket'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
@@ -305,6 +245,67 @@ class WebSocket extends EventTarget {
         this.dispatchEvent(closeEv);
       },
     );
+  }
+
+  get readyState() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_readyState];
+  }
+
+  get CONNECTING() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CONNECTING;
+  }
+  get OPEN() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return OPEN;
+  }
+  get CLOSING() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CLOSING;
+  }
+  get CLOSED() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return CLOSED;
+  }
+
+  get extensions() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_extensions];
+  }
+
+  get protocol() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_protocol];
+  }
+
+  get url() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_url];
+  }
+
+  get binaryType() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    return this[_binaryType];
+  }
+  set binaryType(value) {
+    webidl.assertBranded(this, WebSocketPrototype);
+    value = webidl.converters.DOMString(
+      value,
+      "Failed to set 'binaryType' on 'WebSocket'",
+    );
+    if (value === "blob" || value === "arraybuffer") {
+      this[_binaryType] = value;
+    }
+  }
+
+  get bufferedAmount() {
+    webidl.assertBranded(this, WebSocketPrototype);
+    if (this[_readyState] === OPEN) {
+      return op_ws_get_buffered_amount(this[_rid]);
+    } else {
+      return 0;
+    }
   }
 
   send(data) {
