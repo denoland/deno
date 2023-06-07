@@ -48,6 +48,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 
+use deno_graph::GraphKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -539,7 +540,15 @@ impl CliFactory {
   }
 
   pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
-    self.services.graph_container.get_or_init(Default::default)
+    self.services.graph_container.get_or_init(|| {
+      let graph_kind = match self.options.sub_command() {
+        // todo(dsherret): ideally the graph container would not be used
+        // for deno cache because it doesn't dynamically load modules
+        DenoSubcommand::Cache(_) => GraphKind::All,
+        _ => self.options.type_check_mode().as_graph_kind(),
+      };
+      Arc::new(ModuleGraphContainer::new(graph_kind))
+    })
   }
 
   pub fn maybe_inspector_server(&self) -> &Option<Arc<InspectorServer>> {

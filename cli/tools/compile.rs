@@ -10,6 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use deno_runtime::colors;
 use std::path::Path;
 use std::path::PathBuf;
@@ -44,10 +45,20 @@ pub async fn compile(
 
   let graph = Arc::try_unwrap(
     module_graph_builder
-      .create_graph_and_maybe_check(module_roots)
+      .create_graph_and_maybe_check(module_roots.clone())
       .await?,
   )
   .unwrap();
+  let graph = if cli_options.type_check_mode().is_true() {
+    // In this case, the previous graph creation did type checking, which will
+    // create a module graph with types information in it. We don't want to
+    // store that in the eszip so create a code only module graph from scratch.
+    module_graph_builder
+      .create_graph(GraphKind::CodeOnly, module_roots)
+      .await?
+  } else {
+    graph
+  };
 
   let parser = parsed_source_cache.as_capturing_parser();
   let eszip = eszip::EszipV2::from_graph(graph, &parser, Default::default())?;
