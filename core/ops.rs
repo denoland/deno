@@ -10,7 +10,6 @@ use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
 use futures::future::MaybeDone;
-use futures::task::AtomicWaker;
 use futures::Future;
 use futures::FutureExt;
 use pin_project::pin_project;
@@ -22,7 +21,6 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::sync::Arc;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
@@ -186,7 +184,6 @@ pub struct OpState {
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
   pub(crate) gotham_state: GothamState,
-  pub waker: Arc<AtomicWaker>,
 }
 
 impl OpState {
@@ -197,7 +194,6 @@ impl OpState {
       gotham_state: Default::default(),
       last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
-      waker: Arc::new(AtomicWaker::new()),
     }
   }
 

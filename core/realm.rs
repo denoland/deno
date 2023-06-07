@@ -5,12 +5,10 @@ use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
 use crate::runtime::exception_to_err_result;
 use crate::runtime::JsRuntimeState;
-use crate::task::MaskResultAsSend;
 use crate::JsRuntime;
-use crate::OpId;
-use crate::OpResult;
-use crate::PromiseId;
+use crate::OpCall;
 use anyhow::Error;
+use futures::stream::FuturesUnordered;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::collections::VecDeque;
@@ -18,7 +16,6 @@ use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
 use std::option::Option;
 use std::rc::Rc;
-use tokio::task::JoinSet;
 use v8::HandleScope;
 use v8::Local;
 
@@ -51,8 +48,7 @@ pub(crate) struct ContextState {
   pub(crate) pending_promise_rejections:
     VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>,
   pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
-  pub(crate) pending_ops:
-    JoinSet<MaskResultAsSend<(PromiseId, OpId, OpResult)>>,
+  pub(crate) pending_ops: FuturesUnordered<OpCall>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
   pub(crate) op_ctxs: Box<[OpCtx]>,

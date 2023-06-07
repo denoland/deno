@@ -41,6 +41,7 @@ use futures::future::FutureExt;
 use futures::future::MaybeDone;
 use futures::stream::StreamExt;
 use futures::task::noop_waker;
+use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -308,6 +309,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
+  pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -318,6 +320,7 @@ pub struct JsRuntimeState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  waker: AtomicWaker,
 }
 
 impl JsRuntimeState {
@@ -543,6 +546,8 @@ impl JsRuntime {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
+      waker: AtomicWaker::new(),
+      have_unpolled_ops: false,
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
@@ -1323,7 +1328,7 @@ impl JsRuntime {
     {
       let state = self.inner.state.borrow();
       has_inspector = state.inspector.is_some();
-      state.op_state.borrow().waker.register(cx.waker());
+      state.waker.register(cx.waker());
     }
 
     if has_inspector {
@@ -1414,11 +1419,12 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if pending_state.has_pending_background_tasks
+    if state.have_unpolled_ops
+      || pending_state.has_pending_background_tasks
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.op_state.borrow().waker.wake();
+      state.waker.wake();
     }
 
     drop(state);
@@ -1471,7 +1477,7 @@ impl JsRuntime {
         // evaluation may complete during this, in which case the counter will
         // reset.
         state.dyn_module_evaluate_idle_counter += 1;
-        state.op_state.borrow().waker.wake();
+        state.waker.wake();
       }
     }
 
@@ -1664,7 +1670,7 @@ impl JsRuntimeState {
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
     // Notify event loop to poll again soon.
-    self.op_state.borrow().waker.wake();
+    self.waker.wake();
   }
 }
 
@@ -2398,6 +2404,12 @@ impl JsRuntime {
 
   // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
   fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
+    // Now handle actual ops.
+    {
+      let mut state = self.inner.state.borrow_mut();
+      state.have_unpolled_ops = false;
+    }
+
     // Handle responses for each realm.
     let state = self.inner.state.clone();
     let isolate = &mut self.inner.v8_isolate;
@@ -2421,15 +2433,10 @@ impl JsRuntime {
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
         SmallVec::with_capacity(32);
 
-      loop {
-        let item = {
-          let next = std::pin::pin!(context_state.pending_ops.join_next());
-          let Poll::Ready(Some(item)) = next.poll(cx) else {
-            break;
-          };
-          item
-        };
-        let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
+      while let Poll::Ready(Some(item)) =
+        context_state.pending_ops.poll_next_unpin(cx)
+      {
+        let (promise_id, op_id, mut resp) = item;
         state
           .borrow()
           .op_state
@@ -2479,6 +2486,11 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   promise_id: PromiseId,
   op: impl Future<Output = Result<R, Error>> + 'static,
 ) {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // at least 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
@@ -2487,10 +2499,13 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let fut = op
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
-  // SAFETY: this this is guaranteed to be running on a current-thread executor
-  ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
-    crate::task::MaskFutureAsSend::new(OpCall::pending(ctx, promise_id, fut))
-  });
+  let mut state = runtime_state.borrow_mut();
+  ctx
+    .context_state
+    .borrow_mut()
+    .pending_ops
+    .push(OpCall::pending(ctx, promise_id, fut));
+  state.have_unpolled_ops = true;
 }
 
 #[inline]
@@ -2569,6 +2584,12 @@ pub fn queue_async_op<'s>(
   promise_id: PromiseId,
   mut op: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
+  let runtime_state = match ctx.runtime_state.upgrade() {
+    Some(rc_state) => rc_state,
+    // at least 1 Rc is held by the JsRuntime.
+    None => unreachable!(),
+  };
+
   // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
@@ -2606,12 +2627,9 @@ pub fn queue_async_op<'s>(
 
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
-  ctx
-    .context_state
-    .borrow_mut()
-    .pending_ops
-    // SAFETY: this this is guaranteed to be running on a current-thread executor
-    .spawn(unsafe { crate::task::MaskFutureAsSend::new(op_call) });
+  let mut state = runtime_state.borrow_mut();
+  ctx.context_state.borrow_mut().pending_ops.push(op_call);
+  state.have_unpolled_ops = true;
   None
 }
 
@@ -2726,8 +2744,8 @@ pub mod tests {
     (runtime, dispatch_count)
   }
 
-  #[tokio::test]
-  async fn test_ref_unref_ops() {
+  #[test]
+  fn test_ref_unref_ops() {
     let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script_static(
@@ -4717,7 +4735,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     }
   }
 
-  #[ignore]
   #[tokio::test]
   async fn js_realm_gc() {
     static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -4776,6 +4793,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         .await
         .unwrap();
     }
+
     drop(runtime);
 
     // Make sure the OpState was dropped properly when the runtime dropped
