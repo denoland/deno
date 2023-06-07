@@ -3,6 +3,7 @@
 use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
@@ -565,4 +566,19 @@ fn test_with_glob_config_and_flags() {
   let output = cmd_output.combined_output();
   assert_contains!(output, "glob/data/test1.js");
   assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn conditionally_loads_type_graph() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("test --reload -L debug --no-check run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
 }

@@ -21,6 +21,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
 use deno_core::serde_v8;
+use deno_core::serde_v8::from_v8;
 use deno_core::task::spawn;
 use deno_core::task::JoinHandle;
 use deno_core::v8;
@@ -384,17 +385,33 @@ pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
   resp_headers.append(name, value);
 }
 
-#[op]
-pub fn op_http_set_response_headers(slab_id: SlabId, headers: Vec<ByteString>) {
+#[op(v8)]
+fn op_http_set_response_headers(
+  scope: &mut v8::HandleScope,
+  slab_id: SlabId,
+  headers: serde_v8::Value,
+) {
   let mut http = slab_get(slab_id);
   // TODO(mmastrac): Invalid headers should be handled?
   let resp_headers = http.response().headers_mut();
-  resp_headers.reserve(headers.len());
-  for header in headers.chunks_exact(2) {
-    // These are valid latin-1 strings
-    let name = HeaderName::from_bytes(&header[0]).unwrap();
-    let value = HeaderValue::from_bytes(&header[1]).unwrap();
-    resp_headers.append(name, value);
+
+  let arr = v8::Local::<v8::Array>::try_from(headers.v8_value).unwrap();
+
+  let len = arr.length();
+  let header_len = len * 2;
+  resp_headers.reserve(header_len.try_into().unwrap());
+
+  for i in 0..len {
+    let item = arr.get_index(scope, i).unwrap();
+    let pair = v8::Local::<v8::Array>::try_from(item).unwrap();
+    let name = pair.get_index(scope, 0).unwrap();
+    let value = pair.get_index(scope, 1).unwrap();
+
+    let v8_name: ByteString = from_v8(scope, name).unwrap();
+    let v8_value: ByteString = from_v8(scope, value).unwrap();
+    let header_name = HeaderName::from_bytes(&v8_name).unwrap();
+    let header_value = HeaderValue::from_bytes(&v8_value).unwrap();
+    resp_headers.append(header_name, header_value);
   }
 }
 

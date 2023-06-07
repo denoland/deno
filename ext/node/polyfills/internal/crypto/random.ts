@@ -37,11 +37,7 @@ const {
   op_node_gen_prime_async,
   op_node_check_prime_bytes_async,
   op_node_check_prime_async,
-} = Deno.core.generateAsyncOpHandler(
-  "op_node_gen_prime_async",
-  "op_node_check_prime_bytes_async",
-  "op_node_check_prime_async",
-);
+} = Deno.core.ensureFastOps();
 
 export type LargeNumberLike =
   | ArrayBufferView

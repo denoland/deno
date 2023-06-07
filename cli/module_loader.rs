@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -169,7 +168,7 @@ impl ModuleLoadPreparer {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None
+    if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
       let graph = Arc::new(graph.segment(&roots));
