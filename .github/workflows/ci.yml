@@ -210,7 +210,7 @@ jobs:
           # to complete.
           sudo apt-get remove --purge -y man-db
 
-          # Install clang, lld, and debootstrap.
+          # Install clang-15, lld-15, and debootstrap.
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
             sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
@@ -218,7 +218,7 @@ jobs:
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends debootstrap clang lld || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang lld
+          sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -249,8 +249,8 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang
-            -C link-arg=-fuse-ld=lld
+            -C linker=clang-15
+            -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
@@ -260,8 +260,8 @@ jobs:
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang
-            -C link-arg=-fuse-ld=lld
+            -C linker=clang-15
+            -C link-arg=-fuse-ld=lld-15
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
@@ -269,7 +269,7 @@ jobs:
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang
+          CC=clang-15
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
       - name: Log versions
