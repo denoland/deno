@@ -16,13 +16,13 @@ use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
@@ -270,21 +270,17 @@ async fn build_test_graph(
       None,
       None,
     ));
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
-      npm_registry_api.clone(),
-      npm_resolution.clone(),
-      None,
-    ));
     CliGraphResolver::new(
       None,
       Some(Arc::new(original_import_map)),
       false,
       npm_registry_api,
       npm_resolution,
-      deps_installer,
+      Default::default(),
+      Default::default(),
     )
   });
-  let mut graph = ModuleGraph::default();
+  let mut graph = ModuleGraph::new(GraphKind::All);
   graph
     .build(
       roots,

@@ -1,7 +1,7 @@
 {
   "nodeVersion": "18.12.1",
   "ignore": {
-    "common": ["index.js", "internet.js", "tmpdir.js"],
+    "common": ["index.js", "internet.js"],
     "fixtures": [
       "child-process-spawn-node.js",
       "echo.js",
@@ -32,7 +32,8 @@
       "test-child-process-exec-std-encoding.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-expire.js",
-      "test-child-process-exec-timeout-kill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-kill.js",
       "test-child-process-exec-timeout-not-expired.js",
       "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile.js",
@@ -44,9 +45,11 @@
       "test-child-process-stdout-flush-exit.js",
       "test-child-process-stdout-flush.js",
       "test-console-instance.js",
+      "test-crypto-dh.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
       "test-crypto-prime.js",
+      "test-crypto-stream.js",
       "test-crypto-x509.js",
       "test-dgram-custom-lookup.js",
       "test-dgram-ipv6only.js",
@@ -118,7 +121,8 @@
       "fixtures.js",
       "hijackstdio.js",
       "index.mjs",
-      "internet.js"
+      "internet.js",
+      "tmpdir.js"
     ],
     "fixtures": [
       "GH-1899-output.js",
@@ -147,7 +151,8 @@
       "test-dns-promises-resolve.js",
       "test-dns-regress-6244.js",
       "test-dns-setserver-in-callback-of-resolve4.js",
-      "test-dns.js"
+      "test-dns.js",
+      "test-http-https-default-ports.js"
     ],
     "parallel": [
       "test-assert-async.js",
@@ -212,7 +217,8 @@
       "test-child-process-exec-stdout-stderr-data-string.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-exec-timeout-expire.js",
-      "test-child-process-exec-timeout-kill.js",
+      // TODO(bartlomieju): this test was flaky on macOS CI
+      // "test-child-process-exec-timeout-kill.js",
       // TODO(bartlomieju): this test was flaky on macOS CI
       // "test-child-process-execFile-promisified-abortController.js",
       "test-child-process-execfile-maxbuf.js",
@@ -227,7 +233,8 @@
       "test-child-process-spawnsync-maxbuf.js",
       "test-child-process-spawnsync-validation-errors.js",
       "test-child-process-spawnsync.js",
-      "test-client-request-destroy.js",
+      // TODO(crowlKats): socket is not yet polyfilled
+      // "test-client-request-destroy.js",
       "test-console-async-write-error.js",
       "test-console-group.js",
       "test-console-log-stdio-broken-dest.js",
@@ -236,10 +243,13 @@
       "test-console-sync-write-error.js",
       "test-console-table.js",
       "test-console-tty-colors.js",
+      "test-crypto-dh-shared.js",
+      "test-crypto-dh.js",
       "test-crypto-hkdf.js",
       "test-crypto-hmac.js",
       "test-crypto-prime.js",
       "test-crypto-secret-keygen.js",
+      "test-crypto-stream.js",
       "test-crypto-update-encoding.js",
       "test-crypto-x509.js",
       "test-dgram-close-during-bind.js",
@@ -351,12 +361,17 @@
       "test-http-agent-getname.js",
       "test-http-client-get-url.js",
       "test-http-client-read-in-error.js",
+      // TODO(lev): ClientRequest.socket is not polyfilled so this test keeps
+      //            failing
+      //"test-http-client-set-timeout.js",
       "test-http-localaddress.js",
-      "test-http-outgoing-buffer.js",
+      // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
+      // "test-http-outgoing-buffer.js",
       "test-http-outgoing-internal-headernames-getter.js",
       "test-http-outgoing-internal-headernames-setter.js",
       "test-http-outgoing-internal-headers.js",
-      "test-http-outgoing-message-inheritance.js",
+      // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
+      // "test-http-outgoing-message-inheritance.js",
       "test-http-outgoing-renderHeaders.js",
       "test-http-outgoing-settimeout.js",
       "test-net-access-byteswritten.js",
@@ -605,7 +620,6 @@
       "test-url-format-invalid-input.js",
       "test-url-format-whatwg.js",
       "test-url-format.js",
-      "test-url-parse-format.js",
       "test-url-parse-invalid-input.js",
       "test-url-parse-query.js",
       "test-url-pathtofileurl.js",
@@ -628,25 +642,17 @@
       "test-vm-static-this.js",
       "test-webcrypto-sign-verify.js",
       "test-whatwg-encoding-custom-api-basics.js",
-      "test-whatwg-encoding-custom-fatal-streaming.js",
-      "test-whatwg-encoding-custom-textdecoder-fatal.js",
       "test-whatwg-encoding-custom-textdecoder-ignorebom.js",
       "test-whatwg-encoding-custom-textdecoder-streaming.js",
-      "test-whatwg-encoding-custom-textdecoder-utf16-surrogates.js",
       "test-whatwg-events-add-event-listener-options-passive.js",
       "test-whatwg-events-add-event-listener-options-signal.js",
       "test-whatwg-events-customevent.js",
       "test-whatwg-url-custom-deepequal.js",
-      "test-whatwg-url-custom-domainto.js",
       "test-whatwg-url-custom-global.js",
       "test-whatwg-url-custom-href-side-effect.js",
-      "test-whatwg-url-custom-inspect.js",
-      "test-whatwg-url-custom-parsing.js",
-      "test-whatwg-url-custom-setters.js",
       "test-whatwg-url-custom-tostringtag.js",
       "test-whatwg-url-override-hostname.js",
       "test-whatwg-url-properties.js",
-      "test-whatwg-url-toascii.js",
       "test-zlib-close-after-error.js",
       "test-zlib-close-after-write.js",
       "test-zlib-convenience-methods.js",

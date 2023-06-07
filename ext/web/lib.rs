@@ -2,6 +2,7 @@
 
 mod blob;
 mod compression;
+mod hr_timer_lock;
 mod message_port;
 mod timers;
 
@@ -103,7 +104,6 @@ deno_core::extension!(deno_web,
     "08_text_encoding.js",
     "09_file.js",
     "10_filereader.js",
-    "11_blob_url.js",
     "12_location.js",
     "13_message_port.js",
     "14_compression.js",
@@ -142,7 +142,7 @@ fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
 fn forgiving_base64_decode_inplace(
   input: &mut [u8],
 ) -> Result<usize, AnyError> {
-  let error: _ =
+  let error =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
   let decoded =
     base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;

@@ -9,7 +9,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -122,7 +122,7 @@ const isTrusted = ObjectGetOwnPropertyDescriptor({
   },
 }, "isTrusted").get;
 
-const eventInitConverter = webidl.createDictionaryConverter("EventInit", [{
+webidl.converters.EventInit = webidl.createDictionaryConverter("EventInit", [{
   key: "bubbles",
   defaultValue: false,
   converter: webidl.converters.boolean,
@@ -167,14 +167,16 @@ class Event {
         1,
         "Failed to construct 'Event'",
       );
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
+      type = webidl.converters.DOMString(
+        type,
+        "Failed to construct 'Event'",
+        "Argument 1",
+      );
+      const eventInit = webidl.converters.EventInit(
+        eventInitDict,
+        "Failed to construct 'Event'",
+        "Argument 2",
+      );
       this[_attributes] = {
         type,
         ...eventInit,
@@ -482,7 +484,7 @@ function getRoot(eventTarget) {
 function isNode(
   eventTarget,
 ) {
-  return Boolean(eventTarget && ReflectHas(eventTarget, "nodeType"));
+  return eventTarget?.nodeType !== undefined;
 }
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -734,10 +736,15 @@ function innerInvokeEventListeners(
     return found;
   }
 
-  // Copy event listeners before iterating since the list can be modified during the iteration.
-  const handlers = ArrayPrototypeSlice(targetListeners[type]);
+  let handlers = targetListeners[type];
+  const handlersLength = handlers.length;
 
-  for (let i = 0; i < handlers.length; i++) {
+  // Copy event listeners before iterating since the list can be modified during the iteration.
+  if (handlersLength > 1) {
+    handlers = ArrayPrototypeSlice(targetListeners[type]);
+  }
+
+  for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
     let capture, once, passive;
@@ -804,12 +811,19 @@ function innerInvokeEventListeners(
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
 function invokeEventListeners(tuple, eventImpl) {
   const path = getPath(eventImpl);
-  const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
-  for (let i = tupleIndex; i >= 0; i--) {
-    const t = path[i];
+  if (path.length === 1) {
+    const t = path[0];
     if (t.target) {
       setTarget(eventImpl, t.target);
-      break;
+    }
+  } else {
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
+    for (let i = tupleIndex; i >= 0; i--) {
+      const t = path[i];
+      if (t.target) {
+        setTarget(eventImpl, t.target);
+        break;
+      }
     }
   }
 
@@ -936,13 +950,13 @@ function lazyAddEventListenerOptionsConverter() {
   );
 }
 
-webidl.converters.AddEventListenerOptions = (V, opts) => {
+webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
   if (webidl.type(V) !== "Object" || V === null) {
     V = { capture: Boolean(V) };
   }
 
   lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, opts);
+  return addEventListenerOptionsConverter(V, prefix, context, opts);
 };
 
 class EventTarget {
@@ -962,10 +976,11 @@ class EventTarget {
 
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(options, {
+    options = webidl.converters.AddEventListenerOptions(
+      options,
       prefix,
-      context: "Argument 3",
-    });
+      "Argument 3",
+    );
 
     if (callback === null) {
       return;
@@ -1527,6 +1542,7 @@ export {
   CloseEvent,
   CustomEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,

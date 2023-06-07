@@ -867,3 +867,21 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandKillAfterStatus() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["help"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+    await child.status;
+    assertThrows(
+      () => child.kill(),
+      TypeError,
+      "Child process has already terminated.",
+    );
+  },
+);

@@ -5,4 +5,4 @@ error: Unsupported scheme "ext" for module "ext:runtime/01_errors.js". Supported
     "http",
     "https",
 ]
-    at [WILDCARD]
+    at [WILDCARD]/extension_import.ts:1:8

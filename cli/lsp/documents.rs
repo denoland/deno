@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
-use super::client::LspClientKind;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -17,8 +16,6 @@ use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
-use crate::node::CliNodeResolver;
-use crate::node::NodeResolution;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
@@ -37,7 +34,10 @@ use deno_core::url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphImport;
 use deno_graph::Resolution;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReq;
@@ -45,6 +45,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
+use package_json::PackageJsonDepsProvider;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -791,6 +792,16 @@ fn get_document_path(
   }
 }
 
+pub struct UpdateDocumentConfigOptions<'a> {
+  pub enabled_urls: Vec<Url>,
+  pub document_preload_limit: usize,
+  pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
+  pub maybe_config_file: Option<&'a ConfigFile>,
+  pub maybe_package_json: Option<&'a PackageJson>,
+  pub npm_registry_api: Arc<CliNpmRegistryApi>,
+  pub npm_resolution: Arc<NpmResolution>,
+}
+
 /// Specify the documents to include on a `documents.documents(...)` call.
 #[derive(Debug, Clone, Copy)]
 pub enum DocumentsFilter {
@@ -816,8 +827,6 @@ pub struct Documents {
   open_docs: HashMap<ModuleSpecifier, Document>,
   /// Documents stored on the file system.
   file_system_docs: Arc<Mutex<FileSystemDocuments>>,
-  /// Kind of the client that is using the documents.
-  lsp_client_kind: LspClientKind,
   /// Hash of the config used for resolution. When the hash changes we update
   /// dependencies.
   resolver_config_hash: u64,
@@ -837,14 +846,13 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path, lsp_client_kind: LspClientKind) -> Self {
+  pub fn new(location: &Path) -> Self {
     Self {
       cache: HttpCache::new(location),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
       file_system_docs: Default::default(),
-      lsp_client_kind,
       resolver_config_hash: 0,
       imports: Default::default(),
       resolver: Default::default(),
@@ -1055,7 +1063,7 @@ impl Documents {
     &self,
     specifiers: Vec<String>,
     referrer_doc: &AssetOrDocument,
-    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
     let referrer = referrer_doc.specifier();
     let dependencies = match referrer_doc {
@@ -1073,7 +1081,7 @@ impl Documents {
                 &specifier,
                 referrer,
                 NodeResolutionMode::Types,
-                &mut PermissionsContainer::allow_all(),
+                &PermissionsContainer::allow_all(),
               )
               .ok()
               .flatten(),
@@ -1082,7 +1090,7 @@ impl Documents {
         }
       }
       if let Some(module_name) = specifier.strip_prefix("node:") {
-        if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+        if deno_node::is_builtin_node_module(module_name) {
           // return itself for node: specifiers because during type checking
           // we resolve to the ambient modules in the @types/node package
           // rather than deno_std/node
@@ -1159,22 +1167,16 @@ impl Documents {
     Ok(())
   }
 
-  pub fn update_config(
-    &mut self,
-    enabled_urls: Vec<Url>,
-    maybe_import_map: Option<Arc<import_map::ImportMap>>,
-    maybe_config_file: Option<&ConfigFile>,
-    maybe_package_json: Option<&PackageJson>,
-    npm_registry_api: Arc<CliNpmRegistryApi>,
-    npm_resolution: Arc<NpmResolution>,
-  ) {
+  pub fn update_config(&mut self, options: UpdateDocumentConfigOptions) {
     fn calculate_resolver_config_hash(
       enabled_urls: &[Url],
+      document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
+      hasher.write_hashable(&document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
         let mut enabled_urls = enabled_urls.to_vec();
@@ -1206,33 +1208,35 @@ impl Documents {
       hasher.finish()
     }
 
-    let maybe_package_json_deps = maybe_package_json.map(|package_json| {
-      package_json::get_local_package_json_version_reqs(package_json)
-    });
-    let maybe_jsx_config =
-      maybe_config_file.and_then(|cf| cf.to_maybe_jsx_import_source_config());
+    let maybe_package_json_deps =
+      options.maybe_package_json.map(|package_json| {
+        package_json::get_local_package_json_version_reqs(package_json)
+      });
+    let maybe_jsx_config = options
+      .maybe_config_file
+      .and_then(|cf| cf.to_maybe_jsx_import_source_config());
     let new_resolver_config_hash = calculate_resolver_config_hash(
-      &enabled_urls,
-      maybe_import_map.as_deref(),
+      &options.enabled_urls,
+      options.document_preload_limit,
+      options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
       maybe_package_json_deps.as_ref(),
     );
-    let deps_installer = Arc::new(PackageJsonDepsInstaller::new(
-      npm_registry_api.clone(),
-      npm_resolution.clone(),
-      maybe_package_json_deps,
-    ));
+    let deps_provider =
+      Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
+    let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
       maybe_jsx_config,
-      maybe_import_map,
+      options.maybe_import_map,
       false,
-      npm_registry_api,
-      npm_resolution,
+      options.npm_registry_api,
+      options.npm_resolution,
+      deps_provider,
       deps_installer,
     ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
-        maybe_config_file.map(|cf| cf.to_maybe_imports())
+        options.maybe_config_file.map(|cf| cf.to_maybe_imports())
       {
         imports
           .into_iter()
@@ -1252,14 +1256,21 @@ impl Documents {
 
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
-      self.refresh_dependencies(enabled_urls);
+      self.refresh_dependencies(
+        options.enabled_urls,
+        options.document_preload_limit,
+      );
       self.resolver_config_hash = new_resolver_config_hash;
     }
 
     self.dirty = true;
   }
 
-  fn refresh_dependencies(&mut self, enabled_urls: Vec<Url>) {
+  fn refresh_dependencies(
+    &mut self,
+    enabled_urls: Vec<Url>,
+    document_preload_limit: usize,
+  ) {
     let resolver = self.resolver.as_graph_resolver();
     for doc in self.open_docs.values_mut() {
       if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
@@ -1269,51 +1280,73 @@ impl Documents {
 
     // update the file system documents
     let mut fs_docs = self.file_system_docs.lock();
-    match self.lsp_client_kind {
-      LspClientKind::CodeEditor => {
-        let mut not_found_docs =
-          fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
-        let open_docs = &mut self.open_docs;
+    if document_preload_limit > 0 {
+      let mut not_found_docs =
+        fs_docs.docs.keys().cloned().collect::<HashSet<_>>();
+      let open_docs = &mut self.open_docs;
 
-        log::debug!("Preloading documents from enabled urls...");
-        for specifier in PreloadDocumentFinder::from_enabled_urls(&enabled_urls)
+      log::debug!("Preloading documents from enabled urls...");
+      let mut finder = PreloadDocumentFinder::from_enabled_urls_with_limit(
+        &enabled_urls,
+        document_preload_limit,
+      );
+      for specifier in finder.by_ref() {
+        // mark this document as having been found
+        not_found_docs.remove(&specifier);
+
+        if !open_docs.contains_key(&specifier)
+          && !fs_docs.docs.contains_key(&specifier)
         {
-          // mark this document as having been found
-          not_found_docs.remove(&specifier);
-
-          if !open_docs.contains_key(&specifier)
-            && !fs_docs.docs.contains_key(&specifier)
-          {
-            fs_docs.refresh_document(&self.cache, resolver, &specifier);
-          } else {
-            // update the existing entry to have the new resolver
-            if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
-              if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-                *doc = new_doc;
-              }
+          fs_docs.refresh_document(&self.cache, resolver, &specifier);
+        } else {
+          // update the existing entry to have the new resolver
+          if let Some(doc) = fs_docs.docs.get_mut(&specifier) {
+            if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+              *doc = new_doc;
             }
           }
         }
+      }
 
+      if finder.hit_limit() {
+        lsp_warn!(
+            concat!(
+              "Hit the language server document preload limit of {} file system entries. ",
+              "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
+              "partially enable a workspace or increase the limit via \"deno.documentPreloadLimit\". ",
+              "In cases where Deno ends up using too much memory, you may want to lower the limit."
+            ),
+            document_preload_limit,
+          );
+
+        // since we hit the limit, just update everything to use the new resolver
+        for uri in not_found_docs {
+          if let Some(doc) = fs_docs.docs.get_mut(&uri) {
+            if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+              *doc = new_doc;
+            }
+          }
+        }
+      } else {
         // clean up and remove any documents that weren't found
         for uri in not_found_docs {
           fs_docs.docs.remove(&uri);
         }
       }
-      LspClientKind::Repl => {
-        // This log statement is used in the tests to ensure preloading doesn't
-        // happen, which is not useful in the repl and could be very expensive
-        // if the repl is launched from a directory with a lot of descendants.
-        log::debug!("Skipping document preload for repl.");
+    } else {
+      // This log statement is used in the tests to ensure preloading doesn't
+      // happen, which is not useful in the repl and could be very expensive
+      // if the repl is launched from a directory with a lot of descendants.
+      log::debug!("Skipping document preload.");
 
-        // for the repl, just update to use the new resolver
-        for doc in fs_docs.docs.values_mut() {
-          if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
-            *doc = new_doc;
-          }
+      // just update to use the new resolver
+      for doc in fs_docs.docs.values_mut() {
+        if let Some(new_doc) = doc.maybe_with_new_resolver(resolver) {
+          *doc = new_doc;
         }
       }
     }
+
     fs_docs.dirty = true;
   }
 
@@ -1417,7 +1450,7 @@ impl Documents {
   fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
-    maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
@@ -1452,7 +1485,7 @@ impl Documents {
 
 fn node_resolve_npm_req_ref(
   npm_req_ref: NpmPackageReqReference,
-  maybe_node_resolver: Option<&Arc<CliNodeResolver>>,
+  maybe_node_resolver: Option<&Arc<NodeResolver>>,
 ) -> Option<(ModuleSpecifier, MediaType)> {
   maybe_node_resolver.map(|node_resolver| {
     NodeResolution::into_specifier_and_media_type(
@@ -1460,7 +1493,7 @@ fn node_resolve_npm_req_ref(
         .resolve_npm_req_reference(
           &npm_req_ref,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )
         .ok()
         .flatten(),
@@ -1553,19 +1586,15 @@ enum PendingEntry {
 /// Iterator that finds documents that can be preloaded into
 /// the LSP on startup.
 struct PreloadDocumentFinder {
-  limit: u16,
-  entry_count: u16,
+  limit: usize,
+  entry_count: usize,
   pending_entries: VecDeque<PendingEntry>,
 }
 
 impl PreloadDocumentFinder {
-  pub fn from_enabled_urls(enabled_urls: &Vec<Url>) -> Self {
-    Self::from_enabled_urls_with_limit(enabled_urls, 1_000)
-  }
-
   pub fn from_enabled_urls_with_limit(
     enabled_urls: &Vec<Url>,
-    limit: u16,
+    limit: usize,
   ) -> Self {
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
       if dir_path.parent().is_none() {
@@ -1598,6 +1627,10 @@ impl PreloadDocumentFinder {
       finder.pending_entries.push_back(PendingEntry::Dir(dir));
     }
     finder
+  }
+
+  pub fn hit_limit(&self) -> bool {
+    self.entry_count >= self.limit
   }
 
   fn get_valid_specifier(path: &Path) -> Option<ModuleSpecifier> {
@@ -1694,15 +1727,7 @@ impl Iterator for PreloadDocumentFinder {
           while let Some(entry) = entries.next() {
             self.entry_count += 1;
 
-            if self.entry_count >= self.limit {
-              lsp_warn!(
-                concat!(
-                  "Hit the language server document preload limit of {} file system entries. ",
-                  "You may want to use the \"deno.enablePaths\" configuration setting to only have Deno ",
-                  "partially enable a workspace."
-                ),
-                self.limit,
-              );
+            if self.hit_limit() {
               self.pending_entries.clear(); // stop searching
               return None;
             }
@@ -1764,7 +1789,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location, Default::default());
+    let documents = Documents::new(&location);
     (documents, location)
   }
 
@@ -1894,14 +1919,15 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file2.ts".to_string())
         .unwrap();
 
-      documents.update_config(
-        vec![],
-        Some(Arc::new(import_map)),
-        None,
-        None,
-        npm_registry_api.clone(),
-        npm_resolution.clone(),
-      );
+      documents.update_config(UpdateDocumentConfigOptions {
+        enabled_urls: vec![],
+        document_preload_limit: 1_000,
+        maybe_import_map: Some(Arc::new(import_map)),
+        maybe_config_file: None,
+        maybe_package_json: None,
+        npm_registry_api: npm_registry_api.clone(),
+        npm_resolution: npm_resolution.clone(),
+      });
 
       // open the document
       let document = documents.open(
@@ -1934,14 +1960,15 @@ console.log(b, "hello deno");
         .append("test".to_string(), "./file3.ts".to_string())
         .unwrap();
 
-      documents.update_config(
-        vec![],
-        Some(Arc::new(import_map)),
-        None,
-        None,
+      documents.update_config(UpdateDocumentConfigOptions {
+        enabled_urls: vec![],
+        document_preload_limit: 1_000,
+        maybe_import_map: Some(Arc::new(import_map)),
+        maybe_config_file: None,
+        maybe_package_json: None,
         npm_registry_api,
         npm_resolution,
-      );
+      });
 
       // check the document's dependencies
       let document = documents.get(&file1_specifier).unwrap();
@@ -1996,12 +2023,15 @@ console.log(b, "hello deno");
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let mut urls = PreloadDocumentFinder::from_enabled_urls(&vec![
-      temp_dir.uri().join("root1/").unwrap(),
-      temp_dir.uri().join("root2/file1.ts").unwrap(),
-      temp_dir.uri().join("root2/main.min.ts").unwrap(),
-      temp_dir.uri().join("root2/folder/").unwrap(),
-    ])
+    let mut urls = PreloadDocumentFinder::from_enabled_urls_with_limit(
+      &vec![
+        temp_dir.uri().join("root1/").unwrap(),
+        temp_dir.uri().join("root2/file1.ts").unwrap(),
+        temp_dir.uri().join("root2/main.min.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/").unwrap(),
+      ],
+      1_000,
+    )
     .collect::<Vec<_>>();
 
     // Ideally we would test for order here, which should be BFS, but
@@ -2043,18 +2073,18 @@ console.log(b, "hello deno");
   #[test]
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
-      let paths = PreloadDocumentFinder::from_enabled_urls(&vec![Url::parse(
-        "file:///c:/",
+      let paths = PreloadDocumentFinder::from_enabled_urls_with_limit(
+        &vec![Url::parse("file:///c:/").unwrap()],
+        1_000,
       )
-      .unwrap()])
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
-      let paths =
-        PreloadDocumentFinder::from_enabled_urls(&vec![
-          Url::parse("file:///").unwrap()
-        ])
-        .collect::<Vec<_>>();
+      let paths = PreloadDocumentFinder::from_enabled_urls_with_limit(
+        &vec![Url::parse("file:///").unwrap()],
+        1_000,
+      )
+      .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     }
   }

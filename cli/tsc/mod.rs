@@ -4,8 +4,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
-use crate::node::CliNodeResolver;
-use crate::node::NodeResolution;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -33,7 +31,10 @@ use deno_core::Snapshot;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
@@ -116,13 +117,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(
-    deno_cli_tsc,
-    ops_fn = deno_ops,
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
-  );
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -305,7 +300,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -329,7 +324,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+  maybe_node_resolver: Option<Arc<NodeResolver>>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -339,7 +334,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_node_resolver: Option<Arc<CliNodeResolver>>,
+    maybe_node_resolver: Option<Arc<NodeResolver>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -537,7 +532,7 @@ fn op_resolve(
   };
   for specifier in args.specifiers {
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+      if deno_node::is_builtin_node_module(module_name) {
         // return itself for node: specifiers because during type checking
         // we resolve to the ambient modules in the @types/node package
         // rather than deno_std/node
@@ -638,7 +633,7 @@ fn resolve_graph_specifier_types(
         let maybe_resolution = node_resolver.resolve_npm_reference(
           &module.nv_reference,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )?;
         Ok(Some(NodeResolution::into_specifier_and_media_type(
           maybe_resolution,
@@ -678,7 +673,7 @@ fn resolve_non_graph_specifier_types(
           specifier,
           referrer,
           NodeResolutionMode::Types,
-          &mut PermissionsContainer::allow_all(),
+          &PermissionsContainer::allow_all(),
         )
         .ok()
         .flatten(),
@@ -691,7 +686,7 @@ fn resolve_non_graph_specifier_types(
     let maybe_resolution = node_resolver.resolve_npm_req_reference(
       &npm_ref,
       NodeResolutionMode::Types,
-      &mut PermissionsContainer::allow_all(),
+      &PermissionsContainer::allow_all(),
     )?;
     Ok(Some(NodeResolution::into_specifier_and_media_type(
       maybe_resolution,
@@ -779,9 +774,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           .unwrap(),
       ));
     },
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
   );
 
   let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
@@ -847,6 +839,7 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
+  use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use std::fs;
 
@@ -890,7 +883,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &mut loader, Default::default())
       .await;
@@ -916,7 +909,7 @@ mod tests {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &mut loader, Default::default())
       .await;

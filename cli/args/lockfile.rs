@@ -17,7 +17,6 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageReq;
 
-use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
 use crate::npm::CliNpmRegistryApi;
 use crate::Flags;
@@ -45,22 +44,9 @@ pub fn discover(
     None => match maybe_config_file {
       Some(config_file) => {
         if config_file.specifier.scheme() == "file" {
-          match config_file.to_lock_config()? {
-            Some(LockConfig::Bool(lock)) if !lock => {
-              return Ok(None);
-            }
-            Some(LockConfig::PathBuf(lock)) => config_file
-              .specifier
-              .to_file_path()
-              .unwrap()
-              .parent()
-              .unwrap()
-              .join(lock),
-            _ => {
-              let mut path = config_file.specifier.to_file_path().unwrap();
-              path.set_file_name("deno.lock");
-              path
-            }
+          match config_file.resolve_lockfile_path()? {
+            Some(path) => path,
+            None => return Ok(None),
           }
         } else {
           return Ok(None);
@@ -96,7 +82,7 @@ pub async fn snapshot_from_lockfile(
     // now fill the packages except for the dist information
     let mut packages = Vec::with_capacity(lockfile.content.npm.packages.len());
     for (key, package) in &lockfile.content.npm.packages {
-      let pkg_id = NpmPackageId::from_serialized(key)?;
+      let id = NpmPackageId::from_serialized(key)?;
 
       // collect the dependencies
       let mut dependencies = HashMap::with_capacity(package.dependencies.len());
@@ -106,19 +92,20 @@ pub async fn snapshot_from_lockfile(
       }
 
       packages.push(SerializedNpmResolutionSnapshotPackage {
-        pkg_id,
-        dist: Default::default(), // temporarily empty
+        id,
         dependencies,
+        // temporarily empty
+        os: Default::default(),
+        cpu: Default::default(),
+        dist: Default::default(),
+        optional_dependencies: Default::default(),
       });
     }
     (root_packages, packages)
   };
 
   // now that the lockfile is dropped, fetch the package version information
-  let pkg_nvs = packages
-    .iter()
-    .map(|p| p.pkg_id.nv.clone())
-    .collect::<Vec<_>>();
+  let pkg_nvs = packages.iter().map(|p| p.id.nv.clone()).collect::<Vec<_>>();
   let get_version_infos = || {
     FuturesOrdered::from_iter(pkg_nvs.iter().map(|nv| async move {
       let package_info = api.package_info(&nv.name).await?;
@@ -131,11 +118,17 @@ pub async fn snapshot_from_lockfile(
     }))
   };
   let mut version_infos = get_version_infos();
-
   let mut i = 0;
   while let Some(result) = version_infos.next().await {
-    packages[i].dist = match result {
-      Ok(version_info) => version_info.dist,
+    match result {
+      Ok(version_info) => {
+        let mut package = &mut packages[i];
+        package.dist = version_info.dist;
+        package.cpu = version_info.cpu;
+        package.os = version_info.os;
+        package.optional_dependencies =
+          version_info.optional_dependencies.into_keys().collect();
+      }
       Err(err) => {
         if api.mark_force_reload() {
           // reset and try again
@@ -146,7 +139,7 @@ pub async fn snapshot_from_lockfile(
           return Err(err);
         }
       }
-    };
+    }
 
     i += 1;
   }

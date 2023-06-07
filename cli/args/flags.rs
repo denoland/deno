@@ -9,6 +9,7 @@ use clap::Command;
 use clap::ValueHint;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
@@ -253,6 +254,25 @@ pub enum TypeCheckMode {
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
   Local,
+}
+
+impl TypeCheckMode {
+  /// Gets if type checking will occur under this mode.
+  pub fn is_true(&self) -> bool {
+    match self {
+      Self::None => false,
+      Self::Local | Self::All => true,
+    }
+  }
+
+  /// Gets the corresponding module `GraphKind` that should be created
+  /// for the current `TypeCheckMode`.
+  pub fn as_graph_kind(&self) -> GraphKind {
+    match self.is_true() {
+      true => GraphKind::All,
+      false => GraphKind::CodeOnly,
+    }
+  }
 }
 
 impl Default for TypeCheckMode {
@@ -527,8 +547,11 @@ impl Flags {
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) | Repl(_) => std::env::current_dir().ok(),
-      _ => None,
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+        std::env::current_dir().ok()
+      }
+      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
+      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
     }
   }
 
@@ -1340,7 +1363,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(lock_arg())
     .arg(config_arg())
     .arg(import_map_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1859,6 +1882,7 @@ Remote modules and multiple modules may also be specified:
     .arg(config_arg())
     .arg(import_map_arg())
     .arg(lock_arg())
+    .arg(node_modules_dir_arg())
     .arg(reload_arg())
     .arg(ca_file_arg())
 }
@@ -1872,7 +1896,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -1882,6 +1906,90 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
+static ALLOW_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-read\n",
+  "  --allow-read=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_WRITE_HELP: &str = concat!(
+  "Allow file system write access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-write\n",
+  "  --allow-write=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_NET_HELP: &str = concat!(
+  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-net\n",
+  "  --allow-net=\"localhost:8080,deno.land\""
+);
+
+static ALLOW_ENV_HELP: &str = concat!(
+  "Allow access to system environment information. Optionally specify accessible environment variables.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-env\n",
+  "  --allow-env=\"PORT,HOME,PATH\""
+);
+
+static ALLOW_SYS_HELP: &str = concat!(
+  "Allow access to OS information. Optionally allow specific APIs by function name.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-sys\n",
+  "  --allow-sys=\"systemMemoryInfo,osRelease\""
+);
+
+static ALLOW_RUN_HELP: &str = concat!(
+  "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-run\n",
+  "  --allow-run=\"whoami,ps\""
+);
+
+static ALLOW_FFI_HELP: &str = concat!(
+  "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-ffi\n",
+  "  --allow-ffi=\"./libfoo.so\""
+);
+
+static ALLOW_HRTIME_HELP: &str = concat!(
+  "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
+static ALLOW_ALL_HELP: &str = concat!(
+  "Allow all permissions. Learn more about permissions in Deno:\n",
+  "https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -1890,7 +1998,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system read access")
+        .value_name("PATH")
+        .help(ALLOW_READ_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1900,7 +2009,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system write access")
+        .value_name("PATH")
+        .help(ALLOW_WRITE_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1910,7 +2020,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow network access")
+        .value_name("IP_OR_HOSTNAME")
+        .help(ALLOW_NET_HELP)
         .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
@@ -1920,7 +2031,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow environment access")
+        .value_name("VARIABLE_NAME")
+        .help(ALLOW_ENV_HELP)
         .value_parser(|key: &str| {
           if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
             return Err(format!("invalid key \"{key}\""));
@@ -1939,7 +2051,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow access to system info")
+        .value_name("API_NAME")
+        .help(ALLOW_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
     )
     .arg(
@@ -1948,7 +2061,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow running subprocesses"),
+        .value_name("PROGRAM_NAME")
+        .help(ALLOW_RUN_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -1956,7 +2070,8 @@ fn permission_args(app: Command) -> Command {
         .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow loading dynamic libraries")
+        .value_name("PATH")
+        .help(ALLOW_FFI_HELP)
         .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
@@ -1964,14 +2079,14 @@ fn permission_args(app: Command) -> Command {
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
-        .help("Allow high resolution time measurement"),
+        .help(ALLOW_HRTIME_HELP),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
         .action(ArgAction::SetTrue)
-        .help("Allow all permissions"),
+        .help(ALLOW_ALL_HELP),
     )
     .arg(
       Arg::new("prompt")
@@ -2230,7 +2345,7 @@ fn check_arg(checks_local_by_default: bool) -> Arg {
 default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
 will be included.
-  
+
 Alternatively, the 'deno check' subcommand can be used.",
     )
   } else {
@@ -2330,14 +2445,14 @@ fn no_npm_arg() -> Arg {
     .help("Do not resolve npm modules")
 }
 
-fn local_npm_arg() -> Arg {
+fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("Creates a local node_modules folder")
+    .help("Enables or disables the use of a local node_modules folder for npm packages")
 }
 
 fn unsafely_ignore_certificate_errors_arg() -> Arg {
@@ -2625,7 +2740,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -2745,7 +2860,8 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.config_flag = matches
     .remove_one::<String>("config")
-    .map_or(ConfigFlag::Discover, ConfigFlag::Path);
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
 
   let mut task_flags = TaskFlags {
     cwd: matches.remove_one::<String>("cwd"),
@@ -2880,6 +2996,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
@@ -2905,7 +3022,7 @@ fn compile_args_without_check_parse(
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3159,7 +3276,7 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn local_npm_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn node_modules_dir_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
 }
 

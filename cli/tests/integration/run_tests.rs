@@ -9,10 +9,10 @@ use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
-use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -1278,11 +1278,20 @@ itest!(type_directives_02 {
   output: "run/type_directives_02.ts.out",
 });
 
-itest!(type_directives_js_main {
-  args: "run --reload -L debug run/type_directives_js_main.js",
-  output: "run/type_directives_js_main.js.out",
-  exit_code: 0,
-});
+#[test]
+fn type_directives_js_main() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --reload -L debug --check run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("run --reload -L debug run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}
 
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",
@@ -2661,6 +2670,11 @@ mod permissions {
       });
   }
 
+  itest!(dynamic_import_static_analysis_no_permissions {
+    args: "run --quiet --reload --no-prompt dynamic_import/static_analysis_no_permissions.ts",
+    output: "dynamic_import/static_analysis_no_permissions.ts.out",
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
@@ -3026,14 +3040,29 @@ itest!(package_json_auto_discovered_no_package_json_imports {
   copy_temp_dir: Some("run/with_package_json/no_deno_json"),
 });
 
-itest!(package_json_with_deno_json {
-  args: "run --quiet -A main.ts",
-  output: "package_json/deno_json/main.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
-  http_server: true,
-});
+#[test]
+fn package_json_with_deno_json() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/deno_json/")
+    .cwd("package_json/deno_json/")
+    .build();
+  let output = context.new_command().args("run --quiet -A main.ts").run();
+  output.assert_matches_file("package_json/deno_json/main.out");
+
+  assert!(context
+    .temp_dir()
+    .path()
+    .join("package_json/deno_json/deno.lock")
+    .exists());
+
+  // run again and ensure the top level install doesn't happen twice
+  let output = context
+    .new_command()
+    .args("run --log-level=debug -A main.ts")
+    .run();
+  let output = output.combined_output();
+  assert_contains!(output, "Skipping top level install.");
+}
 
 #[test]
 fn package_json_error_dep_value_test() {
@@ -3427,6 +3456,12 @@ fn running_declaration_files() {
 
 itest!(test_and_bench_are_noops_in_run {
   args: "run run/test_and_bench_in_run.js",
+  output_str: Some(""),
+});
+
+#[cfg(not(target_os = "windows"))]
+itest!(spawn_kill_permissions {
+  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 
@@ -3876,50 +3911,44 @@ async fn test_resolve_dns() {
 
 #[tokio::test]
 async fn http2_request_url() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./run/http2_request_url.ts")
-        .arg("4506")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
-      assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./run/http2_request_url.ts")
+    .arg("4506")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
 
-      let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      ))
-      .unwrap();
+  let cert = reqwest::Certificate::from_pem(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  ))
+  .unwrap();
 
-      let client = reqwest::Client::builder()
-        .add_root_certificate(cert)
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
+  let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .http2_prior_knowledge()
+    .build()
+    .unwrap();
 
-      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
-      assert_eq!(200, res.status());
+  let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+  assert_eq!(200, res.status());
 
-      let body = res.text().await.unwrap();
-      assert_eq!(body, "http://127.0.0.1:4506/");
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "http://127.0.0.1:4506/");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
-    })
-    .await;
+  child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[cfg(not(windows))]
@@ -4088,14 +4117,46 @@ fn websocketstream() {
   assert!(status.success());
 }
 
-#[test]
-fn websocketstream_ping() {
-  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+#[tokio::test(flavor = "multi_thread")]
+async fn websocketstream_ping() {
   let _g = util::http_server();
 
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let mut child = util::deno_cmd()
+
+  let srv_fn = hyper::service::service_fn(|mut req| async move {
+    let (response, upgrade_fut) =
+      fastwebsockets::upgrade::upgrade(&mut req).unwrap();
+    tokio::spawn(async move {
+      let mut ws = upgrade_fut.await.unwrap();
+
+      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::new(
+        true,
+        fastwebsockets::OpCode::Ping,
+        None,
+        vec![],
+      ))
+      .await
+      .unwrap();
+      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      let message = ws.read_frame().await.unwrap();
+      assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
+      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+        .await
+        .unwrap();
+    });
+    Ok::<_, std::convert::Infallible>(response)
+  });
+
+  let child = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
     .arg("--allow-net")
@@ -4105,31 +4166,38 @@ fn websocketstream_ping() {
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
+  let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
+    .await
+    .unwrap();
+  tokio::spawn(async move {
+    let (stream, _) = server.accept().await.unwrap();
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
 
-  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
-  let (stream, _) = server.accept().unwrap();
-  let mut socket = tungstenite::accept(stream).unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("A")))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Ping(vec![]))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("B")))
-    .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, tungstenite::Message::Pong(vec![]));
-  socket
-    .write_message(tungstenite::Message::Text(String::from("C")))
-    .unwrap();
-  socket.close(None).unwrap();
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
 
-  assert!(child.wait().unwrap().success());
+  let r = child.wait_with_output().unwrap();
+  assert!(r.status.success());
 }
 
-#[test]
-fn websocket_server_multi_field_connection_header() {
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::task::spawn(fut);
+  }
+}
+
+#[tokio::test]
+async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4151,25 +4219,40 @@ fn websocket_server_multi_field_connection_header() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
-    .uri("ws://localhost:4319")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4319")
+    .await
     .unwrap();
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4319")
+    .body(hyper::Body::empty())
+    .unwrap();
+
   let (mut socket, _) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
-  socket.close(None).unwrap();
+
+  let message = socket.read_frame().await.unwrap();
+  assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
+  assert!(message.payload.is_empty());
+  socket
+    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .await
+    .unwrap();
   assert!(child.wait().unwrap().success());
 }
 
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
-#[test]
-#[ignore]
-fn websocket_server_idletimeout() {
+#[tokio::test]
+async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4191,12 +4274,24 @@ fn websocket_server_idletimeout() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .uri("ws://localhost:4509")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4509")
+    .await
     .unwrap();
-  let (_ws, _request) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4509")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  let (_socket, _) =
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
 
   assert!(child.wait().unwrap().success());

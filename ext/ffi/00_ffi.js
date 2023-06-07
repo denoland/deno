@@ -10,7 +10,7 @@ const {
   ArrayPrototypeJoin,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
@@ -426,7 +426,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    core.close(this.#rid);
+    ops.op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -439,7 +439,7 @@ class DynamicLibrary {
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
-      if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+      if (!ObjectHasOwn(symbols, symbol)) {
         continue;
       }
 

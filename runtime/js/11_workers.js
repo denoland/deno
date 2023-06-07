@@ -4,10 +4,11 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   Error,
   ObjectPrototypeIsPrototypeOf,
-  StringPrototypeStartsWith,
   String,
+  StringPrototypeStartsWith,
   SymbolIterator,
   SymbolToStringTag,
 } = primordials;
@@ -192,8 +193,9 @@ class Worker extends EventTarget {
       const event = new MessageEvent("message", {
         cancelable: false,
         data: message,
-        ports: transferables.filter((t) =>
-          ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t)
+        ports: ArrayPrototypeFilter(
+          transferables,
+          (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
         ),
       });
       this.dispatchEvent(event);
@@ -202,7 +204,7 @@ class Worker extends EventTarget {
 
   postMessage(message, transferOrOptions = {}) {
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -212,16 +214,15 @@ class Worker extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;

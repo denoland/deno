@@ -8,7 +8,6 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
-use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
@@ -41,7 +40,7 @@ pub fn op_worker_sync_fetch(
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WebWorkerType::Classic);
 
-  let client = state.borrow::<reqwest::Client>().clone();
+  let client = deno_fetch::get_or_create_client_from_state(state)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
   // URLs when none of the script URLs use the blob scheme.

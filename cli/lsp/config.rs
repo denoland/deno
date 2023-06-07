@@ -265,6 +265,10 @@ fn default_to_true() -> bool {
   true
 }
 
+fn default_document_preload_limit() -> usize {
+  1000
+}
+
 fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   d: D,
 ) -> Result<Option<String>, D::Error> {
@@ -318,6 +322,10 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_to_true")]
   pub lint: bool,
 
+  /// Limits the number of files that can be preloaded by the language server.
+  #[serde(default = "default_document_preload_limit")]
+  pub document_preload_limit: usize,
+
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
@@ -354,6 +362,7 @@ impl Default for WorkspaceSettings {
       inlay_hints: Default::default(),
       internal_debug: false,
       lint: true,
+      document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -439,8 +448,8 @@ impl Config {
     }
   }
 
-  pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.workspace.clone()
+  pub fn workspace_settings(&self) -> &WorkspaceSettings {
+    &self.settings.workspace
   }
 
   /// Set the workspace settings directly, which occurs during initialization
@@ -714,7 +723,7 @@ mod tests {
       .set_workspace_settings(json!({}))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings {
         enable: false,
         enable_paths: Vec::new(),
@@ -750,6 +759,7 @@ mod tests {
         },
         internal_debug: false,
         lint: true,
+        document_preload_limit: 1_000,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -778,7 +788,7 @@ mod tests {
       .set_workspace_settings(json!({ "cache": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -790,7 +800,7 @@ mod tests {
       .set_workspace_settings(json!({ "import_map": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -802,7 +812,7 @@ mod tests {
       .set_workspace_settings(json!({ "tls_certificate": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -814,7 +824,7 @@ mod tests {
       .set_workspace_settings(json!({ "config": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }

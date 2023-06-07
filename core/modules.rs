@@ -9,10 +9,10 @@ use crate::module_specifier::ModuleSpecifier;
 use crate::resolve_import;
 use crate::resolve_url;
 use crate::snapshot_util::SnapshottedData;
+use crate::Extension;
 use crate::JsRuntime;
-use crate::OpState;
+use anyhow::anyhow;
 use anyhow::Error;
-use core::panic;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
 use futures::stream::Stream;
@@ -135,7 +135,7 @@ fn json_module_evaluation_steps<'a>(
   // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
   let scope = &mut unsafe { v8::CallbackScope::new(context) };
   let tc_scope = &mut v8::TryCatch::new(scope);
-  let module_map = JsRuntime::module_map(tc_scope);
+  let module_map = JsRuntime::module_map_from(tc_scope);
 
   let handle = v8::Global::<v8::Module>::new(tc_scope, module);
   let value_handle = module_map
@@ -339,7 +339,6 @@ pub trait ModuleLoader {
   /// It's not required to implement this method.
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     _module_specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     _is_dyn_import: bool,
@@ -379,87 +378,34 @@ impl ModuleLoader for NoopModuleLoader {
   }
 }
 
-/// Helper function, that calls into `loader.resolve()`, but denies resolution
-/// of `ext` scheme if we are running with a snapshot loaded and not
-/// creating a snapshot
-pub(crate) fn resolve_helper(
-  snapshot_loaded_and_not_snapshotting: bool,
-  loader: Rc<dyn ModuleLoader>,
-  specifier: &str,
-  referrer: &str,
-  kind: ResolutionKind,
-) -> Result<ModuleSpecifier, Error> {
-  if snapshot_loaded_and_not_snapshotting && specifier.starts_with("ext:") {
-    return Err(generic_error(
-      "Cannot load extension module from external code",
-    ));
-  }
-
-  loader.resolve(specifier, referrer, kind)
-}
-
 /// Function that can be passed to the `ExtModuleLoader` that allows to
 /// transpile sources before passing to V8.
 pub type ExtModuleLoaderCb =
   Box<dyn Fn(&ExtensionFileSource) -> Result<ModuleCode, Error>>;
 
-pub struct ExtModuleLoader {
-  module_loader: Rc<dyn ModuleLoader>,
-  esm_sources: Vec<ExtensionFileSource>,
-  used_esm_sources: RefCell<HashMap<String, bool>>,
-  maybe_load_callback: Option<ExtModuleLoaderCb>,
-}
-
-impl Default for ExtModuleLoader {
-  fn default() -> Self {
-    Self {
-      module_loader: Rc::new(NoopModuleLoader),
-      esm_sources: vec![],
-      used_esm_sources: RefCell::new(HashMap::default()),
-      maybe_load_callback: None,
-    }
-  }
+pub(crate) struct ExtModuleLoader {
+  maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
+  sources: RefCell<HashMap<String, ExtensionFileSource>>,
+  used_specifiers: RefCell<HashSet<String>>,
 }
 
 impl ExtModuleLoader {
   pub fn new(
-    module_loader: Option<Rc<dyn ModuleLoader>>,
-    esm_sources: Vec<ExtensionFileSource>,
-    maybe_load_callback: Option<ExtModuleLoaderCb>,
+    extensions: &[Extension],
+    maybe_load_callback: Option<Rc<ExtModuleLoaderCb>>,
   ) -> Self {
-    let used_esm_sources: HashMap<String, bool> = esm_sources
-      .iter()
-      .map(|file_source| (file_source.specifier.to_string(), false))
-      .collect();
-
+    let mut sources = HashMap::new();
+    sources.extend(
+      extensions
+        .iter()
+        .flat_map(|e| e.get_esm_sources())
+        .flatten()
+        .map(|s| (s.specifier.to_string(), s.clone())),
+    );
     ExtModuleLoader {
-      module_loader: module_loader.unwrap_or_else(|| Rc::new(NoopModuleLoader)),
-      esm_sources,
-      used_esm_sources: RefCell::new(used_esm_sources),
       maybe_load_callback,
-    }
-  }
-}
-
-impl Drop for ExtModuleLoader {
-  fn drop(&mut self) {
-    let used_esm_sources = self.used_esm_sources.get_mut();
-    let unused_modules: Vec<_> = used_esm_sources
-      .iter()
-      .filter(|(_s, v)| !*v)
-      .map(|(s, _)| s)
-      .collect();
-
-    if !unused_modules.is_empty() {
-      let mut msg =
-        "Following modules were passed to ExtModuleLoader but never used:\n"
-          .to_string();
-      for m in unused_modules {
-        msg.push_str("  - ");
-        msg.push_str(m);
-        msg.push('\n');
-      }
-      panic!("{}", msg);
+      sources: RefCell::new(sources),
+      used_specifiers: Default::default(),
     }
   }
 }
@@ -469,92 +415,70 @@ impl ModuleLoader for ExtModuleLoader {
     &self,
     specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, Error> {
-    if let Ok(url_specifier) = ModuleSpecifier::parse(specifier) {
-      if url_specifier.scheme() == "ext" {
-        let referrer_specifier = ModuleSpecifier::parse(referrer).ok();
-        if referrer == "." || referrer_specifier.unwrap().scheme() == "ext" {
-          return Ok(url_specifier);
-        } else {
-          return Err(generic_error(
-            "Cannot load extension module from external code",
-          ));
-        };
-      }
-    }
-
-    self.module_loader.resolve(specifier, referrer, kind)
+    Ok(resolve_import(specifier, referrer)?)
   }
 
   fn load(
     &self,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-    is_dyn_import: bool,
+    specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<&ModuleSpecifier>,
+    _is_dyn_import: bool,
   ) -> Pin<Box<ModuleSourceFuture>> {
-    if module_specifier.scheme() != "ext" {
-      return self.module_loader.load(
-        module_specifier,
-        maybe_referrer,
-        is_dyn_import,
-      );
-    }
-
-    let specifier = module_specifier.to_string();
-    let maybe_file_source = self
-      .esm_sources
-      .iter()
-      .find(|file_source| file_source.specifier == module_specifier.as_str());
-
-    if let Some(file_source) = maybe_file_source {
-      {
-        let mut used_esm_sources = self.used_esm_sources.borrow_mut();
-        let used = used_esm_sources.get_mut(file_source.specifier).unwrap();
-        *used = true;
+    let sources = self.sources.borrow();
+    let source = match sources.get(specifier.as_str()) {
+      Some(source) => source,
+      None => return futures::future::err(anyhow!("Specifier \"{}\" was not passed as an extension module and was not included in the snapshot.", specifier)).boxed_local(),
+    };
+    self
+      .used_specifiers
+      .borrow_mut()
+      .insert(specifier.to_string());
+    let result = if let Some(load_callback) = &self.maybe_load_callback {
+      load_callback(source)
+    } else {
+      source.load()
+    };
+    match result {
+      Ok(code) => {
+        let res = ModuleSource::new(ModuleType::JavaScript, code, specifier);
+        return futures::future::ok(res).boxed_local();
       }
-
-      let result = if let Some(load_callback) = &self.maybe_load_callback {
-        load_callback(file_source)
-      } else {
-        file_source.load()
-      };
-
-      match result {
-        Ok(code) => {
-          let res =
-            ModuleSource::new(ModuleType::JavaScript, code, module_specifier);
-          return futures::future::ok(res).boxed_local();
-        }
-        Err(err) => return futures::future::err(err).boxed_local(),
-      }
+      Err(err) => return futures::future::err(err).boxed_local(),
     }
-
-    async move {
-      Err(generic_error(format!(
-        "Cannot find extension module source for specifier {specifier}"
-      )))
-    }
-    .boxed_local()
   }
 
   fn prepare_load(
     &self,
-    op_state: Rc<RefCell<OpState>>,
-    module_specifier: &ModuleSpecifier,
-    maybe_referrer: Option<String>,
-    is_dyn_import: bool,
+    _specifier: &ModuleSpecifier,
+    _maybe_referrer: Option<String>,
+    _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
-    if module_specifier.scheme() == "ext" {
-      return async { Ok(()) }.boxed_local();
-    }
+    async { Ok(()) }.boxed_local()
+  }
+}
 
-    self.module_loader.prepare_load(
-      op_state,
-      module_specifier,
-      maybe_referrer,
-      is_dyn_import,
-    )
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let sources = self.sources.get_mut();
+    let used_specifiers = self.used_specifiers.get_mut();
+    let unused_modules: Vec<_> = sources
+      .iter()
+      .filter(|(k, _)| !used_specifiers.contains(k.as_str()))
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m.0);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
   }
 }
 
@@ -640,11 +564,9 @@ pub(crate) struct RecursiveModuleLoad {
   module_map_rc: Rc<RefCell<ModuleMap>>,
   pending: FuturesUnordered<Pin<Box<ModuleLoadFuture>>>,
   visited: HashSet<ModuleRequest>,
-  // These three fields are copied from `module_map_rc`, but they are cloned
+  // The loader is copied from `module_map_rc`, but its reference is cloned
   // ahead of time to avoid already-borrowed errors.
-  op_state: Rc<RefCell<OpState>>,
   loader: Rc<dyn ModuleLoader>,
-  snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl RecursiveModuleLoad {
@@ -686,7 +608,6 @@ impl RecursiveModuleLoad {
       module_map.next_load_id += 1;
       id
     };
-    let op_state = module_map_rc.borrow().op_state.clone();
     let loader = module_map_rc.borrow().loader.clone();
     let asserted_module_type = match init {
       LoadInit::DynamicImport(_, _, module_type) => module_type,
@@ -700,10 +621,6 @@ impl RecursiveModuleLoad {
       init,
       state: LoadState::Init,
       module_map_rc: module_map_rc.clone(),
-      snapshot_loaded_and_not_snapshotting: module_map_rc
-        .borrow()
-        .snapshot_loaded_and_not_snapshotting,
-      op_state,
       loader,
       pending: FuturesUnordered::new(),
       visited: HashSet::new(),
@@ -731,60 +648,38 @@ impl RecursiveModuleLoad {
 
   fn resolve_root(&self) -> Result<ModuleSpecifier, Error> {
     match self.init {
-      LoadInit::Main(ref specifier) => resolve_helper(
-        self.snapshot_loaded_and_not_snapshotting,
-        self.loader.clone(),
-        specifier,
-        ".",
-        ResolutionKind::MainModule,
-      ),
-      LoadInit::Side(ref specifier) => resolve_helper(
-        self.snapshot_loaded_and_not_snapshotting,
-        self.loader.clone(),
-        specifier,
-        ".",
-        ResolutionKind::Import,
-      ),
-      LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        resolve_helper(
-          self.snapshot_loaded_and_not_snapshotting,
-          self.loader.clone(),
-          specifier,
-          referrer,
-          ResolutionKind::DynamicImport,
-        )
+      LoadInit::Main(ref specifier) => {
+        self
+          .loader
+          .resolve(specifier, ".", ResolutionKind::MainModule)
       }
+      LoadInit::Side(ref specifier) => {
+        self.loader.resolve(specifier, ".", ResolutionKind::Import)
+      }
+      LoadInit::DynamicImport(ref specifier, ref referrer, _) => self
+        .loader
+        .resolve(specifier, referrer, ResolutionKind::DynamicImport),
     }
   }
 
   async fn prepare(&self) -> Result<(), Error> {
-    let op_state = self.op_state.clone();
-
     let (module_specifier, maybe_referrer) = match self.init {
       LoadInit::Main(ref specifier) => {
-        let spec = resolve_helper(
-          self.snapshot_loaded_and_not_snapshotting,
-          self.loader.clone(),
-          specifier,
-          ".",
-          ResolutionKind::MainModule,
-        )?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::MainModule)?;
         (spec, None)
       }
       LoadInit::Side(ref specifier) => {
-        let spec = resolve_helper(
-          self.snapshot_loaded_and_not_snapshotting,
-          self.loader.clone(),
-          specifier,
-          ".",
-          ResolutionKind::Import,
-        )?;
+        let spec =
+          self
+            .loader
+            .resolve(specifier, ".", ResolutionKind::Import)?;
         (spec, None)
       }
       LoadInit::DynamicImport(ref specifier, ref referrer, _) => {
-        let spec = resolve_helper(
-          self.snapshot_loaded_and_not_snapshotting,
-          self.loader.clone(),
+        let spec = self.loader.resolve(
           specifier,
           referrer,
           ResolutionKind::DynamicImport,
@@ -795,12 +690,7 @@ impl RecursiveModuleLoad {
 
     self
       .loader
-      .prepare_load(
-        op_state,
-        &module_specifier,
-        maybe_referrer,
-        self.is_dynamic_import(),
-      )
+      .prepare_load(&module_specifier, maybe_referrer, self.is_dynamic_import())
       .await
   }
 
@@ -1094,7 +984,6 @@ pub(crate) struct ModuleMap {
 
   // Handling of futures for loading module sources
   pub loader: Rc<dyn ModuleLoader>,
-  op_state: Rc<RefCell<OpState>>,
   pub(crate) dynamic_import_map:
     HashMap<ModuleLoadId, v8::Global<v8::PromiseResolver>>,
   pub(crate) preparing_dynamic_imports:
@@ -1105,8 +994,6 @@ pub(crate) struct ModuleMap {
   // This store is used temporarly, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
-
-  pub(crate) snapshot_loaded_and_not_snapshotting: bool,
 }
 
 impl ModuleMap {
@@ -1126,6 +1013,29 @@ impl ModuleMap {
       )
     }
     output
+  }
+
+  #[cfg(debug_assertions)]
+  pub(crate) fn assert_all_modules_evaluated(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) {
+    let mut not_evaluated = vec![];
+
+    for (i, handle) in self.handles.iter().enumerate() {
+      let module = v8::Local::new(scope, handle);
+      if !matches!(module.get_status(), v8::ModuleStatus::Evaluated) {
+        not_evaluated.push(self.info[i].name.as_str().to_string());
+      }
+    }
+
+    if !not_evaluated.is_empty() {
+      let mut msg = "Following modules were not evaluated; make sure they are imported from other code:\n".to_string();
+      for m in not_evaluated {
+        msg.push_str(&format!("  - {}\n", m));
+      }
+      panic!("{}", msg);
+    }
   }
 
   pub fn serialize_for_snapshotting(
@@ -1380,11 +1290,7 @@ impl ModuleMap {
     self.handles = snapshotted_data.module_handles;
   }
 
-  pub(crate) fn new(
-    loader: Rc<dyn ModuleLoader>,
-    op_state: Rc<RefCell<OpState>>,
-    snapshot_loaded_and_not_snapshotting: bool,
-  ) -> ModuleMap {
+  pub(crate) fn new(loader: Rc<dyn ModuleLoader>) -> ModuleMap {
     Self {
       handles: vec![],
       info: vec![],
@@ -1392,18 +1298,16 @@ impl ModuleMap {
       by_name_json: HashMap::new(),
       next_load_id: 1,
       loader,
-      op_state,
       dynamic_import_map: HashMap::new(),
       preparing_dynamic_imports: FuturesUnordered::new(),
       pending_dynamic_imports: FuturesUnordered::new(),
       json_value_store: HashMap::new(),
-      snapshot_loaded_and_not_snapshotting,
     }
   }
 
   /// Get module id, following all aliases in case of module specifier
   /// that had been redirected.
-  fn get_id(
+  pub(crate) fn get_id(
     &self,
     name: impl AsRef<str>,
     asserted_module_type: AssertedModuleType,
@@ -1526,9 +1430,7 @@ impl ModuleMap {
         return Err(ModuleError::Exception(exception));
       }
 
-      let module_specifier = match resolve_helper(
-        self.snapshot_loaded_and_not_snapshotting,
-        self.loader.clone(),
+      let module_specifier = match self.loader.resolve(
         &import_specifier,
         name.as_ref(),
         if is_dynamic_import {
@@ -1570,6 +1472,29 @@ impl ModuleMap {
     );
 
     Ok(id)
+  }
+
+  pub(crate) fn clear(&mut self) {
+    *self = Self::new(self.loader.clone())
+  }
+
+  pub(crate) fn get_handle_by_name(
+    &self,
+    name: impl AsRef<str>,
+  ) -> Option<v8::Global<v8::Module>> {
+    let id = self
+      .get_id(name.as_ref(), AssertedModuleType::JavaScriptOrWasm)
+      .or_else(|| self.get_id(name.as_ref(), AssertedModuleType::Json))?;
+    self.get_handle(id)
+  }
+
+  pub(crate) fn inject_handle(
+    &mut self,
+    name: ModuleName,
+    module_type: ModuleType,
+    handle: v8::Global<v8::Module>,
+  ) {
+    self.create_module_info(name, module_type, handle, false, vec![]);
   }
 
   fn create_module_info(
@@ -1717,20 +1642,9 @@ impl ModuleMap {
       .dynamic_import_map
       .insert(load.id, resolver_handle);
 
-    let (loader, snapshot_loaded_and_not_snapshotting) = {
-      let module_map = module_map_rc.borrow();
-      (
-        module_map.loader.clone(),
-        module_map.snapshot_loaded_and_not_snapshotting,
-      )
-    };
-    let resolve_result = resolve_helper(
-      snapshot_loaded_and_not_snapshotting,
-      loader,
-      specifier,
-      referrer,
-      ResolutionKind::DynamicImport,
-    );
+    let loader = module_map_rc.borrow().loader.clone();
+    let resolve_result =
+      loader.resolve(specifier, referrer, ResolutionKind::DynamicImport);
     let fut = match resolve_result {
       Ok(module_specifier) => {
         if module_map_rc
@@ -1764,14 +1678,10 @@ impl ModuleMap {
     referrer: &str,
     import_assertions: HashMap<String, String>,
   ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = resolve_helper(
-      self.snapshot_loaded_and_not_snapshotting,
-      self.loader.clone(),
-      specifier,
-      referrer,
-      ResolutionKind::Import,
-    )
-    .expect("Module should have been already resolved");
+    let resolved_specifier = self
+      .loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .expect("Module should have been already resolved");
 
     let module_type =
       get_asserted_module_type_from_assertions(&import_assertions);
@@ -1786,14 +1696,22 @@ impl ModuleMap {
   }
 }
 
+impl Default for ModuleMap {
+  fn default() -> Self {
+    Self::new(Rc::new(NoopModuleLoader))
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::ascii_str;
   use crate::JsRuntime;
+  use crate::JsRuntimeForSnapshot;
   use crate::RuntimeOptions;
   use crate::Snapshot;
   use deno_ops::op;
+  use futures::future::poll_fn;
   use futures::future::FutureExt;
   use parking_lot::Mutex;
   use std::fmt;
@@ -1807,12 +1725,6 @@ mod tests {
   mod deno_core {
     pub use crate::*;
   }
-
-  // TODO(ry) Sadly FuturesUnordered requires the current task to be set. So
-  // even though we are only using poll() in these tests and not Tokio, we must
-  // nevertheless run it in the tokio executor. Ideally run_in_task can be
-  // removed in the future.
-  use crate::runtime::tests::run_in_task;
 
   #[derive(Default)]
   struct MockLoader {
@@ -1961,7 +1873,7 @@ import "/a.js";
       }
       if inner.url == "file:///slow.js" && inner.counter < 2 {
         // TODO(ry) Hopefully in the future we can remove current task
-        // notification. See comment above run_in_task.
+        // notification.
         cx.waker().wake_by_ref();
         return Poll::Pending;
       }
@@ -2040,7 +1952,7 @@ import "/a.js";
       ]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map();
     let modules = module_map_rc.borrow();
 
     assert_eq!(
@@ -2152,7 +2064,7 @@ import "/a.js";
 
     assert_eq!(DISPATCH_COUNT.load(Ordering::Relaxed), 0);
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map().clone();
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -2264,7 +2176,7 @@ import "/a.js";
       )
       .unwrap();
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map().clone();
 
     let (mod_a, mod_b) = {
       let scope = &mut runtime.handle_scope();
@@ -2317,8 +2229,8 @@ import "/a.js";
     futures::executor::block_on(receiver).unwrap().unwrap();
   }
 
-  #[test]
-  fn dyn_import_err() {
+  #[tokio::test]
+  async fn dyn_import_err() {
     #[derive(Clone, Default)]
     struct DynImportErrLoader {
       pub count: Arc<AtomicUsize>,
@@ -2356,7 +2268,7 @@ import "/a.js";
     });
 
     // Test an erroneous dynamic import where the specified module isn't found.
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "file:///dyn_import2.js",
@@ -2374,7 +2286,9 @@ import "/a.js";
         unreachable!();
       }
       assert_eq!(count.load(Ordering::Relaxed), 4);
+      Poll::Ready(())
     })
+    .await;
   }
 
   #[derive(Clone, Default)]
@@ -2413,7 +2327,6 @@ import "/a.js";
 
     fn prepare_load(
       &self,
-      _op_state: Rc<RefCell<OpState>>,
       _module_specifier: &ModuleSpecifier,
       _maybe_referrer: Option<String>,
       _is_dyn_import: bool,
@@ -2423,8 +2336,8 @@ import "/a.js";
     }
   }
 
-  #[test]
-  fn dyn_import_ok() {
+  #[tokio::test]
+  async fn dyn_import_ok() {
     let loader = Rc::new(DynImportOkLoader::default());
     let prepare_load_count = loader.prepare_load_count.clone();
     let resolve_count = loader.resolve_count.clone();
@@ -2433,7 +2346,7 @@ import "/a.js";
       module_loader: Some(loader),
       ..Default::default()
     });
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       // Dynamically import mod_b
       runtime
         .execute_script_static(
@@ -2467,11 +2380,13 @@ import "/a.js";
       ));
       assert_eq!(resolve_count.load(Ordering::Relaxed), 7);
       assert_eq!(load_count.load(Ordering::Relaxed), 1);
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn dyn_import_borrow_mut_error() {
+  #[tokio::test]
+  async fn dyn_import_borrow_mut_error() {
     // https://github.com/denoland/deno/issues/6054
     let loader = Rc::new(DynImportOkLoader::default());
     let prepare_load_count = loader.prepare_load_count.clone();
@@ -2480,7 +2395,7 @@ import "/a.js";
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       runtime
         .execute_script_static(
           "file:///dyn_import3.js",
@@ -2499,7 +2414,9 @@ import "/a.js";
       assert_eq!(prepare_load_count.load(Ordering::Relaxed), 1);
       // Second poll triggers error
       let _ = runtime.poll_event_loop(cx, false);
+      Poll::Ready(())
     })
+    .await;
   }
 
   // Regression test for https://github.com/denoland/deno/issues/3736.
@@ -2592,7 +2509,7 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc = runtime.module_map();
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2672,7 +2589,7 @@ import "/a.js";
         ]
       );
 
-      let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+      let module_map_rc = runtime.module_map();
       let modules = module_map_rc.borrow();
 
       assert_eq!(
@@ -2725,8 +2642,8 @@ import "/a.js";
     futures::executor::block_on(fut);
   }
 
-  #[test]
-  fn slow_never_ready_modules() {
+  #[tokio::test]
+  async fn slow_never_ready_modules() {
     let loader = MockLoader::new();
     let loads = loader.loads.clone();
     let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -2734,7 +2651,7 @@ import "/a.js";
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
+    poll_fn(move |cx| {
       let spec = resolve_url("file:///main.js").unwrap();
       let mut recursive_load =
         runtime.load_main_module(&spec, None).boxed_local();
@@ -2748,8 +2665,7 @@ import "/a.js";
       //      "file:///never_ready.js",
       //      "file:///slow.js"
       // But due to current task notification in DelayedSourceCodeFuture they
-      // all get loaded in a single poll. Also see the comment above
-      // run_in_task.
+      // all get loaded in a single poll.
 
       for _ in 0..10 {
         let result = recursive_load.poll_unpin(cx);
@@ -2768,30 +2684,26 @@ import "/a.js";
           ]
         );
       }
+      Poll::Ready(())
     })
+    .await;
   }
 
-  #[test]
-  fn loader_disappears_after_error() {
+  #[tokio::test]
+  async fn loader_disappears_after_error() {
     let loader = MockLoader::new();
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
       ..Default::default()
     });
 
-    run_in_task(move |cx| {
-      let spec = resolve_url("file:///bad_import.js").unwrap();
-      let mut load_fut = runtime.load_main_module(&spec, None).boxed_local();
-      let result = load_fut.poll_unpin(cx);
-      if let Poll::Ready(Err(err)) = result {
-        assert_eq!(
-          err.downcast_ref::<MockError>().unwrap(),
-          &MockError::ResolveErr
-        );
-      } else {
-        unreachable!();
-      }
-    })
+    let spec = resolve_url("file:///bad_import.js").unwrap();
+    let result = runtime.load_main_module(&spec, None).await;
+    let err = result.unwrap_err();
+    assert_eq!(
+      err.downcast_ref::<MockError>().unwrap(),
+      &MockError::ResolveErr
+    );
   }
 
   #[test]
@@ -2832,7 +2744,7 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       vec!["file:///b.js", "file:///c.js", "file:///d.js"]
     );
 
-    let module_map_rc = JsRuntime::module_map(runtime.v8_isolate());
+    let module_map_rc = runtime.module_map();
     let modules = module_map_rc.borrow();
 
     assert_eq!(
@@ -2965,11 +2877,13 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntimeForSnapshot::new(
+        RuntimeOptions {
+          module_loader: Some(loader),
+          ..Default::default()
+        },
+        Default::default(),
+      );
       // In default resolution code should be empty.
       // Instead we explicitly pass in our own code.
       // The behavior should be very similar to /a.js.
@@ -3007,11 +2921,13 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
       );
 
       let loader = MockLoader::new();
-      let mut runtime = JsRuntime::new(RuntimeOptions {
-        module_loader: Some(loader),
-        will_snapshot: true,
-        ..Default::default()
-      });
+      let mut runtime = JsRuntimeForSnapshot::new(
+        RuntimeOptions {
+          module_loader: Some(loader),
+          ..Default::default()
+        },
+        Default::default(),
+      );
       // In default resolution code should be empty.
       // Instead we explicitly pass in our own code.
       // The behavior should be very similar to /a.js.
@@ -3039,52 +2955,5 @@ if (import.meta.url != 'file:///main_with_code.js') throw Error();
         "if (globalThis.url !== 'file:///main_with_code.js') throw Error('x')",
       )
       .unwrap();
-  }
-
-  #[test]
-  fn ext_module_loader() {
-    let loader = ExtModuleLoader::default();
-    assert!(loader
-      .resolve("ext:foo", "ext:bar", ResolutionKind::Import)
-      .is_ok());
-    assert_eq!(
-      loader
-        .resolve("ext:foo", "file://bar", ResolutionKind::Import)
-        .err()
-        .map(|e| e.to_string()),
-      Some("Cannot load extension module from external code".to_string())
-    );
-    assert_eq!(
-      loader
-        .resolve("file://foo", "file://bar", ResolutionKind::Import)
-        .err()
-        .map(|e| e.to_string()),
-      Some(
-        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"file://bar\""
-          .to_string()
-      )
-    );
-    assert_eq!(
-      loader
-        .resolve("file://foo", "ext:bar", ResolutionKind::Import)
-        .err()
-        .map(|e| e.to_string()),
-      Some(
-        "Module loading is not supported; attempted to resolve: \"file://foo\" from \"ext:bar\""
-        .to_string()
-      )
-    );
-    assert_eq!(
-      resolve_helper(
-        true,
-        Rc::new(loader),
-        "ext:core.js",
-        "file://bar",
-        ResolutionKind::Import,
-      )
-      .err()
-      .map(|e| e.to_string()),
-      Some("Cannot load extension module from external code".to_string())
-    );
   }
 }

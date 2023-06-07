@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.86.0"
+version = "0.94.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,8 @@ path = "lib.rs"
 deno_core.workspace = true
 dlopen.workspace = true
 dynasmrt = "1.2.3"
-libffi = "3.1.0"
+libffi = "=3.1.0"
+libffi-sys = "=2.1.0" # temporary pin for downgrade to Rust 1.69
 serde.workspace = true
 serde-value = "0.7"
 serde_json = "1.0"

@@ -20,16 +20,86 @@ use std::sync::Arc;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::JsxImportSourceConfig;
+use crate::args::PackageJsonDepsProvider;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
 
+/// Result of checking if a specifier is mapped via
+/// an import map or package.json.
+pub enum MappedResolution {
+  None,
+  PackageJson(ModuleSpecifier),
+  ImportMap(ModuleSpecifier),
+}
+
+impl MappedResolution {
+  pub fn into_specifier(self) -> Option<ModuleSpecifier> {
+    match self {
+      MappedResolution::None => Option::None,
+      MappedResolution::PackageJson(specifier) => Some(specifier),
+      MappedResolution::ImportMap(specifier) => Some(specifier),
+    }
+  }
+}
+
+/// Resolver for specifiers that could be mapped via an
+/// import map or package.json.
+#[derive(Debug)]
+pub struct MappedSpecifierResolver {
+  maybe_import_map: Option<Arc<ImportMap>>,
+  package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+}
+
+impl MappedSpecifierResolver {
+  pub fn new(
+    maybe_import_map: Option<Arc<ImportMap>>,
+    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
+  ) -> Self {
+    Self {
+      maybe_import_map,
+      package_json_deps_provider,
+    }
+  }
+
+  pub fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Result<MappedResolution, AnyError> {
+    // attempt to resolve with the import map first
+    let maybe_import_map_err = match self
+      .maybe_import_map
+      .as_ref()
+      .map(|import_map| import_map.resolve(specifier, referrer))
+    {
+      Some(Ok(value)) => return Ok(MappedResolution::ImportMap(value)),
+      Some(Err(err)) => Some(err),
+      None => None,
+    };
+
+    // then with package.json
+    if let Some(deps) = self.package_json_deps_provider.deps() {
+      if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
+        return Ok(MappedResolution::PackageJson(specifier));
+      }
+    }
+
+    // otherwise, surface the import map error or try resolving when has no import map
+    if let Some(err) = maybe_import_map_err {
+      Err(err.into())
+    } else {
+      Ok(MappedResolution::None)
+    }
+  }
+}
+
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliGraphResolver {
-  maybe_import_map: Option<Arc<ImportMap>>,
+  mapped_specifier_resolver: MappedSpecifierResolver,
   maybe_default_jsx_import_source: Option<String>,
   maybe_jsx_import_source_module: Option<String>,
   no_npm: bool,
@@ -51,7 +121,10 @@ impl Default for CliGraphResolver {
       None,
     ));
     Self {
-      maybe_import_map: Default::default(),
+      mapped_specifier_resolver: MappedSpecifierResolver {
+        maybe_import_map: Default::default(),
+        package_json_deps_provider: Default::default(),
+      },
       maybe_default_jsx_import_source: Default::default(),
       maybe_jsx_import_source_module: Default::default(),
       no_npm: false,
@@ -71,10 +144,14 @@ impl CliGraphResolver {
     no_npm: bool,
     npm_registry_api: Arc<CliNpmRegistryApi>,
     npm_resolution: Arc<NpmResolution>,
+    package_json_deps_provider: Arc<PackageJsonDepsProvider>,
     package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   ) -> Self {
     Self {
-      maybe_import_map,
+      mapped_specifier_resolver: MappedSpecifierResolver {
+        maybe_import_map,
+        package_json_deps_provider,
+      },
       maybe_default_jsx_import_source: maybe_jsx_import_source_config
         .as_ref()
         .and_then(|c| c.default_specifier.clone()),
@@ -105,14 +182,20 @@ impl CliGraphResolver {
     self
   }
 
+  pub async fn force_top_level_package_json_install(
+    &self,
+  ) -> Result<(), AnyError> {
+    self
+      .package_json_deps_installer
+      .ensure_top_level_install()
+      .await
+  }
+
   pub async fn top_level_package_json_install_if_necessary(
     &self,
   ) -> Result<(), AnyError> {
     if self.found_package_json_dep_flag.is_raised() {
-      self
-        .package_json_deps_installer
-        .ensure_top_level_install()
-        .await?;
+      self.force_top_level_package_json_install().await?;
     }
     Ok(())
   }
@@ -135,31 +218,20 @@ impl Resolver for CliGraphResolver {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // attempt to resolve with the import map first
-    let maybe_import_map_err = match self
-      .maybe_import_map
-      .as_ref()
-      .map(|import_map| import_map.resolve(specifier, referrer))
+    use MappedResolution::*;
+    match self
+      .mapped_specifier_resolver
+      .resolve(specifier, referrer)?
     {
-      Some(Ok(value)) => return Ok(value),
-      Some(Err(err)) => Some(err),
-      None => None,
-    };
-
-    // then with package.json
-    if let Some(deps) = self.package_json_deps_installer.package_deps().as_ref()
-    {
-      if let Some(specifier) = resolve_package_json_dep(specifier, deps)? {
+      ImportMap(specifier) => Ok(specifier),
+      PackageJson(specifier) => {
+        // found a specifier in the package.json, so mark that
+        // we need to do an "npm install" later
         self.found_package_json_dep_flag.raise();
-        return Ok(specifier);
+        Ok(specifier)
       }
-    }
-
-    // otherwise, surface the import map error or try resolving when has no import map
-    if let Some(err) = maybe_import_map_err {
-      Err(err.into())
-    } else {
-      deno_graph::resolve_import(specifier, referrer).map_err(|err| err.into())
+      None => deno_graph::resolve_import(specifier, referrer)
+        .map_err(|err| err.into()),
     }
   }
 }
