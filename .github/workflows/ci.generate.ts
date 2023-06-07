@@ -174,8 +174,8 @@ function skipJobsIfPrAndMarkedSkip(
     return [{
       if: "startsWith(matrix.os, 'windows')",
       name: "Check space",
-      shell: "cmd",
-      run: `dir|find "bytes free"`,
+      shell: "pwsh",
+      run: `Get-CimInstance -ClassName Win32_LogicalDisk`,
     }, {
       if: "${{ !startsWith(matrix.os, 'windows') }}",
       name: "Check space",
