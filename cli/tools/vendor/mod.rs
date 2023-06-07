@@ -10,6 +10,7 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_graph::GraphKind;
 use log::warn;
 
 use crate::args::CliOptions;
@@ -371,7 +372,9 @@ async fn create_graph(
     .map(|p| resolve_url_or_path(p, initial_cwd))
     .collect::<Result<Vec<_>, _>>()?;
 
-  module_graph_builder.create_graph(entry_points).await
+  module_graph_builder
+    .create_graph(GraphKind::All, entry_points)
+    .await
 }
 
 #[cfg(test)]
