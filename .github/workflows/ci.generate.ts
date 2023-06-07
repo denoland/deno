@@ -170,7 +170,10 @@ function skipJobsIfPrAndMarkedSkip(
       "!(github.event_name == 'pull_request' && matrix.skip_pr)",
     )
   );
-  return steps.map((s) => {
+  return steps.map((s, i) => {
+    if (i < 2) {
+      return [s];
+    }
     return [{
       if: "startsWith(matrix.os, 'windows')",
       name: "Check space",

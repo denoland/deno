@@ -100,25 +100,11 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
     steps:
-      - if: 'startsWith(matrix.os, ''windows'')'
-        name: Check space
-        shell: pwsh
-        run: Get-Volume
-      - if: '${{ !startsWith(matrix.os, ''windows'') }}'
-        name: Check space
-        run: df -H
       - name: Configure git
         run: |-
           git config --global core.symlinks true
           git config --global fetch.parallel 32
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
-      - if: 'startsWith(matrix.os, ''windows'')'
-        name: Check space
-        shell: pwsh
-        run: Get-Volume
-      - if: '${{ !startsWith(matrix.os, ''windows'') }}'
-        name: Check space
-        run: df -H
       - name: Clone repository
         uses: actions/checkout@v3
         with:
