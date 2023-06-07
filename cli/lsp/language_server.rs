@@ -11,6 +11,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
+use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -272,7 +273,7 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_builder
-        .create_graph_with_loader(roots.clone(), &mut loader)
+        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
         &graph,

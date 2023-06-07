@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
 use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -1705,7 +1704,7 @@ pub async fn run_tests_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
-  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let log_level = cli_options.log_level();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
@@ -1730,7 +1729,7 @@ pub async fn run_tests_with_watch(
         test_modules.clone()
       };
       let graph = module_graph_builder
-        .create_graph(test_modules.clone())
+        .create_graph(graph_kind, test_modules.clone())
         .await?;
       graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
 
@@ -1742,32 +1741,19 @@ pub async fn run_tests_with_watch(
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
         ) {
           if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
                   output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
+              if let Some(specifier) = &dep.get_type() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
             }
@@ -1777,7 +1763,7 @@ pub async fn run_tests_with_watch(
         // This test module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
+        get_dependencies(&graph, graph.get(&specifier), &mut modules);
 
         paths_to_watch.extend(
           modules

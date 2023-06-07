@@ -12,7 +12,6 @@ use crate::args::BundleFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfigType;
-use crate::args::TypeCheckMode;
 use crate::factory::CliFactory;
 use crate::graph_util::error_for_any_npm_specifier;
 use crate::util;
@@ -157,7 +156,7 @@ fn bundle_module_graph(
 
   let ts_config_result =
     cli_options.resolve_ts_config_for_emit(TsConfigType::Bundle)?;
-  if cli_options.type_check_mode() == TypeCheckMode::None {
+  if !cli_options.type_check_mode().is_true() {
     if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
       log::warn!("{}", ignored_options);
     }

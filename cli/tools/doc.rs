@@ -16,6 +16,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
+use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
 
 pub async fn print_docs(
@@ -42,7 +43,7 @@ pub async fn print_docs(
         Vec::new(),
       );
       let analyzer = deno_graph::CapturingModuleAnalyzer::default();
-      let mut graph = deno_graph::ModuleGraph::default();
+      let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
       graph
         .build(
           vec![source_file_specifier.clone()],
@@ -85,7 +86,7 @@ pub async fn print_docs(
       file_fetcher.insert_cached(root);
 
       let graph = module_graph_builder
-        .create_graph(vec![root_specifier.clone()])
+        .create_graph(GraphKind::TypesOnly, vec![root_specifier.clone()])
         .await?;
 
       if let Some(lockfile) = maybe_lockfile {
