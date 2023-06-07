@@ -370,6 +370,10 @@ impl NpmCache {
       );
     }
 
+    if dist.tarball.is_empty() {
+      bail!("Tarball URL was empty.");
+    }
+
     let guard = self.progress_bar.update(&dist.tarball);
     let maybe_bytes = self
       .http_client
