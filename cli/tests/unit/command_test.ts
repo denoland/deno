@@ -7,6 +7,9 @@ import {
   assertStringIncludes,
   assertThrows,
 } from "./test_util.ts";
+import {
+  TextLineStream,
+} from "../../../test_util/std/streams/text_line_stream.ts";
 
 Deno.test(
   { permissions: { write: true, run: true, read: true } },
@@ -883,5 +886,62 @@ Deno.test(
       TypeError,
       "Child process has already terminated.",
     );
+  },
+);
+
+// Test case for #19401
+Deno.test(
+  async function commandLogClosedStdout() {
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["run", "-A", "cli/tests/testdata/run/console_boom.js"],
+      stdout: "piped",
+    }).spawn();
+
+    // Create our own TextDecoderStream class to work around a spec issue
+    // where streams leak resources. See: https://github.com/whatwg/streams/issues/1212
+    class TextDecoderStream {
+      encoding = "utf-8";
+      decoder = new TextDecoder(this.encoding, {});
+      transform = new TransformStream({
+        transform: (chunk, controller) => {
+          const decoded = this.decoder.decode(chunk, { stream: true });
+          if (decoded) {
+            controller.enqueue(decoded);
+          }
+          return Promise.resolve();
+        },
+        flush: (controller) => {
+          const final = this.decoder.decode();
+          if (final) {
+            controller.enqueue(final);
+          }
+          return Promise.resolve();
+        },
+      });
+      get readable() {
+        return this.transform.readable;
+      }
+      get writable() {
+        return this.transform.writable;
+      }
+    }
+
+    const decoderStream = new TextDecoderStream();
+    const lines = child.stdout
+      .pipeThrough(decoderStream)
+      .pipeThrough(new TextLineStream());
+
+    for await (const line of lines) {
+      if (line.includes("ready")) {
+        break;
+      }
+    }
+
+    // This forces our TextDecoder to free resources. We can drop this
+    // line once the spec issue is resolved.
+    decoderStream.decoder.decode();
+
+    const status = await child.status;
+    assert(status.success, "Child process should exit 0");
   },
 );

@@ -734,13 +734,12 @@ impl crate::fs::File for StdFileResourceInner {
 
 // override op_print to use the stdout and stderr in the resource table
 #[op]
-pub fn op_print(
-  state: &mut OpState,
-  msg: &str,
-  is_err: bool,
-) -> Result<(), AnyError> {
+pub fn op_print(state: &mut OpState, msg: &str, is_err: bool) {
   let rid = if is_err { 2 } else { 1 };
-  FileResource::with_file(state, rid, move |file| {
-    Ok(file.write_all_sync(msg.as_bytes())?)
-  })
+  let _ = FileResource::with_file(state, rid, move |file| {
+    // The stdio pipes can be closed if we're inside a child process and
+    // it's piped to a Web Stream. See #19401 .
+    let _ = file.write_all_sync(msg.as_bytes());
+    Ok(())
+  });
 }
