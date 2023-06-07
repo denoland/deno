@@ -38,7 +38,7 @@ import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -504,7 +504,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (options!.createConnection) {
-      notImplemented("ClientRequest.options.createConnection");
+      warnNotImplemented("ClientRequest.options.createConnection");
     }
 
     if (options!.lookup) {
@@ -567,6 +567,7 @@ class ClientRequest extends OutgoingMessage {
       this.method === "POST" || this.method === "PATCH" ||
         this.method === "PUT",
     );
+    console.log("this._req", this._req);
     this._bodyWriteRid = this._req.requestBodyRid;
   }
 
@@ -631,6 +632,16 @@ class ClientRequest extends OutgoingMessage {
         incoming.statusCode = res.status;
         incoming.statusMessage = res.statusText;
 
+        console.log("res.headers", res.headers, incoming.rawHeaders);
+
+        for (const [key, value] of res.headers) {
+          console.log("key", key, value);
+          if (key.toLowerCase() === "upgrade") {
+            incoming.upgrade = true;
+            break;
+          }
+        }
+
         incoming._addHeaderLines(
           res.headers,
           Object.entries(res.headers).flat().length,
@@ -641,7 +652,14 @@ class ClientRequest extends OutgoingMessage {
           core.tryClose(this._req.cancelHandleRid);
         }
 
-        this.emit("response", incoming);
+        console.log("incoming", incoming.headers);
+        if (incoming.upgrade) {
+          // TODO(bartlomieju): throw on connect request
+          // handle actual upgrade
+          this.emit("upgrade", incoming, new FakeSocket(), []);
+        } else {
+          this.emit("response", incoming);
+        }
       } catch (err) {
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
