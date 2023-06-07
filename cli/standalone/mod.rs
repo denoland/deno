@@ -299,7 +299,7 @@ pub async fn run(
 
   let npm_cache = Arc::new(NpmCache::new(
     root_path.clone(),
-    CacheSetting::Use,
+    CacheSetting::Only,
     http_client.clone(),
     progress_bar.clone(),
   ));
