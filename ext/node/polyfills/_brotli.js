@@ -17,7 +17,9 @@ const toU8 = (input) => {
 };
 
 export function createBrotliCompress(options) {
-  return new BrotliCompress(options);
+  notImplemented("createBrotliDecompress");
+  // TODO(@littledivy):
+  // return new BrotliCompress(options);
 }
 
 export function createBrotliDecompress() {
@@ -47,11 +49,11 @@ export class BrotliCompress extends Transform {
 }
 
 function oneOffCompressOptions(options) {
-  const quality = options?.params[constants.BROTLI_PARAM_QUALITY] ??
+  const quality = options?.params?.[constants.BROTLI_PARAM_QUALITY] ??
     constants.BROTLI_DEFAULT_QUALITY;
-  const lgwin = options?.params[constants.BROTLI_PARAM_LGWIN] ??
+  const lgwin = options?.params?.[constants.BROTLI_PARAM_LGWIN] ??
     constants.BROTLI_DEFAULT_WINDOW;
-  const mode = options?.params[constants.BROTLI_PARAM_MODE] ??
+  const mode = options?.params?.[constants.BROTLI_PARAM_MODE] ??
     constants.BROTLI_MODE_GENERIC;
 
   return {
@@ -78,6 +80,12 @@ export function brotliCompress(
   callback,
 ) {
   const buf = toU8(input);
+
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   core.opAsync("op_brotli_compress_async", buf, quality, lgwin, mode)
     .then((result) => callback(null, result))
