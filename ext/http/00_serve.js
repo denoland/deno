@@ -37,6 +37,7 @@ import {
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
+  ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeSet,
@@ -68,25 +69,7 @@ const {
   op_http_upgrade_websocket_next,
   op_http_try_wait,
   op_http_wait,
-} = core.generateAsyncOpHandler(
-  "op_http_get_request_headers",
-  "op_http_get_request_method_and_url",
-  "op_http_read_request_body",
-  "op_http_serve",
-  "op_http_serve_on",
-  "op_http_set_promise_complete",
-  "op_http_set_response_body_bytes",
-  "op_http_set_response_body_resource",
-  "op_http_set_response_body_stream",
-  "op_http_set_response_body_text",
-  "op_http_set_response_header",
-  "op_http_set_response_headers",
-  "op_http_set_response_trailers",
-  "op_http_upgrade_raw",
-  "op_http_upgrade_websocket_next",
-  "op_http_try_wait",
-  "op_http_wait",
-);
+} = core.ensureFastOps();
 const _upgraded = Symbol("_upgraded");
 
 function internalServerError() {
@@ -334,7 +317,12 @@ class InnerRequest {
     if (this.#slabId === undefined) {
       throw new TypeError("request closed");
     }
-    return op_http_get_request_headers(this.#slabId);
+    const headers = [];
+    const reqHeaders = op_http_get_request_headers(this.#slabId);
+    for (let i = 0; i < reqHeaders.length; i += 2) {
+      ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+    }
+    return headers;
   }
 
   get slabId() {
@@ -759,4 +747,10 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
-export { serve, upgradeHttpRaw };
+export {
+  addTrailers,
+  serve,
+  serveHttpOnConnection,
+  serveHttpOnListener,
+  upgradeHttpRaw,
+};

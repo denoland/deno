@@ -457,6 +457,7 @@ impl CliMainWorkerFactory {
           Some(Snapshot::Boxed(content.into_boxed_slice()))
         },
       ),
+      create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors

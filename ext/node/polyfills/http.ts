@@ -267,6 +267,9 @@ const kError = Symbol("kError");
 
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
+class FakeSocket extends EventEmitter {
+}
+
 /** ClientRequest represents the http(s) request from the client */
 class ClientRequest extends OutgoingMessage {
   defaultProtocol = "http:";
@@ -541,6 +544,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
+    this.onSocket(new FakeSocket());
 
     const url = this._createUrlStrFromOptions();
 
@@ -570,41 +574,12 @@ class ClientRequest extends OutgoingMessage {
     return undefined;
   }
 
-  onSocket(socket, err) {
-    if (this.destroyed || err) {
-      this.destroyed = true;
-
-      // deno-lint-ignore no-inner-declarations
-      function _destroy(req, err) {
-        if (!req.aborted && !err) {
-          err = connResetException("socket hang up");
-        }
-        if (err) {
-          req.emit("error", err);
-        }
-        req._closed = true;
-        req.emit("close");
-      }
-
-      if (socket) {
-        if (!err && this.agent && !socket.destroyed) {
-          socket.emit("free");
-        } else {
-          finished(socket.destroy(err || this[kError]), (er) => {
-            if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
-              er = null;
-            }
-            _destroy(this, er || err);
-          });
-          return;
-        }
-      }
-
-      _destroy(this, err || this[kError]);
-    } else {
-      //tickOnSocket(this, socket);
-      //this._flush();
-    }
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
   }
 
   // deno-lint-ignore no-explicit-any
@@ -737,16 +712,19 @@ class ClientRequest extends OutgoingMessage {
     const auth = this.auth;
     const host = this.host ?? this.hostname ?? "localhost";
     const hash = this.hash ? `#${this.hash}` : "";
-    const search = this.search ? this.search : "";
     const defaultPort = this.agent?.defaultPort;
     const port = this.port ?? defaultPort ?? 80;
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    return `${protocol}//${auth ? `${auth}@` : ""}${host}${
-      port === 80 ? "" : `:${port}`
-    }${path}${search}${hash}`;
+    const url = new URL(
+      `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    );
+    url.hash = hash;
+    return url.href;
   }
 
   setTimeout(msecs: number, callback?: () => void) {

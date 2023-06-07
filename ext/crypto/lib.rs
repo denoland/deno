@@ -116,10 +116,11 @@ deno_core::extension!(deno_crypto,
 );
 
 #[op]
-pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {
-  let data: Vec<u8> =
-    base64::decode_config(data, base64::URL_SAFE_NO_PAD).unwrap();
-  data.into()
+pub fn op_crypto_base64url_decode(
+  data: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  Ok(data.into())
 }
 
 #[op]

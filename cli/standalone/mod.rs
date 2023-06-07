@@ -201,6 +201,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         match module.kind {
           eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
           eszip::ModuleKind::Json => ModuleType::Json,
+          eszip::ModuleKind::Jsonc => {
+            return Err(type_error("jsonc modules not supported"))
+          }
         },
         code,
         &module_specifier,
