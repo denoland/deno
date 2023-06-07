@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
 use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -40,7 +39,6 @@ use deno_core::task::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_graph::GraphKind;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -1724,11 +1722,7 @@ pub async fn run_tests_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
-  let type_check = cli_options.type_check_mode() != TypeCheckMode::None;
-  let graph_kind = match type_check {
-    true => GraphKind::All,
-    false => GraphKind::CodeOnly,
-  };
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let log_level = cli_options.log_level();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {

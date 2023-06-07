@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
@@ -57,7 +56,7 @@ pub fn graph_valid_with_cli_options(
     roots,
     GraphValidOptions {
       is_vendoring: false,
-      follow_type_only: options.type_check_mode() != TypeCheckMode::None,
+      follow_type_only: options.type_check_mode().is_true(),
       check_js: options.check_js(),
     },
   )
@@ -229,9 +228,7 @@ impl ModuleGraphBuilder {
       )
       .await?;
 
-    if graph.has_node_specifier
-      && self.options.type_check_mode() != TypeCheckMode::None
-    {
+    if graph.has_node_specifier && self.options.type_check_mode().is_true() {
       self
         .npm_resolver
         .inject_synthetic_types_node_package()
@@ -251,12 +248,7 @@ impl ModuleGraphBuilder {
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
-    let should_type_check =
-      self.options.type_check_mode() != TypeCheckMode::None;
-    let graph_kind = match should_type_check {
-      true => GraphKind::All,
-      false => GraphKind::CodeOnly,
-    };
+    let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
     self
       .build_graph_with_npm_resolution(
@@ -280,7 +272,7 @@ impl ModuleGraphBuilder {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
-    if should_type_check {
+    if self.options.type_check_mode().is_true() {
       self
         .type_checker
         .check(
