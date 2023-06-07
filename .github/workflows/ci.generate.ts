@@ -558,7 +558,12 @@ const ci = {
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
