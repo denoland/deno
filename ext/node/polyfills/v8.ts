@@ -42,7 +42,14 @@ export function getHeapStatistics() {
 }
 
 export function setFlagsFromString() {
-  notImplemented("v8.setFlagsFromString");
+  // NOTE(bartlomieju): From Node.js docs:
+  // The v8.setFlagsFromString() method can be used to programmatically set V8
+  // command-line flags. This method should be used with care. Changing settings
+  // after the VM has started may result in unpredictable behavior, including
+  // crashes and data loss; or it may simply do nothing.
+  //
+  // Notice: "or it may simply do nothing". This is what we're gonna do,
+  // this function will just be a no-op.
 }
 export function stopCoverage() {
   notImplemented("v8.stopCoverage");

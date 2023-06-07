@@ -30,9 +30,6 @@ use tokio::net::UnixStream;
 deno_core::extension!(
   deno_http_runtime,
   ops = [op_http_start, op_http_upgrade],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[op]

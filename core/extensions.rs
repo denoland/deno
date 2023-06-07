@@ -72,7 +72,6 @@ pub struct OpDecl {
   pub is_async: bool,
   pub is_unstable: bool,
   pub is_v8: bool,
-  pub force_registration: bool,
   pub arg_count: u8,
   pub fast_fn: Option<FastFunction>,
 }
@@ -349,6 +348,7 @@ macro_rules! extension {
 
 #[derive(Default)]
 pub struct Extension {
+  pub(crate) name: &'static str,
   js_files: Option<Vec<ExtensionFileSource>>,
   esm_files: Option<Vec<ExtensionFileSource>>,
   esm_entry_point: Option<&'static str>,
@@ -358,9 +358,7 @@ pub struct Extension {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   initialized: bool,
   enabled: bool,
-  name: &'static str,
   deps: Option<&'static [&'static str]>,
-  force_op_registration: bool,
   pub(crate) is_core: bool,
 }
 
@@ -431,7 +429,6 @@ impl Extension {
     let mut ops = self.ops.take()?;
     for op in ops.iter_mut() {
       op.enabled = self.enabled && op.enabled;
-      op.force_registration = self.force_op_registration;
     }
     Some(ops)
   }
@@ -471,16 +468,6 @@ impl Extension {
   pub fn disable(self) -> Self {
     self.enabled(false)
   }
-
-  pub(crate) fn find_esm(
-    &self,
-    specifier: &str,
-  ) -> Option<&ExtensionFileSource> {
-    self
-      .get_esm_sources()?
-      .iter()
-      .find(|s| s.specifier == specifier)
-  }
 }
 
 // Provides a convenient builder pattern to declare Extensions
@@ -495,7 +482,6 @@ pub struct ExtensionBuilder {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
   deps: &'static [&'static str],
-  force_op_registration: bool,
   is_core: bool,
 }
 
@@ -544,15 +530,6 @@ impl ExtensionBuilder {
     self
   }
 
-  /// Mark that ops from this extension should be added to `Deno.core.ops`
-  /// unconditionally. This is useful is some ops are not available
-  /// during snapshotting, as ops are not registered by default when a
-  /// `JsRuntime` is created with an existing snapshot.
-  pub fn force_op_registration(&mut self) -> &mut Self {
-    self.force_op_registration = true;
-    self
-  }
-
   /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
   pub fn take(self) -> Extension {
     let js_files = Some(self.js);
@@ -570,7 +547,6 @@ impl ExtensionBuilder {
       initialized: false,
       enabled: true,
       name: self.name,
-      force_op_registration: self.force_op_registration,
       deps,
       is_core: self.is_core,
     }
@@ -593,7 +569,6 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
-      force_op_registration: self.force_op_registration,
       is_core: self.is_core,
     }
   }

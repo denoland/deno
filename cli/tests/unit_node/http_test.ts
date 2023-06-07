@@ -2,6 +2,7 @@
 
 import EventEmitter from "node:events";
 import http, { type RequestOptions } from "node:http";
+import https from "node:https";
 import {
   assert,
   assertEquals,
@@ -190,26 +191,37 @@ Deno.test("[node/http] request default protocol", async () => {
   const server = http.createServer((_, res) => {
     res.end("ok");
   });
+
+  // @ts-ignore IncomingMessageForClient
+  // deno-lint-ignore no-explicit-any
+  let clientRes: any;
+  // deno-lint-ignore no-explicit-any
+  let clientReq: any;
   server.listen(() => {
-    const req = http.request(
+    clientReq = http.request(
       // deno-lint-ignore no-explicit-any
       { host: "localhost", port: (server.address() as any).port },
       (res) => {
+        assert(res.socket instanceof EventEmitter);
+        assertEquals(res.complete, false);
         res.on("data", () => {});
         res.on("end", () => {
           server.close();
         });
+        clientRes = res;
         assertEquals(res.statusCode, 200);
         promise2.resolve();
       },
     );
-    req.end();
+    clientReq.end();
   });
   server.on("close", () => {
     promise.resolve();
   });
   await promise;
   await promise2;
+  assert(clientReq.socket instanceof EventEmitter);
+  assertEquals(clientRes!.complete, true);
 });
 
 Deno.test("[node/http] request with headers", async () => {
@@ -470,13 +482,142 @@ Deno.test("[node/http] server unref", async () => {
     res.statusCode = status;
     res.end("");
   });
-  
-  // This should let the program to exit without waiting for the 
+
+  // This should let the program to exit without waiting for the
   // server to close.
   server.unref();
-  
+
   server.listen(async () => {
   });
   `);
   assertEquals(statusCode, 0);
+});
+
+Deno.test("[node/http] ClientRequest handle non-string headers", async () => {
+  // deno-lint-ignore no-explicit-any
+  let headers: any;
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    headers = resp.headers;
+
+    resp.on("data", () => {});
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(headers!["1"], "2");
+});
+
+Deno.test("[node/http] ClientRequest uses HTTP/1.1", async () => {
+  let body = "";
+  const def = deferred();
+  const req = https.request("https://localhost:5545/http_version", {
+    method: "POST",
+    headers: { 1: 2 },
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "HTTP/1.1");
+});
+
+Deno.test("[node/http] ClientRequest setTimeout", async () => {
+  let body = "";
+  const def = deferred();
+  const timer = setTimeout(() => def.reject("timed out"), 50000);
+  const req = http.request("http://localhost:4545/http_version", (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.setTimeout(120000);
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  clearTimeout(timer);
+  assertEquals(body, "HTTP/1.1");
+});
+
+Deno.test("[node/http] ClientRequest PATCH", async () => {
+  let body = "";
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PATCH",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.write("hello ");
+  req.write("world");
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "hello world");
+});
+
+Deno.test("[node/http] ClientRequest PUT", async () => {
+  let body = "";
+  const def = deferred();
+  const req = http.request("http://localhost:4545/echo_server", {
+    method: "PUT",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.write("hello ");
+  req.write("world");
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "hello world");
+});
+
+Deno.test("[node/http] ClientRequest search params", async () => {
+  let body = "";
+  const def = deferred();
+  const req = http.request({
+    host: "localhost:4545",
+    path: "search_params?foo=bar",
+  }, (resp) => {
+    resp.on("data", (chunk) => {
+      body += chunk;
+    });
+
+    resp.on("end", () => {
+      def.resolve();
+    });
+  });
+  req.once("error", (e) => def.reject(e));
+  req.end();
+  await def;
+  assertEquals(body, "foo=bar");
 });

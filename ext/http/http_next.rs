@@ -20,8 +20,11 @@ use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::serde_v8::from_v8;
 use deno_core::task::spawn;
 use deno_core::task::JoinHandle;
+use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -51,10 +54,11 @@ use hyper1::server::conn::http1;
 use hyper1::server::conn::http2;
 use hyper1::service::service_fn;
 use hyper1::service::HttpService;
-
 use hyper1::StatusCode;
+use once_cell::sync::Lazy;
 use pin_project::pin_project;
 use pin_project::pinned_drop;
+use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
@@ -67,6 +71,16 @@ use tokio::io::AsyncWriteExt;
 
 type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
+
+static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
+  let disable_writev = std::env::var("DENO_HYPER_USE_WRITEV").ok();
+
+  if let Some(val) = disable_writev {
+    return val != "0";
+  }
+
+  true
+});
 
 /// All HTTP/2 connections start with this byte string.
 ///
@@ -202,10 +216,11 @@ pub fn op_http_set_promise_complete(slab_id: SlabId, status: u16) {
   http.complete();
 }
 
-#[op]
-pub fn op_http_get_request_method_and_url<HTTP>(
+#[op(v8)]
+pub fn op_http_get_request_method_and_url<'scope, HTTP>(
+  scope: &mut v8::HandleScope<'scope>,
   slab_id: SlabId,
-) -> (String, Option<String>, String, String, Option<u16>)
+) -> serde_v8::Value<'scope>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -218,20 +233,54 @@ where
     &request_parts.headers,
   );
 
+  let method: v8::Local<v8::Value> = v8::String::new_from_utf8(
+    scope,
+    request_parts.method.as_str().as_bytes(),
+    v8::NewStringType::Normal,
+  )
+  .unwrap()
+  .into();
+
+  let authority: v8::Local<v8::Value> = match request_properties.authority {
+    Some(authority) => v8::String::new_from_utf8(
+      scope,
+      authority.as_ref(),
+      v8::NewStringType::Normal,
+    )
+    .unwrap()
+    .into(),
+    None => v8::undefined(scope).into(),
+  };
+
   // Only extract the path part - we handle authority elsewhere
   let path = match &request_parts.uri.path_and_query() {
     Some(path_and_query) => path_and_query.to_string(),
     None => "".to_owned(),
   };
 
-  // TODO(mmastrac): Passing method can be optimized
-  (
-    request_parts.method.as_str().to_owned(),
-    request_properties.authority,
-    path,
-    String::from(request_info.peer_address.as_ref()),
-    request_info.peer_port,
+  let path: v8::Local<v8::Value> =
+    v8::String::new_from_utf8(scope, path.as_ref(), v8::NewStringType::Normal)
+      .unwrap()
+      .into();
+
+  let peer_address: v8::Local<v8::Value> = v8::String::new_from_utf8(
+    scope,
+    request_info.peer_address.as_bytes(),
+    v8::NewStringType::Normal,
   )
+  .unwrap()
+  .into();
+
+  let port: v8::Local<v8::Value> = match request_info.peer_port {
+    Some(port) => v8::Integer::new(scope, port.into()).into(),
+    None => v8::undefined(scope).into(),
+  };
+
+  let vec = [method, authority, path, peer_address, port];
+  let array = v8::Array::new_with_elements(scope, vec.as_slice());
+  let array_value: v8::Local<v8::Value> = array.into();
+
+  array_value.into()
 }
 
 #[op]
@@ -244,13 +293,17 @@ pub fn op_http_get_request_header(
   value.map(|value| value.as_bytes().into())
 }
 
-#[op]
-pub fn op_http_get_request_headers(
+#[op(v8)]
+pub fn op_http_get_request_headers<'scope>(
+  scope: &mut v8::HandleScope<'scope>,
   slab_id: SlabId,
-) -> Vec<(ByteString, ByteString)> {
+) -> serde_v8::Value<'scope> {
   let http = slab_get(slab_id);
   let headers = &http.request_parts().headers;
-  let mut vec = Vec::with_capacity(headers.len());
+  // Two slots for each header key/value pair
+  let mut vec: SmallVec<[v8::Local<v8::Value>; 32]> =
+    SmallVec::with_capacity(headers.len() * 2);
+
   let mut cookies: Option<Vec<&[u8]>> = None;
   for (name, value) in headers {
     if name == COOKIE {
@@ -260,8 +313,24 @@ pub fn op_http_get_request_headers(
         cookies = Some(vec![value.as_bytes()]);
       }
     } else {
-      let name: &[u8] = name.as_ref();
-      vec.push((name.into(), value.as_bytes().into()))
+      vec.push(
+        v8::String::new_from_one_byte(
+          scope,
+          name.as_ref(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap()
+        .into(),
+      );
+      vec.push(
+        v8::String::new_from_one_byte(
+          scope,
+          value.as_bytes(),
+          v8::NewStringType::Normal,
+        )
+        .unwrap()
+        .into(),
+      );
     }
   }
 
@@ -272,12 +341,27 @@ pub fn op_http_get_request_headers(
   // TODO(mmastrac): This should probably happen on the JS side on-demand
   if let Some(cookies) = cookies {
     let cookie_sep = "; ".as_bytes();
-    vec.push((
-      ByteString::from(COOKIE.as_str()),
-      ByteString::from(cookies.join(cookie_sep)),
-    ));
+
+    vec.push(
+      v8::String::new_external_onebyte_static(scope, COOKIE.as_ref())
+        .unwrap()
+        .into(),
+    );
+    vec.push(
+      v8::String::new_from_one_byte(
+        scope,
+        cookies.join(cookie_sep).as_ref(),
+        v8::NewStringType::Normal,
+      )
+      .unwrap()
+      .into(),
+    );
   }
-  vec
+
+  let array = v8::Array::new_with_elements(scope, vec.as_slice());
+  let array_value: v8::Local<v8::Value> = array.into();
+
+  array_value.into()
 }
 
 #[op(fast)]
@@ -301,20 +385,33 @@ pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
   resp_headers.append(name, value);
 }
 
-#[op]
-pub fn op_http_set_response_headers(
+#[op(v8)]
+fn op_http_set_response_headers(
+  scope: &mut v8::HandleScope,
   slab_id: SlabId,
-  headers: Vec<(ByteString, ByteString)>,
+  headers: serde_v8::Value,
 ) {
   let mut http = slab_get(slab_id);
   // TODO(mmastrac): Invalid headers should be handled?
   let resp_headers = http.response().headers_mut();
-  resp_headers.reserve(headers.len());
-  for (name, value) in headers {
-    // These are valid latin-1 strings
-    let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
-    resp_headers.append(name, value);
+
+  let arr = v8::Local::<v8::Array>::try_from(headers.v8_value).unwrap();
+
+  let len = arr.length();
+  let header_len = len * 2;
+  resp_headers.reserve(header_len.try_into().unwrap());
+
+  for i in 0..len {
+    let item = arr.get_index(scope, i).unwrap();
+    let pair = v8::Local::<v8::Array>::try_from(item).unwrap();
+    let name = pair.get_index(scope, 0).unwrap();
+    let value = pair.get_index(scope, 1).unwrap();
+
+    let v8_name: ByteString = from_v8(scope, name).unwrap();
+    let v8_value: ByteString = from_v8(scope, value).unwrap();
+    let header_name = HeaderName::from_bytes(&v8_name).unwrap();
+    let header_value = HeaderValue::from_bytes(&v8_value).unwrap();
+    resp_headers.append(header_name, header_value);
   }
 }
 
@@ -338,23 +435,30 @@ fn is_request_compressible(headers: &HeaderMap) -> Compression {
   let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
     return Compression::None;
   };
-  // Firefox and Chrome send this -- no need to parse
-  if accept_encoding == "gzip, deflate, br" {
-    return Compression::GZip;
+
+  match accept_encoding.to_str().unwrap() {
+    // Firefox and Chrome send this -- no need to parse
+    "gzip, deflate, br" => return Compression::Brotli,
+    "gzip" => return Compression::GZip,
+    "br" => return Compression::Brotli,
+    _ => (),
   }
-  if accept_encoding == "gzip" {
-    return Compression::GZip;
-  }
+
   // Fall back to the expensive parser
   let accepted = fly_accept_encoding::encodings_iter(headers).filter(|r| {
-    matches!(r, Ok((Some(Encoding::Identity | Encoding::Gzip), _)))
+    matches!(
+      r,
+      Ok((
+        Some(Encoding::Identity | Encoding::Gzip | Encoding::Brotli),
+        _
+      ))
+    )
   });
-  #[allow(clippy::single_match)]
   match fly_accept_encoding::preferred(accepted) {
-    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => return Compression::GZip,
-    _ => {}
+    Ok(Some(fly_accept_encoding::Encoding::Gzip)) => Compression::GZip,
+    Ok(Some(fly_accept_encoding::Encoding::Brotli)) => Compression::Brotli,
+    _ => Compression::None,
   }
-  Compression::None
 }
 
 fn is_response_compressible(headers: &HeaderMap) -> bool {
@@ -402,9 +506,14 @@ fn modify_compressibility_from_response(
   if !is_response_compressible(headers) {
     return Compression::None;
   }
+  let encoding = match compression {
+    Compression::Brotli => "br",
+    Compression::GZip => "gzip",
+    _ => unreachable!(),
+  };
   weaken_etag(headers);
   headers.remove(CONTENT_LENGTH);
-  headers.insert(CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+  headers.insert(CONTENT_ENCODING, HeaderValue::from_static(encoding));
   compression
 }
 
@@ -585,6 +694,7 @@ fn serve_http11_unconditional(
 ) -> impl Future<Output = Result<(), AnyError>> + 'static {
   let conn = http1::Builder::new()
     .keep_alive(true)
+    .writev(*USE_WRITEV)
     .serve_connection(io, svc);
 
   conn.with_upgrades().map_err(AnyError::from)
@@ -796,6 +906,30 @@ where
     listen_properties.scheme,
     listen_properties.fallback_host,
   ))
+}
+
+/// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
+/// goes wrong in this method we return [`SlabId::MAX`] and let the async handler pick up the real error.
+#[op(fast)]
+pub fn op_http_try_wait(state: &mut OpState, rid: ResourceId) -> SlabId {
+  // The resource needs to exist.
+  let Ok(join_handle) = state
+    .resource_table
+    .get::<HttpJoinHandle>(rid) else {
+      return SlabId::MAX;
+  };
+
+  // If join handle is somehow locked, just abort.
+  let Some(mut handle) = RcRef::map(&join_handle, |this| &this.2).try_borrow_mut() else {
+    return SlabId::MAX;
+  };
+
+  // See if there are any requests waiting on this channel. If not, return.
+  let Ok(id) = handle.try_recv() else {
+    return SlabId::MAX;
+  };
+
+  id
 }
 
 #[op]

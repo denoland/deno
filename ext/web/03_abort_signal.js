@@ -203,4 +203,5 @@ export {
   newSignal,
   remove,
   signalAbort,
+  timerId,
 };

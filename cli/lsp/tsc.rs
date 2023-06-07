@@ -3261,9 +3261,6 @@ deno_core::extension!(deno_tsc,
       options.performance,
     ));
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 /// Instruct a language server runtime to start the language server and provide

@@ -4,6 +4,7 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::init_runtime_module_map;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -495,6 +496,7 @@ impl WebWorker {
       inspector: options.maybe_inspector_server.is_some(),
       ..Default::default()
     });
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

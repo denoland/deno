@@ -12,6 +12,7 @@ use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -1277,11 +1278,20 @@ itest!(type_directives_02 {
   output: "run/type_directives_02.ts.out",
 });
 
-itest!(type_directives_js_main {
-  args: "run --reload -L debug run/type_directives_js_main.js",
-  output: "run/type_directives_js_main.js.out",
-  exit_code: 0,
-});
+#[test]
+fn type_directives_js_main() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --reload -L debug --check run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("run --reload -L debug run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}
 
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",
@@ -3030,14 +3040,29 @@ itest!(package_json_auto_discovered_no_package_json_imports {
   copy_temp_dir: Some("run/with_package_json/no_deno_json"),
 });
 
-itest!(package_json_with_deno_json {
-  args: "run --quiet -A main.ts",
-  output: "package_json/deno_json/main.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
-  http_server: true,
-});
+#[test]
+fn package_json_with_deno_json() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/deno_json/")
+    .cwd("package_json/deno_json/")
+    .build();
+  let output = context.new_command().args("run --quiet -A main.ts").run();
+  output.assert_matches_file("package_json/deno_json/main.out");
+
+  assert!(context
+    .temp_dir()
+    .path()
+    .join("package_json/deno_json/deno.lock")
+    .exists());
+
+  // run again and ensure the top level install doesn't happen twice
+  let output = context
+    .new_command()
+    .args("run --log-level=debug -A main.ts")
+    .run();
+  let output = output.combined_output();
+  assert_contains!(output, "Skipping top level install.");
+}
 
 #[test]
 fn package_json_error_dep_value_test() {
@@ -3434,8 +3459,9 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
+#[cfg(not(target_os = "windows"))]
 itest!(spawn_kill_permissions {
-  args: "run --quiet --unstable --allow-run=deno spawn_kill_permissions.ts",
+  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
   output_str: Some(""),
 });
 

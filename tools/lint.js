@@ -55,6 +55,7 @@ async function dlint() {
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/run/**",
     ":!:cli/tests/testdata/tsc/**",
+    ":!:cli/tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",

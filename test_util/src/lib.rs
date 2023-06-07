@@ -55,6 +55,7 @@ use url::Url;
 
 pub mod assertions;
 mod builders;
+pub mod factory;
 pub mod lsp;
 mod npm;
 pub mod pty;
@@ -726,7 +727,10 @@ async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
-    (&hyper::Method::POST, "/echo_server") => {
+    (
+      &hyper::Method::POST | &hyper::Method::PATCH | &hyper::Method::PUT,
+      "/echo_server",
+    ) => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(body);
 
@@ -734,16 +738,7 @@ async fn main_server(
         *response.status_mut() =
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
-      if let Some(content_type) = parts.headers.get("content-type") {
-        response
-          .headers_mut()
-          .insert("content-type", content_type.clone());
-      }
-      if let Some(user_agent) = parts.headers.get("user-agent") {
-        response
-          .headers_mut()
-          .insert("user-agent", user_agent.clone());
-      }
+      response.headers_mut().extend(parts.headers);
       Ok(response)
     }
     (&hyper::Method::POST, "/echo_multipart_file") => {
@@ -1088,6 +1083,11 @@ async fn main_server(
       let res = Response::new(Body::from(
         serde_json::json!({ "accept": accept }).to_string(),
       ));
+      Ok(res)
+    }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res = Response::new(Body::from(query.unwrap_or_default()));
       Ok(res)
     }
     _ => {
