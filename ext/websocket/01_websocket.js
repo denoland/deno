@@ -126,7 +126,6 @@ class WebSocket extends EventTarget {
     this[_protocol] = "";
     this[_url] = "";
     this[_binaryType] = "blob";
-    this[_serverHandleIdleTimeout] = undefined;
     this[_idleTimeoutDuration] = 0;
     this[_idleTimeoutTimeout] = undefined;
     const prefix = "Failed to construct 'WebSocket'";
