@@ -81,6 +81,7 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
