@@ -53,6 +53,16 @@ use fastwebsockets::WebSocket;
 
 mod stream;
 
+static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
+  let enable = std::env::var("DENO_USE_WRITEV").ok();
+
+  if let Some(val) = enable {
+    return !val.is_empty();
+  }
+
+  false
+});
+
 #[derive(Clone)]
 pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
 
@@ -360,7 +370,7 @@ pub fn ws_create_server_stream(
     ),
     Role::Server,
   );
-  ws.set_writev(true);
+  ws.set_writev(USE_WRITEV);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
 
