@@ -135,6 +135,7 @@ tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
 tokio = { version = "1.28.1", features = ["full"] }
+tokio-metrics = { version = "0.2.2", features = ["rt"] }
 tokio-rustls = "0.24.0"
 tokio-util = "0.7.4"
 tower-lsp = { version = "=0.17.0", features = ["proposed"] }
