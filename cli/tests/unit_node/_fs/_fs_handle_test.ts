@@ -21,7 +21,6 @@ Deno.test("readFileSuccess", async function () {
   await fileHandle.close();
 });
 
-
 Deno.test("read", async function () {
   const fileHandle = await fs.open(testData);
   const byteLength = "hello world".length;
