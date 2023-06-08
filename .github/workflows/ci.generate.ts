@@ -575,7 +575,12 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",
