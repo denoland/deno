@@ -21,6 +21,7 @@ deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade"] }
 http.workspace = true
 hyper = { workspace = true, features = ["backports"] }
+once_cell.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
