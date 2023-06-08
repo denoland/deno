@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
+import { assertMatch } from "../../../test_util/std/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
