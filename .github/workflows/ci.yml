@@ -349,7 +349,10 @@ jobs:
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))))
-        run: cargo build --release --locked --all-targets
+        run: |-
+          df -h
+          cargo build --release --locked --all-targets
+          df -h
       - name: Upload PR artifact (linux)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
