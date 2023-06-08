@@ -307,6 +307,10 @@ fn no_tests_included(test_name: &str, extension: &str) {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
+      format!(
+        "--exclude={}",
+        util::std_path().canonicalize().unwrap().to_string_lossy()
+      ),
       format!("{}/", tempdir.to_str().unwrap()),
     ])
     .split_output()
