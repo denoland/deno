@@ -200,7 +200,10 @@ impl CliNpmResolver {
   /// Gets the state of npm for the process.
   pub fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
-      snapshot: self.resolution.serialized_snapshot(),
+      snapshot: self
+        .resolution
+        .serialized_valid_snapshot()
+        .into_serialized(),
       local_node_modules_path: self
         .fs_resolver
         .node_modules_path()

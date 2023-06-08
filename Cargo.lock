@@ -1233,9 +1233,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.6.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54607b69689ab1e778e5e00545456e6f0c2310205e1bdae01af601c2dace0121"
+checksum = "a6ea17879274b55063c6b14488a4f9352b651f8d42ed129e6e2c1e351761175d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1413,6 +1413,7 @@ dependencies = [
  "fastwebsockets",
  "http",
  "hyper 0.14.26",
+ "once_cell",
  "serde",
  "tokio",
  "tokio-rustls",
@@ -1842,14 +1843,16 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.43.0"
+version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9034d1749b91ac4fab0ed7b1d849f9f933099d1c1d021d42d6f54dd265b27d83"
+checksum = "176a97e524a9cfa38393fae75c97d249cf41742fc40664529206c5249c12b599"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
  "deno_ast",
  "deno_graph",
+ "deno_npm",
+ "deno_semver",
  "futures",
  "hashlink",
  "serde",
@@ -2789,9 +2792,9 @@ checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
 
 [[package]]
 name = "libffi"
-version = "3.1.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb06d5b4c428f3cd682943741c39ed4157ae989fffe1094a08eaf7c4014cf60"
+checksum = "ce826c243048e3d5cec441799724de52e2d42f820468431fc3fceee2341871e2"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -2799,9 +2802,9 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "2.1.0"
+version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11c6f11e063a27ffe040a9d15f0b661bf41edc2383b7ae0e0ad5a7e7d53d9da3"
+checksum = "dc65067b78c0fc069771e8b9a9e02df71e08858bec92c1f101377c67b9dca7c7"
 dependencies = [
  "cc",
 ]
