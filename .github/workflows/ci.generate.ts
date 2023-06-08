@@ -21,7 +21,7 @@ const Runners = (() => {
     macos: "macos-12",
     windows: windowsRunner,
     windowsXl:
-      `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
   };
 })();
 const prCacheKeyPrefix =

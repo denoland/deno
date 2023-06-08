@@ -67,11 +67,11 @@ jobs:
             job: test
             profile: debug
             os_display_name: windows-x86_64
-          - os: '${{ github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
             skip_pr: true
-            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''windows-2022-xl'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
