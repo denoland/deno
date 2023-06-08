@@ -38,6 +38,7 @@ const {
   op_ws_send_binary_async,
   op_ws_next_event,
   op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
   op_ws_get_error,
   op_ws_create,
   op_ws_close,
@@ -245,8 +246,10 @@ class WebSocketStream {
 
               switch (kind) {
                 case 0:
-                case 1: {
                   /* string */
+                  controller.enqueue(op_ws_get_buffer_as_string(this[_rid]));
+                  break;
+                case 1: {
                   /* binary */
                   controller.enqueue(op_ws_get_buffer(this[_rid]));
                   break;
