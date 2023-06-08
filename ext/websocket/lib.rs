@@ -523,13 +523,13 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op(fast)]
+#[op]
 pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ZeroCopyBuf {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.buffer.take().unwrap().into()
 }
 
-#[op(fast)]
+#[op]
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
   rid: ResourceId,
@@ -539,7 +539,7 @@ pub fn op_ws_get_buffer_as_string(
   String::from_utf8(resource.buffer.take().unwrap()).unwrap_or_default()
 }
 
-#[op(fast)]
+#[op]
 pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return "Bad resource".into();
