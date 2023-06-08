@@ -325,6 +325,7 @@ pub struct ServerWebSocket {
   errored: Cell<bool>,
   closed: Cell<bool>,
   buffer: Cell<Option<Vec<u8>>>,
+  string: Cell<Option<String>>,
   ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
   tx_lock: AsyncRefCell<()>,
 }
@@ -337,6 +338,7 @@ impl ServerWebSocket {
       errored: Cell::new(false),
       closed: Cell::new(false),
       buffer: Cell::new(None),
+      string: Cell::new(None),
       ws: AsyncRefCell::new(FragmentCollector::new(ws)),
       tx_lock: AsyncRefCell::new(()),
     }
@@ -535,8 +537,7 @@ pub fn op_ws_get_buffer_as_string(
   rid: ResourceId,
 ) -> String {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
-  // TODO(mmastrac): We won't panic on a bad string, but we return an empty one.
-  String::from_utf8(resource.buffer.take().unwrap()).unwrap_or_default()
+  resource.string.take().unwrap().into()
 }
 
 #[op]
@@ -585,10 +586,16 @@ pub async fn op_ws_next_event(
     };
 
     break match val.opcode {
-      OpCode::Text => {
-        resource.buffer.set(Some(val.payload));
-        MessageKind::Text as u16
-      }
+      OpCode::Text => match String::from_utf8(val.payload) {
+        Ok(s) => {
+          resource.string.set(Some(s));
+          MessageKind::Text as u16
+        }
+        Err(_) => {
+          resource.set_error(Some("Invalid string data".into()));
+          MessageKind::Error as u16
+        }
+      },
       OpCode::Binary => {
         resource.buffer.set(Some(val.payload));
         MessageKind::Binary as u16
