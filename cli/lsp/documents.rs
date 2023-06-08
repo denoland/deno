@@ -1257,7 +1257,26 @@ impl Documents {
     // only refresh the dependencies if the underlying configuration has changed
     if self.resolver_config_hash != new_resolver_config_hash {
       self.refresh_dependencies(
-        options.enabled_urls,
+        options
+          .enabled_urls
+          .iter()
+          .filter_map(|url| {
+            if url.scheme() == "file" {
+              url.to_file_path().ok()
+            } else {
+              None
+            }
+          })
+          .collect(),
+        options
+          .maybe_config_file
+          .and_then(|cf| {
+            cf.to_files_config()
+              .ok()
+              .flatten()
+              .map(|files| files.exclude)
+          })
+          .unwrap_or_default(),
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -1268,7 +1287,8 @@ impl Documents {
 
   fn refresh_dependencies(
     &mut self,
-    enabled_urls: Vec<Url>,
+    enabled_paths: Vec<PathBuf>,
+    disabled_paths: Vec<PathBuf>,
     document_preload_limit: usize,
   ) {
     let resolver = self.resolver.as_graph_resolver();
@@ -1286,10 +1306,12 @@ impl Documents {
       let open_docs = &mut self.open_docs;
 
       log::debug!("Preloading documents from enabled urls...");
-      let mut finder = PreloadDocumentFinder::from_enabled_urls_with_limit(
-        &enabled_urls,
-        document_preload_limit,
-      );
+      let mut finder =
+        PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+          enabled_paths,
+          disabled_paths,
+          limit: document_preload_limit,
+        });
       for specifier in finder.by_ref() {
         // mark this document as having been found
         not_found_docs.remove(&specifier);
@@ -1583,19 +1605,23 @@ enum PendingEntry {
   ReadDir(Box<ReadDir>),
 }
 
+struct PreloadDocumentFinderOptions {
+  enabled_paths: Vec<PathBuf>,
+  disabled_paths: Vec<PathBuf>,
+  limit: usize,
+}
+
 /// Iterator that finds documents that can be preloaded into
 /// the LSP on startup.
 struct PreloadDocumentFinder {
   limit: usize,
   entry_count: usize,
   pending_entries: VecDeque<PendingEntry>,
+  disabled_paths: HashSet<PathBuf>,
 }
 
 impl PreloadDocumentFinder {
-  pub fn from_enabled_urls_with_limit(
-    enabled_urls: &Vec<Url>,
-    limit: usize,
-  ) -> Self {
+  pub fn new(options: PreloadDocumentFinderOptions) -> Self {
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
       if dir_path.parent().is_none() {
         // never search the root directory of a drive
@@ -1605,22 +1631,21 @@ impl PreloadDocumentFinder {
     }
 
     let mut finder = PreloadDocumentFinder {
-      limit,
+      limit: options.limit,
       entry_count: 0,
       pending_entries: Default::default(),
+      disabled_paths: options.disabled_paths.into_iter().collect(),
     };
-    let mut dirs = Vec::with_capacity(enabled_urls.len());
-    for enabled_url in enabled_urls {
-      if let Ok(path) = enabled_url.to_file_path() {
-        if path.is_dir() {
-          if is_allowed_root_dir(&path) {
-            dirs.push(path);
-          }
-        } else {
-          finder
-            .pending_entries
-            .push_back(PendingEntry::SpecifiedRootFile(path));
+    let mut dirs = Vec::with_capacity(options.enabled_paths.len());
+    for path in options.enabled_paths {
+      if path.is_dir() {
+        if is_allowed_root_dir(&path) {
+          dirs.push(path);
         }
+      } else {
+        finder
+          .pending_entries
+          .push_back(PendingEntry::SpecifiedRootFile(path));
       }
     }
     for dir in sort_and_remove_non_leaf_dirs(dirs) {
@@ -1735,17 +1760,19 @@ impl Iterator for PreloadDocumentFinder {
             if let Ok(entry) = entry {
               let path = entry.path();
               if let Ok(file_type) = entry.file_type() {
-                if file_type.is_dir() && is_discoverable_dir(&path) {
-                  self
-                    .pending_entries
-                    .push_back(PendingEntry::Dir(path.to_path_buf()));
-                } else if file_type.is_file() && is_discoverable_file(&path) {
-                  if let Some(specifier) = Self::get_valid_specifier(&path) {
-                    // restore the next entries for next time
+                if !self.disabled_paths.contains(&path) {
+                  if file_type.is_dir() && is_discoverable_dir(&path) {
                     self
                       .pending_entries
-                      .push_front(PendingEntry::ReadDir(entries));
-                    return Some(specifier);
+                      .push_back(PendingEntry::Dir(path.to_path_buf()));
+                  } else if file_type.is_file() && is_discoverable_file(&path) {
+                    if let Some(specifier) = Self::get_valid_specifier(&path) {
+                      // restore the next entries for next time
+                      self
+                        .pending_entries
+                        .push_front(PendingEntry::ReadDir(entries));
+                      return Some(specifier);
+                    }
                   }
                 }
               }
@@ -2023,15 +2050,16 @@ console.log(b, "hello deno");
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
 
-    let mut urls = PreloadDocumentFinder::from_enabled_urls_with_limit(
-      &vec![
-        temp_dir.uri().join("root1/").unwrap(),
-        temp_dir.uri().join("root2/file1.ts").unwrap(),
-        temp_dir.uri().join("root2/main.min.ts").unwrap(),
-        temp_dir.uri().join("root2/folder/").unwrap(),
+    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![
+        temp_dir.path().join("root1"),
+        temp_dir.path().join("root2").join("file1.ts"),
+        temp_dir.path().join("root2").join("main.min.ts"),
+        temp_dir.path().join("root2").join("folder"),
       ],
-      1_000,
-    )
+      disabled_paths: Vec::new(),
+      limit: 1_000,
+    })
     .collect::<Vec<_>>();
 
     // Ideally we would test for order here, which should be BFS, but
@@ -2058,32 +2086,54 @@ console.log(b, "hello deno");
     );
 
     // now try iterating with a low limit
-    let urls = PreloadDocumentFinder::from_enabled_urls_with_limit(
-      &vec![temp_dir.uri()],
-      10, // entries and not results
-    )
+    let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![temp_dir.path().to_path_buf()],
+      disabled_paths: Vec::new(),
+      limit: 10, // entries and not results
+    })
     .collect::<Vec<_>>();
 
     // since different file system have different iteration
     // order, the number here may vary, so just assert it's below
     // a certain amount
     assert!(urls.len() < 5, "Actual length: {}", urls.len());
+
+    // now try with certain directories and files disabled
+    let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+      enabled_paths: vec![temp_dir.path().to_path_buf()],
+      disabled_paths: vec![
+        temp_dir.path().to_path_buf().join("root1"),
+        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
+      ],
+      limit: 10, // entries and not results
+    })
+    .collect::<Vec<_>>();
+    assert_eq!(
+      urls,
+      vec![
+        temp_dir.uri().join("root2/file2.ts").unwrap(),
+        temp_dir.uri().join("root3/mod.ts").unwrap(),
+        temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+      ]
+    );
   }
 
   #[test]
   pub fn test_pre_load_document_finder_disallowed_dirs() {
     if cfg!(windows) {
-      let paths = PreloadDocumentFinder::from_enabled_urls_with_limit(
-        &vec![Url::parse("file:///c:/").unwrap()],
-        1_000,
-      )
+      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+        enabled_paths: vec![PathBuf::from("C:\\")],
+        disabled_paths: Vec::new(),
+        limit: 1_000,
+      })
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     } else {
-      let paths = PreloadDocumentFinder::from_enabled_urls_with_limit(
-        &vec![Url::parse("file:///").unwrap()],
-        1_000,
-      )
+      let paths = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+        enabled_paths: vec![PathBuf::from("/")],
+        disabled_paths: Vec::new(),
+        limit: 1_000,
+      })
       .collect::<Vec<_>>();
       assert_eq!(paths, vec![]);
     }
