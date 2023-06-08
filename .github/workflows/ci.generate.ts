@@ -493,7 +493,10 @@ const ci = {
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
             ].join("\n"),
-            key: `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
+            key:
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys": `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
           },
         },
         {
