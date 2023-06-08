@@ -27,6 +27,7 @@ use http::Method;
 use http::Request;
 use http::Uri;
 use hyper::Body;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -50,7 +51,6 @@ use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
-
 mod stream;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
@@ -370,7 +370,7 @@ pub fn ws_create_server_stream(
     ),
     Role::Server,
   );
-  ws.set_writev(USE_WRITEV);
+  ws.set_writev(*USE_WRITEV);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
 
