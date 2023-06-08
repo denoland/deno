@@ -2099,7 +2099,7 @@ console.log(b, "hello deno");
     assert!(urls.len() < 5, "Actual length: {}", urls.len());
 
     // now try with certain directories and files disabled
-    let urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
+    let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
       enabled_paths: vec![temp_dir.path().to_path_buf()],
       disabled_paths: vec![
         temp_dir.path().to_path_buf().join("root1"),
@@ -2108,12 +2108,13 @@ console.log(b, "hello deno");
       limit: 10, // entries and not results
     })
     .collect::<Vec<_>>();
+    urls.sort();
     assert_eq!(
       urls,
       vec![
         temp_dir.uri().join("root2/file2.ts").unwrap(),
-        temp_dir.uri().join("root3/mod.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root3/mod.ts").unwrap(),
       ]
     );
   }
