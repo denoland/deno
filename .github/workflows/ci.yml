@@ -298,8 +298,7 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: '38-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          key: '38-cargo-home-${{ matrix.os }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -317,15 +316,6 @@ jobs:
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
-      - name: Shallow clone crates.io index
-        run: |-
-          if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
-          then
-            git clone --depth 1 --no-checkout                      \
-                      https://github.com/rust-lang/crates.io-index \
-                      ~/.cargo/registry/index/github.com-1ecc6299db9ec823
-          fi
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: test_format.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check

@@ -488,13 +488,12 @@ const ci = {
           uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
             ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
+            key: `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
           },
         },
         {
@@ -521,23 +520,6 @@ const ci = {
           with: {
             "cache-path": "./target",
           },
-        },
-        {
-          // Shallow the cloning the crates.io index makes CI faster because it
-          // obviates the need for Cargo to clone the index. If we don't do this
-          // Cargo will `git clone` the github repository that contains the entire
-          // history of the crates.io index from github. We don't believe the
-          // identifier '1ecc6299db9ec823' will ever change, but if it does then this
-          // command must be updated.
-          name: "Shallow clone crates.io index",
-          run: [
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
-            "then",
-            "  git clone --depth 1 --no-checkout                      \\",
-            "            https://github.com/rust-lang/crates.io-index \\",
-            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
-            "fi",
-          ].join("\n"),
         },
         {
           name: "test_format.js",
