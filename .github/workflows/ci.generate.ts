@@ -43,7 +43,7 @@ sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
 # Fix alternatives
-yes '' | sudo update-alternatives --force --all
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
