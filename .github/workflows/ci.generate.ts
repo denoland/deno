@@ -10,6 +10,8 @@ const cacheVersion = 36;
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const windowsRunner = "windows-2022";
+  const windowsXlRunner = "windows-2022-xl";
 
   return {
     ubuntuXl:
@@ -17,7 +19,9 @@ const Runners = (() => {
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
     macos: "macos-12",
-    windows: "windows-2022",
+    windows: windowsRunner,
+    windowsXl:
+      `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
   };
 })();
 const prCacheKeyPrefix =
@@ -320,7 +324,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.windows,
+            os: Runners.windowsXl,
             job: "test",
             profile: "release",
             skip_pr: true,
