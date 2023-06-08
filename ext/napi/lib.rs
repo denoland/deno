@@ -647,12 +647,13 @@ where
   // SAFETY: we are going blind, calling the register function on the other side.
 
   let maybe_exports = unsafe {
-    let init = library
+    let Ok(init) = library
       .get::<unsafe extern "C" fn(
         env: napi_env,
         exports: napi_value,
-      ) -> napi_value>(b"napi_register_module_v1")
-      .expect("napi_register_module_v1 not found");
+      ) -> napi_value>(b"napi_register_module_v1") else {
+        return Err(type_error(format!("Unable to find napi_register_module_v1 symbol in {}", path)));
+      };
     init(
       env_ptr,
       std::mem::transmute::<v8::Local<v8::Value>, napi_value>(exports.into()),
