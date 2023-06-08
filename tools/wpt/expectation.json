@@ -2493,8 +2493,6 @@
       "templated.any.worker.html": true,
       "async-iterator.any.worker.html": true,
       "cross-realm-crash.window.html": false,
-      "from.any.html": false,
-      "from.any.worker.html": false,
       "owning-type-message-port.any.html": false,
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
