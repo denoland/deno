@@ -557,7 +557,7 @@ const ci = {
         },
         {
           name: "Build debug",
-          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          if: "matrix.job == 'test'",
           run: [
             // output fs space before and after building
             "df -h",
