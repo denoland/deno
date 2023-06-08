@@ -1,16 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { Buffer } from "ext:deno_node/buffer.ts";
-import { promises, write } from "ext:deno_node/fs.ts";
+import { promises, read, write } from "ext:deno_node/fs.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
+  ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 
 interface WriteResult {
   bytesWritten: number;
   buffer: Buffer | string;
+}
+
+interface ReadResult {
+  bytesRead: number;
+  buffer: Buffer;
 }
 
 export class FileHandle extends EventEmitter {
@@ -22,6 +28,43 @@ export class FileHandle extends EventEmitter {
 
   get fd() {
     return this.rid;
+  }
+
+  read(
+    buffer: Buffer,
+    offset?: number,
+    length?: number,
+    position?: number | null,
+  ): Promise<ReadResult>;
+  read(options?: ReadOptions): Promise<ReadResult>;
+  read(
+    bufferOrOpt: Buffer | ReadOptions,
+    offset?: number,
+    length?: number,
+    position?: number | null,
+  ): Promise<ReadResult> {
+    if (bufferOrOpt instanceof Buffer) {
+      return new Promise((resolve, reject) => {
+        read(
+          this.fd,
+          bufferOrOpt,
+          offset,
+          length,
+          position,
+          (err, bytesRead, buffer) => {
+            if (err) reject(err);
+            else resolve({ buffer: buffer, bytesRead: bytesRead });
+          },
+        );
+      });
+    } else {
+      return new Promise((resolve, reject) => {
+        read(this.fd, bufferOrOpt, (err, bytesRead, buffer) => {
+          if (err) reject(err);
+          else resolve({ buffer: buffer, bytesRead: bytesRead });
+        });
+      });
+    }
   }
 
   readFile(

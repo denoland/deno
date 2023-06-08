@@ -3,6 +3,7 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
+import { ReadOptions } from "ext:deno_node/_fs/_fs_common.ts";
 import {
   validateOffsetLengthRead,
   validatePosition,
@@ -11,13 +12,6 @@ import {
   validateBuffer,
   validateInteger,
 } from "ext:deno_node/internal/validators.mjs";
-
-type readOptions = {
-  buffer: Buffer | Uint8Array;
-  offset: number;
-  length: number;
-  position: number | null;
-};
 
 type readSyncOptions = {
   offset: number;
@@ -35,7 +29,7 @@ type Callback = BinaryCallback;
 export function read(fd: number, callback: Callback): void;
 export function read(
   fd: number,
-  options: readOptions,
+  options: ReadOptions,
   callback: Callback,
 ): void;
 export function read(
@@ -48,7 +42,7 @@ export function read(
 ): void;
 export function read(
   fd: number,
-  optOrBufferOrCb?: Buffer | Uint8Array | readOptions | Callback,
+  optOrBufferOrCb?: Buffer | Uint8Array | ReadOptions | Callback,
   offsetOrCallback?: number | Callback,
   length?: number,
   position?: number | null,
@@ -86,7 +80,7 @@ export function read(
     length = buffer.byteLength;
     position = null;
   } else {
-    const opt = optOrBufferOrCb as readOptions;
+    const opt = optOrBufferOrCb as ReadOptions;
     if (
       !(opt.buffer instanceof Buffer) && !(opt.buffer instanceof Uint8Array)
     ) {
