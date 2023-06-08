@@ -12,6 +12,7 @@ use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -1277,11 +1278,20 @@ itest!(type_directives_02 {
   output: "run/type_directives_02.ts.out",
 });
 
-itest!(type_directives_js_main {
-  args: "run --reload -L debug run/type_directives_js_main.js",
-  output: "run/type_directives_js_main.js.out",
-  exit_code: 0,
-});
+#[test]
+fn type_directives_js_main() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --reload -L debug --check run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("run --reload -L debug run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}
 
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",

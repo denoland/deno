@@ -16,6 +16,7 @@ use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
@@ -279,7 +280,7 @@ async fn build_test_graph(
       Default::default(),
     )
   });
-  let mut graph = ModuleGraph::default();
+  let mut graph = ModuleGraph::new(GraphKind::All);
   graph
     .build(
       roots,

@@ -814,6 +814,10 @@ fn repl_reject() {
     console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
     console.expect("2");
+    console.write_line(r#"throw "hello";"#);
+    console.expect(r#"Uncaught "hello""#);
+    console.write_line(r#"throw `hello ${"world"}`;"#);
+    console.expect(r#"Uncaught "hello world""#);
   });
 }
 

@@ -2,7 +2,6 @@
 
 use crate::args::BenchOptions;
 use crate::args::CliOptions;
-use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
@@ -693,7 +692,7 @@ pub async fn run_benchmarks_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
-  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {
     let paths_to_watch = bench_options.files.include.clone();
@@ -714,7 +713,7 @@ pub async fn run_benchmarks_with_watch(
         bench_modules.clone()
       };
       let graph = module_graph_builder
-        .create_graph(bench_modules.clone())
+        .create_graph(graph_kind, bench_modules.clone())
         .await?;
       graph_valid_with_cli_options(&graph, &bench_modules, &cli_options)?;
 
@@ -726,32 +725,19 @@ pub async fn run_benchmarks_with_watch(
           // This needs to be accessible to skip getting dependencies if they're already there,
           // otherwise this will cause a stack overflow with circular dependencies
           output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
         ) {
           if let Some(module) = maybe_module.and_then(|m| m.esm()) {
             for dep in module.dependencies.values() {
               if let Some(specifier) = &dep.get_code() {
                 if !output.contains(specifier) {
                   output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
+              if let Some(specifier) = &dep.get_type() {
+                if !output.contains(specifier) {
+                  output.insert(specifier);
+                  get_dependencies(graph, graph.get(specifier), output);
                 }
               }
             }
@@ -761,7 +747,7 @@ pub async fn run_benchmarks_with_watch(
         // This bench module and all it's dependencies
         let mut modules = HashSet::new();
         modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
+        get_dependencies(&graph, graph.get(&specifier), &mut modules);
 
         paths_to_watch.extend(
           modules
@@ -1155,13 +1141,13 @@ mod mitata {
       } else {
         if options.avg {
           s.push_str(&format!(
-            "{:>23}",
+            "{:>30}",
             format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
           ));
         }
         if options.min_max {
           s.push_str(&format!(
-            "{:>42}",
+            "{:>50}",
             format!(
               "({} … {})",
               colors::cyan(fmt_duration(stats.min)),
@@ -1171,7 +1157,7 @@ mod mitata {
         }
         if options.percentiles {
           s.push_str(&format!(
-            " {:>18} {:>18} {:>18}",
+            " {:>22} {:>22} {:>22}",
             colors::magenta(fmt_duration(stats.p75)),
             colors::magenta(fmt_duration(stats.p99)),
             colors::magenta(fmt_duration(stats.p995))
