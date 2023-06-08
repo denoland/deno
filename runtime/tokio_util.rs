@@ -74,8 +74,7 @@ where
     rt.spawn(async move {
       let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
         .ok()
-        .map(|val| val.parse().ok())
-        .flatten()
+        .and_then(|val| val.parse().ok())
         .unwrap_or(1000);
       let handle = tokio::runtime::Handle::current();
       let runtime_monitor = RuntimeMonitor::new(&handle);
