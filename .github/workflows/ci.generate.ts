@@ -24,12 +24,14 @@ const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
+# Remove older clang before we install
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
 
 # Install clang-15, lld-15, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
@@ -40,6 +42,8 @@ sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -461,6 +465,7 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
+            "which dpkg && dpkg -l",
             // Deno is installed when linting.
             'if [ "${{ matrix.job }}" == "lint" ]',
             "then",
