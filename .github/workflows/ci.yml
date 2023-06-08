@@ -278,7 +278,8 @@ jobs:
           rustc --version
           cargo --version
           clang --version
-          which ar
+          echo ar = `which ar`
+          which dpkg && dpkg -l
           if [ "${{ matrix.job }}" == "lint" ]
           then
             deno --version
