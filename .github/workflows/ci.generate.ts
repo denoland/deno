@@ -12,13 +12,17 @@ const Runners = (() => {
   const ubuntuXlRunner = "ubuntu-22.04-xl";
   const windowsRunner = "windows-2022";
   const windowsXlRunner = "windows-2022-xl";
+  const macRunner = "macos-12";
+  const macXlRunner = "macos-12-xl";
 
   return {
     ubuntuXl:
       `\${{ github.repository == 'denoland/deno' && '${ubuntuXlRunner}' || '${ubuntuRunner}' }}`,
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
-    macos: "macos-12",
+    macos: macRunner,
+    macosXl:
+      `\${{ github.repository == 'denoland/deno' && '${macXlRunner}' || '${macRunner}' }}`,
     windows: windowsRunner,
     windowsXl:
       `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
@@ -315,7 +319,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.macos,
+            os: Runners.macosXl,
             job: "test",
             profile: "release",
             skip_pr: true,

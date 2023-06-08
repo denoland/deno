@@ -57,11 +57,11 @@ jobs:
             job: test
             profile: debug
             os_display_name: macos-x86_64
-          - os: macos-12
+          - os: '${{ github.repository == ''denoland/deno'' && ''macos-12-xl'' || ''macos-12'' }}'
             job: test
             profile: release
             skip_pr: true
-            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''macos-12'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''macos-12-xl'' || ''macos-12'' }}'
             os_display_name: macos-x86_64
           - os: windows-2022
             job: test
