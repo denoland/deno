@@ -480,7 +480,7 @@ const ci = {
         },
         {
           name: "Cache Cargo home",
-          uses: "buildjet/cache@v3",
+          uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             path: [
@@ -495,7 +495,7 @@ const ci = {
         {
           // Restore cache from the latest 'main' branch build.
           name: "Restore cache build output (PR)",
-          uses: "buildjet/cache/restore@v3",
+          uses: "actions/cache/restore@v3",
           if:
             "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
           with: {
@@ -924,7 +924,7 @@ const ci = {
         {
           // In main branch, always create a fresh cache
           name: "Save cache build output (main)",
-          uses: "buildjet/cache/save@v3",
+          uses: "actions/cache/save@v3",
           if:
             "(matrix.job == 'test' || matrix.job == 'lint') && github.ref == 'refs/heads/main'",
           with: {
