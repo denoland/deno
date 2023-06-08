@@ -220,7 +220,7 @@ jobs:
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends debootstrap llvm-toolchain-15 clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap llvm-toolchain-15 clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15
+          sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) || true
 
