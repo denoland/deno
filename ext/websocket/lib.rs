@@ -537,7 +537,7 @@ pub fn op_ws_get_buffer_as_string(
   rid: ResourceId,
 ) -> String {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
-  resource.string.take().unwrap().into()
+  resource.string.take().unwrap()
 }
 
 #[op]
