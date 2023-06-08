@@ -1678,6 +1678,10 @@
         "Good parameters: X448 bits (jwk, object(crv, d, x, kty), {name: X448}, false, [deriveBits])"
       ],
       "okp_importKey_failures_Ed25519.https.any.html": [
+        "Empty usages: importKey(pkcs8, {name: Ed25519}, true, [])",
+        "Empty usages: importKey(pkcs8, {name: Ed25519}, false, [])",
+        "Empty usages: importKey(jwk(private), {name: Ed25519}, true, [])",
+        "Empty usages: importKey(jwk(private), {name: Ed25519}, false, [])",
         "Bad key length: importKey(raw, {name: Ed25519}, true, [verify])",
         "Bad key length: importKey(raw, {name: Ed25519}, false, [verify])",
         "Bad key length: importKey(raw, {name: Ed25519}, true, [verify, verify])",
@@ -1690,6 +1694,10 @@
         "Invalid key pair: importKey(jwk(private), {name: Ed25519}, true, [sign, sign])"
       ],
       "okp_importKey_failures_Ed25519.https.any.worker.html": [
+        "Empty usages: importKey(pkcs8, {name: Ed25519}, true, [])",
+        "Empty usages: importKey(pkcs8, {name: Ed25519}, false, [])",
+        "Empty usages: importKey(jwk(private), {name: Ed25519}, true, [])",
+        "Empty usages: importKey(jwk(private), {name: Ed25519}, false, [])",
         "Bad key length: importKey(raw, {name: Ed25519}, true, [verify])",
         "Bad key length: importKey(raw, {name: Ed25519}, false, [verify])",
         "Bad key length: importKey(raw, {name: Ed25519}, true, [verify, verify])",
@@ -2280,7 +2288,9 @@
       "AbortController interface: operation abort(optional any)",
       "AbortSignal interface: operation abort(optional any)",
       "AbortSignal interface: operation timeout(unsigned long long)",
-      "AbortSignal interface: attribute onabort"
+      "AbortSignal interface: operation any(sequence<AbortSignal>)",
+      "AbortSignal interface: attribute onabort",
+      "AbortSignal interface: calling any(sequence<AbortSignal>) on new AbortController().signal with too few arguments must throw TypeError"
     ]
   },
   "encoding": {
@@ -2483,24 +2493,8 @@
       "templated.any.worker.html": true,
       "async-iterator.any.worker.html": true,
       "cross-realm-crash.window.html": false,
-      "from.any.html": [
-        "ReadableStream.from accepts an array of promises",
-        "ReadableStream.from accepts an async generator",
-        "ReadableStream.from accepts a sync iterable of promises",
-        "ReadableStream.from accepts a ReadableStream",
-        "ReadableStream.from accepts a ReadableStream async iterator",
-        "ReadableStream.from: calls next() after first read()",
-        "ReadableStream.from: reader.read() inside next()"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from accepts an array of promises",
-        "ReadableStream.from accepts an async generator",
-        "ReadableStream.from accepts a sync iterable of promises",
-        "ReadableStream.from accepts a ReadableStream",
-        "ReadableStream.from accepts a ReadableStream async iterator",
-        "ReadableStream.from: calls next() after first read()",
-        "ReadableStream.from: reader.read() inside next()"
-      ],
+      "from.any.html": false,
+      "from.any.worker.html": false,
       "owning-type-message-port.any.html": false,
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
