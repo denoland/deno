@@ -209,6 +209,8 @@ jobs:
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
           sudo apt-get remove --purge -y man-db
+          # Remove older clang before we install
+          sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*'
 
           # Install clang-15, lld-15, and debootstrap.
           echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
@@ -219,7 +221,6 @@ jobs:
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
           sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15
-          sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*'
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
           # `libc6-dev` is required for building any C source files.
