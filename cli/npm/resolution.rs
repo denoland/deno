@@ -18,7 +18,6 @@ use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
@@ -50,7 +49,7 @@ impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let snapshot = self.snapshot.read();
     f.debug_struct("NpmResolution")
-      .field("snapshot", &snapshot.as_serialized())
+      .field("snapshot", &snapshot.as_valid_serialized().as_serialized())
       .finish()
   }
 }
@@ -263,8 +262,20 @@ impl NpmResolution {
     self.snapshot.read().clone()
   }
 
-  pub fn serialized_snapshot(&self) -> SerializedNpmResolutionSnapshot {
-    self.snapshot.read().as_serialized()
+  pub fn serialized_valid_snapshot(
+    &self,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self.snapshot.read().as_valid_serialized()
+  }
+
+  pub fn serialized_valid_snapshot_for_system(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self
+      .snapshot
+      .read()
+      .as_valid_serialized_for_system(system_info)
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
