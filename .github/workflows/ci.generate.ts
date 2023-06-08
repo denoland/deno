@@ -461,6 +461,8 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
+            "clang --version",
+            "which ar",
             // Deno is installed when linting.
             'if [ "${{ matrix.job }}" == "lint" ]',
             "then",

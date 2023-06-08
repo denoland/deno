@@ -277,6 +277,8 @@ jobs:
           python --version
           rustc --version
           cargo --version
+          clang --version
+          which ar
           if [ "${{ matrix.job }}" == "lint" ]
           then
             deno --version
