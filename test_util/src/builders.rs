@@ -31,6 +31,7 @@ pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
   use_separate_deno_dir: bool,
+  use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -56,6 +57,18 @@ impl TestContextBuilder {
 
   pub fn use_temp_cwd(mut self) -> Self {
     self.use_temp_cwd = true;
+    self
+  }
+
+  /// Causes the temp directory to be symlinked to a target directory
+  /// which is useful for debugging issues that only show up on the CI.
+  ///
+  /// Note: This method is not actually deprecated, it's just the CI
+  /// does this by default so there's no need to check in any code that
+  /// uses this into the repo. This is just for debugging purposes.
+  #[deprecated]
+  pub fn use_symlinked_temp_dir(mut self) -> Self {
+    self.use_symlinked_temp_dir = true;
     self
   }
 
@@ -109,6 +122,11 @@ impl TestContextBuilder {
       TempDir::new()
     } else {
       deno_dir.clone()
+    };
+    let temp_dir = if self.use_symlinked_temp_dir {
+      TempDir::new_symlinked(temp_dir)
+    } else {
+      temp_dir
     };
     let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
       let test_data_path = testdata_path().join(temp_copy_dir);
