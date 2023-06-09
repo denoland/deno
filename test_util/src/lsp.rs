@@ -616,7 +616,7 @@ impl LspClient {
     config: Value,
   ) {
     let mut builder = InitializeParamsBuilder::new();
-    builder.set_root_uri(self.context.deno_dir().uri());
+    builder.set_root_uri(self.context.temp_dir().uri());
     do_build(&mut builder);
     self.write_request("initialize", builder.build());
     self.write_notification("initialized", json!({}));
