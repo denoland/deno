@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_console"
+<<<<<<< HEAD
 version = "0.107.0"
+=======
+version = "0.108.0"
+>>>>>>> acf5d44a2 (1.34.2 (#19433))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

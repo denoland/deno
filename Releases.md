@@ -6,6 +6,45 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+<<<<<<< HEAD
+=======
+### 1.34.2 / 2023.06.08
+
+- fix: do not show cache initialization errors if stderr is piped (#18920)
+- fix: upgrade to deno_ast 0.27 (#19375)
+- fix(cli): formatting bench with colors (#19323)
+- fix(ext/console): fix inspecting large ArrayBuffers (#19373)
+- fix(ext/crypto): fix JWK import of Ed25519 (#19279)
+- fix(ext/web): Copy EventTarget list before dispatch (#19360)
+- fix(ext/websocket): Close socket on bad string data (#19424)
+- fix(kv) run sqlite transactions via spawn_blocking (#19350)
+- fix(napi): don't panic if symbol can't be found (#19397)
+- fix(node): add missing process.reallyExit method (#19326)
+- fix(node): Added base implementation of FileHandle (#19294)
+- fix(node): don't close stdio streams (#19256)
+- fix(node): FileHandle.close() (#19357)
+- fix(node): FileHandle.read() (#19359)
+- fix(node): FileHandle.write() (#19385)
+- fix(node): map stdio [0, 1, 2] to "inherit" (#19352)
+- fix(node): Very basic node:http2 support (#19344)
+- fix(node): proper url handling (#19340)
+- fix(repl): correctly print string exception (#19391)
+- fix(runtime): add missing SIGIOT alias to SIGABRT (#19333)
+- perf(cli): conditionally load typescript declaration files (#19392)
+- perf(ext/http): Add a sync phase to http serving (#19321)
+- perf(ext/http): Migrate op_http_get_request_headers to v8::Array (#19354)
+- perf(ext/http): Migrate op_http_get_request_method_and_url to v8::Array
+  (#19355)
+- perf(ext/http): Use flat list of headers for multiple set/get methods (#19336)
+- perf(ext/websocket): Make send sync for non-stream websockets (#19376)
+- perf(ext/websocket): Reduce GC pressure & monomorpize op_ws_next_event
+  (#19405)
+- perf(ext/websocket): monomorphize code (#19394)
+- perf(http): avoid flattening http headers (#19384)
+- perf: optimize RegExp usage in JS (#19364)
+- perf: use sendto syscalls (#19414)
+
+>>>>>>> acf5d44a2 (1.34.2 (#19433))
 ### 1.34.1 / 2023.05.29
 
 - fix(compile): handle when DENO_DIR is readonly (#19257)

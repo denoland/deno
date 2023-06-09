@@ -2,7 +2,11 @@
 
 [package]
 name = "deno"
+<<<<<<< HEAD
 version = "1.34.1"
+=======
+version = "1.34.2"
+>>>>>>> acf5d44a2 (1.34.2 (#19433))
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
