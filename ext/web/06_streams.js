@@ -62,6 +62,7 @@ const {
   // SharedArrayBufferPrototype,
   Symbol,
   SymbolAsyncIterator,
+  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -4780,6 +4781,92 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
+// Ref: https://tc39.es/ecma262/#sec-createasyncfromsynciterator
+function createAsyncFromSyncIterator(syncIterator) {
+  return {
+    next(value) {
+      try {
+        const res = syncIterator.next(value);
+        const done = res.done;
+        return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
+          value: v,
+          done,
+        }));
+      } catch (e) {
+        return PromiseReject(e);
+      }
+    },
+    return(value) {
+      try {
+        const ret = syncIterator.return;
+        if (ret === undefined) {
+          return PromiseResolve({
+            value,
+            done: true,
+          });
+        } else {
+          const res = ret(value);
+          if (typeof res !== "object") {
+            return PromiseReject(
+              new TypeError("Return reult is not an object"),
+            );
+          } else {
+            const done = res.done;
+            return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
+              value: v,
+              done,
+            }));
+          }
+        }
+      } catch (e) {
+        return PromiseReject(e);
+      }
+    },
+    throw(value) {
+      try {
+        const ret = syncIterator.throw;
+        if (ret === undefined) {
+          return PromiseReject(value);
+        } else {
+          const res = ret(value);
+          if (typeof res !== "object") {
+            return PromiseReject(
+              new TypeError("Return reult is not an object"),
+            );
+          } else {
+            const done = res.done;
+            return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
+              value: v,
+              done,
+            }));
+          }
+        }
+      } catch (e) {
+        return PromiseReject(e);
+      }
+    },
+  };
+}
+
+// Ref: https://tc39.es/ecma262/#sec-getiterator
+function getIterator(obj, async = false) {
+  if (async) {
+    if (obj[SymbolAsyncIterator] === undefined) {
+      if (obj[SymbolIterator] === undefined) {
+        throw new TypeError("No iterator found");
+      }
+      return createAsyncFromSyncIterator(obj[SymbolIterator]());
+    } else {
+      return obj[SymbolAsyncIterator]();
+    }
+  } else {
+    if (obj[SymbolIterator] === undefined) {
+      throw new TypeError("No iterator found");
+    }
+    return obj[SymbolIterator]();
+  }
+}
+
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -4861,6 +4948,41 @@ class ReadableStream {
         sizeAlgorithm,
       );
     }
+  }
+
+  static from(asyncIterable) {
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to call 'ReadableStream.from'",
+    );
+    asyncIterable = webidl.converters.any(asyncIterable);
+
+    const iterator = getIterator(asyncIterable, true);
+
+    const stream = createReadableStream(() => undefined, async () => {
+      const res = await iterator.next();
+      if (typeof res !== "object") {
+        throw new TypeError("iterator.next value is not an object");
+      }
+      if (res.done) {
+        readableStreamDefaultControllerClose(stream[_controller]);
+      } else {
+        readableStreamDefaultControllerEnqueue(stream[_controller], res.value);
+      }
+    }, async (reason) => {
+      if (typeof iterator.return === "undefined") {
+        return undefined;
+      } else {
+        const res = await iterator.return(reason);
+        if (typeof res !== "object") {
+          throw new TypeError("iterator.return value is not an object");
+        } else {
+          return undefined;
+        }
+      }
+    });
+    return stream;
   }
 
   /** @returns {boolean} */
