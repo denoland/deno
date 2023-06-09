@@ -305,10 +305,6 @@ impl TempDir {
     Self::new_inner(&std::env::temp_dir(), None)
   }
 
-  pub fn new_in(path: &Path) -> Self {
-    Self::new_inner(path, None)
-  }
-
   pub fn new_with_prefix(prefix: &str) -> Self {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
   }
