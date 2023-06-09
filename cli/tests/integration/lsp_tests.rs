@@ -7464,22 +7464,22 @@ fn lsp_closed_file_find_references_excluded_path() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.create_dir_all("sub_dir");
-  temp_dir.create_dir_all("other_dir");
+  temp_dir.create_dir_all("other_dir/sub_dir");
   temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
   temp_dir.write(
     "./sub_dir/mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
   temp_dir.write(
-    "./other_dir/mod.test.ts",
-    "import { a } from '../sub_dir/mod.ts'; console.log(a);",
+    "./other_dir/sub_dir/mod.test.ts",
+    "import { a } from '../../sub_dir/mod.ts'; console.log(a);",
   );
   temp_dir.write(
     "deno.json",
     r#"{
   "exclude": [
     "./sub_dir/mod.test.ts",
-    "./other_dir",
+    "./other_dir/sub_dir",
   ]
 }"#,
   );

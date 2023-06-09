@@ -1260,13 +1260,7 @@ impl Documents {
         options
           .enabled_urls
           .iter()
-          .filter_map(|url| {
-            if url.scheme() == "file" {
-              url.to_file_path().ok()
-            } else {
-              None
-            }
-          })
+          .filter_map(|url| specifier_to_file_path(&url).ok())
           .collect(),
         options
           .maybe_config_file
