@@ -563,7 +563,6 @@ class ClientRequest extends OutgoingMessage {
       this.method === "POST" || this.method === "PATCH" ||
         this.method === "PUT",
     );
-    console.log("this._req", this._req);
     this._bodyWriteRid = this._req.requestBodyRid;
   }
 
@@ -656,6 +655,7 @@ class ClientRequest extends OutgoingMessage {
         incoming.url = res.url;
         incoming.statusCode = res.status;
         incoming.statusMessage = res.statusText;
+        incoming.upgrade = null;
 
         console.log("res.headers", res.headers, incoming.rawHeaders);
 
@@ -679,9 +679,23 @@ class ClientRequest extends OutgoingMessage {
 
         console.log("incoming", incoming.headers);
         if (incoming.upgrade) {
-          // TODO(bartlomieju): throw on connect request
-          // handle actual upgrade
-          this.emit("upgrade", incoming, new FakeSocket(), []);
+          if (this.listenerCount("upgrade") === 0) {
+            // No listeners, so we got nothing to do
+            // destroy?
+            return;
+          }
+
+          if (this.method === "CONNECT") {
+            throw new Error("not implemented CONNECT");
+          }
+
+          this.upgradeOrConnect = true;
+
+          // TODO(bartlomieju): handle actual upgrade
+          this.emit("upgrade", incoming, null, []);
+          this.destroyed = true;
+          this._closed = true;
+          this.emit("close");
         } else {
           this.emit("response", incoming);
         }
