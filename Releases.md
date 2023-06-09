@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.34.2 / 2023.06.08
 
 - fix: do not show cache initialization errors if stderr is piped (#18920)
@@ -44,7 +42,6 @@ https://github.com/denoland/deno_install
 - perf: optimize RegExp usage in JS (#19364)
 - perf: use sendto syscalls (#19414)
 
->>>>>>> acf5d44a2 (1.34.2 (#19433))
 ### 1.34.1 / 2023.05.29
 
 - fix(compile): handle when DENO_DIR is readonly (#19257)
