@@ -709,6 +709,24 @@ impl ConfigFile {
     start: &Path,
     checked: &mut HashSet<PathBuf>,
   ) -> Result<Option<ConfigFile>, AnyError> {
+    fn is_skippable_err(e: &AnyError) -> bool {
+      if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+        use std::io::ErrorKind::*;
+        match ioerr.kind() {
+          InvalidInput | PermissionDenied | NotFound => {
+            // ok keep going
+            true
+          }
+          _ => {
+            const NOT_A_DIRECTORY: i32 = 20;
+            cfg!(unix) && ioerr.raw_os_error() == Some(NOT_A_DIRECTORY)
+          }
+        }
+      } else {
+        false
+      }
+    }
+
     /// Filenames that Deno will recognize when discovering config.
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
@@ -729,20 +747,11 @@ impl ConfigFile {
               log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
+            Err(e) if is_skippable_err(&e) => {
+              // ok, keep going
+            }
             Err(e) => {
-              if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-                use std::io::ErrorKind::*;
-                match ioerr.kind() {
-                  InvalidInput | PermissionDenied | NotFound => {
-                    // ok keep going
-                  }
-                  _ => {
-                    return Err(e); // Unknown error. Stop.
-                  }
-                }
-              } else {
-                return Err(e); // Parse error or something else. Stop.
-              }
+              return Err(e);
             }
           }
         }
