@@ -98,12 +98,10 @@ impl RegistryReadPermissionChecker {
         Some(canon) => canon.clone(),
         None => {
           let canon = self.fs.realpath_sync(path);
-
-          if canon
-            .as_ref()
-            .is_err_and(|e| e.kind() == ErrorKind::NotFound)
-          {
-            return Ok(());
+          if let Err(e) = &canon {
+            if e.kind() == ErrorKind::NotFound {
+              return Ok(());
+            }
           }
 
           let canon = canon?;
@@ -112,7 +110,7 @@ impl RegistryReadPermissionChecker {
         }
       };
 
-      if path_canon.starts_with(&registry_path_canon) {
+      if path_canon.starts_with(registry_path_canon) {
         return Ok(());
       }
     }
