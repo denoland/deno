@@ -605,11 +605,13 @@ impl Inner {
     let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    let module_registries =
-      ModuleRegistry::new(&module_registries_location, http_client.clone());
+    let module_registries = ModuleRegistry::new(
+      module_registries_location.clone(),
+      http_client.clone(),
+    );
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
-    let deps_http_cache = HttpCache::new(&location);
+    let documents = Documents::new(location.clone());
+    let deps_http_cache = HttpCache::new(location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
@@ -944,14 +946,14 @@ impl Inner {
         .clone(),
     ));
     self.module_registries = ModuleRegistry::new(
-      &module_registries_location,
+      module_registries_location.clone(),
       self.http_client.clone(),
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
     let location = dir.deps_folder_path();
-    self.documents.set_location(&location);
-    self.cache_metadata.set_location(&location);
+    self.documents.set_location(location.clone());
+    self.cache_metadata.set_location(location);
     self.maybe_cache_path = new_cache_path;
     Ok(())
   }

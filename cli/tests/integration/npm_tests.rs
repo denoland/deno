@@ -880,7 +880,7 @@ fn ensure_registry_files_local() {
         if file_text.contains("https://registry.npmjs.org/") {
           panic!(
             "file {} contained a reference to the npm registry",
-            registry_json_path.display(),
+            registry_json_path
           );
         }
       }

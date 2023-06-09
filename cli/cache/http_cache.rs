@@ -111,11 +111,9 @@ impl HttpCache {
   /// Returns a new instance.
   ///
   /// `location` must be an absolute path.
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: PathBuf) -> Self {
     assert!(location.is_absolute());
-    Self {
-      location: location.to_owned(),
-    }
+    Self { location }
   }
 
   /// Ensures the location of the cache.
@@ -192,8 +190,7 @@ mod tests {
   #[test]
   fn test_create_cache() {
     let dir = TempDir::new();
-    let mut cache_path = dir.path().to_owned();
-    cache_path.push("foobar");
+    let cache_path = dir.path().join("foobar");
     // HttpCache should be created lazily on first use:
     // when zipping up a local project with no external dependencies
     // "$DENO_DIR/deps" is empty. When unzipping such project
@@ -203,7 +200,7 @@ mod tests {
     // doesn't make sense to return error in such specific scenarios.
     // For more details check issue:
     // https://github.com/denoland/deno/issues/5688
-    let cache = HttpCache::new(&cache_path);
+    let cache = HttpCache::new(cache_path.to_path_buf());
     assert!(!cache.location.exists());
     cache
       .set(
@@ -219,7 +216,7 @@ mod tests {
   #[test]
   fn test_get_set() {
     let dir = TempDir::new();
-    let cache = HttpCache::new(dir.path());
+    let cache = HttpCache::new(dir.path().to_path_buf());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(

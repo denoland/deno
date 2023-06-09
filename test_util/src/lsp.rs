@@ -2,6 +2,7 @@
 
 use crate::deno_exe_path;
 use crate::npm_registry_url;
+use crate::PathRef;
 use crate::TestContext;
 use crate::TestContextBuilder;
 
@@ -38,7 +39,6 @@ use std::collections::HashSet;
 use std::io;
 use std::io::Write;
 use std::path::Path;
-use std::path::PathBuf;
 use std::process::Child;
 use std::process::ChildStdin;
 use std::process::ChildStdout;
@@ -468,7 +468,7 @@ impl InitializeParamsBuilder {
 
 pub struct LspClientBuilder {
   print_stderr: bool,
-  deno_exe: PathBuf,
+  deno_exe: PathRef,
   context: Option<TestContext>,
   use_diagnostic_sync: bool,
 }
@@ -485,7 +485,7 @@ impl LspClientBuilder {
   }
 
   pub fn deno_exe(&mut self, exe_path: impl AsRef<Path>) -> &mut Self {
-    self.deno_exe = exe_path.as_ref().to_path_buf();
+    self.deno_exe = PathRef::new(exe_path);
     self
   }
 
