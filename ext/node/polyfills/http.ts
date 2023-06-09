@@ -1228,16 +1228,15 @@ function onError(self, error, cb) {
 }
 
 export class ServerResponse extends NodeWritable {
-  statusCode?: number;
-  statusMessage?: string;
-  override writable: boolean;
-  // used by `npm:on-finished`
-  finished: boolean;
-  headersSent: boolean;
-
-  #headers: Headers;
+  statusCode?: number = undefined;
+  statusMessage?: string = undefined;
+  #headers = new Headers({});
   #readable: ReadableStream;
-  #firstChunk: Chunk | undefined;
+  override writable = true;
+  // used by `npm:on-finished`
+  finished = false;
+  headersSent = false;
+  #firstChunk: Chunk | null = null;
   #resolve: (value: Response | PromiseLike<Response>) => void;
 
   static #enqueue(controller: ReadableStreamDefaultController, chunk: Chunk) {
@@ -1267,12 +1266,12 @@ export class ServerResponse extends NodeWritable {
       emitClose: true,
       write: (chunk, _encoding, cb) => {
         if (!this.headersSent) {
-          if (this.#firstChunk === undefined) {
+          if (this.#firstChunk === null) {
             this.#firstChunk = chunk;
             return cb();
           } else {
             ServerResponse.#enqueue(controller, this.#firstChunk);
-            this.#firstChunk = undefined;
+            this.#firstChunk = null;
             this.respond(false);
           }
         }
@@ -1280,7 +1279,7 @@ export class ServerResponse extends NodeWritable {
         return cb();
       },
       final: (cb) => {
-        if (this.#firstChunk === undefined) {
+        if (this.#firstChunk) {
           this.respond(true, this.#firstChunk);
         } else if (!this.headersSent) {
           this.respond(true);
@@ -1295,14 +1294,6 @@ export class ServerResponse extends NodeWritable {
         return cb(null);
       },
     });
-    this.finished = false;
-    this.headersSent = false;
-    this.writable = true;
-    this.statusMessage = undefined;
-    this.statusCode = undefined;
-    // TODO(bartlomieju): is it worth constructing empty headers here?
-    this.#headers = new Headers({});
-    this.#firstChunk = undefined;
     this.#readable = readable;
     this.#resolve = resolve;
   }
