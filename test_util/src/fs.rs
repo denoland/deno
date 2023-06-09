@@ -124,7 +124,8 @@ impl PathRef {
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(self.path().join(oldpath), self.path().join(newpath)).unwrap();
+      symlink(self.as_path().join(oldpath), self.as_path().join(newpath))
+        .unwrap();
     }
     #[cfg(not(unix))]
     {
@@ -142,7 +143,8 @@ impl PathRef {
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(self.path().join(oldpath), self.path().join(newpath)).unwrap();
+      symlink(self.as_path().join(oldpath), self.as_path().join(newpath))
+        .unwrap();
     }
     #[cfg(not(unix))]
     {
