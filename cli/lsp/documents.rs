@@ -20,6 +20,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
 
@@ -1260,7 +1261,7 @@ impl Documents {
         options
           .enabled_urls
           .iter()
-          .filter_map(|url| specifier_to_file_path(&url).ok())
+          .filter_map(|url| specifier_to_file_path(url).ok())
           .collect(),
         options
           .maybe_config_file
@@ -1611,11 +1612,29 @@ struct PreloadDocumentFinder {
   limit: usize,
   entry_count: usize,
   pending_entries: VecDeque<PendingEntry>,
+  disabled_globs: glob::GlobSet,
   disabled_paths: HashSet<PathBuf>,
 }
 
 impl PreloadDocumentFinder {
   pub fn new(options: PreloadDocumentFinderOptions) -> Self {
+    fn paths_into_globs_and_paths(
+      input_paths: Vec<PathBuf>,
+    ) -> (glob::GlobSet, HashSet<PathBuf>) {
+      let mut globs = Vec::with_capacity(input_paths.len());
+      let mut paths = HashSet::with_capacity(input_paths.len());
+      for path in input_paths {
+        if let Ok(Some(glob)) =
+          glob::GlobPattern::new_if_pattern(&path.to_string_lossy())
+        {
+          globs.push(glob);
+        } else {
+          paths.insert(path);
+        }
+      }
+      (glob::GlobSet::new(globs), paths)
+    }
+
     fn is_allowed_root_dir(dir_path: &Path) -> bool {
       if dir_path.parent().is_none() {
         // never search the root directory of a drive
@@ -1624,12 +1643,17 @@ impl PreloadDocumentFinder {
       true
     }
 
+    let (disabled_globs, disabled_paths) =
+      paths_into_globs_and_paths(options.disabled_paths);
     let mut finder = PreloadDocumentFinder {
       limit: options.limit,
       entry_count: 0,
       pending_entries: Default::default(),
-      disabled_paths: options.disabled_paths.into_iter().collect(),
+      disabled_globs,
+      disabled_paths,
     };
+
+    // initialize the finder with the initial paths
     let mut dirs = Vec::with_capacity(options.enabled_paths.len());
     for path in options.enabled_paths {
       if path.is_dir() {
@@ -1754,7 +1778,9 @@ impl Iterator for PreloadDocumentFinder {
             if let Ok(entry) = entry {
               let path = entry.path();
               if let Ok(file_type) = entry.file_type() {
-                if !self.disabled_paths.contains(&path) {
+                if !self.disabled_paths.contains(&path)
+                  && !self.disabled_globs.matches_path(&path)
+                {
                   if file_type.is_dir() && is_discoverable_dir(&path) {
                     self
                       .pending_entries
@@ -2036,10 +2062,14 @@ console.log(b, "hello deno");
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/sub_folder");
     temp_dir.write("root2/file1.ts", ""); // yes, provided
     temp_dir.write("root2/file2.ts", ""); // no, not provided
     temp_dir.write("root2/main.min.ts", ""); // yes, provided
     temp_dir.write("root2/folder/main.ts", ""); // yes, provided
+    temp_dir.write("root2/sub_folder/a.js", ""); // no, not provided
+    temp_dir.write("root2/sub_folder/b.ts", ""); // no, not provided
+    temp_dir.write("root2/sub_folder/c.js", ""); // no, not provided
 
     temp_dir.create_dir_all("root3/");
     temp_dir.write("root3/mod.ts", ""); // no, not provided
@@ -2098,8 +2128,9 @@ console.log(b, "hello deno");
       disabled_paths: vec![
         temp_dir.path().to_path_buf().join("root1"),
         temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
+        temp_dir.path().to_path_buf().join("**/*.js"), // ignore js files
       ],
-      limit: 10, // entries and not results
+      limit: 1_000,
     })
     .collect::<Vec<_>>();
     urls.sort();
@@ -2108,6 +2139,7 @@ console.log(b, "hello deno");
       vec![
         temp_dir.uri().join("root2/file2.ts").unwrap(),
         temp_dir.uri().join("root2/folder/main.ts").unwrap(),
+        temp_dir.uri().join("root2/sub_folder/b.ts").unwrap(), // won't have the javascript files
         temp_dir.uri().join("root3/mod.ts").unwrap(),
       ]
     );

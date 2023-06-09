@@ -71,6 +71,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::glob::expand_globs;
 use crate::version;
 
 use self::config_file::FmtConfig;
@@ -1312,40 +1313,6 @@ impl StorageKeyResolver {
   }
 }
 
-fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
-  let mut new_paths = vec![];
-  for path in paths {
-    let path_str = path.to_string_lossy();
-    if path_str.chars().any(|c| matches!(c, '*' | '?')) {
-      // Escape brackets - we currently don't support them, because with introduction
-      // of glob expansion paths like "pages/[id].ts" would suddenly start giving
-      // wrong results. We might want to revisit that in the future.
-      let escaped_path_str = path_str.replace('[', "[[]").replace(']', "[]]");
-      let globbed_paths = glob::glob_with(
-        &escaped_path_str,
-        // Matches what `deno_task_shell` does
-        glob::MatchOptions {
-          // false because it should work the same way on case insensitive file systems
-          case_sensitive: false,
-          // true because it copies what sh does
-          require_literal_separator: true,
-          // true because it copies with sh does—these files are considered "hidden"
-          require_literal_leading_dot: true,
-        },
-      )
-      .with_context(|| format!("Failed to expand glob: \"{}\"", path_str))?;
-
-      for globbed_path_result in globbed_paths {
-        new_paths.push(globbed_path_result?);
-      }
-    } else {
-      new_paths.push(path.clone());
-    }
-  }
-
-  Ok(new_paths)
-}
-
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
@@ -1364,11 +1331,11 @@ fn resolve_files(
   }
   // Now expand globs if there are any
   if !result.include.is_empty() {
-    result.include = expand_globs(&result.include)?;
+    result.include = expand_globs(result.include)?;
   }
 
   if !result.exclude.is_empty() {
-    result.exclude = expand_globs(&result.exclude)?;
+    result.exclude = expand_globs(result.exclude)?;
   }
 
   Ok(result)
