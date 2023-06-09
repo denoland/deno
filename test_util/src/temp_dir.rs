@@ -2,10 +2,45 @@
 
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Context;
 use lsp_types::Url;
+
+enum TempDirInner {
+  TempDir(tempfile::TempDir),
+  Path(PathBuf),
+  Symlinked {
+    symlink: Arc<TempDirInner>,
+    target: Arc<TempDirInner>,
+  },
+}
+
+impl TempDirInner {
+  pub fn path(&self) -> &Path {
+    match self {
+      Self::Path(path) => path.as_path(),
+      Self::TempDir(dir) => dir.path(),
+      Self::Symlinked { symlink, .. } => symlink.path(),
+    }
+  }
+
+  pub fn target_path(&self) -> &Path {
+    match self {
+      TempDirInner::Symlinked { target, .. } => target.target_path(),
+      _ => self.path(),
+    }
+  }
+}
+
+impl Drop for TempDirInner {
+  fn drop(&mut self) {
+    if let Self::Path(path) = self {
+      _ = fs::remove_dir_all(path);
+    }
+  }
+}
 
 /// For creating temporary directories in tests.
 ///
@@ -14,7 +49,7 @@ use lsp_types::Url;
 /// Note: Do not use this in actual code as this does not protect against
 /// "insecure temporary file" security vulnerabilities.
 #[derive(Clone)]
-pub struct TempDir(Arc<tempfile::TempDir>);
+pub struct TempDir(Arc<TempDirInner>);
 
 impl Default for TempDir {
   fn default() -> Self {
@@ -35,6 +70,23 @@ impl TempDir {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
   }
 
+  pub fn new_with_path(path: &Path) -> Self {
+    Self(Arc::new(TempDirInner::Path(path.to_path_buf())))
+  }
+
+  pub fn new_symlinked(target: TempDir) -> Self {
+    let target_path = target.path();
+    let path = target_path.parent().unwrap().join(format!(
+      "{}_symlinked",
+      target_path.file_name().unwrap().to_str().unwrap()
+    ));
+    target.symlink_dir(target.path(), &path);
+    TempDir(Arc::new(TempDirInner::Symlinked {
+      target: target.0,
+      symlink: Self::new_with_path(&path).0,
+    }))
+  }
+
   /// Create a new temporary directory with the given prefix as part of its name, if specified.
   fn new_inner(parent_dir: &Path, prefix: Option<&str>) -> Self {
     let mut builder = tempfile::Builder::new();
@@ -42,7 +94,7 @@ impl TempDir {
     let dir = builder
       .tempdir_in(parent_dir)
       .expect("Failed to create a temporary directory");
-    Self(dir.into())
+    Self(Arc::new(TempDirInner::TempDir(dir)))
   }
 
   pub fn uri(&self) -> Url {
@@ -50,35 +102,39 @@ impl TempDir {
   }
 
   pub fn path(&self) -> &Path {
-    let inner = &self.0;
-    inner.path()
+    self.0.path()
+  }
+
+  /// The resolved final target path if this is a symlink.
+  pub fn target_path(&self) -> &Path {
+    self.0.target_path()
   }
 
   pub fn create_dir_all(&self, path: impl AsRef<Path>) {
-    fs::create_dir_all(self.path().join(path)).unwrap();
+    fs::create_dir_all(self.target_path().join(path)).unwrap();
   }
 
   pub fn remove_file(&self, path: impl AsRef<Path>) {
-    fs::remove_file(self.path().join(path)).unwrap();
+    fs::remove_file(self.target_path().join(path)).unwrap();
   }
 
   pub fn remove_dir_all(&self, path: impl AsRef<Path>) {
-    fs::remove_dir_all(self.path().join(path)).unwrap();
+    fs::remove_dir_all(self.target_path().join(path)).unwrap();
   }
 
   pub fn read_to_string(&self, path: impl AsRef<Path>) -> String {
-    let file_path = self.path().join(path);
+    let file_path = self.target_path().join(path);
     fs::read_to_string(&file_path)
       .with_context(|| format!("Could not find file: {}", file_path.display()))
       .unwrap()
   }
 
   pub fn rename(&self, from: impl AsRef<Path>, to: impl AsRef<Path>) {
-    fs::rename(self.path().join(from), self.path().join(to)).unwrap();
+    fs::rename(self.target_path().join(from), self.path().join(to)).unwrap();
   }
 
   pub fn write(&self, path: impl AsRef<Path>, text: impl AsRef<str>) {
-    fs::write(self.path().join(path), text.as_ref()).unwrap();
+    fs::write(self.target_path().join(path), text.as_ref()).unwrap();
   }
 
   pub fn symlink_dir(
