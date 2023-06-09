@@ -682,8 +682,8 @@ function serveHttpOn(context, callback) {
 
   // Run the server
   const finished = (async () => {
+    const rid = context.serverRid;
     while (true) {
-      const rid = context.serverRid;
       let req;
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
