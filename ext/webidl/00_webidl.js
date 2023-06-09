@@ -59,7 +59,6 @@ const {
   ReflectHas,
   ReflectOwnKeys,
   RegExpPrototypeTest,
-  RegExpPrototypeExec,
   SafeRegExp,
   SafeSet,
   SetPrototypeEntries,
@@ -405,7 +404,7 @@ converters.DOMString = function (V, prefix, context, opts = {}) {
 
 function isByteString(input) {
   for (let i = 0; i < input.length; i++) {
-    if (input.charCodeAt(i) > 255) {
+    if (StringPrototypeCharCodeAt(input, i) > 255) {
       // If a character code is greater than 255, it means the string is not a byte string.
       return false;
     }
