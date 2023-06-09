@@ -2,7 +2,6 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
-use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
 
@@ -23,6 +22,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -755,30 +755,7 @@ impl ConfigFile {
   pub fn read(config_path: &Path) -> Result<Self, AnyError> {
     debug_assert!(config_path.is_absolute());
 
-    // perf: Check if the config file exists before canonicalizing path.
-    if !config_path.exists() {
-      return Err(
-        std::io::Error::new(
-          std::io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_path.to_string_lossy()
-          ),
-        )
-        .into(),
-      );
-    }
-
-    let config_path = canonicalize_path(config_path).map_err(|_| {
-      std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        format!(
-          "Could not find the config file: {}",
-          config_path.to_string_lossy()
-        ),
-      )
-    })?;
-    let config_specifier = ModuleSpecifier::from_file_path(&config_path)
+    let config_specifier = ModuleSpecifier::from_file_path(config_path)
       .map_err(|_| {
         anyhow!(
           "Could not convert path to specifier. Path: {}",
@@ -790,15 +767,21 @@ impl ConfigFile {
 
   pub fn from_specifier(specifier: ModuleSpecifier) -> Result<Self, AnyError> {
     let config_path = specifier_to_file_path(&specifier)?;
-    let config_text = match std::fs::read_to_string(config_path) {
-      Ok(text) => text,
+    match std::fs::read_to_string(config_path) {
+      Ok(text) => Self::new(&text, specifier),
+      Err(err) if err.kind() == ErrorKind::NotFound => Err(
+        std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          format!("Could not find the config file: {}", specifier),
+        )
+        .into(),
+      ),
       Err(err) => bail!(
         "Error reading config file {}: {}",
         specifier,
         err.to_string()
       ),
-    };
-    Self::new(&config_text, specifier)
+    }
   }
 
   pub fn new(text: &str, specifier: ModuleSpecifier) -> Result<Self, AnyError> {
