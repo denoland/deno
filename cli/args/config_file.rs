@@ -763,14 +763,14 @@ impl ConfigFile {
   pub fn read(config_path: &Path) -> Result<Self, AnyError> {
     debug_assert!(config_path.is_absolute());
 
-    let config_specifier = ModuleSpecifier::from_file_path(config_path)
-      .map_err(|_| {
+    let specifier =
+      ModuleSpecifier::from_file_path(config_path).map_err(|_| {
         anyhow!(
           "Could not convert config file path to specifier. Path: {}",
           config_path.display()
         )
       })?;
-    Self::from_specifier(config_specifier)
+    Self::from_specifier_and_path(specifier, config_path)
   }
 
   pub fn from_specifier(specifier: ModuleSpecifier) -> Result<Self, AnyError> {
@@ -778,6 +778,13 @@ impl ConfigFile {
       specifier_to_file_path(&specifier).with_context(|| {
         format!("Invalid config file path for '{}'.", specifier)
       })?;
+    Self::from_specifier_and_path(specifier, &config_path)
+  }
+
+  fn from_specifier_and_path(
+    specifier: ModuleSpecifier,
+    config_path: &Path,
+  ) -> Result<Self, AnyError> {
     let text = std::fs::read_to_string(config_path)
       .with_context(|| format!("Error reading config file '{}'.", specifier))?;
     Self::new(&text, specifier)
