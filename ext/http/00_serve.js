@@ -503,16 +503,19 @@ async function asyncResponse(responseBodies, req, status, stream) {
 function mapToCallback(context, callback, onError) {
   const responseBodies = context.responseBodies;
   const signal = context.abortController.signal;
+  const hasCallback = callback.length > 0;
+  const hasOneCallback = callback.length === 1;
+
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
     try {
-      if (callback.length > 0) {
+      if (hasCallback) {
         innerRequest = new InnerRequest(req, context);
         const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (callback.length === 1) {
+        if (hasOneCallback) {
           response = await callback(request);
         } else {
           response = await callback(request, {
@@ -679,8 +682,8 @@ function serveHttpOn(context, callback) {
 
   // Run the server
   const finished = (async () => {
+    const rid = context.serverRid;
     while (true) {
-      const rid = context.serverRid;
       let req;
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is

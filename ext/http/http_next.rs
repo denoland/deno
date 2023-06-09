@@ -73,13 +73,13 @@ type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
 
 static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
-  let disable_writev = std::env::var("DENO_HYPER_USE_WRITEV").ok();
+  let enable = std::env::var("DENO_USE_WRITEV").ok();
 
-  if let Some(val) = disable_writev {
-    return val != "0";
+  if let Some(val) = enable {
+    return !val.is_empty();
   }
 
-  true
+  false
 });
 
 /// All HTTP/2 connections start with this byte string.
