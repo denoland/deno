@@ -30,6 +30,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
@@ -270,8 +271,9 @@ impl CliFactory {
   pub fn npm_cache(&self) -> Result<&Arc<NpmCache>, AnyError> {
     self.services.npm_cache.get_or_try_init(|| {
       Ok(Arc::new(NpmCache::new(
-        self.deno_dir()?.npm_folder_path(),
+        NpmCacheDir::new(self.deno_dir()?.npm_folder_path()),
         self.options.cache_setting(),
+        self.fs().clone(),
         self.http_client().clone(),
         self.text_only_progress_bar().clone(),
       )))
