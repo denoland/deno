@@ -4370,6 +4370,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
       console.write_line_raw("invalid");
       console.expect("Unrecognized option.");
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
       console.write_line_raw("y");
       console.expect("Granted write access to");
 
