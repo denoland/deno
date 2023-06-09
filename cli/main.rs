@@ -41,7 +41,7 @@ use deno_core::futures::FutureExt;
 use deno_core::task::JoinHandle;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
@@ -308,7 +308,8 @@ pub fn main() {
     run_subcommand(flags).await
   };
 
-  let exit_code = unwrap_or_exit(create_and_run_current_thread(future));
+  let exit_code =
+    unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
 
   std::process::exit(exit_code);
 }

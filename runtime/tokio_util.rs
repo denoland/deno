@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use deno_core::task::MaskFutureAsSend;
+use tokio_metrics::RuntimeMonitor;
 
 /// Default configuration for tokio. In the future, this method may have different defaults
 /// depending on the platform and/or CPU layout.
@@ -47,7 +48,10 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
 }
 
 #[inline(always)]
-pub fn create_and_run_current_thread<F, R>(future: F) -> R
+fn create_and_run_current_thread_inner<F, R>(
+  future: F,
+  metrics_enabled: bool,
+) -> R
 where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
@@ -66,6 +70,47 @@ where
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
 
-  let join_handle = rt.spawn(future);
+  let join_handle = if metrics_enabled {
+    rt.spawn(async move {
+      let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
+        .ok()
+        .and_then(|val| val.parse().ok())
+        .unwrap_or(1000);
+      let handle = tokio::runtime::Handle::current();
+      let runtime_monitor = RuntimeMonitor::new(&handle);
+      tokio::spawn(async move {
+        for interval in runtime_monitor.intervals() {
+          println!("{:#?}", interval);
+          // wait 500ms
+          tokio::time::sleep(std::time::Duration::from_millis(
+            metrics_interval,
+          ))
+          .await;
+        }
+      });
+      future.await
+    })
+  } else {
+    rt.spawn(future)
+  };
   rt.block_on(join_handle).unwrap().into_inner()
+}
+
+#[inline(always)]
+pub fn create_and_run_current_thread<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  create_and_run_current_thread_inner(future, false)
+}
+
+#[inline(always)]
+pub fn create_and_run_current_thread_with_maybe_metrics<F, R>(future: F) -> R
+where
+  F: std::future::Future<Output = R> + 'static,
+  R: Send + 'static,
+{
+  let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
+  create_and_run_current_thread_inner(future, metrics_enabled)
 }
