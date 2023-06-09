@@ -617,7 +617,7 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send", this._req.requestRid),
+          core.opAsync("op_fetch_send2", this._req.requestRid),
           (async () => {
             if (this._bodyWriteRid) {
               try {
@@ -671,7 +671,6 @@ class ClientRequest extends OutgoingMessage {
           res.headers,
           Object.entries(res.headers).flat().length,
         );
-        incoming._bodyRid = res.responseRid;
 
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
@@ -689,6 +688,7 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
+          await core.opAsync("op_fetch_upgrade_raw_response", res.responseRid);
           this.upgradeOrConnect = true;
 
           // TODO(bartlomieju): handle actual upgrade
@@ -697,6 +697,13 @@ class ClientRequest extends OutgoingMessage {
           this._closed = true;
           this.emit("close");
         } else {
+          // FIXME(bartlomieju): handle upgrade
+          {
+            const responseRid = core.ops.op_fetch_raw_response_consume(
+              res.responseRid,
+            );
+            incoming._bodyRid = responseRid;
+          }
           this.emit("response", incoming);
         }
       } catch (err) {

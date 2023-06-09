@@ -109,6 +109,9 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
+    op_fetch_send2,
+    op_fetch_raw_response_consume,
+    op_fetch_upgrade_raw_response,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -468,6 +471,95 @@ pub async fn op_fetch_send(
   })
 }
 
+#[op]
+pub async fn op_fetch_send2(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<FetchResponse, AnyError> {
+  eprintln!("in op_fetch_send2");
+  let request = state
+    .borrow_mut()
+    .resource_table
+    .take::<FetchRequestResource>(rid)?;
+
+  let request = Rc::try_unwrap(request)
+    .ok()
+    .expect("multiple op_fetch_send ongoing");
+
+  let res = match request.0.await {
+    Ok(Ok(res)) => res,
+    Ok(Err(err)) => return Err(type_error(err.to_string())),
+    Err(_) => return Err(type_error("request was cancelled")),
+  };
+
+  //debug!("Fetch response {}", url);
+  let status = res.status();
+  let url = res.url().to_string();
+  let mut res_headers = Vec::new();
+  for (key, val) in res.headers().iter() {
+    res_headers.push((key.as_str().into(), val.as_bytes().into()));
+  }
+
+  let content_length = res.content_length();
+
+  let rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FetchRawResponseResource {
+      response: res,
+      size: content_length,
+    });
+
+  Ok(FetchResponse {
+    status: status.as_u16(),
+    status_text: status.canonical_reason().unwrap_or("").to_string(),
+    headers: res_headers,
+    url,
+    response_rid: rid,
+    content_length,
+  })
+}
+
+#[op]
+pub fn op_fetch_raw_response_consume(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> Result<ResourceId, AnyError> {
+  let raw_response =
+    state.resource_table.take::<FetchRawResponseResource>(rid)?;
+  let raw_response = Rc::try_unwrap(raw_response)
+    .expect("Someone is holding onto FetchRawResponseResource");
+  let stream: BytesStream =
+    Box::pin(raw_response.response.bytes_stream().map(|r| {
+      r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
+    }));
+
+  let rid = state.resource_table.add(FetchResponseBodyResource {
+    reader: AsyncRefCell::new(stream.peekable()),
+    cancel: CancelHandle::default(),
+    size: raw_response.size,
+  });
+
+  Ok(rid)
+}
+
+#[op]
+pub async fn op_fetch_upgrade_raw_response(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<(), AnyError> {
+  let raw_response = state
+    .borrow_mut()
+    .resource_table
+    .take::<FetchRawResponseResource>(rid)?;
+  let raw_response = Rc::try_unwrap(raw_response)
+    .expect("Someone is holding onto FetchRawResponseResource");
+
+  let a = raw_response.response.upgrade().await?;
+  eprintln!("upgraded the connection!");
+  Ok(())
+}
+
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
 pub struct FetchRequestResource(
@@ -544,6 +636,18 @@ impl Resource for FetchRequestBodyResource {
 
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
+
+#[derive(Debug)]
+pub struct FetchRawResponseResource {
+  pub response: Response,
+  pub size: Option<u64>,
+}
+
+impl Resource for FetchRawResponseResource {
+  fn name(&self) -> Cow<str> {
+    "fetchRawResponse".into()
+  }
+}
 
 pub struct FetchResponseBodyResource {
   pub reader: AsyncRefCell<Peekable<BytesStream>>,
