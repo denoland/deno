@@ -114,14 +114,6 @@ deno_core::extension!(deno_ffi,
   state = |state, options| {
     // Stolen from deno_webgpu, is there a better option?
     state.put(Unstable(options.unstable));
-
-    let (async_work_sender, async_work_receiver) =
-      mpsc::unbounded::<PendingFfiAsyncWork>();
-
-    state.put(FfiState {
-      async_work_receiver,
-      async_work_sender,
-    });
   },
   event_loop_middleware = event_loop_middleware,
 );
@@ -133,9 +125,11 @@ fn event_loop_middleware(
   // FFI callbacks coming in from other threads will call in and get queued.
   let mut maybe_scheduling = false;
 
-  let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
+  // Cannot use 'if let Some(ffi_state)' binding here because op_state must
+  // be explicitly dropped after receiving of work is done.
+  if op_state_rc.borrow().has::<FfiState>() {
+    let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
 
-  {
     let mut op_state = op_state_rc.borrow_mut();
     let ffi_state = op_state.borrow_mut::<FfiState>();
 
@@ -147,10 +141,12 @@ fn event_loop_middleware(
       maybe_scheduling = true;
     }
 
+    // Async work calls back into the event loop: We must drop the op_state_rc borrow here.
     drop(op_state);
-  }
-  while let Some(async_work_fut) = work_items.pop() {
-    async_work_fut();
+
+    while let Some(async_work_fut) = work_items.pop() {
+      async_work_fut();
+    }
   }
 
   maybe_scheduling
