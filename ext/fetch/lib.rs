@@ -543,11 +543,13 @@ pub fn op_fetch_raw_response_consume(
   Ok(rid)
 }
 
+use deno_core::task::spawn;
+
 #[op]
 pub async fn op_fetch_upgrade_raw_response(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(), AnyError> {
+) -> Result<ResourceId, AnyError> {
   let raw_response = state
     .borrow_mut()
     .resource_table
@@ -555,9 +557,102 @@ pub async fn op_fetch_upgrade_raw_response(
   let raw_response = Rc::try_unwrap(raw_response)
     .expect("Someone is holding onto FetchRawResponseResource");
 
-  let a = raw_response.response.upgrade().await?;
+  let (read, write) = tokio::io::duplex(1024);
+  let (read_rx, write_tx) = tokio::io::split(read);
+  let (mut write_rx, mut read_tx) = tokio::io::split(write);
+  let upgraded = raw_response.response.upgrade().await?;
   eprintln!("upgraded the connection!");
-  Ok(())
+  {
+    // Stage 3: Pump the data
+    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = upgraded_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        read_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = write_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        upgraded_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+  }
+
+  Ok(
+    state
+      .borrow_mut()
+      .resource_table
+      .add(UpgradeStream::new(read_rx, write_tx)),
+  )
+}
+
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
+
+struct UpgradeStream {
+  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  cancel_handle: CancelHandle,
+}
+
+impl UpgradeStream {
+  pub fn new(
+    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+  ) -> Self {
+    Self {
+      read: AsyncRefCell::new(read),
+      write: AsyncRefCell::new(write),
+      cancel_handle: CancelHandle::new(),
+    }
+  }
+
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let read = RcRef::map(self, |this| &this.read);
+      let mut read = read.borrow_mut().await;
+      Ok(Pin::new(&mut *read).read(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let write = RcRef::map(self, |this| &this.write);
+      let mut write = write.borrow_mut().await;
+      Ok(Pin::new(&mut *write).write(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+}
+
+impl Resource for UpgradeStream {
+  fn name(&self) -> Cow<str> {
+    "fetchRawUpgradeStream".into()
+  }
+
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;

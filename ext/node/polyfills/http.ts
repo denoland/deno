@@ -52,6 +52,7 @@ import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -688,11 +689,31 @@ class ClientRequest extends OutgoingMessage {
             throw new Error("not implemented CONNECT");
           }
 
-          await core.opAsync("op_fetch_upgrade_raw_response", res.responseRid);
+          const upgradeRid = await core.opAsync(
+            "op_fetch_upgrade_raw_response",
+            res.responseRid,
+          );
+          const conn = new TcpConn(
+            upgradeRid,
+            {
+              transport: "tcp",
+              hostname: "127.0.0.1",
+              port: 90,
+            },
+            {
+              transport: "tcp",
+              hostname: "127.0.0.1",
+              port: 90,
+            },
+          );
+          const socket = new Socket({
+            handle: new TCP(constants.SERVER, conn),
+          });
+
           this.upgradeOrConnect = true;
 
           // TODO(bartlomieju): handle actual upgrade
-          this.emit("upgrade", incoming, null, []);
+          this.emit("upgrade", incoming, socket, Buffer.from([]));
           this.destroyed = true;
           this._closed = true;
           this.emit("close");
