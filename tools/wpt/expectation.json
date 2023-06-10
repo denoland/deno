@@ -2497,14 +2497,8 @@
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
       "owning-type.any.worker.html": false,
-      "from.any.html": [
-        "ReadableStream.from: calls next() after first read()",
-        "ReadableStream.from: reader.read() inside next()"
-      ],
-      "from.any.worker.html": [
-        "ReadableStream.from: calls next() after first read()",
-        "ReadableStream.from: reader.read() inside next()"
-      ]
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
