@@ -265,7 +265,7 @@ class Kv {
 
       // Deserialize the payload.
       const { 0: payload, 1: handleId } = next;
-      const deserialized_payload = core.deserialize(payload, {
+      const deserializedPayload = core.deserialize(payload, {
         forStorage: true,
       });
 
@@ -273,10 +273,8 @@ class Kv {
       (async () => {
         let success = false;
         try {
-          const result = handler(deserialized_payload);
-          const res = result instanceof Promise
-            ? (await result)
-            : result;
+          const result = handler(deserializedPayload);
+          const _res = result instanceof Promise ? (await result) : result;
           success = true;
         } catch (error) {
           console.error("Exception in queue handler", error);

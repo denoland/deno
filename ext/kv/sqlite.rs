@@ -301,9 +301,11 @@ impl QueueMessageHandle for DequeuedMessage {
   }
 }
 
+type DequeueReceiver = mpsc::Receiver<(Vec<u8>, String)>;
+
 struct SqliteQueue {
   conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
-  dequeue_rx: Rc<AsyncRefCell<mpsc::Receiver<(Vec<u8>, String)>>>,
+  dequeue_rx: Rc<AsyncRefCell<DequeueReceiver>>,
   concurrency_limiter: Arc<Semaphore>,
   waker_tx: mpsc::Sender<()>,
   shutdown_tx: watch::Sender<()>,
@@ -455,19 +457,17 @@ impl SqliteQueue {
   async fn get_earliest_ready_ts(
     conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
   ) -> Result<Option<u64>, AnyError> {
-    Ok(
-      SqliteDb::run_tx(conn.clone(), move |tx| {
-        let ts = tx
-          .prepare_cached(STATEMENT_QUEUE_GET_EARLIEST_READY)?
-          .query_row([], |row| {
-            let ts: u64 = row.get(0)?;
-            Ok(ts)
-          })
-          .optional()?;
-        Ok(ts)
-      })
-      .await?,
-    )
+    SqliteDb::run_tx(conn.clone(), move |tx| {
+      let ts = tx
+        .prepare_cached(STATEMENT_QUEUE_GET_EARLIEST_READY)?
+        .query_row([], |row| {
+          let ts: u64 = row.get(0)?;
+          Ok(ts)
+        })
+        .optional()?;
+      Ok(ts)
+    })
+    .await
   }
 
   async fn requeue_inflight_messages(

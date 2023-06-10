@@ -295,10 +295,6 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
   fn name(&self) -> Cow<str> {
     "queue_message".into()
   }
-
-  fn close(self: Rc<Self>) {
-    let _ = self.handle.finish(false);
-  }
 }
 
 #[op]
@@ -320,8 +316,7 @@ where
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
-    let rid = state.resource_table.add(QueueMessageResource { handle });
-    rid
+    state.resource_table.add(QueueMessageResource { handle })
   };
   Ok((payload, handle_rid))
 }
@@ -341,10 +336,9 @@ where
       .resource_table
       .take::<QueueMessageResource<<<DBH>::DB as Database>::QPM>>(handle_rid)
       .map_err(|_| type_error("Queue message not found"))?;
-    let handle = Rc::try_unwrap(handle)
+    Rc::try_unwrap(handle)
       .map_err(|_| type_error("Queue message not found"))?
-      .handle;
-    handle
+      .handle
   };
   handle.finish(success).await
 }

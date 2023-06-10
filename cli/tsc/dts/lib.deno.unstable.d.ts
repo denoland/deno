@@ -1920,7 +1920,7 @@ declare namespace Deno {
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number, keys_if_undelivered?: Deno.KvKey[] },
+      options?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
     ): this;
     /**
      * Commit the operation to the KV store. Returns a value indicating whether
@@ -2098,33 +2098,33 @@ declare namespace Deno {
     /**
      * Add a value into the database queue to be delivered to the queue
      * listener via {@linkcode Deno.Kv.queueListen}.
-     * 
+     *
      * ```ts
      * const db = await Deno.openKv();
      * await db.enqueue("bar");
      * ```
-     * 
+     *
      * The `delay` option can be used to specify the delay (in milliseconds)
      * of the value delivery. The default delay is 0, which means immediate
      * delivery.
-     * 
+     *
      * ```ts
      * const db = await Deno.openKv();
      * await db.enqueue("bar", { delay: 60000 });
      * ```
-     * 
+     *
      * The `keys_if_undelivered` option can be used to specify the keys to
      * be set if the value is not successfully delivered to the queue
      * listener after several attempts. The values are set to the value of
      * the queued message.
-     * 
+     *
      * ```ts
      * await db.enqueue("bar", { keys_if_undelivered: ["foo", "bar"] });
      * ```
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number, keys_if_undelivered?: Deno.KvKey[] },
+      options?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
     ): Promise<KvCommitResult>;
 
     /**
@@ -2133,13 +2133,13 @@ declare namespace Deno {
      * callback is invoked on every dequeued value. A failed callback
      * invocation is automatically retried multiple times util it succeeds
      * or until the maximum number of retries is reached.
-     * 
+     *
      * ```ts
      * db.queueListen((msg) => {
      *   dequeuedMsg = msg;
      * });
      * ```
-     * 
+     *
      * ```ts
      * db.queueListen(async (msg) => {
      *   await process(msg);
@@ -2147,7 +2147,7 @@ declare namespace Deno {
      * ```
      */
     queueListen(
-      handler: (value: unknown) => Promise<void> | void
+      handler: (value: unknown) => Promise<void> | void,
     ): Promise<void>;
 
     /**

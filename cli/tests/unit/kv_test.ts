@@ -1312,12 +1312,12 @@ async function _typeCheckingTests() {
 
 dbTest("basic queueListen and enqueue", async (db) => {
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
   db.queueListen((msg) => {
     dequeuedMessage = msg;
     promise.resolve();
   });
-  let res = await db.enqueue("test");
+  const res = await db.enqueue("test");
   assert(res.ok);
   assertNotEquals(res.versionstamp, null);
   await promise;
@@ -1326,36 +1326,35 @@ dbTest("basic queueListen and enqueue", async (db) => {
 
 for (const { name, value } of VALUE_CASES) {
   dbTest(`queueListen and enqueue ${name}`, async (db) => {
-    const num_enqueues = 10;
-    var count = 0;
-    var promises: Deferred<void>[] = [];
-    var dequeuedMessages: unknown[] = [];
+    const numEnqueues = 10;
+    let count = 0;
+    const promises: Deferred<void>[] = [];
+    const dequeuedMessages: unknown[] = [];
     db.queueListen((msg) => {
       dequeuedMessages.push(msg);
       promises[count++].resolve();
     });
-    for (var i = 0; i < num_enqueues; i++) {
+    for (let i = 0; i < numEnqueues; i++) {
       promises.push(deferred());
       await db.enqueue(value);
     }
-    for (var i = 0; i < num_enqueues; i++) {
+    for (let i = 0; i < numEnqueues; i++) {
       await promises[i];
     }
-    for (var i = 0; i < num_enqueues; i++) {
+    for (let i = 0; i < numEnqueues; i++) {
       assertEquals(dequeuedMessages[i], value);
     }
   });
 }
 
 dbTest("queue mixed types", async (db) => {
-  var count = 0;
-  var promise: Deferred<void>;
-  var dequeuedMessage: unknown = null;
+  let promise: Deferred<void>;
+  let dequeuedMessage: unknown = null;
   db.queueListen((msg) => {
     dequeuedMessage = msg;
     promise.resolve();
   });
-  for (const { name, value } of VALUE_CASES) {
+  for (const { _name, value } of VALUE_CASES) {
     promise = deferred();
     await db.enqueue(value);
     await promise;
@@ -1366,7 +1365,7 @@ dbTest("queue mixed types", async (db) => {
 dbTest("queue delay", async (db) => {
   let dequeueTime: number | undefined;
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
   db.queueListen((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
@@ -1383,14 +1382,14 @@ dbTest("queue delay", async (db) => {
 dbTest("queue delay with atomic", async (db) => {
   let dequeueTime: number | undefined;
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
   db.queueListen((msg) => {
     dequeueTime = Date.now();
     dequeuedMessage = msg;
     promise.resolve();
   });
   const enqueueTime = Date.now();
-  let res = await db.atomic()
+  const res = await db.atomic()
     .enqueue("test", { delay: 1000 })
     .commit();
   assert(res.ok);
@@ -1405,7 +1404,7 @@ dbTest("queue delay and now", async (db) => {
   let count = 0;
   let dequeueTime: number | undefined;
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
   db.queueListen((msg) => {
     count += 1;
     if (count == 2) {
@@ -1438,7 +1437,7 @@ dbTest("queue large delay", async (db) => {
 
 dbTest("queueListen with async callback", async (db) => {
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
   db.queueListen(async (msg) => {
     dequeuedMessage = msg;
     await sleep(1000);
@@ -1450,8 +1449,8 @@ dbTest("queueListen with async callback", async (db) => {
 });
 
 dbTest("queue retries", async (db) => {
-  var count = 0;
-  db.queueListen(async (msg) => {
+  let count = 0;
+  db.queueListen(async (_msg) => {
     count += 1;
     await sleep(10);
     throw new TypeError("dequeue error");
@@ -1464,9 +1463,7 @@ dbTest("queue retries", async (db) => {
 });
 
 dbTest("queue with undelivered", async (db) => {
-  const promise = deferred();
-  var dequeuedMessage: unknown = null;
-  db.queueListen((msg) => {
+  db.queueListen((_msg) => {
     throw new TypeError("dequeue error");
   });
   await db.enqueue("test", {
@@ -1482,17 +1479,17 @@ dbTest("queue with undelivered", async (db) => {
 });
 
 dbTest("multiple queueListens", async (db) => {
-  const num_listens = 10;
-  var count = 0;
-  var promises: Deferred<void>[] = [];
-  var dequeuedMessages: unknown[] = [];
-  for (var i = 0; i < num_listens; i++) {
+  const numListens = 10;
+  let count = 0;
+  const promises: Deferred<void>[] = [];
+  const dequeuedMessages: unknown[] = [];
+  for (let i = 0; i < numListens; i++) {
     db.queueListen((msg) => {
       dequeuedMessages.push(msg);
       promises[count++].resolve();
     });
   }
-  for (var i = 0; i < num_listens; i++) {
+  for (let i = 0; i < numListens; i++) {
     promises.push(deferred());
     await db.enqueue("msg_" + i);
     await promises[i];
@@ -1503,8 +1500,8 @@ dbTest("multiple queueListens", async (db) => {
 
 dbTest("enqueue with atomic", async (db) => {
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
-  let l = db.queueListen(async (msg) => {
+  let dequeuedMessage: unknown = null;
+  db.queueListen((msg) => {
     dequeuedMessage = msg;
     promise.resolve();
   });
@@ -1514,7 +1511,7 @@ dbTest("enqueue with atomic", async (db) => {
   let currentValue = await db.get(["t"]);
   assertEquals("1", currentValue.value);
 
-  let res = await db.atomic()
+  const res = await db.atomic()
     .check(currentValue)
     .set(currentValue.key, "2")
     .enqueue("test")
@@ -1530,7 +1527,7 @@ dbTest("enqueue with atomic", async (db) => {
 
 dbTest("enqueue with atomic nonce", async (db) => {
   const promise = deferred();
-  var dequeuedMessage: unknown = null;
+  let dequeuedMessage: unknown = null;
 
   const nonce = crypto.randomUUID();
 
@@ -1556,10 +1553,10 @@ dbTest("enqueue with atomic nonce", async (db) => {
     }
   });
 
-  let res = await db.atomic()
+  const res = await db.atomic()
     .check({ key: ["nonces", nonce], versionstamp: null })
     .set(["nonces", nonce], true)
-    .enqueue({msg: "test", nonce})
+    .enqueue({ msg: "test", nonce })
     .commit();
   assert(res.ok);
 
@@ -1581,7 +1578,8 @@ Deno.test({
     const filename = "cli/tests/testdata/queue.db";
     try {
       await Deno.remove(filename);
-    } catch (e) {
+    } catch {
+      // pass
     }
     try {
       let db: Deno.Kv = await Deno.openKv(filename);
@@ -1616,7 +1614,7 @@ Deno.test({
       promise = deferred();
 
       // Register a handler that will complete quickly.
-      l = db.queueListen(async (_msg) => {
+      l = db.queueListen((_msg) => {
         count += 1;
         if (count == 3) {
           promise.resolve();
@@ -1642,7 +1640,8 @@ Deno.test({
     const filename = "cli/tests/testdata/queue.db";
     try {
       await Deno.remove(filename);
-    } catch (e) {
+    } catch {
+      // pass
     }
     try {
       let db: Deno.Kv = await Deno.openKv(filename);
@@ -1651,7 +1650,7 @@ Deno.test({
       let promise = deferred();
 
       // Register long-running handler.
-      let l = db.queueListen((msg) => {});
+      let l = db.queueListen((_msg) => {});
 
       // Enqueue 3 messages into the future.
       await db.enqueue("msg0", { delay: 10000 });
