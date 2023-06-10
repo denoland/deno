@@ -1582,9 +1582,10 @@ mod test {
 
     temp_dir.write("pages/[id].ts", "");
 
+    let temp_dir_path = temp_dir.path().as_path();
     let error = resolve_files(
       Some(FilesConfig {
-        include: vec![temp_dir.path().join("data/**********.ts")],
+        include: vec![temp_dir_path.join("data/**********.ts")],
         exclude: vec![],
       }),
       None,
@@ -1595,12 +1596,12 @@ mod test {
     let resolved_files = resolve_files(
       Some(FilesConfig {
         include: vec![
-          temp_dir.path().join("data/test1.?s"),
-          temp_dir.path().join("nested/foo/*.ts"),
-          temp_dir.path().join("nested/fizz/*.ts"),
-          temp_dir.path().join("pages/[id].ts"),
+          temp_dir_path.join("data/test1.?s"),
+          temp_dir_path.join("nested/foo/*.ts"),
+          temp_dir_path.join("nested/fizz/*.ts"),
+          temp_dir_path.join("pages/[id].ts"),
         ],
-        exclude: vec![temp_dir.path().join("nested/**/*bazz.ts")],
+        exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
       }),
       None,
     )
@@ -1609,24 +1610,24 @@ mod test {
     assert_eq!(
       resolved_files.include,
       vec![
-        temp_dir.path().join("data/test1.js"),
-        temp_dir.path().join("data/test1.ts"),
-        temp_dir.path().join("nested/foo/bar.ts"),
-        temp_dir.path().join("nested/foo/bazz.ts"),
-        temp_dir.path().join("nested/foo/fizz.ts"),
-        temp_dir.path().join("nested/foo/foo.ts"),
-        temp_dir.path().join("nested/fizz/bar.ts"),
-        temp_dir.path().join("nested/fizz/bazz.ts"),
-        temp_dir.path().join("nested/fizz/fizz.ts"),
-        temp_dir.path().join("nested/fizz/foo.ts"),
-        temp_dir.path().join("pages/[id].ts"),
+        temp_dir_path.join("data/test1.js"),
+        temp_dir_path.join("data/test1.ts"),
+        temp_dir_path.join("nested/foo/bar.ts"),
+        temp_dir_path.join("nested/foo/bazz.ts"),
+        temp_dir_path.join("nested/foo/fizz.ts"),
+        temp_dir_path.join("nested/foo/foo.ts"),
+        temp_dir_path.join("nested/fizz/bar.ts"),
+        temp_dir_path.join("nested/fizz/bazz.ts"),
+        temp_dir_path.join("nested/fizz/fizz.ts"),
+        temp_dir_path.join("nested/fizz/foo.ts"),
+        temp_dir_path.join("pages/[id].ts"),
       ]
     );
     assert_eq!(
       resolved_files.exclude,
       vec![
-        temp_dir.path().join("nested/fizz/bazz.ts"),
-        temp_dir.path().join("nested/foo/bazz.ts"),
+        temp_dir_path.join("nested/fizz/bazz.ts"),
+        temp_dir_path.join("nested/foo/bazz.ts"),
       ]
     )
   }

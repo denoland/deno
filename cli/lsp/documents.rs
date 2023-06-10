@@ -661,9 +661,9 @@ struct SpecifierResolver {
 }
 
 impl SpecifierResolver {
-  pub fn new(cache_path: &Path) -> Self {
+  pub fn new(cache: HttpCache) -> Self {
     Self {
-      cache: HttpCache::new(cache_path),
+      cache,
       redirects: Mutex::new(HashMap::new()),
     }
   }
@@ -846,9 +846,10 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: PathBuf) -> Self {
+    let cache = HttpCache::new(location);
     Self {
-      cache: HttpCache::new(location),
+      cache: cache.clone(),
       dirty: true,
       dependents_map: Default::default(),
       open_docs: HashMap::default(),
@@ -858,7 +859,7 @@ impl Documents {
       resolver: Default::default(),
       npm_specifier_reqs: Default::default(),
       has_injected_types_node_package: false,
-      specifier_resolver: Arc::new(SpecifierResolver::new(location)),
+      specifier_resolver: Arc::new(SpecifierResolver::new(cache)),
     }
   }
 
@@ -1136,10 +1137,11 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: &Path) {
+  pub fn set_location(&mut self, location: PathBuf) {
     // TODO update resolved dependencies?
-    self.cache = HttpCache::new(location);
-    self.specifier_resolver = Arc::new(SpecifierResolver::new(location));
+    let cache = HttpCache::new(location);
+    self.cache = cache.clone();
+    self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
     self.dirty = true;
   }
 
@@ -1785,11 +1787,12 @@ mod tests {
   use super::*;
   use import_map::ImportMap;
   use pretty_assertions::assert_eq;
+  use test_util::PathRef;
   use test_util::TempDir;
 
-  fn setup(temp_dir: &TempDir) -> (Documents, PathBuf) {
+  fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(&location);
+    let documents = Documents::new(location.to_path_buf());
     (documents, location)
   }
 
@@ -1861,8 +1864,8 @@ console.log(b, "hello deno");
     let (mut documents, documents_path) = setup(&temp_dir);
     let file_path = documents_path.join("file.ts");
     let file_specifier = ModuleSpecifier::from_file_path(&file_path).unwrap();
-    fs::create_dir_all(&documents_path).unwrap();
-    fs::write(&file_path, "").unwrap();
+    documents_path.create_dir_all();
+    file_path.write("");
 
     // open the document
     documents.open(

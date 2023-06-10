@@ -3,6 +3,7 @@
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;
+use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -15,34 +16,30 @@ fn fmt_test() {
   let badly_formatted_original_js =
     testdata_fmt_dir.join("badly_formatted.mjs");
   let badly_formatted_js = t.path().join("badly_formatted.js");
-  let badly_formatted_js_str = badly_formatted_js.to_str().unwrap();
-  std::fs::copy(badly_formatted_original_js, &badly_formatted_js).unwrap();
+  badly_formatted_original_js.copy(&badly_formatted_js);
 
   let fixed_md = testdata_fmt_dir.join("badly_formatted_fixed.md");
   let badly_formatted_original_md = testdata_fmt_dir.join("badly_formatted.md");
   let badly_formatted_md = t.path().join("badly_formatted.md");
-  let badly_formatted_md_str = badly_formatted_md.to_str().unwrap();
-  std::fs::copy(badly_formatted_original_md, &badly_formatted_md).unwrap();
+  badly_formatted_original_md.copy(&badly_formatted_md);
 
   let fixed_json = testdata_fmt_dir.join("badly_formatted_fixed.json");
   let badly_formatted_original_json =
     testdata_fmt_dir.join("badly_formatted.json");
   let badly_formatted_json = t.path().join("badly_formatted.json");
-  let badly_formatted_json_str = badly_formatted_json.to_str().unwrap();
-  std::fs::copy(badly_formatted_original_json, &badly_formatted_json).unwrap();
+  badly_formatted_original_json.copy(&badly_formatted_json);
   // First, check formatting by ignoring the badly formatted file.
-  let s = testdata_fmt_dir.as_os_str().to_str().unwrap();
 
   let output = context
     .new_command()
-    .cwd(s)
+    .cwd(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       format!(
-        "--ignore={badly_formatted_js_str},{badly_formatted_md_str},{badly_formatted_json_str}",
+        "--ignore={badly_formatted_js},{badly_formatted_md},{badly_formatted_json}",
       ),
       format!(
-        "--check {badly_formatted_js_str} {badly_formatted_md_str} {badly_formatted_json_str}",
+        "--check {badly_formatted_js} {badly_formatted_md} {badly_formatted_json}",
       ),
     ])
     .run();
@@ -54,13 +51,13 @@ fn fmt_test() {
   // Check without ignore.
   let output = context
     .new_command()
-    .cwd(s)
+    .cwd(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
       "--check".to_string(),
-      badly_formatted_js_str.to_string(),
-      badly_formatted_md_str.to_string(),
-      badly_formatted_json_str.to_string(),
+      badly_formatted_js.to_string(),
+      badly_formatted_md.to_string(),
+      badly_formatted_json.to_string(),
     ])
     .run();
 
@@ -70,24 +67,24 @@ fn fmt_test() {
   // Format the source file.
   let output = context
     .new_command()
-    .cwd(s)
+    .cwd(&testdata_fmt_dir)
     .args_vec(vec![
       "fmt".to_string(),
-      badly_formatted_js_str.to_string(),
-      badly_formatted_md_str.to_string(),
-      badly_formatted_json_str.to_string(),
+      badly_formatted_js.to_string(),
+      badly_formatted_md.to_string(),
+      badly_formatted_json.to_string(),
     ])
     .run();
 
   output.assert_exit_code(0);
   output.skip_output_check();
 
-  let expected_js = std::fs::read_to_string(fixed_js).unwrap();
-  let expected_md = std::fs::read_to_string(fixed_md).unwrap();
-  let expected_json = std::fs::read_to_string(fixed_json).unwrap();
-  let actual_js = std::fs::read_to_string(badly_formatted_js).unwrap();
-  let actual_md = std::fs::read_to_string(badly_formatted_md).unwrap();
-  let actual_json = std::fs::read_to_string(badly_formatted_json).unwrap();
+  let expected_js = fixed_js.read_to_string();
+  let expected_md = fixed_md.read_to_string();
+  let expected_json = fixed_json.read_to_string();
+  let actual_js = badly_formatted_js.read_to_string();
+  let actual_md = badly_formatted_md.read_to_string();
+  let actual_json = badly_formatted_json.read_to_string();
   assert_eq!(expected_js, actual_js);
   assert_eq!(expected_md, actual_md);
   assert_eq!(expected_json, actual_json);
@@ -130,25 +127,21 @@ fn fmt_ignore_unexplicit_files() {
 
 #[test]
 fn fmt_auto_ignore_git_and_node_modules() {
-  use std::fs::create_dir_all;
-  use std::fs::File;
-  use std::io::Write;
-  use std::path::PathBuf;
-  fn create_bad_json(t: PathBuf) {
+  fn create_bad_json(t: PathRef) {
     let bad_json_path = t.join("bad.json");
-    let mut bad_json_file = File::create(bad_json_path).unwrap();
-    writeln!(bad_json_file, "bad json").unwrap();
+    bad_json_path.write("bad json\n");
   }
+
   let temp_dir = TempDir::new();
   let t = temp_dir.path().join("target");
   let nest_git = t.join("nest").join(".git");
   let git_dir = t.join(".git");
   let nest_node_modules = t.join("nest").join("node_modules");
   let node_modules_dir = t.join("node_modules");
-  create_dir_all(&nest_git).unwrap();
-  create_dir_all(&git_dir).unwrap();
-  create_dir_all(&nest_node_modules).unwrap();
-  create_dir_all(&node_modules_dir).unwrap();
+  nest_git.create_dir_all();
+  git_dir.create_dir_all();
+  nest_node_modules.create_dir_all();
+  node_modules_dir.create_dir_all();
   create_bad_json(nest_git);
   create_bad_json(git_dir);
   create_bad_json(nest_node_modules);
@@ -157,7 +150,7 @@ fn fmt_auto_ignore_git_and_node_modules() {
   let context = TestContext::default();
   let output = context
     .new_command()
-    .cwd(t.as_os_str().to_str().unwrap())
+    .cwd(t)
     .env("NO_COLOR", "1")
     .args("fmt")
     .run();

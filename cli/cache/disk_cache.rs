@@ -166,9 +166,8 @@ mod tests {
   #[test]
   fn test_create_cache_if_dir_exits() {
     let cache_location = TempDir::new();
-    let mut cache_path = cache_location.path().to_owned();
-    cache_path.push("foo");
-    let cache = DiskCache::new(&cache_path);
+    let cache_path = cache_location.path().join("foo");
+    let cache = DiskCache::new(cache_path.as_path());
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");
@@ -178,11 +177,11 @@ mod tests {
   #[test]
   fn test_create_cache_if_dir_not_exits() {
     let temp_dir = TempDir::new();
-    let mut cache_location = temp_dir.path().to_owned();
-    assert!(fs::remove_dir(&cache_location).is_ok());
-    cache_location.push("foo");
+    let cache_location = temp_dir.path();
+    cache_location.remove_dir_all();
+    let cache_location = cache_location.join("foo");
     assert!(!cache_location.is_dir());
-    let cache = DiskCache::new(&cache_location);
+    let cache = DiskCache::new(cache_location.as_path());
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");
