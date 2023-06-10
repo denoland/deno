@@ -911,14 +911,12 @@ fn lock_no_declaration_files() {
     .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
     .run();
   output.assert_matches_file("lockfile/no_dts/main.cache.out");
-  let lockfile_text = context.temp_dir().read_to_string("deno.lock");
-  let expected_text = std::fs::read_to_string(
+  let lockfile = context.temp_dir().path().join("deno.lock");
+  lockfile.assert_matches_file(
     context
       .testdata_path()
       .join("lockfile/no_dts/deno.lock.out"),
-  )
-  .unwrap();
-  assert_eq!(lockfile_text, expected_text);
+  );
 }
 
 itest!(mts_dmts_mjs {
