@@ -1022,9 +1022,7 @@ mod tests {
 
     let result = create_install_shim(
       Flags {
-        config_flag: ConfigFlag::Path(
-          config_file_path.to_string_lossy().to_string(),
-        ),
+        config_flag: ConfigFlag::Path(config_file_path.to_string()),
         ..Flags::default()
       },
       InstallFlags {
@@ -1137,7 +1135,7 @@ mod tests {
 
     let result = create_install_shim(
       Flags {
-        import_map_path: Some(import_map_path.to_string_lossy().to_string()),
+        import_map_path: Some(import_map_path.to_string()),
         ..Flags::default()
       },
       InstallFlags {

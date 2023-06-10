@@ -841,11 +841,11 @@ mod tests {
   use deno_core::OpState;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
-  use std::fs;
+  use test_util::PathRef;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
-    pub fixtures: PathBuf,
+    pub fixtures: PathRef,
   }
 
   impl deno_graph::source::Loader for MockLoader {
@@ -860,15 +860,13 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(source_path)
-        .map(|c| {
-          Some(deno_graph::source::LoadResponse::Module {
-            specifier: specifier.clone(),
-            maybe_headers: None,
-            content: c.into(),
-          })
+      let response = source_path.read_to_string_if_exists().map(|c| {
+        Some(deno_graph::source::LoadResponse::Module {
+          specifier: specifier.clone(),
+          maybe_headers: None,
+          content: c.into(),
         })
-        .map_err(|err| err.into());
+      });
       Box::pin(future::ready(response))
     }
   }
