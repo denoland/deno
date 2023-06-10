@@ -4984,7 +4984,7 @@ class ReadableStream {
           return undefined;
         }
       }
-    });
+    }, 0);
     return stream;
   }
 
