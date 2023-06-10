@@ -658,8 +658,7 @@ class ClientRequest extends OutgoingMessage {
         incoming.statusMessage = res.statusText;
         incoming.upgrade = null;
 
-        console.log("res.headers", res.headers, incoming.rawHeaders);
-
+        // TODO(bartlomieju): use object lookup instead of iterating
         for (const [key, value] of res.headers) {
           console.log("key", key, value);
           if (key.toLowerCase() === "upgrade") {
@@ -677,7 +676,6 @@ class ClientRequest extends OutgoingMessage {
           core.tryClose(this._req.cancelHandleRid);
         }
 
-        console.log("incoming", incoming.headers);
         if (incoming.upgrade) {
           if (this.listenerCount("upgrade") === 0) {
             // No listeners, so we got nothing to do
@@ -695,6 +693,7 @@ class ClientRequest extends OutgoingMessage {
           );
           const conn = new TcpConn(
             upgradeRid,
+            // TODO(bartlomieju): figure out actual values
             {
               transport: "tcp",
               hostname: "127.0.0.1",
@@ -718,7 +717,6 @@ class ClientRequest extends OutgoingMessage {
           this._closed = true;
           this.emit("close");
         } else {
-          // FIXME(bartlomieju): handle upgrade
           {
             const responseRid = core.ops.op_fetch_raw_response_consume(
               res.responseRid,
