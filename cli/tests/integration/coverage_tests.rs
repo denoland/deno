@@ -68,7 +68,7 @@ fn error_if_invalid_cache() {
     .args_vec(vec![
       "test".to_string(),
       "--quiet".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
     ])
     .run();
 
@@ -80,10 +80,7 @@ fn error_if_invalid_cache() {
 
   let output = context
     .new_command()
-    .args_vec(vec![
-      "coverage".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
-    ])
+    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
     .run();
 
   output.assert_exit_code(1);
@@ -106,7 +103,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
       "test".to_string(),
       "-A".to_string(),
       "--quiet".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       format!("coverage/{test_name}_test.{extension}"),
     ])
     .run();
@@ -116,10 +113,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
 
   let output = context
     .new_command()
-    .args_vec(vec![
-      "coverage".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
-    ])
+    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
     .split_output()
     .run();
 
@@ -147,7 +141,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
       "coverage".to_string(),
       "--quiet".to_string(),
       "--lcov".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("{}/", tempdir),
     ])
     .run();
 
@@ -178,7 +172,7 @@ fn multifile_coverage() {
     .args_vec(vec![
       "test".to_string(),
       "--quiet".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       format!("coverage/multifile/"),
     ])
     .run();
@@ -188,10 +182,7 @@ fn multifile_coverage() {
 
   let output = context
     .new_command()
-    .args_vec(vec![
-      "coverage".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
-    ])
+    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
     .split_output()
     .run();
 
@@ -218,7 +209,7 @@ fn multifile_coverage() {
       "coverage".to_string(),
       "--quiet".to_string(),
       "--lcov".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("{}/", tempdir),
     ])
     .run();
 
@@ -249,7 +240,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
       "test".to_string(),
       "--quiet".to_string(),
       "--allow-read".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       format!("coverage/no_snaps_included/{test_name}_test.{extension}"),
     ])
     .run();
@@ -262,7 +253,7 @@ fn no_snaps_included(test_name: &str, extension: &str) {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_snaps_included.ts".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("{}/", tempdir),
     ])
     .split_output()
     .run();
@@ -297,7 +288,7 @@ fn no_tests_included(test_name: &str, extension: &str) {
       "test".to_string(),
       "--quiet".to_string(),
       "--allow-read".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       format!("coverage/no_tests_included/{test_name}.test.{extension}"),
     ])
     .run();
@@ -309,11 +300,8 @@ fn no_tests_included(test_name: &str, extension: &str) {
     .new_command()
     .args_vec(vec![
       "coverage".to_string(),
-      format!(
-        "--exclude={}",
-        util::std_path().canonicalize().unwrap().to_string_lossy()
-      ),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("--exclude={}", util::std_path().canonicalize()),
+      format!("{}/", tempdir),
     ])
     .split_output()
     .run();
@@ -349,7 +337,7 @@ fn no_npm_cache_coverage() {
       "test".to_string(),
       "--quiet".to_string(),
       "--allow-read".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       format!("coverage/no_npm_coverage/no_npm_coverage_test.ts"),
     ])
     .run();
@@ -359,10 +347,7 @@ fn no_npm_cache_coverage() {
 
   let output = context
     .new_command()
-    .args_vec(vec![
-      "coverage".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
-    ])
+    .args_vec(vec!["coverage".to_string(), format!("{}/", tempdir)])
     .split_output()
     .run();
 
@@ -396,7 +381,7 @@ fn no_transpiled_lines() {
     .args_vec(vec![
       "test".to_string(),
       "--quiet".to_string(),
-      format!("--coverage={}", tempdir.to_str().unwrap()),
+      format!("--coverage={}", tempdir),
       "coverage/no_transpiled_lines/".to_string(),
     ])
     .run();
@@ -409,7 +394,7 @@ fn no_transpiled_lines() {
     .args_vec(vec![
       "coverage".to_string(),
       "--include=no_transpiled_lines/index.ts".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("{}/", tempdir),
     ])
     .run();
 
@@ -434,7 +419,7 @@ fn no_transpiled_lines() {
       "coverage".to_string(),
       "--lcov".to_string(),
       "--include=no_transpiled_lines/index.ts".to_string(),
-      format!("{}/", tempdir.to_str().unwrap()),
+      format!("{}/", tempdir),
     ])
     .run();
 

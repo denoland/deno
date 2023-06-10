@@ -764,10 +764,10 @@ mod tests {
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir, BlobStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       cache_setting,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -827,8 +827,7 @@ mod tests {
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
     let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
-    let specifier =
-      ModuleSpecifier::from_file_path(p.to_str().unwrap()).unwrap();
+    let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(&*file.source, expected);
   }
@@ -1034,11 +1033,9 @@ mod tests {
   async fn test_insert_cached() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let local = temp_dir.path().join("a.ts");
-    let specifier =
-      ModuleSpecifier::from_file_path(local.as_os_str().to_str().unwrap())
-        .unwrap();
+    let specifier = ModuleSpecifier::from_file_path(&local).unwrap();
     let file = File {
-      local,
+      local: local.to_path_buf(),
       maybe_types: None,
       media_type: MediaType::TypeScript,
       source: "some source code".into(),
@@ -1082,7 +1079,7 @@ mod tests {
   #[test]
   fn test_get_http_cache_location() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
-    let expected = temp_dir.path().join("deps");
+    let expected = temp_dir.path().join("deps").to_path_buf();
     let actual = file_fetcher.get_http_cache_location();
     assert_eq!(actual, expected);
   }
@@ -1203,9 +1200,9 @@ mod tests {
 
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::ReloadAll,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1228,9 +1225,9 @@ mod tests {
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1255,7 +1252,7 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1394,9 +1391,9 @@ mod tests {
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1424,7 +1421,7 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1521,9 +1518,9 @@ mod tests {
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       false,
       Arc::new(HttpClient::new(None, None)),
@@ -1546,9 +1543,9 @@ mod tests {
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Only,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1556,7 +1553,7 @@ mod tests {
       None,
     );
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1946,10 +1943,7 @@ mod tests {
         version::get_user_agent(),
         CreateHttpClientOptions {
           ca_certs: vec![read(
-            test_util::testdata_path()
-              .join("tls/RootCA.pem")
-              .to_str()
-              .unwrap(),
+            test_util::testdata_path().join("tls/RootCA.pem"),
           )
           .unwrap()],
           ..Default::default()
@@ -2068,8 +2062,7 @@ mod tests {
           ca_certs: vec![read(
             test_util::testdata_path()
               .join("tls/RootCA.pem")
-              .to_str()
-              .unwrap(),
+              .to_string(),
           )
           .unwrap()],
           ..Default::default()
@@ -2112,8 +2105,7 @@ mod tests {
           ca_certs: vec![read(
             test_util::testdata_path()
               .join("tls/RootCA.pem")
-              .to_str()
-              .unwrap(),
+              .to_string(),
           )
           .unwrap()],
           ..Default::default()
@@ -2173,8 +2165,7 @@ mod tests {
           ca_certs: vec![read(
             test_util::testdata_path()
               .join("tls/RootCA.pem")
-              .to_str()
-              .unwrap(),
+              .to_string(),
           )
           .unwrap()],
           ..Default::default()

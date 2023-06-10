@@ -597,6 +597,7 @@ mod tests {
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
+  use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
 
@@ -645,11 +646,10 @@ mod tests {
 
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &Path, files: &[&str]) {
-      std::fs::create_dir(dir_path).expect("Failed to create directory");
+    fn create_files(dir_path: &PathRef, files: &[&str]) {
+      dir_path.create_dir_all();
       for f in files {
-        let path = dir_path.join(f);
-        std::fs::write(path, "").expect("Failed to create file");
+        dir_path.join(f).write("");
       }
     }
 
@@ -698,10 +698,10 @@ mod tests {
         .map(|f| !f.starts_with('.'))
         .unwrap_or(false)
     })
-    .add_ignore_paths(&[ignore_dir_path]);
+    .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
 
     let result = file_collector
-      .collect_files(&[root_dir_path.clone()])
+      .collect_files(&[root_dir_path.to_path_buf()])
       .unwrap();
     let expected = [
       "README.md",
@@ -725,7 +725,7 @@ mod tests {
     let file_collector =
       file_collector.ignore_git_folder().ignore_node_modules();
     let result = file_collector
-      .collect_files(&[root_dir_path.clone()])
+      .collect_files(&[root_dir_path.to_path_buf()])
       .unwrap();
     let expected = [
       "README.md",
@@ -746,8 +746,8 @@ mod tests {
     // test opting out of ignoring by specifying the dir
     let result = file_collector
       .collect_files(&[
-        root_dir_path.clone(),
-        root_dir_path.join("child/node_modules/"),
+        root_dir_path.to_path_buf(),
+        root_dir_path.to_path_buf().join("child/node_modules/"),
       ])
       .unwrap();
     let expected = [
@@ -770,11 +770,10 @@ mod tests {
 
   #[test]
   fn test_collect_specifiers() {
-    fn create_files(dir_path: &Path, files: &[&str]) {
-      std::fs::create_dir(dir_path).expect("Failed to create directory");
+    fn create_files(dir_path: &PathRef, files: &[&str]) {
+      dir_path.create_dir_all();
       for f in files {
-        let path = dir_path.join(f);
-        std::fs::write(path, "").expect("Failed to create file");
+        dir_path.join(f).write("");
       }
     }
 
@@ -819,20 +818,19 @@ mod tests {
       &FilesConfig {
         include: vec![
           PathBuf::from("http://localhost:8080"),
-          root_dir_path.clone(),
+          root_dir_path.to_path_buf(),
           PathBuf::from("https://localhost:8080".to_string()),
         ],
-        exclude: vec![ignore_dir_path],
+        exclude: vec![ignore_dir_path.to_path_buf()],
       },
       predicate,
     )
     .unwrap();
 
-    let root_dir_url = ModuleSpecifier::from_file_path(
-      canonicalize_path(&root_dir_path).unwrap(),
-    )
-    .unwrap()
-    .to_string();
+    let root_dir_url =
+      ModuleSpecifier::from_file_path(root_dir_path.canonicalize())
+        .unwrap()
+        .to_string();
     let expected: Vec<ModuleSpecifier> = [
       "http://localhost:8080",
       &format!("{root_dir_url}/a.ts"),
@@ -860,11 +858,7 @@ mod tests {
         include: vec![PathBuf::from(format!(
           "{}{}",
           scheme,
-          root_dir_path
-            .join("child")
-            .to_str()
-            .unwrap()
-            .replace('\\', "/")
+          root_dir_path.join("child").to_string().replace('\\', "/")
         ))],
         exclude: vec![],
       },
@@ -901,7 +895,8 @@ mod tests {
       let temp_dir = temp_dir.clone();
       async move {
         let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         signal1.notify_one();
         signal2.notified().await;
         tokio::time::sleep(Duration::from_millis(10)).await; // give the other thread time to acquire the lock
@@ -918,7 +913,9 @@ mod tests {
       async move {
         signal1.notified().await;
         signal2.notify_one();
-        let flag = LaxSingleProcessFsFlag::lock(lock_path, "waiting").await;
+        let flag =
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         temp_dir.write("file.txt", "update2");
         signal5.notify_one();
         drop(flag);
@@ -949,7 +946,8 @@ mod tests {
       let expected_order = expected_order.clone();
       tasks.push(tokio::spawn(async move {
         let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         expected_order.lock().push(i.to_string());
         // be extremely racy
         let mut output = std::fs::read_to_string(&output_path).unwrap();
