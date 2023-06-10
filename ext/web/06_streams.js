@@ -4786,6 +4786,7 @@ function createAsyncFromSyncIterator(syncIterator) {
   return {
     next(value) {
       try {
+        // deno-lint-ignore prefer-primordials
         const res = syncIterator.next(value);
         const done = res.done;
         return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
@@ -4961,6 +4962,7 @@ class ReadableStream {
     const iterator = getIterator(asyncIterable, true);
 
     const stream = createReadableStream(() => undefined, async () => {
+      // deno-lint-ignore prefer-primordials
       const res = await iterator.next();
       if (typeof res !== "object") {
         throw new TypeError("iterator.next value is not an object");
@@ -4974,6 +4976,7 @@ class ReadableStream {
       if (typeof iterator.return === "undefined") {
         return undefined;
       } else {
+        // deno-lint-ignore prefer-primordials
         const res = await iterator.return(reason);
         if (typeof res !== "object") {
           throw new TypeError("iterator.return value is not an object");
