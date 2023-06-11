@@ -14,14 +14,31 @@ description = "Provides the deno runtime library"
 docsrs = []
 # A feature that disables creation of startup snapshot during in the build script.
 dont_create_runtime_snapshot = []
-# A feature that changes how startup snapshot is generated, that allows
-# extending it in embedder crates.
-snapshot_from_snapshot = []
+# Enable to exclude `js/99_main.js` from the generated snapshot.
+exclude_js_main_from_snapshot = []
 # A feature that disables embedding of the JavaScript source files in the binary.
 # With this feature enabled, the sources must be consumed during build time,
 # by creating a startup snapshot.
-include_js_files_for_snapshotting = [
-  "deno_core/include_js_files_for_snapshotting",
+# Enable to exclude JS sources from the binary (e.g. if they are already snapshotted).
+exclude_js_sources = [
+  "deno_broadcast_channel/exclude_js_sources",
+  "deno_cache/exclude_js_sources",
+  "deno_console/exclude_js_sources",
+  "deno_core/exclude_js_sources",
+  "deno_crypto/exclude_js_sources",
+  "deno_fetch/exclude_js_sources",
+  "deno_ffi/exclude_js_sources",
+  "deno_fs/exclude_js_sources",
+  "deno_http/exclude_js_sources",
+  "deno_io/exclude_js_sources",
+  "deno_net/exclude_js_sources",
+  "deno_node/exclude_js_sources",
+  "deno_kv/exclude_js_sources",
+  "deno_url/exclude_js_sources",
+  "deno_web/exclude_js_sources",
+  "deno_webidl/exclude_js_sources",
+  "deno_websocket/exclude_js_sources",
+  "deno_webstorage/exclude_js_sources",
 ]
 
 [lib]
@@ -38,25 +55,25 @@ path = "examples/extension_with_ops/main.rs"
 
 [build-dependencies]
 deno_ast.workspace = true
-deno_broadcast_channel.workspace = true
-deno_cache.workspace = true
-deno_console.workspace = true
-deno_core.workspace = true
-deno_crypto.workspace = true
-deno_fetch.workspace = true
-deno_ffi.workspace = true
-deno_fs = { workspace = true, features = ["sync_fs"] }
-deno_http.workspace = true
-deno_io.workspace = true
-deno_net.workspace = true
-deno_node.workspace = true
-deno_kv.workspace = true
+deno_broadcast_channel = { workspace = true, features = ["force_include_js_sources"] }
+deno_cache = { workspace = true, features = ["force_include_js_sources"] }
+deno_console = { workspace = true, features = ["force_include_js_sources"] }
+deno_core = { workspace = true, features = ["force_include_js_sources"] }
+deno_crypto = { workspace = true, features = ["force_include_js_sources"] }
+deno_fetch = { workspace = true, features = ["force_include_js_sources"] }
+deno_ffi = { workspace = true, features = ["force_include_js_sources"] }
+deno_fs = { workspace = true, features = ["force_include_js_sources", "sync_fs"] }
+deno_http = { workspace = true, features = ["force_include_js_sources"] }
+deno_io = { workspace = true, features = ["force_include_js_sources"] }
+deno_net = { workspace = true, features = ["force_include_js_sources"] }
+deno_node = { workspace = true, features = ["force_include_js_sources"] }
+deno_kv = { workspace = true, features = ["force_include_js_sources"] }
 deno_tls.workspace = true
-deno_url.workspace = true
-deno_web.workspace = true
-deno_webidl.workspace = true
-deno_websocket.workspace = true
-deno_webstorage.workspace = true
+deno_url = { workspace = true, features = ["force_include_js_sources"] }
+deno_web = { workspace = true, features = ["force_include_js_sources"] }
+deno_webidl = { workspace = true, features = ["force_include_js_sources"] }
+deno_websocket = { workspace = true, features = ["force_include_js_sources"] }
+deno_webstorage = { workspace = true, features = ["force_include_js_sources"] }
 deno_napi.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]

@@ -105,6 +105,10 @@ deno_core::extension!(deno_crypto,
     x25519::op_crypto_export_pkcs8_x25519,
   ],
   esm = [ "00_crypto.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     maybe_seed: Option<u64>,
   },

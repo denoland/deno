@@ -1,32 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::modules::ModuleCode;
 use crate::OpState;
-use anyhow::Context as _;
-use anyhow::Error;
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::task::Context;
 use v8::fast_api::FastFunction;
 
 #[derive(Clone, Debug)]
-pub enum ExtensionFileSourceCode {
-  /// Source code is included in the binary produced. Either by being defined
-  /// inline, or included using `include_str!()`. If you are snapshotting, this
-  /// will result in two copies of the source code being included - one in the
-  /// snapshot, the other the static string in the `Extension`.
-  IncludedInBinary(&'static str),
-
-  // Source code is loaded from a file on disk. It's meant to be used if the
-  // embedder is creating snapshots. Files will be loaded from the filesystem
-  // during the build time and they will only be present in the V8 snapshot.
-  LoadedFromFsDuringSnapshot(PathBuf),
-}
-
-#[derive(Clone, Debug)]
 pub struct ExtensionFileSource {
   pub specifier: &'static str,
-  pub code: ExtensionFileSourceCode,
+  pub code: &'static str,
 }
 
 impl ExtensionFileSource {
@@ -34,29 +17,14 @@ impl ExtensionFileSource {
     s.chars().filter(|c| !c.is_ascii()).collect::<String>()
   }
 
-  pub fn load(&self) -> Result<ModuleCode, Error> {
-    match &self.code {
-      ExtensionFileSourceCode::IncludedInBinary(code) => {
-        debug_assert!(
-          code.is_ascii(),
-          "Extension code must be 7-bit ASCII: {} (found {})",
-          self.specifier,
-          Self::find_non_ascii(code)
-        );
-        Ok(ModuleCode::from_static(code))
-      }
-      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
-        let msg = || format!("Failed to read \"{}\"", path.display());
-        let s = std::fs::read_to_string(path).with_context(msg)?;
-        debug_assert!(
-          s.is_ascii(),
-          "Extension code must be 7-bit ASCII: {} (found {})",
-          self.specifier,
-          Self::find_non_ascii(&s)
-        );
-        Ok(s.into())
-      }
-    }
+  pub fn load(&self) -> ModuleCode {
+    debug_assert!(
+      self.code.is_ascii(),
+      "Extension code must be 7-bit ASCII: {} (found {})",
+      self.specifier,
+      Self::find_non_ascii(self.code)
+    );
+    ModuleCode::from_static(self.code)
   }
 }
 
@@ -187,6 +155,7 @@ macro_rules! extension {
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
+    $(, exclude_js_sources_cfg = ( $exclude_js_sources_cfg:meta ) )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
@@ -211,21 +180,23 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
-        $( ext.esm(
-          $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
-        ); )?
+        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
+        ext.esm(
+          $crate::include_js_files!( $name $( $( dir $dir_esm , )? $( $esm , )* )? ),
+        );
         $(
           ext.esm(vec![ExtensionFileSource {
             specifier: "ext:setup",
-            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
+            code: $esm_setup_script,
           }]);
         )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
-        $( ext.js(
-          $crate::include_js_files!( $name $( dir $dir_js , )? $( $js , )* )
-        ); )?
+        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
+        ext.js(
+          $crate::include_js_files!( $name $( $( dir $dir_js , )? $( $js , )* )? ),
+        );
       }
 
       // If ops were specified, add those ops to the extension.
@@ -285,23 +256,12 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      pub fn init $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
       $( where $( $bound : $bound_type ),+ )?
       {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
-        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
-        Self::with_customizer(&mut ext);
-        ext.take()
-      }
-
-      #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
-      $( where $( $bound : $bound_type ),+ )?
-      {
-        let mut ext = Self::ext();
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
@@ -608,54 +568,23 @@ impl ExtensionBuilder {
 /// - "ext:my_extension/js/01_hello.js"
 /// - "ext:my_extension/js/02_goodbye.js"
 /// ```
-#[cfg(not(feature = "include_js_files_for_snapshotting"))]
 #[macro_export]
 macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
+  ($name:ident dir $dir:literal, $($file:literal,)*) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!(concat!($dir, "/", $file)
-        )),
-      },)+
+        code: include_str!(concat!($dir, "/", $file)),
+      },)*
     ]
   };
 
-  ($name:ident $($file:literal,)+) => {
+  ($name:ident $($file:literal,)*) => {
     vec![
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!($file)
-        ),
-      },)+
-    ]
-  };
-}
-
-#[cfg(feature = "include_js_files_for_snapshotting")]
-#[macro_export]
-macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
-        ),
-      },)+
-    ]
-  };
-
-  ($name:ident $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
-        ),
-      },)+
+        code: include_str!($file),
+      },)*
     ]
   };
 }

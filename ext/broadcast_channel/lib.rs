@@ -114,6 +114,10 @@ deno_core::extension!(deno_broadcast_channel,
     op_broadcast_recv<BC>,
   ],
   esm = [ "01_broadcast_channel.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     bc: BC,
     unstable: bool,

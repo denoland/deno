@@ -19,7 +19,7 @@ deno_core::extension!(
 );
 
 fn setup() -> Vec<Extension> {
-  vec![bench_setup::init_ops()]
+  vec![bench_setup::init()]
 }
 
 #[op]

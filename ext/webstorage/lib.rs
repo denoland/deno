@@ -31,6 +31,10 @@ deno_core::extension!(deno_webstorage,
     op_webstorage_iterate_keys,
   ],
   esm = [ "01_webstorage.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     origin_storage_dir: Option<PathBuf>
   },

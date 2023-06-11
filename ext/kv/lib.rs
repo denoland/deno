@@ -62,6 +62,10 @@ deno_core::extension!(deno_kv,
     op_kv_encode_cursor,
   ],
   esm = [ "01_db.ts" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     handler: DBH,
     unstable: bool,

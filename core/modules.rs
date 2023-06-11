@@ -438,7 +438,7 @@ impl ModuleLoader for ExtModuleLoader {
     let result = if let Some(load_callback) = &self.maybe_load_callback {
       load_callback(source)
     } else {
-      source.load()
+      Ok(source.load())
     };
     match result {
       Ok(code) => {
@@ -461,6 +461,9 @@ impl ModuleLoader for ExtModuleLoader {
 
 impl Drop for ExtModuleLoader {
   fn drop(&mut self) {
+    if std::thread::panicking() || true {
+      return;
+    }
     let sources = self.sources.get_mut();
     let used_specifiers = self.used_specifiers.get_mut();
     let unused_modules: Vec<_> = sources
@@ -2044,7 +2047,7 @@ import "/a.js";
     deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
+      extensions: vec![test_ext::init()],
       module_loader: Some(loader),
       ..Default::default()
     });

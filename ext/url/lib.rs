@@ -29,6 +29,10 @@ deno_core::extension!(
     op_urlpattern_process_match_input
   ],
   esm = ["00_url.js", "01_urlpattern.js"],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
 );
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.

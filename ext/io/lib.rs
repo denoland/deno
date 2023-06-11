@@ -85,6 +85,10 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
   esm = [ "12_io.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     stdio: Option<Stdio>,
   },

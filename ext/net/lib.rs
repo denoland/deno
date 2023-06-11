@@ -123,6 +123,10 @@ deno_core::extension!(deno_net,
     #[cfg(unix)] ops_unix::op_net_send_unixpacket<P>,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unstable: bool,

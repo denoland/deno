@@ -19,7 +19,6 @@ use crate::ops::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use std::cell::RefCell;
-use std::convert::From;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -154,6 +153,10 @@ deno_core::extension!(deno_fs,
 
   ],
   esm = [ "30_fs.js" ],
+  exclude_js_sources_cfg = (all(
+    feature = "exclude_js_sources",
+    not(feature = "force_include_js_sources")
+  )),
   options = {
     unstable: bool,
     fs: FileSystemRc,
