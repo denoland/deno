@@ -37,6 +37,7 @@ const {
   SymbolFor,
   SymbolIterator,
   StringPrototypeReplaceAll,
+  StringPrototypeCharCodeAt,
   TypeError,
 } = primordials;
 
@@ -91,6 +92,32 @@ function fillHeaders(headers, object) {
 // deno-lint-ignore no-control-regex
 const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
 
+function checkForInvalidValueChars(value) {
+  for (let i = 0; i < value.length; i++) {
+    const c = StringPrototypeCharCodeAt(value, i);
+
+    if (c === 0x0a || c === 0x0d || c === 0x00) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// TODO(bartlomieju): make it LRU cache with 64/128 size limit.
+const cache = {};
+
+function checkHeaderNameForHttpTokenCodePoint(name) {
+  const cachedResult = cache[name];
+  if (typeof cachedResult !== "undefined") {
+    return cachedResult;
+  }
+
+  const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
+  cache[name] = valid;
+  return valid;
+}
+
 /**
  * https://fetch.spec.whatwg.org/#concept-headers-append
  * @param {Headers} headers
@@ -102,10 +129,10 @@ function appendHeader(headers, name, value) {
   value = normalizeHeaderValue(value);
 
   // 2.
-  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+  if (!checkHeaderNameForHttpTokenCodePoint(name)) {
     throw new TypeError("Header name is not valid.");
   }
-  if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
+  if (!checkForInvalidValueChars(value)) {
     throw new TypeError("Header value is not valid.");
   }
 
@@ -282,7 +309,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
     if (this[_guard] == "immutable") {
@@ -307,7 +334,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -323,7 +350,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -351,10 +378,10 @@ class Headers {
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
-    if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
+    if (!checkForInvalidValueChars(value)) {
       throw new TypeError("Header value is not valid.");
     }
 
