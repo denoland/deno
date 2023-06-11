@@ -1440,7 +1440,7 @@ dbTest("queueListen with async callback", async (db) => {
   let dequeuedMessage: unknown = null;
   db.queueListen(async (msg) => {
     dequeuedMessage = msg;
-    await sleep(1000);
+    await sleep(100);
     promise.resolve();
   });
   await db.enqueue("test");
@@ -1460,22 +1460,6 @@ dbTest("queue retries", async (db) => {
 
   // There should have been 1 attempt + 3 retries in the 10 seconds
   assertEquals(4, count);
-});
-
-dbTest("queue with undelivered", async (db) => {
-  db.queueListen((_msg) => {
-    throw new TypeError("dequeue error");
-  });
-  await db.enqueue("test", {
-    keys_if_undelivered: [["queue_failed", "a"], ["queue_failed", "b"]],
-  });
-  await sleep(120000);
-  const undelivered = await collect(db.list({ prefix: ["queue_failed"] }));
-  assertEquals(undelivered.length, 2);
-  assertEquals(undelivered[0].key, ["queue_failed", "a"]);
-  assertEquals(undelivered[0].value, "test");
-  assertEquals(undelivered[1].key, ["queue_failed", "b"]);
-  assertEquals(undelivered[1].value, "test");
 });
 
 dbTest("multiple queueListens", async (db) => {

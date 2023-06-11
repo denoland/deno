@@ -218,7 +218,7 @@ class Kv {
 
   async enqueue(
     message: unknown,
-    opts?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
+    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
   ) {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
@@ -228,7 +228,7 @@ class Kv {
       [
         core.serialize(message, { forStorage: true }),
         opts?.delay ?? 0,
-        opts?.keys_if_undelivered ?? [],
+        opts?.keysIfUndelivered ?? [],
         null,
       ],
     ];
@@ -370,7 +370,7 @@ class AtomicOperation {
 
   enqueue(
     message: unknown,
-    opts?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
+    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
   ): this {
     if (opts?.delay !== undefined) {
       validateQueueDelay(opts?.delay);
@@ -378,7 +378,7 @@ class AtomicOperation {
     this.#enqueues.push([
       core.serialize(message, { forStorage: true }),
       opts?.delay ?? 0,
-      opts?.keys_if_undelivered ?? [],
+      opts?.keysIfUndelivered ?? [],
       null,
     ]);
     return this;

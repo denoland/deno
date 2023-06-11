@@ -1920,7 +1920,7 @@ declare namespace Deno {
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
+      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
     ): this;
     /**
      * Commit the operation to the KV store. Returns a value indicating whether
@@ -2113,36 +2113,39 @@ declare namespace Deno {
      * await db.enqueue("bar", { delay: 60000 });
      * ```
      *
-     * The `keys_if_undelivered` option can be used to specify the keys to
+     * The `keysIfUndelivered` option can be used to specify the keys to
      * be set if the value is not successfully delivered to the queue
      * listener after several attempts. The values are set to the value of
      * the queued message.
      *
      * ```ts
-     * await db.enqueue("bar", { keys_if_undelivered: ["foo", "bar"] });
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar", { keysIfUndelivered: ["foo", "bar"] });
      * ```
      */
     enqueue(
       value: unknown,
-      options?: { delay?: number; keys_if_undelivered?: Deno.KvKey[] },
+      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
     ): Promise<KvCommitResult>;
 
     /**
      * Listen for queue values to be delivered from the database queue, which
      * were enqueued with {@linkcode Deno.Kv.enqueue}. The provided handler
      * callback is invoked on every dequeued value. A failed callback
-     * invocation is automatically retried multiple times util it succeeds
+     * invocation is automatically retried multiple times until it succeeds
      * or until the maximum number of retries is reached.
      *
      * ```ts
-     * db.queueListen((msg) => {
+     * const db = await Deno.openKv();
+     * db.queueListen((msg: unknown) => {
      *   dequeuedMsg = msg;
      * });
      * ```
      *
      * ```ts
-     * db.queueListen(async (msg) => {
-     *   await process(msg);
+     * const db = await Deno.openKv();
+     * db.queueListen(async (msg: unknown) => {
+     *   await db.set(["foo"], msg);
      * });
      * ```
      */
