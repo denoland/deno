@@ -31,6 +31,7 @@ const {
   SafeRegExp,
   Symbol,
   StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeTrim,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -368,7 +369,7 @@ function parseContentDisposition(value) {
 function decodeLatin1StringAsUtf8(latin1String) {
   const buffer = new Uint8Array(latin1String.length);
   for (let i = 0; i < latin1String.length; i++) {
-    buffer[i] = latin1String.charCodeAt(i);
+    buffer[i] = StringPrototypeCharCodeAt(latin1String, i);
   }
   return core.decode(buffer);
 }

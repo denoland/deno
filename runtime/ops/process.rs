@@ -112,9 +112,6 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 /// Second member stores the pid separately from the RefCell. It's needed for

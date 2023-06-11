@@ -326,6 +326,7 @@ class Blob {
         relativeStart -= size;
         relativeEnd -= size;
       } else {
+        // deno-lint-ignore prefer-primordials
         const chunk = part.slice(
           relativeStart,
           MathMin(part.size, relativeEnd),

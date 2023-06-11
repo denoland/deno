@@ -1068,6 +1068,9 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
   output.assert_exit_code(0);
   output.skip_output_check();
 
+  // delete the npm folder in the DENO_DIR to ensure it's not using it
+  context.deno_dir().remove_dir_all("./npm");
+
   // run
   let binary_path = if cfg!(windows) {
     temp_dir.path().join(format!("{}.exe", opts.expected_name))

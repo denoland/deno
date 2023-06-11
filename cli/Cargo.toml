@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.34.1"
+version = "1.34.2"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -42,15 +42,16 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "0.62.0"
-deno_emit = "0.20.0"
-deno_graph = "=0.48.1"
-deno_lint = { version = "0.45.0", features = ["docs"] }
+deno_doc = "=0.63.1"
+deno_emit = "=0.24.0"
+deno_graph = "=0.49.0"
+deno_lint = { version = "=0.47.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "0.12.0"
+deno_task_shell = "=0.12.0"
+eszip = "=0.44.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -65,12 +66,11 @@ clap_complete_fig = "=4.1.2"
 console_static_text.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
-dprint-plugin-json = "=0.17.2"
-dprint-plugin-markdown = "=0.15.2"
-dprint-plugin-typescript = "=0.84.4"
+dprint-plugin-json = "=0.17.4"
+dprint-plugin-markdown = "=0.15.3"
+dprint-plugin-typescript = "=0.85.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.41.0"
 fancy-regex = "=0.10.0"
 fastwebsockets.workspace = true
 flate2.workspace = true

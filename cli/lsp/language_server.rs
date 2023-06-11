@@ -11,6 +11,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
+use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
@@ -96,6 +97,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -273,7 +275,7 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_builder
-        .create_graph_with_loader(roots.clone(), &mut loader)
+        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
         &graph,
@@ -541,12 +543,13 @@ fn create_npm_api_and_cache(
   progress_bar: &ProgressBar,
 ) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
   let npm_cache = Arc::new(NpmCache::new(
-    dir.npm_folder_path(),
+    NpmCacheDir::new(dir.npm_folder_path()),
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
     // the user is typing.
     CacheSetting::Only,
+    Arc::new(deno_fs::RealFs),
     http_client.clone(),
     progress_bar.clone(),
   ));

@@ -30,6 +30,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
@@ -47,6 +48,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 
+use deno_graph::GraphKind;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
@@ -269,8 +271,9 @@ impl CliFactory {
   pub fn npm_cache(&self) -> Result<&Arc<NpmCache>, AnyError> {
     self.services.npm_cache.get_or_try_init(|| {
       Ok(Arc::new(NpmCache::new(
-        self.deno_dir()?.npm_folder_path(),
+        NpmCacheDir::new(self.deno_dir()?.npm_folder_path()),
         self.options.cache_setting(),
+        self.fs().clone(),
         self.http_client().clone(),
         self.text_only_progress_bar().clone(),
       )))
@@ -537,7 +540,15 @@ impl CliFactory {
   }
 
   pub fn graph_container(&self) -> &Arc<ModuleGraphContainer> {
-    self.services.graph_container.get_or_init(Default::default)
+    self.services.graph_container.get_or_init(|| {
+      let graph_kind = match self.options.sub_command() {
+        // todo(dsherret): ideally the graph container would not be used
+        // for deno cache because it doesn't dynamically load modules
+        DenoSubcommand::Cache(_) => GraphKind::All,
+        _ => self.options.type_check_mode().as_graph_kind(),
+      };
+      Arc::new(ModuleGraphContainer::new(graph_kind))
+    })
   }
 
   pub fn maybe_inspector_server(&self) -> &Option<Arc<InspectorServer>> {

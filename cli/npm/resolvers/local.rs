@@ -41,9 +41,9 @@ use crate::npm::NpmCache;
 use crate::util::fs::copy_dir_recursive;
 use crate::util::fs::hard_link_dir_recursive;
 
-use super::common::ensure_registry_read_permission;
 use super::common::types_package_name;
 use super::common::NpmPackageFsResolver;
+use super::common::RegistryReadPermissionChecker;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -57,6 +57,7 @@ pub struct LocalNpmPackageResolver {
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
   system_info: NpmSystemInfo,
+  registry_read_permission_checker: RegistryReadPermissionChecker,
 }
 
 impl LocalNpmPackageResolver {
@@ -70,15 +71,19 @@ impl LocalNpmPackageResolver {
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      fs,
+      fs: fs.clone(),
       cache,
       progress_bar,
       resolution,
       registry_url,
       root_node_modules_url: Url::from_directory_path(&node_modules_folder)
         .unwrap(),
-      root_node_modules_path: node_modules_folder,
+      root_node_modules_path: node_modules_folder.clone(),
       system_info,
+      registry_read_permission_checker: RegistryReadPermissionChecker::new(
+        fs,
+        node_modules_folder,
+      ),
     }
   }
 
@@ -227,12 +232,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     permissions: &dyn NodePermissions,
     path: &Path,
   ) -> Result<(), AnyError> {
-    ensure_registry_read_permission(
-      &self.fs,
-      permissions,
-      &self.root_node_modules_path,
-      path,
-    )
+    self
+      .registry_read_permission_checker
+      .ensure_registry_read_permission(permissions, path)
   }
 }
 

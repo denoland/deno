@@ -150,7 +150,7 @@ Deno.test({
 
 Deno.test(
   { sanitizeOps: false },
-  function websocketConstructorWithPrototypePollusion() {
+  function websocketConstructorWithPrototypePollution() {
     const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
       Array.prototype[Symbol.iterator] = () => {

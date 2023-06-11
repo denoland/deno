@@ -117,13 +117,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(
-    deno_cli_tsc,
-    ops_fn = deno_ops,
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
-  );
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -780,9 +774,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           .unwrap(),
       ));
     },
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
   );
 
   let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
@@ -848,6 +839,7 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
+  use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use std::fs;
 
@@ -891,7 +883,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &mut loader, Default::default())
       .await;
@@ -917,7 +909,7 @@ mod tests {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &mut loader, Default::default())
       .await;

@@ -162,17 +162,8 @@ verify on GitHub that everything looks correct.
 
 - [ ] Publish the release on Github
 
-- [ ] Run the
-      https://github.com/denoland/dotcom/actions/workflows/update_versions.yml
-      workflow.
-  - [ ] This should open a PR. Review and merge it.
-
-  <details>
-     <summary>Failure Steps</summary>
-
-  1. Update https://github.com/denoland/dotcom/blob/main/versions.json manually.
-  2. Open a PR and merge.
-  </details>
+- [ ] Update https://github.com/denoland/dotcom/blob/main/versions.json, open a
+      PR and merge.
 
 - [ ] Push a new tag to [`manual`](https://github.com/denoland/manual). The tag
       must match the CLI tag; you don't need to create dedicated commit for that

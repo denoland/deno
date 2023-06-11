@@ -5,11 +5,13 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 32;
+const cacheVersion = 38;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const windowsRunner = "windows-2022";
+  const windowsXlRunner = "windows-2022-xl";
 
   return {
     ubuntuXl:
@@ -17,19 +19,23 @@ const Runners = (() => {
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
     macos: "macos-12",
-    windows: "windows-2022",
+    windows: windowsRunner,
+    windowsXl:
+      `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
   };
 })();
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
+# Remove older clang before we install
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
 
 # Install clang-15, lld-15, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
@@ -40,6 +46,8 @@ sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -77,6 +85,7 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
@@ -316,7 +325,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.windows,
+            os: Runners.windowsXl,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -461,6 +470,7 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
+            "which dpkg && dpkg -l",
             // Deno is installed when linting.
             'if [ "${{ matrix.job }}" == "lint" ]',
             "then",
@@ -558,7 +568,12 @@ const ci = {
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -570,7 +585,12 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",
