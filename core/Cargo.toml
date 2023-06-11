@@ -50,3 +50,4 @@ path = "examples/http_bench_json_ops/main.rs"
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 deno_ast.workspace = true
+deno_core = { workspace = true, features = ["force_include_js_sources"] }

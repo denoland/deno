@@ -180,7 +180,7 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
-        #[cfg(any(not(any($($exclude_js_sources_cfg)?)), test))]
+        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
         ext.esm(
           $crate::include_js_files!( $name $( $( dir $dir_esm , )? $( $esm , )* )? ),
         );
@@ -193,7 +193,7 @@ macro_rules! extension {
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
-        #[cfg(any(not(any($($exclude_js_sources_cfg)?)), test))]
+        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
         ext.js(
           $crate::include_js_files!( $name $( $( dir $dir_js , )? $( $js , )* )? ),
         );
