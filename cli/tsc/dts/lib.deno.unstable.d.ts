@@ -2120,7 +2120,7 @@ declare namespace Deno {
      *
      * ```ts
      * const db = await Deno.openKv();
-     * await db.enqueue("bar", { keysIfUndelivered: ["foo", "bar"] });
+     * await db.enqueue("bar", { keysIfUndelivered: [["foo", "bar"]] });
      * ```
      */
     enqueue(
@@ -2134,13 +2134,6 @@ declare namespace Deno {
      * callback is invoked on every dequeued value. A failed callback
      * invocation is automatically retried multiple times until it succeeds
      * or until the maximum number of retries is reached.
-     *
-     * ```ts
-     * const db = await Deno.openKv();
-     * db.queueListen((msg: unknown) => {
-     *   dequeuedMsg = msg;
-     * });
-     * ```
      *
      * ```ts
      * const db = await Deno.openKv();
