@@ -10,7 +10,7 @@ try {
   isCI = true;
 }
 
-function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
+function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
     // https://github.com/denoland/deno/issues/18363
@@ -19,11 +19,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
       const db: Deno.Kv = await Deno.openKv(
         ":memory:",
       );
-      try {
-        await fn(db);
-      } finally {
-        await db.close();
-      }
+      await fn(db);
     },
   });
 }
@@ -38,18 +34,23 @@ async function collect<T>(
   return entries;
 }
 
-dbTest("queue with undelivered", async (db) => {
-  db.queueListen((_msg) => {
+queueTest("queue with undelivered", async (db) => {
+  const listener = db.queueListen((_msg) => {
     throw new TypeError("dequeue error");
   });
-  await db.enqueue("test", {
-    keysIfUndelivered: [["queue_failed", "a"], ["queue_failed", "b"]],
-  });
-  await sleep(100000);
-  const undelivered = await collect(db.list({ prefix: ["queue_failed"] }));
-  assertEquals(undelivered.length, 2);
-  assertEquals(undelivered[0].key, ["queue_failed", "a"]);
-  assertEquals(undelivered[0].value, "test");
-  assertEquals(undelivered[1].key, ["queue_failed", "b"]);
-  assertEquals(undelivered[1].value, "test");
+  try {
+    await db.enqueue("test", {
+      keysIfUndelivered: [["queue_failed", "a"], ["queue_failed", "b"]],
+    });
+    await sleep(100000);
+    const undelivered = await collect(db.list({ prefix: ["queue_failed"] }));
+    assertEquals(undelivered.length, 2);
+    assertEquals(undelivered[0].key, ["queue_failed", "a"]);
+    assertEquals(undelivered[0].value, "test");
+    assertEquals(undelivered[1].key, ["queue_failed", "b"]);
+    assertEquals(undelivered[1].value, "test");
+  } finally {
+    db.close();
+    await listener;
+  }
 });
