@@ -1354,11 +1354,11 @@ dbTest("queue mixed types", async (db) => {
     dequeuedMessage = msg;
     promise.resolve();
   });
-  for (const { _name, value } of VALUE_CASES) {
+  for (const item of VALUE_CASES) {
     promise = deferred();
-    await db.enqueue(value);
+    await db.enqueue(item.value);
     await promise;
-    assertEquals(dequeuedMessage, value);
+    assertEquals(dequeuedMessage, item.value);
   }
 });
 
