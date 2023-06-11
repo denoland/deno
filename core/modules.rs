@@ -2441,6 +2441,9 @@ import "/a.js";
       }
     }
 
+    dbg!(cfg!(feature = "exclude_js_sources"));
+    dbg!(cfg!(feature = "force_include_js_sources"));
+
     let loader = Rc::new(DynImportCircularLoader::default());
     let mut runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(loader),
