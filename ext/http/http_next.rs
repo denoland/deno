@@ -16,6 +16,7 @@ use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
+use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
@@ -383,7 +384,7 @@ pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
   let name = HeaderName::from_bytes(name.as_bytes()).unwrap();
   // SAFETY: These are valid latin-1 strings
   let value =
-    unsafe { HeaderValue::from_maybe_shared_unchecked(value).unwrap() };
+    unsafe { HeaderValue::from_maybe_shared_unchecked(Bytes::copy_from_slice(value.as_bytes())) };
   resp_headers.append(name, value);
 }
 
@@ -414,7 +415,7 @@ fn op_http_set_response_headers(
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
     // SAFETY: These are valid latin-1 strings
     let header_value =
-      unsafe { HeaderValue::from_maybe_shared_unchecked(&v8_value).unwrap() };
+      unsafe { HeaderValue::from_maybe_shared_unchecked(v8_value) };
     resp_headers.append(header_name, header_value);
   }
 }
@@ -431,7 +432,7 @@ pub fn op_http_set_response_trailers(
     let name = HeaderName::from_bytes(&name).unwrap();
     // SAFETY: These are valid latin-1 strings
     let value =
-      unsafe { HeaderValue::from_maybe_shared_unchecked(&value).unwrap() };
+      unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
     trailer_map.append(name, value);
   }
   *http.trailers().borrow_mut() = Some(trailer_map);
