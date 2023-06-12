@@ -630,7 +630,7 @@ Deno.test("[node/http] HTTPS server", async () => {
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
   }, (_req, res) => {
     res.end("success!");
-  })
+  });
   server.listen(() => {
     // deno-lint-ignore no-explicit-any
     fetch(`https://localhost:${(server.address() as any).port}`, {
