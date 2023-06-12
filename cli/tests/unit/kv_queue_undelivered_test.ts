@@ -35,7 +35,7 @@ async function collect<T>(
 }
 
 queueTest("queue with undelivered", async (db) => {
-  const listener = db.queueListen((_msg) => {
+  const listener = db.listenQueue((_msg) => {
     throw new TypeError("dequeue error");
   });
   try {

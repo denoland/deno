@@ -2097,7 +2097,7 @@ declare namespace Deno {
 
     /**
      * Add a value into the database queue to be delivered to the queue
-     * listener via {@linkcode Deno.Kv.queueListen}.
+     * listener via {@linkcode Deno.Kv.listenQueue}.
      *
      * ```ts
      * const db = await Deno.openKv();
@@ -2137,12 +2137,12 @@ declare namespace Deno {
      *
      * ```ts
      * const db = await Deno.openKv();
-     * db.queueListen(async (msg: unknown) => {
+     * db.listenQueue(async (msg: unknown) => {
      *   await db.set(["foo"], msg);
      * });
      * ```
      */
-    queueListen(
+    listenQueue(
       handler: (value: unknown) => Promise<void> | void,
     ): Promise<void>;
 

@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::rc::Weak;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -258,7 +259,7 @@ impl SqliteDb {
 }
 
 pub struct DequeuedMessage {
-  conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+  conn: Weak<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
   id: String,
   payload: Option<Vec<u8>>,
   waker_tx: mpsc::Sender<()>,
@@ -268,8 +269,10 @@ pub struct DequeuedMessage {
 #[async_trait(?Send)]
 impl QueueMessageHandle for DequeuedMessage {
   async fn finish(&self, success: bool) -> Result<(), AnyError> {
+    let Some(conn) = self.conn.upgrade() else {
+      return Ok(());
+    };
     let id = self.id.clone();
-    let conn = self.conn.clone();
     let requeued = SqliteDb::run_tx(conn, move |tx| {
       let requeued = {
         if success {
@@ -350,7 +353,7 @@ impl SqliteQueue {
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
 
     Ok(DequeuedMessage {
-      conn: self.conn.clone(),
+      conn: Rc::downgrade(&self.conn),
       id,
       payload: Some(payload),
       waker_tx: self.waker_tx.clone(),

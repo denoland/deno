@@ -35,6 +35,9 @@ function validateQueueDelay(delay: number) {
   if (delay > millisecondsInOneWeek) {
     throw new TypeError("delay cannot be greater than one week");
   }
+  if (isNaN(delay)) {
+    throw new TypeError("delay cannot be NaN");
+  }
 }
 
 interface RawKvEntry {
@@ -244,7 +247,7 @@ class Kv {
     return { ok: true, versionstamp };
   }
 
-  async queueListen(
+  async listenQueue(
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
     while (!this.#closed) {
