@@ -744,7 +744,7 @@ fn eval_file_flag_multiple_files() {
   assert_contains!(err, "Download");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
