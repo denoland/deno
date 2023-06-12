@@ -680,6 +680,15 @@ function serveHttpOn(context, callback) {
   let currentPromise = null;
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
+  const promiseErrorHandler = (error) => {
+    // Abnormal exit
+    console.error(
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
+    context.close();
+  };
+
   // Run the server
   const finished = (async () => {
     const rid = context.serverRid;
@@ -689,14 +698,7 @@ function serveHttpOn(context, callback) {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
-          PromisePrototypeCatch(callback(req), (error) => {
-            // Abnormal exit
-            console.error(
-              "Terminating Deno.serve loop due to unexpected error",
-              error,
-            );
-            context.close();
-          });
+          PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -713,14 +715,7 @@ function serveHttpOn(context, callback) {
       if (req === 0xffffffff) {
         break;
       }
-      PromisePrototypeCatch(callback(req), (error) => {
-        // Abnormal exit
-        console.error(
-          "Terminating Deno.serve loop due to unexpected error",
-          error,
-        );
-        context.close();
-      });
+      PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
     for (const streamRid of new SafeSetIterator(context.responseBodies)) {

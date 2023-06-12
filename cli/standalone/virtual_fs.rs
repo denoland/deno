@@ -850,9 +850,9 @@ mod test {
     let temp_dir = TempDir::new();
     // we canonicalize the temp directory because the vfs builder
     // will canonicalize the root path
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
-    let src_path = temp_dir_path.join("src");
-    temp_dir.create_dir_all(&src_path);
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_file(&src_path.join("a.txt"), "data".into())
@@ -922,19 +922,19 @@ mod test {
   #[test]
   fn test_include_dir_recursive() {
     let temp_dir = TempDir::new();
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
+    let temp_dir_path = temp_dir.path().canonicalize();
     temp_dir.create_dir_all("src/nested/sub_dir");
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
-      &temp_dir_path.join("src/nested/sub_dir"),
-      &temp_dir_path.join("src/sub_dir_link"),
+      temp_dir_path.join("src/nested/sub_dir").as_path(),
+      temp_dir_path.join("src/sub_dir_link").as_path(),
     )
     .unwrap();
     temp_dir.write("src/nested/sub_dir/c.txt", "c");
 
     // build and create the virtual fs
-    let src_path = temp_dir_path.join("src");
+    let src_path = temp_dir_path.join("src").to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder.add_dir_recursive(&src_path).unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
@@ -983,12 +983,12 @@ mod test {
     let file = std::fs::File::open(&virtual_fs_file).unwrap();
     let dest_path = temp_dir.path().join("dest");
     (
-      dest_path.clone(),
+      dest_path.to_path_buf(),
       FileBackedVfs::new(
         file,
         VfsRoot {
           dir: root_dir,
-          root_path: dest_path,
+          root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
       ),
@@ -998,9 +998,9 @@ mod test {
   #[test]
   fn circular_symlink() {
     let temp_dir = TempDir::new();
-    let temp_dir_path = canonicalize_path(temp_dir.path()).unwrap();
-    let src_path = temp_dir_path.join("src");
-    temp_dir.create_dir_all(&src_path);
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new(src_path.clone()).unwrap();
     builder
       .add_symlink(&src_path.join("a.txt"), &src_path.join("b.txt"))
@@ -1033,11 +1033,11 @@ mod test {
   #[tokio::test]
   async fn test_open_file() {
     let temp_dir = TempDir::new();
-    let temp_path = canonicalize_path(temp_dir.path()).unwrap();
+    let temp_path = temp_dir.path().canonicalize();
     let mut builder = VfsBuilder::new(temp_path.to_path_buf()).unwrap();
     builder
       .add_file(
-        &temp_path.join("a.txt"),
+        temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
       )
       .unwrap();

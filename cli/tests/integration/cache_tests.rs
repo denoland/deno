@@ -61,13 +61,11 @@ fn relative_home_dir() {
   use test_util as util;
   use test_util::TempDir;
 
-  let deno_dir = TempDir::new_in(&util::testdata_path());
-  let path = deno_dir.path().strip_prefix(util::testdata_path()).unwrap();
-
+  let deno_dir = TempDir::new();
   let mut deno_cmd = util::deno_cmd();
   let output = deno_cmd
     .current_dir(util::testdata_path())
-    .env("XDG_CACHE_HOME", path)
+    .env("XDG_CACHE_HOME", deno_dir.path())
     .env_remove("HOME")
     .env_remove("DENO_DIR")
     .arg("cache")
