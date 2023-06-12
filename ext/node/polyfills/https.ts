@@ -42,8 +42,12 @@ export class Server extends HttpServer {
 
   _additionalServeOptions() {
     return {
-      cert: this._cert instanceof Buffer ? this._cert.toString() : this._cert,
-      key: this._key instanceof Buffer ? this._key.toString() : this._key,
+      cert: this._opts.cert instanceof Buffer
+        ? this._opts.cert.toString()
+        : this._opts.cert,
+      key: this._opts.key instanceof Buffer
+        ? this._opts.key.toString()
+        : this._opts.key,
     };
   }
 }
