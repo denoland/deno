@@ -178,13 +178,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
             PathBuf::from(coverage_dir).canonicalize()?,
           );
         }
-        let cli_options = CliOptions::from_flags(flags)?;
-        let test_options = cli_options.resolve_test_options(test_flags)?;
 
-        if cli_options.watch_paths().is_some() {
-          tools::test::run_tests_with_watch(cli_options, test_options).await
+        if flags.watch.is_some() {
+          tools::test::run_tests_with_watch(flags, test_flags).await
         } else {
-          tools::test::run_tests(cli_options, test_options).await
+          tools::test::run_tests(flags, test_flags).await
         }
       })
     }

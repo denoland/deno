@@ -269,7 +269,11 @@ pub async fn watch_func2<O, F>(
   mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O: FnMut(Flags, UnboundedSender<Vec<PathBuf>>) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    UnboundedSender<Vec<PathBuf>>,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
   let (paths_to_watch_sender, mut paths_to_watch_receiver) =
@@ -306,6 +310,7 @@ where
     }
   }
 
+  let mut changed_paths = None;
   loop {
     // We may need to give the runtime a tick to settle, as cancellations may need to propagate
     // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
@@ -323,16 +328,20 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future =
-      error_handler(operation(flags.clone(), paths_to_watch_sender.clone())?);
+    let operation_future = error_handler(operation(
+      flags.clone(),
+      paths_to_watch_sender.clone(),
+      changed_paths.take(),
+    )?);
 
     // don't reload dependencies after the first run
     flags.reload = false;
 
     select! {
       _ = receiver_future => {},
-      _ = watcher_receiver.recv() => {
+      received_changed_paths = watcher_receiver.recv() => {
         print_after_restart();
+        changed_paths = received_changed_paths;
         continue;
       },
       _ = operation_future => {
@@ -354,8 +363,9 @@ where
     };
     select! {
       _ = receiver_future => {},
-      _ = watcher_receiver.recv() => {
+      received_changed_paths = watcher_receiver.recv() => {
         print_after_restart();
+        changed_paths = received_changed_paths;
         continue;
       },
     };

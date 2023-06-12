@@ -105,7 +105,7 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
       job_name: "Process".to_string(),
       clear_screen,
     },
-    move |flags, sender| {
+    move |flags, sender, _changed_paths| {
       Ok(async move {
         let factory = CliFactoryBuilder::new()
           .with_watcher(sender.clone())
