@@ -1258,14 +1258,14 @@ mod tests {
   #[test]
   fn read_config_file_absolute() {
     let path = test_util::testdata_path().join("module_graph/tsconfig.json");
-    let config_file = ConfigFile::read(&path).unwrap();
+    let config_file = ConfigFile::read(path.as_path()).unwrap();
     assert!(config_file.json.compiler_options.is_some());
   }
 
   #[test]
   fn include_config_path_on_error() {
     let path = test_util::testdata_path().join("404.json");
-    let error = ConfigFile::read(&path).err().unwrap();
+    let error = ConfigFile::read(path.as_path()).err().unwrap();
     assert!(error.to_string().contains("404.json"));
   }
 
@@ -1623,13 +1623,13 @@ mod tests {
   fn discover_from_success() {
     // testdata/fmt/deno.jsonc exists
     let testdata = test_util::testdata_path();
-    let c_md = testdata.join("fmt/with_config/subdir/c.md");
+    let c_md = testdata.join("fmt/with_config/subdir/c.md").to_path_buf();
     let mut checked = HashSet::new();
     let config_file = ConfigFile::discover_from(&c_md, &mut checked)
       .unwrap()
       .unwrap();
     assert!(checked.contains(c_md.parent().unwrap()));
-    assert!(!checked.contains(&testdata));
+    assert!(!checked.contains(testdata.as_path()));
     let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
     let expected_exclude = ModuleSpecifier::from_file_path(
       testdata.join("fmt/with_config/subdir/b.ts"),
@@ -1640,12 +1640,12 @@ mod tests {
     assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
 
     // Now add all ancestors of testdata to checked.
-    for a in testdata.ancestors() {
+    for a in testdata.as_path().ancestors() {
       checked.insert(a.to_path_buf());
     }
 
     // If we call discover_from again starting at testdata, we ought to get None.
-    assert!(ConfigFile::discover_from(&testdata, &mut checked)
+    assert!(ConfigFile::discover_from(testdata.as_path(), &mut checked)
       .unwrap()
       .is_none());
   }
@@ -1655,7 +1655,7 @@ mod tests {
     let testdata = test_util::testdata_path();
     let d = testdata.join("malformed_config/");
     let mut checked = HashSet::new();
-    let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
+    let err = ConfigFile::discover_from(d.as_path(), &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
   }
 

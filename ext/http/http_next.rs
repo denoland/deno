@@ -16,6 +16,7 @@ use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
+use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
@@ -376,12 +377,17 @@ pub fn op_http_read_request_body(
 }
 
 #[op(fast)]
-pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
+pub fn op_http_set_response_header(
+  slab_id: SlabId,
+  name: ByteString,
+  value: ByteString,
+) {
   let mut http = slab_get(slab_id);
   let resp_headers = http.response().headers_mut();
   // These are valid latin-1 strings
-  let name = HeaderName::from_bytes(name.as_bytes()).unwrap();
-  let value = HeaderValue::from_bytes(value.as_bytes()).unwrap();
+  let name = HeaderName::from_bytes(&name).unwrap();
+  // SAFETY: These are valid latin-1 strings
+  let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
   resp_headers.append(name, value);
 }
 
@@ -410,7 +416,9 @@ fn op_http_set_response_headers(
     let v8_name: ByteString = from_v8(scope, name).unwrap();
     let v8_value: ByteString = from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
-    let header_value = HeaderValue::from_bytes(&v8_value).unwrap();
+    // SAFETY: These are valid latin-1 strings
+    let header_value =
+      unsafe { HeaderValue::from_maybe_shared_unchecked(v8_value) };
     resp_headers.append(header_name, header_value);
   }
 }
@@ -425,7 +433,8 @@ pub fn op_http_set_response_trailers(
   for (name, value) in trailers {
     // These are valid latin-1 strings
     let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
+    // SAFETY: These are valid latin-1 strings
+    let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
     trailer_map.append(name, value);
   }
   *http.trailers().borrow_mut() = Some(trailer_map);

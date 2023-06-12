@@ -247,7 +247,7 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       Ok(Arc::new(FileFetcher::new(
-        HttpCache::new(&self.deno_dir()?.deps_folder_path()),
+        HttpCache::new(self.deno_dir()?.deps_folder_path()),
         self.options.cache_setting(),
         !self.options.no_remote(),
         self.http_client().clone(),
