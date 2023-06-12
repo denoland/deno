@@ -1169,8 +1169,25 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
-    &self.flags.watch
+  pub fn watch_paths(&self) -> Option<Vec<PathBuf>> {
+    if let Some(mut paths) = self.flags.watch.clone() {
+      if let Ok(Some(import_map_path)) = self
+        .resolve_import_map_specifier()
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths.push(import_map_path);
+      }
+      if let Some(specifier) = self.maybe_config_file_specifier() {
+        if specifier.scheme() == "file" {
+          if let Ok(path) = specifier.to_file_path() {
+            paths.push(path);
+          }
+        }
+      }
+      Some(paths)
+    } else {
+      None
+    }
   }
 }
 

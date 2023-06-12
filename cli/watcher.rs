@@ -11,6 +11,8 @@ use deno_core::ModuleSpecifier;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+// todo: remove this.
+
 pub struct FileWatcher {
   cli_options: Arc<CliOptions>,
   cjs_resolutions: Arc<CjsResolutionStore>,
