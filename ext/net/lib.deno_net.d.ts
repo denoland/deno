@@ -143,9 +143,9 @@ declare namespace Deno {
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
-    key?: string | Uint8Array;
+    key?: string;
     /** Cert chain in PEM format */
-    cert?: string | Uint8Array;
+    cert?: string;
     /** Path to a file containing a PEM formatted CA certificate. Requires
      * `--allow-read`.
      *

@@ -33,7 +33,7 @@ export class Server extends HttpServer {
       notImplemented("https.Server.opts.cert array type");
     }
 
-    if (opts.key && Array.isArray(opts.cert)) {
+    if (opts.key && Array.isArray(opts.key)) {
       notImplemented("https.Server.opts.key array type");
     }
 
@@ -42,12 +42,12 @@ export class Server extends HttpServer {
 
   _additionalServeOptions() {
     return {
-      cert: this._opts.cert instanceof Buffer
-        ? new Uint8Array(this._opts.cert.buffer)
-        : this._opts.cert,
-      key: this._opts.key instanceof Buffer
-        ? new Uint8Array(this._opts.key.buffer)
-        : this._opts.key,
+      cert: this._cert instanceof Buffer
+        ? this._cert.toString()
+        : this._cert,
+      key: this._key instanceof Buffer
+        ? this._key.toString()
+        : this._key,
     };
   }
 }
