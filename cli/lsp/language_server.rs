@@ -1566,6 +1566,7 @@ impl Inner {
       .collect();
 
     // if the current deno.json has changed, we need to reload it
+    let mut updated_import_map = false;
     if let Some(config_file) = self.maybe_config_file() {
       if changes.contains(&config_file.specifier) {
         if let Err(err) = self.update_config_file().await {
@@ -1574,6 +1575,10 @@ impl Inner {
         if let Err(err) = self.update_tsconfig().await {
           self.client.show_message(MessageType::WARNING, err);
         }
+        if let Err(err) = self.update_import_map().await {
+          self.client.show_message(MessageType::WARNING, err);
+        }
+        updated_import_map = true;
         touched = true;
       }
     }
@@ -1606,12 +1611,14 @@ impl Inner {
     }
     // if the current import map, or config file has changed, we need to
     // reload the import map
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if touched || changes.contains(import_map_uri) {
-        if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err);
+    if !updated_import_map {
+      if let Some(import_map_uri) = &self.maybe_import_map_uri {
+        if touched || changes.contains(import_map_uri) {
+          if let Err(err) = self.update_import_map().await {
+            self.client.show_message(MessageType::WARNING, err);
+          }
+          touched = true;
         }
-        touched = true;
       }
     }
     if touched {
