@@ -655,6 +655,10 @@ impl LspClient {
     self.write_response(id, result);
   }
 
+  pub fn did_change_watched_files(&mut self, params: Value) {
+    self.write_notification("workspace/didChangeWatchedFiles", params);
+  }
+
   fn get_latest_diagnostic_batch_index(&mut self) -> usize {
     let result = self
       .write_request("deno/internalLatestDiagnosticBatchIndex", json!(null));
