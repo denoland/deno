@@ -143,7 +143,6 @@ impl Op {
               is_async: #is_async,
               is_unstable: #is_unstable,
               is_v8: #is_v8,
-              force_registration: false,
               // TODO(mmastrac)
               arg_count: 0,
             }
@@ -206,7 +205,6 @@ impl Op {
             is_async: #is_async,
             is_unstable: #is_unstable,
             is_v8: #is_v8,
-            force_registration: false,
             arg_count: #arg_count as u8,
           }
         }

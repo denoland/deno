@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.110.0"
+version = "0.113.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ deno_tls.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade"] }
 http.workspace = true
 hyper = { workspace = true, features = ["backports"] }
+once_cell.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true

@@ -2,7 +2,6 @@
 
 use crate::args::ConfigFlag;
 use crate::args::Flags;
-use crate::util::fs::canonicalize_path;
 use crate::util::path::specifier_parent;
 use crate::util::path::specifier_to_file_path;
 
@@ -299,24 +298,19 @@ impl SerializedFilesConfig {
     self,
     config_file_specifier: &ModuleSpecifier,
   ) -> Result<FilesConfig, AnyError> {
-    let config_dir = specifier_parent(config_file_specifier);
+    let config_dir =
+      specifier_to_file_path(&specifier_parent(config_file_specifier))?;
     Ok(FilesConfig {
       include: self
         .include
         .into_iter()
-        .map(|p| {
-          let url = config_dir.join(&p)?;
-          specifier_to_file_path(&url)
-        })
-        .collect::<Result<Vec<_>, _>>()?,
+        .map(|p| config_dir.join(p))
+        .collect::<Vec<_>>(),
       exclude: self
         .exclude
         .into_iter()
-        .map(|p| {
-          let url = config_dir.join(&p)?;
-          specifier_to_file_path(&url)
-        })
-        .collect::<Result<Vec<_>, _>>()?,
+        .map(|p| config_dir.join(p))
+        .collect::<Vec<_>>(),
     })
   }
 
@@ -714,6 +708,24 @@ impl ConfigFile {
     start: &Path,
     checked: &mut HashSet<PathBuf>,
   ) -> Result<Option<ConfigFile>, AnyError> {
+    fn is_skippable_err(e: &AnyError) -> bool {
+      if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
+        use std::io::ErrorKind::*;
+        match ioerr.kind() {
+          InvalidInput | PermissionDenied | NotFound => {
+            // ok keep going
+            true
+          }
+          _ => {
+            const NOT_A_DIRECTORY: i32 = 20;
+            cfg!(unix) && ioerr.raw_os_error() == Some(NOT_A_DIRECTORY)
+          }
+        }
+      } else {
+        false
+      }
+    }
+
     /// Filenames that Deno will recognize when discovering config.
     const CONFIG_FILE_NAMES: [&str; 2] = ["deno.json", "deno.jsonc"];
 
@@ -734,20 +746,11 @@ impl ConfigFile {
               log::debug!("Config file found at '{}'", f.display());
               return Ok(Some(cf));
             }
+            Err(e) if is_skippable_err(&e) => {
+              // ok, keep going
+            }
             Err(e) => {
-              if let Some(ioerr) = e.downcast_ref::<std::io::Error>() {
-                use std::io::ErrorKind::*;
-                match ioerr.kind() {
-                  InvalidInput | PermissionDenied | NotFound => {
-                    // ok keep going
-                  }
-                  _ => {
-                    return Err(e); // Unknown error. Stop.
-                  }
-                }
-              } else {
-                return Err(e); // Parse error or something else. Stop.
-              }
+              return Err(e);
             }
           }
         }
@@ -760,56 +763,34 @@ impl ConfigFile {
   pub fn read(config_path: &Path) -> Result<Self, AnyError> {
     debug_assert!(config_path.is_absolute());
 
-    // perf: Check if the config file exists before canonicalizing path.
-    if !config_path.exists() {
-      return Err(
-        std::io::Error::new(
-          std::io::ErrorKind::InvalidInput,
-          format!(
-            "Could not find the config file: {}",
-            config_path.to_string_lossy()
-          ),
-        )
-        .into(),
-      );
-    }
-
-    let config_path = canonicalize_path(config_path).map_err(|_| {
-      std::io::Error::new(
-        std::io::ErrorKind::InvalidInput,
-        format!(
-          "Could not find the config file: {}",
-          config_path.to_string_lossy()
-        ),
-      )
-    })?;
-    let config_specifier = ModuleSpecifier::from_file_path(&config_path)
-      .map_err(|_| {
+    let specifier =
+      ModuleSpecifier::from_file_path(config_path).map_err(|_| {
         anyhow!(
-          "Could not convert path to specifier. Path: {}",
+          "Could not convert config file path to specifier. Path: {}",
           config_path.display()
         )
       })?;
-    Self::from_specifier(&config_specifier)
+    Self::from_specifier_and_path(specifier, config_path)
   }
 
-  pub fn from_specifier(specifier: &ModuleSpecifier) -> Result<Self, AnyError> {
-    let config_path = specifier_to_file_path(specifier)?;
-    let config_text = match std::fs::read_to_string(config_path) {
-      Ok(text) => text,
-      Err(err) => bail!(
-        "Error reading config file {}: {}",
-        specifier,
-        err.to_string()
-      ),
-    };
-    Self::new(&config_text, specifier)
+  pub fn from_specifier(specifier: ModuleSpecifier) -> Result<Self, AnyError> {
+    let config_path =
+      specifier_to_file_path(&specifier).with_context(|| {
+        format!("Invalid config file path for '{}'.", specifier)
+      })?;
+    Self::from_specifier_and_path(specifier, &config_path)
   }
 
-  pub fn new(
-    text: &str,
-    specifier: &ModuleSpecifier,
+  fn from_specifier_and_path(
+    specifier: ModuleSpecifier,
+    config_path: &Path,
   ) -> Result<Self, AnyError> {
+    let text = std::fs::read_to_string(config_path)
+      .with_context(|| format!("Error reading config file '{}'.", specifier))?;
+    Self::new(&text, specifier)
+  }
+
+  pub fn new(text: &str, specifier: ModuleSpecifier) -> Result<Self, AnyError> {
     let jsonc =
       match jsonc_parser::parse_to_serde_value(text, &Default::default()) {
         Ok(None) => json!({}),
@@ -830,10 +811,7 @@ impl ConfigFile {
       };
     let json: ConfigFileJson = serde_json::from_value(jsonc)?;
 
-    Ok(Self {
-      specifier: specifier.to_owned(),
-      json,
-    })
+    Ok(Self { specifier, json })
   }
 
   /// Returns true if the configuration indicates that JavaScript should be
@@ -1089,6 +1067,26 @@ impl ConfigFile {
       Ok(None)
     }
   }
+
+  pub fn resolve_lockfile_path(&self) -> Result<Option<PathBuf>, AnyError> {
+    match self.to_lock_config()? {
+      Some(LockConfig::Bool(lock)) if !lock => Ok(None),
+      Some(LockConfig::PathBuf(lock)) => Ok(Some(
+        self
+          .specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap()
+          .join(lock),
+      )),
+      _ => {
+        let mut path = self.specifier.to_file_path().unwrap();
+        path.set_file_name("deno.lock");
+        Ok(Some(path))
+      }
+    }
+  }
 }
 
 /// Represents the "default" type library that should be used when type
@@ -1260,14 +1258,14 @@ mod tests {
   #[test]
   fn read_config_file_absolute() {
     let path = test_util::testdata_path().join("module_graph/tsconfig.json");
-    let config_file = ConfigFile::read(&path).unwrap();
+    let config_file = ConfigFile::read(path.as_path()).unwrap();
     assert!(config_file.json.compiler_options.is_some());
   }
 
   #[test]
   fn include_config_path_on_error() {
     let path = test_util::testdata_path().join("404.json");
-    let error = ConfigFile::read(&path).err().unwrap();
+    let error = ConfigFile::read(path.as_path()).err().unwrap();
     assert!(error.to_string().contains("404.json"));
   }
 
@@ -1324,7 +1322,8 @@ mod tests {
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file =
+      ConfigFile::new(config_text, config_specifier.clone()).unwrap();
     let (options_value, ignored) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
     let options = options_value.as_object().unwrap();
@@ -1405,7 +1404,7 @@ mod tests {
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
     let lint_files = unpack_object(config_file.to_lint_config(), "lint").files;
     assert_eq!(
@@ -1446,7 +1445,7 @@ mod tests {
     }"#;
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
     let lint_include = unpack_object(config_file.to_lint_config(), "lint")
       .files
@@ -1489,9 +1488,9 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     let config_file_both =
-      ConfigFile::new(config_text_both, &config_specifier).unwrap();
+      ConfigFile::new(config_text_both, config_specifier.clone()).unwrap();
     let config_file_deprecated =
-      ConfigFile::new(config_text_deprecated, &config_specifier).unwrap();
+      ConfigFile::new(config_text_deprecated, config_specifier).unwrap();
 
     fn unpack_options(config_file: ConfigFile) -> FmtOptionsConfig {
       unpack_object(config_file.to_fmt_config(), "fmt").options
@@ -1509,7 +1508,7 @@ mod tests {
     let config_text = "";
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
   }
@@ -1519,7 +1518,7 @@ mod tests {
     let config_text = r#"//{"foo":"bar"}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
   }
@@ -1535,7 +1534,7 @@ mod tests {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
     let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
@@ -1561,7 +1560,7 @@ mod tests {
     }"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
 
     let (options_value, _) = config_file.to_compiler_options().unwrap();
     assert!(options_value.is_object());
@@ -1587,7 +1586,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: Unable to parse config file JSON "<config_path>" because of Unexpected token on line 1 column 6.
-    assert!(ConfigFile::new(config_text, &config_specifier).is_err());
+    assert!(ConfigFile::new(config_text, config_specifier).is_err());
   }
 
   #[test]
@@ -1596,7 +1595,7 @@ mod tests {
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
-    assert!(ConfigFile::new(config_text, &config_specifier).is_err());
+    assert!(ConfigFile::new(config_text, config_specifier).is_err());
   }
 
   #[test]
@@ -1624,13 +1623,13 @@ mod tests {
   fn discover_from_success() {
     // testdata/fmt/deno.jsonc exists
     let testdata = test_util::testdata_path();
-    let c_md = testdata.join("fmt/with_config/subdir/c.md");
+    let c_md = testdata.join("fmt/with_config/subdir/c.md").to_path_buf();
     let mut checked = HashSet::new();
     let config_file = ConfigFile::discover_from(&c_md, &mut checked)
       .unwrap()
       .unwrap();
     assert!(checked.contains(c_md.parent().unwrap()));
-    assert!(!checked.contains(&testdata));
+    assert!(!checked.contains(testdata.as_path()));
     let fmt_config = config_file.to_fmt_config().unwrap().unwrap();
     let expected_exclude = ModuleSpecifier::from_file_path(
       testdata.join("fmt/with_config/subdir/b.ts"),
@@ -1641,12 +1640,12 @@ mod tests {
     assert_eq!(fmt_config.files.exclude, vec![expected_exclude]);
 
     // Now add all ancestors of testdata to checked.
-    for a in testdata.ancestors() {
+    for a in testdata.as_path().ancestors() {
       checked.insert(a.to_path_buf());
     }
 
     // If we call discover_from again starting at testdata, we ought to get None.
-    assert!(ConfigFile::discover_from(&testdata, &mut checked)
+    assert!(ConfigFile::discover_from(testdata.as_path(), &mut checked)
       .unwrap()
       .is_none());
   }
@@ -1656,7 +1655,7 @@ mod tests {
     let testdata = test_util::testdata_path();
     let d = testdata.join("malformed_config/");
     let mut checked = HashSet::new();
-    let err = ConfigFile::discover_from(&d, &mut checked).unwrap_err();
+    let err = ConfigFile::discover_from(d.as_path(), &mut checked).unwrap_err();
     assert!(err.to_string().contains("Unable to parse config file"));
   }
 
@@ -1708,7 +1707,7 @@ mod tests {
   fn run_task_error_test(config_text: &str, expected_error: &str) {
     let config_dir = ModuleSpecifier::parse("file:///deno/").unwrap();
     let config_specifier = config_dir.join("tsconfig.json").unwrap();
-    let config_file = ConfigFile::new(config_text, &config_specifier).unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     assert_eq!(
       config_file
         .resolve_tasks_config()

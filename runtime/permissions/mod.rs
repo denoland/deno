@@ -13,6 +13,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
@@ -995,8 +996,8 @@ impl UnaryPermission<NetDescriptor> {
       .ok_or_else(|| uri_error("Missing host"))?
       .to_string();
     let display_host = match url.port() {
-      None => hostname.clone(),
-      Some(port) => format!("{hostname}:{port}"),
+      None => Cow::Borrowed(&hostname),
+      Some(port) => Cow::Owned(format!("{hostname}:{port}")),
     };
     let host = &(&hostname, url.port_or_known_default());
     let (result, prompted, is_allow_all) = self.query(Some(host)).check(
@@ -1875,6 +1876,15 @@ impl PermissionsContainer {
 }
 
 impl deno_node::NodePermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check_url(url, Some(api_name))
+  }
+
   #[inline(always)]
   fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)

@@ -2,6 +2,7 @@
 
 use crate::error::AnyError;
 use crate::gotham_state::GothamState;
+use crate::realm::ContextState;
 use crate::resources::ResourceTable;
 use crate::runtime::GetErrorClassFn;
 use crate::runtime::JsRuntimeState;
@@ -9,6 +10,7 @@ use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
 use futures::future::MaybeDone;
+use futures::task::AtomicWaker;
 use futures::Future;
 use futures::FutureExt;
 use pin_project::pin_project;
@@ -20,16 +22,15 @@ use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::sync::Arc;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
-pub type RealmIdx = u16;
 pub type PromiseId = i32;
 pub type OpId = u16;
 
 #[pin_project]
 pub struct OpCall {
-  realm_idx: RealmIdx,
   promise_id: PromiseId,
   op_id: OpId,
   /// Future is not necessarily Unpin, so we need to pin_project.
@@ -45,7 +46,6 @@ impl OpCall {
     fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
   ) -> Self {
     Self {
-      realm_idx: op_ctx.realm_idx,
       op_id: op_ctx.id,
       promise_id,
       fut: MaybeDone::Future(fut),
@@ -56,7 +56,6 @@ impl OpCall {
   /// `async { value }` or `futures::future::ready(value)`.
   pub fn ready(op_ctx: &OpCtx, promise_id: PromiseId, value: OpResult) -> Self {
     Self {
-      realm_idx: op_ctx.realm_idx,
       op_id: op_ctx.id,
       promise_id,
       fut: MaybeDone::Done(value),
@@ -65,13 +64,12 @@ impl OpCall {
 }
 
 impl Future for OpCall {
-  type Output = (RealmIdx, PromiseId, OpId, OpResult);
+  type Output = (PromiseId, OpId, OpResult);
 
   fn poll(
     self: std::pin::Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Self::Output> {
-    let realm_idx = self.realm_idx;
     let promise_id = self.promise_id;
     let op_id = self.op_id;
     let fut = &mut *self.project().fut;
@@ -88,7 +86,7 @@ impl Future for OpCall {
       MaybeDone::Future(f) => f.poll_unpin(cx),
       MaybeDone::Gone => std::task::Poll::Pending,
     }
-    .map(move |res| (realm_idx, promise_id, op_id, res))
+    .map(move |res| (promise_id, op_id, res))
   }
 }
 
@@ -145,14 +143,13 @@ pub struct OpCtx {
   pub decl: Rc<OpDecl>,
   pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
-  // Index of the current realm into `JsRuntimeState::known_realms`.
-  pub realm_idx: RealmIdx,
+  pub(crate) context_state: Rc<RefCell<ContextState>>,
 }
 
 impl OpCtx {
-  pub fn new(
+  pub(crate) fn new(
     id: OpId,
-    realm_idx: RealmIdx,
+    context_state: Rc<RefCell<ContextState>>,
     decl: Rc<OpDecl>,
     state: Rc<RefCell<OpState>>,
     runtime_state: Weak<RefCell<JsRuntimeState>>,
@@ -176,7 +173,7 @@ impl OpCtx {
       state,
       runtime_state,
       decl,
-      realm_idx,
+      context_state,
       fast_fn_c_info,
     }
   }
@@ -188,7 +185,8 @@ pub struct OpState {
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
-  gotham_state: GothamState,
+  pub(crate) gotham_state: GothamState,
+  pub waker: Arc<AtomicWaker>,
 }
 
 impl OpState {
@@ -199,7 +197,14 @@ impl OpState {
       gotham_state: Default::default(),
       last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
+      waker: Arc::new(AtomicWaker::new()),
     }
+  }
+
+  /// Clear all user-provided resources and state.
+  pub(crate) fn clear(&mut self) {
+    std::mem::take(&mut self.gotham_state);
+    std::mem::take(&mut self.resource_table);
   }
 }
 

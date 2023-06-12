@@ -32,9 +32,6 @@ use tokio::signal::windows::CtrlC;
 deno_core::extension!(
   deno_signal,
   ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[cfg(unix)]
@@ -113,6 +110,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGEMT" => Ok(7),
     "SIGFPE" => Ok(8),
@@ -193,6 +191,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGBUS" => Ok(7),
     "SIGFPE" => Ok(8),
@@ -269,6 +268,7 @@ pub fn signal_str_to_int(s: &str) -> Result<libc::c_int, AnyError> {
     "SIGQUIT" => Ok(3),
     "SIGILL" => Ok(4),
     "SIGTRAP" => Ok(5),
+    "SIGIOT" => Ok(6),
     "SIGABRT" => Ok(6),
     "SIGEMT" => Ok(7),
     "SIGFPE" => Ok(8),

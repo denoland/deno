@@ -231,7 +231,6 @@ pub fn check_for_upgrades(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -335,7 +334,7 @@ pub async fn upgrade(
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = latest_version.clone();
+        let latest_hash = &latest_version;
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
         let current = Version::parse_standard(crate::version::deno()).unwrap();

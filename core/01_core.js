@@ -14,6 +14,7 @@
     MapPrototypeHas,
     MapPrototypeSet,
     ObjectAssign,
+    ObjectDefineProperty,
     ObjectFreeze,
     ObjectFromEntries,
     ObjectKeys,
@@ -21,6 +22,7 @@
     PromiseReject,
     PromiseResolve,
     PromisePrototypeThen,
+    Proxy,
     RangeError,
     ReferenceError,
     ReflectHas,
@@ -561,6 +563,11 @@ for (let i = 0; i < 10; i++) {
           })`,
         );
     }
+    ObjectDefineProperty(fn, "name", {
+      value: opName,
+      configurable: false,
+      writable: false,
+    });
     return (ops[opName] = fn);
   }
 
@@ -756,19 +763,19 @@ for (let i = 0; i < 10; i++) {
     setUpAsyncStub(opName);
   }
 
-  function generateAsyncOpHandler(/* opNames... */) {
-    const fastOps = {};
-    for (const opName of new SafeArrayIterator(arguments)) {
-      if (ops[opName] === undefined) {
-        throw new Error(`Unknown or disabled op '${opName}'`);
-      }
-      if (asyncOps[opName] !== undefined) {
-        fastOps[opName] = setUpAsyncStub(opName);
-      } else {
-        fastOps[opName] = ops[opName];
-      }
-    }
-    return fastOps;
+  function ensureFastOps() {
+    return new Proxy({}, {
+      get(_target, opName) {
+        if (ops[opName] === undefined) {
+          throw new Error(`Unknown or disabled op '${opName}'`);
+        }
+        if (asyncOps[opName] !== undefined) {
+          return setUpAsyncStub(opName);
+        } else {
+          return ops[opName];
+        }
+      },
+    });
   }
 
   const {
@@ -781,22 +788,12 @@ for (let i = 0; i < 10; i++) {
     op_read_sync: readSync,
     op_write_sync: writeSync,
     op_shutdown: shutdown,
-  } = generateAsyncOpHandler(
-    "op_close",
-    "op_try_close",
-    "op_read",
-    "op_read_all",
-    "op_write",
-    "op_write_all",
-    "op_read_sync",
-    "op_write_sync",
-    "op_shutdown",
-  );
+  } = ensureFastOps();
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     asyncStub,
-    generateAsyncOpHandler,
+    ensureFastOps,
     opAsync,
     resources,
     metrics,

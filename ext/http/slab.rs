@@ -4,6 +4,7 @@ use crate::response_body::CompletionHandle;
 use crate::response_body::ResponseBytes;
 use deno_core::error::AnyError;
 use http::request::Parts;
+use http::HeaderMap;
 use hyper1::body::Incoming;
 use hyper1::upgrade::OnUpgrade;
 
@@ -11,6 +12,7 @@ use slab::Slab;
 use std::cell::RefCell;
 use std::cell::RefMut;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
@@ -23,6 +25,7 @@ pub struct HttpSlabRecord {
   // The response may get taken before we tear this down
   response: Option<Response>,
   promise: CompletionHandle,
+  trailers: Rc<RefCell<Option<HeaderMap>>>,
   been_dropped: bool,
   #[cfg(feature = "__zombie_http_tracking")]
   alive: bool,
@@ -81,11 +84,14 @@ fn slab_insert_raw(
 ) -> SlabId {
   let index = SLAB.with(|slab| {
     let mut slab = slab.borrow_mut();
+    let body = ResponseBytes::default();
+    let trailers = body.trailers();
     slab.insert(HttpSlabRecord {
       request_info,
       request_parts,
       request_body,
-      response: Some(Response::new(ResponseBytes::default())),
+      response: Some(Response::new(body)),
+      trailers,
       been_dropped: false,
       promise: CompletionHandle::default(),
       #[cfg(feature = "__zombie_http_tracking")]
@@ -180,6 +186,11 @@ impl SlabEntry {
   /// Get a mutable reference to the response.
   pub fn response(&mut self) -> &mut Response {
     self.self_mut().response.as_mut().unwrap()
+  }
+
+  /// Get a mutable reference to the trailers.
+  pub fn trailers(&mut self) -> &RefCell<Option<HeaderMap>> {
+    &self.self_mut().trailers
   }
 
   /// Take the response.

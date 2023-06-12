@@ -9,6 +9,7 @@ use clap::Command;
 use clap::ValueHint;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
@@ -253,6 +254,25 @@ pub enum TypeCheckMode {
   /// Only type-check local modules. The default value for "deno test" and
   /// several other subcommands.
   Local,
+}
+
+impl TypeCheckMode {
+  /// Gets if type checking will occur under this mode.
+  pub fn is_true(&self) -> bool {
+    match self {
+      Self::None => false,
+      Self::Local | Self::All => true,
+    }
+  }
+
+  /// Gets the corresponding module `GraphKind` that should be created
+  /// for the current `TypeCheckMode`.
+  pub fn as_graph_kind(&self) -> GraphKind {
+    match self.is_true() {
+      true => GraphKind::All,
+      false => GraphKind::CodeOnly,
+    }
+  }
 }
 
 impl Default for TypeCheckMode {
@@ -1360,7 +1380,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
     .arg(lock_arg())
     .arg(config_arg())
     .arg(import_map_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(
       Arg::new("json")
         .long("json")
@@ -1879,6 +1899,7 @@ Remote modules and multiple modules may also be specified:
     .arg(config_arg())
     .arg(import_map_arg())
     .arg(lock_arg())
+    .arg(node_modules_dir_arg())
     .arg(reload_arg())
     .arg(ca_file_arg())
 }
@@ -1892,7 +1913,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -2492,7 +2513,7 @@ fn no_npm_arg() -> Arg {
     .help("Do not resolve npm modules")
 }
 
-fn local_npm_arg() -> Arg {
+fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
     .num_args(0..=1)
@@ -2787,7 +2808,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -3043,6 +3064,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
@@ -3068,7 +3090,7 @@ fn compile_args_without_check_parse(
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3332,7 +3354,7 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn local_npm_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn node_modules_dir_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
 }
 

@@ -402,11 +402,19 @@ converters.DOMString = function (V, prefix, context, opts = {}) {
   return String(V);
 };
 
-// deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
+function isByteString(input) {
+  for (let i = 0; i < input.length; i++) {
+    if (StringPrototypeCharCodeAt(input, i) > 255) {
+      // If a character code is greater than 255, it means the string is not a byte string.
+      return false;
+    }
+  }
+  return true;
+}
+
 converters.ByteString = (V, prefix, context, opts) => {
   const x = converters.DOMString(V, prefix, context, opts);
-  if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+  if (!isByteString(x)) {
     throw makeException(
       TypeError,
       "is not a valid ByteString",

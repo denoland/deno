@@ -943,7 +943,7 @@ Deno.test(
     file.close();
 
     let httpConn: Deno.HttpConn;
-    const listener = Deno.listen({ port: 4503 });
+    const listener = Deno.listen({ port: 4501 });
     const promise = (async () => {
       const conn = await listener.accept();
       httpConn = Deno.serveHttp(conn);
@@ -952,7 +952,7 @@ Deno.test(
       const f = await Deno.open(tmpFile, { read: true });
       await respondWith(new Response(f.readable, { status: 200 }));
     })();
-    const resp = await fetch("http://127.0.0.1:4503/");
+    const resp = await fetch("http://127.0.0.1:4501/");
     const body = await resp.arrayBuffer();
     assertEquals(body.byteLength, 70 * 1024);
     await promise;

@@ -149,6 +149,7 @@ class URLSearchParams {
     if (url === null) {
       return;
     }
+    // deno-lint-ignore prefer-primordials
     url[_updateUrlSearch](this.toString());
   }
 

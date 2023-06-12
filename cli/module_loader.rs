@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
@@ -37,7 +36,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
-use deno_core::OpState;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::Resolver;
@@ -47,7 +45,6 @@ use deno_graph::Module;
 use deno_graph::Resolution;
 use deno_lockfile::Lockfile;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
@@ -55,7 +52,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -163,7 +159,7 @@ impl ModuleLoadPreparer {
       // validate the integrity of all the modules
       graph_lock_or_exit(graph, &mut lockfile);
       // update it with anything new
-      lockfile.write()?;
+      lockfile.write().context("Failed writing lockfile.")?;
     }
 
     // save the graph and get a reference to the new graph
@@ -172,7 +168,7 @@ impl ModuleLoadPreparer {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None
+    if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
       let graph = Arc::new(graph.segment(&roots));
@@ -496,9 +492,7 @@ impl ModuleLoader for CliModuleLoader {
               .shared
               .npm_module_loader
               .resolve_nv_ref(&module.nv_reference, permissions),
-            Some(Module::Node(module)) => {
-              deno_node::resolve_builtin_node_module(&module.module_name)
-            }
+            Some(Module::Node(module)) => Ok(module.specifier.clone()),
             Some(Module::Esm(module)) => Ok(module.specifier.clone()),
             Some(Module::Json(module)) => Ok(module.specifier.clone()),
             Some(Module::External(module)) => {
@@ -515,11 +509,6 @@ impl ModuleLoader for CliModuleLoader {
         }
         Some(Resolution::None) | None => {}
       }
-    }
-
-    // Built-in Node modules
-    if let Some(module_name) = specifier.strip_prefix("node:") {
-      return deno_node::resolve_builtin_node_module(module_name);
     }
 
     // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
@@ -574,7 +563,6 @@ impl ModuleLoader for CliModuleLoader {
 
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
@@ -802,8 +790,6 @@ impl NpmModuleLoader {
     if let NodeResolution::CommonJs(specifier) = &response {
       // remember that this was a common js resolution
       self.cjs_resolutions.insert(specifier.clone());
-    } else if let NodeResolution::BuiltIn(specifier) = &response {
-      return deno_node::resolve_builtin_node_module(specifier);
     }
     Ok(response.into_url())
   }
