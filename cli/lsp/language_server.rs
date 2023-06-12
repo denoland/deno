@@ -1192,11 +1192,6 @@ impl Inner {
       });
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
-
-      // refresh the import map specifier whenever the config file changes
-      if let Ok(import_map_specifier) = self.resolve_import_map_specifier() {
-        self.maybe_import_map_uri = import_map_specifier;
-      }
     }
 
     Ok(())
@@ -1582,6 +1577,7 @@ impl Inner {
         touched = true;
       }
     }
+
     if let Some(config_info) = self.maybe_config_file_info.as_mut() {
       if let Some(lockfile) = config_info.maybe_lockfile.as_ref() {
         let lockfile_path = lockfile.lock().filename.clone();
@@ -1600,6 +1596,7 @@ impl Inner {
         }
       }
     }
+
     if let Some(package_json) = &self.maybe_package_json {
       // always update the package json if the deno config changes
       if touched || changes.contains(&package_json.specifier()) {
@@ -1609,16 +1606,21 @@ impl Inner {
         touched = true;
       }
     }
+
     // if the current import map, or config file has changed, we need to
     // reload the import map
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if touched || changes.contains(import_map_uri) {
-        if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let import_map_changed = self
+      .maybe_import_map_uri
+      .as_ref()
+      .map(|uri| changes.contains(uri))
+      .unwrap_or(false);
+    if touched || import_map_changed {
+      if let Err(err) = self.update_import_map().await {
+        self.client.show_message(MessageType::WARNING, err);
       }
+      touched = true;
     }
+
     if touched {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config();
