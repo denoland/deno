@@ -8,6 +8,7 @@ use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -84,7 +85,7 @@ impl CacheMetadata {
   }
 
   fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if specifier.scheme() == "file" || specifier.scheme() == "npm" {
+    if matches!(specifier.scheme(), "file" | "npm" | "node") {
       return None;
     }
     let cache_filename = self.cache.get_cache_filename(specifier)?;
@@ -97,7 +98,7 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_location(&mut self, location: &Path) {
+  pub fn set_location(&mut self, location: PathBuf) {
     self.cache = HttpCache::new(location);
     self.metadata.lock().clear();
   }

@@ -9,13 +9,19 @@ export {
 export { fromFileUrl } from "../test_util/std/path/mod.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
-const [libPrefix, libSuffix] = {
+export const [libPrefix, libSuffix] = {
   darwin: ["lib", "dylib"],
   linux: ["lib", "so"],
   windows: ["", "dll"],
 }[Deno.build.os];
 
+const ops = Deno[Deno.internal].core.ops;
+
 export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
-  return Deno[Deno.internal].core.ops.op_napi_open(specifier); // Internal, used in ext/node
+
+  // Internal, used in ext/node
+  return ops.op_napi_open(specifier, {
+    Buffer: {},
+  });
 }

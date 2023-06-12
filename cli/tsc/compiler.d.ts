@@ -2,7 +2,7 @@
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "./dts/typescript";
+import * as _ts from "./dts/typescript.d.ts";
 
 declare global {
   namespace ts {
@@ -10,9 +10,10 @@ declare global {
     var libMap: Map<string, string>;
     var base64encode: (host: ts.CompilerHost, input: string) => string;
     var normalizePath: (path: string) => string;
+
     interface SourceFile {
       version?: string;
-      fileName: string;
+      scriptSnapShot?: _ts.IScriptSnapshot;
     }
 
     interface CompilerHost {
@@ -26,15 +27,13 @@ declare global {
 
     var performance: Performance;
 
-    namespace deno {
-      function setIsNodeSourceFileCallback(
-        callback: (sourceFile: SourceFile) => boolean,
-      );
-      function setNodeBuiltInModuleNames(names: string[]);
-    }
+    function setLocalizedDiagnosticMessages(
+      messages: Record<string, string>,
+    ): void;
   }
 
   namespace ts {
+    // @ts-ignore allow using an export = here
     export = _ts;
   }
 
@@ -47,6 +46,8 @@ declare global {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
+    // deno-lint-ignore no-explicit-any
+    asyncOps: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
@@ -76,7 +77,7 @@ declare global {
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
-    | GetReferencesRequest
+    | FindReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
@@ -213,8 +214,8 @@ declare global {
     position: number;
   }
 
-  interface GetReferencesRequest extends BaseLanguageServerRequest {
-    method: "getReferences";
+  interface FindReferencesRequest extends BaseLanguageServerRequest {
+    method: "findReferences";
     specifier: string;
     position: number;
   }

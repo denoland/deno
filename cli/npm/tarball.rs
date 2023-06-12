@@ -7,16 +7,16 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_semver::npm::NpmPackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
 use super::cache::with_folder_sync_lock;
-use super::registry::NpmPackageVersionDistInfo;
-use super::semver::NpmVersion;
 
 pub fn verify_and_extract_tarball(
-  package: (&str, &NpmVersion),
+  package: &NpmPackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
@@ -29,7 +29,7 @@ pub fn verify_and_extract_tarball(
 }
 
 fn verify_tarball_integrity(
-  package: (&str, &NpmVersion),
+  package: &NpmPackageNv,
   data: &[u8],
   npm_integrity: &str,
 ) -> Result<(), AnyError> {
@@ -40,18 +40,16 @@ fn verify_tarball_integrity(
         "sha512" => &ring::digest::SHA512,
         "sha1" => &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
         hash_kind => bail!(
-          "Not implemented hash function for {}@{}: {}",
-          package.0,
-          package.1,
+          "Not implemented hash function for {}: {}",
+          package,
           hash_kind
         ),
       };
       (algo, checksum.to_lowercase())
     }
     None => bail!(
-      "Not implemented integrity kind for {}@{}: {}",
-      package.0,
-      package.1,
+      "Not implemented integrity kind for {}: {}",
+      package,
       npm_integrity
     ),
   };
@@ -62,9 +60,8 @@ fn verify_tarball_integrity(
   let tarball_checksum = base64::encode(digest.as_ref()).to_lowercase();
   if tarball_checksum != expected_checksum {
     bail!(
-      "Tarball checksum did not match what was provided by npm registry for {}@{}.\n\nExpected: {}\nActual: {}",
-      package.0,
-      package.1,
+      "Tarball checksum did not match what was provided by npm registry for {}.\n\nExpected: {}\nActual: {}",
+      package,
       expected_checksum,
       tarball_checksum,
     )
@@ -119,30 +116,32 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod test {
+  use deno_semver::Version;
+
   use super::*;
-  use crate::npm::semver::NpmVersion;
 
   #[test]
   pub fn test_verify_tarball() {
-    let package_name = "package".to_string();
-    let package_version = NpmVersion::parse("1.0.0").unwrap();
-    let package = (package_name.as_str(), &package_version);
+    let package = NpmPackageNv {
+      name: "package".to_string(),
+      version: Version::parse_from_npm("1.0.0").unwrap(),
+    };
     let actual_checksum =
       "z4phnx7vul3xvchq1m2ab9yg5aulvxxcg/spidns6c5h0ne8xyxysp+dgnkhfuwvy7kxvudbeoglodj6+sfapg==";
     assert_eq!(
-      verify_tarball_integrity(package, &Vec::new(), "test")
+      verify_tarball_integrity(&package, &Vec::new(), "test")
         .unwrap_err()
         .to_string(),
       "Not implemented integrity kind for package@1.0.0: test",
     );
     assert_eq!(
-      verify_tarball_integrity(package, &Vec::new(), "notimplemented-test")
+      verify_tarball_integrity(&package, &Vec::new(), "notimplemented-test")
         .unwrap_err()
         .to_string(),
       "Not implemented hash function for package@1.0.0: notimplemented",
     );
     assert_eq!(
-      verify_tarball_integrity(package, &Vec::new(), "sha1-test")
+      verify_tarball_integrity(&package, &Vec::new(), "sha1-test")
         .unwrap_err()
         .to_string(),
       concat!(
@@ -151,13 +150,13 @@ mod test {
       ),
     );
     assert_eq!(
-      verify_tarball_integrity(package, &Vec::new(), "sha512-test")
+      verify_tarball_integrity(&package, &Vec::new(), "sha512-test")
         .unwrap_err()
         .to_string(),
       format!("Tarball checksum did not match what was provided by npm registry for package@1.0.0.\n\nExpected: test\nActual: {actual_checksum}"),
     );
     assert!(verify_tarball_integrity(
-      package,
+      &package,
       &Vec::new(),
       &format!("sha512-{actual_checksum}")
     )

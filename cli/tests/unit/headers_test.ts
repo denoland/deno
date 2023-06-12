@@ -325,6 +325,21 @@ Deno.test(function headersInitMultiple() {
   ]);
 });
 
+Deno.test(function headerInitWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    new Headers([
+      ["X-Deno", "foo"],
+      ["X-Deno", "bar"],
+    ]);
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});
+
 Deno.test(function headersAppendMultiple() {
   const headers = new Headers([
     ["Set-Cookie", "foo=bar"],

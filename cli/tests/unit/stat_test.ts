@@ -298,7 +298,7 @@ Deno.test(
     const filename = tempDir + "/test.txt";
     Deno.writeFileSync(filename, data, { mode: 0o666 });
     const s = Deno.statSync(filename);
-    assert(s.dev === null);
+    assert(s.dev !== 0);
     assert(s.ino === null);
     assert(s.mode === null);
     assert(s.nlink === null);
@@ -307,6 +307,10 @@ Deno.test(
     assert(s.rdev === null);
     assert(s.blksize === null);
     assert(s.blocks === null);
+    assert(s.isBlockDevice === null);
+    assert(s.isCharDevice === null);
+    assert(s.isFifo === null);
+    assert(s.isSocket === null);
   },
 );
 
@@ -334,5 +338,9 @@ Deno.test(
     assert(s.rdev !== null);
     assert(s.blksize !== null);
     assert(s.blocks !== null);
+    assert(!s.isBlockDevice);
+    assert(!s.isCharDevice);
+    assert(!s.isFifo);
+    assert(!s.isSocket);
   },
 );

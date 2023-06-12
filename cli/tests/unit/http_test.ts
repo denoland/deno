@@ -14,6 +14,11 @@ import {
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
 
+const {
+  buildCaseInsensitiveCommaValueFinder,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
+
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
@@ -938,7 +943,7 @@ Deno.test(
     file.close();
 
     let httpConn: Deno.HttpConn;
-    const listener = Deno.listen({ port: 4503 });
+    const listener = Deno.listen({ port: 4501 });
     const promise = (async () => {
       const conn = await listener.accept();
       httpConn = Deno.serveHttp(conn);
@@ -947,7 +952,7 @@ Deno.test(
       const f = await Deno.open(tmpFile, { read: true });
       await respondWith(new Response(f.readable, { status: 200 }));
     })();
-    const resp = await fetch("http://127.0.0.1:4503/");
+    const resp = await fetch("http://127.0.0.1:4501/");
     const body = await resp.arrayBuffer();
     assertEquals(body.byteLength, 70 * 1024);
     await promise;
@@ -2080,6 +2085,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2142,6 +2148,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2610,6 +2617,30 @@ Deno.test({
   },
 });
 
+Deno.test("case insensitive comma value finder", async (t) => {
+  const cases = /** @type {[string, boolean][]} */ ([
+    ["websocket", true],
+    ["wEbSOcKET", true],
+    [",wEbSOcKET", true],
+    [",wEbSOcKET,", true],
+    [", wEbSOcKET  ,", true],
+    ["test, wEbSOcKET  ,", true],
+    ["test  ,\twEbSOcKET\t\t ,", true],
+    ["test  , wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKETs", false],
+    ["test, asdf,awebsocket,wEbSOcKETs", false],
+  ]);
+
+  const findValue = buildCaseInsensitiveCommaValueFinder("websocket");
+  for (const [input, expected] of cases) {
+    await t.step(input.toString(), () => {
+      const actual = findValue(input);
+      assertEquals(actual, expected);
+    });
+  }
+});
+
 async function httpServerWithErrorBody(
   listener: Deno.Listener,
   compression: boolean,
@@ -2732,6 +2763,39 @@ for (const compression of [true, false]) {
     },
   });
 }
+
+Deno.test({
+  name: "request signal is aborted when response errors",
+  permissions: { net: true },
+  async fn() {
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const ev = await httpConn.nextRequest();
+      const { request, respondWith } = ev!;
+
+      await delay(300);
+      await assertRejects(() => respondWith(new Response("Hello World")));
+      assert(request.signal.aborted);
+    })();
+
+    const abortController = new AbortController();
+
+    fetch("http://127.0.0.1:4501/", {
+      signal: abortController.signal,
+    }).catch(() => {
+      // ignore
+    });
+
+    await delay(100);
+    abortController.abort();
+    await promise;
+    httpConn!.close();
+  },
+});
 
 function chunkedBodyReader(h: Headers, r: BufReader): Deno.Reader {
   // Based on https://tools.ietf.org/html/rfc2616#section-19.4.6

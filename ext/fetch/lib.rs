@@ -3,14 +3,22 @@
 mod byte_stream;
 mod fs_fetch_handler;
 
-use data_url::DataUrl;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cmp::min;
+use std::convert::From;
+use std::path::Path;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
@@ -23,7 +31,6 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -31,6 +38,9 @@ use deno_core::ResourceId;
 use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
+use deno_tls::RootCertStoreProvider;
+
+use data_url::DataUrl;
 use http::header::CONTENT_LENGTH;
 use http::Uri;
 use reqwest::header::HeaderMap;
@@ -48,14 +58,6 @@ use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cmp::min;
-use std::convert::From;
-use std::path::Path;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::rc::Rc;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -64,24 +66,34 @@ pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
 
-use crate::byte_stream::MpscByteStream;
+pub use crate::byte_stream::MpscByteStream;
 
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub proxy: Option<Proxy>,
-  pub request_builder_hook: Option<fn(RequestBuilder) -> RequestBuilder>,
+  pub request_builder_hook:
+    Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
+}
+
+impl Options {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.root_cert_store_provider {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
 }
 
 impl Default for Options {
   fn default() -> Self {
     Self {
       user_agent: "".to_string(),
-      root_cert_store: None,
+      root_cert_store_provider: None,
       proxy: None,
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
@@ -91,45 +103,30 @@ impl Default for Options {
   }
 }
 
-pub fn init<FP>(options: Options) -> Extension
-where
-  FP: FetchPermissions + 'static,
-{
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_web", "deno_url", "deno_console"])
-    .js(include_js_files!(
-      prefix "deno:ext/fetch",
-      "01_fetch_util.js",
-      "20_headers.js",
-      "21_formdata.js",
-      "22_body.js",
-      "22_http_client.js",
-      "23_request.js",
-      "23_response.js",
-      "26_fetch.js",
-    ))
-    .ops(vec![
-      op_fetch::decl::<FP>(),
-      op_fetch_send::decl(),
-      op_fetch_custom_client::decl::<FP>(),
-    ])
-    .state(move |state| {
-      state.put::<Options>(options.clone());
-      state.put::<reqwest::Client>({
-        create_http_client(
-          options.user_agent.clone(),
-          options.root_cert_store.clone(),
-          vec![],
-          options.proxy.clone(),
-          options.unsafely_ignore_certificate_errors.clone(),
-          options.client_cert_chain_and_key.clone(),
-        )
-        .unwrap()
-      });
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_fetch,
+  deps = [ deno_webidl, deno_web, deno_url, deno_console ],
+  parameters = [FP: FetchPermissions],
+  ops = [
+    op_fetch<FP>,
+    op_fetch_send,
+    op_fetch_custom_client<FP>,
+  ],
+  esm = [
+    "20_headers.js",
+    "21_formdata.js",
+    "22_body.js",
+    "22_http_client.js",
+    "23_request.js",
+    "23_response.js",
+    "26_fetch.js"
+  ],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  },
+);
 
 pub type CancelableResponseFuture =
   Pin<Box<dyn Future<Output = CancelableResponseResult>>>;
@@ -189,9 +186,37 @@ pub fn get_declaration() -> PathBuf {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
-  request_rid: ResourceId,
-  request_body_rid: Option<ResourceId>,
-  cancel_handle_rid: Option<ResourceId>,
+  pub request_rid: ResourceId,
+  pub request_body_rid: Option<ResourceId>,
+  pub cancel_handle_rid: Option<ResourceId>,
+}
+
+pub fn get_or_create_client_from_state(
+  state: &mut OpState,
+) -> Result<reqwest::Client, AnyError> {
+  if let Some(client) = state.try_borrow::<reqwest::Client>() {
+    Ok(client.clone())
+  } else {
+    let options = state.borrow::<Options>();
+    let client = create_http_client(
+      &options.user_agent,
+      CreateHttpClientOptions {
+        root_cert_store: options.root_cert_store()?,
+        ca_certs: vec![],
+        proxy: options.proxy.clone(),
+        unsafely_ignore_certificate_errors: options
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
+        pool_max_idle_per_host: None,
+        pool_idle_timeout: None,
+        http1: true,
+        http2: true,
+      },
+    )?;
+    state.put::<reqwest::Client>(client.clone());
+    Ok(client)
+  }
 }
 
 #[op]
@@ -212,8 +237,7 @@ where
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
   } else {
-    let client = state.borrow::<reqwest::Client>();
-    client.clone()
+    get_or_create_client_from_state(state)?
   };
 
   let method = Method::from_bytes(&method)?;
@@ -286,7 +310,7 @@ where
           }
           Some(data) => {
             // If a body is passed, we use it, and don't return a body for streaming.
-            request = request.body(Vec::from(&*data));
+            request = request.body(data.to_vec());
             None
           }
         }
@@ -321,7 +345,8 @@ where
 
       let options = state.borrow::<Options>();
       if let Some(request_builder_hook) = options.request_builder_hook {
-        request = request_builder_hook(request);
+        request = request_builder_hook(request)
+          .map_err(|err| type_error(err.to_string()))?;
       }
 
       let cancel_handle = CancelHandle::new_rc();
@@ -383,12 +408,12 @@ where
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchResponse {
-  status: u16,
-  status_text: String,
-  headers: Vec<(ByteString, ByteString)>,
-  url: String,
-  response_rid: ResourceId,
-  content_length: Option<u64>,
+  pub status: u16,
+  pub status_text: String,
+  pub headers: Vec<(ByteString, ByteString)>,
+  pub url: String,
+  pub response_rid: ResourceId,
+  pub content_length: Option<u64>,
 }
 
 #[op]
@@ -445,8 +470,8 @@ pub async fn op_fetch_send(
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
-struct FetchRequestResource(
-  Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
+pub struct FetchRequestResource(
+  pub Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
 );
 
 impl Resource for FetchRequestResource {
@@ -455,7 +480,7 @@ impl Resource for FetchRequestResource {
   }
 }
 
-struct FetchCancelHandle(Rc<CancelHandle>);
+pub struct FetchCancelHandle(pub Rc<CancelHandle>);
 
 impl Resource for FetchCancelHandle {
   fn name(&self) -> Cow<str> {
@@ -468,8 +493,8 @@ impl Resource for FetchCancelHandle {
 }
 
 pub struct FetchRequestBodyResource {
-  body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
-  cancel: CancelHandle,
+  pub body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
+  pub cancel: CancelHandle,
 }
 
 impl Resource for FetchRequestBodyResource {
@@ -520,10 +545,10 @@ impl Resource for FetchRequestBodyResource {
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
-struct FetchResponseBodyResource {
-  reader: AsyncRefCell<Peekable<BytesStream>>,
-  cancel: CancelHandle,
-  size: Option<u64>,
+pub struct FetchResponseBodyResource {
+  pub reader: AsyncRefCell<Peekable<BytesStream>>,
+  pub cancel: CancelHandle,
+  pub size: Option<u64>,
 }
 
 impl Resource for FetchResponseBodyResource {
@@ -573,8 +598,8 @@ impl Resource for FetchResponseBodyResource {
   }
 }
 
-struct HttpClientResource {
-  client: Client,
+pub struct HttpClientResource {
+  pub client: Client,
 }
 
 impl Resource for HttpClientResource {
@@ -589,19 +614,36 @@ impl HttpClientResource {
   }
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolIdleTimeout {
+  State(bool),
+  Specify(u64),
+}
+
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateHttpClientOptions {
+pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
   proxy: Option<Proxy>,
   cert_chain: Option<String>,
   private_key: Option<String>,
+  pool_max_idle_per_host: Option<usize>,
+  pool_idle_timeout: Option<PoolIdleTimeout>,
+  #[serde(default = "default_true")]
+  http1: bool,
+  #[serde(default = "default_true")]
+  http2: bool,
+}
+
+fn default_true() -> bool {
+  true
 }
 
 #[op]
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
-  args: CreateHttpClientOptions,
+  args: CreateHttpClientArgs,
 ) -> Result<ResourceId, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -635,36 +677,82 @@ where
     .collect::<Vec<_>>();
 
   let client = create_http_client(
-    options.user_agent.clone(),
-    options.root_cert_store.clone(),
-    ca_certs,
-    args.proxy,
-    options.unsafely_ignore_certificate_errors.clone(),
-    client_cert_chain_and_key,
+    &options.user_agent,
+    CreateHttpClientOptions {
+      root_cert_store: options.root_cert_store()?,
+      ca_certs,
+      proxy: args.proxy,
+      unsafely_ignore_certificate_errors: options
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      client_cert_chain_and_key,
+      pool_max_idle_per_host: args.pool_max_idle_per_host,
+      pool_idle_timeout: args.pool_idle_timeout.and_then(
+        |timeout| match timeout {
+          PoolIdleTimeout::State(true) => None,
+          PoolIdleTimeout::State(false) => Some(None),
+          PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
+        },
+      ),
+      http1: args.http1,
+      http2: args.http2,
+    },
   )?;
 
   let rid = state.resource_table.add(HttpClientResource::new(client));
   Ok(rid)
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateHttpClientOptions {
+  pub root_cert_store: Option<RootCertStore>,
+  pub ca_certs: Vec<Vec<u8>>,
+  pub proxy: Option<Proxy>,
+  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
+  pub client_cert_chain_and_key: Option<(String, String)>,
+  pub pool_max_idle_per_host: Option<usize>,
+  pub pool_idle_timeout: Option<Option<u64>>,
+  pub http1: bool,
+  pub http2: bool,
+}
+
+impl Default for CreateHttpClientOptions {
+  fn default() -> Self {
+    CreateHttpClientOptions {
+      root_cert_store: None,
+      ca_certs: vec![],
+      proxy: None,
+      unsafely_ignore_certificate_errors: None,
+      client_cert_chain_and_key: None,
+      pool_max_idle_per_host: None,
+      pool_idle_timeout: None,
+      http1: true,
+      http2: true,
+    }
+  }
+}
+
 /// Create new instance of async reqwest::Client. This client supports
 /// proxies and doesn't follow redirects.
 pub fn create_http_client(
-  user_agent: String,
-  root_cert_store: Option<RootCertStore>,
-  ca_certs: Vec<Vec<u8>>,
-  proxy: Option<Proxy>,
-  unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  client_cert_chain_and_key: Option<(String, String)>,
+  user_agent: &str,
+  options: CreateHttpClientOptions,
 ) -> Result<Client, AnyError> {
   let mut tls_config = deno_tls::create_client_config(
-    root_cert_store,
-    ca_certs,
-    unsafely_ignore_certificate_errors,
-    client_cert_chain_and_key,
+    options.root_cert_store,
+    options.ca_certs,
+    options.unsafely_ignore_certificate_errors,
+    options.client_cert_chain_and_key,
   )?;
 
-  tls_config.alpn_protocols = vec!["h2".into(), "http/1.1".into()];
+  let mut alpn_protocols = vec![];
+  if options.http2 {
+    alpn_protocols.push("h2".into());
+  }
+  if options.http1 {
+    alpn_protocols.push("http/1.1".into());
+  }
+  tls_config.alpn_protocols = alpn_protocols;
 
   let mut headers = HeaderMap::new();
   headers.insert(USER_AGENT, user_agent.parse().unwrap());
@@ -673,7 +761,7 @@ pub fn create_http_client(
     .default_headers(headers)
     .use_preconfigured_tls(tls_config);
 
-  if let Some(proxy) = proxy {
+  if let Some(proxy) = options.proxy {
     let mut reqwest_proxy = reqwest::Proxy::all(&proxy.url)?;
     if let Some(basic_auth) = &proxy.basic_auth {
       reqwest_proxy =
@@ -682,6 +770,24 @@ pub fn create_http_client(
     builder = builder.proxy(reqwest_proxy);
   }
 
-  // unwrap here because it can only fail when native TLS is used.
-  Ok(builder.build().unwrap())
+  if let Some(pool_max_idle_per_host) = options.pool_max_idle_per_host {
+    builder = builder.pool_max_idle_per_host(pool_max_idle_per_host);
+  }
+
+  if let Some(pool_idle_timeout) = options.pool_idle_timeout {
+    builder = builder.pool_idle_timeout(
+      pool_idle_timeout.map(std::time::Duration::from_millis),
+    );
+  }
+
+  match (options.http1, options.http2) {
+    (true, false) => builder = builder.http1_only(),
+    (false, true) => builder = builder.http2_prior_knowledge(),
+    (true, true) => {}
+    (false, false) => {
+      return Err(type_error("Either `http1` or `http2` needs to be true"))
+    }
+  }
+
+  builder.build().map_err(|e| e.into())
 }

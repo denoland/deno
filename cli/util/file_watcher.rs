@@ -304,6 +304,13 @@ where
   }
 
   loop {
+    // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+    // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+    // start to fail, this may need to be increased.
+    for _ in 0..10 {
+      tokio::task::yield_now().await;
+    }
+
     let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
@@ -322,13 +329,13 @@ where
         continue;
       },
       _ = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
           "{} {} finished. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
         );
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 

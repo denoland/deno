@@ -8,8 +8,6 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
-use deno_core::Extension;
-use deno_core::ExtensionBuilder;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -18,53 +16,51 @@ use std::env;
 
 mod sys_info;
 
-fn init_ops(builder: &mut ExtensionBuilder) -> &mut ExtensionBuilder {
-  builder.ops(vec![
-    op_env::decl(),
-    op_exec_path::decl(),
-    op_exit::decl(),
-    op_delete_env::decl(),
-    op_get_env::decl(),
-    op_gid::decl(),
-    op_hostname::decl(),
-    op_loadavg::decl(),
-    op_network_interfaces::decl(),
-    op_os_release::decl(),
-    op_os_uptime::decl(),
-    op_node_unstable_os_uptime::decl(),
-    op_set_env::decl(),
-    op_set_exit_code::decl(),
-    op_system_memory_info::decl(),
-    op_uid::decl(),
-    op_runtime_memory_usage::decl(),
-  ])
-}
+deno_core::ops!(
+  deno_ops,
+  [
+    op_env,
+    op_exec_path,
+    op_exit,
+    op_delete_env,
+    op_get_env,
+    op_gid,
+    op_hostname,
+    op_loadavg,
+    op_network_interfaces,
+    op_os_release,
+    op_os_uptime,
+    op_node_unstable_os_uptime,
+    op_set_env,
+    op_set_exit_code,
+    op_system_memory_info,
+    op_uid,
+    op_runtime_memory_usage,
+  ]
+);
 
-pub fn init(exit_code: ExitCode) -> Extension {
-  let mut builder = Extension::builder("deno_os");
-  init_ops(&mut builder)
-    .state(move |state| {
-      state.put::<ExitCode>(exit_code.clone());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(
+  deno_os,
+  ops_fn = deno_ops,
+  options = {
+    exit_code: ExitCode,
+  },
+  state = |state, options| {
+    state.put::<ExitCode>(options.exit_code);
+  },
+);
 
-pub fn init_for_worker() -> Extension {
-  let mut builder = Extension::builder("deno_os_worker");
-  init_ops(&mut builder)
-    .middleware(|op| match op.name {
-      "op_exit" => noop_op::decl(),
-      "op_set_exit_code" => noop_op::decl(),
-      _ => op,
-    })
-    .build()
-}
-
-#[op]
-fn noop_op() -> Result<(), AnyError> {
-  Ok(())
-}
+deno_core::extension!(
+  deno_os_worker,
+  ops_fn = deno_ops,
+  middleware = |op| match op.name {
+    "op_exit" | "op_set_exit_code" => deno_core::OpDecl {
+      v8_fn_ptr: deno_core::op_void_sync::v8_fn_ptr as _,
+      ..op
+    },
+    _ => op,
+  },
+);
 
 #[op]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
@@ -83,10 +79,10 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 fn op_set_env(
   state: &mut OpState,
-  key: String,
-  value: String,
+  key: &str,
+  value: &str,
 ) -> Result<(), AnyError> {
-  state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
+  state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
     return Err(type_error("Key is an empty string."));
   }
@@ -327,7 +323,7 @@ fn rss() -> usize {
     }
     for n in chars {
       idx += 1;
-      if ('0'..='9').contains(&n) {
+      if n.is_ascii_digit() {
         out *= 10;
         out += n as usize - '0' as usize;
       } else {
@@ -337,6 +333,7 @@ fn rss() -> usize {
     (out, idx)
   }
 
+  #[allow(clippy::disallowed_methods)]
   let statm_content = if let Ok(c) = std::fs::read_to_string("/proc/self/statm")
   {
     c
@@ -383,6 +380,53 @@ fn rss() -> usize {
   task_info.resident_size as usize
 }
 
+#[cfg(target_os = "openbsd")]
+fn rss() -> usize {
+  // Uses OpenBSD's KERN_PROC_PID sysctl(2)
+  // to retrieve information about the current
+  // process, part of which is the RSS (p_vm_rssize)
+
+  // SAFETY: libc call (get PID of own process)
+  let pid = unsafe { libc::getpid() };
+  // SAFETY: libc call (get system page size)
+  let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+  // KERN_PROC_PID returns a struct libc::kinfo_proc
+  let mut kinfoproc = std::mem::MaybeUninit::<libc::kinfo_proc>::uninit();
+  let mut size = std::mem::size_of_val(&kinfoproc) as libc::size_t;
+  let mut mib = [
+    libc::CTL_KERN,
+    libc::KERN_PROC,
+    libc::KERN_PROC_PID,
+    pid,
+    // mib is an array of integers, size is of type size_t
+    // conversion is safe, because the size of a libc::kinfo_proc
+    // structure will not exceed i32::MAX
+    size.try_into().unwrap(),
+    1,
+  ];
+  // SAFETY: libc call, mib has been statically initialized,
+  // kinfoproc is a valid pointer to a libc::kinfo_proc struct
+  let res = unsafe {
+    libc::sysctl(
+      mib.as_mut_ptr(),
+      mib.len() as _,
+      kinfoproc.as_mut_ptr() as *mut libc::c_void,
+      &mut size,
+      std::ptr::null_mut(),
+      0,
+    )
+  };
+
+  if res == 0 {
+    // SAFETY: sysctl returns 0 on success and kinfoproc is initialized
+    // p_vm_rssize contains size in pages -> multiply with pagesize to
+    // get size in bytes.
+    pagesize * unsafe { (*kinfoproc.as_mut_ptr()).p_vm_rssize as usize }
+  } else {
+    0
+  }
+}
+
 #[cfg(windows)]
 fn rss() -> usize {
   use winapi::shared::minwindef::DWORD;
@@ -419,7 +463,6 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
 
 #[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  super::check_unstable(state, "Deno.osUptime");
   os_uptime(state)
 }
 

@@ -257,7 +257,7 @@ mod internal {
   use std::pin::Pin;
 
   impl<T> AsyncRefCell<T> {
-    /// Borrow the cell's contents synchronouslym without creating an
+    /// Borrow the cell's contents synchronously without creating an
     /// intermediate future. If the cell has already been borrowed and either
     /// the existing or the requested borrow is exclusive, this function returns
     /// `None`.

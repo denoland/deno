@@ -4,6 +4,7 @@ use serde::Deserializer;
 
 use serde_v8::utils::js_exec;
 use serde_v8::utils::v8_do;
+use serde_v8::BigInt;
 use serde_v8::ByteString;
 use serde_v8::Error;
 use serde_v8::U16String;
@@ -114,13 +115,13 @@ defail!(
   de_tuple_wrong_len_short,
   (u64, bool, ()),
   "[123, true]",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(2, 3))
 );
 defail!(
   de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(4, 3))
 );
 detest!(
   de_mathop,
@@ -264,6 +265,16 @@ fn de_buffers() {
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+
+  dedo("(new ArrayBuffer(4))", |scope, v| {
+    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[0x0, 0x0, 0x0, 0x0]);
+  });
+
+  dedo("(new ArrayBuffer(8, { maxByteLength: 16}))", |scope, v| {
+    let result: Result<ZeroCopyBuf, Error> = serde_v8::from_v8(scope, v);
+    matches!(result, Err(Error::ResizableBackingStoreNotSupported));
+  });
 }
 
 // Structs
@@ -407,7 +418,7 @@ detest!(
 );
 
 defail!(defail_struct, MathOp, "123", |e| e
-  == Err(Error::ExpectedObject));
+  == Err(Error::ExpectedObject("Number")));
 
 #[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {
@@ -565,4 +576,66 @@ detest!(
   f32,
   "BigInt(-1.7976931348623157e+308)",
   f32::NEG_INFINITY
+);
+
+// BigInt to BigInt
+detest!(
+  de_bigint_var_u8,
+  BigInt,
+  "255n",
+  num_bigint::BigInt::from(255u8).into()
+);
+detest!(
+  de_bigint_var_i8,
+  BigInt,
+  "-128n",
+  num_bigint::BigInt::from(-128i8).into()
+);
+detest!(
+  de_bigint_var_u16,
+  BigInt,
+  "65535n",
+  num_bigint::BigInt::from(65535u16).into()
+);
+detest!(
+  de_bigint_var_i16,
+  BigInt,
+  "-32768n",
+  num_bigint::BigInt::from(-32768i16).into()
+);
+detest!(
+  de_bigint_var_u32,
+  BigInt,
+  "4294967295n",
+  num_bigint::BigInt::from(4294967295u32).into()
+);
+detest!(
+  de_bigint_var_i32,
+  BigInt,
+  "-2147483648n",
+  num_bigint::BigInt::from(-2147483648i32).into()
+);
+detest!(
+  de_bigint_var_u64,
+  BigInt,
+  "18446744073709551615n",
+  num_bigint::BigInt::from(18446744073709551615u64).into()
+);
+detest!(
+  de_bigint_var_i64,
+  BigInt,
+  "-9223372036854775808n",
+  num_bigint::BigInt::from(-9223372036854775808i64).into()
+);
+detest!(
+  de_bigint_var_u128,
+  BigInt,
+  "340282366920938463463374607431768211455n",
+  num_bigint::BigInt::from(340282366920938463463374607431768211455u128).into()
+);
+detest!(
+  de_bigint_var_i128,
+  BigInt,
+  "-170141183460469231731687303715884105728n",
+  num_bigint::BigInt::from(-170141183460469231731687303715884105728i128).into()
 );

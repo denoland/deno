@@ -33,9 +33,9 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
-use regex::Regex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
@@ -66,8 +66,8 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 
 const REGISTRY_IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'", "/"];
 
-static REPLACEMENT_VARIABLE_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\$\{\{?(\w+)\}?\}").unwrap());
+static REPLACEMENT_VARIABLE_RE: Lazy<regex::Regex> =
+  lazy_regex::lazy_regex!(r"\$\{\{?(\w+)\}?\}");
 
 fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()
@@ -295,18 +295,20 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   }
   for registry in &config.registries {
     let (_, keys) = string_to_regex(&registry.schema, None)?;
-    let key_names: Vec<String> = keys.map_or_else(Vec::new, |keys| {
-      keys
-        .iter()
-        .filter_map(|k| {
-          if let StringOrNumber::String(s) = &k.name {
-            Some(s.clone())
-          } else {
-            None
-          }
-        })
-        .collect()
-    });
+    let key_names: Vec<String> = keys
+      .map(|keys| {
+        keys
+          .iter()
+          .filter_map(|k| {
+            if let StringOrNumber::String(s) = &k.name {
+              Some(s.clone())
+            } else {
+              None
+            }
+          })
+          .collect()
+      })
+      .unwrap_or_default();
 
     for key_name in &key_names {
       if !registry
@@ -424,16 +426,13 @@ impl Default for ModuleRegistry {
     // custom root.
     let dir = DenoDir::new(None).unwrap();
     let location = dir.registries_folder_path();
-    let http_client = HttpClient::new(None, None).unwrap();
-    Self::new(&location, http_client).unwrap()
+    let http_client = Arc::new(HttpClient::new(None, None));
+    Self::new(location, http_client)
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(
-    location: &Path,
-    http_client: HttpClient,
-  ) -> Result<Self, AnyError> {
+  pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
@@ -445,10 +444,10 @@ impl ModuleRegistry {
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
 
-    Ok(Self {
+    Self {
       origins: HashMap::new(),
       file_fetcher,
-    })
+    }
   }
 
   fn complete_literal(
@@ -664,18 +663,20 @@ impl ModuleRegistry {
               })
               .ok()?;
             let mut i = tokens.len();
-            let last_key_name =
-              StringOrNumber::String(tokens.iter().last().map_or_else(
-                || "".to_string(),
-                |t| {
+            let last_key_name = StringOrNumber::String(
+              tokens
+                .iter()
+                .last()
+                .map(|t| {
                   if let Token::Key(key) = t {
                     if let StringOrNumber::String(s) = &key.name {
                       return s.clone();
                     }
                   }
                   "".to_string()
-                },
-              ));
+                })
+                .unwrap_or_default(),
+            );
             loop {
               let matcher = Matcher::new(&tokens[..i], None)
                 .map_err(|e| {
@@ -988,7 +989,7 @@ impl ModuleRegistry {
       .origins
       .keys()
       .filter_map(|k| {
-        let mut origin = k.as_str().to_string();
+        let mut origin = k.to_string();
         if origin.ends_with('/') {
           origin.pop();
         }
@@ -1246,10 +1247,9 @@ mod tests {
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1308,10 +1308,9 @@ mod tests {
   async fn test_registry_completions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1532,10 +1531,9 @@ mod tests {
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1603,10 +1601,9 @@ mod tests {
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1655,10 +1652,9 @@ mod tests {
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1667,20 +1663,20 @@ mod tests {
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, HttpClient::new(None, None).unwrap())
-        .unwrap();
-    let result = module_registry.check_origin("https://deno.com").await;
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
-    assert!(err
-      .contains("https://deno.com/.well-known/deno-import-intellisense.json"));
+    assert!(err.contains(
+      "https://example.com/.well-known/deno-import-intellisense.json"
+    ));
 
     // because we are caching an empty file when we hit an error with import
     // detection when fetching the config file, we should have an error now that
     // indicates trying to parse an empty file.
-    let result = module_registry.check_origin("https://deno.com").await;
+    let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("EOF while parsing a value at line 1 column 0"));

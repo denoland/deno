@@ -2,9 +2,14 @@
 // This is not a real HTTP server. We read blindly one time into 'requestBuf',
 // then write this fixed 'responseBuf'. The point of this benchmark is to
 // exercise the event loop in a simple yet semi-realistic way.
-Deno.core.initializeAsyncOps();
 
-const { ops } = Deno.core;
+// deno-lint-ignore-file camelcase
+
+const { op_listen } = Deno.core.ops;
+const {
+  op_accept,
+  op_read_socket,
+} = Deno.core.ensureFastOps();
 
 const requestBuf = new Uint8Array(64 * 1024);
 const responseBuf = new Uint8Array(
@@ -13,24 +18,10 @@ const responseBuf = new Uint8Array(
     .map((c) => c.charCodeAt(0)),
 );
 
-/** Listens on 0.0.0.0:4570, returns rid. */
-function listen() {
-  return ops.op_listen();
-}
-
-/** Accepts a connection, returns rid. */
-function accept(serverRid) {
-  return ops.op_accept(serverRid);
-}
-
-function read(serverRid, buf) {
-  return ops.op_read_socket(serverRid, buf);
-}
-
 async function serve(rid) {
   try {
     while (true) {
-      await read(rid, requestBuf);
+      await op_read_socket(rid, requestBuf);
       if (!ops.op_try_write(rid, responseBuf)) {
         await Deno.core.writeAll(rid, responseBuf);
       }
@@ -42,11 +33,12 @@ async function serve(rid) {
 }
 
 async function main() {
-  const listenerRid = listen();
+  /** Listens on 0.0.0.0:4570, returns rid. */
+  const listenerRid = op_listen();
   Deno.core.print(`http_bench_ops listening on http://127.0.0.1:4570/\n`);
 
   while (true) {
-    const rid = await accept(listenerRid);
+    const rid = await op_accept(listenerRid);
     serve(rid);
   }
 }

@@ -6,27 +6,41 @@
 pub struct op_add_4;
 #[doc(hidden)]
 impl op_add_4 {
-    pub fn name() -> &'static str {
+    pub const fn name() -> &'static str {
         stringify!(op_add_4)
     }
-    pub fn v8_fn_ptr<'scope>() -> deno_core::v8::FunctionCallback {
-        use deno_core::v8::MapFnTo;
-        Self::v8_func.map_fn_to()
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    pub extern "C" fn v8_fn_ptr<'scope>(
+        info: *const deno_core::v8::FunctionCallbackInfo,
+    ) {
+        let info = unsafe { &*info };
+        let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            info,
+        );
+        let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+        Self::v8_func(scope, args, rv);
     }
-    pub fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl<'scope>() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr(),
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
-            fast_fn: Some(
-                Box::new(op_add_4_fast {
-                    _phantom: ::std::marker::PhantomData,
-                }),
-            ),
+            fast_fn: {
+                use deno_core::v8::fast_api::Type::*;
+                use deno_core::v8::fast_api::CType;
+                Some(
+                    deno_core::v8::fast_api::FastFunction::new(
+                        &[V8Value, Uint32, Uint32, Uint32, Uint32, CallbackOptions],
+                        CType::Uint32,
+                        op_add_4_fast_fn as *const ::std::ffi::c_void,
+                    ),
+                )
+            },
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            argc: 4usize,
+            arg_count: 4usize as u8,
         }
     }
     #[inline]
@@ -117,22 +131,7 @@ impl op_add_4 {
         };
     }
 }
-struct op_add_4_fast {
-    _phantom: ::std::marker::PhantomData<()>,
-}
-impl<'scope> deno_core::v8::fast_api::FastFunction for op_add_4_fast {
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_add_4_fast_fn as *const ::std::ffi::c_void
-    }
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, Uint32, Uint32, Uint32, Uint32, CallbackOptions]
-    }
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Uint32
-    }
-}
+#[allow(clippy::too_many_arguments)]
 fn op_add_4_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     x1: u32,
