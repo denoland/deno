@@ -52,7 +52,7 @@ export class Server extends HttpServer {
   }
 }
 export function createServer(opts, requestListener?: ServerHandler) {
-  return Server(opts, requestListener);
+  return new Server(opts, requestListener);
 }
 
 interface HttpsRequestOptions extends RequestOptions {
