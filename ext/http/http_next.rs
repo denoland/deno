@@ -381,7 +381,9 @@ pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
   let resp_headers = http.response().headers_mut();
   // These are valid latin-1 strings
   let name = HeaderName::from_bytes(name.as_bytes()).unwrap();
-  let value = HeaderValue::from_bytes(value.as_bytes()).unwrap();
+  // SAFETY: These are valid latin-1 strings
+  let value =
+    unsafe { HeaderValue::from_maybe_shared_unchecked(value).unwrap() };
   resp_headers.append(name, value);
 }
 
@@ -410,7 +412,9 @@ fn op_http_set_response_headers(
     let v8_name: ByteString = from_v8(scope, name).unwrap();
     let v8_value: ByteString = from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
-    let header_value = HeaderValue::from_bytes(&v8_value).unwrap();
+    // SAFETY: These are valid latin-1 strings
+    let header_value =
+      unsafe { HeaderValue::from_maybe_shared_unchecked(&v8_value).unwrap() };
     resp_headers.append(header_name, header_value);
   }
 }
@@ -425,7 +429,9 @@ pub fn op_http_set_response_trailers(
   for (name, value) in trailers {
     // These are valid latin-1 strings
     let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
+    // SAFETY: These are valid latin-1 strings
+    let value =
+      unsafe { HeaderValue::from_maybe_shared_unchecked(&value).unwrap() };
     trailer_map.append(name, value);
   }
   *http.trailers().borrow_mut() = Some(trailer_map);
