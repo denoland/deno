@@ -109,7 +109,7 @@ async fn wait_contains<R>(s: &str, lines: &mut LoggingLines<R>) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
-  let timeout = tokio::time::Duration::from_secs(60);
+  let timeout = tokio::time::Duration::from_secs(10); // todo: revert
 
   tokio::time::timeout(timeout, wait_for(|line| line.contains(s), lines))
     .await
@@ -1454,8 +1454,8 @@ async fn run_watch_dynamic_imports() {
     .spawn()
     .unwrap();
   let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
-  wait_contains("No package.json file found", &mut stderr_lines).await;
   wait_contains("Process started", &mut stderr_lines).await;
+  wait_contains("No package.json file found", &mut stderr_lines).await;
 
   wait_contains(
     "Hopefully dynamic import will be watched...",

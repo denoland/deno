@@ -12,6 +12,7 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::watcher::FileWatcherReporter;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -169,6 +170,7 @@ pub struct ModuleGraphBuilder {
   npm_resolver: Arc<CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
   type_checker: Arc<TypeChecker>,
@@ -182,6 +184,7 @@ impl ModuleGraphBuilder {
     npm_resolver: Arc<CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
     type_checker: Arc<TypeChecker>,
@@ -192,6 +195,7 @@ impl ModuleGraphBuilder {
       npm_resolver,
       parsed_source_cache,
       lockfile,
+      maybe_file_watcher_reporter,
       emit_cache,
       file_fetcher,
       type_checker,
@@ -210,6 +214,10 @@ impl ModuleGraphBuilder {
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
 
     let mut graph = ModuleGraph::new(graph_kind);
     self
@@ -223,7 +231,7 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
-          reporter: None,
+          reporter: maybe_file_watcher_reporter,
         },
       )
       .await?;
@@ -250,6 +258,11 @@ impl ModuleGraphBuilder {
     let analyzer = self.parsed_source_cache.as_analyzer();
     let graph_kind = self.options.type_check_mode().as_graph_kind();
     let mut graph = ModuleGraph::new(graph_kind);
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
+
     self
       .build_graph_with_npm_resolution(
         &mut graph,
@@ -261,7 +274,7 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
-          reporter: None,
+          reporter: maybe_file_watcher_reporter,
         },
       )
       .await?;

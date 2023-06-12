@@ -55,7 +55,7 @@ impl FileWatcher {
       None => return,
     };
     if let Some(watch_paths) = self.cli_options.watch_paths() {
-      files_to_watch_sender.send(watch_paths.clone()).unwrap();
+      files_to_watch_sender.send(watch_paths).unwrap();
     }
     if let Ok(Some(import_map_path)) = self
       .cli_options
@@ -79,6 +79,10 @@ impl FileWatcherReporter {
       sender,
       file_paths: Default::default(),
     }
+  }
+
+  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
+    self
   }
 }
 

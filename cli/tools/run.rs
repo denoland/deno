@@ -97,47 +97,41 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
-  let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
   let clear_screen = !flags.no_clear_screen;
 
-  let operation = move |_| {
-    let flags = flags.clone();
-    let sender = sender.clone();
-    Ok(async move {
-      let factory = CliFactoryBuilder::new()
-        .with_watcher(sender.clone())
-        .build_from_flags(flags)
-        .await?;
-      let cli_options = factory.cli_options();
-      let main_module = cli_options.resolve_main_module()?;
-
-      maybe_npm_install(&factory).await?;
-
-      if let Some(watch_paths) = cli_options.watch_paths() {
-        let _ = sender.send(watch_paths);
-      }
-
-      let permissions = PermissionsContainer::new(Permissions::from_options(
-        &cli_options.permissions_options(),
-      )?);
-      let worker = factory
-        .create_cli_main_worker_factory()
-        .await?
-        .create_main_worker(main_module, permissions)
-        .await?;
-      worker.run_for_watcher().await?;
-
-      Ok(())
-    })
-  };
-
   util::file_watcher::watch_func2(
-    receiver,
-    operation,
-    (),
+    flags,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen,
+    },
+    move |flags, sender| {
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let main_module = cli_options.resolve_main_module()?;
+
+        maybe_npm_install(&factory).await?;
+
+        if let Some(watch_paths) = cli_options.watch_paths() {
+          let _ = sender.send(watch_paths);
+        }
+
+        let permissions = PermissionsContainer::new(Permissions::from_options(
+          &cli_options.permissions_options(),
+        )?);
+        let worker = factory
+          .create_cli_main_worker_factory()
+          .await?
+          .create_main_worker(main_module, permissions)
+          .await?;
+        worker.run_for_watcher().await?;
+
+        Ok(())
+      })
     },
   )
   .await?;

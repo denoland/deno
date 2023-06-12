@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
@@ -21,6 +22,7 @@ use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
@@ -261,16 +263,17 @@ where
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-pub async fn watch_func2<T: Clone, O, F>(
-  mut paths_to_watch_receiver: UnboundedReceiver<Vec<PathBuf>>,
-  mut operation: O,
-  operation_args: T,
+pub async fn watch_func2<O, F>(
+  mut flags: Flags,
   print_config: PrintConfig,
+  mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O: FnMut(T) -> Result<F, AnyError>,
+  O: FnMut(Flags, UnboundedSender<Vec<PathBuf>>) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  let (paths_to_watch_sender, mut paths_to_watch_receiver) =
+    tokio::sync::mpsc::unbounded_channel();
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
 
@@ -320,7 +323,11 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler(operation(operation_args.clone())?);
+    let operation_future =
+      error_handler(operation(flags.clone(), paths_to_watch_sender.clone())?);
+
+    // don't reload dependencies after the first run
+    flags.reload = false;
 
     select! {
       _ = receiver_future => {},

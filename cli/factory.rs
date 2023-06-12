@@ -531,6 +531,7 @@ impl CliFactory {
           self.npm_resolver().await?.clone(),
           self.parsed_source_cache()?.clone(),
           self.maybe_lockfile().clone(),
+          self.maybe_file_watcher_reporter().clone(),
           self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.type_checker().await?.clone(),
