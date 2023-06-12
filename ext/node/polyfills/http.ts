@@ -694,7 +694,7 @@ class ClientRequest extends OutgoingMessage {
           }
 
           const upgradeRid = await core.opAsync(
-            "op_fetch_upgrade_raw_response",
+            "op_fetch_response_upgrade",
             res.responseRid,
           );
           const conn = new TcpConn(
@@ -724,7 +724,7 @@ class ClientRequest extends OutgoingMessage {
           this.emit("close");
         } else {
           {
-            const responseRid = core.ops.op_fetch_raw_response_consume(
+            const responseRid = core.ops.op_fetch_response_into_byte_stream(
               res.responseRid,
             );
             incoming._bodyRid = responseRid;
