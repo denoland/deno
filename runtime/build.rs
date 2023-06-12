@@ -132,6 +132,13 @@ mod startup_snapshot {
     fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
+    fn check_sys(
+      &self,
+      _kind: &str,
+      _api_name: &str,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
   }
 
   impl deno_net::NetPermissions for Permissions {

@@ -27,6 +27,7 @@ digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
+errno = "0.3.1"
 hex.workspace = true
 hkdf.workspace = true
 idna = "0.3.0"
