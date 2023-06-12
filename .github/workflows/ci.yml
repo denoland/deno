@@ -298,12 +298,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-<<<<<<< HEAD
-          key: '38-cargo-home-${{ matrix.os }}'
-=======
-          key: '36-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '36-cargo-home-${{ matrix.os }}'
->>>>>>> 52e8226ed (Use restore-keys)
+          key: '38-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '38-cargo-home-${{ matrix.os }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
