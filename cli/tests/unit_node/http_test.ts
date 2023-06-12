@@ -6,6 +6,7 @@ import https from "node:https";
 import {
   assert,
   assertEquals,
+  fail,
 } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -627,11 +628,11 @@ Deno.test("[node/http] HTTPS server", async () => {
   const server = https.createServer({
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
-  }, (req, res) => {
+  }, (_req, res) => {
     res.end("success!");
   })
-    .on("error", console.log);
   server.listen(() => {
+    // deno-lint-ignore no-explicit-any
     fetch(`https://localhost:${(server.address() as any).port}`, {
       client,
     }).then(async (res) => {
@@ -641,7 +642,7 @@ Deno.test("[node/http] HTTPS server", async () => {
       promise2.resolve();
     });
   })
-    .on("error", console.log);
+    .on("error", () => fail());
   server.on("close", () => {
     promise.resolve();
   });
