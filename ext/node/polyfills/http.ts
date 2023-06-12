@@ -618,7 +618,13 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send2", this._req.requestRid),
+          core.opAsync(
+            "op_fetch_send",
+            this._req.requestRid,
+            /* false because we want to have access to actual Response,
+          not the bytes stream of response (because we need to handle upgrades) */
+            false,
+          ),
           (async () => {
             if (this._bodyWriteRid) {
               try {
