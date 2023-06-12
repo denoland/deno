@@ -55,7 +55,7 @@ let timerNestingLevel = 0;
 
 function handleTimerMacrotask() {
   if (timerTasks.length === 0) {
-    return true;
+    return undefined;
   }
 
   const task = ArrayPrototypeShift(timerTasks);

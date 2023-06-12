@@ -351,6 +351,10 @@ function promiseRejectCallback(type, promise, reason) {
 }
 
 function promiseRejectMacrotaskCallback() {
+  if (pendingRejections.length === 0) {
+    return undefined;
+  }
+
   while (pendingRejections.length > 0) {
     const promise = ArrayPrototypeShift(pendingRejections);
     const hasPendingException = ops.op_has_pending_promise_rejection(

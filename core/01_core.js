@@ -187,6 +187,12 @@
       const cb = macrotaskCallbacks[i];
       while (true) {
         const res = cb();
+
+        // Macrotask had no work to perform, we can break.
+        if (res === undefined) {
+          break;
+        }
+
         ops.op_run_microtasks();
         if (res === true) {
           break;
