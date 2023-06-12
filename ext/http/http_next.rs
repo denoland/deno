@@ -377,14 +377,17 @@ pub fn op_http_read_request_body(
 }
 
 #[op(fast)]
-pub fn op_http_set_response_header(slab_id: SlabId, name: ByteString, value: ByteString) {
+pub fn op_http_set_response_header(
+  slab_id: SlabId,
+  name: ByteString,
+  value: ByteString,
+) {
   let mut http = slab_get(slab_id);
   let resp_headers = http.response().headers_mut();
   // These are valid latin-1 strings
   let name = HeaderName::from_bytes(&name).unwrap();
   // SAFETY: These are valid latin-1 strings
-  let value =
-    unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
+  let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
   resp_headers.append(name, value);
 }
 
@@ -431,8 +434,7 @@ pub fn op_http_set_response_trailers(
     // These are valid latin-1 strings
     let name = HeaderName::from_bytes(&name).unwrap();
     // SAFETY: These are valid latin-1 strings
-    let value =
-      unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
+    let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
     trailer_map.append(name, value);
   }
   *http.trailers().borrow_mut() = Some(trailer_map);
