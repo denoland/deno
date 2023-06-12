@@ -1736,16 +1736,20 @@ pub async fn run_tests_with_watch(
     move |flags, sender, changed_paths| {
       let test_flags = test_flags.clone();
       Ok(async move {
-        eprintln!("CHANGED PATHS: {:?}", changed_paths);
         let factory = CliFactoryBuilder::new()
           .with_watcher(sender.clone())
           .build_from_flags(flags)
           .await?;
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;
+
+        if let Some(watch_paths) = cli_options.watch_paths() {
+          let _ = sender.send(watch_paths);
+        }
+        let _ = sender.send(test_options.files.include.clone());
+
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();
-        let test_options = &test_options;
         let cli_options = cli_options.clone();
         let module_graph_builder = factory.module_graph_builder().await?;
         let file_fetcher = factory.file_fetcher()?;

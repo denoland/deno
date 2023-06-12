@@ -109,7 +109,7 @@ async fn wait_contains<R>(s: &str, lines: &mut LoggingLines<R>) -> String
 where
   R: tokio::io::AsyncBufRead + Unpin,
 {
-  let timeout = tokio::time::Duration::from_secs(10); // todo: revert
+  let timeout = tokio::time::Duration::from_secs(60);
 
   tokio::time::timeout(timeout, wait_for(|line| line.contains(s), lines))
     .await
@@ -1006,7 +1006,7 @@ async fn run_watch_error_messages() {
 }
 
 #[tokio::test]
-async fn test_watch() {
+async fn test_watch_basic() {
   let t = TempDir::new();
 
   let mut child = util::deno_cmd()
@@ -1156,7 +1156,7 @@ async fn test_watch() {
   assert_contains!(next_line(&mut stdout_lines).await.unwrap(), "FAILED");
   wait_contains("FAILED", &mut stdout_lines).await;
   next_line(&mut stdout_lines).await;
-  wait_contains("Test finished", &mut stderr_lines).await;
+  wait_contains("Test failed", &mut stderr_lines).await;
 
   // Then restore the file
   write(&foo_file, "export default function foo() { 1 + 1 }").unwrap();
@@ -1212,16 +1212,13 @@ async fn test_watch_doc() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   let foo_file = t.path().join("foo.ts");
-  write(
-    &foo_file,
+  foo_file.write(
     r#"
     export default function foo() {}
   "#,
-  )
-  .unwrap();
+  );
 
-  write(
-    &foo_file,
+  foo_file.write(
     r#"
     /**
      * ```ts
@@ -1230,8 +1227,7 @@ async fn test_watch_doc() {
      */
     export default function foo() {}
   "#,
-  )
-  .unwrap();
+  );
 
   // We only need to scan for a Check file://.../foo.ts$3-6 line that
   // corresponds to the documentation block being type-checked.

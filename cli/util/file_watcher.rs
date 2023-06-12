@@ -68,7 +68,7 @@ impl DebouncedReceiver {
   }
 }
 
-async fn error_handler<F>(watch_future: F)
+async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
 {
@@ -83,6 +83,9 @@ where
       colors::red_bold("error"),
       error_string.trim_start_matches("error: ")
     );
+    false
+  } else {
+    true
   }
 }
 
@@ -344,13 +347,18 @@ where
         changed_paths = received_changed_paths;
         continue;
       },
-      _ = operation_future => {
+      success = operation_future => {
         consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
-          "{} {} finished. Restarting on file change...",
+          "{} {} {}. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
+          if success {
+            "finished"
+          } else {
+            "failed"
+          }
         );
       },
     };
