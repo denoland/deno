@@ -30,8 +30,6 @@ import { Buffer } from "ext:deno_node/buffer.ts";
 
 export const constants = os;
 
-const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno_std/issues/1436";
-
 interface CPUTimes {
   /** The number of milliseconds the CPU has spent in user mode */
   user: number;
@@ -313,7 +311,6 @@ export function uptime(): number {
 
 /** Not yet implemented */
 export function userInfo(
-  // deno-lint-ignore no-unused-vars
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
   const uid = Deno.uid();
