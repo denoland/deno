@@ -469,10 +469,6 @@ deno_core::extension!(deno_node,
     "worker_threads.ts",
     "zlib.ts",
   ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     maybe_npm_resolver: Option<NpmResolverRc>,
     fs: deno_fs::FileSystemRc,

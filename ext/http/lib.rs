@@ -124,10 +124,6 @@ deno_core::extension!(
     http_next::op_http_wait,
   ],
   esm = ["00_serve.js", "01_http.js"],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
 );
 
 pub enum HttpSocketAddr {

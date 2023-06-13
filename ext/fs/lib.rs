@@ -153,10 +153,6 @@ deno_core::extension!(deno_fs,
 
   ],
   esm = [ "30_fs.js" ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     unstable: bool,
     fs: FileSystemRc,

@@ -155,7 +155,7 @@ macro_rules! extension {
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
-    $(, exclude_js_sources_cfg = ( $exclude_js_sources_cfg:meta ) )?
+    $(, force_include_js_sources $($force_include_js_sources:block)? )? // dummy variable
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
@@ -180,22 +180,20 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
-        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
         ext.esm(
-          $crate::include_js_files!( $name $( $( dir $dir_esm , )? $( $esm , )* )? ),
+          $crate::include_js_files!( $name $( force_include_js_sources $($force_include_js_sources)?, )? $( $( dir $dir_esm , )? $( $esm , )* )? )
         );
         $(
           ext.esm(vec![ExtensionFileSource {
             specifier: "ext:setup",
-            code: $esm_setup_script,
+            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
           }]);
         )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
-        #[cfg(not(any($($exclude_js_sources_cfg)?)))]
         ext.js(
-          $crate::include_js_files!( $name $( $( dir $dir_js , )? $( $js , )* )? ),
+          $crate::include_js_files!( $name $( force_include_js_sources $($force_include_js_sources)?, )? $( $( dir $dir_js , )? $( $js , )* )? )
         );
       }
 
@@ -568,8 +566,34 @@ impl ExtensionBuilder {
 /// - "ext:my_extension/js/01_hello.js"
 /// - "ext:my_extension/js/02_goodbye.js"
 /// ```
+#[cfg(not(all(
+  feature = "exclude_js_sources",
+  not(feature = "force_include_js_sources")
+)))]
 #[macro_export]
 macro_rules! include_js_files {
+  ($name:ident $(force_include_js_sources $($dummy:block)?,)? $(dir $dir:literal,)? $($file:literal,)*) => {
+    $crate::force_include_js_files!($name $(dir $dir,)? $($file,)*)
+  };
+}
+
+#[cfg(all(
+  feature = "exclude_js_sources",
+  not(feature = "force_include_js_sources")
+))]
+#[macro_export]
+macro_rules! include_js_files {
+  ($name:ident force_include_js_sources $($dummy:block)?, $(dir $dir:literal,)? $($file:literal,)*) => {
+    $crate::force_include_js_files!($name $(dir $dir,)? $($file,)*)
+  };
+
+  ($name:ident $(dir $dir:literal,)? $($file:literal,)*) => {
+    vec![]
+  };
+}
+
+#[macro_export]
+macro_rules! force_include_js_files {
   ($name:ident dir $dir:literal, $($file:literal,)*) => {
     vec![
       $($crate::ExtensionFileSource {

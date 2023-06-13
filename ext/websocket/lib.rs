@@ -643,10 +643,6 @@ deno_core::extension!(deno_websocket,
     op_ws_get_buffered_amount,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     user_agent: String,
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,

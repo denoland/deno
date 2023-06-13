@@ -109,10 +109,6 @@ deno_core::extension!(deno_web,
     "14_compression.js",
     "15_performance.js",
   ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     blob_store: BlobStore,
     maybe_location: Option<Url>,

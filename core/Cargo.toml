@@ -19,7 +19,7 @@ v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
 # Enable to exclude JS sources from the binary (e.g. if they are already snapshotted).
 exclude_js_sources = []
 # Enable to override `exclude_js_sources` (e.g. for snapshot creation in `build.rs`).
-force_include_js_sources = []
+force_include_js_sources = ["exclude_js_sources"]
 
 [dependencies]
 anyhow.workspace = true

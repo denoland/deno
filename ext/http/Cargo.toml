@@ -13,10 +13,6 @@ description = "HTTP server implementation for Deno"
 [features]
 "__zombie_http_tracking" = []
 "__http_tracing" = []
-# Enable to exclude JS sources from the binary (e.g. if they are already snapshotted).
-exclude_js_sources = []
-# Enable to override `exclude_js_sources` (e.g. for snapshot creation in `build.rs`).
-force_include_js_sources = []
 
 [lib]
 path = "lib.rs"

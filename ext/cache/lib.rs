@@ -32,10 +32,6 @@ deno_core::extension!(deno_cache,
     op_cache_delete<CA>,
   ],
   esm = [ "01_cache.js" ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     maybe_create_cache: Option<CreateCache<CA>>,
   },

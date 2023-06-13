@@ -120,10 +120,6 @@ deno_core::extension!(deno_fetch,
     "23_response.js",
     "26_fetch.js"
   ],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   options = {
     options: Options,
   },

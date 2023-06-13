@@ -78,10 +78,6 @@ crate::extension!(
     ops_builtin_v8::op_arraybuffer_was_detached,
   ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
-  exclude_js_sources_cfg = (all(
-    feature = "exclude_js_sources",
-    not(feature = "force_include_js_sources")
-  )),
   customizer = |ext: &mut crate::ExtensionBuilder| {
     ext.deno_core();
   }

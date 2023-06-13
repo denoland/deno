@@ -13,12 +13,6 @@ description = "Networking for Deno"
 [lib]
 path = "lib.rs"
 
-[features]
-# Enable to exclude JS sources from the binary (e.g. if they are already snapshotted).
-exclude_js_sources = []
-# Enable to override `exclude_js_sources` (e.g. for snapshot creation in `build.rs`).
-force_include_js_sources = []
-
 [dependencies]
 deno_core.workspace = true
 deno_tls.workspace = true
