@@ -4,7 +4,10 @@ import {
   assertEquals,
   assertThrows,
 } from "../../../../test_util/std/testing/asserts.ts";
-import Dirent from "node:fs";
+import { Dirent as Dirent_ } from "node:fs";
+
+// deno-lint-ignore no-explicit-any
+const Dirent = Dirent_ as any;
 
 class DirEntryMock implements Deno.DirEntry {
   name = "";
