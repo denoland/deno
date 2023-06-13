@@ -172,6 +172,7 @@ export function homedir(): string | null {
     case "linux":
     case "darwin":
     case "freebsd":
+    case "openbsd":
       return Deno.env.get("HOME") || null;
     default:
       throw Error("unreachable");
@@ -299,6 +300,8 @@ export function type(): string {
       return "Darwin";
     case "freebsd":
       return "FreeBSD";
+    case "openbsd":
+      return "OpenBSD";
     default:
       throw Error("unreachable");
   }

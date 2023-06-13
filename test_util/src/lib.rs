@@ -56,16 +56,17 @@ use url::Url;
 pub mod assertions;
 mod builders;
 pub mod factory;
+mod fs;
 pub mod lsp;
 mod npm;
 pub mod pty;
-mod temp_dir;
 
 pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use temp_dir::TempDir;
+pub use fs::PathRef;
+pub use fs::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -115,30 +116,31 @@ pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   env_vars
 }
 
-pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-    .parent()
-    .unwrap()
-    .to_path_buf()
+pub fn root_path() -> PathRef {
+  PathRef::new(
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+      .parent()
+      .unwrap(),
+  )
 }
 
-pub fn prebuilt_path() -> PathBuf {
+pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }
 
-pub fn tests_path() -> PathBuf {
+pub fn tests_path() -> PathRef {
   root_path().join("cli").join("tests")
 }
 
-pub fn testdata_path() -> PathBuf {
+pub fn testdata_path() -> PathRef {
   tests_path().join("testdata")
 }
 
-pub fn third_party_path() -> PathBuf {
+pub fn third_party_path() -> PathRef {
   root_path().join("third_party")
 }
 
-pub fn napi_tests_path() -> PathBuf {
+pub fn napi_tests_path() -> PathRef {
   root_path().join("test_napi")
 }
 
@@ -147,7 +149,7 @@ pub fn npm_registry_url() -> String {
   "http://localhost:4545/npm/registry/".to_string()
 }
 
-pub fn std_path() -> PathBuf {
+pub fn std_path() -> PathRef {
   root_path().join("test_util").join("std")
 }
 
@@ -155,22 +157,22 @@ pub fn std_file_url() -> String {
   Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
-pub fn target_dir() -> PathBuf {
+pub fn target_dir() -> PathRef {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  target_dir.into()
+  PathRef::new(target_dir)
 }
 
-pub fn deno_exe_path() -> PathBuf {
+pub fn deno_exe_path() -> PathRef {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
-  let mut p = target_dir().join("deno");
+  let mut p = target_dir().join("deno").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
-  p
+  PathRef::new(p)
 }
 
-pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
+pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
   prebuilt_path().join(platform_dir_name()).join(exe)
@@ -189,7 +191,7 @@ pub fn platform_dir_name() -> &'static str {
 }
 
 pub fn test_server_path() -> PathBuf {
-  let mut p = target_dir().join("test_server");
+  let mut p = target_dir().join("test_server").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -710,8 +712,7 @@ async fn absolute_redirect(
     }
   }
 
-  let mut file_path = testdata_path();
-  file_path.push(&req.uri().path()[1..]);
+  let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
     let mut not_found_resp = Response::new(Body::empty());
     *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
@@ -1085,8 +1086,13 @@ async fn main_server(
       ));
       Ok(res)
     }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res = Response::new(Body::from(query.unwrap_or_default()));
+      Ok(res)
+    }
     _ => {
-      let mut file_path = testdata_path();
+      let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
@@ -1133,8 +1139,7 @@ async fn main_server(
           }
         }
       } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
-        let mut file_path = std_path();
-        file_path.push(suffix);
+        let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
           let file_resp = custom_headers(req.uri().path(), file);
           return Ok(file_resp);
@@ -2378,37 +2383,6 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
-}
-
-/// Copies a directory to another directory.
-///
-/// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), anyhow::Error> {
-  use anyhow::Context;
-
-  std::fs::create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
-
-  for entry in read_dir {
-    let entry = entry?;
-    let file_type = entry.file_type()?;
-    let new_from = from.join(entry.file_name());
-    let new_to = to.join(entry.file_name());
-
-    if file_type.is_dir() {
-      copy_dir_recursive(&new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
-      })?;
-    } else if file_type.is_file() {
-      std::fs::copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
-      })?;
-    }
-  }
-
-  Ok(())
 }
 
 #[cfg(test)]

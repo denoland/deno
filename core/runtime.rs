@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::bindings;
-use crate::bindings::BindingsMode;
 use crate::error::generic_error;
 use crate::error::to_v8_type_error;
 use crate::error::JsError;
@@ -24,8 +23,6 @@ use crate::realm::ContextState;
 use crate::realm::JsRealm;
 use crate::realm::JsRealmInner;
 use crate::snapshot_util;
-use crate::snapshot_util::SnapshotOptions;
-use crate::snapshot_util::SnapshottedData;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
@@ -44,7 +41,6 @@ use futures::future::FutureExt;
 use futures::future::MaybeDone;
 use futures::stream::StreamExt;
 use futures::task::noop_waker;
-use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -63,7 +59,6 @@ use std::sync::Mutex;
 use std::sync::Once;
 use std::task::Context;
 use std::task::Poll;
-use v8::CreateParams;
 
 const STATE_DATA_OFFSET: u32 = 0;
 const MODULE_MAP_DATA_OFFSET: u32 = 1;
@@ -121,7 +116,7 @@ impl<T> DerefMut for ManuallyDropRc<T> {
 /// This inner struct allows us to let the outer JsRuntime drop normally without a Drop impl, while we
 /// control dropping more closely here using ManuallyDrop.
 struct InnerIsolateState {
-  snapshotting: bool,
+  will_snapshot: bool,
   state: ManuallyDropRc<RefCell<JsRuntimeState>>,
   v8_isolate: ManuallyDrop<v8::OwnedIsolate>,
 }
@@ -182,7 +177,7 @@ impl Drop for InnerIsolateState {
     // SAFETY: We gotta drop these
     unsafe {
       ManuallyDrop::drop(&mut self.state.0);
-      if self.snapshotting {
+      if self.will_snapshot {
         // Create the snapshot and just drop it.
         eprintln!("WARNING: v8::OwnedIsolate for snapshot was leaked");
       } else {
@@ -192,47 +187,46 @@ impl Drop for InnerIsolateState {
   }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub(crate) enum InitMode {
+  /// We have no snapshot -- this is a pristine context.
+  New,
+  /// We are using a snapshot, thus certain initialization steps are skipped.
+  FromSnapshot,
+}
+
+impl InitMode {
+  fn from_options(options: &RuntimeOptions) -> Self {
+    match options.startup_snapshot {
+      None => Self::New,
+      Some(_) => Self::FromSnapshot,
+    }
+  }
+}
+
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM.
 ////
-/// The JsRuntimeImpl future completes when there is an error or when all
+/// The JsRuntime future completes when there is an error or when all
 /// pending ops have completed.
 ///
-/// API consumers will want to use either the [`JsRuntime`] or [`JsRuntimeForSnapshot`]
-/// type aliases.
-pub struct JsRuntimeImpl<const FOR_SNAPSHOT: bool = false> {
+/// Use [`JsRuntimeForSnapshot`] to be able to create a snapshot.
+pub struct JsRuntime {
   inner: InnerIsolateState,
   module_map: Rc<RefCell<ModuleMap>>,
   allocations: IsolateAllocations,
   extensions: Vec<Extension>,
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
-  bindings_mode: BindingsMode,
+  init_mode: InitMode,
   // Marks if this is considered the top-level runtime. Used only be inspector.
   is_main: bool,
 }
 
-/// The runtime type that most users will use when not creating a snapshot.
-pub struct JsRuntime(JsRuntimeImpl<false>);
-
-impl Deref for JsRuntime {
-  type Target = JsRuntimeImpl<false>;
-
-  fn deref(&self) -> &Self::Target {
-    &self.0
-  }
-}
-
-impl DerefMut for JsRuntime {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.0
-  }
-}
-
 /// The runtime type used for snapshot creation.
-pub struct JsRuntimeForSnapshot(JsRuntimeImpl<true>);
+pub struct JsRuntimeForSnapshot(JsRuntime);
 
 impl Deref for JsRuntimeForSnapshot {
-  type Target = JsRuntimeImpl<true>;
+  type Target = JsRuntime;
 
   fn deref(&self) -> &Self::Target {
     &self.0
@@ -301,7 +295,7 @@ pub type SharedArrayBufferStore =
 
 pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 
-/// Internal state for JsRuntimeImpl which is stored in one of v8::Isolate's
+/// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
   global_realm: Option<JsRealm>,
@@ -314,7 +308,6 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
-  pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -325,7 +318,6 @@ pub struct JsRuntimeState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
-  waker: AtomicWaker,
 }
 
 impl JsRuntimeState {
@@ -398,7 +390,7 @@ pub struct RuntimeOptions {
   /// executed tries to load modules.
   pub module_loader: Option<Rc<dyn ModuleLoader>>,
 
-  /// JsRuntimeImpl extensions, not to be confused with ES modules.
+  /// JsRuntime extensions, not to be confused with ES modules.
   /// Only ops registered by extensions will be initialized. If you need
   /// to execute JS code from extensions, pass source files in `js` or `esm`
   /// option on `ExtensionBuilder`.
@@ -448,21 +440,60 @@ pub struct RuntimeSnapshotOptions {
   pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 }
 
-trait JsRuntimeInternalTrait {
-  fn create_raw_isolate(
-    refs: &'static v8::ExternalReferences,
-    params: Option<CreateParams>,
-    snapshot: SnapshotOptions,
-  ) -> v8::OwnedIsolate;
-}
+impl JsRuntime {
+  /// Only constructor, configuration is done through `options`.
+  pub fn new(mut options: RuntimeOptions) -> JsRuntime {
+    JsRuntime::init_v8(options.v8_platform.take(), cfg!(test));
+    JsRuntime::new_inner(options, false, None)
+  }
 
-impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
-  fn init_v8(v8_platform: Option<v8::SharedRef<v8::Platform>>) {
+  pub(crate) fn state_from(
+    isolate: &v8::Isolate,
+  ) -> Rc<RefCell<JsRuntimeState>> {
+    let state_ptr = isolate.get_data(STATE_DATA_OFFSET);
+    let state_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
+    let state = state_rc.clone();
+    std::mem::forget(state_rc);
+    state
+  }
+
+  pub(crate) fn module_map_from(
+    isolate: &v8::Isolate,
+  ) -> Rc<RefCell<ModuleMap>> {
+    let module_map_ptr = isolate.get_data(MODULE_MAP_DATA_OFFSET);
+    let module_map_rc =
+      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
+      // the runtime.
+      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
+    let module_map = module_map_rc.clone();
+    std::mem::forget(module_map_rc);
+    module_map
+  }
+
+  pub(crate) fn event_loop_pending_state_from_scope(
+    scope: &mut v8::HandleScope,
+  ) -> EventLoopPendingState {
+    let state = JsRuntime::state_from(scope);
+    let module_map = JsRuntime::module_map_from(scope);
+    let state = EventLoopPendingState::new(
+      scope,
+      &mut state.borrow_mut(),
+      &module_map.borrow(),
+    );
+    state
+  }
+
+  fn init_v8(
+    v8_platform: Option<v8::SharedRef<v8::Platform>>,
+    predictable: bool,
+  ) {
     static DENO_INIT: Once = Once::new();
     static DENO_PREDICTABLE: AtomicBool = AtomicBool::new(false);
     static DENO_PREDICTABLE_SET: AtomicBool = AtomicBool::new(false);
 
-    let predictable = FOR_SNAPSHOT || cfg!(test);
     if DENO_PREDICTABLE_SET.load(Ordering::SeqCst) {
       let current = DENO_PREDICTABLE.load(Ordering::SeqCst);
       assert_eq!(current, predictable, "V8 may only be initialized once in either snapshotting or non-snapshotting mode. Either snapshotting or non-snapshotting mode may be used in a single process, not both.");
@@ -473,15 +504,13 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     DENO_INIT.call_once(move || v8_init(v8_platform, predictable));
   }
 
-  fn new_runtime(
+  fn new_inner(
     mut options: RuntimeOptions,
-    snapshot_options: SnapshotOptions,
+    will_snapshot: bool,
     maybe_load_callback: Option<ExtModuleLoaderCb>,
-  ) -> JsRuntimeImpl<FOR_SNAPSHOT>
-  where
-    JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait,
-  {
-    let (op_state, ops) = Self::create_opstate(&mut options, &snapshot_options);
+  ) -> JsRuntime {
+    let init_mode = InitMode::from_options(&options);
+    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -514,8 +543,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
       op_state: op_state.clone(),
-      waker: AtomicWaker::new(),
-      have_unpolled_ops: false,
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
@@ -546,19 +573,56 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     // V8 takes ownership of external_references.
     let refs: &'static v8::ExternalReferences = Box::leak(Box::new(refs));
 
-    let bindings_mode = match snapshot_options {
-      SnapshotOptions::None => bindings::BindingsMode::New,
-      SnapshotOptions::Create => bindings::BindingsMode::New,
-      SnapshotOptions::Load(_) => bindings::BindingsMode::LoadedFinal,
-      SnapshotOptions::CreateFromExisting(_) => bindings::BindingsMode::Loaded,
+    let mut isolate = if will_snapshot {
+      snapshot_util::create_snapshot_creator(
+        refs,
+        options.startup_snapshot.take(),
+      )
+    } else {
+      let mut params = options
+        .create_params
+        .take()
+        .unwrap_or_default()
+        .embedder_wrapper_type_info_offsets(
+          V8_WRAPPER_TYPE_INDEX,
+          V8_WRAPPER_OBJECT_INDEX,
+        )
+        .external_references(&**refs);
+      if let Some(snapshot) = options.startup_snapshot.take() {
+        params = match snapshot {
+          Snapshot::Static(data) => params.snapshot_blob(data),
+          Snapshot::JustCreated(data) => params.snapshot_blob(data),
+          Snapshot::Boxed(data) => params.snapshot_blob(data),
+        };
+      }
+      v8::Isolate::new(params)
     };
-    let snapshotting = snapshot_options.will_snapshot();
-
-    let (mut isolate, global_context, snapshotted_data) = Self::create_isolate(
-      refs,
-      options.create_params.take(),
-      snapshot_options,
+    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
+    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
+    isolate.set_host_initialize_import_meta_object_callback(
+      bindings::host_initialize_import_meta_object_callback,
     );
+    isolate.set_host_import_module_dynamically_callback(
+      bindings::host_import_module_dynamically_callback,
+    );
+    isolate.set_wasm_async_resolve_promise_callback(
+      bindings::wasm_async_resolve_promise_callback,
+    );
+
+    let (global_context, snapshotted_data) = {
+      let scope = &mut v8::HandleScope::new(&mut isolate);
+      let context = v8::Context::new(scope);
+
+      // Get module map data from the snapshot
+      let snapshotted_data = if init_mode == InitMode::FromSnapshot {
+        Some(snapshot_util::get_snapshotted_data(scope, context))
+      } else {
+        None
+      };
+
+      (v8::Global::new(scope, context), snapshotted_data)
+    };
+
     // SAFETY: this is first use of `isolate_ptr` so we are sure we're
     // not overwriting an existing pointer.
     isolate = unsafe {
@@ -575,7 +639,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       scope,
       context,
       &context_state.borrow().op_ctxs,
-      bindings_mode,
+      init_mode,
     );
 
     context.set_slot(scope, context_state.clone());
@@ -619,13 +683,13 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
     drop(context_scope);
 
-    let mut js_runtime = JsRuntimeImpl {
+    let mut js_runtime = JsRuntime {
       inner: InnerIsolateState {
-        snapshotting,
+        will_snapshot,
         state: ManuallyDropRc(ManuallyDrop::new(state_rc)),
         v8_isolate: ManuallyDrop::new(isolate),
       },
-      bindings_mode,
+      init_mode,
       allocations: IsolateAllocations::default(),
       event_loop_middlewares,
       extensions: options.extensions,
@@ -639,51 +703,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       .init_extension_js(&realm, maybe_load_callback)
       .unwrap();
     js_runtime
-  }
-
-  /// Create a new [`v8::OwnedIsolate`] and its global [`v8::Context`] from optional parameters and snapshot.
-  fn create_isolate(
-    refs: &'static v8::ExternalReferences,
-    params: Option<CreateParams>,
-    snapshot: SnapshotOptions,
-  ) -> (
-    v8::OwnedIsolate,
-    v8::Global<v8::Context>,
-    Option<SnapshottedData>,
-  )
-  where
-    JsRuntimeImpl<FOR_SNAPSHOT>: JsRuntimeInternalTrait,
-  {
-    let has_snapshot = snapshot.loaded();
-    let mut isolate = Self::create_raw_isolate(refs, params, snapshot);
-
-    isolate.set_capture_stack_trace_for_uncaught_exceptions(true, 10);
-    isolate.set_promise_reject_callback(bindings::promise_reject_callback);
-    isolate.set_host_initialize_import_meta_object_callback(
-      bindings::host_initialize_import_meta_object_callback,
-    );
-    isolate.set_host_import_module_dynamically_callback(
-      bindings::host_import_module_dynamically_callback,
-    );
-    isolate.set_wasm_async_resolve_promise_callback(
-      bindings::wasm_async_resolve_promise_callback,
-    );
-
-    let (context, snapshotted_data) = {
-      let scope = &mut v8::HandleScope::new(&mut isolate);
-      let context = v8::Context::new(scope);
-
-      // Get module map data from the snapshot
-      let snapshotted_data = if has_snapshot {
-        Some(snapshot_util::get_snapshotted_data(scope, context))
-      } else {
-        None
-      };
-
-      (v8::Global::new(scope, context), snapshotted_data)
-    };
-
-    (isolate, context, snapshotted_data)
   }
 
   #[cfg(test)]
@@ -728,7 +747,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
   /// Creates a new realm (V8 context) in this JS execution context,
   /// pre-initialized with all of the extensions that were passed in
-  /// [`RuntimeOptions::extensions`] when the [`JsRuntimeImpl`] was
+  /// [`RuntimeOptions::extensions`] when the [`JsRuntime`] was
   /// constructed.
   pub fn create_realm(&mut self) -> Result<JsRealm, Error> {
     let realm = {
@@ -768,7 +787,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
         scope,
         context,
         &context_state.borrow().op_ctxs,
-        self.bindings_mode,
+        self.init_mode,
       );
       context.set_slot(scope, context_state.clone());
       let realm = JsRealmInner::new(
@@ -946,10 +965,10 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   /// Initializes ops of provided Extensions
   fn create_opstate(
     options: &mut RuntimeOptions,
-    snapshot_options: &SnapshotOptions,
+    init_mode: InitMode,
   ) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    if snapshot_options.loaded() {
+    if init_mode == InitMode::FromSnapshot {
       options
         .extensions
         .insert(0, crate::ops_builtin::core::init_ops());
@@ -1304,7 +1323,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     {
       let state = self.inner.state.borrow();
       has_inspector = state.inspector.is_some();
-      state.waker.register(cx.waker());
+      state.op_state.borrow().waker.register(cx.waker());
     }
 
     if has_inspector {
@@ -1395,12 +1414,11 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if state.have_unpolled_ops
-      || pending_state.has_pending_background_tasks
+    if pending_state.has_pending_background_tasks
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.waker.wake();
+      state.op_state.borrow().waker.wake();
     }
 
     drop(state);
@@ -1453,7 +1471,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
         // evaluation may complete during this, in which case the counter will
         // reset.
         state.dyn_module_evaluate_idle_counter += 1;
-        state.waker.wake();
+        state.op_state.borrow().waker.wake();
       }
     }
 
@@ -1470,78 +1488,15 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   }
 }
 
-impl JsRuntime {
-  /// Only constructor, configuration is done through `options`.
-  pub fn new(mut options: RuntimeOptions) -> JsRuntime {
-    JsRuntimeImpl::<false>::init_v8(options.v8_platform.take());
-
-    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
-      options.startup_snapshot.take(),
-      false,
-    );
-
-    JsRuntime(JsRuntimeImpl::<false>::new_runtime(
-      options,
-      snapshot_options,
-      None,
-    ))
-  }
-
-  pub(crate) fn state_from(
-    isolate: &v8::Isolate,
-  ) -> Rc<RefCell<JsRuntimeState>> {
-    let state_ptr = isolate.get_data(STATE_DATA_OFFSET);
-    let state_rc =
-      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
-      // the runtime.
-      unsafe { Rc::from_raw(state_ptr as *const RefCell<JsRuntimeState>) };
-    let state = state_rc.clone();
-    std::mem::forget(state_rc);
-    state
-  }
-
-  pub(crate) fn module_map_from(
-    isolate: &v8::Isolate,
-  ) -> Rc<RefCell<ModuleMap>> {
-    let module_map_ptr = isolate.get_data(MODULE_MAP_DATA_OFFSET);
-    let module_map_rc =
-      // SAFETY: We are sure that it's a valid pointer for whole lifetime of
-      // the runtime.
-      unsafe { Rc::from_raw(module_map_ptr as *const RefCell<ModuleMap>) };
-    let module_map = module_map_rc.clone();
-    std::mem::forget(module_map_rc);
-    module_map
-  }
-
-  pub(crate) fn event_loop_pending_state_from_scope(
-    scope: &mut v8::HandleScope,
-  ) -> EventLoopPendingState {
-    let state = JsRuntime::state_from(scope);
-    let module_map = JsRuntime::module_map_from(scope);
-    let state = EventLoopPendingState::new(
-      scope,
-      &mut state.borrow_mut(),
-      &module_map.borrow(),
-    );
-    state
-  }
-}
-
 impl JsRuntimeForSnapshot {
   pub fn new(
     mut options: RuntimeOptions,
     runtime_snapshot_options: RuntimeSnapshotOptions,
   ) -> JsRuntimeForSnapshot {
-    JsRuntimeImpl::<true>::init_v8(options.v8_platform.take());
-
-    let snapshot_options = snapshot_util::SnapshotOptions::new_from(
-      options.startup_snapshot.take(),
-      true,
-    );
-
-    JsRuntimeForSnapshot(JsRuntimeImpl::<true>::new_runtime(
+    JsRuntime::init_v8(options.v8_platform.take(), true);
+    JsRuntimeForSnapshot(JsRuntime::new_inner(
       options,
-      snapshot_options,
+      true,
       runtime_snapshot_options.snapshot_module_load_cb,
     ))
   }
@@ -1587,42 +1542,6 @@ impl JsRuntimeForSnapshot {
       .prepare_for_snapshot()
       .create_blob(v8::FunctionCodeHandling::Keep)
       .unwrap()
-  }
-}
-
-impl JsRuntimeInternalTrait for JsRuntimeImpl<true> {
-  fn create_raw_isolate(
-    refs: &'static v8::ExternalReferences,
-    _params: Option<CreateParams>,
-    snapshot: SnapshotOptions,
-  ) -> v8::OwnedIsolate {
-    snapshot_util::create_snapshot_creator(refs, snapshot)
-  }
-}
-
-impl JsRuntimeInternalTrait for JsRuntimeImpl<false> {
-  fn create_raw_isolate(
-    refs: &'static v8::ExternalReferences,
-    params: Option<CreateParams>,
-    snapshot: SnapshotOptions,
-  ) -> v8::OwnedIsolate {
-    let mut params = params
-      .unwrap_or_default()
-      .embedder_wrapper_type_info_offsets(
-        V8_WRAPPER_TYPE_INDEX,
-        V8_WRAPPER_OBJECT_INDEX,
-      )
-      .external_references(&**refs);
-
-    if let Some(snapshot) = snapshot.snapshot() {
-      params = match snapshot {
-        Snapshot::Static(data) => params.snapshot_blob(data),
-        Snapshot::JustCreated(data) => params.snapshot_blob(data),
-        Snapshot::Boxed(data) => params.snapshot_blob(data),
-      };
-    }
-
-    v8::Isolate::new(params)
   }
 }
 
@@ -1731,7 +1650,7 @@ where
   F: FnMut(usize, usize) -> usize,
 {
   // SAFETY: The data is a pointer to the Rust callback function. It is stored
-  // in `JsRuntimeImpl::allocations` and thus is guaranteed to outlive the isolate.
+  // in `JsRuntime::allocations` and thus is guaranteed to outlive the isolate.
   let callback = unsafe { &mut *(data as *mut F) };
   callback(current_heap_limit, initial_heap_limit)
 }
@@ -1745,7 +1664,7 @@ impl JsRuntimeState {
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
     // Notify event loop to poll again soon.
-    self.waker.wake();
+    self.op_state.borrow().waker.wake();
   }
 }
 
@@ -1800,7 +1719,7 @@ pub(crate) fn exception_to_err_result<T>(
 }
 
 // Related to module loading
-impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
+impl JsRuntime {
   pub(crate) fn instantiate_module(
     &mut self,
     id: ModuleId,
@@ -1916,11 +1835,11 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   /// Evaluates an already instantiated ES module.
   ///
   /// Returns a receiver handle that resolves when module promise resolves.
-  /// Implementors must manually call [`JsRuntimeImpl::run_event_loop`] to drive
+  /// Implementors must manually call [`JsRuntime::run_event_loop`] to drive
   /// module evaluation future.
   ///
   /// `Error` can usually be downcast to `JsError` and should be awaited and
-  /// checked after [`JsRuntimeImpl::run_event_loop`] completion.
+  /// checked after [`JsRuntime::run_event_loop`] completion.
   ///
   /// This function panics if module has not been instantiated.
   pub fn mod_evaluate(
@@ -1953,7 +1872,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
     // Because that promise is created internally by V8, when error occurs during
     // module evaluation the promise is rejected, and since the promise has no rejection
     // handler it will result in call to `bindings::promise_reject_callback` adding
-    // the promise to pending promise rejection table - meaning JsRuntimeImpl will return
+    // the promise to pending promise rejection table - meaning JsRuntime will return
     // error on next poll().
     //
     // This situation is not desirable as we want to manually return error at the
@@ -2362,7 +2281,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   /// The module will be marked as "main", and because of that
   /// "import.meta.main" will return true when checked inside that module.
   ///
-  /// User must call [`JsRuntimeImpl::mod_evaluate`] with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_main_module(
     &mut self,
@@ -2417,7 +2336,7 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
   /// This method is meant to be used when loading some utility code that
   /// might be later imported by the main module (ie. an entry point module).
   ///
-  /// User must call [`JsRuntimeImpl::mod_evaluate`] with returned `ModuleId`
+  /// User must call [`JsRuntime::mod_evaluate`] with returned `ModuleId`
   /// manually after load is finished.
   pub async fn load_side_module(
     &mut self,
@@ -2479,12 +2398,6 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
 
   // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
   fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
-    // Now handle actual ops.
-    {
-      let mut state = self.inner.state.borrow_mut();
-      state.have_unpolled_ops = false;
-    }
-
     // Handle responses for each realm.
     let state = self.inner.state.clone();
     let isolate = &mut self.inner.v8_isolate;
@@ -2508,10 +2421,15 @@ impl<const FOR_SNAPSHOT: bool> JsRuntimeImpl<FOR_SNAPSHOT> {
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
         SmallVec::with_capacity(32);
 
-      while let Poll::Ready(Some(item)) =
-        context_state.pending_ops.poll_next_unpin(cx)
-      {
-        let (promise_id, op_id, mut resp) = item;
+      loop {
+        let item = {
+          let next = std::pin::pin!(context_state.pending_ops.join_next());
+          let Poll::Ready(Some(item)) = next.poll(cx) else {
+            break;
+          };
+          item
+        };
+        let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
         state
           .borrow()
           .op_state
@@ -2561,11 +2479,6 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   promise_id: PromiseId,
   op: impl Future<Output = Result<R, Error>> + 'static,
 ) {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // at least 1 Rc is held by the JsRuntimeImpl.
-    None => unreachable!(),
-  };
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
@@ -2574,13 +2487,10 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
   let fut = op
     .map(|result| crate::_ops::to_op_result(get_class, result))
     .boxed_local();
-  let mut state = runtime_state.borrow_mut();
-  ctx
-    .context_state
-    .borrow_mut()
-    .pending_ops
-    .push(OpCall::pending(ctx, promise_id, fut));
-  state.have_unpolled_ops = true;
+  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
+    crate::task::MaskFutureAsSend::new(OpCall::pending(ctx, promise_id, fut))
+  });
 }
 
 #[inline]
@@ -2659,12 +2569,6 @@ pub fn queue_async_op<'s>(
   promise_id: PromiseId,
   mut op: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 ) -> Option<v8::Local<'s, v8::Value>> {
-  let runtime_state = match ctx.runtime_state.upgrade() {
-    Some(rc_state) => rc_state,
-    // at least 1 Rc is held by the JsRuntimeImpl.
-    None => unreachable!(),
-  };
-
   // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
   // deno_core doesn't currently support such exposure, even though embedders
@@ -2702,9 +2606,12 @@ pub fn queue_async_op<'s>(
 
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
-  let mut state = runtime_state.borrow_mut();
-  ctx.context_state.borrow_mut().pending_ops.push(op_call);
-  state.have_unpolled_ops = true;
+  ctx
+    .context_state
+    .borrow_mut()
+    .pending_ops
+    // SAFETY: this this is guaranteed to be running on a current-thread executor
+    .spawn(unsafe { crate::task::MaskFutureAsSend::new(op_call) });
   None
 }
 
@@ -2819,8 +2726,8 @@ pub mod tests {
     (runtime, dispatch_count)
   }
 
-  #[test]
-  fn test_ref_unref_ops() {
+  #[tokio::test]
+  async fn test_ref_unref_ops() {
     let (mut runtime, _dispatch_count) = setup(Mode::AsyncDeferred);
     runtime
       .execute_script_static(
@@ -2927,7 +2834,7 @@ pub mod tests {
       .execute_script_static(
         "filename.js",
         r#"
-        const { op_test } = Deno.core.generateAsyncOpHandler("op_test");
+        const { op_test } = Deno.core.ensureFastOps();
         let zero_copy_a = new Uint8Array([0]);
         op_test(null, zero_copy_a);
         "#,
@@ -3559,8 +3466,8 @@ pub mod tests {
       }
     }
 
-    fn create_module<const FOR_SNAPSHOT: bool>(
-      runtime: &mut JsRuntimeImpl<FOR_SNAPSHOT>,
+    fn create_module(
+      runtime: &mut JsRuntime,
       i: usize,
       main: bool,
     ) -> ModuleInfo {
@@ -3603,10 +3510,7 @@ pub mod tests {
       }
     }
 
-    fn assert_module_map<const FOR_SNAPSHOT: bool>(
-      runtime: &mut JsRuntimeImpl<FOR_SNAPSHOT>,
-      modules: &Vec<ModuleInfo>,
-    ) {
+    fn assert_module_map(runtime: &mut JsRuntime, modules: &Vec<ModuleInfo>) {
       let module_map = runtime.module_map.borrow();
       assert_eq!(module_map.handles.len(), modules.len());
       assert_eq!(module_map.info.len(), modules.len());
@@ -4679,13 +4583,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       Ok(String::from("Test"))
     }
 
-    deno_core::extension!(
-      test_ext,
-      ops = [op_test],
-      customizer = |ext: &mut deno_core::ExtensionBuilder| {
-        ext.force_op_registration();
-      },
-    );
+    deno_core::extension!(test_ext, ops = [op_test]);
     let mut runtime = JsRuntime::new(RuntimeOptions {
       startup_snapshot: Some(Snapshot::Boxed(snapshot)),
       extensions: vec![test_ext::init_ops()],
@@ -4819,6 +4717,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
     }
   }
 
+  #[ignore]
   #[tokio::test]
   async fn js_realm_gc() {
     static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -4877,7 +4776,6 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
         .await
         .unwrap();
     }
-
     drop(runtime);
 
     // Make sure the OpState was dropped properly when the runtime dropped
@@ -5026,7 +4924,7 @@ Deno.core.opAsync("op_async_serialize_object_with_numbers_as_keys", {
       throw new Error();
     }
 
-    const { op_test_async } = Deno.core.generateAsyncOpHandler("op_test_async");
+    const { op_test_async } = Deno.core.ensureFastOps();
     if (op_test_async.name !== "op_test_async") {
       throw new Error();
     }

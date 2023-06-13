@@ -12,7 +12,9 @@ use test_util::TempDir;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -519,8 +521,8 @@ fn _083_legacy_external_source_map() {
   .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
-  std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").unwrap();
+  faulty_map_path.parent().create_dir_all();
+  faulty_map_path.write(r#"{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}"#);
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
@@ -1277,11 +1279,20 @@ itest!(type_directives_02 {
   output: "run/type_directives_02.ts.out",
 });
 
-itest!(type_directives_js_main {
-  args: "run --reload -L debug run/type_directives_js_main.js",
-  output: "run/type_directives_js_main.js.out",
-  exit_code: 0,
-});
+#[test]
+fn type_directives_js_main() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --reload -L debug --check run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("run --reload -L debug run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}
 
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",
@@ -1915,8 +1926,8 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
-  let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
+  let actual = PathRef::new(std::path::Path::new(stdout_str)).canonicalize();
+  let expected = util::deno_exe_path().canonicalize();
   assert_eq!(expected, actual);
 }
 
@@ -1981,7 +1992,7 @@ enum WinProcConstraints {
 
 #[cfg(windows)]
 fn run_deno_script_constrained(
-  script_path: std::path::PathBuf,
+  script_path: test_util::PathRef,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
   let file_path = "assets/DenoWinRunner.ps1";
@@ -1990,13 +2001,8 @@ fn run_deno_script_constrained(
     WinProcConstraints::NoStdOut => "2",
     WinProcConstraints::NoStdErr => "4",
   };
-  let deno_exe_path = util::deno_exe_path()
-    .into_os_string()
-    .into_string()
-    .unwrap();
-
-  let deno_script_path = script_path.into_os_string().into_string().unwrap();
-
+  let deno_exe_path = util::deno_exe_path().to_string();
+  let deno_script_path = script_path.to_string();
   let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
   util::run_powershell_script_file(file_path, args)
 }
@@ -2189,9 +2195,6 @@ mod permissions {
           "--allow-{0}={1}",
           permission,
           util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap()
         ))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
@@ -2213,15 +2216,8 @@ mod permissions {
         &format!(
           "run --allow-{0}={1} run/complex_permissions_test.ts {0} {2}",
           permission,
-          util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
+          util::testdata_path(),
+          util::root_path().join("Cargo.toml"),
         ),
         None,
         None,
@@ -2241,10 +2237,7 @@ mod permissions {
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap()
+          util::testdata_path(),
         ))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
@@ -2260,15 +2253,8 @@ mod permissions {
   #[test]
   fn rw_outside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::testdata_path()
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
+    let test_dir = util::testdata_path();
+    let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
@@ -2277,11 +2263,7 @@ mod permissions {
           permission,
           test_dir,
           js_dir,
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
+          util::root_path().join("Cargo.toml"),
         ),
         None,
         None,
@@ -2294,15 +2276,8 @@ mod permissions {
   #[test]
   fn rw_inside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::testdata_path()
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
+    let test_dir = util::testdata_path();
+    let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
@@ -3541,35 +3516,23 @@ fn cache_test() {
 fn cache_invalidation_test() {
   let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"42\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"42\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(&fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
   let actual = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(actual, "42\n");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"43\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"43\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
@@ -3581,37 +3544,25 @@ fn cache_invalidation_test() {
 fn cache_invalidation_test_no_check() {
   let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"42\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"42\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(&fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
   let actual = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(actual, "42\n");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"43\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"43\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
@@ -4360,6 +4311,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
       console.write_line_raw("invalid");
       console.expect("Unrecognized option.");
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
       console.write_line_raw("y");
       console.expect("Granted write access to");
 

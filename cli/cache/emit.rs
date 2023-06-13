@@ -159,7 +159,7 @@ mod test {
   #[test]
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
-    let disk_cache = DiskCache::new(temp_dir.path());
+    let disk_cache = DiskCache::new(temp_dir.path().as_path());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       cli_version: "1.0.0",

@@ -4715,7 +4715,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6810|file:///a/b",
+          "exportMapKey": "foo|6812|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -7670,7 +7670,7 @@ fn lsp_node_modules_dir() {
     .as_str()
     .unwrap();
   // canonicalize for mac
-  let path = temp_dir.path().join("node_modules").canonicalize().unwrap();
+  let path = temp_dir.path().join("node_modules").canonicalize();
   assert_starts_with!(
     uri,
     ModuleSpecifier::from_file_path(&path).unwrap().as_str()

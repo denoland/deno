@@ -737,16 +737,19 @@ class ClientRequest extends OutgoingMessage {
     const auth = this.auth;
     const host = this.host ?? this.hostname ?? "localhost";
     const hash = this.hash ? `#${this.hash}` : "";
-    const search = this.search ? this.search : "";
     const defaultPort = this.agent?.defaultPort;
     const port = this.port ?? defaultPort ?? 80;
     let path = this.path ?? "/";
     if (!path.startsWith("/")) {
       path = "/" + path;
     }
-    return `${protocol}//${auth ? `${auth}@` : ""}${host}${
-      port === 80 ? "" : `:${port}`
-    }${path}${search}${hash}`;
+    const url = new URL(
+      `${protocol}//${auth ? `${auth}@` : ""}${host}${
+        port === 80 ? "" : `:${port}`
+      }${path}`,
+    );
+    url.hash = hash;
+    return url.href;
   }
 
   setTimeout(msecs: number, callback?: () => void) {

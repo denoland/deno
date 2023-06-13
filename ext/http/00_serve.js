@@ -37,6 +37,7 @@ import {
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
+  ArrayPrototypePush,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeSet,
@@ -68,25 +69,7 @@ const {
   op_http_upgrade_websocket_next,
   op_http_try_wait,
   op_http_wait,
-} = core.generateAsyncOpHandler(
-  "op_http_get_request_headers",
-  "op_http_get_request_method_and_url",
-  "op_http_read_request_body",
-  "op_http_serve",
-  "op_http_serve_on",
-  "op_http_set_promise_complete",
-  "op_http_set_response_body_bytes",
-  "op_http_set_response_body_resource",
-  "op_http_set_response_body_stream",
-  "op_http_set_response_body_text",
-  "op_http_set_response_header",
-  "op_http_set_response_headers",
-  "op_http_set_response_trailers",
-  "op_http_upgrade_raw",
-  "op_http_upgrade_websocket_next",
-  "op_http_try_wait",
-  "op_http_wait",
-);
+} = core.ensureFastOps();
 const _upgraded = Symbol("_upgraded");
 
 function internalServerError() {
@@ -334,7 +317,12 @@ class InnerRequest {
     if (this.#slabId === undefined) {
       throw new TypeError("request closed");
     }
-    return op_http_get_request_headers(this.#slabId);
+    const headers = [];
+    const reqHeaders = op_http_get_request_headers(this.#slabId);
+    for (let i = 0; i < reqHeaders.length; i += 2) {
+      ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+    }
+    return headers;
   }
 
   get slabId() {
@@ -515,16 +503,19 @@ async function asyncResponse(responseBodies, req, status, stream) {
 function mapToCallback(context, callback, onError) {
   const responseBodies = context.responseBodies;
   const signal = context.abortController.signal;
+  const hasCallback = callback.length > 0;
+  const hasOneCallback = callback.length === 1;
+
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
     try {
-      if (callback.length > 0) {
+      if (hasCallback) {
         innerRequest = new InnerRequest(req, context);
         const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (callback.length === 1) {
+        if (hasOneCallback) {
           response = await callback(request);
         } else {
           response = await callback(request, {
@@ -689,23 +680,25 @@ function serveHttpOn(context, callback) {
   let currentPromise = null;
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
+  const promiseErrorHandler = (error) => {
+    // Abnormal exit
+    console.error(
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
+    context.close();
+  };
+
   // Run the server
   const finished = (async () => {
+    const rid = context.serverRid;
     while (true) {
-      const rid = context.serverRid;
       let req;
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
-          PromisePrototypeCatch(callback(req), (error) => {
-            // Abnormal exit
-            console.error(
-              "Terminating Deno.serve loop due to unexpected error",
-              error,
-            );
-            context.close();
-          });
+          PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -722,14 +715,7 @@ function serveHttpOn(context, callback) {
       if (req === 0xffffffff) {
         break;
       }
-      PromisePrototypeCatch(callback(req), (error) => {
-        // Abnormal exit
-        console.error(
-          "Terminating Deno.serve loop due to unexpected error",
-          error,
-        );
-        context.close();
-      });
+      PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
     for (const streamRid of new SafeSetIterator(context.responseBodies)) {
@@ -759,4 +745,10 @@ internals.upgradeHttpRaw = upgradeHttpRaw;
 internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
-export { serve, upgradeHttpRaw };
+export {
+  addTrailers,
+  serve,
+  serveHttpOnConnection,
+  serveHttpOnListener,
+  upgradeHttpRaw,
+};

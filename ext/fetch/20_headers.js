@@ -30,7 +30,7 @@ const {
   ArrayPrototypeFilter,
   ObjectEntries,
   ObjectHasOwn,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
   SafeArrayIterator,
   SafeRegExp,
   Symbol,
@@ -102,10 +102,10 @@ function appendHeader(headers, name, value) {
   value = normalizeHeaderValue(value);
 
   // 2.
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
     throw new TypeError("Header name is not valid.");
   }
-  if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+  if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
     throw new TypeError("Header value is not valid.");
   }
 
@@ -282,7 +282,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
     if (this[_guard] == "immutable") {
@@ -307,7 +307,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -323,7 +323,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -351,10 +351,10 @@ class Headers {
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
       throw new TypeError("Header name is not valid.");
     }
-    if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+    if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
       throw new TypeError("Header value is not valid.");
     }
 

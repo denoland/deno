@@ -6,7 +6,7 @@ const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
-const { op_http_write } = Deno.core.generateAsyncOpHandler("op_http_write");
+const { op_http_write } = Deno.core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
