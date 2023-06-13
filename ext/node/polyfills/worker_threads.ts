@@ -53,7 +53,8 @@ class _Worker extends EventEmitter {
       specifier = `data:text/javascript,${specifier}`;
     } else if (typeof specifier === "string") {
       specifier = resolve(specifier);
-      if (!specifier.toString().endsWith(".mjs")) {
+      const pkg = Deno[Deno.internal].core.ops.op_require_read_closest_package_json(specifier);
+      if (!(specifier.toString().endsWith(".mjs") || (pkg && pkg.exists && pkg.typ == "module"))) {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
           `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
