@@ -4333,12 +4333,13 @@ declare namespace Deno {
   /** The current status of the permission:
    *
    * - `"granted"` - the permission has been granted.
+   * - `"granted-partial"` - the permission has been partially granted.
    * - `"denied"` - the permission has been explicitly denied.
    * - `"prompt"` - the permission has not explicitly granted nor denied.
    *
    * @category Permissions
    */
-  export type PermissionState = "granted" | "denied" | "prompt";
+  export type PermissionState = "granted" | "granted-partial" | "denied" | "prompt";
 
   /** The permission descriptor for the `allow-run` permission, which controls
    * access to what sub-processes can be executed by Deno. The option `command`
