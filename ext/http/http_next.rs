@@ -16,7 +16,6 @@ use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
-use bytes::Bytes;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
@@ -416,8 +415,8 @@ fn op_http_set_response_headers(
     let v8_name: ByteString = from_v8(scope, name).unwrap();
     let v8_value: ByteString = from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
-    // SAFETY: These are valid latin-1 strings
     let header_value =
+      // SAFETY: These are valid latin-1 strings
       unsafe { HeaderValue::from_maybe_shared_unchecked(v8_value) };
     resp_headers.append(header_name, header_value);
   }
