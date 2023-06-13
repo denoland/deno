@@ -6,6 +6,7 @@ import https from "node:https";
 import {
   assert,
   assertEquals,
+  fail,
 } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -616,6 +617,37 @@ Deno.test("[node/http] ClientRequest search params", async () => {
   req.end();
   await def;
   assertEquals(body, "foo=bar");
+});
+
+Deno.test("[node/http] HTTPS server", async () => {
+  const promise = deferred<void>();
+  const promise2 = deferred<void>();
+  const client = Deno.createHttpClient({
+    caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+  });
+  const server = https.createServer({
+    cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+    key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+  }, (_req, res) => {
+    res.end("success!");
+  });
+  server.listen(() => {
+    // deno-lint-ignore no-explicit-any
+    fetch(`https://localhost:${(server.address() as any).port}`, {
+      client,
+    }).then(async (res) => {
+      assertEquals(res.status, 200);
+      assertEquals(await res.text(), "success!");
+      server.close();
+      promise2.resolve();
+    });
+  })
+    .on("error", () => fail());
+  server.on("close", () => {
+    promise.resolve();
+  });
+  await Promise.all([promise, promise2]);
+  client.close();
 });
 
 Deno.test(

@@ -18,6 +18,7 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   validateBoolean,
   validateInteger,
+  validateObject,
   validatePort,
 } from "ext:deno_node/internal/validators.mjs";
 import {
@@ -1507,16 +1508,16 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 }
 
-type ServerHandler = (
+export type ServerHandler = (
   req: IncomingMessageForServer,
   res: ServerResponse,
 ) => void;
 
-export function Server(handler?: ServerHandler): ServerImpl {
-  return new ServerImpl(handler);
+export function Server(opts, requestListener?: ServerHandler): ServerImpl {
+  return new ServerImpl(opts, requestListener);
 }
 
-class ServerImpl extends EventEmitter {
+export class ServerImpl extends EventEmitter {
   #httpConnections: Set<Deno.HttpConn> = new Set();
   #listener?: Deno.Listener;
 
@@ -1528,12 +1529,24 @@ class ServerImpl extends EventEmitter {
   #servePromise: Deferred<void>;
   listening = false;
 
-  constructor(handler?: ServerHandler) {
+  constructor(opts, requestListener?: ServerHandler) {
     super();
+
+    if (typeof opts === "function") {
+      requestListener = opts;
+      opts = kEmptyObject;
+    } else if (opts == null) {
+      opts = kEmptyObject;
+    } else {
+      validateObject(opts, "options");
+    }
+
+    this._opts = opts;
+
     this.#servePromise = deferred();
     this.#servePromise.then(() => this.emit("close"));
-    if (handler !== undefined) {
-      this.on("request", handler);
+    if (requestListener !== undefined) {
+      this.on("request", requestListener);
     }
   }
 
@@ -1562,12 +1575,12 @@ class ServerImpl extends EventEmitter {
       port,
     } as Deno.NetAddr;
     this.listening = true;
-    nextTick(() => this.#serve());
+    nextTick(() => this._serve());
 
     return this;
   }
 
-  #serve() {
+  _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
       const req = new IncomingMessageForServer(request, info.remoteAddr);
@@ -1600,6 +1613,7 @@ class ServerImpl extends EventEmitter {
           this.#addr!.port = port;
           this.emit("listening");
         },
+        ...this._additionalServeOptions?.(),
       },
     );
     if (this.#unref) {
@@ -1662,8 +1676,8 @@ class ServerImpl extends EventEmitter {
 
 Server.prototype = ServerImpl.prototype;
 
-export function createServer(handler?: ServerHandler) {
-  return Server(handler);
+export function createServer(opts, requestListener?: ServerHandler) {
+  return Server(opts, requestListener);
 }
 
 /** Makes an HTTP request. */

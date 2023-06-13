@@ -23,6 +23,7 @@ use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
+use deno_core::task::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -58,6 +59,8 @@ use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -512,8 +515,6 @@ pub fn op_fetch_response_into_byte_stream(
   Ok(rid)
 }
 
-use deno_core::task::spawn;
-
 #[op]
 pub async fn op_fetch_response_upgrade(
   state: Rc<RefCell<OpState>>,
@@ -565,9 +566,6 @@ pub async fn op_fetch_response_upgrade(
       .add(UpgradeStream::new(read_rx, write_tx)),
   )
 }
-
-use tokio::io::AsyncReadExt;
-use tokio::io::AsyncWriteExt;
 
 struct UpgradeStream {
   read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
