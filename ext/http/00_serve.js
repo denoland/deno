@@ -38,6 +38,7 @@ import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
+  Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeSet,
