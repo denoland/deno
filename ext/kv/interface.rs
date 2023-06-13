@@ -25,7 +25,7 @@ pub trait DatabaseHandler {
 
 #[async_trait(?Send)]
 pub trait Database {
-  type QPM: QueueMessageHandle + 'static;
+  type QMH: QueueMessageHandle + 'static;
 
   async fn snapshot_read(
     &self,
@@ -38,7 +38,7 @@ pub trait Database {
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError>;
 
-  async fn dequeue_next_message(&self) -> Result<Self::QPM, AnyError>;
+  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError>;
 
   fn close(&self);
 }

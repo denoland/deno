@@ -334,7 +334,7 @@ where
     let mut state = state.borrow_mut();
     let handle = state
       .resource_table
-      .take::<QueueMessageResource<<<DBH>::DB as Database>::QPM>>(handle_rid)
+      .take::<QueueMessageResource<<<DBH>::DB as Database>::QMH>>(handle_rid)
       .map_err(|_| type_error("Queue message not found"))?;
     Rc::try_unwrap(handle)
       .map_err(|_| type_error("Queue message not found"))?

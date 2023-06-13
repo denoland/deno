@@ -572,7 +572,7 @@ impl SqliteQueue {
 
 #[async_trait(?Send)]
 impl Database for SqliteDb {
-  type QPM = DequeuedMessage;
+  type QMH = DequeuedMessage;
 
   async fn snapshot_read(
     &self,
@@ -735,7 +735,7 @@ impl Database for SqliteDb {
     Ok(commit_result)
   }
 
-  async fn dequeue_next_message(&self) -> Result<Self::QPM, AnyError> {
+  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError> {
     let queue = self
       .queue
       .get_or_init(|| async move { SqliteQueue::new(self.conn.clone()) })
