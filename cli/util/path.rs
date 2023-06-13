@@ -73,7 +73,9 @@ pub fn mapped_specifier_for_tsc(
 pub fn specifier_to_file_path(
   specifier: &ModuleSpecifier,
 ) -> Result<PathBuf, AnyError> {
-  let result = if cfg!(windows) {
+  let result = if specifier.scheme() != "file" {
+    Err(())
+  } else if cfg!(windows) {
     match specifier.to_file_path() {
       Ok(path) => Ok(path),
       Err(()) => {

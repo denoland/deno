@@ -1034,7 +1034,7 @@ mod tests {
     );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
+      extensions: vec![test_ext::init()],
       ..Default::default()
     });
 
