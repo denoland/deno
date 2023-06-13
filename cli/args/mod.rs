@@ -266,27 +266,14 @@ pub enum LintReporterKind {
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
-  pub is_stdin: bool,
   pub reporter_kind: LintReporterKind,
 }
 
 impl LintOptions {
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
-    mut maybe_lint_flags: Option<LintFlags>,
+    maybe_lint_flags: Option<LintFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(lint_flags) = maybe_lint_flags.as_mut() {
-      let args = &mut lint_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
-
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -333,7 +320,6 @@ impl LintOptions {
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
-      is_stdin,
       files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,

@@ -161,6 +161,13 @@ pub struct LintFlags {
   pub compact: bool,
 }
 
+impl LintFlags {
+  pub fn is_stdin(&self) -> bool {
+    let args = &self.files.include;
+    args.len() == 1 && args[0].to_string_lossy() == "-"
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,

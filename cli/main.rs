@@ -32,7 +32,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::CliOptions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -144,9 +143,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
         tools::lint::print_rules_list(lint_flags.json);
         Ok(())
       } else {
-        let cli_options = CliOptions::from_flags(flags)?;
-        let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-        tools::lint::lint(cli_options, lint_options).await
+        tools::lint::lint(flags, lint_flags).await
       }
     }),
     DenoSubcommand::Repl(repl_flags) => {

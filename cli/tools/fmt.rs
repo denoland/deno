@@ -86,6 +86,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
           _ = sender.send(files.clone());
           let refmt_files = if let Some(paths) = changed_paths {
             if fmt_options.check {
+              // check all files on any changed (https://github.com/denoland/deno/issues/12446)
               files
                 .iter()
                 .any(|path| paths.contains(path))
