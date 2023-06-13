@@ -121,11 +121,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
       tools::coverage::cover_files(flags, coverage_flags).await
     }),
-    DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
-      let cli_options = CliOptions::from_flags(flags.clone())?;
-      let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-      tools::fmt::format(cli_options, fmt_options).await
-    }),
+    DenoSubcommand::Fmt(fmt_flags) => {
+      spawn_subcommand(
+        async move { tools::fmt::format(flags, fmt_flags).await },
+      )
+    }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async { tools::init::init_project(init_flags).await })
     }

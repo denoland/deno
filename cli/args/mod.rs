@@ -147,7 +147,6 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default)]
 pub struct FmtOptions {
-  pub is_stdin: bool,
   pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
@@ -156,24 +155,12 @@ pub struct FmtOptions {
 impl FmtOptions {
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
-    mut maybe_fmt_flags: Option<FmtFlags>,
+    maybe_fmt_flags: Option<FmtFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(fmt_flags) = maybe_fmt_flags.as_mut() {
-      let args = &mut fmt_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
 
     Ok(Self {
-      is_stdin,
       check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
       options: resolve_fmt_options(
         maybe_fmt_flags.as_ref(),
