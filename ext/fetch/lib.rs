@@ -530,7 +530,6 @@ pub async fn op_fetch_response_upgrade(
   let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
   let upgraded = raw_response.response.upgrade().await?;
-  eprintln!("upgraded the connection!");
   {
     // Stage 3: Pump the data
     let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
