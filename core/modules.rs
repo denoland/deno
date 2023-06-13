@@ -438,7 +438,7 @@ impl ModuleLoader for ExtModuleLoader {
     let result = if let Some(load_callback) = &self.maybe_load_callback {
       load_callback(source)
     } else {
-      Ok(source.load())
+      source.load()
     };
     match result {
       Ok(code) => {
@@ -456,6 +456,29 @@ impl ModuleLoader for ExtModuleLoader {
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
     async { Ok(()) }.boxed_local()
+  }
+}
+
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let sources = self.sources.get_mut();
+    let used_specifiers = self.used_specifiers.get_mut();
+    let unused_modules: Vec<_> = sources
+      .iter()
+      .filter(|(k, _)| !used_specifiers.contains(k.as_str()))
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m.0);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
   }
 }
 
@@ -2021,7 +2044,7 @@ import "/a.js";
     deno_core::extension!(test_ext, ops = [op_test]);
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init()],
+      extensions: vec![test_ext::init_ops()],
       module_loader: Some(loader),
       ..Default::default()
     });
