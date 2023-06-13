@@ -84,13 +84,10 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
-      let cli_options = CliOptions::from_flags(flags)?;
-      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
-      if cli_options.watch_paths().is_some() {
-        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
-          .await
+      if flags.watch.is_some() {
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
       } else {
-        tools::bench::run_benchmarks(cli_options, bench_options).await
+        tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {

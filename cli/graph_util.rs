@@ -428,7 +428,6 @@ struct GraphData {
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
 pub struct ModuleGraphContainer {
-  graph_kind: GraphKind,
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
   // while another request is updating the data.
@@ -439,17 +438,12 @@ pub struct ModuleGraphContainer {
 impl ModuleGraphContainer {
   pub fn new(graph_kind: GraphKind) -> Self {
     Self {
-      graph_kind,
       update_queue: Default::default(),
       graph_data: Arc::new(RwLock::new(GraphData {
         graph: Arc::new(ModuleGraph::new(graph_kind)),
         checked_libs: Default::default(),
       })),
     }
-  }
-
-  pub fn clear(&self) {
-    self.graph_data.write().graph = Arc::new(ModuleGraph::new(self.graph_kind));
   }
 
   /// Acquires a permit to modify the module graph without other code

@@ -798,10 +798,6 @@ impl NpmModuleLoader {
 pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
 
 impl CjsResolutionStore {
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
     self.0.lock().contains(specifier)
   }

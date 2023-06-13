@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use flaky_test::flaky_test;
-use std::fs::write;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::TempDir;
@@ -508,7 +507,7 @@ async fn bundle_js_watch() {
   // Test strategy extends this of test bundle_js by adding watcher
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
-  write(&file_to_watch, "console.log('Hello world');").unwrap();
+  file_to_watch.write("console.log('Hello world');");
   assert!(file_to_watch.is_file());
   let t = TempDir::new();
   let bundle = t.path().join("mod6.bundle.js");
@@ -547,7 +546,7 @@ async fn bundle_js_watch() {
 
   wait_contains("Bundle finished", &mut stderr_lines).await;
 
-  write(&file_to_watch, "console.log('Hello world2');").unwrap();
+  file_to_watch.write("console.log('Hello world2');");
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   let line = next_line(&mut stderr_lines).await.unwrap();
@@ -567,7 +566,7 @@ async fn bundle_js_watch() {
   wait_contains("Bundle finished", &mut stderr_lines).await;
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  write(&file_to_watch, "syntax error ^^").unwrap();
+  file_to_watch.write("syntax error ^^");
 
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
@@ -583,7 +582,7 @@ async fn bundle_js_watch() {
 async fn bundle_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.ts");
-  write(&file_to_watch, "syntax error ^^").unwrap();
+  file_to_watch.write("syntax error ^^");
   let target_file = t.path().join("target.js");
 
   let mut deno = util::deno_cmd()
@@ -624,7 +623,7 @@ async fn bundle_watch_not_exit() {
   assert!(!target_file.is_file());
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
-  write(&file_to_watch, "console.log(42);").unwrap();
+  file_to_watch.write("console.log(42);");
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   let line = next_line(&mut stderr_lines).await.unwrap();
@@ -648,7 +647,7 @@ async fn bundle_watch_not_exit() {
 async fn run_watch_no_dynamic() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, "console.log('Hello world');").unwrap();
+  file_to_watch.write("console.log('Hello world');");
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -669,7 +668,7 @@ async fn run_watch_no_dynamic() {
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Change content of the file
-  write(&file_to_watch, "console.log('Hello world2');").unwrap();
+  file_to_watch.write("console.log('Hello world2');");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Hello world2", &mut stdout_lines).await;
@@ -677,51 +676,45 @@ async fn run_watch_no_dynamic() {
 
   // Add dependency
   let another_file = t.path().join("another_file.js");
-  write(&another_file, "export const foo = 0;").unwrap();
-  write(
-    &file_to_watch,
-    "import { foo } from './another_file.js'; console.log(foo);",
-  )
-  .unwrap();
+  another_file.write("export const foo = 0;");
+  file_to_watch
+    .write("import { foo } from './another_file.js'; console.log(foo);");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("0", &mut stdout_lines).await;
   wait_for_watcher("another_file.js", &mut stderr_lines).await;
 
   // Confirm that restarting occurs when a new file is updated
-  write(&another_file, "export const foo = 42;").unwrap();
+  another_file.write("export const foo = 42;");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("42", &mut stdout_lines).await;
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  write(&file_to_watch, "syntax error ^^").unwrap();
+  file_to_watch.write("syntax error ^^");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("error:", &mut stderr_lines).await;
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Then restore the file
-  write(
-    &file_to_watch,
-    "import { foo } from './another_file.js'; console.log(foo);",
-  )
-  .unwrap();
+  file_to_watch
+    .write("import { foo } from './another_file.js'; console.log(foo);");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("42", &mut stdout_lines).await;
   wait_for_watcher("another_file.js", &mut stderr_lines).await;
 
   // Update the content of the imported file with invalid syntax
-  write(&another_file, "syntax error ^^").unwrap();
+  another_file.write("syntax error ^^");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("error:", &mut stderr_lines).await;
   wait_for_watcher("another_file.js", &mut stderr_lines).await;
 
   // Modify the imported file and make sure that restarting occurs
-  write(&another_file, "export const foo = 'modified!';").unwrap();
+  another_file.write("export const foo = 'modified!';");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("modified!", &mut stdout_lines).await;
@@ -737,10 +730,10 @@ async fn run_watch_no_dynamic() {
 async fn run_watch_external_watch_files() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, "console.log('Hello world');").unwrap();
+  file_to_watch.write("console.log('Hello world');");
 
   let external_file_to_watch = t.path().join("external_file_to_watch.txt");
-  write(&external_file_to_watch, "Hello world").unwrap();
+  external_file_to_watch.write("Hello world");
 
   let mut watch_arg = "--watch=".to_owned();
   let external_file_to_watch_str = external_file_to_watch.to_string();
@@ -765,12 +758,12 @@ async fn run_watch_external_watch_files() {
   wait_for_watcher("external_file_to_watch.txt", &mut stderr_lines).await;
 
   // Change content of the external file
-  write(&external_file_to_watch, "Hello world2").unwrap();
+  external_file_to_watch.write("Hello world2");
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Process finished", &mut stderr_lines).await;
 
   // Again (https://github.com/denoland/deno/issues/17584)
-  write(&external_file_to_watch, "Hello world3").unwrap();
+  external_file_to_watch.write("Hello world3");
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("Process finished", &mut stderr_lines).await;
 
@@ -781,8 +774,7 @@ async fn run_watch_external_watch_files() {
 async fn run_watch_load_unload_events() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(
-    &file_to_watch,
+  file_to_watch.write(
     r#"
       setInterval(() => {}, 0);
       window.addEventListener("load", () => {
@@ -793,8 +785,7 @@ async fn run_watch_load_unload_events() {
         console.log("unload");
       });
     "#,
-  )
-  .unwrap();
+  );
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -816,8 +807,7 @@ async fn run_watch_load_unload_events() {
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Change content of the file, this time without an interval to keep it alive.
-  write(
-    &file_to_watch,
+  file_to_watch.write(
     r#"
       window.addEventListener("load", () => {
         console.log("load");
@@ -827,8 +817,7 @@ async fn run_watch_load_unload_events() {
         console.log("unload");
       });
     "#,
-  )
-  .unwrap();
+  );
 
   // Wait for the restart
   wait_contains("Restarting", &mut stderr_lines).await;
@@ -849,7 +838,7 @@ async fn run_watch_load_unload_events() {
 async fn run_watch_not_exit() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, "syntax error ^^").unwrap();
+  file_to_watch.write("syntax error ^^");
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -871,7 +860,7 @@ async fn run_watch_not_exit() {
   wait_for_watcher("file_to_watch.js", &mut stderr_lines).await;
 
   // Make sure the watcher actually restarts and works fine with the proper syntax
-  write(&file_to_watch, "console.log(42);").unwrap();
+  file_to_watch.write("console.log(42);");
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains("42", &mut stdout_lines).await;
@@ -887,7 +876,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
     filecontent: &'static str,
   ) -> std::path::PathBuf {
     let absolute_path = directory.path().join(filename);
-    write(&absolute_path, filecontent).unwrap();
+    absolute_path.write(filecontent);
     let relative_path = absolute_path
       .as_path()
       .strip_prefix(directory.path())
@@ -938,7 +927,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
 async fn run_watch_with_ext_flag() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch");
-  write(&file_to_watch, "interface I{}; console.log(42);").unwrap();
+  file_to_watch.write("interface I{}; console.log(42);");
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -962,11 +951,7 @@ async fn run_watch_with_ext_flag() {
   wait_for_watcher("file_to_watch", &mut stderr_lines).await;
   wait_contains("Process finished", &mut stderr_lines).await;
 
-  write(
-    &file_to_watch,
-    "type Bear = 'polar' | 'grizzly'; console.log(123);",
-  )
-  .unwrap();
+  file_to_watch.write("type Bear = 'polar' | 'grizzly'; console.log(123);");
 
   wait_contains("Restarting!", &mut stderr_lines).await;
   wait_contains("123", &mut stdout_lines).await;
@@ -979,11 +964,8 @@ async fn run_watch_with_ext_flag() {
 async fn run_watch_error_messages() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(
-    &file_to_watch,
-    "throw SyntaxError(`outer`, {cause: TypeError(`inner`)})",
-  )
-  .unwrap();
+  file_to_watch
+    .write("throw SyntaxError(`outer`, {cause: TypeError(`inner`)})");
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -1000,7 +982,7 @@ async fn run_watch_error_messages() {
   wait_contains("Process started", &mut stderr_lines).await;
   wait_contains("error: Uncaught SyntaxError: outer", &mut stderr_lines).await;
   wait_contains("Caused by: TypeError: inner", &mut stderr_lines).await;
-  wait_contains("Process finished", &mut stderr_lines).await;
+  wait_contains("Process failed", &mut stderr_lines).await;
 
   check_alive_then_kill(child);
 }
@@ -1034,18 +1016,10 @@ async fn test_watch_basic() {
   let bar_file = t.path().join("bar.js");
   let foo_test = t.path().join("foo_test.js");
   let bar_test = t.path().join("bar_test.js");
-  write(&foo_file, "export default function foo() { 1 + 1 }").unwrap();
-  write(&bar_file, "export default function bar() { 2 + 2 }").unwrap();
-  write(
-    &foo_test,
-    "import foo from './foo.js'; Deno.test('foo', foo);",
-  )
-  .unwrap();
-  write(
-    bar_test,
-    "import bar from './bar.js'; Deno.test('bar', bar);",
-  )
-  .unwrap();
+  foo_file.write("export default function foo() { 1 + 1 }");
+  bar_file.write("export default function bar() { 2 + 2 }");
+  foo_test.write("import foo from './foo.js'; Deno.test('foo', foo);");
+  bar_test.write("import bar from './bar.js'; Deno.test('bar', bar);");
 
   assert_eq!(next_line(&mut stdout_lines).await.unwrap(), "");
   assert_contains!(
@@ -1064,11 +1038,7 @@ async fn test_watch_basic() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   // Change content of the file
-  write(
-    &foo_test,
-    "import foo from './foo.js'; Deno.test('foobar', foo);",
-  )
-  .unwrap();
+  foo_test.write("import foo from './foo.js'; Deno.test('foobar', foo);");
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
@@ -1083,7 +1053,7 @@ async fn test_watch_basic() {
 
   // Add test
   let another_test = t.path().join("new_test.js");
-  write(&another_test, "Deno.test('another one', () => 3 + 3)").unwrap();
+  another_test.write("Deno.test('another one', () => 3 + 3)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
@@ -1096,8 +1066,7 @@ async fn test_watch_basic() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   // Confirm that restarting occurs when a new file is updated
-  write(&another_test, "Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)")
-    .unwrap();
+  another_test.write("Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
@@ -1114,7 +1083,7 @@ async fn test_watch_basic() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
-  write(&another_test, "syntax error ^^").unwrap();
+  another_test.write("syntax error ^^");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
   assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
@@ -1129,7 +1098,7 @@ async fn test_watch_basic() {
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Test failed");
 
   // Then restore the file
-  write(&another_test, "Deno.test('another one', () => 3 + 3)").unwrap();
+  another_test.write("Deno.test('another one', () => 3 + 3)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
@@ -1143,11 +1112,8 @@ async fn test_watch_basic() {
 
   // Confirm that the watcher keeps on working even if the file is updated and the test fails
   // This also confirms that it restarts when dependencies change
-  write(
-    &foo_file,
-    "export default function foo() { throw new Error('Whoops!'); }",
-  )
-  .unwrap();
+  foo_file
+    .write("export default function foo() { throw new Error('Whoops!'); }");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
@@ -1159,7 +1125,7 @@ async fn test_watch_basic() {
   wait_contains("Test failed", &mut stderr_lines).await;
 
   // Then restore the file
-  write(&foo_file, "export default function foo() { 1 + 1 }").unwrap();
+  foo_file.write("export default function foo() { 1 + 1 }");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
@@ -1172,16 +1138,8 @@ async fn test_watch_basic() {
   wait_contains("Test finished", &mut stderr_lines).await;
 
   // Test that circular dependencies work fine
-  write(
-    &foo_file,
-    "import './bar.js'; export default function foo() { 1 + 1 }",
-  )
-  .unwrap();
-  write(
-    &bar_file,
-    "import './foo.js'; export default function bar() { 2 + 2 }",
-  )
-  .unwrap();
+  foo_file.write("import './bar.js'; export default function foo() { 1 + 1 }");
+  bar_file.write("import './foo.js'; export default function bar() { 2 + 2 }");
   check_alive_then_kill(child);
 }
 
@@ -1239,7 +1197,7 @@ async fn test_watch_doc() {
 async fn test_watch_module_graph_error_referrer() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, "import './nonexistent.js';").unwrap();
+  file_to_watch.write("import './nonexistent.js';");
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1260,7 +1218,7 @@ async fn test_watch_module_graph_error_referrer() {
   let line3 = next_line(&mut stderr_lines).await.unwrap();
   assert_contains!(&line3, "    at ");
   assert_contains!(&line3, "file_to_watch.js");
-  wait_contains("Process finished", &mut stderr_lines).await;
+  wait_contains("Process failed", &mut stderr_lines).await;
   check_alive_then_kill(child);
 }
 
@@ -1269,8 +1227,7 @@ async fn test_watch_module_graph_error_referrer() {
 async fn test_watch_unload_handler_error_on_drop() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(
-    &file_to_watch,
+  file_to_watch.write(
     r#"
     addEventListener("unload", () => {
       throw new Error("foo");
@@ -1279,8 +1236,7 @@ async fn test_watch_unload_handler_error_on_drop() {
       throw new Error("bar");
     });
     "#,
-  )
-  .unwrap();
+  );
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("run")
@@ -1294,7 +1250,7 @@ async fn test_watch_unload_handler_error_on_drop() {
   let (_, mut stderr_lines) = child_lines(&mut child);
   wait_contains("Process started", &mut stderr_lines).await;
   wait_contains("Uncaught Error: bar", &mut stderr_lines).await;
-  wait_contains("Process finished", &mut stderr_lines).await;
+  wait_contains("Process failed", &mut stderr_lines).await;
   check_alive_then_kill(child);
 }
 
@@ -1307,7 +1263,7 @@ async fn test_watch_sigint() {
 
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(&file_to_watch, r#"Deno.test("foo", () => {});"#).unwrap();
+  file_to_watch.write(r#"Deno.test("foo", () => {});"#);
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
     .arg("test")
@@ -1327,6 +1283,120 @@ async fn test_watch_sigint() {
   assert_eq!(exit_status.code(), Some(130));
 }
 
+#[tokio::test]
+async fn bench_watch_basic() {
+  let t = TempDir::new();
+
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("bench")
+    .arg("--watch")
+    .arg("--unstable")
+    .arg("--no-check")
+    .arg(t.path())
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+
+  assert_contains!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "Bench started"
+  );
+  assert_contains!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "Bench finished"
+  );
+
+  let foo_file = t.path().join("foo.js");
+  let bar_file = t.path().join("bar.js");
+  let foo_bench = t.path().join("foo_bench.js");
+  let bar_bench = t.path().join("bar_bench.js");
+  foo_file.write("export default function foo() { 1 + 1 }");
+  bar_file.write("export default function bar() { 2 + 2 }");
+  foo_bench.write("import foo from './foo.js'; Deno.bench('foo bench', foo);");
+  bar_bench.write("import bar from './bar.js'; Deno.bench('bar bench', bar);");
+
+  wait_contains("bar_bench.js", &mut stdout_lines).await;
+  wait_contains("bar bench", &mut stdout_lines).await;
+  wait_contains("foo_bench.js", &mut stdout_lines).await;
+  wait_contains("foo bench", &mut stdout_lines).await;
+  wait_contains("Bench finished", &mut stderr_lines).await;
+
+  // Change content of the file
+  foo_bench.write("import foo from './foo.js'; Deno.bench('foo asdf', foo);");
+
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  loop {
+    let line = next_line(&mut stdout_lines).await.unwrap();
+    assert_not_contains!(line, "bar");
+    if line.contains("foo asdf") {
+      break; // last line
+    }
+  }
+  wait_contains("Bench finished", &mut stderr_lines).await;
+
+  // Add bench
+  let another_test = t.path().join("new_bench.js");
+  another_test.write("Deno.bench('another one', () => 3 + 3)");
+  loop {
+    let line = next_line(&mut stdout_lines).await.unwrap();
+    assert_not_contains!(line, "bar");
+    assert_not_contains!(line, "foo");
+    if line.contains("another one") {
+      break; // last line
+    }
+  }
+  wait_contains("Bench finished", &mut stderr_lines).await;
+
+  // Confirm that restarting occurs when a new file is updated
+  another_test.write("Deno.bench('another one', () => 3 + 3); Deno.bench('another another one', () => 4 + 4)");
+  loop {
+    let line = next_line(&mut stdout_lines).await.unwrap();
+    assert_not_contains!(line, "bar");
+    assert_not_contains!(line, "foo");
+    if line.contains("another another one") {
+      break; // last line
+    }
+  }
+  wait_contains("Bench finished", &mut stderr_lines).await;
+
+  // Confirm that the watcher keeps on working even if the file is updated and has invalid syntax
+  another_test.write("syntax error ^^");
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "error:");
+  assert_eq!(next_line(&mut stderr_lines).await.unwrap(), "");
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "  syntax error ^^"
+  );
+  assert_eq!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "         ~~~~~"
+  );
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bench failed");
+
+  // Then restore the file
+  another_test.write("Deno.bench('another one', () => 3 + 3)");
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  loop {
+    let line = next_line(&mut stdout_lines).await.unwrap();
+    assert_not_contains!(line, "bar");
+    assert_not_contains!(line, "foo");
+    if line.contains("another one") {
+      break; // last line
+    }
+  }
+  wait_contains("Bench finished", &mut stderr_lines).await;
+
+  // Test that circular dependencies work fine
+  foo_file.write("import './bar.js'; export default function foo() { 1 + 1 }");
+  bar_file.write("import './foo.js'; export default function bar() { 2 + 2 }");
+  check_alive_then_kill(child);
+}
+
 // Regression test for https://github.com/denoland/deno/issues/15465.
 #[tokio::test]
 async fn run_watch_reload_once() {
@@ -1337,7 +1407,7 @@ async fn run_watch_reload_once() {
       import { time } from "http://localhost:4545/dynamic_module.ts";
       console.log(time);
     "#;
-  write(&file_to_watch, file_content).unwrap();
+  file_to_watch.write(file_content);
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -1355,7 +1425,7 @@ async fn run_watch_reload_once() {
   wait_contains("finished", &mut stderr_lines).await;
   let first_output = next_line(&mut stdout_lines).await.unwrap();
 
-  write(&file_to_watch, file_content).unwrap();
+  file_to_watch.write(file_content);
   // The remote dynamic module should not have been reloaded again.
 
   wait_contains("finished", &mut stderr_lines).await;
@@ -1375,7 +1445,7 @@ async fn test_watch_serve() {
       console.error("serving");
       await Deno.serve({port: 4600, handler: () => new Response("hello")});
     "#;
-  write(&file_to_watch, file_content).unwrap();
+  file_to_watch.write(file_content);
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -1397,7 +1467,7 @@ async fn test_watch_serve() {
   // Note that we start serving very quickly, so we specifically want to wait for this message
   wait_contains(r#"Watching paths: [""#, &mut stderr_lines).await;
 
-  write(&file_to_watch, file_content).unwrap();
+  file_to_watch.write(file_content);
 
   wait_contains("serving", &mut stderr_lines).await;
   wait_contains("Listening on", &mut stdout_lines).await;
@@ -1409,31 +1479,25 @@ async fn test_watch_serve() {
 async fn run_watch_dynamic_imports() {
   let t = TempDir::new();
   let file_to_watch = t.path().join("file_to_watch.js");
-  write(
-    &file_to_watch,
+  file_to_watch.write(
     r#"
     console.log("Hopefully dynamic import will be watched...");
     await import("./imported.js");
     "#,
-  )
-  .unwrap();
+  );
   let file_to_watch2 = t.path().join("imported.js");
-  write(
-    file_to_watch2,
+  file_to_watch2.write(
     r#"
     import "./imported2.js";
     console.log("I'm dynamically imported and I cause restarts!");
     "#,
-  )
-  .unwrap();
+  );
   let file_to_watch3 = t.path().join("imported2.js");
-  write(
-    &file_to_watch3,
+  file_to_watch3.write(
     r#"
     console.log("I'm statically imported from the dynamic import");
     "#,
-  )
-  .unwrap();
+  );
 
   let mut child = util::deno_cmd()
     .current_dir(util::testdata_path())
@@ -1472,13 +1536,11 @@ async fn run_watch_dynamic_imports() {
   wait_for_watcher("imported2.js", &mut stderr_lines).await;
   wait_contains("finished", &mut stderr_lines).await;
 
-  write(
-    &file_to_watch3,
+  file_to_watch3.write(
     r#"
     console.log("I'm statically imported from the dynamic import and I've changed");
     "#,
-  )
-  .unwrap();
+  );
 
   wait_contains("Restarting", &mut stderr_lines).await;
   wait_contains(
