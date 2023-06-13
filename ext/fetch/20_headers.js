@@ -32,7 +32,11 @@ const {
   ObjectHasOwn,
   RegExpPrototypeExec,
   SafeArrayIterator,
-  SafeRegExp,
+  SafeMap,
+  MapPrototypeGet,
+  MapPrototypeHas,
+  MapPrototypeSet,
+  MapPrototypeClear,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -88,10 +92,6 @@ function fillHeaders(headers, object) {
   }
 }
 
-// Regex matching illegal chars in a header value
-// deno-lint-ignore no-control-regex
-const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
-
 function checkForInvalidValueChars(value) {
   for (let i = 0; i < value.length; i++) {
     const c = StringPrototypeCharCodeAt(value, i);
@@ -104,17 +104,19 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-// TODO(bartlomieju): make it LRU cache with 64/128 size limit.
-const cache = {};
-
+const HEADER_NAME_CACHE = new SafeMap();
 function checkHeaderNameForHttpTokenCodePoint(name) {
-  const cachedResult = cache[name];
-  if (typeof cachedResult !== "undefined") {
-    return cachedResult;
+  if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
+    return MapPrototypeGet(HEADER_NAME_CACHE, name);
   }
 
   const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
-  cache[name] = valid;
+
+  if (HEADER_NAME_CACHE.size > 4096) {
+    MapPrototypeClear(HEADER_NAME_CACHE);
+  }
+  MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
+
   return valid;
 }
 
