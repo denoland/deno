@@ -10,14 +10,49 @@ import {
 } from "ext:deno_node/http.ts";
 import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import {
+  type ServerHandler,
+  ServerImpl as HttpServer,
+} from "ext:deno_node/http.ts";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
-export class Server {
-  constructor() {
-    notImplemented("https.Server.prototype.constructor");
+export class Server extends HttpServer {
+  constructor(opts, requestListener?: ServerHandler) {
+    if (typeof opts === "function") {
+      requestListener = opts;
+      opts = kEmptyObject;
+    } else if (opts == null) {
+      opts = kEmptyObject;
+    } else {
+      validateObject(opts, "options");
+    }
+
+    if (opts.cert && Array.isArray(opts.cert)) {
+      notImplemented("https.Server.opts.cert array type");
+    }
+
+    if (opts.key && Array.isArray(opts.key)) {
+      notImplemented("https.Server.opts.key array type");
+    }
+
+    super(opts, requestListener);
+  }
+
+  _additionalServeOptions() {
+    return {
+      cert: this._opts.cert instanceof Buffer
+        ? this._opts.cert.toString()
+        : this._opts.cert,
+      key: this._opts.key instanceof Buffer
+        ? this._opts.key.toString()
+        : this._opts.key,
+    };
   }
 }
-export function createServer() {
-  notImplemented("https.createServer");
+export function createServer(opts, requestListener?: ServerHandler) {
+  return new Server(opts, requestListener);
 }
 
 interface HttpsRequestOptions extends RequestOptions {
