@@ -725,6 +725,11 @@ function serveHttpOn(context, callback) {
 
   return {
     finished,
+    then() {
+      throw new Error(
+        "Deno.serve no longer returns a promise. await server.finished instead of server.",
+      );
+    },
     ref() {
       ref = true;
       if (currentPromise) {
