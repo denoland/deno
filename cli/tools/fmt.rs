@@ -63,7 +63,7 @@ pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
 
   if flags.watch.is_some() {
     let clear_screen = !flags.no_clear_screen;
-    file_watcher::watch_func2(
+    file_watcher::watch_func(
       flags,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),

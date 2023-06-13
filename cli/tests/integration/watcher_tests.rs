@@ -528,15 +528,14 @@ async fn bundle_js_watch() {
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Warning");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "deno_emit");
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "Bundle started"
   );
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "file_to_watch.ts"
-  );
+  let line = next_line(&mut stderr_lines).await.unwrap();
+  assert_contains!(line, "file_to_watch.ts");
+  assert_contains!(line, "Check");
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Bundle");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "mod6.bundle.js"
@@ -548,11 +547,11 @@ async fn bundle_js_watch() {
 
   file_to_watch.write("console.log('Hello world2');");
 
-  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   let line = next_line(&mut stderr_lines).await.unwrap();
   // Should not clear screen, as we are in non-TTY environment
   assert_not_contains!(&line, CLEAR_SCREEN);
   assert_contains!(&line, "File change detected!");
+  assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   assert_contains!(
     next_line(&mut stderr_lines).await.unwrap(),
     "file_to_watch.ts"
@@ -625,15 +624,15 @@ async fn bundle_watch_not_exit() {
   // Make sure the watcher actually restarts and works fine with the proper syntax
   file_to_watch.write("console.log(42);");
 
+  assert_contains!(
+    next_line(&mut stderr_lines).await.unwrap(),
+    "File change detected"
+  );
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Check");
   let line = next_line(&mut stderr_lines).await.unwrap();
   // Should not clear screen, as we are in non-TTY environment
   assert_not_contains!(&line, CLEAR_SCREEN);
-  assert_contains!(&line, "File change detected!");
-  assert_contains!(
-    next_line(&mut stderr_lines).await.unwrap(),
-    "file_to_watch.ts"
-  );
+  assert_contains!(line, "file_to_watch.ts");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "target.js");
 
   wait_contains("Bundle finished", &mut stderr_lines).await;

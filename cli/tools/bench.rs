@@ -685,7 +685,7 @@ pub async fn run_benchmarks_with_watch(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let clear_screen = !flags.no_clear_screen;
-  file_watcher::watch_func2(
+  file_watcher::watch_func(
     flags,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),

@@ -1727,7 +1727,7 @@ pub async fn run_tests_with_watch(
   });
 
   let clear_screen = !flags.no_clear_screen;
-  file_watcher::watch_func2(
+  file_watcher::watch_func(
     flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),

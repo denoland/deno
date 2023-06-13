@@ -89,42 +89,6 @@ where
   }
 }
 
-pub enum ResolutionResult<T> {
-  Restart {
-    paths_to_watch: Vec<PathBuf>,
-    result: Result<T, AnyError>,
-  },
-  Ignore,
-}
-
-async fn next_restart<R, T, F>(
-  resolver: &mut R,
-  debounced_receiver: &mut DebouncedReceiver,
-) -> (Vec<PathBuf>, Result<T, AnyError>)
-where
-  R: FnMut(Option<Vec<PathBuf>>) -> F,
-  F: Future<Output = ResolutionResult<T>>,
-{
-  loop {
-    let changed = debounced_receiver.recv().await;
-    match resolver(changed).await {
-      ResolutionResult::Ignore => {
-        log::debug!("File change ignored")
-      }
-      ResolutionResult::Restart {
-        mut paths_to_watch,
-        result,
-      } => {
-        // watch the current directory when empty
-        if paths_to_watch.is_empty() {
-          paths_to_watch.push(PathBuf::from("."));
-        }
-        return (paths_to_watch, result);
-      }
-    }
-  }
-}
-
 pub struct PrintConfig {
   /// printing watcher status to terminal.
   pub job_name: String,
@@ -144,129 +108,12 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-/// Creates a file watcher, which will call `resolver` with every file change.
-///
-/// - `resolver` is used for resolving file paths to be watched at every restarting
-/// of the watcher, and can also return a value to be passed to `operation`.
-/// It returns a [`ResolutionResult`], which can either instruct the watcher to restart or ignore the change.
-/// This always contains paths to watch;
-///
-/// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
-pub async fn watch_func<R, O, T, F1, F2>(
-  mut resolver: R,
-  mut operation: O,
-  print_config: PrintConfig,
-) -> Result<(), AnyError>
-where
-  R: FnMut(Option<Vec<PathBuf>>) -> F1,
-  O: FnMut(T) -> F2,
-  F1: Future<Output = ResolutionResult<T>>,
-  F2: Future<Output = Result<(), AnyError>>,
-{
-  let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
-
-  let PrintConfig {
-    job_name,
-    clear_screen,
-  } = print_config;
-
-  // Store previous data. If module resolution fails at some point, the watcher will try to
-  // continue watching files using these data.
-  let mut paths_to_watch;
-  let mut resolution_result;
-
-  let print_after_restart = create_print_after_restart_fn(clear_screen);
-
-  match resolver(None).await {
-    ResolutionResult::Ignore => {
-      // The only situation where it makes sense to ignore the initial 'change'
-      // is if the command isn't supposed to do anything until something changes,
-      // e.g. a variant of `deno test` which doesn't run the entire test suite to start with,
-      // but instead does nothing until you make a change.
-      //
-      // In that case, this is probably the correct output.
-      info!(
-        "{} Waiting for file changes...",
-        colors::intense_blue("Watcher"),
-      );
-
-      let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-      paths_to_watch = paths;
-      resolution_result = result;
-
-      print_after_restart();
-    }
-    ResolutionResult::Restart {
-      paths_to_watch: mut paths,
-      result,
-    } => {
-      // watch the current directory when empty
-      if paths.is_empty() {
-        paths.push(PathBuf::from("."));
-      }
-      paths_to_watch = paths;
-      resolution_result = result;
-    }
-  };
-
-  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
-
-  loop {
-    let mut watcher = new_watcher(sender.clone())?;
-    add_paths_to_watcher(&mut watcher, &paths_to_watch);
-
-    match resolution_result {
-      Ok(operation_arg) => {
-        let fut = error_handler(operation(operation_arg));
-        select! {
-          (paths, result) = next_restart(&mut resolver, &mut receiver) => {
-            if result.is_ok() {
-              paths_to_watch = paths;
-            }
-            resolution_result = result;
-
-            print_after_restart();
-            continue;
-          },
-          _ = fut => {},
-        };
-
-        info!(
-          "{} {} finished. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-      Err(error) => {
-        eprintln!("{}: {}", colors::red_bold("error"), error);
-        info!(
-          "{} {} failed. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-    }
-
-    let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-    if result.is_ok() {
-      paths_to_watch = paths;
-    }
-    resolution_result = result;
-
-    print_after_restart();
-
-    drop(watcher);
-  }
-}
-
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-pub async fn watch_func2<O, F>(
+pub async fn watch_func<O, F>(
   mut flags: Flags,
   print_config: PrintConfig,
   mut operation: O,

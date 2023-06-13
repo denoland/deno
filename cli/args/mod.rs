@@ -1084,10 +1084,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_clear_screen(&self) -> bool {
-    self.flags.no_clear_screen
-  }
-
   pub fn no_prompt(&self) -> bool {
     resolve_no_prompt(&self.flags)
   }

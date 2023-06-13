@@ -99,7 +99,7 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
   let clear_screen = !flags.no_clear_screen;
 
-  util::file_watcher::watch_func2(
+  util::file_watcher::watch_func(
     flags,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
