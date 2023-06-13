@@ -665,7 +665,7 @@ class ClientRequest extends OutgoingMessage {
         incoming.statusMessage = res.statusText;
         incoming.upgrade = null;
 
-        for (const [key, value] of res.headers) {
+        for (const [key, _value] of res.headers) {
           if (key.toLowerCase() === "upgrade") {
             incoming.upgrade = true;
             break;
