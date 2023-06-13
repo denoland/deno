@@ -18,6 +18,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
 use crate::resolver::MappedSpecifierResolver;
 use crate::util::progress_bar::ProgressBar;
@@ -272,7 +273,7 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 }
 
 pub async fn run(
-  eszip: eszip::EszipV2,
+  mut eszip: eszip::EszipV2,
   metadata: Metadata,
 ) -> Result<(), AnyError> {
   let main_module = &metadata.entrypoint;
@@ -295,26 +296,14 @@ pub async fn run(
   let root_path = std::env::temp_dir()
     .join(format!("deno-compile-{}", current_exe_name))
     .join("node_modules");
-
-  let npm_cache = Arc::new(NpmCache::new(
-    root_path.clone(),
-    CacheSetting::Use,
-    http_client.clone(),
-    progress_bar.clone(),
-  ));
-  let npm_api = Arc::new(CliNpmRegistryApi::new(
-    npm_registry_url.clone(),
-    npm_cache.clone(),
-    http_client.clone(),
-    progress_bar.clone(),
-  ));
+  let npm_cache_dir = NpmCacheDir::new(root_path.clone());
   let (fs, vfs_root, node_modules_path, snapshot) = if let Some(snapshot) =
-    metadata.npm_snapshot
+    eszip.take_npm_snapshot()
   {
     let vfs_root_dir_path = if metadata.node_modules_dir {
       root_path
     } else {
-      npm_cache.registry_folder(&npm_registry_url)
+      npm_cache_dir.registry_folder(&npm_registry_url)
     };
     let vfs = load_npm_vfs(vfs_root_dir_path.clone())
       .context("Failed to load npm vfs.")?;
@@ -327,7 +316,7 @@ pub async fn run(
       Arc::new(DenoCompileFileSystem::new(vfs)) as Arc<dyn deno_fs::FileSystem>,
       Some(vfs_root_dir_path),
       node_modules_path,
-      Some(snapshot.into_valid()?),
+      Some(snapshot),
     )
   } else {
     (
@@ -337,6 +326,20 @@ pub async fn run(
       None,
     )
   };
+
+  let npm_cache = Arc::new(NpmCache::new(
+    npm_cache_dir,
+    CacheSetting::Only,
+    fs.clone(),
+    http_client.clone(),
+    progress_bar.clone(),
+  ));
+  let npm_api = Arc::new(CliNpmRegistryApi::new(
+    npm_registry_url.clone(),
+    npm_cache.clone(),
+    http_client.clone(),
+    progress_bar.clone(),
+  ));
   let npm_resolution = Arc::new(NpmResolution::from_serialized(
     npm_api.clone(),
     snapshot,

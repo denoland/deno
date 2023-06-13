@@ -33,7 +33,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
@@ -426,12 +426,12 @@ impl Default for ModuleRegistry {
     let dir = DenoDir::new(None).unwrap();
     let location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    Self::new(&location, http_client)
+    Self::new(location, http_client)
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(location: &Path, http_client: Arc<HttpClient>) -> Self {
+  pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
@@ -1246,9 +1246,9 @@ mod tests {
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1307,9 +1307,9 @@ mod tests {
   async fn test_registry_completions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1530,9 +1530,9 @@ mod tests {
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1600,9 +1600,9 @@ mod tests {
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1651,9 +1651,9 @@ mod tests {
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1662,9 +1662,9 @@ mod tests {
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

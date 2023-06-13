@@ -8,6 +8,7 @@ use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -103,7 +104,7 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_location(&mut self, location: &Path) {
+  pub fn set_location(&mut self, location: PathBuf) {
     self.cache = HttpCache::new(location);
     self.metadata.lock().clear();
   }

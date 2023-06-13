@@ -53,6 +53,9 @@ const {
   op_ws_send_binary,
   op_ws_send_text,
   op_ws_next_event,
+  op_ws_get_buffer,
+  op_ws_get_buffer_as_string,
+  op_ws_get_error,
   op_ws_send_ping,
   op_ws_get_buffered_amount,
 } = core.ensureFastOps();
@@ -407,15 +410,16 @@ class WebSocket extends EventTarget {
   }
 
   async [_eventLoop]() {
+    const rid = this[_rid];
     while (this[_readyState] !== CLOSED) {
-      const { 0: kind, 1: value } = await op_ws_next_event(this[_rid]);
+      const kind = await op_ws_next_event(rid);
 
       switch (kind) {
         case 0: {
           /* string */
           this[_serverHandleIdleTimeout]();
           const event = new MessageEvent("message", {
-            data: value,
+            data: op_ws_get_buffer_as_string(rid),
             origin: this[_url],
           });
           dispatch(this, event);
@@ -424,12 +428,13 @@ class WebSocket extends EventTarget {
         case 1: {
           /* binary */
           this[_serverHandleIdleTimeout]();
+          // deno-lint-ignore prefer-primordials
+          const buffer = op_ws_get_buffer(rid).buffer;
           let data;
-
           if (this.binaryType === "blob") {
-            data = new Blob([value]);
+            data = new Blob([buffer]);
           } else {
-            data = value;
+            data = buffer;
           }
 
           const event = new MessageEvent("message", {
@@ -450,13 +455,13 @@ class WebSocket extends EventTarget {
           this[_readyState] = CLOSED;
 
           const errorEv = new ErrorEvent("error", {
-            message: value,
+            message: op_ws_get_error(rid),
           });
           this.dispatchEvent(errorEv);
 
           const closeEv = new CloseEvent("close");
           this.dispatchEvent(closeEv);
-          core.tryClose(this[_rid]);
+          core.tryClose(rid);
           break;
         }
         default: {
@@ -469,9 +474,9 @@ class WebSocket extends EventTarget {
           if (prevState === OPEN) {
             try {
               await op_ws_close(
-                this[_rid],
+                rid,
                 code,
-                value,
+                op_ws_get_error(rid),
               );
             } catch {
               // ignore failures
@@ -481,10 +486,10 @@ class WebSocket extends EventTarget {
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,
-            reason: value,
+            reason: op_ws_get_error(rid),
           });
           this.dispatchEvent(event);
-          core.tryClose(this[_rid]);
+          core.tryClose(rid);
           break;
         }
       }

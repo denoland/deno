@@ -743,11 +743,7 @@ async fn run_watch_external_watch_files() {
   write(&external_file_to_watch, "Hello world").unwrap();
 
   let mut watch_arg = "--watch=".to_owned();
-  let external_file_to_watch_str = external_file_to_watch
-    .clone()
-    .into_os_string()
-    .into_string()
-    .unwrap();
+  let external_file_to_watch_str = external_file_to_watch.to_string();
   watch_arg.push_str(&external_file_to_watch_str);
 
   let mut child = util::deno_cmd()
@@ -893,13 +889,15 @@ async fn run_watch_with_import_map_and_relative_paths() {
     let absolute_path = directory.path().join(filename);
     write(&absolute_path, filecontent).unwrap();
     let relative_path = absolute_path
-      .strip_prefix(util::testdata_path())
+      .as_path()
+      .strip_prefix(directory.path())
       .unwrap()
       .to_owned();
     assert!(relative_path.is_relative());
     relative_path
   }
-  let temp_directory = TempDir::new_in(&util::testdata_path());
+
+  let temp_directory = TempDir::new();
   let file_to_watch = create_relative_tmp_file(
     &temp_directory,
     "file_to_watch.js",
@@ -912,7 +910,7 @@ async fn run_watch_with_import_map_and_relative_paths() {
   );
 
   let mut child = util::deno_cmd()
-    .current_dir(util::testdata_path())
+    .current_dir(temp_directory.path())
     .arg("run")
     .arg("--unstable")
     .arg("--watch")

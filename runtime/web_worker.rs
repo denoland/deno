@@ -399,14 +399,14 @@ impl WebWorker {
     // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
-      deno_webidl::deno_webidl::init_ops(),
-      deno_console::deno_console::init_ops(),
-      deno_url::deno_url::init_ops(),
-      deno_web::deno_web::init_ops::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init(),
+      deno_console::deno_console::init(),
+      deno_url::deno_url::init(),
+      deno_web::deno_web::init::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: options.root_cert_store_provider.clone(),
@@ -417,57 +417,57 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      deno_cache::deno_cache::init::<SqliteBackedCache>(create_cache),
+      deno_websocket::deno_websocket::init::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_ops(None).disable(),
-      deno_crypto::deno_crypto::init_ops(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops(
+      deno_webstorage::deno_webstorage::init(None).disable(),
+      deno_crypto::deno_crypto::init(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
-      deno_net::deno_net::init_ops::<PermissionsContainer>(
+      deno_ffi::deno_ffi::init::<PermissionsContainer>(unstable),
+      deno_net::deno_net::init::<PermissionsContainer>(
         options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops(),
-      deno_kv::deno_kv::init_ops(
+      deno_tls::deno_tls::init(),
+      deno_kv::deno_kv::init(
         SqliteDbHandler::<PermissionsContainer>::new(None),
         unstable,
       ),
-      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
-      deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+      deno_napi::deno_napi::init::<PermissionsContainer>(),
+      deno_http::deno_http::init::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init(Some(options.stdio)),
+      deno_fs::deno_fs::init::<PermissionsContainer>(
         unstable,
         options.fs.clone(),
       ),
-      deno_node::deno_node::init_ops::<PermissionsContainer>(
+      deno_node::deno_node::init::<PermissionsContainer>(
         options.npm_resolver,
         options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops(),
-      ops::runtime::deno_runtime::init_ops(main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops(
+      ops::web_worker::deno_web_worker::init(),
+      ops::runtime::deno_runtime::init(main_module.clone()),
+      ops::worker_host::deno_worker_host::init(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
         options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::fs_events::deno_fs_events::init_ops(),
-      ops::os::deno_os_worker::init_ops(),
-      ops::permissions::deno_permissions::init_ops(),
-      ops::process::deno_process::init_ops(),
-      ops::signal::deno_signal::init_ops(),
-      ops::tty::deno_tty::init_ops(),
-      ops::http::deno_http_runtime::init_ops(),
-      deno_permissions_web_worker::init_ops(
+      ops::fs_events::deno_fs_events::init(),
+      ops::os::deno_os_worker::init(),
+      ops::permissions::deno_permissions::init(),
+      ops::process::deno_process::init(),
+      ops::signal::deno_signal::init(),
+      ops::tty::deno_tty::init(),
+      ops::http::deno_http_runtime::init(),
+      deno_permissions_web_worker::init(
         permissions,
         unstable,
         enable_testing_features,

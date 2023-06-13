@@ -96,6 +96,7 @@ use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -541,12 +542,13 @@ fn create_npm_api_and_cache(
   progress_bar: &ProgressBar,
 ) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
   let npm_cache = Arc::new(NpmCache::new(
-    dir.npm_folder_path(),
+    NpmCacheDir::new(dir.npm_folder_path()),
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
     // the user is typing.
     CacheSetting::Only,
+    Arc::new(deno_fs::RealFs),
     http_client.clone(),
     progress_bar.clone(),
   ));
@@ -602,11 +604,13 @@ impl Inner {
     let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    let module_registries =
-      ModuleRegistry::new(&module_registries_location, http_client.clone());
+    let module_registries = ModuleRegistry::new(
+      module_registries_location.clone(),
+      http_client.clone(),
+    );
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
-    let deps_http_cache = HttpCache::new(&location);
+    let documents = Documents::new(location.clone());
+    let deps_http_cache = HttpCache::new(location);
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
     let ts_server = Arc::new(TsServer::new(performance.clone()));
@@ -941,14 +945,14 @@ impl Inner {
         .clone(),
     ));
     self.module_registries = ModuleRegistry::new(
-      &module_registries_location,
+      module_registries_location.clone(),
       self.http_client.clone(),
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
     let location = dir.deps_folder_path();
-    self.documents.set_location(&location);
-    self.cache_metadata.set_location(&location);
+    self.documents.set_location(location.clone());
+    self.cache_metadata.set_location(location);
     self.maybe_cache_path = new_cache_path;
     Ok(())
   }
@@ -1572,6 +1576,7 @@ impl Inner {
         touched = true;
       }
     }
+
     if let Some(config_info) = self.maybe_config_file_info.as_mut() {
       if let Some(lockfile) = config_info.maybe_lockfile.as_ref() {
         let lockfile_path = lockfile.lock().filename.clone();
@@ -1590,6 +1595,7 @@ impl Inner {
         }
       }
     }
+
     if let Some(package_json) = &self.maybe_package_json {
       // always update the package json if the deno config changes
       if touched || changes.contains(&package_json.specifier()) {
@@ -1599,16 +1605,21 @@ impl Inner {
         touched = true;
       }
     }
+
     // if the current import map, or config file has changed, we need to
     // reload the import map
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if touched || changes.contains(import_map_uri) {
-        if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let import_map_changed = self
+      .maybe_import_map_uri
+      .as_ref()
+      .map(|uri| changes.contains(uri))
+      .unwrap_or(false);
+    if touched || import_map_changed {
+      if let Err(err) = self.update_import_map().await {
+        self.client.show_message(MessageType::WARNING, err);
       }
+      touched = true;
     }
+
     if touched {
       self.recreate_npm_services_if_necessary().await;
       self.refresh_documents_config();

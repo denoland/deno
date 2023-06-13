@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.115.0"
+version = "0.116.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,15 +14,8 @@ description = "Provides the deno runtime library"
 docsrs = []
 # A feature that disables creation of startup snapshot during in the build script.
 dont_create_runtime_snapshot = []
-# A feature that changes how startup snapshot is generated, that allows
-# extending it in embedder crates.
-snapshot_from_snapshot = []
-# A feature that disables embedding of the JavaScript source files in the binary.
-# With this feature enabled, the sources must be consumed during build time,
-# by creating a startup snapshot.
-include_js_files_for_snapshotting = [
-  "deno_core/include_js_files_for_snapshotting",
-]
+# Enable to exclude `js/99_main.js` from the generated snapshot.
+exclude_js_main_from_snapshot = []
 
 [lib]
 name = "deno_runtime"
@@ -105,6 +98,7 @@ serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
 tokio.workspace = true
+tokio-metrics.workspace = true
 uuid.workspace = true
 
 [target.'cfg(windows)'.dependencies]

@@ -3236,7 +3236,7 @@ fn op_script_version(
 /// server.
 fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance)],
+    extensions: vec![deno_tsc::init(performance)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -3903,7 +3903,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location.to_path_buf());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3926,7 +3926,7 @@ mod tests {
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug).unwrap();
@@ -4406,7 +4406,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(&location);
+    let cache = HttpCache::new(location);
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache

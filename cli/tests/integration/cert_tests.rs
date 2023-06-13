@@ -82,7 +82,7 @@ fn cafile_env_fetch() {
   context
     .new_command()
     .args(format!("cache {module_url}"))
-    .env("DENO_CERT", cafile.to_string_lossy())
+    .env("DENO_CERT", cafile)
     .run()
     .assert_exit_code(0)
     .skip_output_check();
@@ -96,11 +96,7 @@ fn cafile_fetch() {
   let cafile = context.testdata_path().join("tls/RootCA.pem");
   context
     .new_command()
-    .args(format!(
-      "cache --quiet --cert {} {}",
-      cafile.to_string_lossy(),
-      module_url,
-    ))
+    .args(format!("cache --quiet --cert {} {}", cafile, module_url,))
     .run()
     .assert_exit_code(0)
     .assert_matches_text("");
@@ -116,13 +112,13 @@ fn cafile_compile() {
     temp_dir.join("cert")
   };
   let output = context.new_command()
-    .args(format!("compile --quiet --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", output_exe.to_string_lossy()))
+    .args(format!("compile --quiet --cert ./tls/RootCA.pem --allow-net --output {} ./cert/cafile_ts_fetch.ts", output_exe))
     .run();
   output.skip_output_check();
 
   context
     .new_command()
-    .command_name(output_exe.to_string_lossy())
+    .command_name(output_exe)
     .run()
     .assert_matches_text("[WILDCARD]\nHello\n");
 }
