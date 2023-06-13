@@ -2,9 +2,6 @@
 "use strict";
 
 ((window) => {
-  if (globalThis.__bootstrap.core.prepareStackTrace) {
-    return;
-  }
   const core = Deno.core;
   const ops = core.ops;
   const {
