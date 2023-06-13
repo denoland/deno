@@ -2,6 +2,9 @@
 "use strict";
 
 ((window) => {
+  if (globalThis.__bootstrap.core) {
+    return;
+  }
   const {
     Array,
     ArrayPrototypeFill,

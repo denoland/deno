@@ -935,7 +935,7 @@ pub async fn test_specifier(
     .create_custom_worker(
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ops(sender.clone())],
+      vec![ops::testing::deno_test::init(sender.clone())],
       Stdio {
         stdin: StdioPipe::Inherit,
         stdout,

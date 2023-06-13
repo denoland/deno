@@ -12,7 +12,7 @@ pub mod bench;
 pub mod testing;
 
 pub fn cli_exts(npm_resolver: Arc<CliNpmResolver>) -> Vec<Extension> {
-  vec![deno_cli::init_ops(npm_resolver)]
+  vec![deno_cli::init(npm_resolver)]
 }
 
 deno_core::extension!(deno_cli,
