@@ -1255,7 +1255,7 @@ dependencies = [
  "dsa",
  "ecb",
  "elliptic-curve 0.13.4",
- "errno 0.3.1",
+ "errno",
  "hex",
  "hkdf",
  "idna 0.3.0",
@@ -1875,17 +1875,6 @@ dependencies = [
  "errno-dragonfly",
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "errno"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bcfec3a70f97c962c307b2d2c56e358cf1d00b558d74262b5f929ee8cc7e73a"
-dependencies = [
- "errno-dragonfly",
- "libc",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -3745,7 +3734,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4461e7f96399674b9112e620e511089bc7c4c0d76545b3cc3e0b46bab72a15d5"
 dependencies = [
- "errno 0.2.8",
+ "errno",
  "libc",
 ]
 
@@ -4044,7 +4033,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd5c6ff11fecd55b40746d1995a02f2eb375bf8c00d192d521ee09f42bef37bc"
 dependencies = [
  "bitflags 1.3.2",
- "errno 0.2.8",
+ "errno",
  "io-lifetimes",
  "libc",
  "linux-raw-sys",
