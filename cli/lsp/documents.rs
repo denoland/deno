@@ -2079,10 +2079,14 @@ console.log(b, "hello deno");
 
     let mut urls = PreloadDocumentFinder::new(PreloadDocumentFinderOptions {
       enabled_paths: vec![
-        temp_dir.path().join("root1"),
-        temp_dir.path().join("root2").join("file1.ts"),
-        temp_dir.path().join("root2").join("main.min.ts"),
-        temp_dir.path().join("root2").join("folder"),
+        temp_dir.path().to_path_buf().join("root1"),
+        temp_dir.path().to_path_buf().join("root2").join("file1.ts"),
+        temp_dir
+          .path()
+          .to_path_buf()
+          .join("root2")
+          .join("main.min.ts"),
+        temp_dir.path().to_path_buf().join("root2").join("folder"),
       ],
       disabled_paths: Vec::new(),
       limit: 1_000,
