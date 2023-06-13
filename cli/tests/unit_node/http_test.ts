@@ -617,3 +617,49 @@ Deno.test("[node/http] ClientRequest search params", async () => {
   await def;
   assertEquals(body, "foo=bar");
 });
+
+Deno.test(
+  "[node/http] client upgrade",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("okay");
+    });
+    server.on("upgrade", (_req, socket, _head) => {
+      socket.write(
+        "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
+          "Upgrade: WebSocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          "\r\n",
+      );
+    });
+
+    // Now that server is running
+    server.listen(1337, "127.0.0.1", () => {
+      // make a request
+      const options = {
+        port: 1337,
+        host: "127.0.0.1",
+        headers: {
+          "Connection": "Upgrade",
+          "Upgrade": "websocket",
+        },
+      };
+
+      const req = http.request(options);
+      req.end();
+
+      req.on("upgrade", (_res, socket, _upgradeHead) => {
+        socket.end();
+        server.close(() => {
+          promise.resolve();
+        });
+      });
+    });
+
+    await promise;
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  },
+);

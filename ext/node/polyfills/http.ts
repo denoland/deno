@@ -665,9 +665,7 @@ class ClientRequest extends OutgoingMessage {
         incoming.statusMessage = res.statusText;
         incoming.upgrade = null;
 
-        // TODO(bartlomieju): use object lookup instead of iterating
         for (const [key, value] of res.headers) {
-          console.log("key", key, value);
           if (key.toLowerCase() === "upgrade") {
             incoming.upgrade = true;
             break;
