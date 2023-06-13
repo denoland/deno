@@ -416,6 +416,8 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  pub remote_addr_ip: Option<String>,
+  pub remote_addr_port: Option<u16>,
 }
 
 #[op]
@@ -447,6 +449,12 @@ pub async fn op_fetch_send(
   }
 
   let content_length = res.content_length();
+  let remote_addr = res.remote_addr();
+  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
+    (Some(addr.ip().to_string()), Some(addr.port()))
+  } else {
+    (None, None)
+  };
 
   let response_rid = if !into_byte_stream {
     state
@@ -477,6 +485,8 @@ pub async fn op_fetch_send(
     url,
     response_rid,
     content_length,
+    remote_addr_ip,
+    remote_addr_port,
   })
 }
 

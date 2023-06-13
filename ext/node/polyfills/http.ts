@@ -31,6 +31,7 @@ import {
   parseUniqueHeadersOption,
   validateHeaderName,
 } from "ext:deno_node/_http_outgoing.ts";
+import { ok as assert } from "ext:deno_node/assert.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
@@ -697,18 +698,20 @@ class ClientRequest extends OutgoingMessage {
             "op_fetch_response_upgrade",
             res.responseRid,
           );
+          assert(typeof res.remoteAddrIp !== "undefined");
+          assert(typeof res.remoteAddrIp !== "undefined");
           const conn = new TcpConn(
             upgradeRid,
+            {
+              transport: "tcp",
+              hostname: res.remoteAddrIp,
+              port: res.remoteAddrIp,
+            },
             // TODO(bartlomieju): figure out actual values
             {
               transport: "tcp",
               hostname: "127.0.0.1",
-              port: 90,
-            },
-            {
-              transport: "tcp",
-              hostname: "127.0.0.1",
-              port: 90,
+              port: 80,
             },
           );
           const socket = new Socket({
@@ -717,7 +720,6 @@ class ClientRequest extends OutgoingMessage {
 
           this.upgradeOrConnect = true;
 
-          // TODO(bartlomieju): handle actual upgrade
           this.emit("upgrade", incoming, socket, Buffer.from([]));
           this.destroyed = true;
           this._closed = true;

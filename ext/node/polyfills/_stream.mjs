@@ -3822,7 +3822,6 @@ var require_writable = __commonJS({
       destroyImpl.construct(this, () => {
         const state = this._writableState;
         if (!state.writing) {
-          console.log("clear buffer1");
           clearBuffer(this, state);
         }
         finishMaybe(this, state);
@@ -3844,7 +3843,6 @@ var require_writable = __commonJS({
       errorOrDestroy(this, new ERR_STREAM_CANNOT_PIPE());
     };
     function _write(stream, chunk, encoding, cb) {
-      console.log("_write", encoding);
       const state = stream._writableState;
       if (typeof encoding === "function") {
         cb = encoding;
@@ -3905,7 +3903,6 @@ var require_writable = __commonJS({
       if (state.corked) {
         state.corked--;
         if (!state.writing) {
-          console.log("clear buffer2");
           clearBuffer(this, state);
         }
       }
@@ -3982,7 +3979,6 @@ var require_writable = __commonJS({
         return;
       }
       state.writing = false;
-      console.log("writing false", new Error());
       state.writecb = null;
       state.length -= state.writelen;
       state.writelen = 0;
@@ -4001,7 +3997,6 @@ var require_writable = __commonJS({
         }
       } else {
         if (state.buffered.length > state.bufferedIndex) {
-          console.log("clearing buffer");
           clearBuffer(stream, state);
         }
         if (sync) {
@@ -4085,7 +4080,6 @@ var require_writable = __commonJS({
       }
       let i = bufferedIndex;
       state.bufferProcessing = true;
-      console.log("clearBuffer");
       if (bufferedLength > 1 && stream._writev) {
         state.pendingcb -= bufferedLength - 1;
         const callback = state.allNoop ? nop : (err) => {
@@ -4368,7 +4362,6 @@ var require_writable = __commonJS({
     });
     var destroy = destroyImpl.destroy;
     Writable.prototype.destroy = function (err, cb) {
-      console.log("destroy", new Error());
       const state = this._writableState;
       if (
         !state.destroyed &&
