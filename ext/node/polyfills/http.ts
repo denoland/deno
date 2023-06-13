@@ -32,6 +32,7 @@ import {
   parseUniqueHeadersOption,
   validateHeaderName,
 } from "ext:deno_node/_http_outgoing.ts";
+import { ok as assert } from "ext:deno_node/assert.ts";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
@@ -39,7 +40,7 @@ import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { constants, TCP } from "ext:deno_node/internal_binding/tcp_wrap.ts";
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import {
   connResetException,
   ERR_HTTP_HEADERS_SENT,
@@ -53,6 +54,7 @@ import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
+import { TcpConn } from "ext:deno_net/01_net.js";
 
 enum STATUS_CODES {
   /** RFC 7231, 6.2.1 */
@@ -502,7 +504,7 @@ class ClientRequest extends OutgoingMessage {
     }
 
     if (options!.createConnection) {
-      notImplemented("ClientRequest.options.createConnection");
+      warnNotImplemented("ClientRequest.options.createConnection");
     }
 
     if (options!.lookup) {
@@ -618,7 +620,13 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send", this._req.requestRid),
+          core.opAsync(
+            "op_fetch_send",
+            this._req.requestRid,
+            /* false because we want to have access to actual Response,
+          not the bytes stream of response (because we need to handle upgrades) */
+            false,
+          ),
           (async () => {
             if (this._bodyWriteRid) {
               try {
@@ -656,18 +664,74 @@ class ClientRequest extends OutgoingMessage {
         incoming.url = res.url;
         incoming.statusCode = res.status;
         incoming.statusMessage = res.statusText;
+        incoming.upgrade = null;
+
+        for (const [key, _value] of res.headers) {
+          if (key.toLowerCase() === "upgrade") {
+            incoming.upgrade = true;
+            break;
+          }
+        }
 
         incoming._addHeaderLines(
           res.headers,
           Object.entries(res.headers).flat().length,
         );
-        incoming._bodyRid = res.responseRid;
 
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
 
-        this.emit("response", incoming);
+        if (incoming.upgrade) {
+          if (this.listenerCount("upgrade") === 0) {
+            // No listeners, so we got nothing to do
+            // destroy?
+            return;
+          }
+
+          if (this.method === "CONNECT") {
+            throw new Error("not implemented CONNECT");
+          }
+
+          const upgradeRid = await core.opAsync(
+            "op_fetch_response_upgrade",
+            res.responseRid,
+          );
+          assert(typeof res.remoteAddrIp !== "undefined");
+          assert(typeof res.remoteAddrIp !== "undefined");
+          const conn = new TcpConn(
+            upgradeRid,
+            {
+              transport: "tcp",
+              hostname: res.remoteAddrIp,
+              port: res.remoteAddrIp,
+            },
+            // TODO(bartlomieju): figure out actual values
+            {
+              transport: "tcp",
+              hostname: "127.0.0.1",
+              port: 80,
+            },
+          );
+          const socket = new Socket({
+            handle: new TCP(constants.SERVER, conn),
+          });
+
+          this.upgradeOrConnect = true;
+
+          this.emit("upgrade", incoming, socket, Buffer.from([]));
+          this.destroyed = true;
+          this._closed = true;
+          this.emit("close");
+        } else {
+          {
+            const responseRid = core.ops.op_fetch_response_into_byte_stream(
+              res.responseRid,
+            );
+            incoming._bodyRid = responseRid;
+          }
+          this.emit("response", incoming);
+        }
       } catch (err) {
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);

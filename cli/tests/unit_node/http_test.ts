@@ -649,3 +649,53 @@ Deno.test("[node/http] HTTPS server", async () => {
   await Promise.all([promise, promise2]);
   client.close();
 });
+
+Deno.test(
+  "[node/http] client upgrade",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("okay");
+    });
+    // @ts-ignore it's a socket for real
+    let serverSocket;
+    server.on("upgrade", (_req, socket, _head) => {
+      socket.write(
+        "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
+          "Upgrade: WebSocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          "\r\n",
+      );
+      serverSocket = socket;
+    });
+
+    // Now that server is running
+    server.listen(1337, "127.0.0.1", () => {
+      // make a request
+      const options = {
+        port: 1337,
+        host: "127.0.0.1",
+        headers: {
+          "Connection": "Upgrade",
+          "Upgrade": "websocket",
+        },
+      };
+
+      const req = http.request(options);
+      req.end();
+
+      req.on("upgrade", (_res, socket, _upgradeHead) => {
+        socket.end();
+        // @ts-ignore it's a socket for real
+        serverSocket!.end();
+        server.close(() => {
+          promise.resolve();
+        });
+      });
+    });
+
+    await promise;
+  },
+);
