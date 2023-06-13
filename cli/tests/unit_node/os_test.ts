@@ -254,12 +254,40 @@ Deno.test({
 
 Deno.test({
   name: "os.setPriority() & os.getPriority()",
+  // disabled because os.getPriority() doesn't work without sudo
+  ignore: true,
   fn() {
-    const originalPriority = os.getPriority();
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "while (true) { console.log('foo') }"],
+    }).spawn();
+    const originalPriority = os.getPriority(child.pid);
     assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGH);
-    os.setPriority(os.constants.priority.PRIORITY_HIGH);
-    assertEquals(os.getPriority(), os.constants.priority.PRIORITY_HIGH);
-    os.setPriority(originalPriority);
-    assertEquals(os.getPriority(), originalPriority);
+    os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH);
+    assertEquals(
+      os.getPriority(child.pid),
+      os.constants.priority.PRIORITY_HIGH,
+    );
+    os.setPriority(child.pid, originalPriority);
+    assertEquals(os.getPriority(child.pid), originalPriority);
+    child.kill();
+  },
+});
+
+Deno.test({
+  name:
+    "os.setPriority() throw os permission denied error & os.getPriority() doesn't",
+  fn() {
+    const child = new Deno.Command(Deno.execPath(), {
+      args: ["eval", "while (true) { console.log('foo') }"],
+    }).spawn();
+    assertThrows(
+      () => os.setPriority(child.pid, os.constants.priority.PRIORITY_HIGH),
+      Deno.errors.PermissionDenied,
+    );
+    assertEquals(
+      os.getPriority(child.pid),
+      os.constants.priority.PRIORITY_NORMAL,
+    );
+    child.kill();
   },
 });
