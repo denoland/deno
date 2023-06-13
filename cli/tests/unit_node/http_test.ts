@@ -627,6 +627,8 @@ Deno.test(
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
     });
+    // @ts-ignore it's a socket for real
+    let serverSocket;
     server.on("upgrade", (_req, socket, _head) => {
       socket.write(
         "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
@@ -634,6 +636,7 @@ Deno.test(
           "Connection: Upgrade\r\n" +
           "\r\n",
       );
+      serverSocket = socket;
     });
 
     // Now that server is running
@@ -653,6 +656,8 @@ Deno.test(
 
       req.on("upgrade", (_res, socket, _upgradeHead) => {
         socket.end();
+        // @ts-ignore it's a socket for real
+        serverSocket!.end();
         server.close(() => {
           promise.resolve();
         });
@@ -660,6 +665,5 @@ Deno.test(
     });
 
     await promise;
-    await new Promise((resolve) => setTimeout(resolve, 1000));
   },
 );
