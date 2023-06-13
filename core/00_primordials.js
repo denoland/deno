@@ -34,6 +34,9 @@
 "use strict";
 
 (() => {
+  if (globalThis.__bootstrap) {
+    return;
+  }
   const primordials = {};
 
   const {

@@ -16,7 +16,10 @@ path = "lib.rs"
 [features]
 default = ["v8_use_custom_libcxx"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
-include_js_files_for_snapshotting = []
+# Enable to exclude JS sources from the binary (e.g. if they are already snapshotted).
+exclude_js_sources = []
+# Enable to override `exclude_js_sources` (e.g. for snapshot creation in `build.rs`).
+force_include_js_sources = ["exclude_js_sources"]
 
 [dependencies]
 anyhow.workspace = true
@@ -47,3 +50,4 @@ path = "examples/http_bench_json_ops/main.rs"
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
 deno_ast.workspace = true
+deno_core = { workspace = true, features = ["force_include_js_sources"] }
