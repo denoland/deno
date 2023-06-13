@@ -3,7 +3,7 @@
 use crate::bindings;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
-use crate::runtime::exception_to_err_result;
+use crate::error::exception_to_err_result;
 use crate::runtime::JsRuntimeState;
 use crate::task::MaskResultAsSend;
 use crate::JsRuntime;

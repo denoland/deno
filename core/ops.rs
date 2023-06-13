@@ -4,7 +4,7 @@ use crate::error::AnyError;
 use crate::gotham_state::GothamState;
 use crate::realm::ContextState;
 use crate::resources::ResourceTable;
-use crate::runtime::GetErrorClassFn;
+use crate::error::GetErrorClassFn;
 use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
