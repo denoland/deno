@@ -124,8 +124,8 @@ pub fn get_priority(pid: u32) -> Result<i32, AnyError> {
 
 #[cfg(unix)]
 pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
+  // SAFETY: libc::setpriority is unsafe
   match unsafe {
-    // SAFETY: libc::setpriority is unsafe
     libc::setpriority(PRIO_PROCESS as priority_t, pid as id_t, priority)
   } {
     -1 => Err(std::io::Error::last_os_error().into()),
