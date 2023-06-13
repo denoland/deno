@@ -12,7 +12,6 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
-use crate::watcher::FileWatcherReporter;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -35,6 +34,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -525,6 +525,43 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
     self.graph_data.write().graph = graph.clone();
     drop(self.permit); // explicit drop for clarity
     graph
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileWatcherReporter {
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl FileWatcherReporter {
+  pub fn new(sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>) -> Self {
+    Self {
+      sender,
+      file_paths: Default::default(),
+    }
+  }
+
+  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
+    self
+  }
+}
+
+impl deno_graph::source::Reporter for FileWatcherReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    let mut file_paths = self.file_paths.lock();
+    if specifier.scheme() == "file" {
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
   }
 }
 

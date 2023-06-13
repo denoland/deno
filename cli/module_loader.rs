@@ -7,6 +7,7 @@ use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
@@ -17,7 +18,6 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::watcher::FileWatcherReporter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;

@@ -23,7 +23,6 @@ mod tools;
 mod tsc;
 mod util;
 mod version;
-mod watcher;
 mod worker;
 
 use crate::args::flags_from_vec;
