@@ -5,6 +5,7 @@ import os from "node:os";
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 
@@ -252,28 +253,13 @@ Deno.test({
 });
 
 Deno.test({
-  name: "APIs not yet implemented",
+  name: "os.setPriority() & os.getPriority()",
   fn() {
-    assertThrows(
-      () => {
-        os.getPriority();
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.setPriority(0);
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.userInfo();
-      },
-      Error,
-      "Not implemented",
-    );
+    const originalPriority = os.getPriority();
+    assertNotEquals(originalPriority, os.constants.priority.PRIORITY_HIGH);
+    os.setPriority(os.constants.priority.PRIORITY_HIGH);
+    assertEquals(os.getPriority(), os.constants.priority.PRIORITY_HIGH);
+    os.setPriority(originalPriority);
+    assertEquals(os.getPriority(), originalPriority);
   },
 });
