@@ -200,7 +200,7 @@ function initializeTimer(
 /**
  * @typedef ScheduledTimer
  * @property {number} millis
- * @property { {action: () => void, nestingLevel: number}[] } cb
+ * @property { {action: () => void, nestingLevel: number}[] } task
  * @property {boolean} resolved
  * @property {ScheduledTimer | null} prev
  * @property {ScheduledTimer | null} next
@@ -213,12 +213,12 @@ function initializeTimer(
 const scheduledTimers = { head: null, tail: null };
 
 /**
- * @param { {action: () => void, nestingLevel: number}[] } cb Will be run after the timeout, if it hasn't been
- * cancelled.
+ * @param { {action: () => void, nestingLevel: number}[] } task Will be run
+ * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
  */
-function runAfterTimeout(cb, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
   let sleepPromise;
   // If this timeout is scheduled for 0ms it means we want it to run at the
@@ -284,7 +284,7 @@ function runAfterTimeout(cb, millis, timerInfo) {
       while (currentEntry !== null) {
         if (currentEntry.millis <= timerObject.millis) {
           currentEntry.resolved = true;
-          ArrayPrototypePush(timerTasks, cb);
+          ArrayPrototypePush(timerTasks, task);
           removeFromScheduledTimers(currentEntry);
 
           if (currentEntry === timerObject) {
