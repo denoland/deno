@@ -187,10 +187,7 @@ function initializeTimer(
   // 13. Run steps after a timeout given global, "setTimeout/setInterval",
   // timeout, completionStep, and id.
   runAfterTimeout(
-    () => {
-      timerInfo.resolved = true;
-      ArrayPrototypePush(timerTasks, task);
-    },
+    task,
     timeout,
     timerInfo,
   );
@@ -203,7 +200,7 @@ function initializeTimer(
 /**
  * @typedef ScheduledTimer
  * @property {number} millis
- * @property {() => void} cb
+ * @property { {action: () => void, nestingLevel: number}[] } cb
  * @property {boolean} resolved
  * @property {ScheduledTimer | null} prev
  * @property {ScheduledTimer | null} next
@@ -216,7 +213,7 @@ function initializeTimer(
 const scheduledTimers = { head: null, tail: null };
 
 /**
- * @param {() => void} cb Will be run after the timeout, if it hasn't been
+ * @param { {action: () => void, nestingLevel: number}[] } cb Will be run after the timeout, if it hasn't been
  * cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
@@ -241,7 +238,6 @@ function runAfterTimeout(cb, millis, timerInfo) {
   /** @type {ScheduledTimer} */
   const timerObject = {
     millis,
-    cb,
     resolved: false,
     prev: scheduledTimers.tail,
     next: null,
@@ -287,7 +283,8 @@ function runAfterTimeout(cb, millis, timerInfo) {
       let currentEntry = scheduledTimers.head;
       while (currentEntry !== null) {
         if (currentEntry.millis <= timerObject.millis) {
-          currentEntry.cb();
+          currentEntry.resolved = true;
+          ArrayPrototypePush(timerTasks, cb);
           removeFromScheduledTimers(currentEntry);
 
           if (currentEntry === timerObject) {
