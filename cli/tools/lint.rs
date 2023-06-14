@@ -14,6 +14,7 @@ use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_supported_ext;
+use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -34,8 +35,6 @@ use std::io::stdin;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -154,7 +153,7 @@ async fn lint_files(
   let reporter_kind = lint_options.reporter_kind;
   let reporter_lock =
     Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
-  let has_error = Arc::new(AtomicBool::new(false));
+  let has_error = Arc::new(AtomicFlag::default());
 
   run_parallelized(paths, {
     let has_error = has_error.clone();
@@ -183,7 +182,7 @@ async fn lint_files(
         reporter_lock.clone(),
       );
       if !success {
-        has_error.store(true, Ordering::Relaxed);
+        has_error.raise();
       }
 
       Ok(())
@@ -193,7 +192,7 @@ async fn lint_files(
   incremental_cache.wait_completion().await;
   reporter_lock.lock().unwrap().close(target_files_len);
 
-  Ok(has_error.load(Ordering::Relaxed))
+  Ok(!has_error.is_raised())
 }
 
 fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
@@ -291,11 +290,11 @@ fn handle_lint_result(
       for d in file_diagnostics.iter() {
         reporter.visit_diagnostic(d, source.split('\n').collect());
       }
-      !file_diagnostics.is_empty()
+      file_diagnostics.is_empty()
     }
     Err(err) => {
       reporter.visit_error(file_path, &err);
-      true
+      false
     }
   }
 }
