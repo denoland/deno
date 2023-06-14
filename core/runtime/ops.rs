@@ -25,7 +25,7 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     state.get_error_class_fn
   };
   let fut = op.map(|result| crate::_ops::to_op_result(get_class, result));
-  // SAFETY: this this is guaranteed to be running on a current-thread executor
+  // SAFETY: this is guaranteed to be running on a current-thread executor
   ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
     crate::task::MaskFutureAsSend::new(OpCall::new(ctx, promise_id, fut))
   });
@@ -123,7 +123,7 @@ pub fn queue_async_op<'s>(
     Poll::Pending => {}
     Poll::Ready(mut res) => {
       if deferred {
-        // SAFETY: this this is guaranteed to be running on a current-thread executor
+        // SAFETY: this is guaranteed to be running on a current-thread executor
         ctx
           .context_state
           .borrow_mut()
@@ -141,7 +141,7 @@ pub fn queue_async_op<'s>(
     .context_state
     .borrow_mut()
     .pending_ops
-    // SAFETY: this this is guaranteed to be running on a current-thread executor
+    // SAFETY: this is guaranteed to be running on a current-thread executor
     .spawn(unsafe { crate::task::MaskFutureAsSend::new(pinned) });
   None
 }
