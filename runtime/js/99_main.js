@@ -351,6 +351,8 @@ function promiseRejectCallback(type, promise, reason) {
 }
 
 function promiseRejectMacrotaskCallback() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
   if (pendingRejections.length === 0) {
     return undefined;
   }

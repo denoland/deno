@@ -188,12 +188,15 @@
       while (true) {
         const res = cb();
 
-        // Macrotask had no work to perform, we can break.
+        // If callback returned `undefined` then it has no work to do, we don't
+        // need to perform microtask checkpoint.
         if (res === undefined) {
           break;
         }
 
         ops.op_run_microtasks();
+        // If callback returned `true` then it has no more work to do, stop
+        // calling it then.
         if (res === true) {
           break;
         }
