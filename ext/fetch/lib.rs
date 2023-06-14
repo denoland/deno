@@ -460,7 +460,7 @@ pub async fn op_fetch_send(
   let response_rid = state
     .borrow_mut()
     .resource_table
-    .add(FetchResponseBodyResource::new(res, content_length));
+    .add(FetchResponseResource::new(res, content_length));
 
   Ok(FetchResponse {
     status: status.as_u16(),
@@ -482,9 +482,9 @@ pub async fn op_fetch_response_upgrade(
   let raw_response = state
     .borrow_mut()
     .resource_table
-    .take::<FetchResponseBodyResource>(rid)?;
+    .take::<FetchResponseResource>(rid)?;
   let raw_response = Rc::try_unwrap(raw_response)
-    .expect("Someone is holding onto FetchResponseBodyResource");
+    .expect("Someone is holding onto FetchResponseResource");
 
   let (read, write) = tokio::io::duplex(1024);
   let (read_rx, write_tx) = tokio::io::split(read);
@@ -657,62 +657,72 @@ impl Resource for FetchRequestBodyResource {
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
-#[derive(Debug)]
-enum FetchResponseReader {
+pub enum FetchResponseReader {
   Start(Response),
-  BodyReader(AsyncRefCell<Peekable<BytesStream>>),
+  BodyReader(Peekable<BytesStream>),
 }
 
+impl Default for FetchResponseReader {
+  fn default() -> Self {
+    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
+    Self::BodyReader(stream.peekable())
+  }
+}
 #[derive(Debug)]
-pub struct FetchResponseBodyResource {
-  pub response_reader: FetchResponseReader,
+pub struct FetchResponseResource {
+  pub response_reader: AsyncRefCell<FetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
 }
 
-impl FetchResponseBodyResource {
+impl FetchResponseResource {
   pub fn new(response: Response, size: Option<u64>) -> Self {
     Self {
-      response_reader: FetchResponseReader::Start(response),
+      response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
       cancel: CancelHandle::default(),
       size,
     }
   }
 
   pub async fn upgrade(self) -> Result<reqwest::Upgraded, AnyError> {
-    match self.response_reader {
+    let reader = self.response_reader.into_inner();
+    match reader {
       FetchResponseReader::Start(resp) => Ok(resp.upgrade().await?),
-      _ => unreachable!(),
-    }
-  }
-
-  pub fn bytes_stream(&mut self) -> AsyncRefCell<Peekable<BytesStream>> {
-    if let FetchResponseReader::Start(resp) = &self.response_reader {
-      let stream: BytesStream = Box::pin(resp.bytes_stream().map(|r| {
-        r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-      }));
-      self.response_reader =
-        FetchResponseReader::BodyReader(AsyncRefCell::new(stream.peekable()));
-    }
-
-    match self.response_reader {
-      FetchResponseReader::BodyReader(reader) => reader,
       _ => unreachable!(),
     }
   }
 }
 
-impl Resource for FetchResponseBodyResource {
+impl Resource for FetchResponseResource {
   fn name(&self) -> Cow<str> {
     "fetchResponseBody".into()
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      let reader = RcRef::map(&self, |r| &r.bytes_stream()).borrow_mut().await;
+      let mut reader =
+        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
 
+      let body = loop {
+        match &mut *reader {
+          FetchResponseReader::BodyReader(reader) => break reader,
+          FetchResponseReader::Start(_) => {}
+        }
+
+        match std::mem::take(&mut *reader) {
+          FetchResponseReader::Start(resp) => {
+            let stream: BytesStream = Box::pin(resp.bytes_stream().map(|r| {
+              r.map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, err)
+              })
+            }));
+            *reader = FetchResponseReader::BodyReader(stream.peekable());
+          }
+          FetchResponseReader::BodyReader(_) => unreachable!(),
+        }
+      };
       let fut = async move {
-        let mut reader = Pin::new(reader);
+        let mut reader = Pin::new(body);
         loop {
           match reader.as_mut().peek_mut().await {
             Some(Ok(chunk)) if !chunk.is_empty() => {
