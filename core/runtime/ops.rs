@@ -123,11 +123,11 @@ pub fn queue_async_op<'s>(
     Poll::Pending => {}
     Poll::Ready(mut res) => {
       if deferred {
-        // SAFETY: this is guaranteed to be running on a current-thread executor
         ctx
           .context_state
           .borrow_mut()
           .pending_ops
+          // SAFETY: this is guaranteed to be running on a current-thread executor
           .spawn(unsafe { crate::task::MaskFutureAsSend::new(ready(res)) });
         return None;
       } else {
