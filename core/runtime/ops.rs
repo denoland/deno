@@ -114,31 +114,29 @@ pub fn queue_async_op<'s>(
   // );
 
   let id = ctx.id;
-  if deferred {
-    ctx
-        .context_state
-        .borrow_mut()
-        .pending_ops
+  let joinset = &mut ctx.context_state.borrow_mut().pending_ops;
+
+  // TODO(mmastrac): We have to poll every future here because that assumption is baked into a large number
+  // of ops. If we can figure out a way around this, we can remove this call to boxed_local and save a malloc per future.
+  let mut pinned = op.map(move |res| (promise_id, id, res)).boxed_local();
+
+  match pinned.poll_unpin(&mut Context::from_waker(noop_waker_ref())) {
+    Poll::Pending => {}
+    Poll::Ready(mut res) => {
+      if deferred {
         // SAFETY: this this is guaranteed to be running on a current-thread executor
-        .spawn(unsafe {
-        crate::task::MaskFutureAsSend::new(
-            op.map(move |res| (promise_id, id, res)),
-        )
-        });
-    None
-  } else {
-    let mut pinned = op.boxed_local();
-    match pinned.poll_unpin(&mut Context::from_waker(noop_waker_ref())) {
-      Poll::Pending => {
-        ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
-            crate::task::MaskFutureAsSend::new(pinned.map(move |res| (promise_id, id, res)))
-        });
-        None
-      },
-      Poll::Ready(mut res) => {
-        ctx.state.borrow_mut().tracker.track_async_completed(id);
-        Some(res.to_v8(scope).unwrap())
+        joinset
+          .spawn(unsafe { crate::task::MaskFutureAsSend::new(ready(res)) });
+        return None;
+      } else {
+        ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
+        return Some(res.2.to_v8(scope).unwrap());
       }
     }
   }
+
+  joinset
+    // SAFETY: this this is guaranteed to be running on a current-thread executor
+    .spawn(unsafe { crate::task::MaskFutureAsSend::new(pinned) });
+  None
 }
