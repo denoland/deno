@@ -2493,6 +2493,19 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
   }
 }
 
+export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
+  constructor() {
+    const code = isWindows ? "ENOENT" : "ENOTDIR";
+    const ctx: NodeSystemErrorCtx = {
+      message: "not a directory",
+      syscall: "home",
+      code,
+      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
+    };
+    super(code, ctx, "Path is not a directory");
+  }
+}
+
 interface UvExceptionContext {
   syscall: string;
   path?: string;

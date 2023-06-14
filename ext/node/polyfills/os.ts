@@ -20,10 +20,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
 const core = globalThis.__bootstrap.core;
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "ext:deno_node/process.ts";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { osUptime } from "ext:runtime/30_os.js";
 import { Buffer } from "ext:deno_node/buffer.ts";
@@ -325,6 +327,9 @@ export function userInfo(
   }
 
   let _homedir = homedir();
+  if (!_homedir) {
+    throw new ERR_OS_NO_HOMEDIR();
+  }
   let shell = isWindows ? (Deno.env.get("SHELL") || null) : null;
   let username = core.ops.op_node_os_username();
 
