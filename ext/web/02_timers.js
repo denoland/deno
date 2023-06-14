@@ -188,7 +188,10 @@ function initializeTimer(
   // 13. Run steps after a timeout given global, "setTimeout/setInterval",
   // timeout, completionStep, and id.
   runAfterTimeout(
-    () => ArrayPrototypePush(timerTasks, task),
+    () => {
+      timerInfo.resolved = true;
+      ArrayPrototypePush(timerTasks, task);
+    },
     timeout,
     timerInfo,
   );
@@ -258,6 +261,10 @@ function runAfterTimeout(cb, millis, timerInfo) {
   PromisePrototypeThen(
     sleepPromise,
     (cancelled) => {
+      if (timerObject.resolved) {
+        return;
+      }
+
       // "op_void_async_deferred" returns null
       if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
@@ -278,18 +285,14 @@ function runAfterTimeout(cb, millis, timerInfo) {
       //   b) its timeout is lower than the lowest unresolved timeout found so
       //      far in the list.
 
-      timerObject.resolved = true;
-
-      let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
-
       let currentEntry = scheduledTimers.head;
       while (currentEntry !== null) {
-        if (currentEntry.millis < lowestUnresolvedTimeout) {
-          if (currentEntry.resolved) {
-            currentEntry.cb();
-            removeFromScheduledTimers(currentEntry);
-          } else {
-            lowestUnresolvedTimeout = currentEntry.millis;
+        if (currentEntry.millis <= timerObject.millis) {
+          currentEntry.cb();
+          removeFromScheduledTimers(currentEntry);
+
+          if (currentEntry === timerObject) {
+            break;
           }
         }
 
