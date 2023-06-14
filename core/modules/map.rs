@@ -1,5 +1,5 @@
-use crate::error::exception_to_err_result;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use crate::error::exception_to_err_result;
 use crate::error::generic_error;
 use crate::fast_string::FastString;
 use crate::modules::get_asserted_module_type_from_assertions;
