@@ -1,6 +1,4 @@
-use crate::JsRuntime;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use crate::bindings;
 use crate::error::generic_error;
 use crate::fast_string::FastString;
 use crate::modules::get_asserted_module_type_from_assertions;
@@ -20,7 +18,8 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::modules::ResolutionKind;
-use crate::snapshot_util::SnapshottedData;
+use crate::runtime::JsRuntime;
+use crate::runtime::SnapshottedData;
 use anyhow::Error;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -467,7 +466,7 @@ impl ModuleMap {
     let name_str = name.v8(scope);
     let source_str = source.v8(scope);
 
-    let origin = bindings::module_origin(scope, name_str);
+    let origin = module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -819,4 +818,23 @@ fn json_module_evaluation_steps<'a>(
   let undefined = v8::undefined(tc_scope);
   resolver.resolve(tc_scope, undefined.into());
   Some(resolver.get_promise(tc_scope).into())
+}
+
+pub fn module_origin<'a>(
+  s: &mut v8::HandleScope<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let source_map_url = v8::String::empty(s);
+  v8::ScriptOrigin::new(
+    s,
+    resource_name.into(),
+    0,
+    0,
+    false,
+    123,
+    source_map_url.into(),
+    true,
+    false,
+    true,
+  )
 }
