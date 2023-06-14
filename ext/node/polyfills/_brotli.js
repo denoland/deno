@@ -3,6 +3,7 @@ import { notImplemented } from "ext:deno_node/_utils.ts";
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Transform } from "ext:deno_node/stream.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
@@ -17,13 +18,33 @@ const toU8 = (input) => {
 };
 
 export function createBrotliCompress(options) {
-  notImplemented("createBrotliDecompress");
-  // TODO(@littledivy):
-  // return new BrotliCompress(options);
+  return new BrotliCompress(options);
 }
 
-export function createBrotliDecompress() {
-  notImplemented("createBrotliDecompress");
+export function createBrotliDecompress(options) {
+  return new BrotliDecompress(options);
+}
+
+export class BrotliDecompress extends Transform {
+  #context;
+
+  constructor(options = {}) {
+    super({
+      transform(chunk, encoding, callback) {
+        const input = toU8(chunk);
+        const output = new Uint8Array(1024);
+        const avail = ops.op_brotli_decompress_stream(context, input, output);
+        this.push(output.slice(0, avail));
+        callback();
+      },
+      flush(callback) {
+        callback();
+      },
+    });
+
+    this.#context = ops.op_create_brotli_decompress();
+    const context = this.#context;
+  }
 }
 
 export class BrotliCompress extends Transform {
@@ -33,11 +54,15 @@ export class BrotliCompress extends Transform {
     super({
       transform(chunk, encoding, callback) {
         const input = toU8(chunk);
+        const output = new Uint8Array(brotliMaxCompressedSize(input.length));
         const avail = ops.op_brotli_compress_stream(context, input, output);
         this.push(output.slice(0, avail));
         callback();
       },
       flush(callback) {
+        const output = new Uint8Array(1024);
+        const avail = ops.op_brotli_compress_stream_end(context, output);
+        this.push(output.slice(0, avail));
         callback();
       },
     });
@@ -101,12 +126,16 @@ export function brotliCompressSync(
 
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   const len = ops.op_brotli_compress(buf, output, quality, lgwin, mode);
-  return output.subarray(0, len);
+  return Buffer.from(output.subarray(0, len));
 }
 
-export function brotliDecompress() {
-  notImplemented("brotliDecompress");
+export function brotliDecompress(input) {
+  const buf = toU8(input);
+  return ops.op_brotli_decompress_async(buf)
+    .then((result) => callback(null, Buffer.from(result)))
+    .catch((err) => callback(err));
 }
-export function brotliDecompressSync() {
-  notImplemented("brotliDecompressSync");
+
+export function brotliDecompressSync(input) {
+  return Buffer.from(ops.op_brotli_decompress(toU8(input)));
 }
