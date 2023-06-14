@@ -1,10 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::*;
-use brotli::ffi::decompressor::{
-  ffi::{interface::BrotliDecoderResult, BrotliDecoderState},
-  *,
-};
+use brotli::ffi::decompressor::ffi::interface::BrotliDecoderResult;
+use brotli::ffi::decompressor::ffi::BrotliDecoderState;
+use brotli::ffi::decompressor::*;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
