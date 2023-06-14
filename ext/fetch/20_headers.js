@@ -113,7 +113,6 @@ function checkHeaderNameForHttpTokenCodePoint(name) {
 
   const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
 
-
   if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
     MapPrototypeClear(HEADER_NAME_CACHE);
   }
