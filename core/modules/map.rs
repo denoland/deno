@@ -584,7 +584,7 @@ impl ModuleMap {
     Ok(())
   }
 
-  /// Called by V8 during `JsRuntime::instantiate_module`. This is only used internally, so we use a thread-local
+  /// Called by V8 during `JsRuntime::instantiate_module`. This is only used internally, so we use the Isolate's annex
   /// to propagate a &Self.
   fn module_resolve_callback<'s>(
     context: v8::Local<'s, v8::Context>,
