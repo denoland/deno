@@ -3,7 +3,7 @@ import process from "node:process";
 import * as path from "node:path";
 
 const script = path.join(
-  path.dirname(path.fromFileUrl(import.meta.url)),
+  path.dirname(new URL(import.meta.url).pathname),
   "node_modules",
   "foo",
   "index.js",
