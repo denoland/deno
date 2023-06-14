@@ -22,7 +22,16 @@ pub struct CreateSnapshotOptions {
   pub snapshot_module_load_cb: Option<ExtModuleLoaderCb>,
 }
 
-pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
+pub struct CreateSnapshotOutput {
+  /// Any files marked as LoadedFromFsDuringSnapshot are collected here and should be
+  /// printed as 'cargo:rerun-if-changed' lines from your build script.
+  pub files_loaded_during_snapshot: Vec<PathBuf>,
+}
+
+#[must_use = "The files listed by create_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
+pub fn create_snapshot(
+  create_snapshot_options: CreateSnapshotOptions,
+) -> CreateSnapshotOutput {
   let mut mark = Instant::now();
 
   let js_runtime = JsRuntimeForSnapshot::new(
@@ -41,6 +50,22 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     create_snapshot_options.snapshot_path.display()
   );
   mark = Instant::now();
+
+  let mut files_loaded_during_snapshot = vec![];
+  for source in js_runtime
+    .extensions()
+    .iter()
+    .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
+    .flatten()
+    .flatten()
+  {
+    use crate::ExtensionFileSourceCode;
+    if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+      &source.code
+    {
+      files_loaded_during_snapshot.push(path.clone());
+    }
+  }
 
   let snapshot = js_runtime.snapshot();
   let snapshot_slice: &[u8] = &snapshot;
@@ -87,6 +112,9 @@ pub fn create_snapshot(create_snapshot_options: CreateSnapshotOptions) {
     Instant::now().saturating_duration_since(mark),
     create_snapshot_options.snapshot_path.display(),
   );
+  CreateSnapshotOutput {
+    files_loaded_during_snapshot,
+  }
 }
 
 pub type FilterFn = Box<dyn Fn(&PathBuf) -> bool>;

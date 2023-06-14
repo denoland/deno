@@ -46,6 +46,7 @@ util::unit_test_factory!(
     intl_test,
     io_test,
     kv_test,
+    kv_queue_undelivered_test,
     link_test,
     make_temp_test,
     message_channel_test,

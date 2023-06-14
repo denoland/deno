@@ -7531,6 +7531,62 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
 }
 
 #[test]
+fn lsp_closed_file_find_references_excluded_path() {
+  // we exclude any files or folders in the "exclude" part of
+  // the config file from being pre-loaded
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("sub_dir");
+  temp_dir.create_dir_all("other_dir/sub_dir");
+  temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
+  temp_dir.write(
+    "./sub_dir/mod.test.ts",
+    "import { a } from './mod.ts'; console.log(a);",
+  );
+  temp_dir.write(
+    "./other_dir/sub_dir/mod.test.ts",
+    "import { a } from '../../sub_dir/mod.ts'; console.log(a);",
+  );
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "exclude": [
+    "./sub_dir/mod.test.ts",
+    "./other_dir/sub_dir",
+  ]
+}"#,
+  );
+  let temp_dir_url = temp_dir.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 5;"#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // won't have results because the documents won't be pre-loaded
+  assert_eq!(res, json!([]));
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_data_urls_with_jsx_compiler_option() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
