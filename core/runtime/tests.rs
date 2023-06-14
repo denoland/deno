@@ -1,3 +1,4 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::ascii_str;
 use crate::error::custom_error;
 use crate::error::generic_error;
