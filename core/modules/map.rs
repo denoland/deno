@@ -1,7 +1,7 @@
-use crate::JsRuntime;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use crate::bindings;
+use crate::error::exception_to_err_result;
 use crate::error::generic_error;
+use crate::error::throw_type_error;
 use crate::fast_string::FastString;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
@@ -20,7 +20,8 @@ use crate::modules::NoopModuleLoader;
 use crate::modules::PrepareLoadFuture;
 use crate::modules::RecursiveModuleLoad;
 use crate::modules::ResolutionKind;
-use crate::snapshot_util::SnapshottedData;
+use crate::runtime::JsRuntime;
+use crate::runtime::SnapshottedData;
 use anyhow::Error;
 use futures::future::FutureExt;
 use futures::stream::FuturesUnordered;
@@ -467,7 +468,7 @@ impl ModuleMap {
     let name_str = name.v8(scope);
     let source_str = source.v8(scope);
 
-    let origin = bindings::module_origin(scope, name_str);
+    let origin = module_origin(scope, name_str);
     let source = v8::script_compiler::Source::new(source_str, Some(&origin));
 
     let tc_scope = &mut v8::TryCatch::new(scope);
@@ -553,6 +554,105 @@ impl ModuleMap {
     );
 
     Ok(id)
+  }
+
+  pub(crate) fn instantiate_module(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    id: ModuleId,
+  ) -> Result<(), v8::Global<v8::Value>> {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let module = self
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      return Err(v8::Global::new(tc_scope, module.get_exception()));
+    }
+
+    tc_scope.set_slot(self as *const _);
+    let instantiate_result =
+      module.instantiate_module(tc_scope, Self::module_resolve_callback);
+    tc_scope.remove_slot::<*const Self>();
+    if instantiate_result.is_none() {
+      let exception = tc_scope.exception().unwrap();
+      return Err(v8::Global::new(tc_scope, exception));
+    }
+
+    Ok(())
+  }
+
+  /// Called by V8 during `JsRuntime::instantiate_module`. This is only used internally, so we use the Isolate's annex
+  /// to propagate a &Self.
+  fn module_resolve_callback<'s>(
+    context: v8::Local<'s, v8::Context>,
+    specifier: v8::Local<'s, v8::String>,
+    import_assertions: v8::Local<'s, v8::FixedArray>,
+    referrer: v8::Local<'s, v8::Module>,
+  ) -> Option<v8::Local<'s, v8::Module>> {
+    // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+    let scope = &mut unsafe { v8::CallbackScope::new(context) };
+
+    let module_map =
+      // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
+      unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
+
+    let referrer_global = v8::Global::new(scope, referrer);
+
+    let referrer_info = module_map
+      .get_info(&referrer_global)
+      .expect("ModuleInfo not found");
+    let referrer_name = referrer_info.name.as_str();
+
+    let specifier_str = specifier.to_rust_string_lossy(scope);
+
+    let assertions = parse_import_assertions(
+      scope,
+      import_assertions,
+      ImportAssertionsKind::StaticImport,
+    );
+    let maybe_module = module_map.resolve_callback(
+      scope,
+      &specifier_str,
+      referrer_name,
+      assertions,
+    );
+    if let Some(module) = maybe_module {
+      return Some(module);
+    }
+
+    let msg = format!(
+      r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
+    );
+    throw_type_error(scope, msg);
+    None
+  }
+
+  /// Called by `module_resolve_callback` during module instantiation.
+  fn resolve_callback<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    specifier: &str,
+    referrer: &str,
+    import_assertions: HashMap<String, String>,
+  ) -> Option<v8::Local<'s, v8::Module>> {
+    let resolved_specifier = self
+      .loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .expect("Module should have been already resolved");
+
+    let module_type =
+      get_asserted_module_type_from_assertions(&import_assertions);
+
+    if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type) {
+      if let Some(handle) = self.get_handle(id) {
+        return Some(v8::Local::new(scope, handle));
+      }
+    }
+
+    None
   }
 
   pub(crate) fn clear(&mut self) {
@@ -754,29 +854,102 @@ impl ModuleMap {
       && self.pending_dynamic_imports.is_empty())
   }
 
-  /// Called by `module_resolve_callback` during module instantiation.
-  pub(crate) fn resolve_callback<'s>(
+  /// Returns the namespace object of a module.
+  ///
+  /// This is only available after module evaluation has completed.
+  /// This function panics if module has not been instantiated.
+  pub fn get_module_namespace(
     &self,
-    scope: &mut v8::HandleScope<'s>,
-    specifier: &str,
-    referrer: &str,
-    import_assertions: HashMap<String, String>,
-  ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = self
-      .loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .expect("Module should have been already resolved");
+    scope: &mut v8::HandleScope,
+    module_id: ModuleId,
+  ) -> Result<v8::Global<v8::Object>, Error> {
+    let module_handle =
+      self.get_handle(module_id).expect("ModuleInfo not found");
 
-    let module_type =
-      get_asserted_module_type_from_assertions(&import_assertions);
+    let module = module_handle.open(scope);
 
-    if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type) {
-      if let Some(handle) = self.get_handle(id) {
-        return Some(v8::Local::new(scope, handle));
+    if module.get_status() == v8::ModuleStatus::Errored {
+      let exception = module.get_exception();
+      return exception_to_err_result(scope, exception, false);
+    }
+
+    assert!(matches!(
+      module.get_status(),
+      v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
+    ));
+
+    let module_namespace: v8::Local<v8::Object> =
+      v8::Local::try_from(module.get_module_namespace())
+        .map_err(|err: v8::DataError| generic_error(err.to_string()))?;
+
+    Ok(v8::Global::new(scope, module_namespace))
+  }
+
+  /// Clear the module map, meant to be used after initializing extensions.
+  /// Optionally pass a list of exceptions `(old_name, new_name)` representing
+  /// specifiers which will be renamed and preserved in the module map.
+  pub fn clear_module_map(
+    &mut self,
+    exceptions: impl Iterator<Item = (&'static str, &'static str)>,
+  ) {
+    let handles = exceptions
+      .map(|(old_name, new_name)| {
+        (self.get_handle_by_name(old_name).unwrap(), new_name)
+      })
+      .collect::<Vec<_>>();
+    self.clear();
+    for (handle, new_name) in handles {
+      self.inject_handle(
+        ModuleName::from_static(new_name),
+        ModuleType::JavaScript,
+        handle,
+      )
+    }
+  }
+
+  fn get_stalled_top_level_await_message_for_module(
+    &self,
+    scope: &mut v8::HandleScope,
+    module_id: ModuleId,
+  ) -> Vec<v8::Global<v8::Message>> {
+    let module_handle = self.handles.get(module_id).unwrap();
+
+    let module = v8::Local::new(scope, module_handle);
+    let stalled = module.get_stalled_top_level_await_message(scope);
+    let mut messages = vec![];
+    for (_, message) in stalled {
+      messages.push(v8::Global::new(scope, message));
+    }
+    messages
+  }
+
+  pub(crate) fn find_stalled_top_level_await(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Vec<v8::Global<v8::Message>> {
+    // First check if that's root module
+    let root_module_id =
+      self.info.iter().filter(|m| m.main).map(|m| m.id).next();
+
+    if let Some(root_module_id) = root_module_id {
+      let messages = self
+        .get_stalled_top_level_await_message_for_module(scope, root_module_id);
+      if !messages.is_empty() {
+        return messages;
       }
     }
 
-    None
+    // It wasn't a top module, so iterate over all modules and try to find
+    // any with stalled top level await
+    for module_id in 0..self.handles.len() {
+      let messages =
+        self.get_stalled_top_level_await_message_for_module(scope, module_id);
+      if !messages.is_empty() {
+        return messages;
+      }
+    }
+
+    unreachable!()
   }
 }
 
@@ -819,4 +992,23 @@ fn json_module_evaluation_steps<'a>(
   let undefined = v8::undefined(tc_scope);
   resolver.resolve(tc_scope, undefined.into());
   Some(resolver.get_promise(tc_scope).into())
+}
+
+pub fn module_origin<'a>(
+  s: &mut v8::HandleScope<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let source_map_url = v8::String::empty(s);
+  v8::ScriptOrigin::new(
+    s,
+    resource_name.into(),
+    0,
+    0,
+    false,
+    123,
+    source_map_url.into(),
+    true,
+    false,
+    true,
+  )
 }

@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::ascii_str;
 use crate::resolve_import;
-use crate::JsRuntime;
-use crate::JsRuntimeForSnapshot;
+use crate::runtime::JsRuntime;
+use crate::runtime::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
 use crate::Snapshot;
 use deno_ops::op;
