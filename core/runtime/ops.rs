@@ -3,15 +3,12 @@ use crate::ops::*;
 use crate::OpResult;
 use crate::PromiseId;
 use anyhow::Error;
+use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
-use futures::future::MaybeDone;
-use futures::task::noop_waker;
 use std::cell::RefCell;
+use std::future::ready;
 use std::option::Option;
-use std::pin::Pin;
-use std::task::Context;
-use std::task::Poll;
 
 #[inline]
 pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
@@ -24,12 +21,10 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
     state.tracker.track_async(ctx.id);
     state.get_error_class_fn
   };
-  let fut = op
-    .map(|result| crate::_ops::to_op_result(get_class, result))
-    .boxed_local();
+  let fut = op.map(|result| crate::_ops::to_op_result(get_class, result));
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
-    crate::task::MaskFutureAsSend::new(OpCall::pending(ctx, promise_id, fut))
+    crate::task::MaskFutureAsSend::new(OpCall::new(ctx, promise_id, fut))
   });
 }
 
@@ -37,36 +32,32 @@ pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
 pub fn map_async_op1<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   op: impl Future<Output = Result<R, Error>> + 'static,
-) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+) -> impl Future<Output = OpResult> {
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
     state.get_error_class_fn
   };
 
-  let fut = op
-    .map(|result| crate::_ops::to_op_result(get_class, result))
-    .boxed_local();
-  MaybeDone::Future(fut)
+  op.map(|res| crate::_ops::to_op_result(get_class, res))
 }
 
 #[inline]
 pub fn map_async_op2<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   op: impl Future<Output = R> + 'static,
-) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+) -> impl Future<Output = OpResult> {
   let state = RefCell::borrow(&ctx.state);
   state.tracker.track_async(ctx.id);
 
-  let fut = op.map(|result| OpResult::Ok(result.into())).boxed_local();
-  MaybeDone::Future(fut)
+  op.map(|res| OpResult::Ok(res.into()))
 }
 
 #[inline]
 pub fn map_async_op3<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   op: Result<impl Future<Output = Result<R, Error>> + 'static, Error>,
-) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+) -> impl Future<Output = OpResult> {
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
@@ -74,12 +65,12 @@ pub fn map_async_op3<R: serde::Serialize + 'static>(
   };
 
   match op {
-    Err(err) => MaybeDone::Done(OpResult::Err(OpError::new(get_class, err))),
-    Ok(fut) => MaybeDone::Future(
-      fut
-        .map(|result| crate::_ops::to_op_result(get_class, result))
-        .boxed_local(),
-    ),
+    Err(err) => {
+      Either::Left(ready(OpResult::Err(OpError::new(get_class, err))))
+    }
+    Ok(fut) => {
+      Either::Right(fut.map(|res| crate::_ops::to_op_result(get_class, res)))
+    }
   }
 }
 
@@ -87,7 +78,7 @@ pub fn map_async_op3<R: serde::Serialize + 'static>(
 pub fn map_async_op4<R: serde::Serialize + 'static>(
   ctx: &OpCtx,
   op: Result<impl Future<Output = R> + 'static, Error>,
-) -> MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>> {
+) -> impl Future<Output = OpResult> {
   let get_class = {
     let state = RefCell::borrow(&ctx.state);
     state.tracker.track_async(ctx.id);
@@ -95,10 +86,10 @@ pub fn map_async_op4<R: serde::Serialize + 'static>(
   };
 
   match op {
-    Err(err) => MaybeDone::Done(OpResult::Err(OpError::new(get_class, err))),
-    Ok(fut) => MaybeDone::Future(
-      fut.map(|result| OpResult::Ok(result.into())).boxed_local(),
-    ),
+    Err(err) => {
+      Either::Left(ready(OpResult::Err(OpError::new(get_class, err))))
+    }
+    Ok(fut) => Either::Right(fut.map(|r| OpResult::Ok(r.into()))),
   }
 }
 
@@ -107,7 +98,7 @@ pub fn queue_async_op<'s>(
   scope: &'s mut v8::HandleScope,
   deferred: bool,
   promise_id: PromiseId,
-  mut op: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
+  op: impl Future<Output = OpResult> + 'static,
 ) -> Option<v8::Local<'s, v8::Value>> {
   // An op's realm (as given by `OpCtx::realm_idx`) must match the realm in
   // which it is invoked. Otherwise, we might have cross-realm object exposure.
@@ -119,38 +110,18 @@ pub fn queue_async_op<'s>(
   //   Some(scope.get_current_context())
   // );
 
-  // All ops are polled immediately
-  let waker = noop_waker();
-  let mut cx = Context::from_waker(&waker);
-
-  // Note that MaybeDone returns () from the future
-  let op_call = match op.poll_unpin(&mut cx) {
-    Poll::Pending => {
-      let MaybeDone::Future(fut) = op else {
-        unreachable!()
-      };
-      OpCall::pending(ctx, promise_id, fut)
-    }
-    Poll::Ready(_) => {
-      let mut op_result = Pin::new(&mut op).take_output().unwrap();
-      // If the op is ready and is not marked as deferred we can immediately return
-      // the result.
-      if !deferred {
-        ctx.state.borrow_mut().tracker.track_async_completed(ctx.id);
-        return Some(op_result.to_v8(scope).unwrap());
-      }
-
-      OpCall::ready(ctx, promise_id, op_result)
-    }
-  };
-
   // Otherwise we will push it to the `pending_ops` and let it be polled again
   // or resolved on the next tick of the event loop.
+  let id = ctx.id;
   ctx
     .context_state
     .borrow_mut()
     .pending_ops
     // SAFETY: this this is guaranteed to be running on a current-thread executor
-    .spawn(unsafe { crate::task::MaskFutureAsSend::new(op_call) });
+    .spawn(unsafe {
+      crate::task::MaskFutureAsSend::new(
+        op.map(move |res| (promise_id, id, res)),
+      )
+    });
   None
 }
