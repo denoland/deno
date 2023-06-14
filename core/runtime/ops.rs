@@ -6,9 +6,12 @@ use anyhow::Error;
 use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
+use futures::task::noop_waker_ref;
 use std::cell::RefCell;
 use std::future::ready;
 use std::option::Option;
+use std::task::Context;
+use std::task::Poll;
 
 #[inline]
 pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
@@ -110,18 +113,32 @@ pub fn queue_async_op<'s>(
   //   Some(scope.get_current_context())
   // );
 
-  // Otherwise we will push it to the `pending_ops` and let it be polled again
-  // or resolved on the next tick of the event loop.
   let id = ctx.id;
-  ctx
-    .context_state
-    .borrow_mut()
-    .pending_ops
-    // SAFETY: this this is guaranteed to be running on a current-thread executor
-    .spawn(unsafe {
-      crate::task::MaskFutureAsSend::new(
-        op.map(move |res| (promise_id, id, res)),
-      )
-    });
-  None
+  if deferred {
+    ctx
+        .context_state
+        .borrow_mut()
+        .pending_ops
+        // SAFETY: this this is guaranteed to be running on a current-thread executor
+        .spawn(unsafe {
+        crate::task::MaskFutureAsSend::new(
+            op.map(move |res| (promise_id, id, res)),
+        )
+        });
+    None
+  } else {
+    let mut pinned = op.boxed_local();
+    match pinned.poll_unpin(&mut Context::from_waker(noop_waker_ref())) {
+      Poll::Pending => {
+        ctx.context_state.borrow_mut().pending_ops.spawn(unsafe {
+            crate::task::MaskFutureAsSend::new(pinned.map(move |res| (promise_id, id, res)))
+        });
+        None
+      },
+      Poll::Ready(mut res) => {
+        ctx.state.borrow_mut().tracker.track_async_completed(id);
+        Some(res.to_v8(scope).unwrap())
+      }
+    }
+  }
 }
