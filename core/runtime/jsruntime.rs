@@ -1607,32 +1607,11 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> Result<(), v8::Global<v8::Value>> {
-    let module_map_rc = self.module_map.clone();
-    let scope = &mut self.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let module = module_map_rc
-      .borrow()
-      .get_handle(id)
-      .map(|handle| v8::Local::new(tc_scope, handle))
-      .expect("ModuleInfo not found");
-
-    if module.get_status() == v8::ModuleStatus::Errored {
-      return Err(v8::Global::new(tc_scope, module.get_exception()));
-    }
-
-    // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
-    // `module_resolve_callback` will be calling into `ModuleMap` from within
-    // the isolate.
-    let instantiate_result =
-      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
-
-    if instantiate_result.is_none() {
-      let exception = tc_scope.exception().unwrap();
-      return Err(v8::Global::new(tc_scope, exception));
-    }
-
-    Ok(())
+    self
+      .module_map
+      .clone()
+      .borrow_mut()
+      .instantiate_module(&mut self.handle_scope(), id)
   }
 
   fn dynamic_import_module_evaluate(

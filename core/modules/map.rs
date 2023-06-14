@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::exception_to_err_result;
 use crate::error::generic_error;
+use crate::error::throw_type_error;
 use crate::fast_string::FastString;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
@@ -555,6 +556,113 @@ impl ModuleMap {
     Ok(id)
   }
 
+  thread_local! {
+    pub static CURRENT_MODULE_MAP: RefCell<*const ModuleMap> = RefCell::new(std::ptr::null());
+  }
+
+  pub(crate) fn instantiate_module<'a>(
+    &mut self,
+    scope: &mut v8::HandleScope,
+    id: ModuleId,
+  ) -> Result<(), v8::Global<v8::Value>> {
+    let tc_scope = &mut v8::TryCatch::new(scope);
+
+    let module = self
+      .get_handle(id)
+      .map(|handle| v8::Local::new(tc_scope, handle))
+      .expect("ModuleInfo not found");
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      return Err(v8::Global::new(tc_scope, module.get_exception()));
+    }
+
+    Self::CURRENT_MODULE_MAP.with(|r| *r.borrow_mut() = self as *const _);
+    let instantiate_result =
+      module.instantiate_module(tc_scope, Self::module_resolve_callback);
+    Self::CURRENT_MODULE_MAP.with(|r| *r.borrow_mut() = std::ptr::null());
+    if instantiate_result.is_none() {
+      let exception = tc_scope.exception().unwrap();
+      return Err(v8::Global::new(tc_scope, exception));
+    }
+
+    Ok(())
+  }
+
+  /// Called by V8 during `JsRuntime::instantiate_module`. This is only used internally, so we use a thread-local
+  /// to propagate a &Self.
+  fn module_resolve_callback<'s>(
+    context: v8::Local<'s, v8::Context>,
+    specifier: v8::Local<'s, v8::String>,
+    import_assertions: v8::Local<'s, v8::FixedArray>,
+    referrer: v8::Local<'s, v8::Module>,
+  ) -> Option<v8::Local<'s, v8::Module>> {
+    // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+    let scope = &mut unsafe { v8::CallbackScope::new(context) };
+
+    // SAFETY: We retrieve the pointer from the thread local, having just set it a few stack frames up
+    let module_map = unsafe {
+      Self::CURRENT_MODULE_MAP
+        .with(|r| *r.borrow())
+        .as_ref()
+        .unwrap()
+    };
+
+    let referrer_global = v8::Global::new(scope, referrer);
+
+    let referrer_info = module_map
+      .get_info(&referrer_global)
+      .expect("ModuleInfo not found");
+    let referrer_name = referrer_info.name.as_str();
+
+    let specifier_str = specifier.to_rust_string_lossy(scope);
+
+    let assertions = parse_import_assertions(
+      scope,
+      import_assertions,
+      ImportAssertionsKind::StaticImport,
+    );
+    let maybe_module = module_map.resolve_callback(
+      scope,
+      &specifier_str,
+      referrer_name,
+      assertions,
+    );
+    if let Some(module) = maybe_module {
+      return Some(module);
+    }
+
+    let msg = format!(
+      r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
+    );
+    throw_type_error(scope, msg);
+    None
+  }
+
+  /// Called by `module_resolve_callback` during module instantiation.
+  fn resolve_callback<'s>(
+    &self,
+    scope: &mut v8::HandleScope<'s>,
+    specifier: &str,
+    referrer: &str,
+    import_assertions: HashMap<String, String>,
+  ) -> Option<v8::Local<'s, v8::Module>> {
+    let resolved_specifier = self
+      .loader
+      .resolve(specifier, referrer, ResolutionKind::Import)
+      .expect("Module should have been already resolved");
+
+    let module_type =
+      get_asserted_module_type_from_assertions(&import_assertions);
+
+    if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type) {
+      if let Some(handle) = self.get_handle(id) {
+        return Some(v8::Local::new(scope, handle));
+      }
+    }
+
+    None
+  }
+
   pub(crate) fn clear(&mut self) {
     *self = Self::new(self.loader.clone())
   }
@@ -752,31 +860,6 @@ impl ModuleMap {
   pub(crate) fn has_pending_dynamic_imports(&self) -> bool {
     !(self.preparing_dynamic_imports.is_empty()
       && self.pending_dynamic_imports.is_empty())
-  }
-
-  /// Called by `module_resolve_callback` during module instantiation.
-  pub(crate) fn resolve_callback<'s>(
-    &self,
-    scope: &mut v8::HandleScope<'s>,
-    specifier: &str,
-    referrer: &str,
-    import_assertions: HashMap<String, String>,
-  ) -> Option<v8::Local<'s, v8::Module>> {
-    let resolved_specifier = self
-      .loader
-      .resolve(specifier, referrer, ResolutionKind::Import)
-      .expect("Module should have been already resolved");
-
-    let module_type =
-      get_asserted_module_type_from_assertions(&import_assertions);
-
-    if let Some(id) = self.get_id(resolved_specifier.as_str(), module_type) {
-      if let Some(handle) = self.get_handle(id) {
-        return Some(v8::Local::new(scope, handle));
-      }
-    }
-
-    None
   }
 
   /// Returns the namespace object of a module.
