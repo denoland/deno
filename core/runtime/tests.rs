@@ -1025,13 +1025,13 @@ fn test_error_without_stack() {
     "error_without_stack.js",
     r#"
 function main() {
-console.log("asdf);
+  console.log("asdf);
 }
 main();
 "#,
   );
   let expected_error = r#"Uncaught SyntaxError: Invalid or unexpected token
-  at error_without_stack.js:3:15"#;
+    at error_without_stack.js:3:15"#;
   assert_eq!(result.unwrap_err().to_string(), expected_error);
 }
 
@@ -1042,20 +1042,20 @@ fn test_error_stack() {
     "error_stack.js",
     r#"
 function assert(cond) {
-if (!cond) {
-  throw Error("assert");
-}
+  if (!cond) {
+    throw Error("assert");
+  }
 }
 function main() {
-assert(false);
+  assert(false);
 }
 main();
       "#,
   );
   let expected_error = r#"Error: assert
-  at assert (error_stack.js:4:11)
-  at main (error_stack.js:8:3)
-  at error_stack.js:10:1"#;
+    at assert (error_stack.js:4:11)
+    at main (error_stack.js:8:3)
+    at error_stack.js:10:1"#;
   assert_eq!(result.unwrap_err().to_string(), expected_error);
 }
 
@@ -1067,25 +1067,25 @@ async fn test_error_async_stack() {
       .execute_script_static(
         "error_async_stack.js",
         r#"
-(async () => {
-const p = (async () => {
-  await Promise.resolve().then(() => {
-    throw new Error("async");
-  });
-})();
-try {
-  await p;
-} catch (error) {
-  console.log(error.stack);
-  throw error;
-}
-})();"#,
+  (async () => {
+  const p = (async () => {
+    await Promise.resolve().then(() => {
+      throw new Error("async");
+    });
+  })();
+  try {
+    await p;
+  } catch (error) {
+    console.log(error.stack);
+    throw error;
+  }
+  })();"#,
       )
       .unwrap();
     let expected_error = r#"Error: async
-  at error_async_stack.js:5:13
-  at async error_async_stack.js:4:5
-  at async error_async_stack.js:9:5"#;
+    at error_async_stack.js:5:13
+    at async error_async_stack.js:4:5
+    at async error_async_stack.js:9:5"#;
 
     match runtime.poll_event_loop(cx, false) {
       Poll::Ready(Err(e)) => {
@@ -1125,12 +1125,12 @@ async fn test_error_context() {
         r#"
 let errMessage;
 try {
-Deno.core.ops.op_err_sync();
+  Deno.core.ops.op_err_sync();
 } catch (err) {
-errMessage = err.message;
+  errMessage = err.message;
 }
 if (errMessage !== "higher-level sync error: original sync error") {
-throw new Error("unexpected error message from op_err_sync: " + errMessage);
+  throw new Error("unexpected error message from op_err_sync: " + errMessage);
 }
 "#,
       )

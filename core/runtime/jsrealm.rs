@@ -1,8 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use super::bindings;
-use crate::error::exception_to_err_result;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
+use crate::error::exception_to_err_result;
 use crate::runtime::JsRuntimeState;
 use crate::task::MaskResultAsSend;
 use crate::JsRuntime;
@@ -20,6 +19,7 @@ use std::rc::Rc;
 use tokio::task::JoinSet;
 use v8::HandleScope;
 use v8::Local;
+use super::bindings;
 
 // Hasher used for `unrefed_ops`. Since these are rolling i32, there's no
 // need to actually hash them.
