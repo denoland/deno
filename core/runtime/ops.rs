@@ -114,7 +114,6 @@ pub fn queue_async_op<'s>(
   // );
 
   let id = ctx.id;
-  let joinset = &mut ctx.context_state.borrow_mut().pending_ops;
 
   // TODO(mmastrac): We have to poll every future here because that assumption is baked into a large number
   // of ops. If we can figure out a way around this, we can remove this call to boxed_local and save a malloc per future.
@@ -125,7 +124,10 @@ pub fn queue_async_op<'s>(
     Poll::Ready(mut res) => {
       if deferred {
         // SAFETY: this this is guaranteed to be running on a current-thread executor
-        joinset
+        ctx
+          .context_state
+          .borrow_mut()
+          .pending_ops
           .spawn(unsafe { crate::task::MaskFutureAsSend::new(ready(res)) });
         return None;
       } else {
@@ -135,7 +137,10 @@ pub fn queue_async_op<'s>(
     }
   }
 
-  joinset
+  ctx
+    .context_state
+    .borrow_mut()
+    .pending_ops
     // SAFETY: this this is guaranteed to be running on a current-thread executor
     .spawn(unsafe { crate::task::MaskFutureAsSend::new(pinned) });
   None
