@@ -556,10 +556,6 @@ impl ModuleMap {
     Ok(id)
   }
 
-  thread_local! {
-    pub static CURRENT_MODULE_MAP: RefCell<*const ModuleMap> = RefCell::new(std::ptr::null());
-  }
-
   pub(crate) fn instantiate_module(
     &mut self,
     scope: &mut v8::HandleScope,
@@ -576,10 +572,10 @@ impl ModuleMap {
       return Err(v8::Global::new(tc_scope, module.get_exception()));
     }
 
-    Self::CURRENT_MODULE_MAP.with(|r| *r.borrow_mut() = self as *const _);
+    tc_scope.set_slot(self as *const _);
     let instantiate_result =
       module.instantiate_module(tc_scope, Self::module_resolve_callback);
-    Self::CURRENT_MODULE_MAP.with(|r| *r.borrow_mut() = std::ptr::null());
+    tc_scope.remove_slot::<*const Self>();
     if instantiate_result.is_none() {
       let exception = tc_scope.exception().unwrap();
       return Err(v8::Global::new(tc_scope, exception));
@@ -600,12 +596,8 @@ impl ModuleMap {
     let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
     // SAFETY: We retrieve the pointer from the thread local, having just set it a few stack frames up
-    let module_map = unsafe {
-      Self::CURRENT_MODULE_MAP
-        .with(|r| *r.borrow())
-        .as_ref()
-        .unwrap()
-    };
+    let module_map =
+      unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
     let referrer_global = v8::Global::new(scope, referrer);
 
