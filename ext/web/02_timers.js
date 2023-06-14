@@ -53,8 +53,10 @@ const timerTasks = [];
 let timerNestingLevel = 0;
 
 function handleTimerMacrotask() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
   if (timerTasks.length === 0) {
-    return true;
+    return undefined;
   }
 
   const task = ArrayPrototypeShift(timerTasks);
