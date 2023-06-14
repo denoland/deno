@@ -105,6 +105,7 @@ function checkForInvalidValueChars(value) {
 }
 
 const HEADER_NAME_CACHE = new SafeMap();
+const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
   if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
     return MapPrototypeGet(HEADER_NAME_CACHE, name);
@@ -112,7 +113,8 @@ function checkHeaderNameForHttpTokenCodePoint(name) {
 
   const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
 
-  if (HEADER_NAME_CACHE.size > 4096) {
+
+  if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
     MapPrototypeClear(HEADER_NAME_CACHE);
   }
   MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
