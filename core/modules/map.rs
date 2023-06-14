@@ -1,3 +1,4 @@
+use crate::error::exception_to_err_result;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::error::generic_error;
 use crate::fast_string::FastString;
@@ -776,6 +777,104 @@ impl ModuleMap {
     }
 
     None
+  }
+
+  /// Returns the namespace object of a module.
+  ///
+  /// This is only available after module evaluation has completed.
+  /// This function panics if module has not been instantiated.
+  pub fn get_module_namespace(
+    &self,
+    scope: &mut v8::HandleScope,
+    module_id: ModuleId,
+  ) -> Result<v8::Global<v8::Object>, Error> {
+    let module_handle =
+      self.get_handle(module_id).expect("ModuleInfo not found");
+
+    let module = module_handle.open(scope);
+
+    if module.get_status() == v8::ModuleStatus::Errored {
+      let exception = module.get_exception();
+      return exception_to_err_result(scope, exception, false);
+    }
+
+    assert!(matches!(
+      module.get_status(),
+      v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
+    ));
+
+    let module_namespace: v8::Local<v8::Object> =
+      v8::Local::try_from(module.get_module_namespace())
+        .map_err(|err: v8::DataError| generic_error(err.to_string()))?;
+
+    Ok(v8::Global::new(scope, module_namespace))
+  }
+
+  /// Clear the module map, meant to be used after initializing extensions.
+  /// Optionally pass a list of exceptions `(old_name, new_name)` representing
+  /// specifiers which will be renamed and preserved in the module map.
+  pub fn clear_module_map(
+    &mut self,
+    exceptions: impl Iterator<Item = (&'static str, &'static str)>,
+  ) {
+    let handles = exceptions
+      .map(|(old_name, new_name)| {
+        (self.get_handle_by_name(old_name).unwrap(), new_name)
+      })
+      .collect::<Vec<_>>();
+    self.clear();
+    for (handle, new_name) in handles {
+      self.inject_handle(
+        ModuleName::from_static(new_name),
+        ModuleType::JavaScript,
+        handle,
+      )
+    }
+  }
+
+  fn get_stalled_top_level_await_message_for_module(
+    &self,
+    scope: &mut v8::HandleScope,
+    module_id: ModuleId,
+  ) -> Vec<v8::Global<v8::Message>> {
+    let module_handle = self.handles.get(module_id).unwrap();
+
+    let module = v8::Local::new(scope, module_handle);
+    let stalled = module.get_stalled_top_level_await_message(scope);
+    let mut messages = vec![];
+    for (_, message) in stalled {
+      messages.push(v8::Global::new(scope, message));
+    }
+    messages
+  }
+
+  pub(crate) fn find_stalled_top_level_await(
+    &self,
+    scope: &mut v8::HandleScope,
+  ) -> Vec<v8::Global<v8::Message>> {
+    // First check if that's root module
+    let root_module_id =
+      self.info.iter().filter(|m| m.main).map(|m| m.id).next();
+
+    if let Some(root_module_id) = root_module_id {
+      let messages = self
+        .get_stalled_top_level_await_message_for_module(scope, root_module_id);
+      if !messages.is_empty() {
+        return messages;
+      }
+    }
+
+    // It wasn't a top module, so iterate over all modules and try to find
+    // any with stalled top level await
+    for module_id in 0..self.handles.len() {
+      let messages =
+        self.get_stalled_top_level_await_message_for_module(scope, module_id);
+      if !messages.is_empty() {
+        return messages;
+      }
+    }
+
+    unreachable!()
   }
 }
 
