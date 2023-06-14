@@ -25,8 +25,10 @@ pub use jsruntime::RuntimeSnapshotOptions;
 pub use jsruntime::SharedArrayBufferStore;
 pub use jsruntime::Snapshot;
 pub use snapshot_util::create_snapshot;
+pub use snapshot_util::get_js_files;
 pub use snapshot_util::CreateSnapshotOptions;
 pub use snapshot_util::CreateSnapshotOutput;
+pub use snapshot_util::FilterFn;
 pub(crate) use snapshot_util::SnapshottedData;
 
 pub use bindings::script_origin;

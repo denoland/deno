@@ -145,8 +145,10 @@ pub mod _ops {
 // TODO(mmastrac): Temporary while we move code around
 pub mod snapshot_util {
   pub use crate::runtime::create_snapshot;
+  pub use crate::runtime::get_js_files;
   pub use crate::runtime::CreateSnapshotOptions;
   pub use crate::runtime::CreateSnapshotOutput;
+  pub use crate::runtime::FilterFn;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
