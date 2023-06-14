@@ -560,7 +560,7 @@ impl ModuleMap {
     pub static CURRENT_MODULE_MAP: RefCell<*const ModuleMap> = RefCell::new(std::ptr::null());
   }
 
-  pub(crate) fn instantiate_module<'a>(
+  pub(crate) fn instantiate_module(
     &mut self,
     scope: &mut v8::HandleScope,
     id: ModuleId,
