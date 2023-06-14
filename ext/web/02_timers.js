@@ -15,7 +15,6 @@ const {
   MapPrototypeSet,
   Uint8Array,
   Uint32Array,
-  NumberPOSITIVE_INFINITY,
   PromisePrototypeThen,
   SafeArrayIterator,
   SafeMap,
