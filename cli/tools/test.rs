@@ -11,6 +11,7 @@ use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::checksum;
@@ -40,7 +41,6 @@ use deno_core::task::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_graph::WalkOptions;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -1774,17 +1774,11 @@ pub async fn run_tests_with_watch(
             .collect::<HashSet<_>>();
           let mut result = Vec::new();
           for test_module_specifier in test_modules {
-            let roots = vec![test_module_specifier.clone()];
-            let mut dependent_specifiers = graph.walk(
-              &roots,
-              WalkOptions {
-                follow_dynamic: true,
-                follow_type_only: true,
-                check_js: true,
-              },
-            );
-            if dependent_specifiers.any(|(s, _)| changed_specifiers.contains(s))
-            {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &test_module_specifier,
+              &changed_specifiers,
+            ) {
               result.push(test_module_specifier.clone());
             }
           }

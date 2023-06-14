@@ -503,6 +503,33 @@ impl ModuleGraphContainer {
   }
 }
 
+/// Gets if any of the specified root's "file:" dependents are in the
+/// provided changed set.
+pub fn has_graph_root_local_dependent_changed(
+  graph: &ModuleGraph,
+  root: &ModuleSpecifier,
+  changed_specifiers: &HashSet<ModuleSpecifier>,
+) -> bool {
+  let roots = vec![root.clone()];
+  let mut dependent_specifiers = graph.walk(
+    &roots,
+    deno_graph::WalkOptions {
+      follow_dynamic: true,
+      follow_type_only: true,
+      check_js: true,
+    },
+  );
+  while let Some((s, _)) = dependent_specifiers.next() {
+    if s.scheme() != "file" {
+      // skip walking this remote module's dependencies
+      dependent_specifiers.skip_previous_dependencies();
+    } else if changed_specifiers.contains(s) {
+      return true;
+    }
+  }
+  false
+}
+
 /// A permit for updating the module graph. When complete and
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.

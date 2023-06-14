@@ -8,6 +8,7 @@ use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::tools::test::format_test_error;
@@ -30,7 +31,6 @@ use deno_core::task::spawn;
 use deno_core::task::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_graph::WalkOptions;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -732,17 +732,11 @@ pub async fn run_benchmarks_with_watch(
             .collect::<HashSet<_>>();
           let mut result = Vec::new();
           for bench_module_specifier in bench_modules {
-            let roots = vec![bench_module_specifier.clone()];
-            let mut dependent_specifiers = graph.walk(
-              &roots,
-              WalkOptions {
-                follow_dynamic: true,
-                follow_type_only: true,
-                check_js: true,
-              },
-            );
-            if dependent_specifiers.any(|(s, _)| changed_specifiers.contains(s))
-            {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &bench_module_specifier,
+              &changed_specifiers,
+            ) {
               result.push(bench_module_specifier.clone());
             }
           }
