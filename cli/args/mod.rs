@@ -148,7 +148,6 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default)]
 pub struct FmtOptions {
-  pub is_stdin: bool,
   pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
@@ -157,24 +156,12 @@ pub struct FmtOptions {
 impl FmtOptions {
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
-    mut maybe_fmt_flags: Option<FmtFlags>,
+    maybe_fmt_flags: Option<FmtFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(fmt_flags) = maybe_fmt_flags.as_mut() {
-      let args = &mut fmt_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
 
     Ok(Self {
-      is_stdin,
       check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
       options: resolve_fmt_options(
         maybe_fmt_flags.as_ref(),
@@ -280,27 +267,14 @@ pub enum LintReporterKind {
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
-  pub is_stdin: bool,
   pub reporter_kind: LintReporterKind,
 }
 
 impl LintOptions {
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
-    mut maybe_lint_flags: Option<LintFlags>,
+    maybe_lint_flags: Option<LintFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(lint_flags) = maybe_lint_flags.as_mut() {
-      let args = &mut lint_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
-
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -347,7 +321,6 @@ impl LintOptions {
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
-      is_stdin,
       files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
@@ -1112,10 +1085,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_clear_screen(&self) -> bool {
-    self.flags.no_clear_screen
-  }
-
   pub fn no_prompt(&self) -> bool {
     resolve_no_prompt(&self.flags)
   }
@@ -1170,8 +1139,25 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
-    &self.flags.watch
+  pub fn watch_paths(&self) -> Option<Vec<PathBuf>> {
+    if let Some(mut paths) = self.flags.watch.clone() {
+      if let Ok(Some(import_map_path)) = self
+        .resolve_import_map_specifier()
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths.push(import_map_path);
+      }
+      if let Some(specifier) = self.maybe_config_file_specifier() {
+        if specifier.scheme() == "file" {
+          if let Ok(path) = specifier.to_file_path() {
+            paths.push(path);
+          }
+        }
+      }
+      Some(paths)
+    } else {
+      None
+    }
   }
 }
 

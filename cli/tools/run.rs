@@ -3,7 +3,6 @@
 use std::io::Read;
 
 use deno_ast::MediaType;
-use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
@@ -98,44 +97,41 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
 async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
-  let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
-  let factory = CliFactoryBuilder::new()
-    .with_watcher(sender.clone())
-    .build_from_flags(flags)
-    .await?;
-  let file_watcher = factory.file_watcher()?;
-  let cli_options = factory.cli_options();
-  let clear_screen = !cli_options.no_clear_screen();
-  let main_module = cli_options.resolve_main_module()?;
+  let clear_screen = !flags.no_clear_screen;
 
-  maybe_npm_install(&factory).await?;
-
-  let create_cli_main_worker_factory =
-    factory.create_cli_main_worker_factory_func().await?;
-  let operation = |main_module: ModuleSpecifier| {
-    file_watcher.reset();
-    let permissions = PermissionsContainer::new(Permissions::from_options(
-      &cli_options.permissions_options(),
-    )?);
-    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
-
-    Ok(async move {
-      let worker = create_cli_main_worker_factory()
-        .create_main_worker(main_module, permissions)
-        .await?;
-      worker.run_for_watcher().await?;
-
-      Ok(())
-    })
-  };
-
-  util::file_watcher::watch_func2(
-    receiver,
-    operation,
-    main_module,
+  util::file_watcher::watch_func(
+    flags,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
       clear_screen,
+    },
+    move |flags, sender, _changed_paths| {
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let main_module = cli_options.resolve_main_module()?;
+
+        maybe_npm_install(&factory).await?;
+
+        if let Some(watch_paths) = cli_options.watch_paths() {
+          let _ = sender.send(watch_paths);
+        }
+
+        let permissions = PermissionsContainer::new(Permissions::from_options(
+          &cli_options.permissions_options(),
+        )?);
+        let worker = factory
+          .create_cli_main_worker_factory()
+          .await?
+          .create_main_worker(main_module, permissions)
+          .await?;
+        worker.run_for_watcher().await?;
+
+        Ok(())
+      })
     },
   )
   .await?;
