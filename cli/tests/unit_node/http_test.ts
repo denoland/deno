@@ -6,6 +6,7 @@ import https from "node:https";
 import {
   assert,
   assertEquals,
+  fail,
 } from "../../../test_util/std/testing/asserts.ts";
 import { assertSpyCalls, spy } from "../../../test_util/std/testing/mock.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
@@ -195,14 +196,11 @@ Deno.test("[node/http] request default protocol", async () => {
   // @ts-ignore IncomingMessageForClient
   // deno-lint-ignore no-explicit-any
   let clientRes: any;
-  // deno-lint-ignore no-explicit-any
-  let clientReq: any;
   server.listen(() => {
-    clientReq = http.request(
+    const req = http.request(
       // deno-lint-ignore no-explicit-any
       { host: "localhost", port: (server.address() as any).port },
       (res) => {
-        assert(res.socket instanceof EventEmitter);
         assertEquals(res.complete, false);
         res.on("data", () => {});
         res.on("end", () => {
@@ -213,14 +211,13 @@ Deno.test("[node/http] request default protocol", async () => {
         promise2.resolve();
       },
     );
-    clientReq.end();
+    req.end();
   });
   server.on("close", () => {
     promise.resolve();
   });
   await promise;
   await promise2;
-  assert(clientReq.socket instanceof EventEmitter);
   assertEquals(clientRes!.complete, true);
 });
 
@@ -621,3 +618,84 @@ Deno.test("[node/http] ClientRequest search params", async () => {
   await def;
   assertEquals(body, "foo=bar");
 });
+
+Deno.test("[node/http] HTTPS server", async () => {
+  const promise = deferred<void>();
+  const promise2 = deferred<void>();
+  const client = Deno.createHttpClient({
+    caCerts: [Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem")],
+  });
+  const server = https.createServer({
+    cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+    key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+  }, (_req, res) => {
+    res.end("success!");
+  });
+  server.listen(() => {
+    // deno-lint-ignore no-explicit-any
+    fetch(`https://localhost:${(server.address() as any).port}`, {
+      client,
+    }).then(async (res) => {
+      assertEquals(res.status, 200);
+      assertEquals(await res.text(), "success!");
+      server.close();
+      promise2.resolve();
+    });
+  })
+    .on("error", () => fail());
+  server.on("close", () => {
+    promise.resolve();
+  });
+  await Promise.all([promise, promise2]);
+  client.close();
+});
+
+Deno.test(
+  "[node/http] client upgrade",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+    const server = http.createServer((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("okay");
+    });
+    // @ts-ignore it's a socket for real
+    let serverSocket;
+    server.on("upgrade", (_req, socket, _head) => {
+      socket.write(
+        "HTTP/1.1 101 Web Socket Protocol Handshake\r\n" +
+          "Upgrade: WebSocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          "\r\n",
+      );
+      serverSocket = socket;
+    });
+
+    // Now that server is running
+    server.listen(1337, "127.0.0.1", () => {
+      // make a request
+      const options = {
+        port: 1337,
+        host: "127.0.0.1",
+        headers: {
+          "Connection": "Upgrade",
+          "Upgrade": "websocket",
+        },
+      };
+
+      const req = http.request(options);
+      req.end();
+
+      req.on("upgrade", (_res, socket, _upgradeHead) => {
+        socket.end();
+        // @ts-ignore it's a socket for real
+        serverSocket!.end();
+        server.close(() => {
+          promise.resolve();
+        });
+      });
+    });
+
+    await promise;
+  },
+);

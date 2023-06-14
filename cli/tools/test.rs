@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
 use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -29,6 +28,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
@@ -39,7 +39,6 @@ use deno_core::task::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
-use deno_graph::GraphKind;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
@@ -68,6 +67,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -1008,6 +1008,21 @@ pub async fn test_specifier(
       continue;
     }
     sender.send(TestEvent::Wait(desc.id))?;
+
+    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
+    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
+    // `JoinSet` all pending ops are immediately polled and that caused a problem
+    // when some async ops were fired and canceled before running tests (giving
+    // false positives in the ops sanitizer). We should probably rewrite sanitizers
+    // to be done in Rust instead of in JS (40_testing.js).
+    {
+      // Poll event loop once, this will allow all ops that are already resolved,
+      // but haven't responded to settle.
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+    }
+
     let earlier = SystemTime::now();
     let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
@@ -1707,11 +1722,7 @@ pub async fn run_tests_with_watch(
   // file would have impact on other files, which is undesirable.
   let permissions =
     Permissions::from_options(&cli_options.permissions_options())?;
-  let type_check = cli_options.type_check_mode() != TypeCheckMode::None;
-  let graph_kind = match type_check {
-    true => GraphKind::All,
-    false => GraphKind::CodeOnly,
-  };
+  let graph_kind = cli_options.type_check_mode().as_graph_kind();
   let log_level = cli_options.log_level();
 
   let resolver = |changed: Option<Vec<PathBuf>>| {

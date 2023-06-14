@@ -38,6 +38,7 @@ import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
   ArrayPrototypePush,
+  Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
   SafeSet,
@@ -503,16 +504,19 @@ async function asyncResponse(responseBodies, req, status, stream) {
 function mapToCallback(context, callback, onError) {
   const responseBodies = context.responseBodies;
   const signal = context.abortController.signal;
+  const hasCallback = callback.length > 0;
+  const hasOneCallback = callback.length === 1;
+
   return async function (req) {
     // Get the response from the user-provided callback. If that fails, use onError. If that fails, return a fallback
     // 500 error.
     let innerRequest;
     let response;
     try {
-      if (callback.length > 0) {
+      if (hasCallback) {
         innerRequest = new InnerRequest(req, context);
         const request = fromInnerRequest(innerRequest, signal, "immutable");
-        if (callback.length === 1) {
+        if (hasOneCallback) {
           response = await callback(request);
         } else {
           response = await callback(request, {
@@ -677,23 +681,25 @@ function serveHttpOn(context, callback) {
   let currentPromise = null;
   const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
+  const promiseErrorHandler = (error) => {
+    // Abnormal exit
+    console.error(
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
+    context.close();
+  };
+
   // Run the server
   const finished = (async () => {
+    const rid = context.serverRid;
     while (true) {
-      const rid = context.serverRid;
       let req;
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
         while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
-          PromisePrototypeCatch(callback(req), (error) => {
-            // Abnormal exit
-            console.error(
-              "Terminating Deno.serve loop due to unexpected error",
-              error,
-            );
-            context.close();
-          });
+          PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
         if (!ref) {
@@ -710,14 +716,7 @@ function serveHttpOn(context, callback) {
       if (req === 0xffffffff) {
         break;
       }
-      PromisePrototypeCatch(callback(req), (error) => {
-        // Abnormal exit
-        console.error(
-          "Terminating Deno.serve loop due to unexpected error",
-          error,
-        );
-        context.close();
-      });
+      PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
     for (const streamRid of new SafeSetIterator(context.responseBodies)) {
@@ -727,6 +726,11 @@ function serveHttpOn(context, callback) {
 
   return {
     finished,
+    then() {
+      throw new Error(
+        "Deno.serve no longer returns a promise. await server.finished instead of server.",
+      );
+    },
     ref() {
       ref = true;
       if (currentPromise) {

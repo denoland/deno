@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_kv"
-version = "0.15.0"
+version = "0.16.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -20,5 +20,9 @@ base64.workspace = true
 deno_core.workspace = true
 hex.workspace = true
 num-bigint.workspace = true
+rand.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+uuid.workspace = true

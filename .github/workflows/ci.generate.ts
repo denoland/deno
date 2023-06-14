@@ -5,11 +5,13 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 34;
+const cacheVersion = 39;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const windowsRunner = "windows-2022";
+  const windowsXlRunner = "windows-2022-xl";
 
   return {
     ubuntuXl:
@@ -17,29 +19,35 @@ const Runners = (() => {
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
     macos: "macos-12",
-    windows: "windows-2022",
+    windows: windowsRunner,
+    windowsXl:
+      `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
   };
 })();
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
+# Remove older clang before we install
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
 
-# Install clang-16, lld-16, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-16.list
+# Install clang-15, lld-15, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -70,19 +78,20 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-16
-  -C link-arg=-fuse-ld=lld-16
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-16
-  -C link-arg=-fuse-ld=lld-16
+  -C linker=clang-15
+  -C link-arg=-fuse-ld=lld-15
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -90,7 +99,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-16
+CC=clang-15
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
@@ -316,7 +325,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.windows,
+            os: Runners.windowsXl,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -461,6 +470,7 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
+            "which dpkg && dpkg -l",
             // Deno is installed when linting.
             'if [ "${{ matrix.job }}" == "lint" ]',
             "then",
@@ -478,13 +488,15 @@ const ci = {
           uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
             ].join("\n"),
             key:
               `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys": `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
           },
         },
         {
@@ -511,23 +523,6 @@ const ci = {
           with: {
             "cache-path": "./target",
           },
-        },
-        {
-          // Shallow the cloning the crates.io index makes CI faster because it
-          // obviates the need for Cargo to clone the index. If we don't do this
-          // Cargo will `git clone` the github repository that contains the entire
-          // history of the crates.io index from github. We don't believe the
-          // identifier '1ecc6299db9ec823' will ever change, but if it does then this
-          // command must be updated.
-          name: "Shallow clone crates.io index",
-          run: [
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
-            "then",
-            "  git clone --depth 1 --no-checkout                      \\",
-            "            https://github.com/rust-lang/crates.io-index \\",
-            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
-            "fi",
-          ].join("\n"),
         },
         {
           name: "test_format.js",
@@ -558,7 +553,12 @@ const ci = {
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -570,7 +570,12 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",

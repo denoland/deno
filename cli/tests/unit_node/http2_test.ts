@@ -3,7 +3,7 @@
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
-import { assertEquals } from "https://deno.land/std@v0.42.0/testing/asserts.ts";
+import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
 const {
   HTTP2_HEADER_AUTHORITY,
