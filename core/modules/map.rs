@@ -596,7 +596,7 @@ impl ModuleMap {
     let scope = &mut unsafe { v8::CallbackScope::new(context) };
 
     let module_map =
-      // SAFETY: We retrieve the pointer from the thread local, having just set it a few stack frames up
+      // SAFETY: We retrieve the pointer from the slot, having just set it a few stack frames up
       unsafe { scope.get_slot::<*const Self>().unwrap().as_ref().unwrap() };
 
     let referrer_global = v8::Global::new(scope, referrer);
