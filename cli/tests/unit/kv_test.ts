@@ -1640,12 +1640,7 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   async fn() {
-    const filename = "cli/tests/testdata/queue.db";
-    try {
-      await Deno.remove(filename);
-    } catch {
-      // pass
-    }
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
     try {
       let db: Deno.Kv = await Deno.openKv(filename);
 
@@ -1691,7 +1686,11 @@ Deno.test({
       db.close();
       await listener;
     } finally {
-      await Deno.remove(filename);
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
     }
   },
 });
@@ -1701,7 +1700,7 @@ Deno.test({
   async fn() {
     const dispatchedPre = Deno.metrics().opsDispatchedAsync;
     const completedPre = Deno.metrics().opsCompletedAsync;
-    const filename = "cli/tests/testdata/queue.db";
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
     try {
       await Deno.remove(filename);
     } catch {
@@ -1753,7 +1752,11 @@ Deno.test({
         completed = Deno.metrics().opsCompletedAsync - completedPre;
         await sleep(100);
       }
-      await Deno.remove(filename);
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
     }
   },
 });
