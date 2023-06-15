@@ -706,7 +706,7 @@ internals.__bootstrapNodeProcess = function (
   Object.defineProperty(argv, "1", {
     get: () => {
       if (Deno.mainModule.startsWith("file:")) {
-        return pathFromURL(Deno.mainModule);
+        return pathFromURL(new URL(Deno.mainModule));
       } else {
         return join(Deno.cwd(), "$deno$node.js");
       }
