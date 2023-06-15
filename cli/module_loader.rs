@@ -7,6 +7,7 @@ use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
@@ -17,7 +18,6 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::watcher::FileWatcherReporter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
@@ -115,12 +115,10 @@ impl ModuleLoadPreparer {
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
     let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
-      if let Some(reporter) = &self.maybe_file_watcher_reporter {
-        Some(reporter)
-      } else {
-        None
-      };
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
 
     let analyzer = self.parsed_source_cache.as_analyzer();
 
@@ -800,10 +798,6 @@ impl NpmModuleLoader {
 pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
 
 impl CjsResolutionStore {
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
     self.0.lock().contains(specifier)
   }

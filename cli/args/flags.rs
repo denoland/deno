@@ -117,6 +117,13 @@ pub struct FmtFlags {
   pub no_semicolons: Option<bool>,
 }
 
+impl FmtFlags {
+  pub fn is_stdin(&self) -> bool {
+    let args = &self.files.include;
+    args.len() == 1 && args[0].to_string_lossy() == "-"
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InitFlags {
   pub dir: Option<String>,
@@ -152,6 +159,13 @@ pub struct LintFlags {
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
   pub compact: bool,
+}
+
+impl LintFlags {
+  pub fn is_stdin(&self) -> bool {
+    let args = &self.files.include;
+    args.len() == 1 && args[0].to_string_lossy() == "-"
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
