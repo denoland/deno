@@ -1140,6 +1140,7 @@ impl CliOptions {
       allow_run: self.flags.allow_run.clone(),
       deny_run: self.flags.deny_run.clone(),
       allow_sys: self.flags.allow_sys.clone(),
+      deny_sys: self.flags.deny_sys.clone(),
       allow_write: self.flags.allow_write.clone(),
       deny_write: self.flags.deny_write.clone(),
       prompt: !self.no_prompt(),

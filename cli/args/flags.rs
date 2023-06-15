@@ -322,6 +322,7 @@ pub struct Flags {
   pub allow_run: Option<Vec<String>>,
   pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
+  pub deny_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub deny_write: Option<Vec<PathBuf>>,
   pub ca_stores: Option<Vec<String>>,
@@ -503,6 +504,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.deny_sys {
+      Some(sys_denylist) if sys_denylist.is_empty() => {
+        args.push("--deny-sys".to_string());
+      }
+      Some(sys_denylist) => {
+        let s = format!("--deny-sys={}", sys_denylist.join(","));
+        args.push(s)
+      }
+      _ => {}
+    }
+
     match &self.allow_ffi {
       Some(ffi_allowlist) if ffi_allowlist.is_empty() => {
         args.push("--allow-ffi".to_string());
@@ -628,6 +640,7 @@ impl Flags {
       || self.allow_run.is_some()
       || self.deny_run.is_some()
       || self.allow_sys.is_some()
+      || self.deny_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
   }
@@ -646,6 +659,7 @@ impl Flags {
         || arg.starts_with("--allow-run")
         || arg.starts_with("--deny-run")
         || arg.starts_with("--allow-sys")
+        || arg.starts_with("--deny-sys")
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-write")
     })
@@ -2056,6 +2070,16 @@ static ALLOW_SYS_HELP: &str = concat!(
   "  --allow-sys=\"systemMemoryInfo,osRelease\""
 );
 
+static DENY_SYS_HELP: &str = concat!(
+  "Deny access to OS information. Optionally deny specific APIs by function name.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --deny-sys\n",
+  "  --deny-sys=\"systemMemoryInfo,osRelease\""
+);
+
 static ALLOW_RUN_HELP: &str = concat!(
   "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
   "Docs: https://deno.land/manual@v",
@@ -2215,6 +2239,16 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("API_NAME")
         .help(ALLOW_SYS_HELP)
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
+    )
+    .arg(
+      Arg::new("deny-sys")
+        .long("deny-sys")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("API_NAME")
+        .help(DENY_SYS_HELP)
         .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
     )
     .arg(
@@ -3257,6 +3291,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(sys_wl) = matches.remove_many::<String>("allow-sys") {
     flags.allow_sys = Some(sys_wl.collect());
     debug!("sys info allowlist: {:#?}", &flags.allow_sys);
+  }
+
+  if let Some(sys_wl) = matches.remove_many::<String>("deny-sys") {
+    flags.deny_sys = Some(sys_wl.collect());
+    debug!("sys info denylist: {:#?}", &flags.deny_sys);
   }
 
   if let Some(ffi_wl) = matches.remove_many::<PathBuf>("allow-ffi") {
@@ -4997,6 +5036,21 @@ mod tests {
   }
 
   #[test]
+  fn deny_sys() {
+    let r = flags_from_vec(svec!["deno", "run", "--deny-sys", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_sys: Some(vec![]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_sys_allowlist() {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
@@ -5007,6 +5061,22 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         allow_sys: Some(svec!["hostname"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_sys_allowlist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-sys=hostname", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_sys: Some(svec!["hostname"]),
         ..Flags::default()
       }
     );
@@ -5033,6 +5103,26 @@ mod tests {
   }
 
   #[test]
+  fn deny_sys_denylist_multiple() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_sys: Some(svec!["hostname", "osRelease"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_sys_allowlist_validator() {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-sys=hostname", "script.ts"]);
@@ -5051,6 +5141,29 @@ mod tests {
       "deno",
       "run",
       "--allow-sys=hostname,foo",
+      "script.ts"
+    ]);
+    assert!(r.is_err());
+  }
+
+  #[test]
+  fn deny_sys_denylist_validator() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-sys=hostname", "script.ts"]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-sys=hostname,osRelease",
+      "script.ts"
+    ]);
+    assert!(r.is_ok());
+    let r = flags_from_vec(svec!["deno", "run", "--deny-sys=foo", "script.ts"]);
+    assert!(r.is_err());
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-sys=hostname,foo",
       "script.ts"
     ]);
     assert!(r.is_err());
