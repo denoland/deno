@@ -51,18 +51,17 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 }
 
 pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
-  if flags.watch.is_some() {
+  if let Some(watch_flags) = &lint_flags.watch {
     if lint_flags.is_stdin() {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
-    let clear_screen = !flags.no_clear_screen;
     file_watcher::watch_func(
       flags,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen,
+        clear_screen: !watch_flags.no_clear_screen,
       },
       move |flags, sender, changed_paths| {
         let lint_flags = lint_flags.clone();

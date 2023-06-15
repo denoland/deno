@@ -684,12 +684,15 @@ pub async fn run_benchmarks_with_watch(
   flags: Flags,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let clear_screen = !flags.no_clear_screen;
   file_watcher::watch_func(
     flags,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen,
+      clear_screen: bench_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
     },
     move |flags, sender, changed_paths| {
       let bench_flags = bench_flags.clone();
@@ -701,9 +704,7 @@ pub async fn run_benchmarks_with_watch(
         let cli_options = factory.cli_options();
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
-        if let Some(watch_paths) = cli_options.watch_paths() {
-          let _ = sender.send(watch_paths);
-        }
+        let _ = sender.send(cli_options.watch_paths());
         let _ = sender.send(bench_options.files.include.clone());
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
