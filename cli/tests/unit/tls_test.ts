@@ -1081,6 +1081,7 @@ Deno.test(
 );
 
 Deno.test(
+  // Ignored because gmail appears to reject us on CI sometimes
   { ignore: true, permissions: { read: true, net: true } },
   async function startTls() {
     const hostname = "smtp.gmail.com";
