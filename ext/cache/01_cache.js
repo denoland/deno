@@ -4,9 +4,12 @@ const core = globalThis.Deno.core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypePush,
+  ObjectPrototypeIsPrototypeOf,
+  StringPrototypeSplit,
+  StringPrototypeTrim,
   Symbol,
   TypeError,
-  ObjectPrototypeIsPrototypeOf,
 } = primordials;
 import {
   Request,
@@ -26,11 +29,8 @@ class CacheStorage {
   async open(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
     const cache = webidl.createBranded(Cache);
     cache[_id] = cacheId;
@@ -40,22 +40,16 @@ class CacheStorage {
   async has(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await core.opAsync("op_cache_storage_has", cacheName);
   }
 
   async delete(cacheName) {
     webidl.assertBranded(this, CacheStoragePrototype);
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    cacheName = webidl.converters["DOMString"](cacheName, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
     return await core.opAsync("op_cache_storage_delete", cacheName);
   }
 }
@@ -75,15 +69,13 @@ class Cache {
   async put(request, response) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'put' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
-    response = webidl.converters["Response"](response, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    response = webidl.converters["Response"](response, prefix, "Argument 2");
     // Step 1.
     let innerRequest = null;
     // Step 2.
@@ -112,10 +104,10 @@ class Cache {
     // Step 7.
     const varyHeader = getHeader(innerResponse.headerList, "vary");
     if (varyHeader) {
-      const fieldValues = varyHeader.split(",");
+      const fieldValues = StringPrototypeSplit(varyHeader, ",");
       for (let i = 0; i < fieldValues.length; ++i) {
         const field = fieldValues[i];
-        if (field.trim() === "*") {
+        if (StringPrototypeTrim(field) === "*") {
           throw new TypeError("Vary header must not contain '*'");
         }
       }
@@ -136,6 +128,7 @@ class Cache {
       "op_cache_put",
       {
         cacheId: this[_id],
+        // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
         responseHeaders: innerResponse.headerList,
         requestHeaders: innerRequest.headerList,
@@ -165,11 +158,12 @@ class Cache {
   async match(request, options) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'match' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     const p = await this[_matchAll](request, options);
     if (p.length > 0) {
       return p[0];
@@ -182,11 +176,12 @@ class Cache {
   async delete(request, _options) {
     webidl.assertBranded(this, CachePrototype);
     const prefix = "Failed to execute 'delete' on 'Cache'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    request = webidl.converters["RequestInfo_DOMString"](request, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    request = webidl.converters["RequestInfo_DOMString"](
+      request,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     // Step 1.
     let r = null;
     // Step 2.
@@ -249,6 +244,7 @@ class Cache {
         "op_cache_match",
         {
           cacheId: this[_id],
+          // deno-lint-ignore prefer-primordials
           requestUrl: url.toString(),
           requestHeaders: innerRequest.headerList,
         },
@@ -267,7 +263,7 @@ class Cache {
             statusText: meta.responseStatusText,
           },
         );
-        responses.push(response);
+        ArrayPrototypePush(responses, response);
       }
     }
     // Step 5.4-5.5: don't apply in this context.

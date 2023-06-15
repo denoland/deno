@@ -4,6 +4,7 @@ use serde::de::Visitor;
 use serde::de::{self};
 use serde::Deserialize;
 
+use crate::error::value_to_type_str;
 use crate::error::Error;
 use crate::error::Result;
 use crate::keys::v8_struct_key;
@@ -84,7 +85,7 @@ macro_rules! deserialize_signed {
         } else if let Some(x) = self.input.to_big_int(self.scope) {
           x.i64_value().0 as $t
         } else {
-          return Err(Error::ExpectedInteger);
+          return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
         },
       )
     }
@@ -107,7 +108,7 @@ macro_rules! deserialize_unsigned {
         } else if let Some(x) = self.input.to_big_int(self.scope) {
           x.u64_value().0 as $t
         } else {
-          return Err(Error::ExpectedInteger);
+          return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
         },
       )
     }
@@ -188,7 +189,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {
-        return Err(Error::ExpectedNumber);
+        return Err(Error::ExpectedNumber(value_to_type_str(self.input)));
       },
     )
   }
@@ -216,7 +217,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
-      Err(Error::ExpectedString)
+      Err(Error::ExpectedString(value_to_type_str(self.input)))
     }
   }
 
@@ -268,7 +269,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     let arr = v8::Local::<v8::Array>::try_from(self.input)
-      .map_err(|_| Error::ExpectedArray)?;
+      .map_err(|_| Error::ExpectedArray(value_to_type_str(self.input)))?;
     visitor.visit_seq(SeqAccess::new(arr.into(), self.scope, 0..arr.length()))
   }
 
@@ -281,8 +282,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     if obj.is_array() {
       // If the obj is an array fail if it's length differs from the tuple length
       let array = v8::Local::<v8::Array>::try_from(self.input).unwrap();
-      if array.length() as usize != len {
-        return Err(Error::LengthMismatch);
+      let array_len = array.length() as usize;
+      if array_len != len {
+        return Err(Error::LengthMismatch(array_len, len));
       }
     }
     visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
@@ -307,7 +309,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     // Assume object, then get_own_property_names
     let obj = v8::Local::<v8::Object>::try_from(self.input)
-      .map_err(|_| Error::ExpectedObject)?;
+      .map_err(|_| Error::ExpectedObject(value_to_type_str(self.input)))?;
 
     if v8::Local::<v8::Map>::try_from(self.input).is_ok() {
       let pairs_array = v8::Local::<v8::Map>::try_from(self.input)
@@ -362,7 +364,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       _ => {
         // Regular struct
         let obj = v8::Local::<v8::Object>::try_from(self.input)
-          .or(Err(Error::ExpectedObject))?;
+          .map_err(|_| Error::ExpectedObject(value_to_type_str(self.input)))?;
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
@@ -408,9 +410,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let tag = {
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
-        let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
-        if prop_names.length() != 1 {
-          return Err(Error::LengthMismatch);
+        let prop_names = prop_names
+          .ok_or_else(|| Error::ExpectedEnum(value_to_type_str(self.input)))?;
+        let prop_names_len = prop_names.length();
+        if prop_names_len != 1 {
+          return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
         prop_names.get_index(self.scope, 0).unwrap()
       };
@@ -422,8 +426,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         payload,
       })
     } else {
-      // TODO: improve error
-      Err(Error::ExpectedEnum)
+      Err(Error::ExpectedEnum(value_to_type_str(self.input)))
     }
   }
 

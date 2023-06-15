@@ -2,25 +2,40 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
-const windowsRunnerCondition =
-  "github.repository == 'denoland/deno' && 'windows-2022-xl' || 'windows-2022'";
-const Runners = {
-  linux:
-    "${{ github.repository == 'denoland/deno' && 'ubuntu-22.04-xl' || 'ubuntu-22.04' }}",
-  macos: "macos-12",
-  windows: `\${{ ${windowsRunnerCondition} }}`,
-};
-// bump the number at the start when you want to purge the cache
+// Bump this number when you want to purge the cache.
+// Note: the tools/release/01_bump_crate_versions.ts script will update this version
+// automatically via regex, so ensure that this line maintains this format.
+const cacheVersion = 39;
+
+const Runners = (() => {
+  const ubuntuRunner = "ubuntu-22.04";
+  const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const windowsRunner = "windows-2022";
+  const windowsXlRunner = "windows-2022-xl";
+
+  return {
+    ubuntuXl:
+      `\${{ github.repository == 'denoland/deno' && '${ubuntuXlRunner}' || '${ubuntuRunner}' }}`,
+    ubuntu: ubuntuRunner,
+    linux: ubuntuRunner,
+    macos: "macos-12",
+    windows: windowsRunner,
+    windowsXl:
+      `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
+  };
+})();
 const prCacheKeyPrefix =
-  "18-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
+  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
+# Remove older clang before we install
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
 
 # Install clang-15, lld-15, and debootstrap.
 echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
@@ -31,6 +46,8 @@ sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -68,6 +85,7 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
@@ -184,6 +202,55 @@ function withCondition(
   };
 }
 
+function removeSurroundingExpression(text: string) {
+  if (text.startsWith("${{")) {
+    return text.replace(/^\${{/, "").replace(/}}$/, "").trim();
+  } else {
+    return `'${text}'`;
+  }
+}
+
+function handleMatrixItems(items: {
+  skip_pr?: string | true;
+  os: string;
+  profile?: string;
+  job?: string;
+  use_sysroot?: boolean;
+  wpt?: string;
+}[]) {
+  function getOsDisplayName(os: string) {
+    if (os.includes("ubuntu")) {
+      return "ubuntu-x86_64";
+    } else if (os.includes("windows")) {
+      return "windows-x86_64";
+    } else if (os.includes("macos")) {
+      return "macos-x86_64";
+    } else {
+      throw new Error(`Display name not found: ${os}`);
+    }
+  }
+
+  return items.map((item) => {
+    // use a free "ubuntu" runner on jobs that are skipped on pull requests
+    if (item.skip_pr != null) {
+      let text = "${{ github.event_name == 'pull_request' && ";
+      if (typeof item.skip_pr === "string") {
+        text += removeSurroundingExpression(item.skip_pr.toString()) + " && ";
+      }
+      text += `'${Runners.ubuntu}' || ${
+        removeSurroundingExpression(item.os)
+      } }}`;
+
+      // deno-lint-ignore no-explicit-any
+      (item as any).runner = text;
+    }
+    return {
+      ...item,
+      os_display_name: getOsDisplayName(item.os),
+    };
+  });
+}
+
 const ci = {
   name: "ci",
   on: {
@@ -229,7 +296,8 @@ const ci = {
       ]),
     },
     build: {
-      name: "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os }}",
+      name:
+        "${{ matrix.job }} ${{ matrix.profile }} ${{ matrix.os_display_name }}",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner || matrix.os }}",
@@ -243,63 +311,49 @@ const ci = {
       },
       strategy: {
         matrix: {
-          include: [
-            {
-              os: Runners.macos,
-              job: "test",
-              profile: "debug",
-            },
-            {
-              os: Runners.macos,
-              job: "test",
-              profile: "release",
-              skip_pr: true,
-            },
-            {
-              os: Runners.windows,
-              job: "test",
-              profile: "debug",
-            },
-            {
-              os: Runners.windows,
-              // use a free runner on PRs since this will be skipped
-              runner:
-                `\${{ github.event_name == 'pull_request' && 'windows-2022' || (${windowsRunnerCondition}) }}`,
-              job: "test",
-              profile: "release",
-              skip_pr: true,
-            },
-            {
-              os: Runners.linux,
-              job: "test",
-              profile: "release",
-              use_sysroot: true,
-              // TODO(ry): Because CI is so slow on for OSX and Windows, we
-              // currently run the Web Platform tests only on Linux.
-              wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "bench",
-              profile: "release",
-              use_sysroot: true,
-              skip_pr:
-                "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "test",
-              profile: "debug",
-              use_sysroot: true,
-              wpt:
-                "${{ github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}",
-            },
-            {
-              os: Runners.linux,
-              job: "lint",
-              profile: "debug",
-            },
-          ],
+          include: handleMatrixItems([{
+            os: Runners.macos,
+            job: "test",
+            profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            os: Runners.windows,
+            job: "test",
+            profile: "debug",
+          }, {
+            os: Runners.windowsXl,
+            job: "test",
+            profile: "release",
+            skip_pr: true,
+          }, {
+            os: Runners.ubuntuXl,
+            job: "test",
+            profile: "release",
+            use_sysroot: true,
+            // TODO(ry): Because CI is so slow on for OSX and Windows, we
+            // currently run the Web Platform tests only on Linux.
+            wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+          }, {
+            os: Runners.ubuntuXl,
+            job: "bench",
+            profile: "release",
+            use_sysroot: true,
+            skip_pr:
+              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+          }, {
+            os: Runners.ubuntu,
+            job: "test",
+            profile: "debug",
+            use_sysroot: true,
+          }, {
+            os: Runners.ubuntu,
+            job: "lint",
+            profile: "debug",
+          }]),
         },
         // Always run main branch builds to completion. This allows the cache to
         // stay mostly up-to-date in situations where a single job fails due to
@@ -320,6 +374,10 @@ const ci = {
         {
           ...submoduleStep("./test_util/wpt"),
           if: "matrix.wpt",
+        },
+        {
+          ...submoduleStep("./tools/node_compat/node"),
+          if: "matrix.job == 'lint'",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -412,6 +470,7 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
+            "which dpkg && dpkg -l",
             // Deno is installed when linting.
             'if [ "${{ matrix.job }}" == "lint" ]',
             "then",
@@ -429,13 +488,15 @@ const ci = {
           uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "20-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys": `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
           },
         },
         {
@@ -464,23 +525,6 @@ const ci = {
           },
         },
         {
-          // Shallow the cloning the crates.io index makes CI faster because it
-          // obviates the need for Cargo to clone the index. If we don't do this
-          // Cargo will `git clone` the github repository that contains the entire
-          // history of the crates.io index from github. We don't believe the
-          // identifier '1ecc6299db9ec823' will ever change, but if it does then this
-          // command must be updated.
-          name: "Shallow clone crates.io index",
-          run: [
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
-            "then",
-            "  git clone --depth 1 --no-checkout                      \\",
-            "            https://github.com/rust-lang/crates.io-index \\",
-            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
-            "fi",
-          ].join("\n"),
-        },
-        {
           name: "test_format.js",
           if: "matrix.job == 'lint'",
           run:
@@ -501,9 +545,20 @@ const ci = {
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
         },
         {
+          name: "node_compat/setup.ts --check",
+          if: "matrix.job == 'lint'",
+          run:
+            "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
+        },
+        {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -515,7 +570,12 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",
@@ -600,6 +660,15 @@ const ci = {
           },
           run:
             'gsutil -h "Cache-Control: public, max-age=3600" cp ./target/release/*.zip gs://dl.deno.land/canary/$(git rev-parse HEAD)/',
+        },
+        {
+          name: "Autobahn testsuite",
+          if: [
+            "matrix.job == 'test' && matrix.profile == 'release' &&",
+            "!startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu')",
+          ].join("\n"),
+          run:
+            "target/release/deno run -A --unstable ext/websocket/autobahn/fuzzingclient.js",
         },
         {
           name: "Test debug",

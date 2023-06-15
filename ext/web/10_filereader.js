@@ -23,12 +23,12 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeReduce,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectDefineProperty,
   queueMicrotask,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   TypedArrayPrototypeSet,
   TypedArrayPrototypeGetBuffer,
@@ -273,7 +273,7 @@ class FileReader extends EventTarget {
     webidl.assertBranded(this, FileReaderPrototype);
 
     if (!this[handlerSymbol]) {
-      this[handlerSymbol] = new Map();
+      this[handlerSymbol] = new SafeMap();
     }
     let handlerWrapper = MapPrototypeGet(this[handlerSymbol], name);
     if (handlerWrapper) {
@@ -352,7 +352,7 @@ class FileReader extends EventTarget {
   readAsArrayBuffer(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsArrayBuffer' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     this.#readOperation(blob, { kind: "ArrayBuffer" });
   }
 
@@ -360,7 +360,7 @@ class FileReader extends EventTarget {
   readAsBinaryString(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsBinaryString' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "BinaryString" });
   }
@@ -369,7 +369,7 @@ class FileReader extends EventTarget {
   readAsDataURL(blob) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsDataURL' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "DataUrl" });
   }
@@ -381,12 +381,9 @@ class FileReader extends EventTarget {
   readAsText(blob, encoding = undefined) {
     webidl.assertBranded(this, FileReaderPrototype);
     const prefix = "Failed to execute 'readAsText' on 'FileReader'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     if (encoding !== undefined) {
-      encoding = webidl.converters["DOMString"](encoding, {
-        prefix,
-        context: "Argument 2",
-      });
+      encoding = webidl.converters["DOMString"](encoding, prefix, "Argument 2");
     }
     // alias for readAsArrayBuffer
     this.#readOperation(blob, { kind: "Text", encoding });

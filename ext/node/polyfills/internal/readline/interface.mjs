@@ -44,6 +44,7 @@ import {
 } from "ext:deno_node/internal/readline/utils.mjs";
 import { clearScreenDown, cursorTo, moveCursor } from "ext:deno_node/internal/readline/callbacks.mjs";
 import { Readable } from "ext:deno_node/_stream.mjs";
+import process from "ext:deno_node/process.ts";
 
 import { StringDecoder } from "ext:deno_node/string_decoder.ts";
 import {

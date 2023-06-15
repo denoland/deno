@@ -21,6 +21,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cell::RefCell;
@@ -29,11 +30,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
-static ABSTRACT_MODIFIER: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\babstract\b").unwrap());
+static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
-static EXPORT_MODIFIER: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\bexport\b").unwrap());
+static EXPORT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\bexport\b");
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum CodeLensSource {
@@ -231,13 +230,14 @@ async fn resolve_implementation_code_lens(
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
-  let req = tsc::RequestMethod::GetImplementation((
-    data.specifier.clone(),
-    line_index.offset_tsc(code_lens.range.start)?,
-  ));
-  let snapshot = language_server.snapshot();
-  let maybe_implementations: Option<Vec<tsc::ImplementationLocation>> =
-    language_server.ts_server.request(snapshot, req).await?;
+  let maybe_implementations = language_server
+    .ts_server
+    .get_implementations(
+      language_server.snapshot(),
+      data.specifier.clone(),
+      line_index.offset_tsc(code_lens.range.start)?,
+    )
+    .await?;
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
     for implementation in implementations {
@@ -326,12 +326,12 @@ async fn resolve_references_code_lens(
   let asset_or_document =
     language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_document.line_index();
-  let snapshot = language_server.snapshot();
+
   let maybe_referenced_symbols = language_server
     .ts_server
     .find_references(
-      snapshot,
-      &data.specifier,
+      language_server.snapshot(),
+      data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
     )
     .await?;
@@ -392,7 +392,7 @@ pub async fn collect(
   code_lenses.extend(
     collect_tsc(
       specifier,
-      &config.get_workspace_settings(),
+      config.workspace_settings(),
       line_index,
       navigation_tree,
     )

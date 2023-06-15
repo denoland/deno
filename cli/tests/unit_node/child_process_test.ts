@@ -15,7 +15,7 @@ import * as path from "../../../test_util/std/path/mod.ts";
 
 const { spawn, execFile, execFileSync, ChildProcess } = CP;
 
-function withTimeout<T>(timeoutInMS: number): Deferred<T> {
+function withTimeout<T>(timeoutInMS = 10_000): Deferred<T> {
   const promise = deferred<T>();
   const timer = setTimeout(() => {
     promise.reject("Timeout");
@@ -28,7 +28,7 @@ function withTimeout<T>(timeoutInMS: number): Deferred<T> {
 
 // TODO(uki00a): Once Node.js's `parallel/test-child-process-spawn-error.js` works, this test case should be removed.
 Deno.test("[node/child_process spawn] The 'error' event is emitted when no binary is found", async () => {
-  const promise = withTimeout(1000);
+  const promise = withTimeout();
   const childProcess = spawn("no-such-cmd");
   childProcess.on("error", (_err: Error) => {
     // TODO(@bartlomieju) Assert an error message.
@@ -38,7 +38,7 @@ Deno.test("[node/child_process spawn] The 'error' event is emitted when no binar
 });
 
 Deno.test("[node/child_process spawn] The 'exit' event is emitted with an exit code after the child process ends", async () => {
-  const promise = withTimeout(3000);
+  const promise = withTimeout();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
   });
@@ -59,7 +59,7 @@ Deno.test("[node/child_process spawn] The 'exit' event is emitted with an exit c
 });
 
 Deno.test("[node/child_process disconnect] the method exists", async () => {
-  const promise = withTimeout(1000);
+  const promise = withTimeout();
   const childProcess = spawn(Deno.execPath(), ["--help"], {
     env: { NO_COLOR: "true" },
   });
@@ -79,7 +79,7 @@ Deno.test("[node/child_process disconnect] the method exists", async () => {
 Deno.test({
   name: "[node/child_process spawn] Verify that stdin and stdout work",
   fn: async () => {
-    const promise = withTimeout(3000);
+    const promise = withTimeout();
     const childProcess = spawn(Deno.execPath(), ["fmt", "-"], {
       env: { NO_COLOR: "true" },
       stdio: ["pipe", "pipe"],
@@ -107,7 +107,7 @@ Deno.test({
 Deno.test({
   name: "[node/child_process spawn] stdin and stdout with binary data",
   fn: async () => {
-    const promise = withTimeout(10000);
+    const promise = withTimeout();
     const p = path.join(
       path.dirname(path.fromFileUrl(import.meta.url)),
       "./testdata/binary_stdio.js",
@@ -140,7 +140,7 @@ Deno.test({
 async function spawnAndGetEnvValue(
   inputValue: string | number | boolean,
 ): Promise<string> {
-  const promise = withTimeout<string>(3000);
+  const promise = withTimeout<string>();
   const env = spawn(
     `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
     {
@@ -185,13 +185,13 @@ Deno.test({
   },
 });
 
-/* Start of ported part */ 3;
+/* Start of ported part */
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Ported from Node 15.5.1
 
 // TODO(uki00a): Remove this case once Node's `parallel/test-child-process-spawn-event.js` works.
 Deno.test("[child_process spawn] 'spawn' event", async () => {
-  const timeout = withTimeout(3000);
+  const timeout = withTimeout();
   const subprocess = spawn(Deno.execPath(), ["eval", "console.log('ok')"]);
 
   let didSpawn = false;
@@ -238,7 +238,7 @@ Deno.test("[child_process spawn] 'spawn' event", async () => {
 
 // TODO(uki00a): Remove this case once Node's `parallel/test-child-process-spawn-shell.js` works.
 Deno.test("[child_process spawn] Verify that a shell is executed", async () => {
-  const promise = withTimeout(3000);
+  const promise = withTimeout();
   const doesNotExist = spawn("does-not-exist", { shell: true });
   try {
     assertNotStrictEquals(doesNotExist.spawnfile, "does-not-exist");
@@ -269,7 +269,7 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   name: "[node/child_process spawn] Verify that passing arguments works",
   async fn() {
-    const promise = withTimeout(3000);
+    const promise = withTimeout();
     const echo = spawn("echo", ["foo"], {
       shell: true,
     });
@@ -300,7 +300,7 @@ Deno.test({
   ignore: Deno.build.os === "windows",
   name: "[node/child_process spawn] Verity that shell features can be used",
   async fn() {
-    const promise = withTimeout(3000);
+    const promise = withTimeout();
     const cmd = "echo bar | cat";
     const command = spawn(cmd, {
       shell: true,
@@ -331,7 +331,7 @@ Deno.test({
   name:
     "[node/child_process spawn] Verity that environment is properly inherited",
   async fn() {
-    const promise = withTimeout(3000);
+    const promise = withTimeout();
     const env = spawn(
       `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
       {
@@ -496,7 +496,7 @@ Deno.test({
       "./testdata/infinite_loop.js",
     );
     const childProcess = spawn(Deno.execPath(), ["run", script]);
-    const p = withTimeout(3000);
+    const p = withTimeout();
     childProcess.on("exit", () => p.resolve());
     childProcess.kill("SIGKILL");
     await p;
@@ -577,3 +577,66 @@ Deno.test(
     assertStringIncludes(output, "typescript");
   },
 );
+
+Deno.test(
+  "[node/child_process spawn] supports stdio array option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
+
+Deno.test(
+  "[node/child_process spawn] supports stdio [0, 1, 2] option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio_012.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
+
+Deno.test({
+  name: "[node/child_process spawn] supports SIGIOT signal",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdin.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    const p = withTimeout();
+    cp.on("exit", () => p.resolve());
+    cp.kill("SIGIOT");
+    await p;
+    assert(cp.killed);
+    assertEquals(cp.signalCode, "SIGIOT");
+  },
+});

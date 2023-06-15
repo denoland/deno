@@ -12,11 +12,12 @@ const primordials = globalThis.__bootstrap.primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const {
-  ArrayBufferPrototype,
-  ArrayBufferPrototypeSlice,
-  ArrayBufferPrototypeGetByteLength,
   ArrayBufferIsView,
+  ArrayBufferPrototype,
+  ArrayBufferPrototypeGetByteLength,
+  ArrayBufferPrototypeSlice,
   ArrayPrototypeEvery,
+  ArrayPrototypeFilter,
   ArrayPrototypeFind,
   ArrayPrototypeIncludes,
   DataViewPrototypeGetBuffer,
@@ -26,24 +27,24 @@ const {
   JSONStringify,
   MathCeil,
   ObjectAssign,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
+  SafeArrayIterator,
+  SafeWeakMap,
+  StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeToLowerCase,
   StringPrototypeToUpperCase,
-  StringPrototypeCharCodeAt,
-  StringFromCharCode,
-  SafeArrayIterator,
   Symbol,
   SymbolFor,
   SyntaxError,
-  TypedArrayPrototypeSlice,
+  TypeError,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
   TypedArrayPrototypeGetSymbolToStringTag,
-  TypeError,
+  TypedArrayPrototypeSlice,
   Uint8Array,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
@@ -199,17 +200,18 @@ function normalizeAlgorithm(algorithm, op) {
   // 1.
   const registeredAlgorithms = supportedAlgorithms[op];
   // 2. 3.
-  const initialAlg = webidl.converters.Algorithm(algorithm, {
-    prefix: "Failed to normalize algorithm",
-    context: "passed algorithm",
-  });
+  const initialAlg = webidl.converters.Algorithm(
+    algorithm,
+    "Failed to normalize algorithm",
+    "passed algorithm",
+  );
   // 4.
   let algName = initialAlg.name;
 
   // 5.
   let desiredType = undefined;
   for (const key in registeredAlgorithms) {
-    if (!ObjectPrototypeHasOwnProperty(registeredAlgorithms, key)) {
+    if (!ObjectHasOwn(registeredAlgorithms, key)) {
       continue;
     }
     if (
@@ -232,10 +234,11 @@ function normalizeAlgorithm(algorithm, op) {
   }
 
   // 6.
-  const normalizedAlgorithm = webidl.converters[desiredType](algorithm, {
-    prefix: "Failed to normalize algorithm",
-    context: "passed algorithm",
-  });
+  const normalizedAlgorithm = webidl.converters[desiredType](
+    algorithm,
+    "Failed to normalize algorithm",
+    "passed algorithm",
+  );
   // 7.
   normalizedAlgorithm.name = algName;
 
@@ -243,7 +246,7 @@ function normalizeAlgorithm(algorithm, op) {
   const dict = simpleAlgorithmDictionaries[desiredType];
   // 10.
   for (const member in dict) {
-    if (!ObjectPrototypeHasOwnProperty(dict, member)) {
+    if (!ObjectHasOwn(dict, member)) {
       continue;
     }
     const idlType = dict[member];
@@ -386,12 +389,15 @@ function constructKey(type, extractable, usages, algorithm, handle) {
  * @returns
  */
 function usageIntersection(a, b) {
-  return a.filter((i) => b.includes(i));
+  return ArrayPrototypeFilter(
+    a,
+    (i) => ArrayPrototypeIncludes(b, i),
+  );
 }
 
 // TODO(lucacasonato): this should be moved to rust
 /** @type {WeakMap<object, object>} */
-const KEY_STORE = new WeakMap();
+const KEY_STORE = new SafeWeakMap();
 
 function getKeyLength(algorithm) {
   switch (algorithm.name) {
@@ -468,15 +474,13 @@ class SubtleCrypto {
   async digest(algorithm, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'digest' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    data = webidl.converters.BufferSource(data, prefix, "Argument 2");
 
     data = copyBuffer(data);
 
@@ -500,19 +504,14 @@ class SubtleCrypto {
   async encrypt(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'encrypt' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 2.
     data = copyBuffer(data);
@@ -548,19 +547,14 @@ class SubtleCrypto {
   async decrypt(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'decrypt' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 2.
     data = copyBuffer(data);
@@ -756,19 +750,14 @@ class SubtleCrypto {
   async sign(algorithm, key, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'sign' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 3",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 3");
 
     // 1.
     data = copyBuffer(data);
@@ -895,7 +884,7 @@ class SubtleCrypto {
         // https://briansmith.org/rustdoc/src/ring/ec/curve25519/ed25519/signing.rs.html#260
         const SIGNATURE_LEN = 32 * 2; // ELEM_LEN + SCALAR_LEN
         const signature = new Uint8Array(SIGNATURE_LEN);
-        if (!ops.op_sign_ed25519(keyData, data, signature)) {
+        if (!ops.op_crypto_sign_ed25519(keyData, data, signature)) {
           throw new DOMException(
             "Failed to sign",
             "OperationError",
@@ -920,27 +909,24 @@ class SubtleCrypto {
   async importKey(format, keyData, algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'importKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    keyData = webidl.converters["BufferSource or JsonWebKey"](
+      keyData,
       prefix,
-      context: "Argument 1",
-    });
-    keyData = webidl.converters["BufferSource or JsonWebKey"](keyData, {
+      "Argument 2",
+    );
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 2",
-    });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+      "Argument 3",
+    );
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 4");
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 3",
-    });
-    extractable = webidl.converters.boolean(extractable, {
-      prefix,
-      context: "Argument 4",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 5",
-    });
+      "Argument 5",
+    );
 
     // 2.
     if (format !== "jwk") {
@@ -1054,15 +1040,9 @@ class SubtleCrypto {
   async exportKey(format, key) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'exportKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
-    format = webidl.converters.KeyFormat(format, {
-      prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
 
     const handle = key[_handle];
     // 2.
@@ -1126,20 +1106,15 @@ class SubtleCrypto {
   async deriveBits(algorithm, baseKey, length) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveBits' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    baseKey = webidl.converters.CryptoKey(baseKey, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
     if (length !== null) {
-      length = webidl.converters["unsigned long"](length, {
-        prefix,
-        context: "Argument 3",
-      });
+      length = webidl.converters["unsigned long"](length, prefix, "Argument 3");
     }
 
     // 2.
@@ -1176,27 +1151,28 @@ class SubtleCrypto {
   ) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'deriveKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 5, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 5, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    baseKey = webidl.converters.CryptoKey(baseKey, {
+      "Argument 1",
+    );
+    baseKey = webidl.converters.CryptoKey(baseKey, prefix, "Argument 2");
+    derivedKeyType = webidl.converters.AlgorithmIdentifier(
+      derivedKeyType,
       prefix,
-      context: "Argument 2",
-    });
-    derivedKeyType = webidl.converters.AlgorithmIdentifier(derivedKeyType, {
+      "Argument 3",
+    );
+    extractable = webidl.converters["boolean"](
+      extractable,
       prefix,
-      context: "Argument 3",
-    });
-    extractable = webidl.converters["boolean"](extractable, {
+      "Argument 4",
+    );
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 4",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 5",
-    });
+      "Argument 5",
+    );
 
     // 2-3.
     const normalizedAlgorithm = normalizeAlgorithm(algorithm, "deriveBits");
@@ -1271,23 +1247,15 @@ class SubtleCrypto {
   async verify(algorithm, key, signature, data) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'verify' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
-      prefix,
-      context: "Argument 2",
-    });
-    signature = webidl.converters.BufferSource(signature, {
-      prefix,
-      context: "Argument 3",
-    });
-    data = webidl.converters.BufferSource(data, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 1",
+    );
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    signature = webidl.converters.BufferSource(signature, prefix, "Argument 3");
+    data = webidl.converters.BufferSource(data, prefix, "Argument 4");
 
     // 2.
     signature = copyBuffer(signature);
@@ -1395,7 +1363,7 @@ class SubtleCrypto {
           );
         }
 
-        return ops.op_verify_ed25519(keyData, data, signature);
+        return ops.op_crypto_verify_ed25519(keyData, data, signature);
       }
     }
 
@@ -1411,23 +1379,19 @@ class SubtleCrypto {
   async wrapKey(format, key, wrappingKey, wrapAlgorithm) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'wrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 4, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 4, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    key = webidl.converters.CryptoKey(key, prefix, "Argument 2");
+    wrappingKey = webidl.converters.CryptoKey(
+      wrappingKey,
       prefix,
-      context: "Argument 1",
-    });
-    key = webidl.converters.CryptoKey(key, {
+      "Argument 3",
+    );
+    wrapAlgorithm = webidl.converters.AlgorithmIdentifier(
+      wrapAlgorithm,
       prefix,
-      context: "Argument 2",
-    });
-    wrappingKey = webidl.converters.CryptoKey(wrappingKey, {
-      prefix,
-      context: "Argument 3",
-    });
-    wrapAlgorithm = webidl.converters.AlgorithmIdentifier(wrapAlgorithm, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 4",
+    );
 
     let normalizedAlgorithm;
 
@@ -1547,38 +1511,34 @@ class SubtleCrypto {
   ) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'unwrapKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 7, { prefix });
-    format = webidl.converters.KeyFormat(format, {
+    webidl.requiredArguments(arguments.length, 7, prefix);
+    format = webidl.converters.KeyFormat(format, prefix, "Argument 1");
+    wrappedKey = webidl.converters.BufferSource(
+      wrappedKey,
       prefix,
-      context: "Argument 1",
-    });
-    wrappedKey = webidl.converters.BufferSource(wrappedKey, {
+      "Argument 2",
+    );
+    unwrappingKey = webidl.converters.CryptoKey(
+      unwrappingKey,
       prefix,
-      context: "Argument 2",
-    });
-    unwrappingKey = webidl.converters.CryptoKey(unwrappingKey, {
+      "Argument 3",
+    );
+    unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(
+      unwrapAlgorithm,
       prefix,
-      context: "Argument 3",
-    });
-    unwrapAlgorithm = webidl.converters.AlgorithmIdentifier(unwrapAlgorithm, {
-      prefix,
-      context: "Argument 4",
-    });
+      "Argument 4",
+    );
     unwrappedKeyAlgorithm = webidl.converters.AlgorithmIdentifier(
       unwrappedKeyAlgorithm,
-      {
-        prefix,
-        context: "Argument 5",
-      },
+      prefix,
+      "Argument 5",
     );
-    extractable = webidl.converters.boolean(extractable, {
+    extractable = webidl.converters.boolean(extractable, prefix, "Argument 6");
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 6",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
-      prefix,
-      context: "Argument 7",
-    });
+      "Argument 7",
+    );
 
     // 2.
     wrappedKey = copyBuffer(wrappedKey);
@@ -1708,19 +1668,22 @@ class SubtleCrypto {
   async generateKey(algorithm, extractable, keyUsages) {
     webidl.assertBranded(this, SubtleCryptoPrototype);
     const prefix = "Failed to execute 'generateKey' on 'SubtleCrypto'";
-    webidl.requiredArguments(arguments.length, 3, { prefix });
-    algorithm = webidl.converters.AlgorithmIdentifier(algorithm, {
+    webidl.requiredArguments(arguments.length, 3, prefix);
+    algorithm = webidl.converters.AlgorithmIdentifier(
+      algorithm,
       prefix,
-      context: "Argument 1",
-    });
-    extractable = webidl.converters["boolean"](extractable, {
+      "Argument 1",
+    );
+    extractable = webidl.converters["boolean"](
+      extractable,
       prefix,
-      context: "Argument 2",
-    });
-    keyUsages = webidl.converters["sequence<KeyUsage>"](keyUsages, {
+      "Argument 2",
+    );
+    keyUsages = webidl.converters["sequence<KeyUsage>"](
+      keyUsages,
       prefix,
-      context: "Argument 3",
-    });
+      "Argument 3",
+    );
 
     const usages = keyUsages;
 
@@ -2034,7 +1997,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       }
       const privateKeyData = new Uint8Array(32);
       const publicKeyData = new Uint8Array(32);
-      ops.op_generate_x25519_keypair(privateKeyData, publicKeyData);
+      ops.op_crypto_generate_x25519_keypair(privateKeyData, publicKeyData);
 
       const handle = {};
       WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2079,7 +2042,7 @@ async function generateKey(normalizedAlgorithm, extractable, usages) {
       const privateKeyData = new Uint8Array(ED25519_SEED_LEN);
       const publicKeyData = new Uint8Array(ED25519_PUBLIC_KEY_LEN);
       if (
-        !ops.op_generate_ed25519_keypair(privateKeyData, publicKeyData)
+        !ops.op_crypto_generate_ed25519_keypair(privateKeyData, publicKeyData)
       ) {
         throw new DOMException("Failed to generate key", "OperationError");
       }
@@ -2216,7 +2179,7 @@ function importKeyEd25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_import_spki_ed25519(keyData, publicKeyData)) {
+      if (!ops.op_crypto_import_spki_ed25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2247,7 +2210,7 @@ function importKeyEd25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_import_pkcs8_ed25519(keyData, privateKeyData)) {
+      if (!ops.op_crypto_import_pkcs8_ed25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2356,7 +2319,12 @@ function importKeyEd25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2374,7 +2342,12 @@ function importKeyEd25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2434,7 +2407,7 @@ function importKeyX25519(
       }
 
       const publicKeyData = new Uint8Array(32);
-      if (!ops.op_import_spki_x25519(keyData, publicKeyData)) {
+      if (!ops.op_crypto_import_spki_x25519(keyData, publicKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -2465,7 +2438,7 @@ function importKeyX25519(
       }
 
       const privateKeyData = new Uint8Array(32);
-      if (!ops.op_import_pkcs8_x25519(keyData, privateKeyData)) {
+      if (!ops.op_crypto_import_pkcs8_x25519(keyData, privateKeyData)) {
         throw new DOMException("Invalid key data", "DataError");
       }
 
@@ -4092,7 +4065,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_export_spki_ed25519(innerKey);
+      const spkiDer = ops.op_crypto_export_spki_ed25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4104,7 +4077,7 @@ function exportKeyEd25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_export_pkcs8_ed25519(
+      const pkcs8Der = ops.op_crypto_export_pkcs8_ed25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4112,7 +4085,7 @@ function exportKeyEd25519(format, key, innerKey) {
     }
     case "jwk": {
       const x = key[_type] === "private"
-        ? ops.op_jwk_x_ed25519(innerKey)
+        ? ops.op_crypto_jwk_x_ed25519(innerKey)
         : ops.op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
@@ -4155,7 +4128,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const spkiDer = ops.op_export_spki_x25519(innerKey);
+      const spkiDer = ops.op_crypto_export_spki_x25519(innerKey);
       return TypedArrayPrototypeGetBuffer(spkiDer);
     }
     case "pkcs8": {
@@ -4167,7 +4140,7 @@ function exportKeyX25519(format, key, innerKey) {
         );
       }
 
-      const pkcs8Der = ops.op_export_pkcs8_x25519(
+      const pkcs8Der = ops.op_crypto_export_pkcs8_x25519(
         new Uint8Array([0x04, 0x22, ...new SafeArrayIterator(innerKey)]),
       );
       pkcs8Der[15] = 0x20;
@@ -4513,7 +4486,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
       const u = WeakMapPrototypeGet(KEY_STORE, uHandle);
 
       const secret = new Uint8Array(32);
-      const isIdentity = ops.op_derive_bits_x25519(k, u, secret);
+      const isIdentity = ops.op_crypto_derive_bits_x25519(k, u, secret);
 
       // 6.
       if (isIdentity) {
@@ -4715,17 +4688,18 @@ class Crypto {
   getRandomValues(typedArray) {
     webidl.assertBranded(this, CryptoPrototype);
     const prefix = "Failed to execute 'getRandomValues' on 'Crypto'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // Fast path for Uint8Array
     const tag = TypedArrayPrototypeGetSymbolToStringTag(typedArray);
     if (tag === "Uint8Array") {
       ops.op_crypto_get_random_values(typedArray);
       return typedArray;
     }
-    typedArray = webidl.converters.ArrayBufferView(typedArray, {
+    typedArray = webidl.converters.ArrayBufferView(
+      typedArray,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
     switch (tag) {
       case "Int8Array":
       case "Uint8ClampedArray":
@@ -4770,4 +4744,506 @@ webidl.configurePrototype(Crypto);
 const CryptoPrototype = Crypto.prototype;
 
 const crypto = webidl.createBranded(Crypto);
+
+webidl.converters.AlgorithmIdentifier = (V, prefix, context, opts) => {
+  // Union for (object or DOMString)
+  if (webidl.type(V) == "Object") {
+    return webidl.converters.object(V, prefix, context, opts);
+  }
+  return webidl.converters.DOMString(V, prefix, context, opts);
+};
+
+webidl.converters["BufferSource or JsonWebKey"] = (
+  V,
+  prefix,
+  context,
+  opts,
+) => {
+  // Union for (BufferSource or JsonWebKey)
+  if (
+    ArrayBufferIsView(V) ||
+    ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, V)
+  ) {
+    return webidl.converters.BufferSource(V, prefix, context, opts);
+  }
+  return webidl.converters.JsonWebKey(V, prefix, context, opts);
+};
+
+webidl.converters.KeyType = webidl.createEnumConverter("KeyType", [
+  "public",
+  "private",
+  "secret",
+]);
+
+webidl.converters.KeyFormat = webidl.createEnumConverter("KeyFormat", [
+  "raw",
+  "pkcs8",
+  "spki",
+  "jwk",
+]);
+
+webidl.converters.KeyUsage = webidl.createEnumConverter("KeyUsage", [
+  "encrypt",
+  "decrypt",
+  "sign",
+  "verify",
+  "deriveKey",
+  "deriveBits",
+  "wrapKey",
+  "unwrapKey",
+]);
+
+webidl.converters["sequence<KeyUsage>"] = webidl.createSequenceConverter(
+  webidl.converters.KeyUsage,
+);
+
+webidl.converters.HashAlgorithmIdentifier =
+  webidl.converters.AlgorithmIdentifier;
+
+/** @type {webidl.Dictionary} */
+const dictAlgorithm = [{
+  key: "name",
+  converter: webidl.converters.DOMString,
+  required: true,
+}];
+
+webidl.converters.Algorithm = webidl
+  .createDictionaryConverter("Algorithm", dictAlgorithm);
+
+webidl.converters.BigInteger = webidl.converters.Uint8Array;
+
+/** @type {webidl.Dictionary} */
+const dictRsaKeyGenParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "modulusLength",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+  {
+    key: "publicExponent",
+    converter: webidl.converters.BigInteger,
+    required: true,
+  },
+];
+
+webidl.converters.RsaKeyGenParams = webidl
+  .createDictionaryConverter("RsaKeyGenParams", dictRsaKeyGenParams);
+
+const dictRsaHashedKeyGenParams = [
+  ...new SafeArrayIterator(dictRsaKeyGenParams),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+];
+
+webidl.converters.RsaHashedKeyGenParams = webidl.createDictionaryConverter(
+  "RsaHashedKeyGenParams",
+  dictRsaHashedKeyGenParams,
+);
+
+const dictRsaHashedImportParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+];
+
+webidl.converters.RsaHashedImportParams = webidl.createDictionaryConverter(
+  "RsaHashedImportParams",
+  dictRsaHashedImportParams,
+);
+
+webidl.converters.NamedCurve = webidl.converters.DOMString;
+
+const dictEcKeyImportParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "namedCurve",
+    converter: webidl.converters.NamedCurve,
+    required: true,
+  },
+];
+
+webidl.converters.EcKeyImportParams = webidl.createDictionaryConverter(
+  "EcKeyImportParams",
+  dictEcKeyImportParams,
+);
+
+const dictEcKeyGenParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "namedCurve",
+    converter: webidl.converters.NamedCurve,
+    required: true,
+  },
+];
+
+webidl.converters.EcKeyGenParams = webidl
+  .createDictionaryConverter("EcKeyGenParams", dictEcKeyGenParams);
+
+const dictAesKeyGenParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned short"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+webidl.converters.AesKeyGenParams = webidl
+  .createDictionaryConverter("AesKeyGenParams", dictAesKeyGenParams);
+
+const dictHmacKeyGenParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
+];
+
+webidl.converters.HmacKeyGenParams = webidl
+  .createDictionaryConverter("HmacKeyGenParams", dictHmacKeyGenParams);
+
+const dictRsaPssParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "saltLength",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+webidl.converters.RsaPssParams = webidl
+  .createDictionaryConverter("RsaPssParams", dictRsaPssParams);
+
+const dictRsaOaepParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "label",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+webidl.converters.RsaOaepParams = webidl
+  .createDictionaryConverter("RsaOaepParams", dictRsaOaepParams);
+
+const dictEcdsaParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+];
+
+webidl.converters["EcdsaParams"] = webidl
+  .createDictionaryConverter("EcdsaParams", dictEcdsaParams);
+
+const dictHmacImportParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
+];
+
+webidl.converters.HmacImportParams = webidl
+  .createDictionaryConverter("HmacImportParams", dictHmacImportParams);
+
+const dictRsaOtherPrimesInfo = [
+  {
+    key: "r",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "d",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "t",
+    converter: webidl.converters["DOMString"],
+  },
+];
+
+webidl.converters.RsaOtherPrimesInfo = webidl.createDictionaryConverter(
+  "RsaOtherPrimesInfo",
+  dictRsaOtherPrimesInfo,
+);
+webidl.converters["sequence<RsaOtherPrimesInfo>"] = webidl
+  .createSequenceConverter(
+    webidl.converters.RsaOtherPrimesInfo,
+  );
+
+const dictJsonWebKey = [
+  // Sections 4.2 and 4.3 of RFC7517.
+  // https://datatracker.ietf.org/doc/html/rfc7517#section-4
+  {
+    key: "kty",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "use",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "key_ops",
+    converter: webidl.converters["sequence<DOMString>"],
+  },
+  {
+    key: "alg",
+    converter: webidl.converters["DOMString"],
+  },
+  // JSON Web Key Parameters Registration
+  {
+    key: "ext",
+    converter: webidl.converters["boolean"],
+  },
+  // Section 6 of RFC7518 JSON Web Algorithms
+  // https://datatracker.ietf.org/doc/html/rfc7518#section-6
+  {
+    key: "crv",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "x",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "y",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "d",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "n",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "e",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "p",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "q",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "dp",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "dq",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "qi",
+    converter: webidl.converters["DOMString"],
+  },
+  {
+    key: "oth",
+    converter: webidl.converters["sequence<RsaOtherPrimesInfo>"],
+  },
+  {
+    key: "k",
+    converter: webidl.converters["DOMString"],
+  },
+];
+
+webidl.converters.JsonWebKey = webidl.createDictionaryConverter(
+  "JsonWebKey",
+  dictJsonWebKey,
+);
+
+const dictHkdfParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+  {
+    key: "salt",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+  {
+    key: "info",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+];
+
+webidl.converters.HkdfParams = webidl
+  .createDictionaryConverter("HkdfParams", dictHkdfParams);
+
+const dictPbkdf2Params = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "hash",
+    converter: webidl.converters.HashAlgorithmIdentifier,
+    required: true,
+  },
+  {
+    key: "iterations",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+  {
+    key: "salt",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+];
+
+webidl.converters.Pbkdf2Params = webidl
+  .createDictionaryConverter("Pbkdf2Params", dictPbkdf2Params);
+
+const dictAesDerivedKeyParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+const dictAesCbcParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "iv",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+];
+
+const dictAesGcmParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "iv",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+  {
+    key: "tagLength",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned long"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+  },
+  {
+    key: "additionalData",
+    converter: webidl.converters["BufferSource"],
+  },
+];
+
+const dictAesCtrParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "counter",
+    converter: webidl.converters["BufferSource"],
+    required: true,
+  },
+  {
+    key: "length",
+    converter: (V, prefix, context, opts) =>
+      webidl.converters["unsigned short"](V, prefix, context, {
+        ...opts,
+        enforceRange: true,
+      }),
+    required: true,
+  },
+];
+
+webidl.converters.AesDerivedKeyParams = webidl
+  .createDictionaryConverter("AesDerivedKeyParams", dictAesDerivedKeyParams);
+
+webidl.converters.AesCbcParams = webidl
+  .createDictionaryConverter("AesCbcParams", dictAesCbcParams);
+
+webidl.converters.AesGcmParams = webidl
+  .createDictionaryConverter("AesGcmParams", dictAesGcmParams);
+
+webidl.converters.AesCtrParams = webidl
+  .createDictionaryConverter("AesCtrParams", dictAesCtrParams);
+
+webidl.converters.CryptoKey = webidl.createInterfaceConverter(
+  "CryptoKey",
+  CryptoKey.prototype,
+);
+
+const dictCryptoKeyPair = [
+  {
+    key: "publicKey",
+    converter: webidl.converters.CryptoKey,
+  },
+  {
+    key: "privateKey",
+    converter: webidl.converters.CryptoKey,
+  },
+];
+
+webidl.converters.CryptoKeyPair = webidl
+  .createDictionaryConverter("CryptoKeyPair", dictCryptoKeyPair);
+
+const dictEcdhKeyDeriveParams = [
+  ...new SafeArrayIterator(dictAlgorithm),
+  {
+    key: "public",
+    converter: webidl.converters.CryptoKey,
+    required: true,
+  },
+];
+
+webidl.converters.EcdhKeyDeriveParams = webidl
+  .createDictionaryConverter("EcdhKeyDeriveParams", dictEcdhKeyDeriveParams);
+
 export { Crypto, crypto, CryptoKey, SubtleCrypto };

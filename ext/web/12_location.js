@@ -8,11 +8,11 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   ObjectDefineProperties,
+  SafeWeakMap,
   Symbol,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
@@ -206,7 +206,7 @@ ObjectDefineProperties(Location.prototype, {
   },
 });
 
-const workerLocationUrls = new WeakMap();
+const workerLocationUrls = new SafeWeakMap();
 
 class WorkerLocation {
   constructor(href = null, key = null) {

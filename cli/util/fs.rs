@@ -3,6 +3,7 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
+use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
@@ -81,11 +82,7 @@ pub fn write_file_2<T: AsRef<[u8]>>(
 
 /// Similar to `std::fs::canonicalize()` but strips UNC prefixes on Windows.
 pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
-  let path = path.canonicalize()?;
-  #[cfg(windows)]
-  return Ok(strip_unc_prefix(path));
-  #[cfg(not(windows))]
-  return Ok(path);
+  Ok(deno_core::strip_unc_prefix(path.canonicalize()?))
 }
 
 /// Canonicalizes a path which might be non-existent by going up the
@@ -97,11 +94,18 @@ pub fn canonicalize_path(path: &Path) -> Result<PathBuf, Error> {
 pub fn canonicalize_path_maybe_not_exists(
   path: &Path,
 ) -> Result<PathBuf, Error> {
+  canonicalize_path_maybe_not_exists_with_fs(path, canonicalize_path)
+}
+
+pub fn canonicalize_path_maybe_not_exists_with_fs(
+  path: &Path,
+  canonicalize: impl Fn(&Path) -> Result<PathBuf, Error>,
+) -> Result<PathBuf, Error> {
   let path = path.to_path_buf().clean();
   let mut path = path.as_path();
   let mut names_stack = Vec::new();
   loop {
-    match canonicalize_path(path) {
+    match canonicalize(path) {
       Ok(mut canonicalized_path) => {
         for name in names_stack.into_iter().rev() {
           canonicalized_path = canonicalized_path.join(name);
@@ -114,47 +118,6 @@ pub fn canonicalize_path_maybe_not_exists(
       }
       Err(err) => return Err(err),
     }
-  }
-}
-
-#[cfg(windows)]
-fn strip_unc_prefix(path: PathBuf) -> PathBuf {
-  use std::path::Component;
-  use std::path::Prefix;
-
-  let mut components = path.components();
-  match components.next() {
-    Some(Component::Prefix(prefix)) => {
-      match prefix.kind() {
-        // \\?\device
-        Prefix::Verbatim(device) => {
-          let mut path = PathBuf::new();
-          path.push(format!(r"\\{}\", device.to_string_lossy()));
-          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
-          path
-        }
-        // \\?\c:\path
-        Prefix::VerbatimDisk(_) => {
-          let mut path = PathBuf::new();
-          path.push(prefix.as_os_str().to_string_lossy().replace(r"\\?\", ""));
-          path.extend(components);
-          path
-        }
-        // \\?\UNC\hostname\share_name\path
-        Prefix::VerbatimUNC(hostname, share_name) => {
-          let mut path = PathBuf::new();
-          path.push(format!(
-            r"\\{}\{}\",
-            hostname.to_string_lossy(),
-            share_name.to_string_lossy()
-          ));
-          path.extend(components.filter(|c| !matches!(c, Component::RootDir)));
-          path
-        }
-        _ => path,
-      }
-    }
-    _ => path,
   }
 }
 
@@ -541,7 +504,7 @@ impl LaxSingleProcessFsFlag {
               // This uses a blocking task because we use a single threaded
               // runtime and this is time sensitive so we don't want it to update
               // at the whims of of whatever is occurring on the runtime thread.
-              tokio::task::spawn_blocking({
+              spawn_blocking({
                 let token = token.clone();
                 let last_updated_path = last_updated_path.clone();
                 move || {
@@ -634,6 +597,7 @@ mod tests {
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
   use pretty_assertions::assert_eq;
+  use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
 
@@ -672,21 +636,20 @@ mod tests {
     }
   }
 
-  // TODO: Get a good expected value here for Windows.
-  #[cfg(not(windows))]
   #[test]
   fn resolve_from_cwd_absolute() {
-    let expected = Path::new("/a");
-    assert_eq!(resolve_from_cwd(expected).unwrap(), expected);
+    let expected = Path::new("a");
+    let cwd = current_dir().unwrap();
+    let absolute_expected = cwd.join(expected);
+    assert_eq!(resolve_from_cwd(expected).unwrap(), absolute_expected);
   }
 
   #[test]
   fn test_collect_files() {
-    fn create_files(dir_path: &Path, files: &[&str]) {
-      std::fs::create_dir(dir_path).expect("Failed to create directory");
+    fn create_files(dir_path: &PathRef, files: &[&str]) {
+      dir_path.create_dir_all();
       for f in files {
-        let path = dir_path.join(f);
-        std::fs::write(path, "").expect("Failed to create file");
+        dir_path.join(f).write("");
       }
     }
 
@@ -735,10 +698,10 @@ mod tests {
         .map(|f| !f.starts_with('.'))
         .unwrap_or(false)
     })
-    .add_ignore_paths(&[ignore_dir_path]);
+    .add_ignore_paths(&[ignore_dir_path.to_path_buf()]);
 
     let result = file_collector
-      .collect_files(&[root_dir_path.clone()])
+      .collect_files(&[root_dir_path.to_path_buf()])
       .unwrap();
     let expected = [
       "README.md",
@@ -762,7 +725,7 @@ mod tests {
     let file_collector =
       file_collector.ignore_git_folder().ignore_node_modules();
     let result = file_collector
-      .collect_files(&[root_dir_path.clone()])
+      .collect_files(&[root_dir_path.to_path_buf()])
       .unwrap();
     let expected = [
       "README.md",
@@ -783,8 +746,8 @@ mod tests {
     // test opting out of ignoring by specifying the dir
     let result = file_collector
       .collect_files(&[
-        root_dir_path.clone(),
-        root_dir_path.join("child/node_modules/"),
+        root_dir_path.to_path_buf(),
+        root_dir_path.to_path_buf().join("child/node_modules/"),
       ])
       .unwrap();
     let expected = [
@@ -807,11 +770,10 @@ mod tests {
 
   #[test]
   fn test_collect_specifiers() {
-    fn create_files(dir_path: &Path, files: &[&str]) {
-      std::fs::create_dir(dir_path).expect("Failed to create directory");
+    fn create_files(dir_path: &PathRef, files: &[&str]) {
+      dir_path.create_dir_all();
       for f in files {
-        let path = dir_path.join(f);
-        std::fs::write(path, "").expect("Failed to create file");
+        dir_path.join(f).write("");
       }
     }
 
@@ -856,20 +818,19 @@ mod tests {
       &FilesConfig {
         include: vec![
           PathBuf::from("http://localhost:8080"),
-          root_dir_path.clone(),
+          root_dir_path.to_path_buf(),
           PathBuf::from("https://localhost:8080".to_string()),
         ],
-        exclude: vec![ignore_dir_path],
+        exclude: vec![ignore_dir_path.to_path_buf()],
       },
       predicate,
     )
     .unwrap();
 
-    let root_dir_url = ModuleSpecifier::from_file_path(
-      canonicalize_path(&root_dir_path).unwrap(),
-    )
-    .unwrap()
-    .to_string();
+    let root_dir_url =
+      ModuleSpecifier::from_file_path(root_dir_path.canonicalize())
+        .unwrap()
+        .to_string();
     let expected: Vec<ModuleSpecifier> = [
       "http://localhost:8080",
       &format!("{root_dir_url}/a.ts"),
@@ -897,11 +858,7 @@ mod tests {
         include: vec![PathBuf::from(format!(
           "{}{}",
           scheme,
-          root_dir_path
-            .join("child")
-            .to_str()
-            .unwrap()
-            .replace('\\', "/")
+          root_dir_path.join("child").to_string().replace('\\', "/")
         ))],
         exclude: vec![],
       },
@@ -921,41 +878,6 @@ mod tests {
     assert_eq!(result, expected);
   }
 
-  #[cfg(windows)]
-  #[test]
-  fn test_strip_unc_prefix() {
-    run_test(r"C:\", r"C:\");
-    run_test(r"C:\test\file.txt", r"C:\test\file.txt");
-
-    run_test(r"\\?\C:\", r"C:\");
-    run_test(r"\\?\C:\test\file.txt", r"C:\test\file.txt");
-
-    run_test(r"\\.\C:\", r"\\.\C:\");
-    run_test(r"\\.\C:\Test\file.txt", r"\\.\C:\Test\file.txt");
-
-    run_test(r"\\?\UNC\localhost\", r"\\localhost");
-    run_test(r"\\?\UNC\localhost\c$\", r"\\localhost\c$");
-    run_test(
-      r"\\?\UNC\localhost\c$\Windows\file.txt",
-      r"\\localhost\c$\Windows\file.txt",
-    );
-    run_test(r"\\?\UNC\wsl$\deno.json", r"\\wsl$\deno.json");
-
-    run_test(r"\\?\server1", r"\\server1");
-    run_test(r"\\?\server1\e$\", r"\\server1\e$\");
-    run_test(
-      r"\\?\server1\e$\test\file.txt",
-      r"\\server1\e$\test\file.txt",
-    );
-
-    fn run_test(input: &str, expected: &str) {
-      assert_eq!(
-        strip_unc_prefix(PathBuf::from(input)),
-        PathBuf::from(expected)
-      );
-    }
-  }
-
   #[tokio::test]
   async fn lax_fs_lock() {
     let temp_dir = TempDir::new();
@@ -973,7 +895,8 @@ mod tests {
       let temp_dir = temp_dir.clone();
       async move {
         let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         signal1.notify_one();
         signal2.notified().await;
         tokio::time::sleep(Duration::from_millis(10)).await; // give the other thread time to acquire the lock
@@ -990,7 +913,9 @@ mod tests {
       async move {
         signal1.notified().await;
         signal2.notify_one();
-        let flag = LaxSingleProcessFsFlag::lock(lock_path, "waiting").await;
+        let flag =
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         temp_dir.write("file.txt", "update2");
         signal5.notify_one();
         drop(flag);
@@ -1021,7 +946,8 @@ mod tests {
       let expected_order = expected_order.clone();
       tasks.push(tokio::spawn(async move {
         let flag =
-          LaxSingleProcessFsFlag::lock(lock_path.clone(), "waiting").await;
+          LaxSingleProcessFsFlag::lock(lock_path.to_path_buf(), "waiting")
+            .await;
         expected_order.lock().push(i.to_string());
         // be extremely racy
         let mut output = std::fs::read_to_string(&output_path).unwrap();

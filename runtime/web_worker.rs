@@ -3,7 +3,7 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
-use crate::tokio_util::run_local;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -34,10 +34,11 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -329,10 +330,11 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
+  pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -406,7 +408,7 @@ impl WebWorker {
       deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -417,7 +419,7 @@ impl WebWorker {
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops(None).disable(),
@@ -428,7 +430,7 @@ impl WebWorker {
       ),
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -438,11 +440,15 @@ impl WebWorker {
         unstable,
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
+        options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
       ops::web_worker::deno_web_worker::init_ops(),
@@ -478,6 +484,15 @@ impl WebWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
+    // Clear extension modules from the module map, except preserve `ext:deno_node`
+    // modules as `node:` specifiers.
+    let rename_modules = Some(
+      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+        .iter()
+        .map(|p| (p.ext_specifier, p.specifier))
+        .collect(),
+    );
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
@@ -487,6 +502,7 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
+      rename_modules,
       ..Default::default()
     });
 
@@ -832,5 +848,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_local(fut)
+  create_and_run_current_thread(fut)
 }

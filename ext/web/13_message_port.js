@@ -100,7 +100,7 @@ class MessagePort extends EventTarget {
   postMessage(message, transferOrOptions = {}) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -110,16 +110,15 @@ class MessagePort extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;
@@ -260,7 +259,7 @@ function serializeJsMessageData(data, transferables) {
         );
       }
       j++;
-      transferredArrayBuffers.push(ab);
+      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
   }
 
@@ -329,11 +328,12 @@ webidl.converters.StructuredSerializeOptions = webidl
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
-  options = webidl.converters.StructuredSerializeOptions(options, {
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  options = webidl.converters.StructuredSerializeOptions(
+    options,
     prefix,
-    context: "Argument 2",
-  });
+    "Argument 2",
+  );
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }

@@ -4,9 +4,9 @@ use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::colors;
-use crate::emit::get_source_hash;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
 use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
 use crate::util::fs::FileCollector;
 use crate::util::text_encoding::source_map_from_code;
 
@@ -28,6 +28,7 @@ use std::io::BufWriter;
 use std::io::Error;
 use std::io::Write;
 use std::io::{self};
+use std::path::Path;
 use std::path::PathBuf;
 use text_lines::TextLines;
 use uuid::Uuid;
@@ -603,7 +604,8 @@ fn filter_coverages(
         || e.url.starts_with(npm_root_dir)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
-        || e.url.ends_with(".snap");
+        || e.url.ends_with(".snap")
+        || is_supported_test_path(Path::new(e.url.as_str()));
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -621,8 +623,11 @@ pub async fn cover_files(
     return Err(generic_error("No matching coverage profiles found"));
   }
 
-  let ps = ProcState::build(flags).await?;
-  let root_dir_url = ps.npm_resolver.root_dir_url();
+  let factory = CliFactory::from_flags(flags).await?;
+  let root_dir_url = factory.npm_resolver().await?.root_dir_url();
+  let file_fetcher = factory.file_fetcher()?;
+  let cli_options = factory.cli_options();
+  let emitter = factory.emitter()?;
 
   let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
@@ -665,13 +670,13 @@ pub async fn cover_files(
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
       &script_coverage.url,
-      ps.options.initial_cwd(),
+      cli_options.initial_cwd(),
     )?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
-      ps.file_fetcher.get_source(&module_specifier)
+      file_fetcher.get_source(&module_specifier)
     } else {
-      ps.file_fetcher
+      file_fetcher
         .fetch_cached(&module_specifier, 10)
         .with_context(|| {
           format!("Failed to fetch \"{module_specifier}\" from cache.")
@@ -698,8 +703,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let source_hash = get_source_hash(&file.source, ps.emit_options_hash);
-        match ps.emit_cache.get_emit_code(&file.specifier, source_hash) {
+        match emitter.maybed_cached_emit(&file.specifier, &file.source) {
           Some(code) => code.into(),
           None => {
             return Err(anyhow!(

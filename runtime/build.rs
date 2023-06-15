@@ -18,6 +18,7 @@ mod startup_snapshot {
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
   use deno_core::ModuleCode;
+  use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
 
   fn transpile_ts_for_snapshotting(
@@ -121,10 +122,14 @@ mod startup_snapshot {
   }
 
   impl deno_node::NodePermissions for Permissions {
-    fn check_read(
+    fn check_net_url(
       &mut self,
-      _p: &Path,
+      _url: &deno_core::url::Url,
+      _api_name: &str,
     ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
+    fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -164,6 +169,10 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
+    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
     fn check_read_blind(
       &mut self,
       _path: &Path,
@@ -181,11 +190,16 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
-    fn check_read_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
 
-    fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
+    fn check_write_blind(
+      &mut self,
+      _path: &Path,
+      _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
   }
@@ -206,13 +220,6 @@ mod startup_snapshot {
     ) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
-  }
-
-  struct SnapshotNodeEnv;
-
-  impl deno_node::NodeEnv for SnapshotNodeEnv {
-    type P = Permissions;
-    type Fs = deno_node::RealFs;
   }
 
   deno_core::extension!(runtime,
@@ -268,12 +275,24 @@ mod startup_snapshot {
           include_str!("js/99_main.js"),
         ),
       }]);
+      ext.esm_entry_point("ext:runtime_main/js/99_main.js");
+    }
+  );
+
+  #[cfg(feature = "snapshot_from_snapshot")]
+  deno_core::extension!(
+    runtime_main,
+    deps = [runtime],
+    customizer = |ext: &mut deno_core::ExtensionBuilder| {
+      eprintln!("I am here!!!");
+      ext.esm_entry_point("ext:runtime/90_deno_ns.js");
     }
   );
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
+    let fs = std::sync::Arc::new(deno_fs::RealFs);
     let extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
@@ -308,18 +327,17 @@ mod startup_snapshot {
         false, // No --unstable
       ),
       deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
-      deno_http::deno_http::init_ops_and_esm(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false),
+      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
       runtime::init_ops_and_esm(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<SnapshotNodeEnv>(None),
-      #[cfg(not(feature = "snapshot_from_snapshot"))]
+      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
       runtime_main::init_ops_and_esm(),
     ];
 
-    create_snapshot(CreateSnapshotOptions {
+    let output = create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
@@ -327,6 +345,9 @@ mod startup_snapshot {
       compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
     });
+    for path in output.files_loaded_during_snapshot {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
   }
 }
 
@@ -347,6 +368,7 @@ fn main() {
   if env::var_os("DOCS_RS").is_some() {
     let snapshot_slice = &[];
     #[allow(clippy::needless_borrow)]
+    #[allow(clippy::disallowed_methods)]
     std::fs::write(&runtime_snapshot_path, snapshot_slice).unwrap();
   }
 

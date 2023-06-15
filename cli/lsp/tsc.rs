@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use super::analysis::CodeActionData;
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
@@ -44,6 +45,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -52,6 +54,7 @@ use serde_repr::Serialize_repr;
 use std::cmp;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::Range;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -65,24 +68,18 @@ use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^\[['"](.+)[\['"]\]$"#).unwrap());
-static CAPTION_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)").unwrap()
-});
-static CODEBLOCK_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"^\s*[~`]{3}").unwrap());
-static EMAIL_MATCH_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(.+)\s<([-.\w]+@[-.\w]+)>").unwrap());
-static HTTP_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"(?i)^https?:"#).unwrap());
-static JSDOC_LINKS_RE: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}").unwrap()
-});
-static PART_KIND_MODIFIER_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r",|\s+").unwrap());
-static PART_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"^(\S+)\s*-?\s*").unwrap());
-static SCOPE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"scope_(\d)").unwrap());
+  lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
+static CAPTION_RE: Lazy<Regex> =
+  lazy_regex!(r"<caption>(.*?)</caption>\s*\r?\n((?:\s|\S)*)");
+static CODEBLOCK_RE: Lazy<Regex> = lazy_regex!(r"^\s*[~`]{3}");
+static EMAIL_MATCH_RE: Lazy<Regex> = lazy_regex!(r"(.+)\s<([-.\w]+@[-.\w]+)>");
+static HTTP_RE: Lazy<Regex> = lazy_regex!(r#"(?i)^https?:"#);
+static JSDOC_LINKS_RE: Lazy<Regex> = lazy_regex!(
+  r"(?i)\{@(link|linkplain|linkcode) (https?://[^ |}]+?)(?:[| ]([^{}\n]+?))?\}"
+);
+static PART_KIND_MODIFIER_RE: Lazy<Regex> = lazy_regex!(r",|\s+");
+static PART_RE: Lazy<Regex> = lazy_regex!(r"^(\S+)\s*-?\s*");
+static SCOPE_RE: Lazy<Regex> = lazy_regex!(r"scope_(\d)");
 
 const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
   &[".d.ts", ".ts", ".tsx", ".js", ".jsx", ".json"];
@@ -123,7 +120,403 @@ impl TsServer {
     Self(tx)
   }
 
-  pub async fn request<R>(
+  pub async fn get_diagnostics(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifiers: Vec<ModuleSpecifier>,
+    token: CancellationToken,
+  ) -> Result<HashMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
+    let req = RequestMethod::GetDiagnostics(specifiers);
+    self.request_with_cancellation(snapshot, req, token).await
+  }
+
+  pub async fn find_references(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
+    let req = RequestMethod::FindReferences {
+      specifier,
+      position,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get references from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_navigation_tree(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+  ) -> Result<NavigationTree, AnyError> {
+    self
+      .request(snapshot, RequestMethod::GetNavigationTree(specifier))
+      .await
+  }
+
+  pub async fn configure(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    tsconfig: TsConfig,
+  ) -> Result<bool, AnyError> {
+    self
+      .request(snapshot, RequestMethod::Configure(tsconfig))
+      .await
+  }
+
+  pub async fn get_supported_code_fixes(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+  ) -> Result<Vec<String>, LspError> {
+    self
+      .request(snapshot, RequestMethod::GetSupportedCodeFixes)
+      .await
+      .map_err(|err| {
+        log::error!("Unable to get fixable diagnostics: {}", err);
+        LspError::internal_error()
+      })
+  }
+
+  pub async fn get_quick_info(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<QuickInfo>, LspError> {
+    let req = RequestMethod::GetQuickInfo((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get quick info: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_code_fixes(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    range: Range<u32>,
+    codes: Vec<String>,
+  ) -> Vec<CodeFixAction> {
+    let req =
+      RequestMethod::GetCodeFixes((specifier, range.start, range.end, codes));
+    match self.request(snapshot, req).await {
+      Ok(items) => items,
+      Err(err) => {
+        // sometimes tsc reports errors when retrieving code actions
+        // because they don't reflect the current state of the document
+        // so we will log them to the output, but we won't send an error
+        // message back to the client.
+        log::error!("Error getting actions from TypeScript: {}", err);
+        Vec::new()
+      }
+    }
+  }
+
+  pub async fn get_applicable_refactors(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    range: Range<u32>,
+    only: String,
+  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+    let req = RequestMethod::GetApplicableRefactors((
+      specifier.clone(),
+      TextSpan {
+        start: range.start,
+        length: range.end - range.start,
+      },
+      only,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_combined_code_fix(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    code_action_data: &CodeActionData,
+  ) -> Result<CombinedCodeActions, LspError> {
+    let req = RequestMethod::GetCombinedCodeFix((
+      code_action_data.specifier.clone(),
+      json!(code_action_data.fix_id.clone()),
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get combined fix from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_edits_for_refactor(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    range: Range<u32>,
+    refactor_name: String,
+    action_name: String,
+  ) -> Result<RefactorEditInfo, LspError> {
+    let req = RequestMethod::GetEditsForRefactor((
+      specifier,
+      TextSpan {
+        start: range.start,
+        length: range.end - range.start,
+      },
+      refactor_name,
+      action_name,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_document_highlights(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+    files_to_search: Vec<ModuleSpecifier>,
+  ) -> Result<Option<Vec<DocumentHighlights>>, LspError> {
+    let req = RequestMethod::GetDocumentHighlights((
+      specifier,
+      position,
+      files_to_search,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get document highlights from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_definition(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<DefinitionInfoAndBoundSpan>, LspError> {
+    let req = RequestMethod::GetDefinition((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get definition from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_type_definition(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<DefinitionInfo>>, LspError> {
+    let req = RequestMethod::GetTypeDefinition {
+      specifier,
+      position,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get type definition from TypeScript: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn get_completions(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+    options: GetCompletionsAtPositionOptions,
+  ) -> Option<CompletionInfo> {
+    let req = RequestMethod::GetCompletions((specifier, position, options));
+    match self.request(snapshot, req).await {
+      Ok(maybe_info) => maybe_info,
+      Err(err) => {
+        log::error!("Unable to get completion info from TypeScript: {:#}", err);
+        None
+      }
+    }
+  }
+
+  pub async fn get_completion_details(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    args: GetCompletionDetailsArgs,
+  ) -> Result<Option<CompletionEntryDetails>, AnyError> {
+    let req = RequestMethod::GetCompletionDetails(args);
+    self.request(snapshot, req).await
+  }
+
+  pub async fn get_implementations(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<ImplementationLocation>>, LspError> {
+    let req = RequestMethod::GetImplementation((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_outlining_spans(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+  ) -> Result<Vec<OutliningSpan>, LspError> {
+    let req = RequestMethod::GetOutliningSpans(specifier);
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn provide_call_hierarchy_incoming_calls(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Vec<CallHierarchyIncomingCall>, LspError> {
+    let req =
+      RequestMethod::ProvideCallHierarchyIncomingCalls((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn provide_call_hierarchy_outgoing_calls(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Vec<CallHierarchyOutgoingCall>, LspError> {
+    let req =
+      RequestMethod::ProvideCallHierarchyOutgoingCalls((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn prepare_call_hierarchy(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<OneOrMany<CallHierarchyItem>>, LspError> {
+    let req = RequestMethod::PrepareCallHierarchy((specifier, position));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn find_rename_locations(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<Option<Vec<RenameLocation>>, LspError> {
+    let req = RequestMethod::FindRenameLocations {
+      specifier,
+      position,
+      find_in_strings: false,
+      find_in_comments: false,
+      provide_prefix_and_suffix_text_for_rename: false,
+    };
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_smart_selection_range(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+  ) -> Result<SelectionRange, LspError> {
+    let req = RequestMethod::GetSmartSelectionRange((specifier, position));
+
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_encoded_semantic_classifications(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    range: Range<u32>,
+  ) -> Result<Classifications, LspError> {
+    let req = RequestMethod::GetEncodedSemanticClassifications((
+      specifier,
+      TextSpan {
+        start: range.start,
+        length: range.end - range.start,
+      },
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_signature_help_items(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+    options: SignatureHelpItemsOptions,
+  ) -> Result<Option<SignatureHelpItems>, LspError> {
+    let req =
+      RequestMethod::GetSignatureHelpItems((specifier, position, options));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver: {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_navigate_to_items(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    args: GetNavigateToItemsArgs,
+  ) -> Result<Vec<NavigateToItem>, LspError> {
+    let req = RequestMethod::GetNavigateToItems(args);
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed request to tsserver: {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn provide_inlay_hints(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    text_span: TextSpan,
+    user_preferences: UserPreferences,
+  ) -> Result<Option<Vec<InlayHint>>, LspError> {
+    let req = RequestMethod::ProvideInlayHints((
+      specifier,
+      text_span,
+      user_preferences,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Unable to get inlay hints: {}", err);
+      LspError::internal_error()
+    })
+  }
+
+  pub async fn restart(&self, snapshot: Arc<StateSnapshot>) {
+    let _: bool = self
+      .request(snapshot, RequestMethod::Restart)
+      .await
+      .unwrap();
+  }
+
+  async fn request<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -136,7 +529,7 @@ impl TsServer {
       .await
   }
 
-  pub async fn request_with_cancellation<R>(
+  async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: RequestMethod,
@@ -151,26 +544,6 @@ impl TsServer {
     }
     let value = rx.await??;
     Ok(serde_json::from_value::<R>(value)?)
-  }
-
-  // todo(dsherret): refactor the rest of the request methods to have
-  // methods to call on this struct, then make `RequestMethod` and
-  // friends internal
-
-  pub async fn find_references(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    specifier: &ModuleSpecifier,
-    position: u32,
-  ) -> Result<Option<Vec<ReferencedSymbol>>, LspError> {
-    let req = RequestMethod::FindReferences {
-      specifier: specifier.clone(),
-      position,
-    };
-    self.request(snapshot, req).await.map_err(|err| {
-      log::error!("Unable to get references from TypeScript: {}", err);
-      LspError::internal_error()
-    })
   }
 }
 
@@ -2768,7 +3141,7 @@ fn op_resolve(
       let resolved = state.state_snapshot.documents.resolve(
         args.specifiers,
         &referrer_doc,
-        state.state_snapshot.maybe_npm_resolver.as_ref(),
+        state.state_snapshot.maybe_node_resolver.as_ref(),
       );
       Ok(
         resolved
@@ -2887,9 +3260,6 @@ deno_core::extension!(deno_tsc,
       Arc::new(StateSnapshot::default()),
       options.performance,
     ));
-  },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
   },
 );
 
@@ -3166,9 +3536,16 @@ impl From<&CompletionItemData> for GetCompletionDetailsArgs {
   }
 }
 
+#[derive(Debug)]
+pub struct GetNavigateToItemsArgs {
+  pub search: String,
+  pub max_result_count: Option<u32>,
+  pub file: Option<String>,
+}
+
 /// Methods that are supported by the Language Service in the compiler isolate.
 #[derive(Debug)]
-pub enum RequestMethod {
+enum RequestMethod {
   /// Configure the compilation settings for the server.
   Configure(TsConfig),
   /// Get rename locations at a given position.
@@ -3203,11 +3580,7 @@ pub enum RequestMethod {
   /// Get implementation information for a specific position.
   GetImplementation((ModuleSpecifier, u32)),
   /// Get "navigate to" items, which are converted to workspace symbols
-  GetNavigateToItems {
-    search: String,
-    max_result_count: Option<u32>,
-    file: Option<String>,
-  },
+  GetNavigateToItems(GetNavigateToItemsArgs),
   /// Get a "navigation tree" for a specifier.
   GetNavigationTree(ModuleSpecifier),
   /// Get outlining spans for a specifier.
@@ -3361,11 +3734,11 @@ impl RequestMethod {
         "specifier": state.denormalize_specifier(specifier),
         "position": position,
       }),
-      RequestMethod::GetNavigateToItems {
+      RequestMethod::GetNavigateToItems(GetNavigateToItemsArgs {
         search,
         max_result_count,
         file,
-      } => json!({
+      }) => json!({
         "id": id,
         "method": "getNavigateToItems",
         "search": search,
@@ -3475,7 +3848,7 @@ impl RequestMethod {
 }
 
 /// Send a request into a runtime and return the JSON value of the response.
-pub fn request(
+fn request(
   runtime: &mut JsRuntime,
   state_snapshot: Arc<StateSnapshot>,
   method: RequestMethod,
@@ -3530,7 +3903,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location, Default::default());
+    let mut documents = Documents::new(location.to_path_buf());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3553,7 +3926,7 @@ mod tests {
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug).unwrap();
@@ -4033,7 +4406,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(&location);
+    let cache = HttpCache::new(location);
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache

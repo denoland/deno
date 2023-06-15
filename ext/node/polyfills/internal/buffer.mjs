@@ -860,31 +860,7 @@ function _hexSlice(buf, start, end) {
 }
 
 Buffer.prototype.slice = function slice(start, end) {
-  const len = this.length;
-  start = ~~start;
-  end = end === void 0 ? len : ~~end;
-  if (start < 0) {
-    start += len;
-    if (start < 0) {
-      start = 0;
-    }
-  } else if (start > len) {
-    start = len;
-  }
-  if (end < 0) {
-    end += len;
-    if (end < 0) {
-      end = 0;
-    }
-  } else if (end > len) {
-    end = len;
-  }
-  if (end < start) {
-    end = start;
-  }
-  const newBuf = this.subarray(start, end);
-  Object.setPrototypeOf(newBuf, Buffer.prototype);
-  return newBuf;
+  return this.subarray(start, end);
 };
 
 Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(
