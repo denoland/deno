@@ -53,8 +53,11 @@ class _Worker extends EventEmitter {
       specifier = `data:text/javascript,${specifier}`;
     } else if (typeof specifier === "string") {
       specifier = resolve(specifier);
-      const pkg = Deno[Deno.internal].core.ops
-        .op_require_read_closest_package_json(specifier);
+      let pkg;
+      try {
+        pkg = Deno[Deno.internal].core.ops
+          .op_require_read_closest_package_json(specifier);
+      } catch (_) {}
       if (
         !(specifier.toString().endsWith(".mjs") ||
           (pkg && pkg.exists && pkg.typ == "module"))
