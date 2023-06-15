@@ -1,6 +1,0 @@
-{
-  "version": "2",
-  "remote": {
-    "https://localhost:5545/subdir/print_hello.ts": "fa6692c8f9ff3fb107e773c3ece5274e9d08be282867a1e3ded1d9c00fcaa63c"
-  }
-}

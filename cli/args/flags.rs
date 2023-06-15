@@ -624,14 +624,16 @@ impl Flags {
       arg == "--allow-all"
         || arg == "--allow-hrtime"
         || arg.starts_with("--allow-env")
+        || arg.starts_with("--deny-env")
         || arg.starts_with("--allow-ffi")
+        || arg.starts_with("--deny-ffi")
         || arg.starts_with("--allow-net")
         || arg.starts_with("--allow-read")
+        || arg.starts_with("--deny-read")
         || arg.starts_with("--allow-run")
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--allow-write")
-        || arg.starts_with("--deny-env")
-        || arg.starts_with("--deny-read")
+        || arg.starts_with("--deny-write")
     })
   }
 }
