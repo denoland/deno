@@ -8,7 +8,7 @@ import {
   O_SYNC,
   O_TRUNC,
   O_WRONLY,
-} from "node:fs";
+} from "./_fs_constants.ts";
 import {
   assert,
   assertEquals,
@@ -46,7 +46,7 @@ Deno.test({
   name: "SYNC: open file",
   fn() {
     const file = Deno.makeTempFileSync();
-    const fd = openSync(file);
+    const fd = openSync(file, "r");
     assert(Deno.resources()[fd]);
     closeSync(fd);
   },
@@ -390,7 +390,7 @@ Deno.test({
 
 Deno.test("[std/node/fs] open callback isn't called twice if error is thrown", async () => {
   const tempFile = await Deno.makeTempFile();
-  const importUrl = new URL("./_fs_open.ts", import.meta.url);
+  const importUrl = new URL("node:fs", import.meta.url);
   await assertCallbackErrorUncaught({
     prelude: `import { open } from ${JSON.stringify(importUrl)}`,
     invocation: `open(${JSON.stringify(tempFile)}, `,
