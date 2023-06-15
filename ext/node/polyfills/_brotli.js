@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "ext:deno_node/_utils.ts";
+
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Transform } from "ext:deno_node/stream.ts";
@@ -28,9 +28,11 @@ export function createBrotliDecompress(options) {
 export class BrotliDecompress extends Transform {
   #context;
 
-  constructor(options = {}) {
+  // TODO(littledivy): use `options` argument
+  constructor(_options = {}) {
     super({
-      transform(chunk, encoding, callback) {
+      // TODO(littledivy): use `encoding` argument
+      transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
         const output = new Uint8Array(1024);
         const avail = ops.op_brotli_decompress_stream(context, input, output);
@@ -52,7 +54,8 @@ export class BrotliCompress extends Transform {
 
   constructor(options = {}) {
     super({
-      transform(chunk, encoding, callback) {
+      // TODO(littledivy): use `encoding` argument
+      transform(chunk, _encoding, callback) {
         const input = toU8(chunk);
         const output = new Uint8Array(brotliMaxCompressedSize(input.length));
         const avail = ops.op_brotli_compress_stream(context, input, output);
