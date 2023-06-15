@@ -8,26 +8,23 @@ https://github.com/denoland/deno_install
 
 ### 1.34.3 / 2023.06.15
 
-- Revert "refactor(core): cleanup feature flags for js source inclusion…
-  (#19490)
-- feat(kv) queue implementation (#19459)
-- feat(node): HTTPS server (#19362)
-- feat: Adaptations to support OpenBSD port (#19153)
+- feat(UNSTABLE) kv queue implementation (#19459)
 - fix(cli): avoid crash on import of invalid module names (#19523)
 - fix(compile): some npm dependencies were missing in compiled output (#19503)
 - fix(config): do not canonicalize config file path before loading (#19436)
 - fix(ext/http): Include hostname in onListen argument (#19497)
 - fix(ext/http): replace await Deno.serve with await Deno.serve().finished
   (#19485)
+- fix(ext/node): HTTPS server (#19362)
 - fix(ext/node): handle 'upgrade' responses (#19412)
+- fix(ext/node): make Buffer.slice be the same as subarray (#19481)
 - fix(ext/websockets): ensure we fully send frames before close (#19484)
 - fix(fmt): do not panic formatting json with multiple values (#19442)
 - fix(lsp): don't pre-load documents matched in the config file's "exclude"
   (#19431)
 - fix(lsp): update import map config when deno.json changes (#19476)
-- fix(node): Worker constructor doesn't check type: module of package.json
+- fix(ext/node): Worker constructor doesn't check type: module of package.json
   (#19480)
-- fix(node/buffer): make slice be the same as subarray (#19481)
 - fix(npm): warn when tarball contains hardlink or symlink (#19474)
 - fix: reload config files on watcher restarts (#19487)
 - perf(ext/http): from_maybe_shared_unchecked for header values (#19478)
@@ -36,7 +33,6 @@ https://github.com/denoland/deno_install
 - perf(serve): hoist promise error callback (#19456)
 - perf(serve): hoist repeated condition (#19449)
 - perf(web): optimize timer resolution (#19493)
-- perf: add Tokio runtime monitor (#19415)
 - perf: don't run microtask checkpoint if macrotask callback did no work
   (#19492)
 - perf: optimize ByteString checks, hoist server rid getter (#19452)
