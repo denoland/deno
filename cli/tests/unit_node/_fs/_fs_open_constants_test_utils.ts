@@ -1,3 +1,4 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 export const fs = {
   UV_FS_SYMLINK_DIR: 1,
   UV_FS_SYMLINK_JUNCTION: 2,
