@@ -9,6 +9,7 @@ import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
 
 let environmentData = new Map();
 let threads = 0;
+const { core } = globalThis.__bootstrap;
 
 export interface WorkerOptions {
   // only for typings
@@ -55,8 +56,7 @@ class _Worker extends EventEmitter {
       specifier = resolve(specifier);
       let pkg;
       try {
-        pkg = Deno[Deno.internal].core.ops
-          .op_require_read_closest_package_json(specifier);
+        pkg = core.ops.op_require_read_closest_package_json(specifier);
       } catch (_) {
         // empty catch block when package json might not be present
       }
