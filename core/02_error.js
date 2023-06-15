@@ -2,9 +2,6 @@
 "use strict";
 
 ((window) => {
-  if (globalThis.__bootstrap.core.prepareStackTrace) {
-    return;
-  }
   const core = Deno.core;
   const ops = core.ops;
   const {
@@ -17,7 +14,14 @@
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
+    SymbolFor
   } = window.__bootstrap.primordials;
+
+  const key = SymbolFor("02_error.js");
+  if (globalThis.__bootstrap[key]) {
+    return;
+  }
+  globalThis.__bootstrap[key] = true;
 
   // Keep in sync with `cli/fmt_errors.rs`.
   function formatLocation(cse) {
