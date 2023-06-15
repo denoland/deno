@@ -82,7 +82,7 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
-      if flags.watch.is_some() {
+      if bench_flags.watch.is_some() {
         tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
@@ -153,7 +153,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags).await
+        tools::run::run_script(flags, run_flags).await
       }
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
@@ -161,7 +161,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
-        if let Some(ref coverage_dir) = flags.coverage_dir {
+        if let Some(ref coverage_dir) = test_flags.coverage_dir {
           std::fs::create_dir_all(coverage_dir)
             .with_context(|| format!("Failed creating: {coverage_dir}"))?;
           // this is set in order to ensure spawned processes use the same
@@ -172,7 +172,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           );
         }
 
-        if flags.watch.is_some() {
+        if test_flags.watch.is_some() {
           tools::test::run_tests_with_watch(flags, test_flags).await
         } else {
           tools::test::run_tests(flags, test_flags).await
