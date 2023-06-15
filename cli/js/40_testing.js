@@ -228,7 +228,7 @@ function prettyResourceNames(name) {
       return ["A fetch request", "started", "finished"];
     case "fetchRequestBody":
       return ["A fetch request body", "created", "closed"];
-    case "fetchResponseBody":
+    case "fetchResponse":
       return ["A fetch response body", "created", "consumed"];
     case "httpClient":
       return ["An HTTP client", "created", "closed"];
@@ -295,7 +295,7 @@ function resourceCloseHint(name) {
       return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";
     case "fetchRequestBody":
       return "Terminate the request body `ReadableStream` by closing or erroring it.";
-    case "fetchResponseBody":
+    case "fetchResponse":
       return "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.";
     case "httpClient":
       return "Close the HTTP client by calling `httpClient.close()`.";
