@@ -342,7 +342,7 @@ fn test_mods() {
   deno_core::extension!(test_ext, ops = [op_test]);
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init()],
     module_loader: Some(loader),
     ..Default::default()
   });

@@ -60,9 +60,7 @@ pub fn create_snapshot(
     .flatten()
   {
     use crate::ExtensionFileSourceCode;
-    if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
-      &source.code
-    {
+    if let ExtensionFileSourceCode::LoadAtRuntime(path) = &source.code {
       files_loaded_during_snapshot.push(path.clone());
     }
   }

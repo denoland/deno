@@ -22,15 +22,15 @@ impl deno_web::TimersPermission for Permissions {
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::deno_webidl::init_ops_and_esm(),
-    deno_url::deno_url::init_ops_and_esm(),
-    deno_console::deno_console::init_ops_and_esm(),
-    deno_web::deno_web::init_ops_and_esm::<Permissions>(BlobStore::default(), None),
+    deno_webidl::deno_webidl::init(),
+    deno_url::deno_url::init(),
+    deno_console::deno_console::init(),
+    deno_web::deno_web::init::<Permissions>(BlobStore::default(), None),
     Extension::builder("bench_setup")
     .esm(vec![
       ExtensionFileSource {
-        specifier: "ext:bench_setup/setup", 
-        code: ExtensionFileSourceCode::IncludedInBinary(r#"
+        specifier: "ext:bench_setup/setup",
+        code: ExtensionFileSourceCode::Static(r#"
       import { setTimeout, handleTimerMacrotask } from "ext:deno_web/02_timers.js";
       globalThis.setTimeout = setTimeout;
       Deno.core.setMacrotaskCallback(handleTimerMacrotask);

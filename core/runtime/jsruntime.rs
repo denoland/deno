@@ -502,7 +502,7 @@ impl JsRuntime {
     maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> JsRuntime {
     let init_mode = InitMode::from_options(&options);
-    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
+    let (op_state, ops) = Self::create_opstate(&mut options);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -955,20 +955,11 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn create_opstate(
-    options: &mut RuntimeOptions,
-    init_mode: InitMode,
-  ) -> (OpState, Vec<OpDecl>) {
+  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    if init_mode == InitMode::FromSnapshot {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops());
-    } else {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
-    }
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::core::init());
 
     let ops = Self::collect_ops(&mut options.extensions);
 
@@ -1800,6 +1791,19 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
+    if status == v8::ModuleStatus::Evaluated {
+      let (sender, receiver) = oneshot::channel();
+      sender.send(Ok(())).unwrap();
+      return receiver;
+    }
+    if status == v8::ModuleStatus::Errored {
+      let (sender, receiver) = oneshot::channel();
+      let exception = module.get_exception();
+      sender
+        .send(exception_to_err_result(tc_scope, exception, false))
+        .unwrap();
+      return receiver;
+    }
     assert_eq!(
       status,
       v8::ModuleStatus::Instantiated,

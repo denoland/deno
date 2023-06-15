@@ -179,29 +179,6 @@ impl ModuleLoader for ExtModuleLoader {
   }
 }
 
-impl Drop for ExtModuleLoader {
-  fn drop(&mut self) {
-    let sources = self.sources.get_mut();
-    let used_specifiers = self.used_specifiers.get_mut();
-    let unused_modules: Vec<_> = sources
-      .iter()
-      .filter(|(k, _)| !used_specifiers.contains(k.as_str()))
-      .collect();
-
-    if !unused_modules.is_empty() {
-      let mut msg =
-        "Following modules were passed to ExtModuleLoader but never used:\n"
-          .to_string();
-      for m in unused_modules {
-        msg.push_str("  - ");
-        msg.push_str(m.0);
-        msg.push('\n');
-      }
-      panic!("{}", msg);
-    }
-  }
-}
-
 /// Basic file system module loader.
 ///
 /// Note that this loader will **block** event loop

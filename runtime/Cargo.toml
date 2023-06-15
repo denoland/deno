@@ -14,15 +14,8 @@ description = "Provides the deno runtime library"
 docsrs = []
 # A feature that disables creation of startup snapshot during in the build script.
 dont_create_runtime_snapshot = []
-# A feature that changes how startup snapshot is generated, that allows
-# extending it in embedder crates.
-snapshot_from_snapshot = []
-# A feature that disables embedding of the JavaScript source files in the binary.
-# With this feature enabled, the sources must be consumed during build time,
-# by creating a startup snapshot.
-include_js_files_for_snapshotting = [
-  "deno_core/include_js_files_for_snapshotting",
-]
+# Enable to exclude `js/99_main.js` from the generated snapshot.
+exclude_js_main_from_snapshot = []
 
 [lib]
 name = "deno_runtime"
@@ -41,7 +34,7 @@ deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true
-deno_core.workspace = true
+deno_core = { workspace = true, features = ["runtime_js_sources"] }
 deno_crypto.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true

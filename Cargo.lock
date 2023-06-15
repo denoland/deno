@@ -949,6 +949,7 @@ dependencies = [
  "anyhow",
  "bytes",
  "deno_ast",
+ "deno_core",
  "deno_ops",
  "futures",
  "indexmap",
