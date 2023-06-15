@@ -71,6 +71,7 @@ use crate::file_fetcher::FileFetcher;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmProcessState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::glob::expand_globs;
 use crate::version;
 
 use self::config_file::FmtConfig;
@@ -147,7 +148,6 @@ impl BenchOptions {
 
 #[derive(Clone, Debug, Default)]
 pub struct FmtOptions {
-  pub is_stdin: bool,
   pub check: bool,
   pub options: FmtOptionsConfig,
   pub files: FilesConfig,
@@ -156,24 +156,12 @@ pub struct FmtOptions {
 impl FmtOptions {
   pub fn resolve(
     maybe_fmt_config: Option<FmtConfig>,
-    mut maybe_fmt_flags: Option<FmtFlags>,
+    maybe_fmt_flags: Option<FmtFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(fmt_flags) = maybe_fmt_flags.as_mut() {
-      let args = &mut fmt_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
     let (maybe_config_options, maybe_config_files) =
       maybe_fmt_config.map(|c| (c.options, c.files)).unzip();
 
     Ok(Self {
-      is_stdin,
       check: maybe_fmt_flags.as_ref().map(|f| f.check).unwrap_or(false),
       options: resolve_fmt_options(
         maybe_fmt_flags.as_ref(),
@@ -279,27 +267,14 @@ pub enum LintReporterKind {
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
-  pub is_stdin: bool,
   pub reporter_kind: LintReporterKind,
 }
 
 impl LintOptions {
   pub fn resolve(
     maybe_lint_config: Option<LintConfig>,
-    mut maybe_lint_flags: Option<LintFlags>,
+    maybe_lint_flags: Option<LintFlags>,
   ) -> Result<Self, AnyError> {
-    let is_stdin = if let Some(lint_flags) = maybe_lint_flags.as_mut() {
-      let args = &mut lint_flags.files.include;
-      if args.len() == 1 && args[0].to_string_lossy() == "-" {
-        args.pop(); // remove the "-" arg
-        true
-      } else {
-        false
-      }
-    } else {
-      false
-    };
-
     let mut maybe_reporter_kind =
       maybe_lint_flags.as_ref().and_then(|lint_flags| {
         if lint_flags.json {
@@ -346,7 +321,6 @@ impl LintOptions {
       maybe_lint_config.map(|c| (c.files, c.rules)).unzip();
     Ok(Self {
       reporter_kind: maybe_reporter_kind.unwrap_or_default(),
-      is_stdin,
       files: resolve_files(maybe_config_files, Some(maybe_file_flags))?,
       rules: resolve_lint_rules_options(
         maybe_config_rules,
@@ -1111,10 +1085,6 @@ impl CliOptions {
     &self.flags.cache_path
   }
 
-  pub fn no_clear_screen(&self) -> bool {
-    self.flags.no_clear_screen
-  }
-
   pub fn no_prompt(&self) -> bool {
     resolve_no_prompt(&self.flags)
   }
@@ -1169,8 +1139,25 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn watch_paths(&self) -> &Option<Vec<PathBuf>> {
-    &self.flags.watch
+  pub fn watch_paths(&self) -> Option<Vec<PathBuf>> {
+    if let Some(mut paths) = self.flags.watch.clone() {
+      if let Ok(Some(import_map_path)) = self
+        .resolve_import_map_specifier()
+        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+      {
+        paths.push(import_map_path);
+      }
+      if let Some(specifier) = self.maybe_config_file_specifier() {
+        if specifier.scheme() == "file" {
+          if let Ok(path) = specifier.to_file_path() {
+            paths.push(path);
+          }
+        }
+      }
+      Some(paths)
+    } else {
+      None
+    }
   }
 }
 
@@ -1312,40 +1299,6 @@ impl StorageKeyResolver {
   }
 }
 
-fn expand_globs(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AnyError> {
-  let mut new_paths = vec![];
-  for path in paths {
-    let path_str = path.to_string_lossy();
-    if path_str.chars().any(|c| matches!(c, '*' | '?')) {
-      // Escape brackets - we currently don't support them, because with introduction
-      // of glob expansion paths like "pages/[id].ts" would suddenly start giving
-      // wrong results. We might want to revisit that in the future.
-      let escaped_path_str = path_str.replace('[', "[[]").replace(']', "[]]");
-      let globbed_paths = glob::glob_with(
-        &escaped_path_str,
-        // Matches what `deno_task_shell` does
-        glob::MatchOptions {
-          // false because it should work the same way on case insensitive file systems
-          case_sensitive: false,
-          // true because it copies what sh does
-          require_literal_separator: true,
-          // true because it copies with sh does—these files are considered "hidden"
-          require_literal_leading_dot: true,
-        },
-      )
-      .with_context(|| format!("Failed to expand glob: \"{}\"", path_str))?;
-
-      for globbed_path_result in globbed_paths {
-        new_paths.push(globbed_path_result?);
-      }
-    } else {
-      new_paths.push(path.clone());
-    }
-  }
-
-  Ok(new_paths)
-}
-
 /// Collect included and ignored files. CLI flags take precedence
 /// over config file, i.e. if there's `files.ignore` in config file
 /// and `--ignore` CLI flag, only the flag value is taken into account.
@@ -1364,11 +1317,11 @@ fn resolve_files(
   }
   // Now expand globs if there are any
   if !result.include.is_empty() {
-    result.include = expand_globs(&result.include)?;
+    result.include = expand_globs(result.include)?;
   }
 
   if !result.exclude.is_empty() {
-    result.exclude = expand_globs(&result.exclude)?;
+    result.exclude = expand_globs(result.exclude)?;
   }
 
   Ok(result)

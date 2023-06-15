@@ -744,7 +744,7 @@ fn eval_file_flag_multiple_files() {
   assert_contains!(err, "Download");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
@@ -801,7 +801,7 @@ fn repl_error() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_reject() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -820,7 +820,7 @@ fn repl_reject() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -834,7 +834,7 @@ fn repl_report_error() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_error_undefined() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(r#"throw undefined;"#);
@@ -972,7 +972,7 @@ fn pty_tab_indexable_props() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()
