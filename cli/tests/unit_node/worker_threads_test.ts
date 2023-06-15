@@ -136,14 +136,10 @@ Deno.test({
 Deno.test({
   name: "[worker_threads] worker thread with type module",
   fn() {
-    try {
-      const worker = new workerThreads.Worker(
-        new URL("./testdata/worker_module/index.js", import.meta.url),
-      );
-      worker.terminate();
-    } catch (e) {
-      assert(false);
-    }
+    const worker = new workerThreads.Worker(
+      new URL("./testdata/worker_module/index.js", import.meta.url),
+    );
+    worker.terminate();
   },
 });
 

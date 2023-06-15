@@ -57,7 +57,9 @@ class _Worker extends EventEmitter {
       try {
         pkg = Deno[Deno.internal].core.ops
           .op_require_read_closest_package_json(specifier);
-      } catch (_) {}
+      } catch (_) {
+        // empty catch block when package json might not be present
+      }
       if (
         !(specifier.toString().endsWith(".mjs") ||
           (pkg && pkg.exists && pkg.typ == "module"))
