@@ -1726,12 +1726,15 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !flags.no_clear_screen;
   file_watcher::watch_func(
     flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen,
+      clear_screen: !test_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
     },
     move |flags, sender, changed_paths| {
       let test_flags = test_flags.clone();
@@ -1743,9 +1746,7 @@ pub async fn run_tests_with_watch(
         let cli_options = factory.cli_options();
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
-        if let Some(watch_paths) = cli_options.watch_paths() {
-          let _ = sender.send(watch_paths);
-        }
+        let _ = sender.send(cli_options.watch_paths());
         let _ = sender.send(test_options.files.include.clone());
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();

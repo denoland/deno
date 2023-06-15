@@ -385,6 +385,7 @@ async fn fmt_watch_test() {
     wait_contains("Checked", &mut stderr_lines).await,
     "Checked 1 file"
   );
+  wait_contains("Fmt finished", &mut stderr_lines).await;
 
   let expected = std::fs::read_to_string(fixed.clone()).unwrap();
   let actual = std::fs::read_to_string(badly_formatted.clone()).unwrap();
@@ -401,6 +402,7 @@ async fn fmt_watch_test() {
     wait_contains("Checked", &mut stderr_lines).await,
     "Checked 1 file"
   );
+  wait_contains("Fmt finished", &mut stderr_lines).await;
 
   // Check if file has been automatically formatted by watcher
   let expected = std::fs::read_to_string(fixed).unwrap();
