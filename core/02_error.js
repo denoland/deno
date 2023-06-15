@@ -14,7 +14,7 @@
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
-    SymbolFor
+    SymbolFor,
   } = window.__bootstrap.primordials;
 
   const key = SymbolFor("02_error.js");
