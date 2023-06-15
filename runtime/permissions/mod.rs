@@ -563,6 +563,20 @@ pub enum RunDescriptor {
   Path(PathBuf),
 }
 
+impl Descriptor for RunDescriptor {
+  fn type_name() -> &'static str {
+    "run"
+  }
+
+  fn type_description() -> &'static str {
+    "run commands"
+  }
+
+  fn name(&self) -> Cow<str> {
+    Cow::from(self.to_string())
+  }
+}
+
 impl FromStr for RunDescriptor {
   type Err = ();
 
@@ -1131,104 +1145,18 @@ impl Default for UnaryPermission<SysDescriptor> {
   }
 }
 
-impl UnaryPermission<RunDescriptor> {
+impl UnaryPermission2<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
-    if self.global_state == PermissionState::Denied
-      && match cmd {
-        None => true,
-        Some(cmd) => self
-          .denied_list
-          .contains(&RunDescriptor::from_str(cmd).unwrap()),
-      }
-    {
-      PermissionState::Denied
-    } else if self.global_state == PermissionState::Granted
-      || match cmd {
-        None => false,
-        Some(cmd) => self
-          .granted_list
-          .contains(&RunDescriptor::from_str(cmd).unwrap()),
-      }
-    {
-      PermissionState::Granted
-    } else {
-      PermissionState::Prompt
-    }
+    self.query_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), None)
   }
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
-    if let Some(cmd) = cmd {
-      let state = self.query(Some(cmd));
-      if state == PermissionState::Prompt {
-        match permission_prompt(
-          &format!("run access to \"{cmd}\""),
-          self.name,
-          Some("Deno.permissions.query()"),
-          true,
-        ) {
-          PromptResponse::Allow => {
-            self
-              .granted_list
-              .insert(RunDescriptor::from_str(cmd).unwrap());
-            PermissionState::Granted
-          }
-          PromptResponse::Deny => {
-            self
-              .denied_list
-              .insert(RunDescriptor::from_str(cmd).unwrap());
-            self.global_state = PermissionState::Denied;
-            PermissionState::Denied
-          }
-          PromptResponse::AllowAll => {
-            self.granted_list.clear();
-            self.global_state = PermissionState::Granted;
-            PermissionState::Granted
-          }
-        }
-      } else if state == PermissionState::Granted {
-        self
-          .granted_list
-          .insert(RunDescriptor::from_str(cmd).unwrap());
-        PermissionState::Granted
-      } else {
-        state
-      }
-    } else {
-      let state = self.query(None);
-      if state == PermissionState::Prompt {
-        if PromptResponse::Allow
-          == permission_prompt(
-            "run access",
-            self.name,
-            Some("Deno.permissions.query()"),
-            true,
-          )
-        {
-          self.granted_list.clear();
-          self.global_state = PermissionState::Granted;
-          PermissionState::Granted
-        } else {
-          self.global_state = PermissionState::Denied;
-          PermissionState::Denied
-        }
-      } else {
-        state
-      }
-    }
+    self
+      .request_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), || None)
   }
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
-    if let Some(cmd) = cmd {
-      self
-        .granted_list
-        .remove(&RunDescriptor::from_str(cmd).unwrap());
-    } else {
-      self.granted_list.clear();
-    }
-    if self.global_state == PermissionState::Granted {
-      self.global_state = PermissionState::Prompt;
-    }
-    self.query(cmd)
+    self.revoke_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()))
   }
 
   pub fn check(
@@ -1236,45 +1164,16 @@ impl UnaryPermission<RunDescriptor> {
     cmd: &str,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    let (result, prompted, is_allow_all) = self.query(Some(cmd)).check(
-      self.name,
+    self.check_desc(
+      &Some(RunDescriptor::from_str(cmd).unwrap()),
+      false,
       api_name,
-      Some(&format!("\"{cmd}\"")),
-      self.prompt,
-    );
-    if prompted {
-      if result.is_ok() {
-        if is_allow_all {
-          self.granted_list.clear();
-          self.global_state = PermissionState::Granted;
-        } else {
-          self
-            .granted_list
-            .insert(RunDescriptor::from_str(cmd).unwrap());
-        }
-      } else {
-        self
-          .denied_list
-          .insert(RunDescriptor::from_str(cmd).unwrap());
-        self.global_state = PermissionState::Denied;
-      }
-    }
-    result
+      || None,
+    )
   }
 
   pub fn check_all(&mut self, api_name: Option<&str>) -> Result<(), AnyError> {
-    let (result, prompted, _) =
-      self
-        .query(None)
-        .check(self.name, api_name, Some("all"), self.prompt);
-    if prompted {
-      if result.is_ok() {
-        self.global_state = PermissionState::Granted;
-      } else {
-        self.global_state = PermissionState::Denied;
-      }
-    }
-    result
+    self.check_desc(&None, false, api_name, || None)
   }
 }
 
@@ -1342,7 +1241,7 @@ pub struct Permissions {
   pub net: UnaryPermission<NetDescriptor>,
   pub env: UnaryPermission2<EnvDescriptor>,
   pub sys: UnaryPermission<SysDescriptor>,
-  pub run: UnaryPermission<RunDescriptor>,
+  pub run: UnaryPermission2<RunDescriptor>,
   pub ffi: UnaryPermission2<FfiDescriptor>,
   pub hrtime: UnitPermission,
 }
@@ -1355,7 +1254,7 @@ impl Default for Permissions {
       net: Permissions::new_net(&None, false).unwrap(),
       env: Permissions::new_env(&None, &None, false).unwrap(),
       sys: Permissions::new_sys(&None, false).unwrap(),
-      run: Permissions::new_run(&None, false).unwrap(),
+      run: Permissions::new_run(&None, &None, false).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, false).unwrap(),
       hrtime: Permissions::new_hrtime(false),
     }
@@ -1373,6 +1272,7 @@ pub struct PermissionsOptions {
   pub allow_read: Option<Vec<PathBuf>>,
   pub deny_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
+  pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub deny_write: Option<Vec<PathBuf>>,
@@ -1456,7 +1356,7 @@ impl Permissions {
           v.iter()
             .map(|x| {
               if x.is_empty() {
-                Err(AnyError::msg("emtpy"))
+                Err(AnyError::msg("empty"))
               } else {
                 Ok(SysDescriptor(x.to_string()))
               }
@@ -1470,25 +1370,15 @@ impl Permissions {
   }
 
   pub fn new_run(
-    state: &Option<Vec<String>>,
+    allow_list: &Option<Vec<String>>,
+    deny_list: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
-    Ok(UnaryPermission::<RunDescriptor> {
-      global_state: global_state_from_option(state),
-      granted_list: state
-        .as_ref()
-        .map(|v| {
-          v.iter()
-            .map(|x| {
-              if x.is_empty() {
-                Err(AnyError::msg("Empty path is not allowed"))
-              } else {
-                Ok(RunDescriptor::from_str(x).unwrap())
-              }
-            })
-            .collect()
-        })
-        .unwrap_or_else(|| Ok(HashSet::new()))?,
+  ) -> Result<UnaryPermission2<RunDescriptor>, AnyError> {
+    Ok(UnaryPermission2::<RunDescriptor> {
+      granted_global: global_from_option(allow_list),
+      granted_list: parse_run_list(allow_list)?,
+      denied_global: global_from_option(deny_list),
+      denied_list: parse_run_list(deny_list)?,
       prompt,
       ..Default::default()
     })
@@ -1533,7 +1423,7 @@ impl Permissions {
       net: Permissions::new_net(&opts.allow_net, opts.prompt)?,
       env: Permissions::new_env(&opts.allow_env, &opts.deny_env, opts.prompt)?,
       sys: Permissions::new_sys(&opts.allow_sys, opts.prompt)?,
-      run: Permissions::new_run(&opts.allow_run, opts.prompt)?,
+      run: Permissions::new_run(&opts.allow_run, &opts.deny_run, opts.prompt)?,
       ffi: Permissions::new_ffi(&opts.allow_ffi, &opts.deny_ffi, opts.prompt)?,
       hrtime: Permissions::new_hrtime(opts.allow_hrtime),
     })
@@ -1546,7 +1436,7 @@ impl Permissions {
       net: Permissions::new_net(&Some(vec![]), false).unwrap(),
       env: Permissions::new_env(&Some(vec![]), &None, false).unwrap(),
       sys: Permissions::new_sys(&Some(vec![]), false).unwrap(),
-      run: Permissions::new_run(&Some(vec![]), false).unwrap(),
+      run: Permissions::new_run(&Some(vec![]), &None, false).unwrap(),
       ffi: Permissions::new_ffi(&Some(vec![]), &None, false).unwrap(),
       hrtime: Permissions::new_hrtime(true),
     }
@@ -1941,6 +1831,25 @@ pub fn resolve_ffi_list(
   } else {
     Ok(HashSet::new())
   }
+}
+
+fn parse_run_list(
+  list: &Option<Vec<String>>,
+) -> Result<HashSet<RunDescriptor>, AnyError> {
+  list
+    .as_ref()
+    .map(|v| {
+      v.iter()
+        .map(|x| {
+          if x.is_empty() {
+            Err(AnyError::msg("Empty path is not allowed"))
+          } else {
+            Ok(RunDescriptor::from_str(x).unwrap())
+          }
+        })
+        .collect()
+    })
+    .unwrap_or_else(|| Ok(HashSet::new()))
 }
 
 fn escalation_error() -> AnyError {
@@ -2377,12 +2286,11 @@ pub fn create_child_permissions(
       if main_perms.run.check_all(None).is_err() {
         return Err(escalation_error());
       }
-      worker_perms.run.global_state = PermissionState::Granted;
+      worker_perms.run.granted_global = true;
     }
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.run.granted_list =
-        Permissions::new_run(&Some(granted_list), false)?.granted_list;
+      worker_perms.run.granted_list = parse_run_list(&Some(granted_list))?;
       if !worker_perms
         .run
         .granted_list
@@ -2393,10 +2301,10 @@ pub fn create_child_permissions(
       }
     }
   }
+  worker_perms.run.denied_global = main_perms.run.denied_global;
   worker_perms.run.denied_list = main_perms.run.denied_list.clone();
-  if main_perms.run.global_state == PermissionState::Denied {
-    worker_perms.run.global_state = PermissionState::Denied;
-  }
+  worker_perms.run.no_prompt_global = main_perms.run.no_prompt_global;
+  worker_perms.run.no_prompt_list = main_perms.run.no_prompt_list.clone();
   worker_perms.run.prompt = main_perms.run.prompt;
   match child_permissions_arg.write {
     ChildUnaryPermissionArg::Inherit => {
@@ -2831,9 +2739,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_sys(&Some(svec!["hostname"]), false).unwrap()
       },
-      run: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
+      run: UnaryPermission2 {
+        granted_global: false,
+        ..Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap()
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
@@ -2973,9 +2881,9 @@ mod tests {
         global_state: PermissionState::Prompt,
         ..Permissions::new_sys(&Some(svec!["hostname"]), false).unwrap()
       },
-      run: UnaryPermission {
-        global_state: PermissionState::Prompt,
-        ..Permissions::new_run(&Some(svec!["deno"]), false).unwrap()
+      run: UnaryPermission2 {
+        granted_global: false,
+        ..Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap()
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
@@ -3012,7 +2920,7 @@ mod tests {
       net: Permissions::new_net(&None, true).unwrap(),
       env: Permissions::new_env(&None, &None, true).unwrap(),
       sys: Permissions::new_sys(&None, true).unwrap(),
-      run: Permissions::new_run(&None, true).unwrap(),
+      run: Permissions::new_run(&None, &None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, true).unwrap(),
       hrtime: Permissions::new_hrtime(false),
     };
@@ -3076,7 +2984,7 @@ mod tests {
       net: Permissions::new_net(&None, true).unwrap(),
       env: Permissions::new_env(&None, &None, true).unwrap(),
       sys: Permissions::new_sys(&None, true).unwrap(),
-      run: Permissions::new_run(&None, true).unwrap(),
+      run: Permissions::new_run(&None, &None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, true).unwrap(),
       hrtime: Permissions::new_hrtime(false),
     };
@@ -3426,7 +3334,9 @@ mod tests {
       Permissions::new_env(&Some(vec![String::new()]), &None, false).is_err()
     );
     assert!(Permissions::new_sys(&Some(vec![String::new()]), false).is_err());
-    assert!(Permissions::new_run(&Some(vec![String::new()]), false).is_err());
+    assert!(
+      Permissions::new_run(&Some(vec![String::new()]), &None, false).is_err()
+    );
     assert!(
       Permissions::new_ffi(&Some(vec![PathBuf::new()]), &None, false).is_err()
     );

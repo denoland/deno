@@ -320,6 +320,7 @@ pub struct Flags {
   pub allow_read: Option<Vec<PathBuf>>,
   pub deny_read: Option<Vec<PathBuf>>,
   pub allow_run: Option<Vec<String>>,
+  pub deny_run: Option<Vec<String>>,
   pub allow_sys: Option<Vec<String>>,
   pub allow_write: Option<Vec<PathBuf>>,
   pub deny_write: Option<Vec<PathBuf>>,
@@ -480,6 +481,17 @@ impl Flags {
       _ => {}
     }
 
+    match &self.deny_run {
+      Some(run_denylist) if run_denylist.is_empty() => {
+        args.push("--deny-run".to_string());
+      }
+      Some(run_denylist) => {
+        let s = format!("--deny-run={}", run_denylist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
     match &self.allow_sys {
       Some(sys_allowlist) if sys_allowlist.is_empty() => {
         args.push("--allow-sys".to_string());
@@ -614,6 +626,7 @@ impl Flags {
       || self.allow_read.is_some()
       || self.deny_read.is_some()
       || self.allow_run.is_some()
+      || self.deny_run.is_some()
       || self.allow_sys.is_some()
       || self.allow_write.is_some()
       || self.deny_write.is_some()
@@ -631,6 +644,7 @@ impl Flags {
         || arg.starts_with("--allow-read")
         || arg.starts_with("--deny-read")
         || arg.starts_with("--allow-run")
+        || arg.starts_with("--deny-run")
         || arg.starts_with("--allow-sys")
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-write")
@@ -2052,6 +2066,16 @@ static ALLOW_RUN_HELP: &str = concat!(
   "  --allow-run=\"whoami,ps\""
 );
 
+static DENY_RUN_HELP: &str = concat!(
+  "Deny running subprocesses. Optionally specify denied runnable program names.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --deny-run\n",
+  "  --deny-run=\"whoami,ps\""
+);
+
 static ALLOW_FFI_HELP: &str = concat!(
   "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
   "Docs: https://deno.land/manual@v",
@@ -2201,6 +2225,15 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("PROGRAM_NAME")
         .help(ALLOW_RUN_HELP),
+    )
+    .arg(
+      Arg::new("deny-run")
+        .long("deny-run")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("PROGRAM_NAME")
+        .help(DENY_RUN_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
@@ -3214,6 +3247,11 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(run_wl) = matches.remove_many::<String>("allow-run") {
     flags.allow_run = Some(run_wl.collect());
     debug!("run allowlist: {:#?}", &flags.allow_run);
+  }
+
+  if let Some(run_wl) = matches.remove_many::<String>("deny-run") {
+    flags.deny_run = Some(run_wl.collect());
+    debug!("run denylist: {:#?}", &flags.deny_run);
   }
 
   if let Some(sys_wl) = matches.remove_many::<String>("allow-sys") {
