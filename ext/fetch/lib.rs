@@ -695,7 +695,7 @@ impl FetchResponseResource {
 
 impl Resource for FetchResponseResource {
   fn name(&self) -> Cow<str> {
-    "fetchResponseBody".into()
+    "fetchResponse".into()
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
