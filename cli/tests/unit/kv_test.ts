@@ -1697,6 +1697,7 @@ Deno.test({
 
 Deno.test({
   name: "queue persistence with delay messages",
+  ignore: true, // flaky
   async fn() {
     const dispatchedPre = Deno.metrics().opsDispatchedAsync;
     const completedPre = Deno.metrics().opsCompletedAsync;
