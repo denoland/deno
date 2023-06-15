@@ -9,6 +9,7 @@ import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
 
 let environmentData = new Map();
 let threads = 0;
+const { core } = globalThis.__bootstrap;
 
 export interface WorkerOptions {
   // only for typings
@@ -53,7 +54,16 @@ class _Worker extends EventEmitter {
       specifier = `data:text/javascript,${specifier}`;
     } else if (typeof specifier === "string") {
       specifier = resolve(specifier);
-      if (!specifier.toString().endsWith(".mjs")) {
+      let pkg;
+      try {
+        pkg = core.ops.op_require_read_closest_package_json(specifier);
+      } catch (_) {
+        // empty catch block when package json might not be present
+      }
+      if (
+        !(specifier.toString().endsWith(".mjs") ||
+          (pkg && pkg.exists && pkg.typ == "module"))
+      ) {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
           `data:text/javascript,(async function() {const { createRequire } = await import("node:module");const require = createRequire("${cwdFileUrl}");require("${specifier}");})();`;
