@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_webstorage"
-<<<<<<< HEAD
-version = "0.103.0"
-=======
 version = "0.104.0"
->>>>>>> ef24d1a0b (1.34.3 (#19525))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

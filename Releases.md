@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.34.3 / 2023.06.15
 
 - feat(UNSTABLE) kv queue implementation (#19459)
@@ -39,7 +37,6 @@ https://github.com/denoland/deno_install
   (#19492)
 - perf: optimize ByteString checks, hoist server rid getter (#19452)
 
->>>>>>> ef24d1a0b (1.34.3 (#19525))
 ### 1.34.2 / 2023.06.08
 
 - fix: do not show cache initialization errors if stderr is piped (#18920)
