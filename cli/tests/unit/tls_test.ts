@@ -1081,7 +1081,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  { ignore: true, permissions: { read: true, net: true } },
   async function startTls() {
     const hostname = "smtp.gmail.com";
     const port = 587;
