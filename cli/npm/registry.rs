@@ -323,10 +323,13 @@ impl CliNpmRegistryApiInner {
     self
       .load_package_info_from_registry_inner(name)
       .await
-      .with_context(||
+      .with_context(|| {
         format!(
-          "Error getting response for package '{name}'",
-        ))
+          "Error getting response at {} for package \"{}\"",
+          self.get_package_url(name),
+          name
+        )
+      })
   }
 
   async fn load_package_info_from_registry_inner(
@@ -342,7 +345,7 @@ impl CliNpmRegistryApiInner {
       ));
     }
 
-    let package_url = self.get_package_url(name)?;
+    let package_url = self.get_package_url(name);
     let guard = self.progress_bar.update(package_url.as_str());
 
     let maybe_bytes = self
@@ -359,11 +362,24 @@ impl CliNpmRegistryApiInner {
     }
   }
 
-  fn get_package_url(&self, name: &str) -> Result<Url, AnyError> {
-    match self.base_url.join(name) {
-      Ok(url) => Ok(url),
-      Err(_err) => Err(anyhow!(format!("Invalid npm package name '{name}'"))),
-    }
+  fn get_package_url(&self, name: &str) -> Url {
+    // list of all characters used in npm packages:
+    //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
+    const ASCII_SET: percent_encoding::AsciiSet =
+      percent_encoding::NON_ALPHANUMERIC
+        .remove(b'!')
+        .remove(b'\'')
+        .remove(b'(')
+        .remove(b')')
+        .remove(b'*')
+        .remove(b'-')
+        .remove(b'.')
+        .remove(b'/')
+        .remove(b'@')
+        .remove(b'_')
+        .remove(b'~');
+    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+    self.base_url.join(&name.to_string()).unwrap()
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
