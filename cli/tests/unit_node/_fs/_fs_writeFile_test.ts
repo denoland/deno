@@ -242,7 +242,6 @@ Deno.test(
     // The "as any" is necessary due to https://github.com/denoland/deno/issues/19527
     // deno-lint-ignore no-explicit-any
     const signal = controller.signal as any;
-    
 
     const writeFilePromise = new Promise<void>((resolve, reject) => {
       writeFile(tempFile, "hello world", { signal }, (err) => {
