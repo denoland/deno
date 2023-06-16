@@ -24,7 +24,7 @@ use std::str::FromStr;
 
 use crate::util::fs::canonicalize_path;
 
-use super::flags_allow_net;
+use super::flags_net;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -315,6 +315,7 @@ pub struct Flags {
   pub deny_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
+  pub deny_net: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<PathBuf>>,
   pub deny_ffi: Option<Vec<PathBuf>>,
   pub allow_read: Option<Vec<PathBuf>>,
@@ -430,6 +431,17 @@ impl Flags {
       }
       Some(net_allowlist) => {
         let s = format!("--allow-net={}", net_allowlist.join(","));
+        args.push(s);
+      }
+      _ => {}
+    }
+
+    match &self.deny_net {
+      Some(net_denylist) if net_denylist.is_empty() => {
+        args.push("--deny-net".to_string());
+      }
+      Some(net_denylist) => {
+        let s = format!("--deny-net={}", net_denylist.join(","));
         args.push(s);
       }
       _ => {}
@@ -635,6 +647,7 @@ impl Flags {
       || self.allow_ffi.is_some()
       || self.deny_ffi.is_some()
       || self.allow_net.is_some()
+      || self.deny_net.is_some()
       || self.allow_read.is_some()
       || self.deny_read.is_some()
       || self.allow_run.is_some()
@@ -654,6 +667,7 @@ impl Flags {
         || arg.starts_with("--allow-ffi")
         || arg.starts_with("--deny-ffi")
         || arg.starts_with("--allow-net")
+        || arg.starts_with("--deny-net")
         || arg.starts_with("--allow-read")
         || arg.starts_with("--deny-read")
         || arg.starts_with("--allow-run")
@@ -2040,6 +2054,16 @@ static ALLOW_NET_HELP: &str = concat!(
   "  --allow-net=\"localhost:8080,deno.land\""
 );
 
+static DENY_NET_HELP: &str = concat!(
+  "Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --deny-net\n",
+  "  --deny-net=\"localhost:8080,deno.land\""
+);
+
 static ALLOW_ENV_HELP: &str = concat!(
   "Allow access to system environment information. Optionally specify accessible environment variables.\n",
   "Docs: https://deno.land/manual@v",
@@ -2188,7 +2212,17 @@ fn permission_args(app: Command) -> Command {
         .require_equals(true)
         .value_name("IP_OR_HOSTNAME")
         .help(ALLOW_NET_HELP)
-        .value_parser(flags_allow_net::validator),
+        .value_parser(flags_net::validator),
+    )
+    .arg(
+      Arg::new("deny-net")
+        .long("deny-net")
+        .num_args(0..)
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .value_name("IP_OR_HOSTNAME")
+        .help(DENY_NET_HELP)
+        .value_parser(flags_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
@@ -2679,7 +2713,7 @@ fn unsafely_ignore_certificate_errors_arg() -> Arg {
     .require_equals(true)
     .value_name("HOSTNAMES")
     .help("DANGER: Disables verification of TLS certificates")
-    .value_parser(flags_allow_net::validator)
+    .value_parser(flags_net::validator)
 }
 
 fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3264,8 +3298,13 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 
   if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
-    let net_allowlist = flags_allow_net::parse(net_wl.collect()).unwrap();
+    let net_allowlist = flags_net::parse(net_wl.collect()).unwrap();
     flags.allow_net = Some(net_allowlist);
+  }
+
+  if let Some(net_wl) = matches.remove_many::<String>("deny-net") {
+    let net_denylist = flags_net::parse(net_wl.collect()).unwrap();
+    flags.deny_net = Some(net_denylist);
   }
 
   if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
@@ -3311,6 +3350,7 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if matches.get_flag("allow-hrtime") {
     flags.allow_hrtime = true;
   }
+
   if matches.get_flag("allow-all") {
     flags.allow_all = true;
     flags.allow_read = Some(vec![]);
@@ -3334,7 +3374,7 @@ fn unsafely_ignore_certificate_errors_parse(
   if let Some(ic_wl) =
     matches.remove_many::<String>("unsafely-ignore-certificate-errors")
   {
-    let ic_allowlist = flags_allow_net::parse(ic_wl.collect()).unwrap();
+    let ic_allowlist = flags_net::parse(ic_wl.collect()).unwrap();
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }
@@ -4927,6 +4967,22 @@ mod tests {
   }
 
   #[test]
+  fn deny_net_denylist() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--deny-net=127.0.0.1", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_net: Some(svec!["127.0.0.1"]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_env_allowlist() {
     let r =
       flags_from_vec(svec!["deno", "run", "--allow-env=HOME", "script.ts"]);
@@ -5977,6 +6033,34 @@ mod tests {
   }
 
   #[test]
+  fn deny_net_denylist_with_ports() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-net=deno.land,:8000,:4545",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_net: Some(svec![
+          "deno.land",
+          "0.0.0.0:8000",
+          "127.0.0.1:8000",
+          "localhost:8000",
+          "0.0.0.0:4545",
+          "127.0.0.1:4545",
+          "localhost:4545"
+        ]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn allow_net_allowlist_with_ipv6_address() {
     let r = flags_from_vec(svec![
       "deno",
@@ -5991,6 +6075,37 @@ mod tests {
           script: "script.ts".to_string(),
         }),
         allow_net: Some(svec![
+          "deno.land",
+          "deno.land:80",
+          "::",
+          "127.0.0.1",
+          "[::1]",
+          "1.2.3.4:5678",
+          "0.0.0.0:5678",
+          "127.0.0.1:5678",
+          "localhost:5678",
+          "[::1]:8080"
+        ]),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_net_denylist_with_ipv6_address() {
+    let r = flags_from_vec(svec![
+      "deno",
+      "run",
+      "--deny-net=deno.land,deno.land:80,::,127.0.0.1,[::1],1.2.3.4:5678,:5678,[::1]:8080",
+      "script.ts"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+        }),
+        deny_net: Some(svec![
           "deno.land",
           "deno.land:80",
           "::",

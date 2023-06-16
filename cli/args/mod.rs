@@ -2,7 +2,7 @@
 
 mod config_file;
 mod flags;
-mod flags_allow_net;
+mod flags_net;
 mod import_map;
 mod lockfile;
 pub mod package_json;
@@ -1133,6 +1133,7 @@ impl CliOptions {
       deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
       allow_net: self.flags.allow_net.clone(),
+      deny_net: self.flags.deny_net.clone(),
       allow_ffi: self.flags.allow_ffi.clone(),
       deny_ffi: self.flags.deny_ffi.clone(),
       allow_read: self.flags.allow_read.clone(),
