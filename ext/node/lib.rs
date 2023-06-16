@@ -10,6 +10,8 @@ use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_core::v8::ExternalReference;
+use deno_core::v8::MapFnTo;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -24,6 +26,7 @@ use once_cell::sync::Lazy;
 
 pub mod analyze;
 pub mod errors;
+mod global;
 mod ops;
 mod package_json;
 mod path;
@@ -39,6 +42,9 @@ pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
+
+use crate::global::global_object_middleware;
+use crate::global::global_template_middleware;
 
 pub trait NodePermissions {
   fn check_net_url(
@@ -115,8 +121,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     path: &Path,
   ) -> Result<(), AnyError>;
 }
-
-pub const NODE_GLOBAL_THIS_NAME: &str = env!("NODE_GLOBAL_THIS_NAME");
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
@@ -484,6 +488,31 @@ deno_core::extension!(deno_node,
       )))
     }
   },
+  global_template_middleware = global_template_middleware,
+  global_object_middleware = global_object_middleware,
+  external_references = [
+    ExternalReference {
+      named_getter: global::getter.map_fn_to(),
+    },
+    ExternalReference {
+      named_setter: global::setter.map_fn_to(),
+    },
+    ExternalReference {
+      named_getter: global::query.map_fn_to(),
+    },
+    ExternalReference {
+      named_getter: global::deleter.map_fn_to(),
+    },
+    ExternalReference {
+      enumerator: global::enumerator.map_fn_to(),
+    },
+    ExternalReference {
+      named_definer: global::definer.map_fn_to(),
+    },
+    ExternalReference {
+      named_getter: global::descriptor.map_fn_to(),
+    },
+  ]
 );
 
 pub fn initialize_runtime(
@@ -497,16 +526,12 @@ pub fn initialize_runtime(
     "undefined".to_string()
   };
   let source_code = format!(
-    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
+    r#"(function loadBuiltinNodeModules(usesLocalNodeModulesDir, argv0) {{
       Deno[Deno.internal].node.initialize(
-        nodeGlobalThisName,
         usesLocalNodeModulesDir,
         argv0
       );
-      // Make the nodeGlobalThisName unconfigurable here.
-      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
-    }})('{}', {}, {});"#,
-    NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
+    }})({uses_local_node_modules_dir}, {argv0});"#,
   );
 
   js_runtime.execute_script(located_script_name!(), source_code.into())?;

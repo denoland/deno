@@ -40,7 +40,6 @@ const {
   Error,
   TypeError,
 } = primordials;
-import { nodeGlobalThis } from "ext:deno_node/00_globals.js";
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
 import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
 import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
@@ -342,7 +341,7 @@ function tryPackage(requestPath, exts, isMain, originalPath) {
       err.requestPath = originalPath;
       throw err;
     } else {
-      nodeGlobalThis.process.emitWarning(
+      process.emitWarning(
         `Invalid 'main' field in '${packageJsonPath}' of '${pkg}'. ` +
           "Please either fix that or report it to the module author",
         "DeprecationWarning",
@@ -414,7 +413,7 @@ function getExportsForCircularRequire(module) {
 }
 
 function emitCircularRequireWarning(prop) {
-  nodeGlobalThis.process.emitWarning(
+  process.emitWarning(
     `Accessing non-existent property '${String(prop)}' of module exports ` +
       "inside circular dependency",
   );
@@ -704,7 +703,7 @@ Module._load = function (request, parent, isMain) {
   const module = cachedModule || new Module(filename, parent);
 
   if (isMain) {
-    nodeGlobalThis.process.mainModule = module;
+    process.mainModule = module;
     mainModule = module;
     module.id = ".";
   }
@@ -911,9 +910,7 @@ Module.prototype.require = function (id) {
 };
 
 Module.wrapper = [
-  // We provide the non-standard APIs in the CommonJS wrapper
-  // to avoid exposing them in global namespace.
-  "(function (exports, require, module, __filename, __dirname, globalThis) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance} = globalThis; var window = undefined; (function () {",
+  "(function (exports, require, module, __filename, __dirname) { (function () {",
   "\n}).call(this); })",
 ];
 Module.wrap = function (script) {
@@ -946,7 +943,7 @@ function wrapSafe(
   const wrapper = Module.wrap(content);
   const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
-    if (nodeGlobalThis.process.mainModule === cjsModuleInstance) {
+    if (process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
     throw err.thrown;
@@ -978,7 +975,6 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
-    nodeGlobalThis,
   );
   if (requireDepth === 0) {
     statCache = null;
@@ -1031,7 +1027,7 @@ Module._extensions[".node"] = function (module, filename) {
   if (filename.endsWith("fsevents.node")) {
     throw new Error("Using fsevents module is currently not supported");
   }
-  module.exports = ops.op_napi_open(filename, nodeGlobalThis);
+  module.exports = ops.op_napi_open(filename, globalThis);
 };
 
 function createRequireFromPath(filename) {

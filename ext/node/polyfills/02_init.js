@@ -5,14 +5,12 @@
 const internals = globalThis.__bootstrap.internals;
 const requireImpl = internals.requireImpl;
 const primordials = globalThis.__bootstrap.primordials;
-const { ObjectDefineProperty } = primordials;
-import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "ext:deno_node/01_require.js";
 
 let initialized = false;
 
 function initialize(
-  nodeGlobalThisName,
   usesLocalNodeModulesDir,
   argv0,
 ) {
@@ -29,20 +27,13 @@ function initialize(
   nodeGlobals.clearInterval = nativeModuleExports["timers"].clearInterval;
   nodeGlobals.clearTimeout = nativeModuleExports["timers"].clearTimeout;
   nodeGlobals.console = nativeModuleExports["console"];
-  nodeGlobals.global = nodeGlobalThis;
+  nodeGlobals.global = globalThis;
   nodeGlobals.process = nativeModuleExports["process"];
   nodeGlobals.setImmediate = nativeModuleExports["timers"].setImmediate;
   nodeGlobals.setInterval = nativeModuleExports["timers"].setInterval;
   nodeGlobals.setTimeout = nativeModuleExports["timers"].setTimeout;
   nodeGlobals.performance = nativeModuleExports["perf_hooks"].performance;
 
-  // add a hidden global for the esm code to use in order to reliably
-  // get node's globalThis
-  ObjectDefineProperty(globalThis, nodeGlobalThisName, {
-    enumerable: false,
-    configurable: true,
-    value: nodeGlobalThis,
-  });
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
   // but it's the only way to get `args` and `version` and this point.
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);

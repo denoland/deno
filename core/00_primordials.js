@@ -611,5 +611,6 @@
   ObjectFreeze(primordials);
 
   // Provide bootstrap namespace
-  globalThis.__bootstrap = { primordials };
+  globalThis.__bootstrap ??= {};
+  globalThis.__bootstrap.primordials = primordials;
 })();

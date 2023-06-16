@@ -20,9 +20,13 @@ use crate::runtime::InitMode;
 use crate::JsRealm;
 use crate::JsRuntime;
 
-pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
+pub(crate) fn external_references(
+  ops: &[OpCtx],
+  additional_references: &[v8::ExternalReference],
+) -> v8::ExternalReferences {
   // Overallocate a bit, it's better than having to resize the vector.
-  let mut references = Vec::with_capacity(4 + ops.len() * 4);
+  let mut references =
+    Vec::with_capacity(4 + (ops.len() * 4) + additional_references.len());
 
   references.push(v8::ExternalReference {
     function: call_console.map_fn_to(),
@@ -52,6 +56,8 @@ pub(crate) fn external_references(ops: &[OpCtx]) -> v8::ExternalReferences {
       });
     }
   }
+
+  references.extend_from_slice(&additional_references);
 
   let refs = v8::ExternalReferences::new(&references);
   // Leak, V8 takes ownership of the references.

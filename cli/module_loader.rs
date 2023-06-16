@@ -765,10 +765,8 @@ impl NpmModuleLoader {
         permissions,
       )?
     } else {
-      // only inject node globals for esm
-      self
-        .node_code_translator
-        .esm_code_with_node_globals(specifier, &code)?
+      // esm code is untouched
+      code
     };
     Ok(ModuleCodeSource {
       code: code.into(),
