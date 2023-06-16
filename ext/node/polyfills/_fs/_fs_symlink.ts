@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type SymlinkType = "file" | "dir";
@@ -11,8 +11,8 @@ export function symlink(
   typeOrCallback: SymlinkType | CallbackWithError,
   maybeCallback?: CallbackWithError,
 ) {
-  target = target instanceof URL ? fromFileUrl(target) : target;
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  target = target instanceof URL ? pathFromURL(target) : target;
+  path = path instanceof URL ? pathFromURL(path) : path;
 
   const type: SymlinkType = typeof typeOrCallback === "string"
     ? typeOrCallback
@@ -38,8 +38,8 @@ export function symlinkSync(
   path: string | URL,
   type?: SymlinkType,
 ) {
-  target = target instanceof URL ? fromFileUrl(target) : target;
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  target = target instanceof URL ? pathFromURL(target) : target;
+  path = path instanceof URL ? pathFromURL(path) : path;
   type = type || "file";
 
   Deno.symlinkSync(target, path, { type });

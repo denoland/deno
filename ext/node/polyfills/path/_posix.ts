@@ -478,24 +478,6 @@ export function parse(path: string): ParsedPath {
 }
 
 /**
- * Converts a file URL to a path string.
- *
- * ```ts
- *      fromFileUrl("file:///home/foo"); // "/home/foo"
- * ```
- * @param url of a file URL
- */
-export function fromFileUrl(url: string | URL): string {
-  url = url instanceof URL ? url : new URL(url);
-  if (url.protocol != "file:") {
-    throw new TypeError("Must be a file URL.");
-  }
-  return decodeURIComponent(
-    url.pathname.replace(/%(?![0-9A-Fa-f]{2})/g, "%25"),
-  );
-}
-
-/**
  * Converts a path string to a file URL.
  *
  * ```ts
@@ -513,14 +495,12 @@ export function toFileUrl(path: string): URL {
   );
   return url;
 }
-
 export default {
   basename,
   delimiter,
   dirname,
   extname,
   format,
-  fromFileUrl,
   isAbsolute,
   join,
   normalize,
