@@ -15,7 +15,9 @@ fn setup() -> Vec<Extension> {
     Extension::builder("deno_webidl_bench")
       .esm(vec![ExtensionFileSource {
         specifier: "ext:deno_webidl_bench/setup.js",
-        code: ExtensionFileSourceCode::Static(include_str!("dict.js")),
+        code: ExtensionFileSourceCode::IncludedInBinary(include_str!(
+          "dict.js"
+        )),
       }])
       .esm_entry_point("ext:deno_webidl_bench/setup.js")
       .build(),

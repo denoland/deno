@@ -16,7 +16,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
         specifier: "ext:bench_setup/setup",
-        code: ExtensionFileSourceCode::Static(
+        code: ExtensionFileSourceCode::IncludedInBinary(
           r#"import { URL } from "ext:deno_url/00_url.js";
         globalThis.URL = URL;
         "#,

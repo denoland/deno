@@ -31,7 +31,7 @@ fn setup() -> Vec<Extension> {
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
         specifier: "ext:bench_setup/setup",
-        code: ExtensionFileSourceCode::Static(
+        code: ExtensionFileSourceCode::IncludedInBinary(
           r#"
         import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
         globalThis.TextDecoder = TextDecoder;

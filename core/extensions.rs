@@ -15,7 +15,7 @@ pub enum ExtensionFileSourceCode {
   /// inline, or included using `include_str!()`. If you are snapshotting, this
   /// will result in two copies of the source code being included - one in the
   /// snapshot, the other the static string in the `Extension`.
-  Static(&'static str),
+  IncludedInBinary(&'static str),
 
   /// Source code is loaded from a file on disk at 'runtime'. It's meant to be
   /// used in build and dev scripts using the `runtime_js_sources` feature,
@@ -36,7 +36,7 @@ impl ExtensionFileSource {
 
   pub fn load(&self) -> Result<ModuleCode, Error> {
     match &self.code {
-      ExtensionFileSourceCode::Static(code) => {
+      ExtensionFileSourceCode::IncludedInBinary(code) => {
         debug_assert!(
           code.is_ascii(),
           "Extension code must be 7-bit ASCII: {} (found {})",
@@ -218,7 +218,7 @@ macro_rules! extension {
         $(
           ext.esm(vec![ExtensionFileSource {
             specifier: "ext:setup",
-            code: ExtensionFileSourceCode::Static($esm_setup_script),
+            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
           }]);
         )?
         $(
@@ -638,7 +638,7 @@ macro_rules! include_js_file {
   ($ext_name:ident $(dir $dir:literal,)? $file:literal) => {
     $crate::ExtensionFileSource {
       specifier: concat!("ext:", stringify!($ext_name), "/", $file),
-      code: $crate::ExtensionFileSourceCode::Static(include_str!(concat!($($dir, "/",)? $file))),
+      code: $crate::ExtensionFileSourceCode::IncludedInBinary(include_str!(concat!($($dir, "/",)? $file))),
     }
   };
 }

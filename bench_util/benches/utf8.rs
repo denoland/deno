@@ -13,7 +13,7 @@ fn setup() -> Vec<Extension> {
   vec![Extension::builder("bench_setup")
     .js(vec![ExtensionFileSource {
       specifier: "ext:bench_setup/setup.js",
-      code: ExtensionFileSourceCode::Static(
+      code: ExtensionFileSourceCode::IncludedInBinary(
         r#"
       const hello = "hello world\n";
       const hello1k = hello.repeat(1e3);
