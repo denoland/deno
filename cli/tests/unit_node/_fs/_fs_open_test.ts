@@ -8,7 +8,7 @@ import {
   O_SYNC,
   O_TRUNC,
   O_WRONLY,
-} from "./_fs_constants.ts";
+} from "node:constants";
 import {
   assert,
   assertEquals,
@@ -18,8 +18,7 @@ import {
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { open, openSync } from "node:fs";
 import { join, parse } from "node:path";
-import { existsSync } from "node:fs";
-import { closeSync } from "node:fs";
+import { closeSync, existsSync } from "node:fs";
 
 const tempDir = parse(Deno.makeTempFileSync()).dir;
 
