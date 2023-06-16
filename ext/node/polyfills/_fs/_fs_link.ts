@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 /**
@@ -13,9 +13,9 @@ export function link(
   callback: CallbackWithError,
 ) {
   existingPath = existingPath instanceof URL
-    ? fromFileUrl(existingPath)
+    ? pathFromURL(existingPath)
     : existingPath;
-  newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
+  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
 
   Deno.link(existingPath, newPath).then(() => callback(null), callback);
 }
@@ -38,9 +38,9 @@ export function linkSync(
   newPath: string | URL,
 ) {
   existingPath = existingPath instanceof URL
-    ? fromFileUrl(existingPath)
+    ? pathFromURL(existingPath)
     : existingPath;
-  newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
+  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
 
   Deno.linkSync(existingPath, newPath);
 }

@@ -8,7 +8,7 @@ import {
 import { Buffer } from "ext:deno_node/buffer.ts";
 import { readAll } from "ext:deno_io/12_io.js";
 import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   BinaryEncodings,
   Encodings,
@@ -57,7 +57,7 @@ export function readFile(
   optOrCallback?: FileOptionsArgument | Callback | null | undefined,
   callback?: Callback,
 ) {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
   let cb: Callback | undefined;
   if (typeof optOrCallback === "function") {
     cb = optOrCallback;
@@ -105,7 +105,7 @@ export function readFileSync(
   path: string | URL,
   opt?: FileOptionsArgument,
 ): string | Buffer {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
   const data = Deno.readFileSync(path);
   const encoding = getEncoding(opt);
   if (encoding && encoding !== "binary") {

@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function rename(
@@ -7,8 +7,8 @@ export function rename(
   newPath: string | URL,
   callback: (err?: Error) => void,
 ) {
-  oldPath = oldPath instanceof URL ? fromFileUrl(oldPath) : oldPath;
-  newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
+  oldPath = oldPath instanceof URL ? pathFromURL(oldPath) : oldPath;
+  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
 
   if (!callback) throw new Error("No callback function supplied");
 
@@ -21,8 +21,8 @@ export const renamePromise = promisify(rename) as (
 ) => Promise<void>;
 
 export function renameSync(oldPath: string | URL, newPath: string | URL) {
-  oldPath = oldPath instanceof URL ? fromFileUrl(oldPath) : oldPath;
-  newPath = newPath instanceof URL ? fromFileUrl(newPath) : newPath;
+  oldPath = oldPath instanceof URL ? pathFromURL(oldPath) : oldPath;
+  newPath = newPath instanceof URL ? pathFromURL(newPath) : newPath;
 
   Deno.renameSync(oldPath, newPath);
 }

@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 
 type ExistsCallback = (exists: boolean) => void;
 
@@ -9,7 +9,7 @@ type ExistsCallback = (exists: boolean) => void;
  * Deprecated in node api
  */
 export function exists(path: string | URL, callback: ExistsCallback) {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
   Deno.lstat(path).then(() => callback(true), () => callback(false));
 }
 
@@ -30,7 +30,7 @@ Object.defineProperty(exists, kCustomPromisifiedSymbol, {
  * are implemented. See https://github.com/denoland/deno/issues/3403
  */
 export function existsSync(path: string | URL): boolean {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
   try {
     Deno.lstatSync(path);
     return true;
