@@ -238,7 +238,7 @@ pub trait Descriptor: Eq + Clone {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UnaryPermission2<T: Descriptor + Hash> {
+pub struct UnaryPermission<T: Descriptor + Hash> {
   pub granted_global: bool,
   pub granted_list: HashSet<T>,
   pub denied_global: bool,
@@ -248,9 +248,9 @@ pub struct UnaryPermission2<T: Descriptor + Hash> {
   pub prompt: bool,
 }
 
-impl<T: Descriptor + Hash> Default for UnaryPermission2<T> {
+impl<T: Descriptor + Hash> Default for UnaryPermission<T> {
   fn default() -> Self {
-    UnaryPermission2 {
+    UnaryPermission {
       granted_global: Default::default(),
       granted_list: Default::default(),
       denied_global: Default::default(),
@@ -262,7 +262,7 @@ impl<T: Descriptor + Hash> Default for UnaryPermission2<T> {
   }
 }
 
-impl<T: Descriptor + Hash> UnaryPermission2<T> {
+impl<T: Descriptor + Hash> UnaryPermission<T> {
   fn check_desc(
     &mut self,
     desc: &Option<T>,
@@ -651,7 +651,7 @@ impl Descriptor for FfiDescriptor {
   }
 }
 
-impl UnaryPermission2<ReadDescriptor> {
+impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())),
@@ -715,7 +715,7 @@ impl UnaryPermission2<ReadDescriptor> {
   }
 }
 
-impl UnaryPermission2<WriteDescriptor> {
+impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())),
@@ -779,7 +779,7 @@ impl UnaryPermission2<WriteDescriptor> {
   }
 }
 
-impl UnaryPermission2<NetDescriptor> {
+impl UnaryPermission<NetDescriptor> {
   pub fn query<T: AsRef<str>>(
     &self,
     host: Option<&(T, Option<u16>)>,
@@ -827,7 +827,7 @@ impl UnaryPermission2<NetDescriptor> {
   }
 }
 
-impl UnaryPermission2<EnvDescriptor> {
+impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
     self.query_desc(&env.map(EnvDescriptor::new), None)
   }
@@ -849,7 +849,7 @@ impl UnaryPermission2<EnvDescriptor> {
   }
 }
 
-impl UnaryPermission2<SysDescriptor> {
+impl UnaryPermission<SysDescriptor> {
   pub fn query(&self, kind: Option<&str>) -> PermissionState {
     self.query_desc(&kind.map(|k| SysDescriptor(k.to_string())), None)
   }
@@ -880,7 +880,7 @@ impl UnaryPermission2<SysDescriptor> {
   }
 }
 
-impl UnaryPermission2<RunDescriptor> {
+impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
     self.query_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), None)
   }
@@ -912,7 +912,7 @@ impl UnaryPermission2<RunDescriptor> {
   }
 }
 
-impl UnaryPermission2<FfiDescriptor> {
+impl UnaryPermission<FfiDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())),
@@ -958,13 +958,13 @@ impl UnaryPermission2<FfiDescriptor> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Permissions {
-  pub read: UnaryPermission2<ReadDescriptor>,
-  pub write: UnaryPermission2<WriteDescriptor>,
-  pub net: UnaryPermission2<NetDescriptor>,
-  pub env: UnaryPermission2<EnvDescriptor>,
-  pub sys: UnaryPermission2<SysDescriptor>,
-  pub run: UnaryPermission2<RunDescriptor>,
-  pub ffi: UnaryPermission2<FfiDescriptor>,
+  pub read: UnaryPermission<ReadDescriptor>,
+  pub write: UnaryPermission<WriteDescriptor>,
+  pub net: UnaryPermission<NetDescriptor>,
+  pub env: UnaryPermission<EnvDescriptor>,
+  pub sys: UnaryPermission<SysDescriptor>,
+  pub run: UnaryPermission<RunDescriptor>,
+  pub ffi: UnaryPermission<FfiDescriptor>,
   pub hrtime: UnitPermission,
 }
 
@@ -1008,8 +1008,8 @@ impl Permissions {
     allow_list: &Option<Vec<PathBuf>>,
     deny_list: &Option<Vec<PathBuf>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<ReadDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<ReadDescriptor> {
+  ) -> Result<UnaryPermission<ReadDescriptor>, AnyError> {
+    Ok(UnaryPermission::<ReadDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: resolve_read_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1023,8 +1023,8 @@ impl Permissions {
     allow_list: &Option<Vec<PathBuf>>,
     deny_list: &Option<Vec<PathBuf>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<WriteDescriptor>, AnyError> {
-    Ok(UnaryPermission2 {
+  ) -> Result<UnaryPermission<WriteDescriptor>, AnyError> {
+    Ok(UnaryPermission {
       granted_global: global_from_option(allow_list),
       granted_list: resolve_write_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1038,8 +1038,8 @@ impl Permissions {
     allow_list: &Option<Vec<String>>,
     deny_list: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<NetDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<NetDescriptor> {
+  ) -> Result<UnaryPermission<NetDescriptor>, AnyError> {
+    Ok(UnaryPermission::<NetDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: parse_net_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1053,8 +1053,8 @@ impl Permissions {
     allow_list: &Option<Vec<String>>,
     deny_list: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<EnvDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<EnvDescriptor> {
+  ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
+    Ok(UnaryPermission::<EnvDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: parse_env_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1068,8 +1068,8 @@ impl Permissions {
     allow_list: &Option<Vec<String>>,
     deny_list: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<SysDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<SysDescriptor> {
+  ) -> Result<UnaryPermission<SysDescriptor>, AnyError> {
+    Ok(UnaryPermission::<SysDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: parse_sys_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1083,8 +1083,8 @@ impl Permissions {
     allow_list: &Option<Vec<String>>,
     deny_list: &Option<Vec<String>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<RunDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<RunDescriptor> {
+  ) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
+    Ok(UnaryPermission::<RunDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: parse_run_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -1098,8 +1098,8 @@ impl Permissions {
     allow_list: &Option<Vec<PathBuf>>,
     deny_list: &Option<Vec<PathBuf>>,
     prompt: bool,
-  ) -> Result<UnaryPermission2<FfiDescriptor>, AnyError> {
-    Ok(UnaryPermission2::<FfiDescriptor> {
+  ) -> Result<UnaryPermission<FfiDescriptor>, AnyError> {
+    Ok(UnaryPermission::<FfiDescriptor> {
       granted_global: global_from_option(allow_list),
       granted_list: resolve_ffi_list(allow_list)?,
       denied_global: global_from_option(deny_list),
@@ -2435,7 +2435,7 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
-      read: UnaryPermission2 {
+      read: UnaryPermission {
         granted_global: false,
         ..Permissions::new_read(
           &Some(vec![PathBuf::from("/foo")]),
@@ -2444,7 +2444,7 @@ mod tests {
         )
         .unwrap()
       },
-      write: UnaryPermission2 {
+      write: UnaryPermission {
         granted_global: false,
         ..Permissions::new_write(
           &Some(vec![PathBuf::from("/foo")]),
@@ -2453,26 +2453,26 @@ mod tests {
         )
         .unwrap()
       },
-      ffi: UnaryPermission2 {
+      ffi: UnaryPermission {
         granted_global: false,
         ..Permissions::new_ffi(&Some(vec![PathBuf::from("/foo")]), &None, false)
           .unwrap()
       },
 
-      net: UnaryPermission2 {
+      net: UnaryPermission {
         granted_global: false,
         ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), &None, false)
           .unwrap()
       },
-      env: UnaryPermission2 {
+      env: UnaryPermission {
         granted_global: false,
         ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
       },
-      sys: UnaryPermission2 {
+      sys: UnaryPermission {
         granted_global: false,
         ..Permissions::new_sys(&Some(svec!["hostname"]), &None, false).unwrap()
       },
-      run: UnaryPermission2 {
+      run: UnaryPermission {
         granted_global: false,
         ..Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap()
       },
@@ -2571,7 +2571,7 @@ mod tests {
   fn test_revoke() {
     set_prompter(Box::new(TestPrompter));
     let mut perms = Permissions {
-      read: UnaryPermission2 {
+      read: UnaryPermission {
         granted_global: false,
         ..Permissions::new_read(
           &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
@@ -2580,7 +2580,7 @@ mod tests {
         )
         .unwrap()
       },
-      write: UnaryPermission2 {
+      write: UnaryPermission {
         granted_global: false,
         ..Permissions::new_write(
           &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
@@ -2589,7 +2589,7 @@ mod tests {
         )
         .unwrap()
       },
-      ffi: UnaryPermission2 {
+      ffi: UnaryPermission {
         granted_global: false,
         ..Permissions::new_ffi(
           &Some(vec![PathBuf::from("/foo"), PathBuf::from("/foo/baz")]),
@@ -2598,7 +2598,7 @@ mod tests {
         )
         .unwrap()
       },
-      net: UnaryPermission2 {
+      net: UnaryPermission {
         granted_global: false,
         ..Permissions::new_net(
           &Some(svec!["127.0.0.1", "127.0.0.1:8000"]),
@@ -2607,15 +2607,15 @@ mod tests {
         )
         .unwrap()
       },
-      env: UnaryPermission2 {
+      env: UnaryPermission {
         granted_global: false,
         ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
       },
-      sys: UnaryPermission2 {
+      sys: UnaryPermission {
         granted_global: false,
         ..Permissions::new_sys(&Some(svec!["hostname"]), &None, false).unwrap()
       },
-      run: UnaryPermission2 {
+      run: UnaryPermission {
         granted_global: false,
         ..Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap()
       },
@@ -2795,7 +2795,7 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut perms = Permissions::allow_all();
-    perms.env = UnaryPermission2 {
+    perms.env = UnaryPermission {
       granted_global: false,
       ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
     };
