@@ -971,7 +971,7 @@ impl JsRuntime {
     // Add built-in extension
     options
       .extensions
-      .insert(0, crate::ops_builtin::core::init());
+      .insert(0, crate::ops_builtin::core::init_ext());
 
     let ops = Self::collect_ops(&mut options.extensions);
 

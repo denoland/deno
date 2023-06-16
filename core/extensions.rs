@@ -286,7 +286,7 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      pub fn init_ext $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
       $( where $( $bound : $bound_type ),+ )?
       {
         let mut ext = Self::ext();

@@ -11,7 +11,7 @@ use deno_core::ExtensionFileSourceCode;
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::deno_webidl::init(),
+    deno_webidl::deno_webidl::init_ext(),
     Extension::builder("deno_webidl_bench")
       .esm(vec![ExtensionFileSource {
         specifier: "ext:deno_webidl_bench/setup.js",
