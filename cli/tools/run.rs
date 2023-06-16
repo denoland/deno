@@ -9,12 +9,17 @@ use deno_runtime::permissions::PermissionsContainer;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
+use crate::args::RunFlags;
+use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::util;
 
-pub async fn run_script(flags: Flags) -> Result<i32, AnyError> {
+pub async fn run_script(
+  flags: Flags,
+  run_flags: RunFlags,
+) -> Result<i32, AnyError> {
   if !flags.has_permission() && flags.has_permission_in_argv() {
     log::warn!(
       "{}",
@@ -26,8 +31,8 @@ To grant permissions, set them before the script argument. For example:
     );
   }
 
-  if flags.watch.is_some() {
-    return run_with_watch(flags).await;
+  if let Some(watch_flags) = run_flags.watch {
+    return run_with_watch(flags, watch_flags).await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -96,14 +101,15 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
 
 // TODO(bartlomieju): this function is not handling `exit_code` set by the runtime
 // code properly.
-async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
-  let clear_screen = !flags.no_clear_screen;
-
+async fn run_with_watch(
+  flags: Flags,
+  watch_flags: WatchFlagsWithPaths,
+) -> Result<i32, AnyError> {
   util::file_watcher::watch_func(
     flags,
     util::file_watcher::PrintConfig {
       job_name: "Process".to_string(),
-      clear_screen,
+      clear_screen: !watch_flags.no_clear_screen,
     },
     move |flags, sender, _changed_paths| {
       Ok(async move {
@@ -116,9 +122,7 @@ async fn run_with_watch(flags: Flags) -> Result<i32, AnyError> {
 
         maybe_npm_install(&factory).await?;
 
-        if let Some(watch_paths) = cli_options.watch_paths() {
-          let _ = sender.send(watch_paths);
-        }
+        let _ = sender.send(cli_options.watch_paths());
 
         let permissions = PermissionsContainer::new(Permissions::from_options(
           &cli_options.permissions_options(),
