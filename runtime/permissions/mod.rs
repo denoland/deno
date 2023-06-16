@@ -228,16 +228,6 @@ impl AsRef<str> for EnvVarName {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct UnaryPermission<T: Eq + Hash> {
-  pub name: &'static str,
-  pub description: &'static str,
-  pub global_state: PermissionState,
-  pub granted_list: HashSet<T>,
-  pub denied_list: HashSet<T>,
-  pub prompt: bool,
-}
-
 pub trait Descriptor: Eq + Clone {
   fn type_name() -> &'static str;
   fn type_description() -> &'static str;
@@ -2805,9 +2795,9 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
     let mut perms = Permissions::allow_all();
-    perms.env = UnaryPermission {
-      global_state: PermissionState::Prompt,
-      ..Permissions::new_env(&Some(svec!["HOME"]), false).unwrap()
+    perms.env = UnaryPermission2 {
+      granted_global: false,
+      ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
     };
 
     prompt_value.set(true);
