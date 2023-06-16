@@ -185,7 +185,7 @@ fn print_release_notes(current_version: &str, new_version: &str) {
   }
 }
 
-pub fn check_for_upgrades(
+pub async fn check_for_upgrades(
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
 ) {
@@ -210,30 +210,96 @@ pub fn check_for_upgrades(
 
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
+    let auto_upgrade_env = match env::var("DENO_AUTO_UPGRADE") {
+      Ok(env_var) => env_var,
+      Err(_) => String::from(""),
+    };
     if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
-      if version::is_canary() {
-        eprint!(
-          "{} ",
-          colors::green("A new canary release of Deno is available.")
-        );
-        eprintln!(
-          "{}",
-          colors::italic_gray("Run `deno upgrade --canary` to install it.")
-        );
-      } else {
-        eprint!(
-          "{} {} → {} ",
-          colors::green("A new release of Deno is available:"),
-          colors::cyan(version::deno()),
-          colors::cyan(&upgrade_version)
-        );
-        eprintln!(
-          "{}",
-          colors::italic_gray("Run `deno upgrade` to install it.")
-        );
-      }
+      if auto_upgrade_env != "true" {
+        if version::is_canary() {
+          eprint!(
+            "{} ",
+            colors::green("A new canary release of Deno is available.")
+          );
+          eprintln!(
+            "{}",
+            colors::italic_gray("Run `deno upgrade --canary` to install it.")
+          );
+        } else {
+          eprint!(
+            "{} {} → {} ",
+            colors::green("A new release of Deno is available:"),
+            colors::cyan(version::deno()),
+            colors::cyan(&upgrade_version)
+          );
+          eprintln!(
+            "{}",
+            colors::italic_gray("Run `deno upgrade` to install it.")
+          );
+        }
 
-      update_checker.store_prompted();
+        if !auto_upgrade_env.is_empty() {
+          eprintln!(
+            "{} ",
+            colors::yellow(
+              "Auto-upgrade value is set incorrectly, skipping for now."
+            )
+          );
+          eprintln!(
+            "{} ",
+            colors::yellow("To use it, set `DENO_AUTO_UPGRADE=true`")
+          );
+          return;
+        }
+
+        update_checker.store_prompted();
+      } else {
+        if version::is_canary() {
+          eprintln!(
+            "{} ",
+            colors::green("A new canary release of Deno is available.")
+          );
+          eprintln!(
+            "{}",
+            colors::green(
+              "Auto-upgrade enabled, upgrading Deno to latest canary version."
+            )
+          );
+        } else {
+          eprintln!(
+            "{} {} → {} ",
+            colors::green("A new release of Deno is available:"),
+            colors::cyan(version::deno()),
+            colors::cyan(&upgrade_version)
+          );
+          eprintln!(
+            "{}",
+            colors::green(
+              "Auto-upgrade enabled, upgrading Deno to latest version."
+            )
+          );
+        }
+        let upgrade_result = upgrade(
+          Flags::default(),
+          UpgradeFlags {
+            dry_run: false,
+            force: false,
+            canary: version::is_canary(),
+            version: Some(upgrade_version),
+            output: None,
+          },
+        )
+        .await;
+
+        match upgrade_result {
+          Ok(_) => {
+            eprintln!("{}", colors::green("Auto-upgrade successful!"));
+          }
+          Err(_) => {
+            eprintln!("{}", colors::red("Auto-upgrade failed, skipping..."));
+          }
+        };
+      }
     }
   }
 }

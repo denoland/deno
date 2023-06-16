@@ -42,7 +42,8 @@ To grant permissions, set them before the script argument. For example:
   super::upgrade::check_for_upgrades(
     http_client.clone(),
     deno_dir.upgrade_check_file_path(),
-  );
+  )
+  .await;
 
   let main_module = cli_options.resolve_main_module()?;
 

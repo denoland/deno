@@ -616,6 +616,8 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
                          (alternative to passing --no-prompt on invocation)
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
+    DENO_AUTO_UPGRADE    Set to "true" to auto-upgrade Deno when a new version
+                         is available
     DENO_V8_FLAGS        Set V8 command line options
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
