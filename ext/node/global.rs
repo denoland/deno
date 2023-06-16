@@ -7,6 +7,20 @@ use deno_core::v8::GetPropertyNamesArgs;
 
 use crate::NodeResolver;
 
+/// Convert an ASCII string to a UTF-16 byte encoding of the string.
+const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
+  let mut out = [0_u16; N];
+  let mut i = 0;
+  let bytes = s.as_bytes();
+  assert!(N == bytes.len());
+  while i < bytes.len() {
+    assert!(bytes[i] < 128, "only works for ASCII strings");
+    out[i] = bytes[i] as u16;
+    i += 1;
+  }
+  out
+}
+
 // ext/node changes the global object to be a proxy object that intercepts all
 // property accesses for globals that are different between Node and Deno and
 // dynamically returns a different value depending on if the accessing code is
@@ -40,18 +54,18 @@ use crate::NodeResolver;
 // UTF-16 encodings of the managed globals. THIS LIST MUST BE SORTED.
 #[rustfmt::skip]
 const MANAGED_GLOBALS: [&[u16]; 12] = [
-  &[0x42, 0x75, 0x66, 0x66, 0x65, 0x72], // "Buffer"
-  &[0x63, 0x6c, 0x65, 0x61, 0x72, 0x49, 0x6d, 0x6d, 0x65, 0x64, 0x69, 0x61, 0x74, 0x65], // "clearImmediate"
-  &[0x63, 0x6c, 0x65, 0x61, 0x72, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c], // "clearInterval"
-  &[0x63, 0x6c, 0x65, 0x61, 0x72, 0x54, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74], // "clearTimeout"
-  &[0x63, 0x6f, 0x6e, 0x73, 0x6f, 0x6c, 0x65], // "console"
-  &[0x67, 0x6c, 0x6f, 0x62, 0x61, 0x6c], // "global"
-  &[0x70, 0x65, 0x72, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x6e, 0x63, 0x65], // "performance"
-  &[0x70, 0x72, 0x6f, 0x63, 0x65, 0x73, 0x73], // "process"
-  &[0x73, 0x65, 0x74, 0x49, 0x6d, 0x6d, 0x65, 0x64, 0x69, 0x61, 0x74, 0x65], // "setImmediate"
-  &[0x73, 0x65, 0x74, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c], // "setInterval"
-  &[0x73, 0x65, 0x74, 0x54, 0x69, 0x6d, 0x65, 0x6f, 0x75, 0x74], // "setTimeout"
-  &[0x77, 0x69, 0x6e, 0x64, 0x6f, 0x77], // "window"
+  &str_to_utf16::<6>("Buffer"),
+  &str_to_utf16::<14>("clearImmediate"),
+  &str_to_utf16::<13>("clearInterval"),
+  &str_to_utf16::<12>("clearTimeout"),
+  &str_to_utf16::<7>("console"),
+  &str_to_utf16::<6>("global"),
+  &str_to_utf16::<11>("performance"),
+  &str_to_utf16::<7>("process"),
+  &str_to_utf16::<12>("setImmediate"),
+  &str_to_utf16::<11>("setInterval"),
+  &str_to_utf16::<10>("setTimeout"),
+  &str_to_utf16::<6>("window"),
 ];
 
 const SHORTEST_MANAGED_GLOBAL: usize = 6;

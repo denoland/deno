@@ -57,7 +57,7 @@ pub(crate) fn external_references(
     }
   }
 
-  references.extend_from_slice(&additional_references);
+  references.extend_from_slice(additional_references);
 
   let refs = v8::ExternalReferences::new(&references);
   // Leak, V8 takes ownership of the references.
