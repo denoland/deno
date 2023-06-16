@@ -86,7 +86,7 @@ function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
  * @returns {Promise<{ status: number, statusText: string, headers: [string, string][], url: string, responseRid: number }>}
  */
 function opFetchSend(rid) {
-  return core.opAsync("op_fetch_send", rid, true);
+  return core.opAsync("op_fetch_send", rid);
 }
 
 /**

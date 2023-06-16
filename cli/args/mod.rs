@@ -757,7 +757,7 @@ impl CliOptions {
               resolve_url_or_path("./$deno$stdin.ts", &cwd)
                 .map_err(AnyError::from)
             })
-        } else if self.flags.watch.is_some() {
+        } else if run_flags.watch.is_some() {
           resolve_url_or_path(&run_flags.script, self.initial_cwd())
             .map_err(AnyError::from)
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
@@ -1023,23 +1023,13 @@ impl CliOptions {
   }
 
   pub fn coverage_dir(&self) -> Option<String> {
-    fn allow_coverage(sub_command: &DenoSubcommand) -> bool {
-      match sub_command {
-        DenoSubcommand::Test(_) => true,
-        DenoSubcommand::Run(flags) => !flags.is_stdin(),
-        _ => false,
-      }
-    }
-
-    if allow_coverage(self.sub_command()) {
-      self
-        .flags
+    match &self.flags.subcommand {
+      DenoSubcommand::Test(test) => test
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok())
-    } else {
-      None
+        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+      _ => None,
     }
   }
 
@@ -1139,25 +1129,30 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn watch_paths(&self) -> Option<Vec<PathBuf>> {
-    if let Some(mut paths) = self.flags.watch.clone() {
-      if let Ok(Some(import_map_path)) = self
-        .resolve_import_map_specifier()
-        .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
-      {
-        paths.push(import_map_path);
-      }
-      if let Some(specifier) = self.maybe_config_file_specifier() {
-        if specifier.scheme() == "file" {
-          if let Ok(path) = specifier.to_file_path() {
-            paths.push(path);
-          }
+  pub fn watch_paths(&self) -> Vec<PathBuf> {
+    let mut paths = if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { paths, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      paths.clone()
+    } else {
+      Vec::with_capacity(2)
+    };
+    if let Ok(Some(import_map_path)) = self
+      .resolve_import_map_specifier()
+      .map(|ms| ms.and_then(|ref s| s.to_file_path().ok()))
+    {
+      paths.push(import_map_path);
+    }
+    if let Some(specifier) = self.maybe_config_file_specifier() {
+      if specifier.scheme() == "file" {
+        if let Ok(path) = specifier.to_file_path() {
+          paths.push(path);
         }
       }
-      Some(paths)
-    } else {
-      None
     }
+    paths
   }
 }
 
