@@ -748,11 +748,13 @@ impl NpmModuleLoader {
       .read_to_string(&file_path)
       .map_err(AnyError::from)
       .with_context(|| {
-        let mut msg = "Unable to load ".to_string();
+        let mut msg =
+          "Error [ERR_UNSUPPORTED_DIR_IMPORT]: Directory import ".to_string();
         msg.push_str(&file_path.to_string_lossy());
         if let Some(referrer) = &maybe_referrer {
-          msg.push_str(" imported from ");
+          msg.push_str(" is not supported resolving ES modules imported from ");
           msg.push_str(referrer.as_str());
+          // TODO(#19366) Append "Did you mean to import NAME/common/index.js?" at the end
         }
         msg
       })?;
