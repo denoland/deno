@@ -319,7 +319,7 @@ deno_core::extension!(
     ext.esm(vec![ExtensionFileSource {
       specifier: "ext:cli/runtime/js/99_main.js",
       code: ExtensionFileSourceCode::LoadAtRuntime(
-        PathBuf::from("../runtime/js/99_main.js"),
+        std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
       ),
     }]);
   }

@@ -13,3 +13,9 @@ pub fn deno_isolate_init() -> Snapshot {
   debug!("Deno isolate init with snapshots.");
   Snapshot::Static(RUNTIME_SNAPSHOT)
 }
+
+/// Depends on LTO to be excluded from production binaries if unused.
+pub static SOURCE_CODE_FOR_99_MAIN_JS: &str = include_str!("js/99_main.js");
+
+pub static PATH_FOR_99_MAIN_JS: &str =
+  concat!(env!("CARGO_MANIFEST_DIR"), "/js/99_main.js");
