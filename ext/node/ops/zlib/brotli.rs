@@ -32,6 +32,7 @@ pub fn op_brotli_compress(
   let out_buffer = out.as_mut_ptr();
   let mut out_size = out.len();
 
+  // SAFETY: TODO(littledivy)
   if unsafe {
     BrotliEncoderCompress(
       quality,
@@ -82,6 +83,7 @@ pub async fn op_brotli_compress_async(
     let out_buffer = out.as_mut_ptr();
     let mut out_size = out.len();
 
+    // SAFETY: TODO(littledivy)
     if unsafe {
       BrotliEncoderCompress(
         quality,
@@ -111,6 +113,7 @@ impl Resource for BrotliCompressCtx {}
 
 impl Drop for BrotliCompressCtx {
   fn drop(&mut self) {
+    // SAFETY: TODO(littledivy)
     unsafe { BrotliEncoderDestroyInstance(self.inst) };
   }
 }
@@ -121,9 +124,11 @@ pub fn op_create_brotli_compress(
   params: Vec<(u8, i32)>,
 ) -> u32 {
   let inst =
+    // SAFETY: TODO(littledivy)
     unsafe { BrotliEncoderCreateInstance(None, None, std::ptr::null_mut()) };
 
   for (key, value) in params {
+    // SAFETY: TODO(littledivy)
     unsafe {
       BrotliEncoderSetParameter(inst, encoder_param(key), value as u32);
     }
@@ -146,6 +151,7 @@ pub fn op_brotli_compress_stream(
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
 
+  // SAFETY: TODO(littledivy)
   unsafe {
     let mut available_in = input.len();
     let mut next_in = input.as_ptr();
@@ -179,6 +185,7 @@ pub fn op_brotli_compress_stream_end(
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
 
+  // SAFETY: TODO(littledivy)
   unsafe {
     let mut available_out = output.len();
     let mut next_out = output.as_mut_ptr();
@@ -210,7 +217,7 @@ fn brotli_decompress(buffer: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
   loop {
     let out_buffer = out.as_mut_ptr();
     let mut out_size = out.len();
-
+    // SAFETY: TODO(littledivy)
     match unsafe {
       CBrotliDecoderDecompress(
         in_size,
@@ -255,6 +262,7 @@ impl Resource for BrotliDecompressCtx {}
 
 impl Drop for BrotliDecompressCtx {
   fn drop(&mut self) {
+    // SAFETY: TODO(littledivy)
     unsafe { CBrotliDecoderDestroyInstance(self.inst) };
   }
 }
@@ -262,6 +270,7 @@ impl Drop for BrotliDecompressCtx {
 #[op]
 pub fn op_create_brotli_decompress(state: &mut OpState) -> u32 {
   let inst =
+    // SAFETY: TODO(littledivy)
     unsafe { CBrotliDecoderCreateInstance(None, None, std::ptr::null_mut()) };
   state.resource_table.add(BrotliDecompressCtx { inst })
 }
@@ -275,6 +284,7 @@ pub fn op_brotli_decompress_stream(
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
 
+  // SAFETY: TODO(littledivy)
   unsafe {
     let mut available_in = input.len();
     let mut next_in = input.as_ptr();
@@ -309,6 +319,7 @@ pub fn op_brotli_decompress_stream_end(
 ) -> Result<usize, AnyError> {
   let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
 
+  // SAFETY: TODO(littledivy)
   unsafe {
     let mut available_out = output.len();
     let mut next_out = output.as_mut_ptr();
