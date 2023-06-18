@@ -2054,6 +2054,7 @@ fn permission_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("allow-read")
+        .short('R')
         .long("allow-read")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2065,6 +2066,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-write")
+        .short('W')
         .long("allow-write")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2076,6 +2078,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-net")
+        .short('N')
         .long("allow-net")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2087,6 +2090,7 @@ fn permission_args(app: Command) -> Command {
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
       Arg::new("allow-env")
+        .short('E')
         .long("allow-env")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2107,6 +2111,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-sys")
+        .short('S')
         .long("allow-sys")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2117,6 +2122,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-run")
+        .short('X')
         .long("allow-run")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2126,6 +2132,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-ffi")
+        .short('F')
         .long("allow-ffi")
         .num_args(0..)
         .use_value_delimiter(true)
@@ -2137,6 +2144,7 @@ fn permission_args(app: Command) -> Command {
     )
     .arg(
       Arg::new("allow-hrtime")
+        .short('T')
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
         .help(ALLOW_HRTIME_HELP),
