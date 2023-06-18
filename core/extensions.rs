@@ -168,7 +168,6 @@ macro_rules! ops {
 ///  * bounds: a comma-separated list of additional type bounds, eg: `bounds = [ P::MyAssociatedType: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
-///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -185,7 +184,6 @@ macro_rules! extension {
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
-    $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
     $(, force_include_js_sources $($force_include_js_sources:block)? )? // dummy variable
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
@@ -215,12 +213,6 @@ macro_rules! extension {
         ext.esm(
           $crate::include_js_files!( $name $( force_include_js_sources $($force_include_js_sources)?, )? $( $( dir $dir_esm , )? $( $esm , )* )? )
         );
-        $(
-          ext.esm(vec![ExtensionFileSource {
-            specifier: "ext:setup",
-            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
-          }]);
-        )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
