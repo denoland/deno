@@ -1697,10 +1697,7 @@ Deno.test({
 
 Deno.test({
   name: "queue persistence with delay messages",
-  ignore: true, // flaky
   async fn() {
-    const dispatchedPre = Deno.metrics().opsDispatchedAsync;
-    const completedPre = Deno.metrics().opsCompletedAsync;
     const filename = await Deno.makeTempFile({ prefix: "queue_db" });
     try {
       await Deno.remove(filename);
@@ -1745,14 +1742,6 @@ Deno.test({
       db.close();
       await listener;
     } finally {
-      // Wait until callbacks are drained before deleting the db.
-      let dispatched = Deno.metrics().opsDispatchedAsync - dispatchedPre;
-      let completed = Deno.metrics().opsCompletedAsync - completedPre;
-      while (dispatched !== completed) {
-        dispatched = Deno.metrics().opsDispatchedAsync - dispatchedPre;
-        completed = Deno.metrics().opsCompletedAsync - completedPre;
-        await sleep(100);
-      }
       try {
         await Deno.remove(filename);
       } catch {
