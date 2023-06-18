@@ -119,7 +119,6 @@ impl ExtModuleLoader {
       extensions
         .iter()
         .flat_map(|e| e.get_esm_sources())
-        .flatten()
         .map(|s| (s.specifier.to_string(), s.clone())),
     );
     ExtModuleLoader {

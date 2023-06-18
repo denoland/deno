@@ -844,29 +844,25 @@ impl JsRuntime {
       for extension in &extensions {
         let maybe_esm_entry_point = extension.get_esm_entry_point();
 
-        if let Some(esm_files) = extension.get_esm_sources() {
-          for file_source in esm_files {
-            self
-              .load_side_module(
-                &ModuleSpecifier::parse(file_source.specifier)?,
-                None,
-              )
-              .await?;
-          }
+        for file_source in extension.get_esm_sources() {
+          self
+            .load_side_module(
+              &ModuleSpecifier::parse(file_source.specifier)?,
+              None,
+            )
+            .await?;
         }
 
         if let Some(entry_point) = maybe_esm_entry_point {
           esm_entrypoints.push(entry_point);
         }
 
-        if let Some(js_files) = extension.get_js_sources() {
-          for file_source in js_files {
-            realm.execute_script(
-              self.v8_isolate(),
-              file_source.specifier,
-              file_source.load()?,
-            )?;
-          }
+        for file_source in extension.get_js_sources() {
+          realm.execute_script(
+            self.v8_isolate(),
+            file_source.specifier,
+            file_source.load()?,
+          )?;
         }
 
         if extension.is_core {

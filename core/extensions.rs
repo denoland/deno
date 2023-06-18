@@ -339,8 +339,8 @@ macro_rules! extension {
 #[derive(Default)]
 pub struct Extension {
   pub(crate) name: &'static str,
-  js_files: Option<Vec<ExtensionFileSource>>,
-  esm_files: Option<Vec<ExtensionFileSource>>,
+  js_files: Vec<ExtensionFileSource>,
+  esm_files: Vec<ExtensionFileSource>,
   esm_entry_point: Option<&'static str>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
@@ -396,12 +396,12 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.js_files.as_ref()
+  pub fn get_js_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.js_files
   }
 
-  pub fn get_esm_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.esm_files.as_ref()
+  pub fn get_esm_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.esm_files
   }
 
   pub fn get_esm_entry_point(&self) -> Option<&'static str> {
@@ -522,13 +522,11 @@ impl ExtensionBuilder {
 
   /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
   pub fn take(self) -> Extension {
-    let js_files = Some(self.js);
-    let esm_files = Some(self.esm);
     let ops = Some(self.ops);
     let deps = Some(self.deps);
     Extension {
-      js_files,
-      esm_files,
+      js_files: self.js,
+      esm_files: self.esm,
       esm_entry_point: self.esm_entry_point,
       ops,
       opstate_fn: self.state,
@@ -543,13 +541,11 @@ impl ExtensionBuilder {
   }
 
   pub fn build(&mut self) -> Extension {
-    let js_files = Some(std::mem::take(&mut self.js));
-    let esm_files = Some(std::mem::take(&mut self.esm));
     let ops = Some(std::mem::take(&mut self.ops));
     let deps = Some(std::mem::take(&mut self.deps));
     Extension {
-      js_files,
-      esm_files,
+      js_files: std::mem::take(&mut self.js),
+      esm_files: std::mem::take(&mut self.esm),
       esm_entry_point: self.esm_entry_point.take(),
       ops,
       opstate_fn: self.state.take(),

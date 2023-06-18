@@ -57,7 +57,6 @@ pub fn create_snapshot(
     .iter()
     .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
     .flatten()
-    .flatten()
   {
     use crate::ExtensionFileSourceCode;
     if let ExtensionFileSourceCode::LoadAtRuntime(path) = &source.code {
