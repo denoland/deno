@@ -6,7 +6,7 @@ import {
   MaybeEmpty,
   notImplemented,
 } from "ext:deno_node/_utils.ts";
-import { fromFileUrl } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type ReadlinkCallback = (
@@ -55,7 +55,7 @@ export function readlink(
   optOrCallback: ReadlinkCallback | ReadlinkOptions,
   callback?: ReadlinkCallback,
 ) {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
 
   let cb: ReadlinkCallback | undefined;
   if (typeof optOrCallback === "function") {
@@ -83,7 +83,7 @@ export function readlinkSync(
   path: string | URL,
   opt?: ReadlinkOptions,
 ): string | Uint8Array {
-  path = path instanceof URL ? fromFileUrl(path) : path;
+  path = path instanceof URL ? pathFromURL(path) : path;
 
   return maybeEncode(Deno.readLinkSync(path), getEncoding(opt));
 }

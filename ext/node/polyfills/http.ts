@@ -270,6 +270,9 @@ const kError = Symbol("kError");
 
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
+class FakeSocket extends EventEmitter {
+}
+
 /** ClientRequest represents the http(s) request from the client */
 class ClientRequest extends OutgoingMessage {
   defaultProtocol = "http:";
@@ -544,6 +547,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
+    this.onSocket(new FakeSocket());
 
     const url = this._createUrlStrFromOptions();
 
@@ -573,41 +577,12 @@ class ClientRequest extends OutgoingMessage {
     return undefined;
   }
 
-  onSocket(socket, err) {
-    if (this.destroyed || err) {
-      this.destroyed = true;
-
-      // deno-lint-ignore no-inner-declarations
-      function _destroy(req, err) {
-        if (!req.aborted && !err) {
-          err = connResetException("socket hang up");
-        }
-        if (err) {
-          req.emit("error", err);
-        }
-        req._closed = true;
-        req.emit("close");
-      }
-
-      if (socket) {
-        if (!err && this.agent && !socket.destroyed) {
-          socket.emit("free");
-        } else {
-          finished(socket.destroy(err || this[kError]), (er) => {
-            if (er?.code === "ERR_STREAM_PREMATURE_CLOSE") {
-              er = null;
-            }
-            _destroy(this, er || err);
-          });
-          return;
-        }
-      }
-
-      _destroy(this, err || this[kError]);
-    } else {
-      //tickOnSocket(this, socket);
-      //this._flush();
-    }
+  // TODO(bartlomieju): handle error
+  onSocket(socket, _err) {
+    nextTick(() => {
+      this.socket = socket;
+      this.emit("socket", socket);
+    });
   }
 
   // deno-lint-ignore no-explicit-any
@@ -620,13 +595,7 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const [res, _] = await Promise.all([
-          core.opAsync(
-            "op_fetch_send",
-            this._req.requestRid,
-            /* false because we want to have access to actual Response,
-          not the bytes stream of response (because we need to handle upgrades) */
-            false,
-          ),
+          core.opAsync("op_fetch_send", this._req.requestRid),
           (async () => {
             if (this._bodyWriteRid) {
               try {
@@ -725,10 +694,7 @@ class ClientRequest extends OutgoingMessage {
           this.emit("close");
         } else {
           {
-            const responseRid = core.ops.op_fetch_response_into_byte_stream(
-              res.responseRid,
-            );
-            incoming._bodyRid = responseRid;
+            incoming._bodyRid = res.responseRid;
           }
           this.emit("response", incoming);
         }

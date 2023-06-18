@@ -635,16 +635,17 @@ function serve(arg1, arg2) {
   }
 
   const onListen = (scheme) => {
+    // If the hostname is "0.0.0.0", we display "localhost" in console
+    // because browsers in Windows don't resolve "0.0.0.0".
+    // See the discussion in https://github.com/denoland/deno_std/issues/1165
+    const hostname = listenOpts.hostname == "0.0.0.0"
+      ? "localhost"
+      : listenOpts.hostname;
     const port = listenOpts.port;
+
     if (options.onListen) {
-      options.onListen({ port });
+      options.onListen({ hostname, port });
     } else {
-      // If the hostname is "0.0.0.0", we display "localhost" in console
-      // because browsers in Windows don't resolve "0.0.0.0".
-      // See the discussion in https://github.com/denoland/deno_std/issues/1165
-      const hostname = listenOpts.hostname == "0.0.0.0"
-        ? "localhost"
-        : listenOpts.hostname;
       console.log(`Listening on ${scheme}${hostname}:${port}/`);
     }
   };
