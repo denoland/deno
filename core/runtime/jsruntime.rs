@@ -884,6 +884,16 @@ impl JsRuntime {
               panic!("{} not present in the module map", specifier)
             })
         };
+        {
+          let module_map_rc = self.module_map.clone();
+          let module_map = module_map_rc.borrow();
+          let handle = module_map.handles.get(mod_id).unwrap().clone();
+          let mut scope = realm.handle_scope(self.v8_isolate());
+          let handle = v8::Local::new(&mut scope, handle);
+          if handle.get_status() == v8::ModuleStatus::Evaluated {
+            continue;
+          }
+        }
         let receiver = self.mod_evaluate(mod_id);
         self.run_event_loop(false).await?;
         receiver

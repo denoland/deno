@@ -365,9 +365,6 @@ impl JsRuntimeInspector {
             w.poll_state = PollState::Parked;
             w.parked_thread.replace(thread::current());
           }
-          PollState::Parked => {
-            w.parked_thread.replace(thread::current());
-          }
           _ => unreachable!(),
         };
         w.poll_state
