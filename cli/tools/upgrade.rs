@@ -215,7 +215,7 @@ pub async fn check_for_upgrades(
       Err(_) => String::from(""),
     };
     if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
-      if auto_upgrade_env != "true" {
+      if auto_upgrade_env != "1" {
         if version::is_canary() {
           eprint!(
             "{} ",
@@ -247,7 +247,7 @@ pub async fn check_for_upgrades(
           );
           eprintln!(
             "{} ",
-            colors::yellow("To use it, set `DENO_AUTO_UPGRADE=true`")
+            colors::yellow("To use it, set `DENO_AUTO_UPGRADE=1`")
           );
           return;
         }
