@@ -1739,7 +1739,7 @@ fn napi_get_buffer_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::Uint8Array>::try_from(value).unwrap();
+  let buf = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
   let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
