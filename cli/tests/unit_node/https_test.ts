@@ -12,13 +12,15 @@ const keyFile = join(tlsTestdataDir, "localhost.key");
 const certFile = join(tlsTestdataDir, "localhost.crt");
 const dec = new TextDecoder();
 const httpsRequestFilePath = "cli/tests/unit_node/testdata/https_request.ts";
+// todo: restore "repetitions" to the original value of 1_000
+const repetitions = 1_0;
 
 Deno.test("[node/https] request makes https request", async () => {
   const controller = new AbortController();
   const signal = controller.signal;
 
   const serveFinish = serveTls((_req) => {
-    return new Response("abcd\n".repeat(1_0));
+    return new Response("abcd\n".repeat(repetitions));
   }, { keyFile, certFile, port: 4505, hostname: "localhost", signal });
 
   const command = new Deno.Command(Deno.execPath(), {
@@ -36,7 +38,7 @@ Deno.test("[node/https] request makes https request", async () => {
   });
   const { stderr, stdout } = await command.output();
   assertEquals(dec.decode(stderr), "");
-  assertEquals(dec.decode(stdout), "abcd\n".repeat(1_0) + "\n");
+  assertEquals(dec.decode(stdout), "abcd\n".repeat(repetitions) + "\n");
   controller.abort();
   await serveFinish;
 });
@@ -46,7 +48,7 @@ Deno.test("[node/https] get makes https GET request", async () => {
   const signal = controller.signal;
 
   const serveFinish = serveTls((_req) => {
-    return new Response("abcd\n".repeat(1_0));
+    return new Response("abcd\n".repeat(repetitions));
   }, { keyFile, certFile, port: 4505, hostname: "localhost", signal });
 
   const command = new Deno.Command(Deno.execPath(), {
@@ -64,7 +66,7 @@ Deno.test("[node/https] get makes https GET request", async () => {
   });
   const { stdout, stderr } = await command.output();
   assertEquals(dec.decode(stderr), "");
-  assertEquals(dec.decode(stdout), "abcd\n".repeat(1_0) + "\n");
+  assertEquals(dec.decode(stdout), "abcd\n".repeat(repetitions) + "\n");
   controller.abort();
   await serveFinish;
 });

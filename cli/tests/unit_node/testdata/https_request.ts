@@ -5,6 +5,7 @@ import { assert } from "../../../../test_util/std/testing/asserts.ts";
 https.request("https://localhost:4505", (res: any) => {
   let data = "";
   assert(res.socket);
+  // Both assertions below are failing
   assert(Object.hasOwn(res.socket, "authorized"));
   // // @ts-ignore socket is TLSSocket, and it has "authorized"
   assert(res.socket.authorized);
