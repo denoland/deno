@@ -1717,20 +1717,6 @@ impl JsRuntime {
       .map(|handle| v8::Local::new(tc_scope, handle))
       .expect("ModuleInfo not found");
     let mut status = module.get_status();
-    // ES module evaluation should be idempotent.
-    if status == v8::ModuleStatus::Evaluated {
-      let (sender, receiver) = oneshot::channel();
-      sender.send(Ok(())).unwrap();
-      return receiver;
-    }
-    if status == v8::ModuleStatus::Errored {
-      let (sender, receiver) = oneshot::channel();
-      let exception = module.get_exception();
-      sender
-        .send(exception_to_err_result(tc_scope, exception, false))
-        .unwrap();
-      return receiver;
-    }
     assert_eq!(
       status,
       v8::ModuleStatus::Instantiated,
