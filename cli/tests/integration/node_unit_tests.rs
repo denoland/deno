@@ -46,6 +46,7 @@ util::unit_test_factory!(
     _fs_unlink_test = _fs / _fs_unlink_test,
     _fs_utimes_test = _fs / _fs_utimes_test,
     _fs_watch_test = _fs / _fs_watch_test,
+    _fs_writeFile_test = _fs / _fs_writeFile_test,
     _fs_write_test = _fs / _fs_write_test,
     async_hooks_test,
     buffer_test,
