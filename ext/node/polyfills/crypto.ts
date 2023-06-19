@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
 import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
