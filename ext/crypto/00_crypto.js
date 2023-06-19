@@ -1211,7 +1211,7 @@ class SubtleCrypto {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await this.deriveBits(
+    const secret = await deriveBits(
       normalizedAlgorithm,
       baseKey,
       length,
