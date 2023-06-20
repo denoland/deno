@@ -108,7 +108,7 @@ Deno.test({
   name:
     "[node/buffer] alloc filled correctly with Uint8Array smaller than alloc size",
   fn() {
-    // todo: remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
+    // todo(fbaltor): remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
     // deno-lint-ignore no-explicit-any
     const arr: any = new Uint8Array([100, 101]);
     assertEquals(
@@ -127,7 +127,7 @@ Deno.test({
     "[node/buffer] alloc filled correctly with Uint8Array bigger than alloc size",
   fn() {
     assertEquals(
-      // todo: remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
+      // todo(fbaltor): remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
       // deno-lint-ignore no-explicit-any
       Buffer.alloc(1, new Uint8Array([100, 101]) as any),
       Buffer.from([100]),
