@@ -2,7 +2,10 @@
 import { createHash, createHmac, getHashes, randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
-import { assert, assertEquals } from "../../../../test_util/std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../../test_util/std/testing/asserts.ts";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({
@@ -111,7 +114,7 @@ Deno.test("[node/crypto.Hash] streaming usage", async () => {
 
 Deno.test("[node/crypto.getHashes]", () => {
   for (const algorithm of getHashes()) {
-    console.log(algorithm)
+    console.log(algorithm);
     const d = createHash(algorithm).update("abc").digest();
     assert(d instanceof Buffer);
     assert(d.length > 0);
