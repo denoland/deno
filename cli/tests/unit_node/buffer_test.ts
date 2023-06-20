@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// @deno-types="../../../ext/node/polyfills/internal/buffer.d.ts"
 import { Buffer } from "node:buffer";
 import {
   assertEquals,
