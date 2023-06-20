@@ -125,13 +125,10 @@ fn event_loop_middleware(
   // FFI callbacks coming in from other threads will call in and get queued.
   let mut maybe_scheduling = false;
 
-  // Cannot use 'if let Some(ffi_state)' binding here because op_state must
-  // be explicitly dropped after receiving of work is done.
-  if op_state_rc.borrow().has::<FfiState>() {
-    let mut work_items: Vec<PendingFfiAsyncWork> = vec![];
-
-    let mut op_state = op_state_rc.borrow_mut();
-    let ffi_state = op_state.borrow_mut::<FfiState>();
+  let mut op_state = op_state_rc.borrow_mut();
+  if let Some(ffi_state) = op_state.try_borrow_mut::<FfiState>() {
+    // TODO(mmastrac): This should be a SmallVec to avoid allocations in most cases
+    let mut work_items = Vec::with_capacity(1);
 
     while let Ok(Some(async_work_fut)) =
       ffi_state.async_work_receiver.try_next()
@@ -141,10 +138,9 @@ fn event_loop_middleware(
       maybe_scheduling = true;
     }
 
-    // Async work calls back into the event loop: We must drop the op_state_rc borrow here.
+    // Drop the op_state and ffi_state borrows
     drop(op_state);
-
-    while let Some(async_work_fut) = work_items.pop() {
+    for async_work_fut in work_items.into_iter() {
       async_work_fut();
     }
   }
