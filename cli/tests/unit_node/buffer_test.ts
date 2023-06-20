@@ -463,9 +463,9 @@ Deno.test({
   name: "[node/buffer] Buffer from string base64",
   fn() {
     for (const encoding of ["base64", "BASE64"]) {
-      // deno-lint-ignore no-explicit-any
       const buffer: Buffer = Buffer.from(
         "dGhpcyBpcyBhIHTDqXN0",
+        // deno-lint-ignore no-explicit-any
         encoding as any,
       );
       assertEquals(buffer.length, 15, "Buffer length should be 15");
