@@ -95,7 +95,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/buffer] alloc filled correctly with hex string smaller than alloc size",
+  name:
+    "[node/buffer] alloc filled correctly with hex string smaller than alloc size",
   fn() {
     assertEquals(
       Buffer.alloc(13, "64656e6f", "hex").toString(),
@@ -105,7 +106,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/buffer] alloc filled correctly with Uint8Array smaller than alloc size",
+  name:
+    "[node/buffer] alloc filled correctly with Uint8Array smaller than alloc size",
   fn() {
     // todo: remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
     // deno-lint-ignore no-explicit-any
@@ -121,9 +123,9 @@ Deno.test({
   },
 });
 
-
 Deno.test({
-  name: "[node/buffer] alloc filled correctly with Uint8Array bigger than alloc size",
+  name:
+    "[node/buffer] alloc filled correctly with Uint8Array bigger than alloc size",
   fn() {
     assertEquals(
       // todo: remove this 'any' when @types/node fixes https://github.com/DefinitelyTyped/DefinitelyTyped/discussions/65831
@@ -133,7 +135,6 @@ Deno.test({
     );
   },
 });
-
 
 Deno.test({
   name: "[node/buffer] alloc filled correctly with Buffer",
@@ -196,7 +197,7 @@ Deno.test({
     ["ascii", "latin1", "binary"]
       .reduce((es: string[], e: string) => es.concat(e, e.toUpperCase()), [])
       .forEach((encoding: string) => {
-      // deno-lint-ignore no-explicit-any
+        // deno-lint-ignore no-explicit-any
         assertEquals(Buffer.byteLength("Il était tué", encoding as any), 12);
       });
 
@@ -392,7 +393,8 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[node/buffer] Buffer copy doesn't throw on offset but copies until offset reached",
+  name:
+    "[node/buffer] Buffer copy doesn't throw on offset but copies until offset reached",
   fn() {
     const buffer1 = Buffer.from([1, 2, 3]);
     const buffer2 = Buffer.alloc(8);
@@ -463,7 +465,10 @@ Deno.test({
   fn() {
     for (const encoding of ["base64", "BASE64"]) {
       // deno-lint-ignore no-explicit-any
-      const buffer: Buffer = Buffer.from("dGhpcyBpcyBhIHTDqXN0", encoding as any);
+      const buffer: Buffer = Buffer.from(
+        "dGhpcyBpcyBhIHTDqXN0",
+        encoding as any,
+      );
       assertEquals(buffer.length, 15, "Buffer length should be 15");
       assertEquals(
         buffer.toString(),
