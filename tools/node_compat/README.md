@@ -29,7 +29,7 @@ The above command copies the updated items from Node.js tarball to the Deno
 source tree.
 
 Ideally Deno should pass the Node.js compat tests without modification, but if
-you need to modify it, then add that item in `ignore` perperty of
+you need to modify it, then add that item in `ignore` property of
 `config.jsonc`. Then `setup.ts` doesn't overwrite the modified Node.js test
 cases anymore.
 
