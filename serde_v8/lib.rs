@@ -17,6 +17,7 @@ pub use error::Result;
 pub use keys::KeyCache;
 pub use magic::any_value::AnyValue;
 pub use magic::bigint::BigInt;
+pub use magic::buffer::RustToV8Buf;
 pub use magic::buffer::ZeroCopyBuf;
 pub use magic::bytestring::ByteString;
 pub use magic::detached_buffer::DetachedBuffer;

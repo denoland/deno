@@ -24,12 +24,6 @@ impl Debug for ZeroCopyBuf {
   }
 }
 
-impl ZeroCopyBuf {
-  pub fn empty() -> Self {
-    ZeroCopyBuf::ToV8(Some(vec![0_u8; 0].into_boxed_slice()))
-  }
-}
-
 impl Clone for ZeroCopyBuf {
   fn clone(&self) -> Self {
     match self {
@@ -135,3 +129,81 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
     }
   }
 }
+
+// NOTE(bartlomieju): we use Option here, because `to_v8()` uses `&mut self`
+// instead of `self` which is dictated by the `serde` API.
+pub struct RustToV8Buf(Option<Box<[u8]>>);
+
+impl_magic!(RustToV8Buf);
+
+impl Debug for RustToV8Buf {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_list().entries(self.0.as_ref().iter()).finish()
+  }
+}
+
+impl RustToV8Buf {
+  pub fn empty() -> Self {
+    RustToV8Buf(Some(vec![0_u8; 0].into_boxed_slice()))
+  }
+}
+
+// TODO(bartlomieju): remove it
+// impl AsRef<[u8]> for RustToV8Buf {
+//   fn as_ref(&self) -> &[u8] {
+//     self
+//   }
+// }
+
+// impl AsMut<[u8]> for RustToV8Buf {
+//   fn as_mut(&mut self) -> &mut [u8] {
+//     &mut *self
+//   }
+// }
+
+impl From<Box<[u8]>> for RustToV8Buf {
+  fn from(buf: Box<[u8]>) -> Self {
+    RustToV8Buf(Some(buf))
+  }
+}
+
+impl From<Vec<u8>> for RustToV8Buf {
+  fn from(vec: Vec<u8>) -> Self {
+    vec.into_boxed_slice().into()
+  }
+}
+
+impl ToV8 for RustToV8Buf {
+  fn to_v8<'a>(
+    &mut self,
+    scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
+    let buf: Box<[u8]> = self.0.take().expect("RustToV8Buf was empty");
+
+    if buf.is_empty() {
+      let ab = v8::ArrayBuffer::new(scope, 0);
+      return Ok(
+        v8::Uint8Array::new(scope, ab, 0, 0)
+          .expect("Failed to create Uint8Array")
+          .into(),
+      );
+    }
+    let buf_len: usize = buf.len();
+    let backing_store =
+      v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
+    let backing_store_shared = backing_store.make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &backing_store_shared);
+    Ok(
+      v8::Uint8Array::new(scope, ab, 0, buf_len)
+        .expect("Failed to create Uint8Array")
+        .into(),
+    )
+  }
+}
+
+// TODO(bartlomieju): remove it
+// impl From<RustToV8Buf> for bytes::Bytes {
+//   fn from(mut buf: RustToV8Buf) -> bytes::Bytes {
+//     buf.0.take().expect("ZeroCopyBuf was empty").into()
+//   }
+// }

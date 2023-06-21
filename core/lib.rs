@@ -32,6 +32,7 @@ pub use serde_json;
 pub use serde_v8;
 pub use serde_v8::ByteString;
 pub use serde_v8::DetachedBuffer;
+pub use serde_v8::RustToV8Buf;
 pub use serde_v8::StringOrBuffer;
 pub use serde_v8::U16String;
 pub use serde_v8::ZeroCopyBuf;
