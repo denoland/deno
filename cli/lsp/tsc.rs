@@ -650,7 +650,7 @@ impl Assets {
   }
 
   /// Initializes with the assets in the isolate.
-  pub async fn intitialize(&self, state_snapshot: Arc<StateSnapshot>) {
+  pub async fn initialize(&self, state_snapshot: Arc<StateSnapshot>) {
     let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
     let mut assets_map = self.assets.lock();
     for asset in assets {
@@ -4737,7 +4737,7 @@ mod tests {
   }
 
   #[test]
-  fn include_supress_inlay_hit_settings() {
+  fn include_suppress_inlay_hit_settings() {
     let mut settings = WorkspaceSettings::default();
     settings
       .inlay_hints

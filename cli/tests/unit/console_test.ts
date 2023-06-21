@@ -1779,7 +1779,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
 });
 
 // console.log(Invalid Date) test
-Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
