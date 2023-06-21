@@ -1069,7 +1069,7 @@ Deno.test(function consoleTestWithCustomInspectorError() {
     () => stringify(a),
     Error,
     "BOOM",
-    "Inpsect should fail and maintain a clear CTX_STACK",
+    "Inspect should fail and maintain a clear CTX_STACK",
   );
 });
 

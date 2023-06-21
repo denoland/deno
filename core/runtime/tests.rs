@@ -1894,7 +1894,7 @@ fn test_op_unstable_disabling() {
       "test.js",
       r#"
       if (Deno.core.ops.op_foo() !== 42) {
-        throw new Error("Exptected op_foo() === 42");
+        throw new Error("Expected op_foo() === 42");
       }
       if (typeof Deno.core.ops.op_bar !== "undefined") {
         throw new Error("Expected op_bar to be disabled")
