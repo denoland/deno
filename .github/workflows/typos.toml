@@ -1,0 +1,59 @@
+[default]
+extend-ignore-identifiers-re = [
+  "d3n0l4nd",
+  "f31afb6d931392daa5e3",
+  "wEbSOcKET",
+  "BASe64",
+]
+
+[default.extend-words]
+lod = "lod" # level of detail
+ser = "ser"
+
+# Should be ellipses but cumbersome to fix since the file also exists in a submodule.
+elipses = "elipses"
+
+# Not a typo ... will probably be removed from the typos spell checker in the future.
+unuseful = "unuseful"
+
+[default.extend-identifiers]
+als = "als" # AsyncLocalStorage
+O_WRONLY = "O_WRONLY"
+ERROR_FILENAME_EXCED_RANGE = "ERROR_FILENAME_EXCED_RANGE"
+
+[files]
+extend-exclude = [
+  "testdata",
+  "cli/tests/node_compat/test/parallel/*",
+  "cli/tsc/dts",
+
+  "*.json",
+
+  "cli/tsc/*.js",
+  "node_reactdom_ssr.js",
+  "webcrypto_test.ts",
+  "test-url-format.js",
+
+  "fast_call.rs",
+  "turbocall.rs",
+  "winerror.rs",
+
+  # These tests should match the Node.js tests exactly even if they contain typos
+  # (this is tested by `./tools/node_compat/setup.ts --check` in the CI.)
+  "cli/tests/node_compat/test",
+
+  # git submodules
+  "third_party",
+  "test_util/std",
+  "test_util/wpt",
+  "tools/node_compat/node",
+]
+
+[type.rust.extend-words]
+defail = "defail"
+flate = "flate"
+
+[type.changelog]
+extend-glob = ["Releases.md"]
+[type.changelog.extend-words]
+finsihed = "finsihed"

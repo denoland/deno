@@ -4369,7 +4369,7 @@ Read more about this release at https://deno.land/v1
 - fix: Enable TS strict mode by default (#3899)
 - fix: detecting AMD like imports (#4009)
 - fix: emit when bundle contains single module (#4042)
-- fix: mis-detecting imports on JavaScript when there is no checkJs (#4040)
+- fix: misdetecting imports on JavaScript when there is no checkJs (#4040)
 - fix: skip non-UTF-8 dir entries in Deno.readDir() (#4004)
 - refactor: remove run_worker_loop (#4028)
 - refactor: rewrite file_fetcher (#4037, #4030)
