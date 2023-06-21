@@ -41,7 +41,10 @@ Deno.test(async function bar() {
   let differentScopeDone = false;
   const als = new AsyncLocalStorage();
   const ac = new AbortController();
-  const server = Deno.serve(() => {
+  const server = Deno.serve({
+    signal: ac.signal,
+    port: 4000,
+  }, () => {
     const differentScope = als.run(123, () =>
       AsyncResource.bind(() => {
         differentScopeDone = true;
@@ -54,15 +57,12 @@ Deno.test(async function bar() {
       await new Promise((res) => setTimeout(res, 10));
       return new Response(als.getStore() as string); // "Hello World"
     });
-  }, {
-    signal: ac.signal,
-    port: 4000,
   });
 
   const res = await fetch("http://localhost:4000");
   assertEquals(await res.text(), "Hello World");
   ac.abort();
-  await server;
+  await server.finished;
   assert(differentScopeDone);
 });
 

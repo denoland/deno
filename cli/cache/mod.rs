@@ -14,6 +14,8 @@ use deno_runtime::permissions::PermissionsContainer;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+mod cache_db;
+mod caches;
 mod check;
 mod common;
 mod deno_dir;
@@ -24,9 +26,11 @@ mod incremental;
 mod node;
 mod parsed_source;
 
+pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;
+pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
@@ -42,10 +46,9 @@ pub const CACHE_PERM: u32 = 0o644;
 /// a concise interface to the DENO_DIR when building module graphs.
 pub struct FetchCacher {
   emit_cache: EmitCache,
-  dynamic_permissions: PermissionsContainer,
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-  root_permissions: PermissionsContainer,
+  permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
 }
@@ -55,16 +58,14 @@ impl FetchCacher {
     emit_cache: EmitCache,
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
-    root_permissions: PermissionsContainer,
-    dynamic_permissions: PermissionsContainer,
+    permissions: PermissionsContainer,
     maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
     Self {
       emit_cache,
-      dynamic_permissions,
       file_fetcher,
       file_header_overrides,
-      root_permissions,
+      permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
     }
@@ -102,7 +103,7 @@ impl Loader for FetchCacher {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
-    is_dynamic: bool,
+    _is_dynamic: bool,
   ) -> LoadFuture {
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       // The specifier might be in a completely different symlinked tree than
@@ -121,11 +122,7 @@ impl Loader for FetchCacher {
       }
     }
 
-    let permissions = if is_dynamic {
-      self.dynamic_permissions.clone()
-    } else {
-      self.root_permissions.clone()
-    };
+    let permissions = self.permissions.clone();
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
     let specifier = specifier.clone();

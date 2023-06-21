@@ -7,13 +7,13 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageNv;
+use deno_npm::registry::NpmPackageVersionDistInfo;
+use deno_semver::npm::NpmPackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
 use super::cache::with_folder_sync_lock;
-use super::registry::NpmPackageVersionDistInfo;
 
 pub fn verify_and_extract_tarball(
   package: &NpmPackageNv,
@@ -107,8 +107,26 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
         )
       }
     }
-    if entry.header().entry_type() == EntryType::Regular {
-      entry.unpack(&absolute_path)?;
+
+    let entry_type = entry.header().entry_type();
+    match entry_type {
+      EntryType::Regular => {
+        entry.unpack(&absolute_path)?;
+      }
+      EntryType::Symlink | EntryType::Link => {
+        // At the moment, npm doesn't seem to support uploading hardlinks or
+        // symlinks to the npm registry. If ever adding symlink or hardlink
+        // support, we will need to validate that the hardlink and symlink
+        // target are within the package directory.
+        log::warn!(
+          "Ignoring npm tarball entry type {:?} for '{}'",
+          entry_type,
+          absolute_path.display()
+        )
+      }
+      _ => {
+        // ignore
+      }
     }
   }
   Ok(())
@@ -116,7 +134,7 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
 
 #[cfg(test)]
 mod test {
-  use deno_graph::semver::Version;
+  use deno_semver::Version;
 
   use super::*;
 

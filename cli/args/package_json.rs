@@ -7,41 +7,18 @@ use std::path::PathBuf;
 
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_graph::npm::NpmPackageReq;
-use deno_graph::semver::NpmVersionReqSpecifierParseError;
-use deno_graph::semver::VersionReq;
+use deno_npm::registry::parse_dep_entry_name_and_raw_version;
+use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_runtime::deno_node::PackageJson;
+use deno_semver::npm::NpmPackageReq;
+use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::VersionReq;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Error, PartialEq, Eq, Hash)]
-#[error("Could not find @ symbol in npm url '{value}'")]
-pub struct PackageJsonDepNpmSchemeValueParseError {
-  pub value: String,
-}
-
-/// Gets the name and raw version constraint taking into account npm
-/// package aliases.
-pub fn parse_dep_entry_name_and_raw_version<'a>(
-  key: &'a str,
-  value: &'a str,
-) -> Result<(&'a str, &'a str), PackageJsonDepNpmSchemeValueParseError> {
-  if let Some(package_and_version) = value.strip_prefix("npm:") {
-    if let Some((name, version)) = package_and_version.rsplit_once('@') {
-      Ok((name, version))
-    } else {
-      Err(PackageJsonDepNpmSchemeValueParseError {
-        value: value.to_string(),
-      })
-    }
-  } else {
-    Ok((key, value))
-  }
-}
-
-#[derive(Debug, Error, Clone, Hash)]
+#[derive(Debug, Error, Clone)]
 pub enum PackageJsonDepValueParseError {
   #[error(transparent)]
-  SchemeValue(#[from] PackageJsonDepNpmSchemeValueParseError),
+  SchemeValue(#[from] PackageDepNpmSchemeValueParseError),
   #[error(transparent)]
   Specifier(#[from] NpmVersionReqSpecifierParseError),
   #[error("Not implemented scheme '{scheme}'")]
@@ -50,6 +27,33 @@ pub enum PackageJsonDepValueParseError {
 
 pub type PackageJsonDeps =
   BTreeMap<String, Result<NpmPackageReq, PackageJsonDepValueParseError>>;
+
+#[derive(Debug, Default)]
+pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
+
+impl PackageJsonDepsProvider {
+  pub fn new(deps: Option<PackageJsonDeps>) -> Self {
+    Self(deps)
+  }
+
+  pub fn deps(&self) -> Option<&PackageJsonDeps> {
+    self.0.as_ref()
+  }
+
+  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
+    match &self.0 {
+      Some(deps) => {
+        let mut package_reqs = deps
+          .values()
+          .filter_map(|r| r.as_ref().ok())
+          .collect::<Vec<_>>();
+        package_reqs.sort(); // deterministic resolution
+        package_reqs
+      }
+      None => Vec::new(),
+    }
+  }
+}
 
 /// Gets an application level package.json's npm package requirements.
 ///

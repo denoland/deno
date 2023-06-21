@@ -5,6 +5,8 @@ use std::ops::DerefMut;
 use std::ops::Range;
 use std::rc::Rc;
 
+use crate::error::value_to_type_str;
+
 use super::rawbytes;
 use super::transl8::FromV8;
 
@@ -29,20 +31,6 @@ pub struct V8Slice {
 unsafe impl Send for V8Slice {}
 
 impl V8Slice {
-  pub fn from_buffer(
-    buffer: v8::Local<v8::ArrayBuffer>,
-    range: Range<usize>,
-  ) -> Result<Self, v8::DataError> {
-    let store = buffer.get_backing_store();
-    if store.is_shared() {
-      return Err(v8::DataError::BadType {
-        actual: "shared ArrayBufferView",
-        expected: "non-shared ArrayBufferView",
-      });
-    }
-    Ok(Self { store, range })
-  }
-
   fn as_slice(&self) -> &[u8] {
     // SAFETY: v8::SharedRef<v8::BackingStore> is similar to Arc<[u8]>,
     // it points to a fixed continuous slice of bytes on the heap.
@@ -89,9 +77,19 @@ impl FromV8 for V8Slice {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    to_ranged_buffer(scope, value)
-      .and_then(|(b, r)| Self::from_buffer(b, r))
-      .map_err(|_| crate::Error::ExpectedBuffer)
+    match to_ranged_buffer(scope, value) {
+      Ok((b, range)) => {
+        let store = b.get_backing_store();
+        if store.is_resizable_by_user_javascript() {
+          Err(crate::Error::ResizableBackingStoreNotSupported)
+        } else if store.is_shared() {
+          Err(crate::Error::ExpectedBuffer(value_to_type_str(value)))
+        } else {
+          Ok(V8Slice { store, range })
+        }
+      }
+      Err(_) => Err(crate::Error::ExpectedBuffer(value_to_type_str(value))),
+    }
   }
 }
 

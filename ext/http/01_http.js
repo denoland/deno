@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const { BadResourcePrototype, InterruptedPrototype, ops } = core;
+const { op_http_write } = Deno.core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event, setEventTargetData } from "ext:deno_web/02_event.js";
@@ -14,9 +18,9 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import {
-  _flash,
   fromInnerRequest,
   newInnerRequest,
+  toInnerRequest,
 } from "ext:deno_fetch/23_request.js";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
 import {
@@ -26,8 +30,10 @@ import {
   _protocol,
   _readyState,
   _rid,
+  _role,
   _server,
   _serverHandleIdleTimeout,
+  SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
 import {
@@ -46,20 +52,22 @@ import {
   readableStreamForRid,
   ReadableStreamPrototype,
 } from "ext:deno_web/06_streams.js";
+import { serve } from "ext:deno_http/00_serve.js";
 const {
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   StringPrototypeCharCodeAt,
   StringPrototypeIncludes,
-  StringPrototypeToLowerCase,
   StringPrototypeSplit,
+  StringPrototypeToLowerCase,
+  StringPrototypeToUpperCase,
   Symbol,
   SymbolAsyncIterator,
   TypeError,
@@ -80,7 +88,7 @@ class HttpConn {
   // that were created during lifecycle of this request.
   // When the connection is closed these resources should be closed
   // as well.
-  managedResources = new Set();
+  managedResources = new SafeSet();
 
   constructor(rid, remoteAddr, localAddr) {
     this.#rid = rid;
@@ -136,12 +144,13 @@ class HttpConn {
     }
 
     const innerRequest = newInnerRequest(
-      () => method,
+      method,
       url,
       () => ops.op_http_headers(streamRid),
       body !== null ? new InnerBody(body) : null,
       false,
     );
+    innerRequest[streamRid] = streamRid;
     const abortController = new AbortController();
     const request = fromInnerRequest(
       innerRequest,
@@ -323,7 +332,7 @@ function createRespondWith(
               break;
             }
             try {
-              await core.opAsync("op_http_write", streamRid, value);
+              await op_http_write(streamRid, value);
             } catch (error) {
               const connError = httpConn[connErrorSymbol];
               if (
@@ -395,12 +404,13 @@ async function handleWS(resp, getWSRid, httpConn) {
 
     ws[_rid] = await getWSRid();
 
-    httpConn?.close();
+    httpConn.close();
 
     if (ws instanceof WebSocket) {
       ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
       ws[_readyState] = WebSocket.OPEN;
+      ws[_role] = SERVER;
       const event = new Event("open");
       ws.dispatchEvent(event);
 
@@ -429,6 +439,7 @@ const websocketCvf = buildCaseInsensitiveCommaValueFinder("websocket");
 const upgradeCvf = buildCaseInsensitiveCommaValueFinder("upgrade");
 
 function upgradeWebSocket(request, options = {}) {
+  const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
     websocketCvf(upgrade);
@@ -478,13 +489,17 @@ function upgradeWebSocket(request, options = {}) {
     }
   }
 
-  const response = fromInnerResponse(r, "immutable");
-
   const socket = webidl.createBranded(WebSocket);
   setEventTargetData(socket);
   socket[_server] = true;
   socket[_idleTimeoutDuration] = options.idleTimeout ?? 120;
   socket[_idleTimeoutTimeout] = null;
+
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeWebSocket", r, socket);
+  }
+
+  const response = fromInnerResponse(r, "immutable");
 
   const stream = webidl.createBranded(WebSocketStream);
   stream[_server] = true;
@@ -518,10 +533,9 @@ function upgradeWebSocket(request, options = {}) {
 }
 
 function upgradeHttp(req) {
-  if (req[_flash]) {
-    throw new TypeError(
-      "Flash requests can not be upgraded with `upgradeHttp`. Use `upgradeHttpRaw` instead.",
-    );
+  const inner = toInnerRequest(req);
+  if (inner._wantsUpgrade) {
+    return inner._wantsUpgrade("upgradeHttp", arguments);
   }
 
   req[_deferred] = new Deferred();
@@ -544,17 +558,20 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
       StringPrototypeToLowerCase(checkText),
       "",
     ),
-    (c) => [c.charCodeAt(0), c.toUpperCase().charCodeAt(0)],
+    (c) => [
+      StringPrototypeCharCodeAt(c, 0),
+      StringPrototypeCharCodeAt(StringPrototypeToUpperCase(c), 0),
+    ],
   );
   /** @type {number} */
   let i;
   /** @type {number} */
   let char;
 
-  /** @param value {string} */
+  /** @param {string} value */
   return function (value) {
     for (i = 0; i < value.length; i++) {
-      char = value.charCodeAt(i);
+      char = StringPrototypeCharCodeAt(value, i);
       skipWhitespace(value);
 
       if (hasWord(value)) {
@@ -602,4 +619,4 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, handleWS, HttpConn, upgradeHttp, upgradeWebSocket };
+export { _ws, handleWS, HttpConn, serve, upgradeHttp, upgradeWebSocket };

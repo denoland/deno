@@ -23,7 +23,7 @@ pub fn benchmark(
   target_path: &Path,
 ) -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
-  let deno_exe = deno_exe.to_str().unwrap();
+  let deno_exe = deno_exe.to_string();
 
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
@@ -82,7 +82,7 @@ pub fn benchmark(
       res.insert(
         file_stem.to_string(),
         run(
-          &[bun_exe.to_str().unwrap(), path, &port.to_string()],
+          &[&bun_exe.to_string(), path, &port.to_string()],
           port,
           None,
           None,
@@ -95,10 +95,11 @@ pub fn benchmark(
         file_stem.to_string(),
         run(
           &[
-            deno_exe,
+            deno_exe.as_str(),
             "run",
             "--allow-all",
             "--unstable",
+            "--enable-testing-features-do-not-use",
             path,
             &server_addr(port),
           ],
@@ -159,8 +160,8 @@ fn run(
   assert!(wrk.is_file());
 
   let addr = format!("http://127.0.0.1:{port}/");
-  let mut wrk_cmd =
-    vec![wrk.to_str().unwrap(), "-d", DURATION, "--latency", &addr];
+  let wrk = wrk.to_string();
+  let mut wrk_cmd = vec![wrk.as_str(), "-d", DURATION, "--latency", &addr];
 
   if let Some(lua_script) = lua_script {
     wrk_cmd.push("-s");
@@ -187,7 +188,7 @@ fn run(
 }
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(4544);
-fn get_port() -> u16 {
+pub(crate) fn get_port() -> u16 {
   let p = NEXT_PORT.load(Ordering::SeqCst);
   NEXT_PORT.store(p.wrapping_add(1), Ordering::SeqCst);
   p

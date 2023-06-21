@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.109.0"
+version = "0.123.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -39,7 +39,7 @@ serde.workspace = true
 serde_bytes.workspace = true
 sha1 = { version = "0.10.5", features = ["oid"] }
 sha2.workspace = true
-signature = "1.6.4"
+signature.workspace = true
 spki = "0.6.0"
 tokio.workspace = true
 uuid.workspace = true

@@ -4,10 +4,15 @@ use crate::colors;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use once_cell::sync::Lazy;
+use std::fmt::Write;
+use std::io::BufRead;
+use std::io::StderrLock;
+use std::io::StdinLock;
+use std::io::Write as IoWrite;
 
 /// Helper function to strip ansi codes and ASCII control characters.
 fn strip_ansi_codes_and_ascii_control(s: &str) -> std::borrow::Cow<str> {
-  console_static_text::strip_ansi_codes(s)
+  console_static_text::ansi::strip_ansi_codes(s)
     .chars()
     .filter(|c| !c.is_ascii_control())
     .collect()
@@ -84,7 +89,10 @@ impl PermissionPrompter for TtyPrompter {
     };
 
     #[cfg(unix)]
-    fn clear_stdin() -> Result<(), AnyError> {
+    fn clear_stdin(
+      _stdin_lock: &mut StdinLock,
+      _stderr_lock: &mut StderrLock,
+    ) -> Result<(), AnyError> {
       // TODO(bartlomieju):
       #[allow(clippy::undocumented_unsafe_blocks)]
       let r = unsafe { libc::tcflush(0, libc::TCIFLUSH) };
@@ -93,7 +101,10 @@ impl PermissionPrompter for TtyPrompter {
     }
 
     #[cfg(not(unix))]
-    fn clear_stdin() -> Result<(), AnyError> {
+    fn clear_stdin(
+      stdin_lock: &mut StdinLock,
+      stderr_lock: &mut StderrLock,
+    ) -> Result<(), AnyError> {
       use deno_core::anyhow::bail;
       use winapi::shared::minwindef::TRUE;
       use winapi::shared::minwindef::UINT;
@@ -117,11 +128,11 @@ impl PermissionPrompter for TtyPrompter {
         // emulate an enter key press to clear any line buffered console characters
         emulate_enter_key_press(stdin)?;
         // read the buffered line or enter key press
-        read_stdin_line()?;
+        read_stdin_line(stdin_lock)?;
         // check if our emulated key press was executed
         if is_input_buffer_empty(stdin)? {
           // if so, move the cursor up to prevent a blank line
-          move_cursor_up()?;
+          move_cursor_up(stderr_lock)?;
         } else {
           // the emulated key press is still pending, so a buffered line was read
           // and we can flush the emulated key press
@@ -180,36 +191,35 @@ impl PermissionPrompter for TtyPrompter {
         Ok(events_read == 0)
       }
 
-      fn move_cursor_up() -> Result<(), AnyError> {
-        use std::io::Write;
-        write!(std::io::stderr(), "\x1B[1A")?;
+      fn move_cursor_up(stderr_lock: &mut StderrLock) -> Result<(), AnyError> {
+        write!(stderr_lock, "\x1B[1A")?;
         Ok(())
       }
 
-      fn read_stdin_line() -> Result<(), AnyError> {
+      fn read_stdin_line(stdin_lock: &mut StdinLock) -> Result<(), AnyError> {
         let mut input = String::new();
-        let stdin = std::io::stdin();
-        stdin.read_line(&mut input)?;
+        stdin_lock.read_line(&mut input)?;
         Ok(())
       }
     }
 
     // Clear n-lines in terminal and move cursor to the beginning of the line.
-    fn clear_n_lines(n: usize) {
-      eprint!("\x1B[{n}A\x1B[0J");
-    }
-
-    // For security reasons we must consume everything in stdin so that previously
-    // buffered data cannot effect the prompt.
-    if let Err(err) = clear_stdin() {
-      eprintln!("Error clearing stdin for permission prompt. {err:#}");
-      return PromptResponse::Deny; // don't grant permission if this fails
+    fn clear_n_lines(stderr_lock: &mut StderrLock, n: usize) {
+      write!(stderr_lock, "\x1B[{n}A\x1B[0J").unwrap();
     }
 
     // Lock stdio streams, so no other output is written while the prompt is
     // displayed.
-    let _stdout_guard = std::io::stdout().lock();
-    let _stderr_guard = std::io::stderr().lock();
+    let stdout_lock = std::io::stdout().lock();
+    let mut stderr_lock = std::io::stderr().lock();
+    let mut stdin_lock = std::io::stdin().lock();
+
+    // For security reasons we must consume everything in stdin so that previously
+    // buffered data cannot affect the prompt.
+    if let Err(err) = clear_stdin(&mut stdin_lock, &mut stderr_lock) {
+      eprintln!("Error clearing stdin for permission prompt. {err:#}");
+      return PromptResponse::Deny; // don't grant permission if this fails
+    }
 
     let message = strip_ansi_codes_and_ascii_control(message);
     let name = strip_ansi_codes_and_ascii_control(name);
@@ -221,21 +231,28 @@ impl PermissionPrompter for TtyPrompter {
     } else {
       "[y/n] (y = yes, allow; n = no, deny)".to_string()
     };
-    eprint!("┌ {PERMISSION_EMOJI}  ");
-    eprint!("{}", colors::bold("Deno requests "));
-    eprint!("{}", colors::bold(message.clone()));
-    eprintln!("{}", colors::bold("."));
-    if let Some(api_name) = api_name.clone() {
-      eprintln!("├ Requested by `{api_name}` API");
+
+    // output everything in one shot to make the tests more reliable
+    {
+      let mut output = String::new();
+      write!(&mut output, "┌ {PERMISSION_EMOJI}  ").unwrap();
+      write!(&mut output, "{}", colors::bold("Deno requests ")).unwrap();
+      write!(&mut output, "{}", colors::bold(message.clone())).unwrap();
+      writeln!(&mut output, "{}", colors::bold(".")).unwrap();
+      if let Some(api_name) = api_name.clone() {
+        writeln!(&mut output, "├ Requested by `{api_name}` API.").unwrap();
+      }
+      let msg = format!("Run again with --allow-{name} to bypass this prompt.");
+      writeln!(&mut output, "├ {}", colors::italic(&msg)).unwrap();
+      write!(&mut output, "└ {}", colors::bold("Allow?")).unwrap();
+      write!(&mut output, " {opts} > ").unwrap();
+
+      stderr_lock.write_all(output.as_bytes()).unwrap();
     }
-    let msg = format!("Run again with --allow-{name} to bypass this prompt.");
-    eprintln!("├ {}", colors::italic(&msg));
-    eprint!("└ {}", colors::bold("Allow?"));
-    eprint!(" {opts} > ");
+
     let value = loop {
       let mut input = String::new();
-      let stdin = std::io::stdin();
-      let result = stdin.read_line(&mut input);
+      let result = stdin_lock.read_line(&mut input);
       if result.is_err() {
         break PromptResponse::Deny;
       };
@@ -245,34 +262,48 @@ impl PermissionPrompter for TtyPrompter {
       };
       match ch {
         'y' | 'Y' => {
-          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          clear_n_lines(
+            &mut stderr_lock,
+            if api_name.is_some() { 4 } else { 3 },
+          );
           let msg = format!("Granted {message}.");
-          eprintln!("✅ {}", colors::bold(&msg));
+          writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Allow;
         }
         'n' | 'N' => {
-          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          clear_n_lines(
+            &mut stderr_lock,
+            if api_name.is_some() { 4 } else { 3 },
+          );
           let msg = format!("Denied {message}.");
-          eprintln!("❌ {}", colors::bold(&msg));
+          writeln!(stderr_lock, "❌ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::Deny;
         }
         'A' if is_unary => {
-          clear_n_lines(if api_name.is_some() { 4 } else { 3 });
+          clear_n_lines(
+            &mut stderr_lock,
+            if api_name.is_some() { 4 } else { 3 },
+          );
           let msg = format!("Granted all {name} access.");
-          eprintln!("✅ {}", colors::bold(&msg));
+          writeln!(stderr_lock, "✅ {}", colors::bold(&msg)).unwrap();
           break PromptResponse::AllowAll;
         }
         _ => {
           // If we don't get a recognized option try again.
-          clear_n_lines(1);
-          eprint!("└ {}", colors::bold("Unrecognized option. Allow?"));
-          eprint!(" {opts} > ");
+          clear_n_lines(&mut stderr_lock, 1);
+          write!(
+            stderr_lock,
+            "└ {} {opts} > ",
+            colors::bold("Unrecognized option. Allow?")
+          )
+          .unwrap();
         }
       };
     };
 
-    drop(_stdout_guard);
-    drop(_stderr_guard);
+    drop(stdout_lock);
+    drop(stderr_lock);
+    drop(stdin_lock);
 
     value
   }

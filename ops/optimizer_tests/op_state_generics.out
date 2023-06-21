@@ -6,33 +6,47 @@
 pub struct op_foo;
 #[doc(hidden)]
 impl op_foo {
-    pub fn name() -> &'static str {
+    pub const fn name() -> &'static str {
         stringify!(op_foo)
     }
-    pub fn v8_fn_ptr<'scope, SP>() -> deno_core::v8::FunctionCallback
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    pub extern "C" fn v8_fn_ptr<'scope, SP>(
+        info: *const deno_core::v8::FunctionCallbackInfo,
+    )
     where
         SP: SomePermission + 'static,
     {
-        use deno_core::v8::MapFnTo;
-        Self::v8_func::<SP>.map_fn_to()
+        let info = unsafe { &*info };
+        let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
+            info,
+        );
+        let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
+        Self::v8_func::<SP>(scope, args, rv);
     }
-    pub fn decl<'scope, SP>() -> deno_core::OpDecl
+    pub const fn decl<'scope, SP>() -> deno_core::OpDecl
     where
         SP: SomePermission + 'static,
     {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<SP>(),
+            v8_fn_ptr: Self::v8_fn_ptr::<SP> as _,
             enabled: true,
-            fast_fn: Some(
-                Box::new(op_foo_fast::<SP> {
-                    _phantom: ::std::marker::PhantomData,
-                }),
-            ),
+            fast_fn: {
+                use deno_core::v8::fast_api::Type::*;
+                use deno_core::v8::fast_api::CType;
+                Some(
+                    deno_core::v8::fast_api::FastFunction::new(
+                        &[V8Value, CallbackOptions],
+                        CType::Void,
+                        op_foo_fast_fn::<SP> as *const ::std::ffi::c_void,
+                    ),
+                )
+            },
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
+            arg_count: 0usize as u8,
         }
     }
     #[inline]
@@ -58,28 +72,7 @@ impl op_foo {
         op_state.tracker.track_sync(ctx.id);
     }
 }
-struct op_foo_fast<SP> {
-    _phantom: ::std::marker::PhantomData<SP>,
-}
-impl<'scope, SP> deno_core::v8::fast_api::FastFunction for op_foo_fast<SP>
-where
-    SP: SomePermission + 'static,
-{
-    #[inline(always)]
-    fn function(&self) -> *const ::std::ffi::c_void {
-        op_foo_fast_fn::<SP> as *const ::std::ffi::c_void
-    }
-    #[inline(always)]
-    fn args(&self) -> &'static [deno_core::v8::fast_api::Type] {
-        use deno_core::v8::fast_api::Type::*;
-        use deno_core::v8::fast_api::CType;
-        &[V8Value, CallbackOptions]
-    }
-    #[inline(always)]
-    fn return_type(&self) -> deno_core::v8::fast_api::CType {
-        deno_core::v8::fast_api::CType::Void
-    }
-}
+#[allow(clippy::too_many_arguments)]
 fn op_foo_fast_fn<'scope, SP>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
     fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,

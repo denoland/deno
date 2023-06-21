@@ -10,6 +10,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
+use deno_core::task::spawn_blocking;
 use deno_core::OpState;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
@@ -88,22 +89,22 @@ deno_core::extension!(deno_crypto,
     op_crypto_unwrap_key,
     op_crypto_base64url_decode,
     op_crypto_base64url_encode,
-    x25519::op_generate_x25519_keypair,
-    x25519::op_derive_bits_x25519,
-    x25519::op_import_spki_x25519,
-    x25519::op_import_pkcs8_x25519,
-    ed25519::op_generate_ed25519_keypair,
-    ed25519::op_import_spki_ed25519,
-    ed25519::op_import_pkcs8_ed25519,
-    ed25519::op_sign_ed25519,
-    ed25519::op_verify_ed25519,
-    ed25519::op_export_spki_ed25519,
-    ed25519::op_export_pkcs8_ed25519,
-    ed25519::op_jwk_x_ed25519,
-    x25519::op_export_spki_x25519,
-    x25519::op_export_pkcs8_x25519,
+    x25519::op_crypto_generate_x25519_keypair,
+    x25519::op_crypto_derive_bits_x25519,
+    x25519::op_crypto_import_spki_x25519,
+    x25519::op_crypto_import_pkcs8_x25519,
+    ed25519::op_crypto_generate_ed25519_keypair,
+    ed25519::op_crypto_import_spki_ed25519,
+    ed25519::op_crypto_import_pkcs8_ed25519,
+    ed25519::op_crypto_sign_ed25519,
+    ed25519::op_crypto_verify_ed25519,
+    ed25519::op_crypto_export_spki_ed25519,
+    ed25519::op_crypto_export_pkcs8_ed25519,
+    ed25519::op_crypto_jwk_x_ed25519,
+    x25519::op_crypto_export_spki_x25519,
+    x25519::op_crypto_export_pkcs8_x25519,
   ],
-  esm = [ "00_crypto.js", "01_webidl.js" ],
+  esm = [ "00_crypto.js" ],
   options = {
     maybe_seed: Option<u64>,
   },
@@ -115,10 +116,11 @@ deno_core::extension!(deno_crypto,
 );
 
 #[op]
-pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {
-  let data: Vec<u8> =
-    base64::decode_config(data, base64::URL_SAFE_NO_PAD).unwrap();
-  data.into()
+pub fn op_crypto_base64url_decode(
+  data: String,
+) -> Result<ZeroCopyBuf, AnyError> {
+  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  Ok(data.into())
 }
 
 #[op]
@@ -601,7 +603,7 @@ pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: ZeroCopyBuf,
 ) -> Result<ZeroCopyBuf, AnyError> {
-  let output = tokio::task::spawn_blocking(move || {
+  let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()

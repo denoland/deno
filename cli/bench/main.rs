@@ -12,18 +12,20 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::Stdio;
 use std::time::SystemTime;
+use test_util::PathRef;
 
 include!("../util/time.rs");
 
 mod http;
 mod lsp;
+mod websocket;
 
-fn read_json(filename: &str) -> Result<Value> {
+fn read_json(filename: &Path) -> Result<Value> {
   let f = fs::File::open(filename)?;
   Ok(serde_json::from_reader(f)?)
 }
 
-fn write_json(filename: &str, value: &Value) -> Result<()> {
+fn write_json(filename: &Path, value: &Value) -> Result<()> {
   let f = fs::File::create(filename)?;
   serde_json::to_writer(f, value)?;
   Ok(())
@@ -169,17 +171,17 @@ const RESULT_KEYS: &[&str] =
   &["mean", "stddev", "user", "system", "min", "max"];
 fn run_exec_time(
   deno_exe: &Path,
-  target_dir: &Path,
+  target_dir: &PathRef,
 ) -> Result<HashMap<String, HashMap<String, f64>>> {
-  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine");
+  let hyperfine_exe = test_util::prebuilt_tool_path("hyperfine").to_string();
 
   let benchmark_file = target_dir.join("hyperfine_results.json");
-  let benchmark_file = benchmark_file.to_str().unwrap();
+  let benchmark_file_str = benchmark_file.to_string();
 
   let mut command = [
-    hyperfine_exe.to_str().unwrap(),
+    hyperfine_exe.as_str(),
     "--export-json",
-    benchmark_file,
+    benchmark_file_str.as_str(),
     "--warmup",
     "3",
   ]
@@ -212,7 +214,7 @@ fn run_exec_time(
   );
 
   let mut results = HashMap::<String, HashMap<String, f64>>::new();
-  let hyperfine_results = read_json(benchmark_file)?;
+  let hyperfine_results = read_json(benchmark_file.as_path())?;
   for ((name, _, _), data) in EXEC_TIME_BENCHMARKS.iter().zip(
     hyperfine_results
       .as_object()
@@ -269,7 +271,7 @@ fn get_binary_sizes(target_dir: &Path) -> Result<HashMap<String, i64>> {
 
   sizes.insert(
     "deno".to_string(),
-    test_util::deno_exe_path().metadata()?.len() as i64,
+    test_util::deno_exe_path().as_path().metadata()?.len() as i64,
   );
 
   // add up size for everything in target/release/deps/libswc*
@@ -401,6 +403,7 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
+  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -416,6 +419,7 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
+    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -437,7 +441,7 @@ async fn main() -> Result<()> {
   println!("Starting Deno benchmark");
 
   let target_dir = test_util::target_dir();
-  let deno_exe = test_util::deno_exe_path();
+  let deno_exe = test_util::deno_exe_path().to_path_buf();
   env::set_current_dir(test_util::root_path())?;
 
   let mut new_data = BenchResult {
@@ -455,6 +459,11 @@ async fn main() -> Result<()> {
     ..Default::default()
   };
 
+  if benchmarks.contains(&"websocket") {
+    let ws = websocket::benchmark()?;
+    new_data.ws_msg_per_sec = ws;
+  }
+
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;
     new_data.bundle_size = bundle_size;
@@ -466,7 +475,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"binary_size") {
-    let binary_sizes = get_binary_sizes(&target_dir)?;
+    let binary_sizes = get_binary_sizes(target_dir.as_path())?;
     new_data.binary_size = binary_sizes;
   }
 
@@ -481,7 +490,7 @@ async fn main() -> Result<()> {
   }
 
   if benchmarks.contains(&"http") && cfg!(not(target_os = "windows")) {
-    let stats = http::benchmark(&target_dir)?;
+    let stats = http::benchmark(target_dir.as_path())?;
     let req_per_sec = stats
       .iter()
       .map(|(name, result)| (name.clone(), result.requests as i64))
@@ -524,7 +533,14 @@ async fn main() -> Result<()> {
       file.as_file_mut().read_to_string(&mut output)?;
 
       let strace_result = test_util::parse_strace_output(&output);
-      let clone = strace_result.get("clone").map(|d| d.calls).unwrap_or(0) + 1;
+      let clone =
+        strace_result
+          .get("clone")
+          .map(|d| d.calls)
+          .unwrap_or_else(|| {
+            strace_result.get("clone3").map(|d| d.calls).unwrap_or(0)
+          })
+          + 1;
       let total = strace_result.get("total").unwrap().calls;
       thread_count.insert(name.to_string(), clone as i64);
       syscall_count.insert(name.to_string(), total as i64);
@@ -539,11 +555,10 @@ async fn main() -> Result<()> {
     new_data.max_memory = max_memory;
   }
 
-  if let Some(filename) = target_dir.join("bench.json").to_str() {
-    write_json(filename, &serde_json::to_value(&new_data)?)?;
-  } else {
-    eprintln!("Cannot write bench.json, path is invalid");
-  }
+  write_json(
+    target_dir.join("bench.json").as_path(),
+    &serde_json::to_value(&new_data)?,
+  )?;
 
   Ok(())
 }

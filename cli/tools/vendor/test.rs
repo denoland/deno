@@ -16,13 +16,13 @@ use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
 use crate::cache::ParsedSourceCache;
-use crate::npm::NpmRegistryApi;
+use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
-use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
@@ -218,7 +218,7 @@ impl VendorTestBuilder {
     let output_dir = make_path("/vendor");
     let roots = self.entry_points.clone();
     let loader = self.loader.clone();
-    let parsed_source_cache = ParsedSourceCache::new(None);
+    let parsed_source_cache = ParsedSourceCache::new_in_memory();
     let analyzer = parsed_source_cache.as_analyzer();
     let graph = build_test_graph(
       roots,
@@ -263,25 +263,24 @@ async fn build_test_graph(
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver = original_import_map.map(|m| {
-    let npm_registry_api = NpmRegistryApi::new_uninitialized();
-    let npm_resolution =
-      NpmResolution::new(npm_registry_api.clone(), None, None);
-    let deps_installer = PackageJsonDepsInstaller::new(
+  let resolver = original_import_map.map(|original_import_map| {
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
       npm_registry_api.clone(),
-      npm_resolution.clone(),
       None,
-    );
+      None,
+    ));
     CliGraphResolver::new(
       None,
-      Some(Arc::new(m)),
+      Some(Arc::new(original_import_map)),
       false,
       npm_registry_api,
       npm_resolution,
-      deps_installer,
+      Default::default(),
+      Default::default(),
     )
   });
-  let mut graph = ModuleGraph::default();
+  let mut graph = ModuleGraph::new(GraphKind::All);
   graph
     .build(
       roots,

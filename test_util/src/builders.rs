@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::io::Read;
 use std::io::Write;
 use std::path::Path;
@@ -10,16 +11,16 @@ use std::process::Command;
 use std::process::Stdio;
 use std::rc::Rc;
 
-use backtrace::Backtrace;
 use os_pipe::pipe;
 use pretty_assertions::assert_eq;
 
-use crate::copy_dir_recursive;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
+use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
 use crate::new_deno_dir;
+use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
 use crate::wildcard_match;
@@ -31,13 +32,14 @@ pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
   use_separate_deno_dir: bool,
+  use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
-  deno_exe: Option<PathBuf>,
+  deno_exe: Option<PathRef>,
 }
 
 impl TestContextBuilder {
@@ -46,18 +48,28 @@ impl TestContextBuilder {
   }
 
   pub fn for_npm() -> Self {
-    let mut builder = Self::new();
-    builder.use_http_server().add_npm_env_vars();
-    builder
+    Self::new().use_http_server().add_npm_env_vars()
   }
 
-  pub fn use_http_server(&mut self) -> &mut Self {
+  pub fn use_http_server(mut self) -> Self {
     self.use_http_server = true;
     self
   }
 
-  pub fn use_temp_cwd(&mut self) -> &mut Self {
+  pub fn use_temp_cwd(mut self) -> Self {
     self.use_temp_cwd = true;
+    self
+  }
+
+  /// Causes the temp directory to be symlinked to a target directory
+  /// which is useful for debugging issues that only show up on the CI.
+  ///
+  /// Note: This method is not actually deprecated, it's just the CI
+  /// does this by default so there's no need to check in any code that
+  /// uses this into the repo. This is just for debugging purposes.
+  #[deprecated]
+  pub fn use_symlinked_temp_dir(mut self) -> Self {
+    self.use_symlinked_temp_dir = true;
     self
   }
 
@@ -65,7 +77,7 @@ impl TestContextBuilder {
   /// In some cases, that might cause an issue though, so calling
   /// this will use a separate directory for the deno dir and the
   /// temp directory.
-  pub fn use_separate_deno_dir(&mut self) -> &mut Self {
+  pub fn use_separate_deno_dir(mut self) -> Self {
     self.use_separate_deno_dir = true;
     self
   }
@@ -73,41 +85,36 @@ impl TestContextBuilder {
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
-  pub fn use_copy_temp_dir(&mut self, dir: impl AsRef<str>) -> &mut Self {
+  pub fn use_copy_temp_dir(mut self, dir: impl AsRef<str>) -> Self {
     self.copy_temp_dir = Some(dir.as_ref().to_string());
     self
   }
 
-  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
+  pub fn cwd(mut self, cwd: impl AsRef<str>) -> Self {
     self.cwd = Some(cwd.as_ref().to_string());
     self
   }
 
-  pub fn env(
-    &mut self,
-    key: impl AsRef<str>,
-    value: impl AsRef<str>,
-  ) -> &mut Self {
+  pub fn env(mut self, key: impl AsRef<str>, value: impl AsRef<str>) -> Self {
     self
       .envs
       .insert(key.as_ref().to_string(), value.as_ref().to_string());
     self
   }
 
-  pub fn add_npm_env_vars(&mut self) -> &mut Self {
+  pub fn add_npm_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_npm_tests_no_sync_download() {
-      self.env(key, value);
+      self = self.env(key, value);
     }
     self
   }
 
-  pub fn use_sync_npm_download(&mut self) -> &mut Self {
+  pub fn use_sync_npm_download(self) -> Self {
     self.env(
       // make downloads determinstic
       "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
       "1",
-    );
-    self
+    )
   }
 
   pub fn build(&self) -> TestContext {
@@ -117,18 +124,23 @@ impl TestContextBuilder {
     } else {
       deno_dir.clone()
     };
-    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
-      let test_data_path = testdata_path().join(temp_copy_dir);
-      let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
-      std::fs::create_dir_all(&temp_copy_dir).unwrap();
-      copy_dir_recursive(&test_data_path, &temp_copy_dir).unwrap();
-      temp_dir.path().to_owned()
+    let temp_dir = if self.use_symlinked_temp_dir {
+      TempDir::new_symlinked(temp_dir)
     } else {
-      testdata_path()
+      temp_dir
+    };
+    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
+      let test_data_path = PathRef::new(testdata_path()).join(temp_copy_dir);
+      let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
+      temp_copy_dir.create_dir_all();
+      test_data_path.copy_to_recursive(&temp_copy_dir);
+      temp_dir.path().clone()
+    } else {
+      PathRef::new(testdata_path())
     };
 
     let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
-    println!("deno_exe path {}", deno_exe.display());
+    println!("deno_exe path {}", deno_exe);
 
     let http_server_guard = if self.use_http_server {
       Some(Rc::new(http_server()))
@@ -151,14 +163,14 @@ impl TestContextBuilder {
 
 #[derive(Clone)]
 pub struct TestContext {
-  deno_exe: PathBuf,
+  deno_exe: PathRef,
   envs: HashMap<String, String>,
   use_temp_cwd: bool,
   cwd: Option<String>,
   _http_server_guard: Option<Rc<HttpServerGuard>>,
   deno_dir: TempDir,
   temp_dir: TempDir,
-  testdata_dir: PathBuf,
+  testdata_dir: PathRef,
 }
 
 impl Default for TestContext {
@@ -172,7 +184,7 @@ impl TestContext {
     TestContextBuilder::default().use_http_server().build()
   }
 
-  pub fn testdata_path(&self) -> &PathBuf {
+  pub fn testdata_path(&self) -> &PathRef {
     &self.testdata_dir
   }
 
@@ -186,7 +198,7 @@ impl TestContext {
 
   pub fn new_command(&self) -> TestCommandBuilder {
     TestCommandBuilder {
-      command_name: self.deno_exe.to_string_lossy().to_string(),
+      command_name: self.deno_exe.to_string(),
       args: Default::default(),
       args_vec: Default::default(),
       stdin: Default::default(),
@@ -218,28 +230,31 @@ pub struct TestCommandBuilder {
 }
 
 impl TestCommandBuilder {
-  pub fn command_name(&mut self, name: impl AsRef<str>) -> &mut Self {
-    self.command_name = name.as_ref().to_string();
+  pub fn command_name(mut self, name: impl AsRef<OsStr>) -> Self {
+    self.command_name = name.as_ref().to_string_lossy().to_string();
     self
   }
 
-  pub fn args(&mut self, text: impl AsRef<str>) -> &mut Self {
+  pub fn args(mut self, text: impl AsRef<str>) -> Self {
     self.args = text.as_ref().to_string();
     self
   }
 
-  pub fn args_vec(&mut self, args: Vec<String>) -> &mut Self {
-    self.args_vec = args;
+  pub fn args_vec<T: AsRef<str>, I: IntoIterator<Item = T>>(
+    mut self,
+    args: I,
+  ) -> Self {
+    self.args_vec = args.into_iter().map(|a| a.as_ref().to_string()).collect();
     self
   }
 
-  pub fn stdin(&mut self, text: impl AsRef<str>) -> &mut Self {
+  pub fn stdin(mut self, text: impl AsRef<str>) -> Self {
     self.stdin = Some(text.as_ref().to_string());
     self
   }
 
   /// Splits the output into stdout and stderr rather than having them combined.
-  pub fn split_output(&mut self) -> &mut Self {
+  pub fn split_output(mut self) -> Self {
     // Note: it was previously attempted to capture stdout & stderr separately
     // then forward the output to a combined pipe, but this was found to be
     // too racy compared to providing the same combined pipe to both.
@@ -248,26 +263,112 @@ impl TestCommandBuilder {
   }
 
   pub fn env(
-    &mut self,
-    key: impl AsRef<str>,
-    value: impl AsRef<str>,
-  ) -> &mut Self {
-    self
-      .envs
-      .insert(key.as_ref().to_string(), value.as_ref().to_string());
+    mut self,
+    key: impl AsRef<OsStr>,
+    value: impl AsRef<OsStr>,
+  ) -> Self {
+    self.envs.insert(
+      key.as_ref().to_string_lossy().to_string(),
+      value.as_ref().to_string_lossy().to_string(),
+    );
     self
   }
 
-  pub fn env_clear(&mut self) -> &mut Self {
+  pub fn env_clear(mut self) -> Self {
     self.env_clear = true;
     self
   }
 
-  pub fn cwd(&mut self, cwd: impl AsRef<str>) -> &mut Self {
-    self.cwd = Some(cwd.as_ref().to_string());
+  pub fn cwd(mut self, cwd: impl AsRef<OsStr>) -> Self {
+    self.cwd = Some(cwd.as_ref().to_string_lossy().to_string());
     self
   }
 
+  fn build_cwd(&self) -> PathRef {
+    let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
+    if self.context.use_temp_cwd {
+      assert!(cwd.is_none());
+      self.context.temp_dir.path().to_owned()
+    } else if let Some(cwd_) = cwd {
+      self.context.testdata_dir.join(cwd_)
+    } else {
+      self.context.testdata_dir.clone()
+    }
+  }
+
+  fn build_command_path(&self) -> PathRef {
+    let command_name = &self.command_name;
+    if command_name == "deno" {
+      deno_exe_path()
+    } else {
+      PathRef::new(PathBuf::from(command_name))
+    }
+  }
+
+  fn build_args(&self) -> Vec<String> {
+    if self.args_vec.is_empty() {
+      std::borrow::Cow::Owned(
+        self
+          .args
+          .split_whitespace()
+          .map(|s| s.to_string())
+          .collect::<Vec<_>>(),
+      )
+    } else {
+      assert!(
+        self.args.is_empty(),
+        "Do not provide args when providing args_vec."
+      );
+      std::borrow::Cow::Borrowed(&self.args_vec)
+    }
+    .iter()
+    .map(|arg| {
+      arg.replace(
+        "$TESTDATA",
+        &self.context.testdata_dir.as_path().to_string_lossy(),
+      )
+    })
+    .collect::<Vec<_>>()
+  }
+
+  fn build_envs(&self) -> HashMap<String, String> {
+    let mut envs = self.context.envs.clone();
+    for (key, value) in &self.envs {
+      envs.insert(key.to_string(), value.to_string());
+    }
+    envs
+  }
+
+  pub fn with_pty(&self, mut action: impl FnMut(Pty)) {
+    if !Pty::is_supported() {
+      return;
+    }
+
+    let args = self.build_args();
+    let args = args.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+    let mut envs = self.build_envs();
+    if !envs.contains_key("NO_COLOR") {
+      // set this by default for pty tests
+      envs.insert("NO_COLOR".to_string(), "1".to_string());
+    }
+
+    // note(dsherret): for some reason I need to inject the current
+    // environment here for the pty tests or else I get dns errors
+    if !self.env_clear {
+      for (key, value) in std::env::vars() {
+        envs.entry(key).or_insert(value);
+      }
+    }
+
+    action(Pty::new(
+      self.build_command_path().as_path(),
+      &args,
+      self.build_cwd().as_path(),
+      Some(envs),
+    ))
+  }
+
+  #[track_caller]
   pub fn run(&self) -> TestCommandOutput {
     fn read_pipe_to_string(mut pipe: os_pipe::PipeReader) -> String {
       let mut output = String::new();
@@ -286,56 +387,18 @@ impl TestCommandBuilder {
       text
     }
 
-    let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
-    let cwd = if self.context.use_temp_cwd {
-      assert!(cwd.is_none());
-      self.context.temp_dir.path().to_owned()
-    } else if let Some(cwd_) = cwd {
-      self.context.testdata_dir.join(cwd_)
-    } else {
-      self.context.testdata_dir.clone()
-    };
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(
-        self
-          .args
-          .split_whitespace()
-          .map(|s| s.to_string())
-          .collect::<Vec<_>>(),
-      )
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    }
-    .iter()
-    .map(|arg| {
-      arg.replace("$TESTDATA", &self.context.testdata_dir.to_string_lossy())
-    })
-    .collect::<Vec<_>>();
-    let command_name = &self.command_name;
-    let mut command = if command_name == "deno" {
-      Command::new(deno_exe_path())
-    } else {
-      Command::new(command_name)
-    };
-    command.env("DENO_DIR", self.context.deno_dir.path());
+    let cwd = self.build_cwd();
+    let args = self.build_args();
+    let mut command = Command::new(self.build_command_path());
 
-    println!("command {} {}", command_name, args.join(" "));
-    println!("command cwd {:?}", &cwd);
+    println!("command {} {}", self.command_name, args.join(" "));
+    println!("command cwd {}", cwd);
     command.args(args.iter());
     if self.env_clear {
       command.env_clear();
     }
-    command.envs({
-      let mut envs = self.context.envs.clone();
-      for (key, value) in &self.envs {
-        envs.insert(key.to_string(), value.to_string());
-      }
-      envs
-    });
+    command.env("DENO_DIR", self.context.deno_dir.path());
+    command.envs(self.build_envs());
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
 
@@ -358,7 +421,7 @@ impl TestCommandBuilder {
       (Some(combined_reader), None)
     };
 
-    let mut process = command.spawn().unwrap();
+    let mut process = command.spawn().expect("Failed spawning command");
 
     if let Some(input) = &self.stdin {
       let mut p_stdin = process.stdin.take().unwrap();
@@ -410,7 +473,7 @@ pub struct TestCommandOutput {
   std_out_err: Option<(String, String)>,
   exit_code: Option<i32>,
   signal: Option<i32>,
-  testdata_dir: PathBuf,
+  testdata_dir: PathRef,
   asserted_stdout: RefCell<bool>,
   asserted_stderr: RefCell<bool>,
   asserted_combined: RefCell<bool>,
@@ -420,28 +483,18 @@ pub struct TestCommandOutput {
 }
 
 impl Drop for TestCommandOutput {
+  // assert the output and exit code was asserted
   fn drop(&mut self) {
     fn panic_unasserted_output(text: &str) {
       println!("OUTPUT\n{text}\nOUTPUT");
-      panic!(
-        concat!(
-          "The non-empty text of the command was not asserted at {}. ",
-          "Call `output.skip_output_check()` to skip if necessary.",
-        ),
-        failed_position()
-      );
+      panic!(concat!(
+        "The non-empty text of the command was not asserted. ",
+        "Call `output.skip_output_check()` to skip if necessary.",
+      ),);
     }
 
     if std::thread::panicking() {
       return;
-    }
-    // force the caller to assert these
-    if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
-      panic!(
-        "The non-zero exit code of the command was not asserted: {:?} at {}.",
-        self.exit_code,
-        failed_position(),
-      )
     }
 
     // either the combined output needs to be asserted or both stdout and stderr
@@ -458,11 +511,19 @@ impl Drop for TestCommandOutput {
         panic_unasserted_output(stderr);
       }
     }
+
+    // now ensure the exit code was asserted
+    if !*self.asserted_exit_code.borrow() && self.exit_code != Some(0) {
+      panic!(
+        "The non-zero exit code of the command was not asserted: {:?}",
+        self.exit_code,
+      )
+    }
   }
 }
 
 impl TestCommandOutput {
-  pub fn testdata_dir(&self) -> &PathBuf {
+  pub fn testdata_dir(&self) -> &PathRef {
     &self.testdata_dir
   }
 
@@ -511,6 +572,7 @@ impl TestCommandOutput {
       .expect("call .split_output() on the builder")
   }
 
+  #[track_caller]
   pub fn assert_exit_code(&self, expected_exit_code: i32) -> &Self {
     let actual_exit_code = self.exit_code();
 
@@ -518,26 +580,22 @@ impl TestCommandOutput {
       if *exit_code != expected_exit_code {
         self.print_output();
         panic!(
-          "bad exit code, expected: {:?}, actual: {:?} at {}",
-          expected_exit_code,
-          exit_code,
-          failed_position(),
+          "bad exit code, expected: {:?}, actual: {:?}",
+          expected_exit_code, exit_code,
         );
       }
     } else {
       self.print_output();
       if let Some(signal) = self.signal() {
         panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?} at {}",
+          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
           actual_exit_code,
           signal,
-          failed_position(),
         );
       } else {
         panic!(
-          "process terminated without status code on non unix platform, expected exit code: {:?} at {}",
+          "process terminated without status code on non unix platform, expected exit code: {:?}",
           actual_exit_code,
-          failed_position(),
         );
       }
     }
@@ -554,14 +612,17 @@ impl TestCommandOutput {
     }
   }
 
+  #[track_caller]
   pub fn assert_matches_text(&self, expected_text: impl AsRef<str>) -> &Self {
     self.inner_assert_matches_text(self.combined_output(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_matches_file(&self, file_path: impl AsRef<Path>) -> &Self {
     self.inner_assert_matches_file(self.combined_output(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -569,6 +630,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stdout(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stdout_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -576,6 +638,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stdout(), file_path)
   }
 
+  #[track_caller]
   pub fn assert_stderr_matches_text(
     &self,
     expected_text: impl AsRef<str>,
@@ -583,6 +646,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_text(self.stderr(), expected_text)
   }
 
+  #[track_caller]
   pub fn assert_stderrr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
@@ -590,6 +654,7 @@ impl TestCommandOutput {
     self.inner_assert_matches_file(self.stderr(), file_path)
   }
 
+  #[track_caller]
   fn inner_assert_matches_text(
     &self,
     actual: &str,
@@ -597,44 +662,27 @@ impl TestCommandOutput {
   ) -> &Self {
     let expected = expected.as_ref();
     if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected, "at {}", failed_position());
+      assert_eq!(actual, expected);
     } else if !wildcard_match(expected, actual) {
       println!("OUTPUT START\n{actual}\nOUTPUT END");
       println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed at {}", failed_position());
+      panic!("pattern match failed");
     }
     self
   }
 
+  #[track_caller]
   fn inner_assert_matches_file(
     &self,
     actual: &str,
     file_path: impl AsRef<Path>,
   ) -> &Self {
     let output_path = self.testdata_dir().join(file_path);
-    println!("output path {}", output_path.display());
+    println!("output path {}", output_path);
     let expected_text =
       std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
-        panic!("failed loading {}\n\n{err:#}", output_path.display())
+        panic!("failed loading {}\n\n{err:#}", output_path)
       });
     self.inner_assert_matches_text(actual, expected_text)
   }
-}
-
-fn failed_position() -> String {
-  let backtrace = Backtrace::new();
-
-  for frame in backtrace.frames() {
-    for symbol in frame.symbols() {
-      if let Some(filename) = symbol.filename() {
-        if !filename.to_string_lossy().ends_with("builders.rs") {
-          let line_num = symbol.lineno().unwrap_or(0);
-          let line_col = symbol.colno().unwrap_or(0);
-          return format!("{}:{}:{}", filename.display(), line_num, line_col);
-        }
-      }
-    }
-  }
-
-  "<unknown>".to_string()
 }

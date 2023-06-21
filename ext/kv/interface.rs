@@ -25,13 +25,28 @@ pub trait DatabaseHandler {
 
 #[async_trait(?Send)]
 pub trait Database {
+  type QMH: QueueMessageHandle + 'static;
+
   async fn snapshot_read(
     &self,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError>;
 
-  async fn atomic_write(&self, write: AtomicWrite) -> Result<bool, AnyError>;
+  async fn atomic_write(
+    &self,
+    write: AtomicWrite,
+  ) -> Result<Option<CommitResult>, AnyError>;
+
+  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError>;
+
+  fn close(&self);
+}
+
+#[async_trait(?Send)]
+pub trait QueueMessageHandle {
+  async fn take_payload(&mut self) -> Result<Vec<u8>, AnyError>;
+  async fn finish(&self, success: bool) -> Result<(), AnyError>;
 }
 
 /// Options for a snapshot read.
@@ -239,7 +254,7 @@ pub struct KvMutation {
 /// keys specified in `keys_if_undelivered`.
 pub struct Enqueue {
   pub payload: Vec<u8>,
-  pub deadline_ms: u64,
+  pub delay_ms: u64,
   pub keys_if_undelivered: Vec<Vec<u8>>,
   pub backoff_schedule: Option<Vec<u32>>,
 }
@@ -303,4 +318,10 @@ impl MutationKind {
       MutationKind::Delete => None,
     }
   }
+}
+
+/// The result of a successful commit of an atomic write operation.
+pub struct CommitResult {
+  /// The new versionstamp of the data that was committed.
+  pub versionstamp: Versionstamp,
 }
