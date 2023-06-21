@@ -1559,7 +1559,7 @@ fn napi_define_properties(
       let define_maybe = object.define_property(scope, name, &desc);
       return_status_if_false!(
         env_ptr,
-        !define_maybe.unwrap_or(false),
+        define_maybe.is_some(),
         napi_invalid_arg
       );
     } else if property.method.is_some() {
