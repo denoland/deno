@@ -242,7 +242,7 @@ async fn op_read_all(
   let mut grow_len: usize = 64 * 1024;
 
   let (min, maybe_max) = resource.size_hint();
-  // Try to determine an optimial starting buffer size for this resource based
+  // Try to determine an optimal starting buffer size for this resource based
   // on the size hint.
   let initial_size = match (min, maybe_max) {
     (min, Some(max)) if min == max => min as usize,

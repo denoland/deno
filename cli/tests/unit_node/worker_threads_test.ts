@@ -103,7 +103,7 @@ Deno.test({
     worker.postMessage("Hello, how are you my thread?");
     assertEquals((await once(worker, "message"))[0], "I'm fine!");
     const data = (await once(worker, "message"))[0];
-    // data.threadId can be 1 when this test is runned individually
+    // data.threadId can be 1 when this test is run individually
     if (data.threadId === 1) data.threadId = 3;
     assertObjectMatch(data, {
       isMainThread: false,

@@ -3114,7 +3114,7 @@ fn lsp_code_lens_test_disabled() {
           "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
         }
       }),
-      // diable test code lens
+      // disable test code lens
       json!([{
         "enable": true,
         "codeLens": {
@@ -7373,7 +7373,7 @@ Deno.test({
     .as_str()
     .unwrap();
   // deno test's output capturing flushes with a zero-width space in order to
-  // synchronize the output pipes. Occassionally this zero width space
+  // synchronize the output pipes. Occasionally this zero width space
   // might end up in the output so strip it from the output comparison here.
   assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
   assert_eq!(

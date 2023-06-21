@@ -97,10 +97,10 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
 /// MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty.
 const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
-/// ALPN negotation for "h2"
+/// ALPN negotiation for "h2"
 const TLS_ALPN_HTTP_2: &[u8] = b"h2";
 
-/// ALPN negotation for "http/1.1"
+/// ALPN negotiation for "http/1.1"
 const TLS_ALPN_HTTP_11: &[u8] = b"http/1.1";
 
 /// Name a trait for streams we can serve HTTP over.

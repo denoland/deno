@@ -4,7 +4,7 @@
 
 // NOTE:
 // Here we are deserializing to `serde_json::Value` but you can
-// deserialize to any other type that implementes the `Deserialize` trait.
+// deserialize to any other type that implements the `Deserialize` trait.
 
 use deno_core::v8;
 use deno_core::JsRuntime;

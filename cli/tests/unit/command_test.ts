@@ -797,7 +797,7 @@ setInterval(() => {
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
     Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
     // In this subprocess we are spawning another subprocess which has
-    // an infite interval set. Following call would never resolve unless
+    // an infinite interval set. Following call would never resolve unless
     // child process gets unrefed.
     const { success, stdout, stderr } = await new Deno.Command(
       Deno.execPath(),

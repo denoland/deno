@@ -3,7 +3,7 @@
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
 
-// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// TODO(ry) These tests currently strip all the ANSI colors out. We don't have a
 // good way to control whether we produce color output or not since
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.

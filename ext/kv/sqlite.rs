@@ -325,7 +325,7 @@ impl SqliteQueue {
       // Oneshot requeue of all inflight messages.
       Self::requeue_inflight_messages(conn.clone()).await.unwrap();
 
-      // Continous dequeue loop.
+      // Continuous dequeue loop.
       Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
         .await
         .unwrap();
