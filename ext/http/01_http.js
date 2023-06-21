@@ -35,6 +35,7 @@ import {
   _serverHandleIdleTimeout,
   SERVER,
   WebSocket,
+  WebSocketPrototype,
 } from "ext:deno_websocket/01_websocket.js";
 import {
   _closed,
@@ -406,7 +407,7 @@ async function handleWS(resp, getWSRid, httpConn) {
 
     httpConn.close();
 
-    if (ObjectPrototypeIsPrototypeOf(ws, WebSocket)) {
+    if (ObjectPrototypeIsPrototypeOf(WebSocketPrototype, ws)) {
       ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
       ws[_readyState] = WebSocket.OPEN;
@@ -423,6 +424,7 @@ async function handleWS(resp, getWSRid, httpConn) {
       }
       ws[_serverHandleIdleTimeout]();
     } else {
+      console.log(ws);
       const { readable, writable } = ws[_createWebSocketStreams]();
       ws[_connection].resolve({
         readable,
