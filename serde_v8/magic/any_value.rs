@@ -11,6 +11,7 @@ use crate::Error;
 /// buffer.
 #[derive(Debug)]
 pub enum AnyValue {
+  // TODO(bartlomieju): split into `RustBuffer` and `V8Buffer`
   Buffer(ZeroCopyBuf),
   String(String),
   Number(f64),
@@ -26,7 +27,7 @@ impl ToV8 for AnyValue {
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
-      Self::Buffer(buf) => buf.to_v8(scope),
+      Self::Buffer(_buf) => unreachable!(),
       Self::String(s) => crate::to_v8(scope, s),
       Self::Number(num) => crate::to_v8(scope, num),
       Self::BigInt(bigint) => {

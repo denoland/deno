@@ -105,7 +105,7 @@ fn magic_buffer() {
 
     // Serialization
     let buf: Vec<u8> = vec![1, 2, 3, 99, 5];
-    let zbuf: serde_v8::ZeroCopyBuf = buf.into();
+    let zbuf: serde_v8::RustToV8Buf = buf.into();
     let v8_value = serde_v8::to_v8(scope, zbuf).unwrap();
     let key = serde_v8::to_v8(scope, "t2").unwrap();
     global.set(scope, key, v8_value);
@@ -115,8 +115,8 @@ fn magic_buffer() {
     // Composite Serialization
     #[derive(serde::Serialize)]
     struct Wrapper {
-      a: serde_v8::ZeroCopyBuf,
-      b: serde_v8::ZeroCopyBuf,
+      a: serde_v8::RustToV8Buf,
+      b: serde_v8::RustToV8Buf,
     }
     let buf1: Vec<u8> = vec![1, 2, 33, 4, 5];
     let buf2: Vec<u8> = vec![5, 4, 3, 2, 11];
