@@ -1559,7 +1559,7 @@ fn napi_define_properties(
       let define_maybe = object.define_property(scope, name, &desc);
       return_status_if_false!(
         env_ptr,
-        !define_maybe.unwrap_or(false),
+        define_maybe.is_some(),
         napi_invalid_arg
       );
     } else if property.method.is_some() {
@@ -1739,7 +1739,7 @@ fn napi_get_buffer_info(
   check_env!(env);
   let env = unsafe { &mut *env };
   let value = napi_value_unchecked(value);
-  let buf = v8::Local::<v8::Uint8Array>::try_from(value).unwrap();
+  let buf = v8::Local::<v8::ArrayBufferView>::try_from(value).unwrap();
   let buffer_name = v8::String::new(&mut env.scope(), "buffer").unwrap();
   let abuf = v8::Local::<v8::ArrayBuffer>::try_from(
     buf.get(&mut env.scope(), buffer_name.into()).unwrap(),
