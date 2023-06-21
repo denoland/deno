@@ -13,7 +13,7 @@ use crate::magic::transl8::impl_magic;
 // allowing us to use a single type for familiarity
 pub enum ZeroCopyBuf {
   FromV8(V8Slice),
-  ToV8(Option<Box<[u8]>>),
+  // ToV8(Option<Box<[u8]>>),
 }
 
 impl_magic!(ZeroCopyBuf);
@@ -28,7 +28,7 @@ impl Clone for ZeroCopyBuf {
   fn clone(&self) -> Self {
     match self {
       Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
-      Self::ToV8(_) => panic!("Don't Clone a ZeroCopyBuf sent to v8"),
+      // Self::ToV8(_) => panic!("Don't Clone a ZeroCopyBuf sent to v8"),
     }
   }
 }
@@ -50,7 +50,7 @@ impl Deref for ZeroCopyBuf {
   fn deref(&self) -> &[u8] {
     match self {
       Self::FromV8(buf) => buf,
-      Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
+      // Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
 }
@@ -59,22 +59,22 @@ impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
     match self {
       Self::FromV8(buf) => &mut *buf,
-      Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
+      // Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
 }
 
-impl From<Box<[u8]>> for ZeroCopyBuf {
-  fn from(buf: Box<[u8]>) -> Self {
-    ZeroCopyBuf::ToV8(Some(buf))
-  }
-}
+// impl From<Box<[u8]>> for ZeroCopyBuf {
+//   fn from(buf: Box<[u8]>) -> Self {
+//     ZeroCopyBuf::ToV8(Some(buf))
+//   }
+// }
 
-impl From<Vec<u8>> for ZeroCopyBuf {
-  fn from(vec: Vec<u8>) -> Self {
-    vec.into_boxed_slice().into()
-  }
-}
+// impl From<Vec<u8>> for ZeroCopyBuf {
+//   fn from(vec: Vec<u8>) -> Self {
+//     vec.into_boxed_slice().into()
+//   }
+// }
 
 impl ToV8 for ZeroCopyBuf {
   fn to_v8<'a>(
@@ -85,8 +85,7 @@ impl ToV8 for ZeroCopyBuf {
       Self::FromV8(buf) => {
         let value: &[u8] = buf;
         value.into()
-      }
-      Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
+      } // Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
     };
 
     if buf.is_empty() {
@@ -123,9 +122,9 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
   fn from(zbuf: ZeroCopyBuf) -> bytes::Bytes {
     match zbuf {
       ZeroCopyBuf::FromV8(v) => v.into(),
-      ZeroCopyBuf::ToV8(mut v) => {
-        v.take().expect("ZeroCopyBuf was empty").into()
-      }
+      // ZeroCopyBuf::ToV8(mut v) => {
+      //   v.take().expect("ZeroCopyBuf was empty").into()
+      // }
     }
   }
 }

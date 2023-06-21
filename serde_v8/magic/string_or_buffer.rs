@@ -9,6 +9,7 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum StringOrBuffer {
+  // TODO(bartlomieju): split into `RustBuffer` and `V8Buffer`
   Buffer(ZeroCopyBuf),
   String(String),
 }
@@ -46,10 +47,9 @@ impl ToV8 for StringOrBuffer {
           ZeroCopyBuf::FromV8(buf) => {
             let value: &[u8] = buf;
             value.into()
-          }
-          ZeroCopyBuf::ToV8(ref mut x) => {
-            x.take().expect("ZeroCopyBuf was empty")
-          }
+          } // ZeroCopyBuf::ToV8(ref mut x) => {
+            //   x.take().expect("ZeroCopyBuf was empty")
+            // }
         };
         let backing_store =
           v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
