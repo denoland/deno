@@ -978,7 +978,7 @@ impl Default for Permissions {
       sys: Permissions::new_sys(&None, &None, false).unwrap(),
       run: Permissions::new_run(&None, &None, false).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(false),
+      hrtime: Permissions::new_hrtime(false, false),
     }
   }
 }
@@ -988,6 +988,7 @@ pub struct PermissionsOptions {
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
+  pub deny_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<PathBuf>>,
@@ -1109,9 +1110,13 @@ impl Permissions {
     })
   }
 
-  pub fn new_hrtime(state: bool) -> UnitPermission {
+  pub fn new_hrtime(allow_state: bool, deny_state: bool) -> UnitPermission {
     unit_permission_from_flag_bool(
-      state,
+      if deny_state == true {
+        false
+      } else {
+        allow_state
+      }, // deny_state takes precedence over allow_state
       "hrtime",
       "high precision time",
       false, // never prompt for hrtime
@@ -1135,7 +1140,7 @@ impl Permissions {
       sys: Permissions::new_sys(&opts.allow_sys, &opts.deny_sys, opts.prompt)?,
       run: Permissions::new_run(&opts.allow_run, &opts.deny_run, opts.prompt)?,
       ffi: Permissions::new_ffi(&opts.allow_ffi, &opts.deny_ffi, opts.prompt)?,
-      hrtime: Permissions::new_hrtime(opts.allow_hrtime),
+      hrtime: Permissions::new_hrtime(opts.allow_hrtime, opts.deny_hrtime),
     })
   }
 
@@ -1148,7 +1153,7 @@ impl Permissions {
       sys: Permissions::new_sys(&Some(vec![]), &None, false).unwrap(),
       run: Permissions::new_run(&Some(vec![]), &None, false).unwrap(),
       ffi: Permissions::new_ffi(&Some(vec![]), &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(true),
+      hrtime: Permissions::new_hrtime(true, false),
     }
   }
 
@@ -2478,7 +2483,7 @@ mod tests {
       },
       hrtime: UnitPermission {
         state: PermissionState::Prompt,
-        ..Permissions::new_hrtime(false)
+        ..Permissions::new_hrtime(false, false)
       },
     };
     #[rustfmt::skip]
@@ -2621,7 +2626,7 @@ mod tests {
       },
       hrtime: UnitPermission {
         state: PermissionState::Denied,
-        ..Permissions::new_hrtime(false)
+        ..Permissions::new_hrtime(false, false)
       },
     };
     #[rustfmt::skip]
@@ -2656,7 +2661,7 @@ mod tests {
       sys: Permissions::new_sys(&None, &None, true).unwrap(),
       run: Permissions::new_run(&None, &None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, true).unwrap(),
-      hrtime: Permissions::new_hrtime(false),
+      hrtime: Permissions::new_hrtime(false, false),
     };
 
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -2720,7 +2725,7 @@ mod tests {
       sys: Permissions::new_sys(&None, &None, true).unwrap(),
       run: Permissions::new_run(&None, &None, true).unwrap(),
       ffi: Permissions::new_ffi(&None, &None, true).unwrap(),
-      hrtime: Permissions::new_hrtime(false),
+      hrtime: Permissions::new_hrtime(false, false),
     };
 
     let prompt_value = PERMISSION_PROMPT_STUB_VALUE_SETTER.lock();
@@ -2969,7 +2974,7 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let mut main_perms = Permissions {
       env: Permissions::new_env(&Some(vec![]), &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(true),
+      hrtime: Permissions::new_hrtime(true, false),
       net: Permissions::new_net(&Some(svec!["foo", "bar"]), &None, false)
         .unwrap(),
       ..Default::default()

@@ -314,6 +314,7 @@ pub struct Flags {
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
+  pub deny_hrtime: bool,
   pub allow_net: Option<Vec<String>>,
   pub deny_net: Option<Vec<String>>,
   pub allow_ffi: Option<Vec<PathBuf>>,
@@ -553,6 +554,10 @@ impl Flags {
       args.push("--allow-hrtime".to_string());
     }
 
+    if self.deny_hrtime {
+      args.push("--deny-hrtime".to_string());
+    }
+
     args
   }
 
@@ -642,6 +647,7 @@ impl Flags {
   pub fn has_permission(&self) -> bool {
     self.allow_all
       || self.allow_hrtime
+      || self.deny_hrtime
       || self.allow_env.is_some()
       || self.deny_env.is_some()
       || self.allow_ffi.is_some()
@@ -662,6 +668,7 @@ impl Flags {
     self.argv.iter().any(|arg| {
       arg == "--allow-all"
         || arg == "--allow-hrtime"
+        || arg == "--deny-hrtime"
         || arg.starts_with("--allow-env")
         || arg.starts_with("--deny-env")
         || arg.starts_with("--allow-ffi")
@@ -2151,6 +2158,13 @@ static ALLOW_HRTIME_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
+static DENY_HRTIME_HELP: &str = concat!(
+  "Deny high-resolution time measurement. Note: this can prevent timing attacks and fingerprinting.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
 static ALLOW_ALL_HELP: &str = concat!(
   "Allow all permissions. Learn more about permissions in Deno:\n",
   "https://deno.land/manual@v",
@@ -2330,6 +2344,12 @@ fn permission_args(app: Command) -> Command {
         .long("allow-hrtime")
         .action(ArgAction::SetTrue)
         .help(ALLOW_HRTIME_HELP),
+    )
+    .arg(
+      Arg::new("deny-hrtime")
+        .long("deny-hrtime")
+        .action(ArgAction::SetTrue)
+        .help(DENY_HRTIME_HELP),
     )
     .arg(
       Arg::new("allow-all")
@@ -3351,6 +3371,10 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.allow_hrtime = true;
   }
 
+  if matches.get_flag("deny-hrtime") {
+    flags.deny_hrtime = true;
+  }
+
   if matches.get_flag("allow-all") {
     flags.allow_all = true;
     flags.allow_read = Some(vec![]);
@@ -3904,6 +3928,21 @@ mod tests {
           script: "gist.ts".to_string(),
         }),
         allow_hrtime: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn deny_hrtime() {
+    let r = flags_from_vec(svec!["deno", "run", "--deny-hrtime", "gist.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "gist.ts".to_string(),
+        }),
+        deny_hrtime: true,
         ..Flags::default()
       }
     );

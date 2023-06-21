@@ -1132,6 +1132,7 @@ impl CliOptions {
       allow_env: self.flags.allow_env.clone(),
       deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
+      deny_hrtime: self.flags.deny_hrtime,
       allow_net: self.flags.allow_net.clone(),
       deny_net: self.flags.deny_net.clone(),
       allow_ffi: self.flags.allow_ffi.clone(),
