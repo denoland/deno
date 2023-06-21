@@ -97,7 +97,7 @@ Deno.test(async function httpServerCanResolveHostnames() {
   const text = await resp.text();
   assertEquals(text, "ok");
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 Deno.test(async function httpServerRejectsOnAddrInUse() {
@@ -127,7 +127,7 @@ Deno.test(async function httpServerRejectsOnAddrInUse() {
     Deno.errors.AddrInUse,
   );
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
@@ -164,7 +164,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerBasic() {
   const cloneText = await clone.text();
   assertEquals(cloneText, "Hello World");
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 // Test serving of HTTP on an arbitrary listener.
@@ -207,7 +207,7 @@ Deno.test(
     const cloneText = await clone.text();
     assertEquals(cloneText, "Hello World");
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -254,7 +254,7 @@ Deno.test(
     assertEquals(cloneText, "Hello World");
     // Note that we don't need to abort this server -- it closes when the connection does
     // ac.abort();
-    await server;
+    await server.finished;
     listener.close();
   },
 );
@@ -284,7 +284,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerOnError() {
   });
   const text = await resp.text();
   ac.abort();
-  await server;
+  await server.finished;
 
   assertEquals(text, `failed: http://127.0.0.1:${servePort}/`);
 });
@@ -319,7 +319,7 @@ Deno.test(
     });
     const text = await resp.text();
     ac.abort();
-    await server;
+    await server.finished;
 
     assertEquals(text, "Internal Server Error");
   },
@@ -357,7 +357,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload1() {
   const cloneText = await clone.text();
   assertEquals(cloneText, "Hello World");
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
@@ -392,7 +392,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerOverload2() {
   const cloneText = await clone.text();
   assertEquals(cloneText, "Hello World");
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 Deno.test(
@@ -431,7 +431,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
       ac.abort();
     },
   });
-  await server;
+  await server.finished;
 });
 
 Deno.test(
@@ -461,7 +461,7 @@ Deno.test(
         signal: ac.signal,
       });
 
-      await server;
+      await server.finished;
     } finally {
       console.log = consoleLog;
     }
@@ -502,7 +502,7 @@ Deno.test(
     conn.close();
     assertEquals(headers!.get("content-length"), "5");
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -547,7 +547,7 @@ function createUrlTest(
       assertEquals(await urlPromise, expectedResult);
     } finally {
       ac.abort();
-      await server;
+      await server.finished;
       conn.close();
     }
   });
@@ -645,7 +645,7 @@ Deno.test(
     conn.close();
     await promise;
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -698,7 +698,7 @@ function createStreamTest(count: number, delay: number, action: string) {
     const text = await resp.text();
 
     ac.abort();
-    await server;
+    await server.finished;
     let expected = "";
     if (action == "Throw" && count < 2 && delay < 1000) {
       // NOTE: This is specific to the current implementation. In some cases where a stream errors, we
@@ -755,7 +755,7 @@ Deno.test(
 
     assertEquals(await resp.text(), "yo");
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -773,7 +773,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerClose() {
   const client = await Deno.connect({ port: servePort });
   client.close();
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 // https://github.com/denoland/deno/issues/15427
@@ -805,7 +805,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerCloseGet() {
   conn.close();
   await responsePromise;
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 // FIXME:
@@ -828,7 +828,7 @@ Deno.test(
 
     assertEquals("", respBody);
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -870,7 +870,7 @@ Deno.test(
     assertStringIncludes(await resp.text(), "Failed to execute 'enqueue'");
     await errorPromise;
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -906,7 +906,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
     assert(msg.includes("content-length: 60"));
   },
 );
@@ -949,7 +949,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
 
   await def;
   ac.abort();
-  await server;
+  await server.finished;
 });
 
 Deno.test(
@@ -1027,7 +1027,7 @@ Deno.test(
 
     conn.close();
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1078,7 +1078,7 @@ Deno.test(
 
     await def;
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1113,7 +1113,7 @@ Deno.test(
 
     await def;
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1158,7 +1158,7 @@ Deno.test(
 
     await def;
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1196,7 +1196,7 @@ Deno.test(
     assertEquals(headers!.get("content-length"), "5");
     assertEquals(headers!.get("something-else"), smthElse);
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1243,7 +1243,7 @@ Deno.test(
     assertEquals(headers!.get("something-else"), smthElse);
     assertEquals(text!, reqBody);
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1278,7 +1278,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1322,7 +1322,7 @@ Deno.test(
     assert(chunk3.done);
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1406,7 +1406,7 @@ Deno.test(
       }).pipeThrough(new TextEncoderStream());
     }
 
-    const finished = Deno.serve({
+    const server = Deno.serve({
       handler: () => {
         promise.resolve();
         return new Response(periodicStream());
@@ -1426,7 +1426,7 @@ Deno.test(
 
     ac.abort();
     await promise;
-    await finished;
+    await server.finished;
     clientConn.close();
   },
 );
@@ -1470,7 +1470,7 @@ Deno.test(
     clientConn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
 
     assertMatch(responseText, /\r\n[Xx]-[Hh]eader-[Tt]est: Æ\r\n/);
   },
@@ -1526,7 +1526,7 @@ Deno.test(
     await promise;
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1565,7 +1565,7 @@ Deno.test(
     assertEquals(text, "ok");
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1604,7 +1604,7 @@ Deno.test(
     await promise;
     ac.abort();
 
-    await server;
+    await server.finished;
   },
 );
 
@@ -1637,7 +1637,7 @@ Deno.test(
     assertEquals(new Uint8Array(body), new Uint8Array([128]));
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1675,7 +1675,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1709,7 +1709,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1745,7 +1745,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1780,7 +1780,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -1859,7 +1859,7 @@ function createServerLengthTest(name: string, testCase: TestCase) {
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   });
 }
 
@@ -1962,7 +1962,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2000,7 +2000,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2037,7 +2037,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2073,7 +2073,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2117,7 +2117,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2263,7 +2263,7 @@ for (const testCase of compressionTestCases) {
           }
         } finally {
           ac.abort();
-          await server;
+          await server.finished;
         }
       },
     }[name],
@@ -2305,7 +2305,7 @@ Deno.test(
     assertEquals(await response.text(), "ok");
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2340,7 +2340,7 @@ Deno.test(
 
     client.close();
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2376,7 +2376,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2424,7 +2424,7 @@ Deno.test(
     }
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2451,7 +2451,7 @@ Deno.test(
       assertEquals(resp.headers.get("Content-Length"), null);
     } finally {
       ac.abort();
-      await server;
+      await server.finished;
     }
   },
 );
@@ -2497,7 +2497,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2558,7 +2558,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2605,7 +2605,7 @@ Deno.test(
     conn.close();
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2652,7 +2652,7 @@ for (const [name, req] of badRequests) {
       conn.close();
 
       ac.abort();
-      await server;
+      await server.finished;
     },
   }[name];
 
@@ -2726,7 +2726,7 @@ Deno.test(
     await stream.cancel();
     clearInterval(timerId);
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -2750,7 +2750,7 @@ Deno.test(
         onError: createOnErrorCb(ac),
       });
       ac.abort();
-      await server;
+      await server.finished;
     } finally {
       Promise.prototype.then = originalThen;
       Array.prototype[Symbol.iterator] = originalSymbolIterator;
@@ -2783,7 +2783,7 @@ Deno.test(
     });
 
     await promise;
-    await server;
+    await server.finished;
   },
 );
 
@@ -2821,7 +2821,7 @@ Deno.test(
       assertEquals(text, "ok");
     } finally {
       ac.abort();
-      await server;
+      await server.finished;
     }
   },
 );
@@ -2856,7 +2856,7 @@ Deno.test(
       ));
 
     await promise;
-    await server;
+    await server.finished;
   },
 );
 
@@ -3019,7 +3019,7 @@ Deno.test(
     );
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -3058,7 +3058,7 @@ Deno.test(
     ]);
     assertMatch(stderr, /baz: why/);
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 
@@ -3094,7 +3094,7 @@ Deno.test(
     );
 
     ac.abort();
-    await server;
+    await server.finished;
   },
 );
 

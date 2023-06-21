@@ -7,6 +7,7 @@ use std::os::raw::c_void;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
+use crate::error::throw_type_error;
 use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
@@ -75,25 +76,6 @@ pub fn script_origin<'a>(
     true,
     false,
     false,
-  )
-}
-
-pub fn module_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::empty(s);
-  v8::ScriptOrigin::new(
-    s,
-    resource_name.into(),
-    0,
-    0,
-    false,
-    123,
-    source_map_url.into(),
-    true,
-    false,
-    true,
   )
 }
 
@@ -560,58 +542,4 @@ fn call_console(
 
   inspector_console_method.call(scope, receiver.into(), &call_args);
   deno_console_method.call(scope, receiver.into(), &call_args);
-}
-
-/// Called by V8 during `JsRuntime::instantiate_module`.
-///
-/// This function borrows `ModuleMap` from the isolate slot,
-/// so it is crucial to ensure there are no existing borrows
-/// of `ModuleMap` when `JsRuntime::instantiate_module` is called.
-pub fn module_resolve_callback<'s>(
-  context: v8::Local<'s, v8::Context>,
-  specifier: v8::Local<'s, v8::String>,
-  import_assertions: v8::Local<'s, v8::FixedArray>,
-  referrer: v8::Local<'s, v8::Module>,
-) -> Option<v8::Local<'s, v8::Module>> {
-  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  let module_map_rc = JsRuntime::module_map_from(scope);
-  let module_map = module_map_rc.borrow();
-
-  let referrer_global = v8::Global::new(scope, referrer);
-
-  let referrer_info = module_map
-    .get_info(&referrer_global)
-    .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.as_str();
-
-  let specifier_str = specifier.to_rust_string_lossy(scope);
-
-  let assertions = parse_import_assertions(
-    scope,
-    import_assertions,
-    ImportAssertionsKind::StaticImport,
-  );
-  let maybe_module = module_map.resolve_callback(
-    scope,
-    &specifier_str,
-    referrer_name,
-    assertions,
-  );
-  if let Some(module) = maybe_module {
-    return Some(module);
-  }
-
-  let msg = format!(
-    r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
-  );
-  throw_type_error(scope, msg);
-  None
-}
-
-pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
-  let message = v8::String::new(scope, message.as_ref()).unwrap();
-  let exception = v8::Exception::type_error(scope, message);
-  scope.throw_exception(exception);
 }

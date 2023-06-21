@@ -109,6 +109,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "anstream"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca84f3628370c59db74ee214b3263d58f9aadd9b4fe7e711fd87dc452b7f163"
+dependencies = [
+ "anstyle",
+ "anstyle-parse",
+ "anstyle-query",
+ "anstyle-wincon",
+ "colorchoice",
+ "is-terminal",
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41ed9a86bf92ae6580e0a31281f65a1b1d867c0cc68d5346e2ae128dddfa6a7d"
+
+[[package]]
+name = "anstyle-parse"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e765fd216e48e067936442276d1d57399e37bce53c264d6fefbe298080cb57ee"
+dependencies = [
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle-query"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca11d4be1bab0c8bc8734a9aa7bf4ee8316d462a08c6ac5052f888fef5b494b"
+dependencies = [
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "anstyle-wincon"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "180abfa45703aebe0093f79badacc01b8fd4ea2e35118747e5811127f926e188"
+dependencies = [
+ "anstyle",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "anyhow"
 version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -474,31 +523,40 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.1.10"
+version = "4.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce38afc168d8665cfc75c7b1dd9672e50716a137f433f070991619744a67342a"
+checksum = "ca8f255e4b8027970e78db75e78831229c9815fdbfa67eb1a1b777a62e24b4a0"
 dependencies = [
+ "clap_builder",
+]
+
+[[package]]
+name = "clap_builder"
+version = "4.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acd4f3c17c83b0ba34ffbc4f8bbd74f079413f747f84a6f89292f138057e36ab"
+dependencies = [
+ "anstream",
+ "anstyle",
  "bitflags 1.3.2",
  "clap_lex",
- "is-terminal",
  "strsim",
- "termcolor",
 ]
 
 [[package]]
 name = "clap_complete"
-version = "4.1.5"
+version = "4.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37686beaba5ac9f3ab01ee3172f792fc6ffdd685bfb9e63cfef02c0571a4e8e1"
+checksum = "7f6b5c519bab3ea61843a7923d074b04245624bb84a64a8c150f5deb014e388b"
 dependencies = [
  "clap",
 ]
 
 [[package]]
 name = "clap_complete_fig"
-version = "4.1.2"
+version = "4.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2171bc6242ad7a1801422bff039574449b5bd832b715222e500714ce10f91a54"
+checksum = "99fee1d30a51305a6c2ed3fc5709be3c8af626c9c958e04dd9ae94e27bcbce9f"
 dependencies = [
  "clap",
  "clap_complete",
@@ -506,12 +564,9 @@ dependencies = [
 
 [[package]]
 name = "clap_lex"
-version = "0.3.3"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "033f6b7a4acb1f358c742aaca805c939ee73b4c6209ae4318ec7aca81c42e646"
-dependencies = [
- "os_str_bytes",
-]
+checksum = "2da6da31387c7e4ef160ffab6d5e7f00c42626fe39aea70a7b0f1773f7dd6c1b"
 
 [[package]]
 name = "clipboard-win"
@@ -523,6 +578,12 @@ dependencies = [
  "str-buf",
  "winapi",
 ]
+
+[[package]]
+name = "colorchoice"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
 name = "console_static_text"
@@ -721,7 +782,7 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
-version = "1.34.2"
+version = "1.34.3"
 dependencies = [
  "async-trait",
  "atty",
@@ -844,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.102.0"
+version = "0.103.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -854,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.102.0"
+version = "0.103.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -864,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.40.0"
+version = "0.41.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -876,14 +937,14 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "deno_core",
 ]
 
 [[package]]
 name = "deno_core"
-version = "0.190.0"
+version = "0.191.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -908,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.122.0"
+version = "0.123.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -978,7 +1039,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.132.0"
+version = "0.133.0"
 dependencies = [
  "bytes",
  "data-url",
@@ -995,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.95.0"
+version = "0.96.0"
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1011,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1051,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.103.0"
+version = "0.104.0"
 dependencies = [
  "async-compression 0.3.15",
  "async-trait",
@@ -1087,7 +1148,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1101,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1109,8 +1170,12 @@ dependencies = [
  "deno_core",
  "hex",
  "num-bigint",
+ "rand",
  "rusqlite",
  "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -1155,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "deno_core",
  "libloading",
@@ -1163,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.100.0"
+version = "0.101.0"
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1179,7 +1244,7 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
-version = "0.45.0"
+version = "0.46.0"
 dependencies = [
  "aes",
  "cbc",
@@ -1233,9 +1298,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6ea17879274b55063c6b14488a4f9352b651f8d42ed129e6e2c1e351761175d"
+checksum = "f396676bc09754d7afdbf8887e501bf5cd4ecbec6607a5540ee5c7338cae713d"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1250,7 +1315,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.68.0"
+version = "0.69.0"
 dependencies = [
  "lazy-regex",
  "once_cell",
@@ -1268,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.116.0"
+version = "0.117.0"
 dependencies = [
  "atty",
  "console_static_text",
@@ -1351,7 +1416,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.95.0"
+version = "0.96.0"
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1365,7 +1430,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1377,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.139.0"
+version = "0.140.0"
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1396,7 +1461,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.108.0"
+version = "0.109.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1404,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.113.0"
+version = "0.114.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -1421,7 +1486,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.103.0"
+version = "0.104.0"
 dependencies = [
  "deno_core",
  "deno_web",
@@ -3018,7 +3083,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.38.0"
+version = "0.39.0"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
@@ -3218,12 +3283,6 @@ dependencies = [
  "libc",
  "winapi",
 ]
-
-[[package]]
-name = "os_str_bytes"
-version = "6.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
 
 [[package]]
 name = "output_vt100"
@@ -4297,7 +4356,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.101.0"
+version = "0.102.0"
 dependencies = [
  "bencher",
  "bytes",

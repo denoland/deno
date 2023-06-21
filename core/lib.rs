@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 mod async_cancel;
 mod async_cell;
-mod bindings;
 pub mod error;
 mod error_codes;
 mod extensions;
@@ -18,10 +17,8 @@ mod ops_builtin;
 mod ops_builtin_v8;
 mod ops_metrics;
 mod path;
-mod realm;
 mod resources;
 mod runtime;
-pub mod snapshot_util;
 mod source_map;
 pub mod task;
 mod task_queue;
@@ -57,6 +54,8 @@ pub use crate::async_cell::AsyncRefCell;
 pub use crate::async_cell::AsyncRefFuture;
 pub use crate::async_cell::RcLike;
 pub use crate::async_cell::RcRef;
+pub use crate::error::GetErrorClassFn;
+pub use crate::error::JsErrorCreateFn;
 pub use crate::extensions::Extension;
 pub use crate::extensions::ExtensionBuilder;
 pub use crate::extensions::ExtensionFileSource;
@@ -103,15 +102,13 @@ pub use crate::ops_builtin::op_void_async;
 pub use crate::ops_builtin::op_void_sync;
 pub use crate::ops_metrics::OpsTracker;
 pub use crate::path::strip_unc_prefix;
-pub use crate::realm::JsRealm;
 pub use crate::resources::AsyncResult;
 pub use crate::resources::Resource;
 pub use crate::resources::ResourceId;
 pub use crate::resources::ResourceTable;
 pub use crate::runtime::CompiledWasmModuleStore;
 pub use crate::runtime::CrossIsolateStore;
-pub use crate::runtime::GetErrorClassFn;
-pub use crate::runtime::JsErrorCreateFn;
+pub use crate::runtime::JsRealm;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::JsRuntimeForSnapshot;
 pub use crate::runtime::RuntimeOptions;
@@ -130,19 +127,28 @@ pub fn v8_version() -> &'static str {
 /// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
-  pub use super::bindings::throw_type_error;
+  pub use super::error::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::ops::OpResult;
-  pub use super::runtime::map_async_op1;
-  pub use super::runtime::map_async_op2;
-  pub use super::runtime::map_async_op3;
-  pub use super::runtime::map_async_op4;
-  pub use super::runtime::queue_async_op;
-  pub use super::runtime::queue_fast_async_op;
+  pub use super::runtime::ops::map_async_op1;
+  pub use super::runtime::ops::map_async_op2;
+  pub use super::runtime::ops::map_async_op3;
+  pub use super::runtime::ops::map_async_op4;
+  pub use super::runtime::ops::queue_async_op;
+  pub use super::runtime::ops::queue_fast_async_op;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
+}
+
+// TODO(mmastrac): Temporary while we move code around
+pub mod snapshot_util {
+  pub use crate::runtime::create_snapshot;
+  pub use crate::runtime::get_js_files;
+  pub use crate::runtime::CreateSnapshotOptions;
+  pub use crate::runtime::CreateSnapshotOutput;
+  pub use crate::runtime::FilterFn;
 }
 
 /// A helper macro that will return a call site in Rust code. Should be
