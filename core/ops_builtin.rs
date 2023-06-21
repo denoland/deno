@@ -11,6 +11,7 @@ use crate::Resource;
 use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
+use serde_v8::RustToV8Buf;
 use std::cell::RefCell;
 use std::io::stderr;
 use std::io::stdout;
@@ -229,7 +230,7 @@ async fn op_read(
 async fn op_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<ZeroCopyBuf, Error> {
+) -> Result<RustToV8Buf, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
 
   // The number of bytes we attempt to grow the buffer by each time it fills
@@ -291,7 +292,7 @@ async fn op_read_all(
     vec.truncate(nread);
   }
 
-  Ok(ZeroCopyBuf::from(vec))
+  Ok(RustToV8Buf::from(vec))
 }
 
 #[op]

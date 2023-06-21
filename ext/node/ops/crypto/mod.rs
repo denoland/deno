@@ -547,7 +547,7 @@ use self::primes::Prime;
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   let mut rng = rand::thread_rng();
   let private_key = RsaPrivateKey::new_with_exp(
     &mut rng,
@@ -565,7 +565,7 @@ fn generate_rsa(
 pub fn op_node_generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   generate_rsa(modulus_length, public_exponent)
 }
 
@@ -573,14 +573,14 @@ pub fn op_node_generate_rsa(
 pub async fn op_node_generate_rsa_async(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
   use dsa::pkcs8::EncodePublicKey;
@@ -619,7 +619,7 @@ fn dsa_generate(
 pub fn op_node_dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   dsa_generate(modulus_length, divisor_length)
 }
 
@@ -627,13 +627,13 @@ pub fn op_node_dsa_generate(
 pub async fn op_node_dsa_generate_async(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(move || dsa_generate(modulus_length, divisor_length)).await?
 }
 
 fn ec_generate(
   named_curve: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   use ring::signature::EcdsaKeyPair;
   use ring::signature::KeyPair;
 
@@ -659,18 +659,18 @@ fn ec_generate(
 #[op]
 pub fn op_node_ec_generate(
   named_curve: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   ec_generate(named_curve)
 }
 
 #[op]
 pub async fn op_node_ec_generate_async(
   named_curve: String,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(move || ec_generate(&named_curve)).await?
 }
 
-fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+fn ed25519_generate() -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   use ring::signature::Ed25519KeyPair;
   use ring::signature::KeyPair;
 
@@ -686,18 +686,18 @@ fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
 }
 
 #[op]
-pub fn op_node_ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+pub fn op_node_ed25519_generate() -> Result<(RustToV8Buf, RustToV8Buf), AnyError>
 {
   ed25519_generate()
 }
 
 #[op]
 pub async fn op_node_ed25519_generate_async(
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(ed25519_generate).await?
 }
 
-fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+fn x25519_generate() -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   // u-coordinate of the base point.
   const X25519_BASEPOINT_BYTES: [u8; 32] = [
     9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -721,20 +721,20 @@ fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
 }
 
 #[op]
-pub fn op_node_x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+pub fn op_node_x25519_generate() -> Result<(RustToV8Buf, RustToV8Buf), AnyError>
 {
   x25519_generate()
 }
 
 #[op]
 pub async fn op_node_x25519_generate_async(
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(x25519_generate).await?
 }
 
 fn dh_generate_group(
   group_name: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   let dh = match group_name {
     "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
     "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
@@ -754,14 +754,14 @@ fn dh_generate_group(
 #[op]
 pub fn op_node_dh_generate_group(
   group_name: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   dh_generate_group(group_name)
 }
 
 #[op]
 pub async fn op_node_dh_generate_group_async(
   group_name: String,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
 
@@ -769,7 +769,7 @@ fn dh_generate(
   prime: Option<&[u8]>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   let prime = prime
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
@@ -786,7 +786,7 @@ pub fn op_node_dh_generate(
   prime: Option<&[u8]>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   dh_generate(prime, prime_len, generator)
 }
 
@@ -796,7 +796,7 @@ pub fn op_node_dh_generate2(
   prime: ZeroCopyBuf,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   dh_generate(Some(prime).as_deref(), prime_len, generator)
 }
 
@@ -819,7 +819,7 @@ pub async fn op_node_dh_generate_async(
   prime: Option<ZeroCopyBuf>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
   spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
     .await?
 }

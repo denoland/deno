@@ -22,6 +22,7 @@ use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
@@ -301,7 +302,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(ZeroCopyBuf, ResourceId), AnyError>
+) -> Result<(RustToV8Buf, ResourceId), AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
