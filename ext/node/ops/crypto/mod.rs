@@ -7,6 +7,7 @@ use deno_core::serde_v8;
 use deno_core::task::spawn_blocking;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::RustToV8Buf;
 use deno_core::StringOrBuffer;
 use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
@@ -471,7 +472,7 @@ pub fn op_node_generate_secret(buf: &mut [u8]) {
 }
 
 #[op]
-pub async fn op_node_generate_secret_async(len: i32) -> ZeroCopyBuf {
+pub async fn op_node_generate_secret_async(len: i32) -> RustToV8Buf {
   spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
@@ -1079,18 +1080,18 @@ pub fn op_node_ecdh_compute_public_key(
 }
 
 #[inline]
-fn gen_prime(size: usize) -> ZeroCopyBuf {
+fn gen_prime(size: usize) -> RustToV8Buf {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
 #[op]
-pub fn op_node_gen_prime(size: usize) -> ZeroCopyBuf {
+pub fn op_node_gen_prime(size: usize) -> RustToV8Buf {
   gen_prime(size)
 }
 
 #[op]
 pub async fn op_node_gen_prime_async(
   size: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   Ok(spawn_blocking(move || gen_prime(size)).await?)
 }

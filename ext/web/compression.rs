@@ -5,6 +5,7 @@ use deno_core::op;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
@@ -69,7 +70,7 @@ pub fn op_compression_write(
   state: &mut OpState,
   rid: ResourceId,
   input: &[u8],
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
   let out: Vec<u8> = match &mut *inner {
@@ -112,7 +113,7 @@ pub fn op_compression_write(
 pub fn op_compression_finish(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();
   let inner = resource.0.into_inner();

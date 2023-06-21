@@ -15,6 +15,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
@@ -547,7 +548,7 @@ pub async fn op_ws_close(
 }
 
 #[op]
-pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ZeroCopyBuf {
+pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> RustToV8Buf {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.buffer.take().unwrap().into()
 }
