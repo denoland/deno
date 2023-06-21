@@ -249,7 +249,7 @@ class WebSocketStream {
         } else if (
           ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
         ) {
-          await op_ws_send_binary_async(this[_rid],  chunk);
+          await op_ws_send_binary_async(this[_rid], chunk);
         } else {
           throw new TypeError(
             "A chunk may only be either a string or an Uint8Array",
@@ -275,7 +275,7 @@ class WebSocketStream {
     });
     const pull = async (controller) => {
       const kind = await op_ws_next_event(
-        this[_rid]
+        this[_rid],
       );
 
       switch (kind) {
@@ -291,18 +291,18 @@ class WebSocketStream {
         }
         case 2: {
           /* pong */
-                  break;
-                }
-                case 3: {
-                  /* error */
-                  const err = new Error(op_ws_get_error(this[_rid]));
-            this[_closed].reject(err);
+          break;
+        }
+        case 3: {
+          /* error */
+          const err = new Error(op_ws_get_error(this[_rid]));
+          this[_closed].reject(err);
           controller.error(err);
           core.tryClose(this[_rid]);
           break;
         }
         case 4: {
-        /* closed */
+          /* closed */
           this[_closed].resolve(undefined);
           core.tryClose(this[_rid]);
           break;
@@ -310,9 +310,9 @@ class WebSocketStream {
         default: {
           /* close */
           this[_closed].resolve({
-          code: kind,
-                    reason: op_ws_get_error(this[_rid]),
-                  });
+            code: kind,
+            reason: op_ws_get_error(this[_rid]),
+          });
           core.tryClose(this[_rid]);
           break;
         }

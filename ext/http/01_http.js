@@ -406,7 +406,7 @@ async function handleWS(resp, getWSRid, httpConn) {
 
     httpConn.close();
 
-    if (ws instanceof WebSocket) {
+    if (ObjectPrototypeIsPrototypeOf(ws, WebSocket)) {
       ws[_protocol] = resp.headers.get("sec-websocket-protocol");
 
       ws[_readyState] = WebSocket.OPEN;
