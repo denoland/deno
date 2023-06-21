@@ -6,7 +6,6 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use flate2::write::DeflateDecoder;
 use flate2::write::DeflateEncoder;
 use flate2::write::GzDecoder;

@@ -16,6 +16,7 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
@@ -1144,7 +1145,7 @@ where
 fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<RustToV8Buf, AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -1164,7 +1165,7 @@ async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<RustToV8Buf, AnyError>
 where
   P: FsPermissions + 'static,
 {

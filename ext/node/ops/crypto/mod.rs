@@ -116,7 +116,7 @@ pub fn op_node_hash_update_str(
 pub fn op_node_hash_digest(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let context = state.resource_table.take::<digest::Context>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Hash context is already in use"))?;
@@ -149,7 +149,7 @@ pub fn op_node_private_encrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -173,7 +173,7 @@ pub fn op_node_private_decrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   match padding {
@@ -196,7 +196,7 @@ pub fn op_node_public_encrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -308,7 +308,7 @@ pub fn op_node_sign(
   key: StringOrBuffer,
   key_type: &str,
   key_format: &str,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   match key_type {
     "rsa" => {
       use rsa::pkcs1v15::SigningKey;
@@ -457,7 +457,7 @@ pub async fn op_node_pbkdf2_async(
   iterations: u32,
   digest: String,
   keylen: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
     pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
@@ -530,7 +530,7 @@ pub async fn op_node_hkdf_async(
   salt: ZeroCopyBuf,
   info: ZeroCopyBuf,
   okm_len: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
     hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
@@ -805,7 +805,7 @@ pub fn op_node_dh_compute_secret(
   prime: ZeroCopyBuf,
   private_key: ZeroCopyBuf,
   their_public_key: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
   let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
   let primei: BigUint = BigUint::from_bytes_be(prime.as_ref());
@@ -896,7 +896,7 @@ pub async fn op_node_scrypt_async(
   block_size: u32,
   parallelization: u32,
   maxmem: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
     let res = scrypt(

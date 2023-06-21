@@ -20,6 +20,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::task::spawn_blocking;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPublicKey;
@@ -79,7 +80,7 @@ pub enum EncryptAlgorithm {
 pub async fn op_crypto_encrypt(
   opts: EncryptOptions,
   data: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<RustToV8Buf, AnyError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     EncryptAlgorithm::RsaOaep { hash, label } => {

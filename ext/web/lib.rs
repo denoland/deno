@@ -20,7 +20,6 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::RustToV8Buf;
 use deno_core::U16String;
-use deno_core::ZeroCopyBuf;
 
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
