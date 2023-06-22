@@ -109,7 +109,7 @@ impl Hash {
       "sha224",
       "sha256",
       "sha384",
-      "sha512"
+      "sha512",
     ]
   }
 }

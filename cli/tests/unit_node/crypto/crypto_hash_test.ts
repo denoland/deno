@@ -114,7 +114,6 @@ Deno.test("[node/crypto.Hash] streaming usage", async () => {
 
 Deno.test("[node/crypto.getHashes]", () => {
   for (const algorithm of getHashes()) {
-    console.log(algorithm);
     const d = createHash(algorithm).update("abc").digest();
     assert(d instanceof Buffer);
     assert(d.length > 0);

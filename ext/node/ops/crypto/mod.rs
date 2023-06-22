@@ -89,7 +89,7 @@ pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
 
 #[op(fast)]
 pub fn op_node_get_hashes() -> Vec<&'static str> {
-  digest::Hash::get_hashes() 
+  digest::Hash::get_hashes()
 }
 
 #[op(fast)]

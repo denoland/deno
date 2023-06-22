@@ -134,6 +134,11 @@ export class Hash extends Transform {
     }
   }
 
+  /**
+   * Get the list of implemented hash algorithms.
+   * @returns Array of hash algorithm names.
+   */
+
   static getHashes() {
     return ops.op_node_get_hashes();
   }
@@ -236,7 +241,6 @@ export function createHash(algorithm: string, opts?: TransformOptions) {
 export function getHashes() {
   return Hash.getHashes();
 }
-
 
 export default {
   Hash,
