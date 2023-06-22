@@ -229,6 +229,11 @@ export function createHash(algorithm: string, opts?: TransformOptions) {
   return new Hash(algorithm, opts);
 }
 
+export function getHashes() {
+  return ops.op_node_get_hashes();
+}
+
+
 export default {
   Hash,
   Hmac,

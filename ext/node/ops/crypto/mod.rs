@@ -88,6 +88,11 @@ pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
 }
 
 #[op(fast)]
+pub fn op_node_get_hashes() -> Vec<&'static str> {
+  digest::Hash::get_hashes() 
+}
+
+#[op(fast)]
 pub fn op_node_hash_update(state: &mut OpState, rid: u32, data: &[u8]) -> bool {
   let context = match state.resource_table.get::<digest::Context>(rid) {
     Ok(context) => context,
