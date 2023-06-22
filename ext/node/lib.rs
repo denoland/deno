@@ -17,9 +17,7 @@ use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -92,11 +90,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
