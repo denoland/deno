@@ -138,10 +138,10 @@ pub fn global_object_middleware<'s>(
     .unwrap();
   let get_key = v8::String::new_external_onebyte_static(scope, b"get").unwrap();
   let reflect_get = reflect.get(scope, get_key.into()).unwrap();
-  assert_eq!(reflect_get.is_function(), true);
+  assert!(reflect_get.is_function());
   let set_key = v8::String::new_external_onebyte_static(scope, b"set").unwrap();
   let reflect_set = reflect.get(scope, set_key.into()).unwrap();
-  assert_eq!(reflect_set.is_function(), true);
+  assert!(reflect_set.is_function());
 
   // globalThis.__bootstrap.ext_node_denoGlobals and
   // globalThis.__bootstrap.ext_node_nodeGlobals are the objects that contain
@@ -217,7 +217,7 @@ fn is_managed_key(
     v8::WriteOptions::NO_NULL_TERMINATION,
   );
   assert_eq!(written, len);
-  return MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok();
+  MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
@@ -449,7 +449,7 @@ pub fn descriptor<'s>(
   let scope = &mut v8::TryCatch::new(scope);
 
   let inner = inner_object(scope, real_global_object, mode);
-  let Some(descriptor) = inner.get_own_property_descriptor(scope, key.into()) else {
+  let Some(descriptor) = inner.get_own_property_descriptor(scope, key) else {
     scope.rethrow().expect("to have caught an exception");
     return;
   };
