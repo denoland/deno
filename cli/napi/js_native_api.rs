@@ -1668,8 +1668,54 @@ fn napi_escape_handle<'s>(
 }
 
 #[napi_sym::napi_sym]
-fn napi_get_all_property_names(_env: *mut Env) -> napi_status {
-  // TODO
+fn napi_get_all_property_names(
+  env: *mut Env,
+  object: napi_value,
+  key_collection_mode: napi_key_collection_mode,
+  key_filter: napi_key_filter,
+  key_conversion: napi_key_conversion,
+  result: *mut napi_value,
+) -> napi_status {
+  check_env!(env);
+  let env = unsafe { &mut *env };
+  let object = napi_value_unchecked(object);
+  let args = v8::GetPropertyNamesArgs {
+    mode: match key_collection_mode {
+      napi_key_include_prototypes => v8::KeyCollectionMode::IncludePrototypes,
+      napi_key_own_only => v8::KeyCollectionMode::OwnOnly,
+      _ => {
+        return napi_set_last_error(
+          env,
+          napi_invalid_arg,
+          0,
+          std::ptr::null_mut(),
+        );
+      }
+    },
+    key_conversion: match key_conversion {
+      napi_key_keep_numbers => v8::KeyConversionMode::KeepNumbers,
+      napi_key_numbers_to_strings => v8::KeyConversionMode::ConvertToString,
+      _ => {
+        return napi_set_last_error(
+          env,
+          napi_invalid_arg,
+          0,
+          std::ptr::null_mut(),
+        );
+      }
+    },
+    index_filter: v8::IndexFilter::IncludeIndices,
+    // napi_key_filter and v8::PropertyFilter are essentially the same,
+    // so it's safe to transmute.
+    property_filter: std::mem::transmute(key_filter),
+  };
+  let array: v8::Local<v8::Array> = object
+    .to_object(&mut env.scope())
+    .unwrap()
+    .get_property_names(&mut env.scope(), args)
+    .unwrap();
+  let value: v8::Local<v8::Value> = array.into();
+  *result = value.into();
   napi_ok
 }
 
