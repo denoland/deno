@@ -9,10 +9,10 @@ use crate::resolve_url;
 use crate::runtime::script_origin;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map;
+use crate::JsBuffer;
 use crate::JsRealm;
 use crate::JsRuntime;
 use crate::RustToV8Buf;
-use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use serde::Deserialize;
@@ -461,7 +461,7 @@ fn op_serialize(
 #[op(v8)]
 fn op_deserialize<'a>(
   scope: &mut v8::HandleScope<'a>,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
   options: Option<SerializeDeserializeOptions>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let options = options.unwrap_or_default();

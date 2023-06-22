@@ -6,9 +6,9 @@ use crate::io::BufView;
 use crate::ops_builtin_v8;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use crate::JsBuffer;
 use crate::OpState;
 use crate::Resource;
-use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
 use serde_v8::RustToV8Buf;
@@ -219,7 +219,7 @@ pub fn op_wasm_streaming_set_url(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
@@ -299,7 +299,7 @@ async fn op_read_all(
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);
@@ -332,7 +332,7 @@ fn op_write_sync(
 async fn op_write_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);

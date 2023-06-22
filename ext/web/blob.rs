@@ -12,9 +12,9 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -161,7 +161,7 @@ impl BlobPart for SlicedBlobPart {
 }
 
 #[op]
-pub fn op_blob_create_part(state: &mut OpState, data: ZeroCopyBuf) -> Uuid {
+pub fn op_blob_create_part(state: &mut OpState, data: JsBuffer) -> Uuid {
   let blob_store = state.borrow::<BlobStore>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))

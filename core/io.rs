@@ -4,7 +4,7 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 
 use bytes::Buf;
-use serde_v8::ZeroCopyBuf;
+use serde_v8::JsBuffer;
 
 /// BufView is a wrapper around an underlying contiguous chunk  of bytes. It can
 /// be created from a [ZeroCopyBuf], [bytes::Bytes], or [Vec<u8>] and implements
@@ -22,7 +22,7 @@ pub struct BufView {
 enum BufViewInner {
   Empty,
   Bytes(bytes::Bytes),
-  ZeroCopy(ZeroCopyBuf),
+  ZeroCopy(JsBuffer),
   Vec(Vec<u8>),
 }
 
@@ -100,8 +100,8 @@ impl AsRef<[u8]> for BufView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufView {
-  fn from(buf: ZeroCopyBuf) -> Self {
+impl From<JsBuffer> for BufView {
+  fn from(buf: JsBuffer) -> Self {
     Self::from_inner(BufViewInner::ZeroCopy(buf))
   }
 }
@@ -145,7 +145,7 @@ pub struct BufMutView {
 }
 
 enum BufMutViewInner {
-  ZeroCopy(ZeroCopyBuf),
+  ZeroCopy(JsBuffer),
   Vec(Vec<u8>),
 }
 
@@ -273,8 +273,8 @@ impl AsMut<[u8]> for BufMutView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufMutView {
-  fn from(buf: ZeroCopyBuf) -> Self {
+impl From<JsBuffer> for BufMutView {
+  fn from(buf: JsBuffer) -> Self {
     Self::from_inner(BufMutViewInner::ZeroCopy(buf))
   }
 }

@@ -11,12 +11,12 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::RootCertStoreProvider;
@@ -407,11 +407,7 @@ pub fn ws_create_server_stream(
 }
 
 #[op(fast)]
-pub fn op_ws_send_binary(
-  state: &mut OpState,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-) {
+pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: JsBuffer) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
@@ -455,7 +451,7 @@ pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()

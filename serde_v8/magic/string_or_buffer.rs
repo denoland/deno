@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use super::buffer::ZeroCopyBuf;
+use super::buffer::JsBuffer;
 use super::transl8::FromV8;
 use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
@@ -8,7 +8,7 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum StringOrBuffer {
-  Buffer(ZeroCopyBuf),
+  Buffer(JsBuffer),
   String(String),
 }
 
@@ -39,7 +39,7 @@ impl FromV8 for StringOrBuffer {
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    if let Ok(buf) = ZeroCopyBuf::from_v8(scope, value) {
+    if let Ok(buf) = JsBuffer::from_v8(scope, value) {
       return Ok(Self::Buffer(buf));
     } else if let Ok(s) = crate::from_v8(scope, value) {
       return Ok(Self::String(s));

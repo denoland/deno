@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::JsBuffer;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use elliptic_curve::sec1::ToEncodedPoint;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
@@ -50,9 +50,9 @@ pub enum EcNamedCurve {
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase", tag = "type", content = "data")]
 pub enum V8RawKeyData {
-  Secret(ZeroCopyBuf),
-  Private(ZeroCopyBuf),
-  Public(ZeroCopyBuf),
+  Secret(JsBuffer),
+  Private(JsBuffer),
+  Public(JsBuffer),
 }
 
 #[derive(Serialize)]

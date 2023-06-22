@@ -68,27 +68,26 @@ fn magic_buffer() {
 
     // Simple buffer
     let v8_array = js_exec(scope, "new Uint8Array([1,2,3,4,5])");
-    let zbuf: serde_v8::ZeroCopyBuf =
-      serde_v8::from_v8(scope, v8_array).unwrap();
+    let zbuf: serde_v8::JsBuffer = serde_v8::from_v8(scope, v8_array).unwrap();
     assert_eq!(&*zbuf, &[1, 2, 3, 4, 5]);
 
     // Multi buffers
     let v8_arrays =
       js_exec(scope, "[new Uint8Array([1,2]), new Uint8Array([3,4,5])]");
-    let (z1, z2): (serde_v8::ZeroCopyBuf, serde_v8::ZeroCopyBuf) =
+    let (z1, z2): (serde_v8::JsBuffer, serde_v8::JsBuffer) =
       serde_v8::from_v8(scope, v8_arrays).unwrap();
     assert_eq!(&*z1, &[1, 2]);
     assert_eq!(&*z2, &[3, 4, 5]);
 
     // Wrapped in option, like our current op-ABI
     let v8_array = js_exec(scope, "new Uint8Array([1,2,3,4,5])");
-    let zbuf: Option<serde_v8::ZeroCopyBuf> =
+    let zbuf: Option<serde_v8::JsBuffer> =
       serde_v8::from_v8(scope, v8_array).unwrap();
     assert_eq!(&*zbuf.unwrap(), &[1, 2, 3, 4, 5]);
 
     // Observe mutation in JS
     let v8_array = js_exec(scope, "new Uint8Array([1,2,3,4,5])");
-    let mut zbuf: serde_v8::ZeroCopyBuf =
+    let mut zbuf: serde_v8::JsBuffer =
       serde_v8::from_v8(scope, v8_array).unwrap();
     let key = serde_v8::to_v8(scope, "t1").unwrap();
     global.set(scope, key, v8_array);
@@ -99,8 +98,7 @@ fn magic_buffer() {
     // Shared buffers
     let v8_array =
       js_exec(scope, "new Uint8Array(new SharedArrayBuffer([1,2,3,4,5]))");
-    let zbuf: Result<serde_v8::ZeroCopyBuf> =
-      serde_v8::from_v8(scope, v8_array);
+    let zbuf: Result<serde_v8::JsBuffer> = serde_v8::from_v8(scope, v8_array);
     assert!(zbuf.is_err());
 
     // Serialization
@@ -134,8 +132,7 @@ fn magic_buffer() {
 
     // ZeroCopyBuf as bytes::Bytes
     let v8_array = js_exec(scope, "new Uint8Array([1,2,3,4,5])");
-    let zbuf: serde_v8::ZeroCopyBuf =
-      serde_v8::from_v8(scope, v8_array).unwrap();
+    let zbuf: serde_v8::JsBuffer = serde_v8::from_v8(scope, v8_array).unwrap();
     let buf: bytes::Bytes = zbuf.into();
     assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));
     assert_eq!(buf, bytes::Bytes::from_static(&[1, 2, 3, 4, 5]));

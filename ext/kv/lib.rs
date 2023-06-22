@@ -19,11 +19,11 @@ use deno_core::op;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -145,8 +145,8 @@ impl From<KeyPart> for AnyValue {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 enum FromV8Value {
-  V8(ZeroCopyBuf),
-  Bytes(ZeroCopyBuf),
+  V8(JsBuffer),
+  Bytes(JsBuffer),
   U64(BigInt),
 }
 
@@ -410,7 +410,7 @@ impl TryFrom<V8KvMutation> for KvMutation {
   }
 }
 
-type V8Enqueue = (ZeroCopyBuf, u64, Vec<KvKey>, Option<Vec<u32>>);
+type V8Enqueue = (JsBuffer, u64, Vec<KvKey>, Option<Vec<u32>>);
 
 impl TryFrom<V8Enqueue> for Enqueue {
   type Error = AnyError;

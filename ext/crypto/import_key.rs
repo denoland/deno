@@ -2,8 +2,8 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::JsBuffer;
 use deno_core::RustToV8Buf;
-use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use ring::signature::EcdsaKeyPair;
@@ -19,9 +19,9 @@ use crate::shared::*;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum KeyData {
-  Spki(ZeroCopyBuf),
-  Pkcs8(ZeroCopyBuf),
-  Raw(ZeroCopyBuf),
+  Spki(JsBuffer),
+  Pkcs8(JsBuffer),
+  Raw(JsBuffer),
   JwkSecret {
     k: String,
   },

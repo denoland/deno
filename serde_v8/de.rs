@@ -18,9 +18,9 @@ use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
+use crate::JsBuffer;
 use crate::StringOrBuffer;
 use crate::U16String;
-use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -337,8 +337,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     match name {
-      ZeroCopyBuf::MAGIC_NAME => {
-        visit_magic(visitor, ZeroCopyBuf::from_v8(self.scope, self.input)?)
+      JsBuffer::MAGIC_NAME => {
+        visit_magic(visitor, JsBuffer::from_v8(self.scope, self.input)?)
       }
       DetachedBuffer::MAGIC_NAME => {
         visit_magic(visitor, DetachedBuffer::from_v8(self.scope, self.input)?)
@@ -452,7 +452,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
@@ -460,7 +460,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
   }
 }

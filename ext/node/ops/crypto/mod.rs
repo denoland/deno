@@ -5,11 +5,11 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::task::spawn_blocking;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::RustToV8Buf;
 use deno_core::StringOrBuffer;
-use deno_core::ZeroCopyBuf;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
 use num_bigint_dig::BigUint;
@@ -526,9 +526,9 @@ pub fn op_node_hkdf(
 #[op]
 pub async fn op_node_hkdf_async(
   hash: String,
-  ikm: ZeroCopyBuf,
-  salt: ZeroCopyBuf,
-  info: ZeroCopyBuf,
+  ikm: JsBuffer,
+  salt: JsBuffer,
+  info: JsBuffer,
   okm_len: usize,
 ) -> Result<RustToV8Buf, AnyError> {
   spawn_blocking(move || {
@@ -793,7 +793,7 @@ pub fn op_node_dh_generate(
 // TODO(lev): This duplication should be avoided.
 #[op]
 pub fn op_node_dh_generate2(
-  prime: ZeroCopyBuf,
+  prime: JsBuffer,
   prime_len: usize,
   generator: usize,
 ) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
@@ -802,9 +802,9 @@ pub fn op_node_dh_generate2(
 
 #[op]
 pub fn op_node_dh_compute_secret(
-  prime: ZeroCopyBuf,
-  private_key: ZeroCopyBuf,
-  their_public_key: ZeroCopyBuf,
+  prime: JsBuffer,
+  private_key: JsBuffer,
+  their_public_key: JsBuffer,
 ) -> Result<RustToV8Buf, AnyError> {
   let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
   let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
@@ -816,7 +816,7 @@ pub fn op_node_dh_compute_secret(
 
 #[op]
 pub async fn op_node_dh_generate_async(
-  prime: Option<ZeroCopyBuf>,
+  prime: Option<JsBuffer>,
   prime_len: usize,
   generator: usize,
 ) -> Result<(RustToV8Buf, RustToV8Buf), AnyError> {
@@ -964,7 +964,7 @@ pub fn op_node_ecdh_generate_keys(
 #[op]
 pub fn op_node_ecdh_compute_secret(
   curve: &str,
-  this_priv: Option<ZeroCopyBuf>,
+  this_priv: Option<JsBuffer>,
   their_pub: &mut [u8],
   secret: &mut [u8],
 ) -> Result<(), AnyError> {

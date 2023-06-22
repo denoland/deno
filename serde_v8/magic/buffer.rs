@@ -9,49 +9,48 @@ use super::transl8::ToV8;
 use super::v8slice::V8Slice;
 use crate::magic::transl8::impl_magic;
 
-// TODO(bartlomieju): rename to `JsBuffer`
-pub struct ZeroCopyBuf(V8Slice);
+pub struct JsBuffer(V8Slice);
 
-impl_magic!(ZeroCopyBuf);
+impl_magic!(JsBuffer);
 
-impl Debug for ZeroCopyBuf {
+impl Debug for JsBuffer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_list().entries(self.0.as_ref().iter()).finish()
   }
 }
 
-impl Clone for ZeroCopyBuf {
+impl Clone for JsBuffer {
   fn clone(&self) -> Self {
     Self(self.0.clone())
   }
 }
 
-impl AsRef<[u8]> for ZeroCopyBuf {
+impl AsRef<[u8]> for JsBuffer {
   fn as_ref(&self) -> &[u8] {
     &self.0
   }
 }
 
-impl AsMut<[u8]> for ZeroCopyBuf {
+impl AsMut<[u8]> for JsBuffer {
   fn as_mut(&mut self) -> &mut [u8] {
     &mut self.0
   }
 }
 
-impl Deref for ZeroCopyBuf {
+impl Deref for JsBuffer {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
     &self.0
   }
 }
 
-impl DerefMut for ZeroCopyBuf {
+impl DerefMut for JsBuffer {
   fn deref_mut(&mut self) -> &mut [u8] {
     &mut self.0
   }
 }
 
-impl FromV8 for ZeroCopyBuf {
+impl FromV8 for JsBuffer {
   fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
@@ -61,8 +60,8 @@ impl FromV8 for ZeroCopyBuf {
 }
 
 // TODO(bartlomieju): remove?
-impl From<ZeroCopyBuf> for bytes::Bytes {
-  fn from(zbuf: ZeroCopyBuf) -> bytes::Bytes {
+impl From<JsBuffer> for bytes::Bytes {
+  fn from(zbuf: JsBuffer) -> bytes::Bytes {
     zbuf.0.into()
   }
 }

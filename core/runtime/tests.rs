@@ -18,7 +18,7 @@ use crate::modules::ModuleType;
 use crate::modules::ResolutionKind;
 use crate::modules::SymbolicModule;
 use crate::Extension;
-use crate::ZeroCopyBuf;
+use crate::JsBuffer;
 use crate::*;
 use anyhow::Error;
 use deno_ops::op;
@@ -55,7 +55,7 @@ struct TestState {
 async fn op_test(
   rc_op_state: Rc<RefCell<OpState>>,
   control: u8,
-  buf: Option<ZeroCopyBuf>,
+  buf: Option<JsBuffer>,
 ) -> Result<u8, AnyError> {
   #![allow(clippy::await_holding_refcell_ref)] // False positive.
   let op_state_ = rc_op_state.borrow();
