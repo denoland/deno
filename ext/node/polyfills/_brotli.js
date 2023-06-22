@@ -40,6 +40,7 @@ export class BrotliDecompress extends Transform {
         callback();
       },
       flush(callback) {
+        core.close(context);
         callback();
       },
     });

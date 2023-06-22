@@ -183,7 +183,7 @@ pub fn op_brotli_compress_stream_end(
   rid: u32,
   output: &mut [u8],
 ) -> Result<usize, AnyError> {
-  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
+  let ctx = state.resource_table.take::<BrotliCompressCtx>(rid)?;
 
   // SAFETY: TODO(littledivy)
   unsafe {
