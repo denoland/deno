@@ -47,7 +47,6 @@ impl ToV8 for StringOrBuffer {
             let value: &[u8] = buf;
             value.into()
           }
-          ZeroCopyBuf::Temp(_) => unreachable!(),
           ZeroCopyBuf::ToV8(ref mut x) => {
             x.take().expect("ZeroCopyBuf was empty")
           }
