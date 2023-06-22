@@ -14,7 +14,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use serde::Deserialize;
 use serde::Serialize;
 use uuid::Uuid;
@@ -204,7 +204,7 @@ pub fn op_blob_slice_part(
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
   id: Uuid,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let part = {
     let state = state.borrow();
     let blob_store = state.borrow::<BlobStore>();
@@ -212,7 +212,7 @@ pub async fn op_blob_read_part(
   }
   .ok_or_else(|| type_error("Blob part not found"))?;
   let buf = part.read().await?;
-  Ok(RustToV8Buf::from(buf.to_vec()))
+  Ok(ToJsBuffer::from(buf.to_vec()))
 }
 
 #[op]

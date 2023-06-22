@@ -6,13 +6,13 @@ use super::transl8::FromV8;
 use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
-use crate::RustToV8Buf;
+use crate::ToJsBuffer;
 
 /// An untagged enum type that can be any of number, string, bool, bigint, or
 /// buffer.
 #[derive(Debug)]
 pub enum AnyValue {
-  RustBuffer(RustToV8Buf),
+  RustBuffer(ToJsBuffer),
   V8Buffer(JsBuffer),
   String(String),
   Number(f64),

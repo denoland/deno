@@ -5,7 +5,7 @@ use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::UIntRef;
@@ -59,9 +59,9 @@ pub enum ExportKeyAlgorithm {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ExportKeyResult {
-  Raw(RustToV8Buf),
-  Pkcs8(RustToV8Buf),
-  Spki(RustToV8Buf),
+  Raw(ToJsBuffer),
+  Pkcs8(ToJsBuffer),
+  Spki(ToJsBuffer),
   JwkSecret {
     k: String,
   },

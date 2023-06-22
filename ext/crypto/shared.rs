@@ -6,7 +6,7 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::JsBuffer;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
@@ -58,9 +58,9 @@ pub enum V8RawKeyData {
 #[derive(Serialize)]
 #[serde(rename_all = "lowercase", tag = "type", content = "data")]
 pub enum RustRawKeyData {
-  Secret(RustToV8Buf),
-  Private(RustToV8Buf),
-  Public(RustToV8Buf),
+  Secret(ToJsBuffer),
+  Private(ToJsBuffer),
+  Public(ToJsBuffer),
 }
 
 // #[derive(Serialize, Deserialize)]

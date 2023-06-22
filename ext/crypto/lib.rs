@@ -9,7 +9,7 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 
 use deno_core::task::spawn_blocking;
 use deno_core::JsBuffer;
@@ -119,7 +119,7 @@ deno_core::extension!(deno_crypto,
 #[op]
 pub fn op_crypto_base64url_decode(
   data: String,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
   Ok(data.into())
 }
@@ -190,7 +190,7 @@ pub struct SignArg {
 pub async fn op_crypto_sign_key(
   args: SignArg,
   zero_copy: JsBuffer,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -422,7 +422,7 @@ pub struct DeriveKeyArg {
 pub async fn op_crypto_derive_bits(
   args: DeriveKeyArg,
   zero_copy: Option<JsBuffer>,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
@@ -603,7 +603,7 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
 pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: JsBuffer,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
@@ -626,7 +626,7 @@ pub struct WrapUnwrapKeyArg {
 pub fn op_crypto_wrap_key(
   args: WrapUnwrapKeyArg,
   data: JsBuffer,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
 
   match algorithm {
@@ -655,7 +655,7 @@ pub fn op_crypto_wrap_key(
 pub fn op_crypto_unwrap_key(
   args: WrapUnwrapKeyArg,
   data: JsBuffer,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::AesKw => {

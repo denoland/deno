@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::JsBuffer;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
 use ring::signature::EcdsaKeyPair;
@@ -76,7 +76,7 @@ pub enum ImportKeyResult {
   Rsa {
     raw_data: RustRawKeyData,
     modulus_length: usize,
-    public_exponent: RustToV8Buf,
+    public_exponent: ToJsBuffer,
   },
   #[serde(rename_all = "camelCase")]
   Ec { raw_data: RustRawKeyData },

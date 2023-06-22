@@ -59,7 +59,6 @@ impl FromV8 for JsBuffer {
   }
 }
 
-// TODO(bartlomieju): remove?
 impl From<JsBuffer> for bytes::Bytes {
   fn from(zbuf: JsBuffer) -> bytes::Bytes {
     zbuf.0.into()
@@ -69,29 +68,29 @@ impl From<JsBuffer> for bytes::Bytes {
 // NOTE(bartlomieju): we use Option here, because `to_v8()` uses `&mut self`
 // instead of `self` which is dictated by the `serde` API.
 #[derive(Debug)]
-pub struct RustToV8Buf(Option<Box<[u8]>>);
+pub struct ToJsBuffer(Option<Box<[u8]>>);
 
-impl_magic!(RustToV8Buf);
+impl_magic!(ToJsBuffer);
 
-impl RustToV8Buf {
+impl ToJsBuffer {
   pub fn empty() -> Self {
-    RustToV8Buf(Some(vec![0_u8; 0].into_boxed_slice()))
+    ToJsBuffer(Some(vec![0_u8; 0].into_boxed_slice()))
   }
 }
 
-impl From<Box<[u8]>> for RustToV8Buf {
+impl From<Box<[u8]>> for ToJsBuffer {
   fn from(buf: Box<[u8]>) -> Self {
-    RustToV8Buf(Some(buf))
+    ToJsBuffer(Some(buf))
   }
 }
 
-impl From<Vec<u8>> for RustToV8Buf {
+impl From<Vec<u8>> for ToJsBuffer {
   fn from(vec: Vec<u8>) -> Self {
     vec.into_boxed_slice().into()
   }
 }
 
-impl ToV8 for RustToV8Buf {
+impl ToV8 for ToJsBuffer {
   fn to_v8<'a>(
     &mut self,
     scope: &mut v8::HandleScope<'a>,

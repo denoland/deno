@@ -18,7 +18,7 @@ pub use keys::KeyCache;
 pub use magic::any_value::AnyValue;
 pub use magic::bigint::BigInt;
 pub use magic::buffer::JsBuffer;
-pub use magic::buffer::RustToV8Buf;
+pub use magic::buffer::ToJsBuffer;
 pub use magic::bytestring::ByteString;
 pub use magic::detached_buffer::DetachedBuffer;
 pub use magic::string_or_buffer::StringOrBuffer;

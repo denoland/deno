@@ -19,7 +19,7 @@ use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
-use crate::RustToV8Buf;
+use crate::ToJsBuffer;
 use crate::U16String;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
@@ -273,7 +273,7 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 pub enum StructSerializers<'a, 'b, 'c> {
   ExternalPointer(MagicalSerializer<'a, 'b, 'c, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
-  RustToV8Buf(MagicalSerializer<'a, 'b, 'c, RustToV8Buf>),
+  RustToV8Buf(MagicalSerializer<'a, 'b, 'c, ToJsBuffer>),
   MagicAnyValue(MagicalSerializer<'a, 'b, 'c, AnyValue>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
@@ -582,8 +582,8 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
         let m = MagicalSerializer::<U16String>::new(self.scope);
         Ok(StructSerializers::MagicU16String(m))
       }
-      RustToV8Buf::MAGIC_NAME => {
-        let m = MagicalSerializer::<RustToV8Buf>::new(self.scope);
+      ToJsBuffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<ToJsBuffer>::new(self.scope);
         Ok(StructSerializers::RustToV8Buf(m))
       }
       AnyValue::MAGIC_NAME => {

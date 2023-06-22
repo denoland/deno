@@ -4,7 +4,7 @@ use std::mem::transmute_copy;
 
 use crate::BigInt;
 use crate::ByteString;
-use crate::RustToV8Buf;
+use crate::ToJsBuffer;
 use crate::U16String;
 
 /// Serializable exists to allow boxing values as "objects" to be serialized later,
@@ -63,7 +63,7 @@ pub enum Primitive {
   Float32(f32),
   Float64(f64),
   String(String),
-  RustToV8Buf(RustToV8Buf),
+  RustToV8Buf(ToJsBuffer),
   ByteString(ByteString),
   U16String(U16String),
   BigInt(BigInt),
@@ -134,7 +134,7 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
       Self::Primitive(Primitive::Float64(tc(x)))
     } else if tid == TypeId::of::<String>() {
       Self::Primitive(Primitive::String(tc(x)))
-    } else if tid == TypeId::of::<RustToV8Buf>() {
+    } else if tid == TypeId::of::<ToJsBuffer>() {
       Self::Primitive(Primitive::RustToV8Buf(tc(x)))
     } else if tid == TypeId::of::<ByteString>() {
       Self::Primitive(Primitive::ByteString(tc(x)))

@@ -23,7 +23,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -153,8 +153,8 @@ enum FromV8Value {
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 enum ToV8Value {
-  V8(RustToV8Buf),
-  Bytes(RustToV8Buf),
+  V8(ToJsBuffer),
+  Bytes(ToJsBuffer),
   U64(BigInt),
 }
 
@@ -162,8 +162,8 @@ enum ToV8Value {
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 // TODO(bartlomieju): split into ToV8Value and FromV8Value
 enum V8Value {
-  V8(RustToV8Buf),
-  Bytes(RustToV8Buf),
+  V8(ToJsBuffer),
+  Bytes(ToJsBuffer),
   U64(BigInt),
 }
 
@@ -322,7 +322,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(RustToV8Buf, ResourceId), AnyError>
+) -> Result<(ToJsBuffer, ResourceId), AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {

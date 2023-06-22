@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::task::spawn_blocking;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::rand_core::OsRng;
 use num_traits::FromPrimitive;
 use once_cell::sync::Lazy;
@@ -45,7 +45,7 @@ pub enum GenerateKeyOptions {
 #[op]
 pub async fn op_crypto_generate_key(
   opts: GenerateKeyOptions,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let fun = || match opts {
     GenerateKeyOptions::Rsa {
       modulus_length,

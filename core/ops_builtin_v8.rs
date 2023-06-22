@@ -12,7 +12,7 @@ use crate::source_map::apply_source_map;
 use crate::JsBuffer;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::RustToV8Buf;
+use crate::ToJsBuffer;
 use anyhow::Error;
 use deno_ops::op;
 use serde::Deserialize;
@@ -376,7 +376,7 @@ fn op_serialize(
   value: serde_v8::Value,
   options: Option<SerializeDeserializeOptions>,
   error_callback: Option<serde_v8::Value>,
-) -> Result<RustToV8Buf, Error> {
+) -> Result<ToJsBuffer, Error> {
   let options = options.unwrap_or_default();
   let error_callback = match error_callback {
     Some(cb) => Some(
@@ -449,7 +449,7 @@ fn op_serialize(
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.
-    Ok(RustToV8Buf::empty())
+    Ok(ToJsBuffer::empty())
   } else if let Some(true) = ret {
     let vector = value_serializer.release();
     Ok(vector.into())

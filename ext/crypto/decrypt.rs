@@ -22,7 +22,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::task::spawn_blocking;
 use deno_core::JsBuffer;
-use deno_core::RustToV8Buf;
+use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::PaddingScheme;
 use serde::Deserialize;
@@ -79,7 +79,7 @@ pub enum DecryptAlgorithm {
 pub async fn op_crypto_decrypt(
   opts: DecryptOptions,
   data: JsBuffer,
-) -> Result<RustToV8Buf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     DecryptAlgorithm::RsaOaep { hash, label } => {

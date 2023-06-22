@@ -1983,9 +1983,9 @@ fn js_realm_sync_ops() {
   // serialized to objects with null prototype.
 
   #[op]
-  fn op_test(fail: bool) -> Result<RustToV8Buf, Error> {
+  fn op_test(fail: bool) -> Result<ToJsBuffer, Error> {
     if !fail {
-      Ok(RustToV8Buf::empty())
+      Ok(ToJsBuffer::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }
@@ -2031,9 +2031,9 @@ async fn js_realm_async_ops() {
   // serialized to objects with null prototype.
 
   #[op]
-  async fn op_test(fail: bool) -> Result<RustToV8Buf, Error> {
+  async fn op_test(fail: bool) -> Result<ToJsBuffer, Error> {
     if !fail {
-      Ok(RustToV8Buf::empty())
+      Ok(ToJsBuffer::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }
