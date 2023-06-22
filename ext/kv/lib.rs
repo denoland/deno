@@ -124,6 +124,7 @@ impl From<AnyValue> for KeyPart {
       AnyValue::BigInt(n) => KeyPart::Int(n),
       AnyValue::String(s) => KeyPart::String(s),
       AnyValue::V8Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
+      AnyValue::RustBuffer(_) => unreachable!(),
     }
   }
 }
@@ -141,6 +142,22 @@ impl From<KeyPart> for AnyValue {
   }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+enum FromV8Value {
+  V8(ZeroCopyBuf),
+  Bytes(ZeroCopyBuf),
+  U64(BigInt),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+enum ToV8Value {
+  V8(RustToV8Buf),
+  Bytes(RustToV8Buf),
+  U64(BigInt),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 // TODO(bartlomieju): split into ToV8Value and FromV8Value
@@ -150,38 +167,40 @@ enum V8Value {
   U64(BigInt),
 }
 
-impl TryFrom<V8Value> for Value {
+impl TryFrom<FromV8Value> for Value {
   type Error = AnyError;
-  fn try_from(value: V8Value) -> Result<Self, AnyError> {
+  fn try_from(value: FromV8Value) -> Result<Self, AnyError> {
     Ok(match value {
-      V8Value::V8(buf) => Value::V8(buf.to_vec()),
-      V8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
-      V8Value::U64(n) => Value::U64(num_bigint::BigInt::from(n).try_into()?),
+      FromV8Value::V8(buf) => Value::V8(buf.to_vec()),
+      FromV8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
+      FromV8Value::U64(n) => {
+        Value::U64(num_bigint::BigInt::from(n).try_into()?)
+      }
     })
   }
 }
 
-impl From<Value> for V8Value {
+impl From<Value> for ToV8Value {
   fn from(value: Value) -> Self {
     match value {
-      Value::V8(buf) => V8Value::V8(buf.into()),
-      Value::Bytes(buf) => V8Value::Bytes(buf.into()),
-      Value::U64(n) => V8Value::U64(num_bigint::BigInt::from(n).into()),
+      Value::V8(buf) => ToV8Value::V8(buf.into()),
+      Value::Bytes(buf) => ToV8Value::Bytes(buf.into()),
+      Value::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
     }
   }
 }
 
-#[derive(Deserialize, Serialize)]
-struct V8KvEntry {
+#[derive(Serialize)]
+struct ToV8KvEntry {
   key: KvKey,
-  value: V8Value,
+  value: ToV8Value,
   versionstamp: ByteString,
 }
 
-impl TryFrom<KvEntry> for V8KvEntry {
+impl TryFrom<KvEntry> for ToV8KvEntry {
   type Error = AnyError;
   fn try_from(entry: KvEntry) -> Result<Self, AnyError> {
-    Ok(V8KvEntry {
+    Ok(ToV8KvEntry {
       key: decode_key(&entry.key)?
         .0
         .into_iter()
@@ -225,7 +244,7 @@ async fn op_kv_snapshot_read<DBH>(
   rid: ResourceId,
   ranges: Vec<SnapshotReadRange>,
   consistency: V8Consistency,
-) -> Result<Vec<Vec<V8KvEntry>>, AnyError>
+) -> Result<Vec<Vec<ToV8KvEntry>>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -366,7 +385,7 @@ impl TryFrom<V8KvCheck> for KvCheck {
   }
 }
 
-type V8KvMutation = (KvKey, String, Option<V8Value>);
+type V8KvMutation = (KvKey, String, Option<FromV8Value>);
 
 impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
