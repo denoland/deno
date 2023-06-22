@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::sec1::ToEncodedPoint;
 use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -46,19 +47,35 @@ pub enum EcNamedCurve {
   P521,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "lowercase", tag = "type", content = "data")]
-pub enum RawKeyData {
+pub enum V8RawKeyData {
   Secret(ZeroCopyBuf),
   Private(ZeroCopyBuf),
   Public(ZeroCopyBuf),
 }
 
-impl RawKeyData {
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase", tag = "type", content = "data")]
+pub enum RustRawKeyData {
+  Secret(RustToV8Buf),
+  Private(RustToV8Buf),
+  Public(RustToV8Buf),
+}
+
+// #[derive(Serialize, Deserialize)]
+// #[serde(rename_all = "lowercase", tag = "type", content = "data")]
+// pub enum RawKeyData {
+//   Secret(ZeroCopyBuf),
+//   Private(ZeroCopyBuf),
+//   Public(ZeroCopyBuf),
+// }
+
+impl V8RawKeyData {
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, AnyError> {
     match self {
-      RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),
-      RawKeyData::Private(data) => {
+      V8RawKeyData::Public(data) => Ok(Cow::Borrowed(data)),
+      V8RawKeyData::Private(data) => {
         let private_key = RsaPrivateKey::from_pkcs1_der(data)
           .map_err(|_| type_error("expected valid private key"))?;
 
@@ -75,55 +92,55 @@ impl RawKeyData {
 
   pub fn as_rsa_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
-      RawKeyData::Private(data) => Ok(data),
+      V8RawKeyData::Private(data) => Ok(data),
       _ => Err(type_error("expected private key")),
     }
   }
 
   pub fn as_secret_key(&self) -> Result<&[u8], AnyError> {
     match self {
-      RawKeyData::Secret(data) => Ok(data),
+      V8RawKeyData::Secret(data) => Ok(data),
       _ => Err(type_error("expected secret key")),
     }
   }
 
   pub fn as_ec_public_key_p256(&self) -> Result<p256::EncodedPoint, AnyError> {
     match self {
-      RawKeyData::Public(data) => {
+      V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p256::EncodedPoint::from_bytes(data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
-      RawKeyData::Private(data) => {
+      V8RawKeyData::Private(data) => {
         let signing_key = p256::SecretKey::from_pkcs8_der(data)
           .map_err(|_| type_error("expected valid private EC key"))?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
-      RawKeyData::Secret(_) => unreachable!(),
+      V8RawKeyData::Secret(_) => unreachable!(),
     }
   }
 
   pub fn as_ec_public_key_p384(&self) -> Result<p384::EncodedPoint, AnyError> {
     match self {
-      RawKeyData::Public(data) => {
+      V8RawKeyData::Public(data) => {
         // public_key is a serialized EncodedPoint
         p384::EncodedPoint::from_bytes(data)
           .map_err(|_| type_error("expected valid public EC key"))
       }
-      RawKeyData::Private(data) => {
+      V8RawKeyData::Private(data) => {
         let signing_key = p384::SecretKey::from_pkcs8_der(data)
           .map_err(|_| type_error("expected valid private EC key"))?;
         Ok(signing_key.public_key().to_encoded_point(false))
       }
       // Should never reach here.
-      RawKeyData::Secret(_) => unreachable!(),
+      V8RawKeyData::Secret(_) => unreachable!(),
     }
   }
 
   pub fn as_ec_private_key(&self) -> Result<&[u8], AnyError> {
     match self {
-      RawKeyData::Private(data) => Ok(data),
+      V8RawKeyData::Private(data) => Ok(data),
       _ => Err(type_error("expected private key")),
     }
   }

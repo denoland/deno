@@ -11,7 +11,7 @@ use deno_core::op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::RustToV8Buf;
 use deno_http::http_create_conn_resource;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamResource;
@@ -93,7 +93,7 @@ fn op_http_start(
 pub struct HttpUpgradeResult {
   conn_rid: ResourceId,
   conn_type: &'static str,
-  read_buf: ZeroCopyBuf,
+  read_buf: RustToV8Buf,
 }
 
 #[op]

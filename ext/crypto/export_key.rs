@@ -93,7 +93,7 @@ pub enum ExportKeyResult {
 #[op]
 pub fn op_crypto_export_key(
   opts: ExportKeyOptions,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, AnyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
@@ -119,7 +119,7 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 
 fn export_key_rsa(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
@@ -212,7 +212,7 @@ fn export_key_rsa(
 
 fn export_key_symmetric(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::JwkSecret => {
@@ -228,7 +228,7 @@ fn export_key_symmetric(
 
 fn export_key_ec(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
   algorithm: ExportKeyAlgorithm,
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {

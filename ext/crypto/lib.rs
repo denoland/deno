@@ -70,7 +70,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
-use crate::shared::RawKeyData;
+use crate::shared::V8RawKeyData;
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
@@ -618,7 +618,7 @@ pub async fn op_crypto_subtle_digest(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WrapUnwrapKeyArg {
-  key: RawKeyData,
+  key: V8RawKeyData,
   algorithm: Algorithm,
 }
 

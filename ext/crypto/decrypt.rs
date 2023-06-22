@@ -37,7 +37,7 @@ use crate::shared::*;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecryptOptions {
-  key: RawKeyData,
+  key: V8RawKeyData,
   #[serde(flatten)]
   algorithm: DecryptAlgorithm,
 }
@@ -105,7 +105,7 @@ pub async fn op_crypto_decrypt(
 }
 
 fn decrypt_rsa_oaep(
-  key: RawKeyData,
+  key: V8RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -144,7 +144,7 @@ fn decrypt_rsa_oaep(
 }
 
 fn decrypt_aes_cbc(
-  key: RawKeyData,
+  key: V8RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -282,7 +282,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
 }
 
 fn decrypt_aes_ctr(
-  key: RawKeyData,
+  key: V8RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,
@@ -316,7 +316,7 @@ fn decrypt_aes_ctr(
 }
 
 fn decrypt_aes_gcm(
-  key: RawKeyData,
+  key: V8RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,

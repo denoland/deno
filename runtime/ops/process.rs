@@ -12,7 +12,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::RustToV8Buf;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -198,8 +198,8 @@ impl TryFrom<ExitStatus> for ChildStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ZeroCopyBuf>,
-  stderr: Option<ZeroCopyBuf>,
+  stdout: Option<RustToV8Buf>,
+  stderr: Option<RustToV8Buf>,
 }
 
 fn create_command(

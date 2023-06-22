@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::RustToV8Buf;
 use deno_core::ZeroCopyBuf;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use p256::pkcs8::EncodePrivateKey;
@@ -73,17 +74,17 @@ pub enum ImportKeyOptions {
 pub enum ImportKeyResult {
   #[serde(rename_all = "camelCase")]
   Rsa {
-    raw_data: RawKeyData,
+    raw_data: RustRawKeyData,
     modulus_length: usize,
-    public_exponent: ZeroCopyBuf,
+    public_exponent: RustToV8Buf,
   },
   #[serde(rename_all = "camelCase")]
-  Ec { raw_data: RawKeyData },
+  Ec { raw_data: RustRawKeyData },
   #[serde(rename_all = "camelCase")]
   #[allow(dead_code)]
-  Aes { raw_data: RawKeyData },
+  Aes { raw_data: RustRawKeyData },
   #[serde(rename_all = "camelCase")]
-  Hmac { raw_data: RawKeyData },
+  Hmac { raw_data: RustRawKeyData },
 }
 
 #[op]
@@ -136,7 +137,7 @@ fn import_key_rsa_jwk(
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Public(data.into()),
+        raw_data: RustRawKeyData::Public(data.into()),
         modulus_length,
         public_exponent,
       })
@@ -181,7 +182,7 @@ fn import_key_rsa_jwk(
       let modulus_length = private_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Private(data.into()),
+        raw_data: RustRawKeyData::Private(data.into()),
         modulus_length,
         public_exponent,
       })
@@ -228,7 +229,7 @@ fn import_key_rsassa(
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Public(data),
+        raw_data: RustRawKeyData::Public(data),
         modulus_length,
         public_exponent,
       })
@@ -267,7 +268,7 @@ fn import_key_rsassa(
       let modulus_length = private_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Private(data),
+        raw_data: RustRawKeyData::Private(data),
         modulus_length,
         public_exponent,
       })
@@ -317,7 +318,7 @@ fn import_key_rsapss(
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Public(data),
+        raw_data: RustRawKeyData::Public(data),
         modulus_length,
         public_exponent,
       })
@@ -356,7 +357,7 @@ fn import_key_rsapss(
       let modulus_length = private_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Private(data),
+        raw_data: RustRawKeyData::Private(data),
         modulus_length,
         public_exponent,
       })
@@ -406,7 +407,7 @@ fn import_key_rsaoaep(
       let modulus_length = public_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Public(data),
+        raw_data: RustRawKeyData::Public(data),
         modulus_length,
         public_exponent,
       })
@@ -445,7 +446,7 @@ fn import_key_rsaoaep(
       let modulus_length = private_key.modulus.as_bytes().len() * 8;
 
       Ok(ImportKeyResult::Rsa {
-        raw_data: RawKeyData::Private(data),
+        raw_data: RustRawKeyData::Private(data),
         modulus_length,
         public_exponent,
       })
@@ -513,7 +514,7 @@ fn import_key_ec_jwk(
       let point_bytes = import_key_ec_jwk_to_point(x, y, named_curve)?;
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(point_bytes.into()),
+        raw_data: RustRawKeyData::Public(point_bytes.into()),
       })
     }
     KeyData::JwkPrivateEc { d, x, y } => {
@@ -553,7 +554,7 @@ fn import_key_ec_jwk(
       );
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Private(pkcs8_der.as_bytes().to_vec().into()),
+        raw_data: RustRawKeyData::Private(pkcs8_der.as_bytes().to_vec().into()),
       })
     }
     _ => unreachable!(),
@@ -606,7 +607,7 @@ fn import_key_ec(
         _ => return Err(not_supported_error("Unsupported named curve")),
       };
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(data),
+        raw_data: RustRawKeyData::Public(data.to_vec().into()),
       })
     }
     KeyData::Pkcs8(data) => {
@@ -660,7 +661,7 @@ fn import_key_ec(
       }
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Private(data),
+        raw_data: RustRawKeyData::Private(data.to_vec().into()),
       })
     }
     KeyData::Spki(data) => {
@@ -744,7 +745,7 @@ fn import_key_ec(
       }
 
       Ok(ImportKeyResult::Ec {
-        raw_data: RawKeyData::Public(encoded_key.into()),
+        raw_data: RustRawKeyData::Public(encoded_key.into()),
       })
     }
     KeyData::JwkPublicEc { .. } | KeyData::JwkPrivateEc { .. } => {
@@ -760,7 +761,7 @@ fn import_key_aes(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
       let data = base64::decode_config(k, URL_SAFE_FORGIVING)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
-        raw_data: RawKeyData::Secret(data.into()),
+        raw_data: RustRawKeyData::Secret(data.into()),
       }
     }
     _ => return Err(unsupported_format()),
@@ -773,7 +774,7 @@ fn import_key_hmac(key_data: KeyData) -> Result<ImportKeyResult, AnyError> {
       let data = base64::decode_config(k, URL_SAFE_FORGIVING)
         .map_err(|_| data_error("invalid key data"))?;
       ImportKeyResult::Hmac {
-        raw_data: RawKeyData::Secret(data.into()),
+        raw_data: RustRawKeyData::Secret(data.into()),
       }
     }
     _ => return Err(unsupported_format()),
