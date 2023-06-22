@@ -716,12 +716,12 @@ impl Database for SqliteDb {
         }
 
         tx.commit()?;
-        let new_vesionstamp = version_to_versionstamp(version);
+        let new_versionstamp = version_to_versionstamp(version);
 
         Ok((
           has_enqueues,
           Some(CommitResult {
-            versionstamp: new_vesionstamp,
+            versionstamp: new_versionstamp,
           }),
         ))
       })

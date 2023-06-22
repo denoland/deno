@@ -9,7 +9,7 @@ Node.js compat testing in Deno repository.
 
 - `//tools/node_compat/setup.ts`
   - This script sets up the Node.js compat tests.
-- `//tools/node_comapt/versions/`
+- `//tools/node_compat/versions/`
   - Node.js source tarballs and extracted test cases are stored here.
 - `//cli/tests/node_compat/config.jsonc`
   - This json file stores the settings about which Node.js compat test to run
@@ -41,7 +41,7 @@ If the test needs to be ignored in particular platform, then add them in
 Node.js compat tests are run as part of `cargo test` command. If you want to run
 only the Node.js compat test cases you can use the command
 `cargo test node_compat`. If you want to run specific tests you can use the
-command `deno task test` (in `tools/node_comapt` dir). For example, if you want
+command `deno task test` (in `tools/node_compat` dir). For example, if you want
 to run all test files which contains `buffer` in filename you can use the
 command:
 

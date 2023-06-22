@@ -443,7 +443,7 @@ fn format_ensure_stable(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
                 "the text it produces is not syntactically correct. As a temporary ",
-                "workfaround you can ignore this file ({}).\n\n{:#}"
+                "workaround you can ignore this file ({}).\n\n{:#}"
               ),
               file_path.display(),
               err,

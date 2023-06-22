@@ -647,7 +647,7 @@ impl TestCommandOutput {
   }
 
   #[track_caller]
-  pub fn assert_stderrr_matches_file(
+  pub fn assert_stderr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
   ) -> &Self {

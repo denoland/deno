@@ -1402,7 +1402,7 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
   return output;
 }
 
-function formatMap(value, ctx, _gnored, recurseTimes) {
+function formatMap(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
   const values = [...new SafeMapIterator(value)];

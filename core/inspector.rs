@@ -72,7 +72,7 @@ enum PollState {
 /// After creating this structure it's possible to connect multiple sessions
 /// to the inspector, in case of Deno it's either: a "websocket session" that
 /// provides integration with Chrome Devtools, or an "in-memory session" that
-/// is used for REPL or converage collection.
+/// is used for REPL or coverage collection.
 pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,

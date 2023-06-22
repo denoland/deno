@@ -1372,7 +1372,7 @@ async fn wrap_main_https_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1417,7 +1417,7 @@ async fn wrap_https_h1_only_tls_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1463,7 +1463,7 @@ async fn wrap_https_h2_only_tls_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1527,7 +1527,7 @@ async fn wrap_client_auth_https_server() {
       .expect("Cannot bind TCP");
     println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;

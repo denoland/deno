@@ -1325,7 +1325,7 @@ fn lsp_hover_change_mbc() {
             "end": {
               "line": 1,
               // the LSP uses utf16 encoded characters indexes, so
-              // after the deno emoiji is character index 15
+              // after the deno emoji is character index 15
               "character": 15
             }
           },

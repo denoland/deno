@@ -51,7 +51,7 @@ Deno.test(
     const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
-    // Asynchornously capture two fs events.
+    // Asynchronously capture two fs events.
     const eventsPromise = getTwoEvents(iter);
 
     // Make some random file system activity.

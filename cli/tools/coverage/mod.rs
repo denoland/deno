@@ -703,7 +703,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emitter.maybed_cached_emit(&file.specifier, &file.source) {
+        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
           Some(code) => code.into(),
           None => {
             return Err(anyhow!(

@@ -144,7 +144,7 @@ Deno.test({
 });
 
 Deno.test({
-  name: "[worker_threads] inheritences",
+  name: "[worker_threads] inheritances",
   async fn() {
     const worker = new workerThreads.Worker(
       `
