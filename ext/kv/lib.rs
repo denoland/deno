@@ -123,7 +123,7 @@ impl From<AnyValue> for KeyPart {
       AnyValue::Number(n) => KeyPart::Float(n),
       AnyValue::BigInt(n) => KeyPart::Int(n),
       AnyValue::String(s) => KeyPart::String(s),
-      AnyValue::Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
+      AnyValue::V8Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
     }
   }
 }
@@ -136,16 +136,17 @@ impl From<KeyPart> for AnyValue {
       KeyPart::Float(n) => AnyValue::Number(n),
       KeyPart::Int(n) => AnyValue::BigInt(n),
       KeyPart::String(s) => AnyValue::String(s),
-      KeyPart::Bytes(buf) => AnyValue::Buffer(buf.into()),
+      KeyPart::Bytes(buf) => AnyValue::RustBuffer(buf.into()),
     }
   }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+// TODO(bartlomieju): split into ToV8Value and FromV8Value
 enum V8Value {
-  V8(ZeroCopyBuf),
-  Bytes(ZeroCopyBuf),
+  V8(RustToV8Buf),
+  Bytes(RustToV8Buf),
   U64(BigInt),
 }
 

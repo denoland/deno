@@ -1977,15 +1977,15 @@ fn js_realm_init_snapshot() {
 
 #[test]
 fn js_realm_sync_ops() {
-  // Test that returning a RustToV8Buf and throwing an exception from a sync
+  // Test that returning a ZeroCopyBuf and throwing an exception from a sync
   // op result in objects with prototypes from the right realm. Note that we
   // don't test the result of returning structs, because they will be
   // serialized to objects with null prototype.
 
   #[op]
-  fn op_test(fail: bool) -> Result<RustToV8Buf, Error> {
+  fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
     if !fail {
-      Ok(RustToV8Buf::empty())
+      Ok(ZeroCopyBuf::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }
@@ -2025,15 +2025,15 @@ fn js_realm_sync_ops() {
 
 #[tokio::test]
 async fn js_realm_async_ops() {
-  // Test that returning a RustToV8Buf and throwing an exception from a async
+  // Test that returning a ZeroCopyBuf and throwing an exception from a async
   // op result in objects with prototypes from the right realm. Note that we
   // don't test the result of returning structs, because they will be
   // serialized to objects with null prototype.
 
   #[op]
-  async fn op_test(fail: bool) -> Result<RustToV8Buf, Error> {
+  async fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
     if !fail {
-      Ok(RustToV8Buf::empty())
+      Ok(ZeroCopyBuf::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }
