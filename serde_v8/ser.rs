@@ -20,7 +20,6 @@ use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
 use crate::RustToV8Buf;
-use crate::StringOrBuffer;
 use crate::U16String;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
@@ -279,7 +278,6 @@ pub enum StructSerializers<'a, 'b, 'c> {
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
-  MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
   MagicBigInt(MagicalSerializer<'a, 'b, 'c, BigInt>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
@@ -301,9 +299,6 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
-      StructSerializers::MagicStringOrBuffer(s) => {
-        s.serialize_field(key, value)
-      }
       StructSerializers::MagicBigInt(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
@@ -318,7 +313,6 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
       StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
-      StructSerializers::MagicStringOrBuffer(s) => s.end(),
       StructSerializers::MagicBigInt(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
@@ -599,10 +593,6 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       DetachedBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);
         Ok(StructSerializers::MagicDetached(m))
-      }
-      StringOrBuffer::MAGIC_NAME => {
-        let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
-        Ok(StructSerializers::MagicStringOrBuffer(m))
       }
       BigInt::MAGIC_NAME => {
         let m = MagicalSerializer::<BigInt>::new(self.scope);
