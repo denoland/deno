@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use super::buffer::ZeroCopyBuf;
+use super::buffer::JsBuffer;
 use super::transl8::FromV8;
-use super::transl8::ToV8;
 use crate::error::value_to_type_str;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
@@ -9,7 +8,7 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 pub enum StringOrBuffer {
-  Buffer(ZeroCopyBuf),
+  Buffer(JsBuffer),
   String(String),
 }
 
@@ -35,40 +34,12 @@ impl<'a> TryFrom<&'a StringOrBuffer> for &'a str {
   }
 }
 
-impl ToV8 for StringOrBuffer {
-  fn to_v8<'a>(
-    &mut self,
-    scope: &mut v8::HandleScope<'a>,
-  ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    match self {
-      Self::Buffer(buf) => {
-        let buf: Box<[u8]> = match buf {
-          ZeroCopyBuf::FromV8(buf) => {
-            let value: &[u8] = buf;
-            value.into()
-          }
-          ZeroCopyBuf::ToV8(ref mut x) => {
-            x.take().expect("ZeroCopyBuf was empty")
-          }
-        };
-        let backing_store =
-          v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
-        Ok(
-          v8::ArrayBuffer::with_backing_store(scope, &backing_store.into())
-            .into(),
-        )
-      }
-      Self::String(s) => crate::to_v8(scope, s),
-    }
-  }
-}
-
 impl FromV8 for StringOrBuffer {
   fn from_v8(
     scope: &mut v8::HandleScope,
     value: v8::Local<v8::Value>,
   ) -> Result<Self, crate::Error> {
-    if let Ok(buf) = ZeroCopyBuf::from_v8(scope, value) {
+    if let Ok(buf) = JsBuffer::from_v8(scope, value) {
       return Ok(Self::Buffer(buf));
     } else if let Ok(s) = crate::from_v8(scope, value) {
       return Ok(Self::String(s));

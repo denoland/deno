@@ -4,8 +4,8 @@ use std::mem::transmute_copy;
 
 use crate::BigInt;
 use crate::ByteString;
+use crate::ToJsBuffer;
 use crate::U16String;
-use crate::ZeroCopyBuf;
 
 /// Serializable exists to allow boxing values as "objects" to be serialized later,
 /// this is particularly useful for async op-responses. This trait is a more efficient
@@ -63,7 +63,7 @@ pub enum Primitive {
   Float32(f32),
   Float64(f64),
   String(String),
-  ZeroCopyBuf(ZeroCopyBuf),
+  RustToV8Buf(ToJsBuffer),
   ByteString(ByteString),
   U16String(U16String),
   BigInt(BigInt),
@@ -88,7 +88,7 @@ impl serde::Serialize for Primitive {
       Self::Float32(x) => x.serialize(s),
       Self::Float64(x) => x.serialize(s),
       Self::String(x) => x.serialize(s),
-      Self::ZeroCopyBuf(x) => x.serialize(s),
+      Self::RustToV8Buf(x) => x.serialize(s),
       Self::ByteString(x) => x.serialize(s),
       Self::U16String(x) => x.serialize(s),
       Self::BigInt(x) => x.serialize(s),
@@ -134,8 +134,8 @@ impl<T: serde::Serialize + 'static> From<T> for SerializablePkg {
       Self::Primitive(Primitive::Float64(tc(x)))
     } else if tid == TypeId::of::<String>() {
       Self::Primitive(Primitive::String(tc(x)))
-    } else if tid == TypeId::of::<ZeroCopyBuf>() {
-      Self::Primitive(Primitive::ZeroCopyBuf(tc(x)))
+    } else if tid == TypeId::of::<ToJsBuffer>() {
+      Self::Primitive(Primitive::RustToV8Buf(tc(x)))
     } else if tid == TypeId::of::<ByteString>() {
       Self::Primitive(Primitive::ByteString(tc(x)))
     } else if tid == TypeId::of::<U16String>() {
