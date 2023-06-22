@@ -14,9 +14,6 @@ use crate::magic::transl8::impl_magic;
 pub enum ZeroCopyBuf {
   FromV8(V8Slice),
   ToV8(Option<Box<[u8]>>),
-  // Variant of the ZeroCopyBuf than is never exposed to the JS.
-  // Generally used to pass Vec<u8> backed buffers to resource methods.
-  Temp(Vec<u8>),
 }
 
 impl_magic!(ZeroCopyBuf);
@@ -31,25 +28,12 @@ impl ZeroCopyBuf {
   pub fn empty() -> Self {
     ZeroCopyBuf::ToV8(Some(vec![0_u8; 0].into_boxed_slice()))
   }
-
-  pub fn new_temp(vec: Vec<u8>) -> Self {
-    ZeroCopyBuf::Temp(vec)
-  }
-
-  // TODO(@littledivy): Temporary, this needs a refactor.
-  pub fn to_temp(self) -> Vec<u8> {
-    match self {
-      ZeroCopyBuf::Temp(vec) => vec,
-      _ => unreachable!(),
-    }
-  }
 }
 
 impl Clone for ZeroCopyBuf {
   fn clone(&self) -> Self {
     match self {
       Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
-      Self::Temp(vec) => Self::Temp(vec.clone()),
       Self::ToV8(_) => panic!("Don't Clone a ZeroCopyBuf sent to v8"),
     }
   }
@@ -72,7 +56,6 @@ impl Deref for ZeroCopyBuf {
   fn deref(&self) -> &[u8] {
     match self {
       Self::FromV8(buf) => buf,
-      Self::Temp(vec) => vec,
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -82,7 +65,6 @@ impl DerefMut for ZeroCopyBuf {
   fn deref_mut(&mut self) -> &mut [u8] {
     match self {
       Self::FromV8(buf) => &mut *buf,
-      Self::Temp(vec) => &mut *vec,
       Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
     }
   }
@@ -110,7 +92,6 @@ impl ToV8 for ZeroCopyBuf {
         let value: &[u8] = buf;
         value.into()
       }
-      Self::Temp(_) => unreachable!(),
       Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
     };
 
@@ -151,7 +132,6 @@ impl From<ZeroCopyBuf> for bytes::Bytes {
       ZeroCopyBuf::ToV8(mut v) => {
         v.take().expect("ZeroCopyBuf was empty").into()
       }
-      ZeroCopyBuf::Temp(v) => v.into(),
     }
   }
 }
