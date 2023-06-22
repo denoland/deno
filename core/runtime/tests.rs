@@ -217,7 +217,7 @@ fn test_dispatch_no_zero_copy_buf() {
       "filename.js",
       r#"
 
-      Deno.core.opAsync("op_test");
+      Deno.core.opAsync("op_test", 0);
       "#,
     )
     .unwrap();
@@ -233,7 +233,7 @@ fn test_dispatch_stack_zero_copy_bufs() {
       r#"
       const { op_test } = Deno.core.ensureFastOps();
       let zero_copy_a = new Uint8Array([0]);
-      op_test(null, zero_copy_a);
+      op_test(0, zero_copy_a);
       "#,
     )
     .unwrap();
