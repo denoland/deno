@@ -158,15 +158,6 @@ enum ToV8Value {
   U64(BigInt),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-// TODO(bartlomieju): split into ToV8Value and FromV8Value
-enum V8Value {
-  V8(ToJsBuffer),
-  Bytes(ToJsBuffer),
-  U64(BigInt),
-}
-
 impl TryFrom<FromV8Value> for Value {
   type Error = AnyError;
   fn try_from(value: FromV8Value) -> Result<Self, AnyError> {

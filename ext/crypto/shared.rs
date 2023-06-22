@@ -63,14 +63,6 @@ pub enum RustRawKeyData {
   Public(ToJsBuffer),
 }
 
-// #[derive(Serialize, Deserialize)]
-// #[serde(rename_all = "lowercase", tag = "type", content = "data")]
-// pub enum RawKeyData {
-//   Secret(ZeroCopyBuf),
-//   Private(ZeroCopyBuf),
-//   Public(ZeroCopyBuf),
-// }
-
 impl V8RawKeyData {
   pub fn as_rsa_public_key(&self) -> Result<Cow<'_, [u8]>, AnyError> {
     match self {
