@@ -21,6 +21,7 @@ util::unit_test_factory!(
     _fs_dir_test = _fs / _fs_dir_test,
     _fs_dirent_test = _fs / _fs_dirent_test,
     _fs_open_test = _fs / _fs_open_test,
+    _fs_read_test = _fs / _fs_read_test,
     _fs_exists_test = _fs / _fs_exists_test,
     _fs_fdatasync_test = _fs / _fs_fdatasync_test,
     _fs_fstat_test = _fs / _fs_fstat_test,
