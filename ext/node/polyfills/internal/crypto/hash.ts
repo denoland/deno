@@ -133,6 +133,10 @@ export class Hash extends Transform {
         return Buffer.from(digest).toString(encoding);
     }
   }
+
+  static getHashes() {
+    return ops.op_node_get_hashes();
+  }
 }
 
 export function Hmac(
@@ -230,7 +234,7 @@ export function createHash(algorithm: string, opts?: TransformOptions) {
 }
 
 export function getHashes() {
-  return ops.op_node_get_hashes();
+  return Hash.getHashes();
 }
 
 
