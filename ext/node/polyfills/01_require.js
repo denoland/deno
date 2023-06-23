@@ -508,18 +508,18 @@ function resolveExports(
     return;
   }
 
-    try {
-      return ops.op_require_resolve_exports(
-        usesLocalNodeModulesDir,
-        modulesPath,
-        request,
-        name,
-        expansion,
-        parentPath,
-      ) ?? false;
-    } catch (e) {
-      return false;
-    }
+  try {
+    return ops.op_require_resolve_exports(
+      usesLocalNodeModulesDir,
+      modulesPath,
+      request,
+      name,
+      expansion,
+      parentPath,
+    ) ?? false;
+  } catch (e) {
+    return false;
+  }
 }
 
 Module._findPath = function (request, paths, isMain, parentPath) {
