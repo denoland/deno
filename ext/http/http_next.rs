@@ -20,6 +20,7 @@ use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
 use deno_core::task::spawn;
@@ -208,8 +209,8 @@ pub async fn op_http_upgrade_websocket_next(
   ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
-#[op(fast)]
-pub fn op_http_set_promise_complete(slab_id: SlabId, status: u16) {
+#[op2(fast)]
+pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
   // The Javascript code will never provide a status that is invalid here (see 23_response.js)
   *http.response().status_mut() = StatusCode::from_u16(status).unwrap();

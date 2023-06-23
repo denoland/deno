@@ -1,0 +1,31 @@
+#[allow(non_camel_case_types)]
+pub struct op_print {}
+impl op_print {
+    pub const fn name() -> &'static str {
+        stringify!(op_print)
+    }
+    pub const fn decl() -> deno_core::_ops::OpDecl {
+        deno_core::_ops::OpDecl {
+            name: stringify!(op_print),
+            v8_fn_ptr: Self::slow_function as _,
+            enabled: true,
+            fast_fn: None,
+            is_async: false,
+            is_unstable: false,
+            is_v8: false,
+            arg_count: 2usize as u8,
+        }
+    }
+    pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
+            &*info
+        });
+        let arg0 = args.get(0usize as i32);
+        let arg0 = arg0.to_rust_string_lossy();
+        let arg1 = args.get(1usize as i32);
+        let arg1 = arg1.is_true();
+        let result = Self::call(arg0, arg1);
+    }
+    #[inline(always)]
+    pub fn call(msg: &str, is_err: bool) -> Result<(), Error> {}
+}

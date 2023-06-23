@@ -131,6 +131,8 @@ signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
+strum = { version = "0.24", features = ["derive"] }
+strum_macros = "0.24"
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
@@ -155,6 +157,8 @@ hkdf = "0.12.3"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
+syn2 = { package = "syn", version = "=2.0.18", features = ["full", "extra-traits"] }
+proc-macro-rules = { version = "0.3.0", git = "https://github.com/nrc/proc-macro-rules.git", rev = "3323e68b179d205fb649e9f1c3d1101a33fde254" }
 
 # unix
 nix = "=0.24.2"
