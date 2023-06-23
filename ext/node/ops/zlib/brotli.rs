@@ -32,7 +32,7 @@ pub fn op_brotli_compress(
   let out_buffer = out.as_mut_ptr();
   let mut out_size = out.len();
 
-  // SAFETY: TODO(littledivy)
+  // SAFETY: in_size and in_buffer, out_size and out_buffer are valid for this call.
   if unsafe {
     BrotliEncoderCompress(
       quality,
@@ -83,7 +83,8 @@ pub async fn op_brotli_compress_async(
     let out_buffer = out.as_mut_ptr();
     let mut out_size = out.len();
 
-    // SAFETY: TODO(littledivy)
+    // SAFETY: in_size and in_buffer, out_size and out_buffer
+    // are valid for this call.
     if unsafe {
       BrotliEncoderCompress(
         quality,
@@ -113,7 +114,8 @@ impl Resource for BrotliCompressCtx {}
 
 impl Drop for BrotliCompressCtx {
   fn drop(&mut self) {
-    // SAFETY: TODO(littledivy)
+    // SAFETY: `self.inst` is the current brotli encoder instance.
+    // It is not used after the following call.
     unsafe { BrotliEncoderDestroyInstance(self.inst) };
   }
 }
@@ -124,11 +126,12 @@ pub fn op_create_brotli_compress(
   params: Vec<(u8, i32)>,
 ) -> u32 {
   let inst =
-    // SAFETY: TODO(littledivy)
+    // SAFETY: Creates a brotli encoder instance for default allocators.
     unsafe { BrotliEncoderCreateInstance(None, None, std::ptr::null_mut()) };
 
   for (key, value) in params {
-    // SAFETY: TODO(littledivy)
+    // SAFETY: `key` can range from 0-255.
+    // Any valid u32 can be used for the `value`.
     unsafe {
       BrotliEncoderSetParameter(inst, encoder_param(key), value as u32);
     }
