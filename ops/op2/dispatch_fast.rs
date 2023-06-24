@@ -42,7 +42,7 @@ impl FastValue {
       FastValue::F32 => quote!(f32),
       FastValue::F64 => quote!(f64),
       FastValue::Pointer => quote!(*mut ::std::ffi::c_void),
-      FastValue::V8Value => quote!(v8::Local<v8::Value>),
+      FastValue::V8Value => unimplemented!("v8::Local<v8::Value>"),
       FastValue::Uint8Array
       | FastValue::Uint32Array
       | FastValue::Float64Array
@@ -113,8 +113,6 @@ pub fn generate_dispatch_fast(
       Arg::Numeric(NumericArg::i64) | Arg::Numeric(NumericArg::isize) => {
         FastValue::I64
       }
-      // TODO(mmastrac)
-      Arg::Special(_) => return Ok(None),
       _ => {
         return Err(V8MappingError::NoMapping("a fast argument", arg.clone()))
       }
