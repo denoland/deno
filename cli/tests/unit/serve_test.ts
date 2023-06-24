@@ -67,7 +67,7 @@ Deno.test(
   async function httpServerUnref() {
     const [statusCode, _output] = await execCode(`
       async function main() {
-        const server = Deno.serve({ port: 4501, handler: () => null });
+        const server = Deno.serve({ port: ${servePort}, handler: () => null });
         server.unref();
         await server.finished; // This doesn't block the program from exiting
       }
