@@ -132,11 +132,12 @@ fn generate_op2(
   let fn_args = Ident::new("args", Span::call_site());
   let scope = Ident::new("scope", Span::call_site());
   let info = Ident::new("info", Span::call_site());
+  let opctx = Ident::new("opctx", Span::call_site());
   let slow_function = Ident::new("slow_function", Span::call_site());
   let fast_function = Ident::new("fast_function", Span::call_site());
 
   let deno_core = if config.core {
-    syn2::parse_str::<Path>("crate::deno_core")
+    syn2::parse_str::<Path>("crate")
   } else {
     syn2::parse_str::<Path>("deno_core")
   }
@@ -149,6 +150,7 @@ fn generate_op2(
     call,
     scope,
     info,
+    opctx,
     deno_core,
     result,
     retval,
@@ -157,6 +159,8 @@ fn generate_op2(
     fast_function,
     needs_retval: false,
     needs_scope: false,
+    needs_opctx: false,
+    needs_opstate: false,
   };
 
   let name = func.sig.ident;

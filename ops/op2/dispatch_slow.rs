@@ -18,36 +18,33 @@ pub fn generate_dispatch_slow(
     output.extend(extract_arg(generator_state, index)?);
     output.extend(from_arg(generator_state, index, arg)?);
   }
-  output.extend(call(generator_state));
-  output.extend(return_value(generator_state, &signature.ret_val));
-
-  let GeneratorState {
-    deno_core,
-    scope,
-    fn_args,
-    retval,
-    info,
-    slow_function,
-    ..
-  } = &generator_state;
+  output.extend(call(generator_state)?);
+  output.extend(return_value(generator_state, &signature.ret_val)?);
 
   let with_scope = if generator_state.needs_scope {
-    quote!(let #scope = &mut unsafe { #deno_core::v8::CallbackScope::new(&*#info) };)
+    with_scope(generator_state)
   } else {
     quote!()
   };
 
   let with_retval = if generator_state.needs_retval {
-    quote!(let mut #retval = #deno_core::v8::ReturnValue::from_function_callback_info(unsafe { &*#info });)
+    with_retval(generator_state)
   } else {
     quote!()
   };
 
   let with_args = if generator_state.needs_args {
-    quote!(let #fn_args = #deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe { &*#info });)
+    with_fn_args(generator_state)
   } else {
     quote!()
   };
+
+  let GeneratorState {
+    deno_core,
+    info,
+    slow_function,
+    ..
+  } = &generator_state;
 
   Ok(quote! {
     pub extern "C" fn #slow_function(#info: *const #deno_core::v8::FunctionCallbackInfo) {
@@ -57,6 +54,53 @@ pub fn generate_dispatch_slow(
 
     #output
   }})
+}
+
+fn with_scope(generator_state: &mut GeneratorState) -> TokenStream {
+  let GeneratorState {
+    deno_core,
+    scope,
+    info,
+    ..
+  } = &generator_state;
+
+  quote!(let #scope = &mut unsafe { #deno_core::v8::CallbackScope::new(&*#info) };)
+}
+
+fn with_retval(generator_state: &mut GeneratorState) -> TokenStream {
+  let GeneratorState {
+    deno_core,
+    retval,
+    info,
+    ..
+  } = &generator_state;
+
+  quote!(let mut #retval = #deno_core::v8::ReturnValue::from_function_callback_info(unsafe { &*#info });)
+}
+
+fn with_fn_args(generator_state: &mut GeneratorState) -> TokenStream {
+  let GeneratorState {
+    deno_core,
+    fn_args,
+    info,
+    ..
+  } = &generator_state;
+
+  quote!(let #fn_args = #deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe { &*#info });)
+}
+
+fn with_opctx(generator_state: &mut GeneratorState) -> TokenStream {
+  let GeneratorState {
+    deno_core,
+    opctx,
+    fn_args,
+    ..
+  } = &generator_state;
+
+  quote!(let #opctx = unsafe {
+    &*(#deno_core::v8::Local::<#deno_core::v8::External>::cast(#fn_args.data()).value()
+        as *const #deno_core::_ops::OpCtx)
+  };)
 }
 
 pub fn extract_arg(
@@ -176,6 +220,9 @@ pub fn return_value_infallible(
   } = generator_state;
 
   let res = match ret_type {
+    Arg::Void => {
+      quote! {/* void */}
+    }
     Arg::Numeric(NumericArg::u8)
     | Arg::Numeric(NumericArg::u16)
     | Arg::Numeric(NumericArg::u32) => {
@@ -204,17 +251,51 @@ pub fn return_value_result(
   ret_type: &Arg,
 ) -> Result<TokenStream, V8MappingError> {
   let infallible = return_value_infallible(generator_state, ret_type)?;
-  let GeneratorState { result, .. } = &generator_state;
+  let maybe_scope = if generator_state.needs_scope {
+    quote!()
+  } else {
+    with_scope(generator_state)
+  };
+
+  let maybe_args = if generator_state.needs_args {
+    quote!()
+  } else {
+    with_fn_args(generator_state)
+  };
+
+  let maybe_opctx = if generator_state.needs_opctx {
+    quote!()
+  } else {
+    with_opctx(generator_state)
+  };
+
+  let GeneratorState {
+    deno_core,
+    result,
+    scope,
+    opctx,
+    ..
+  } = &generator_state;
 
   let tokens = quote!(
-    let result = match ret_type {
+    match #result {
       Ok(#result) => {
-        #infallible,
+        #infallible
       }
       Err(err) => {
+        #maybe_scope
+        #maybe_args
+        #maybe_opctx
+        let opstate = ::std::cell::RefCell::borrow(&*#opctx.state);
+        let exception = #deno_core::error::to_v8_error(
+          #scope,
+          opstate.get_error_class_fn,
+          &err,
+        );
+        scope.throw_exception(exception);
         return;
       }
-    }
+    };
   );
   Ok(tokens)
 }

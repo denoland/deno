@@ -95,6 +95,11 @@ pub fn generate_dispatch_fast(
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
 ) -> Result<Option<(TokenStream, TokenStream)>, V8MappingError> {
+  // Result not fast-call compatible (yet)
+  if matches!(signature.ret_val, RetVal::Result(..)) {
+    return Ok(None);
+  }
+
   let mut inputs = vec![];
   for arg in &signature.args {
     let fv = match arg {
