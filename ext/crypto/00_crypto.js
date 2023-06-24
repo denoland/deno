@@ -1211,7 +1211,7 @@ class SubtleCrypto {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await this.deriveBits(
+    const secret = await deriveBits(
       normalizedAlgorithm,
       baseKey,
       length,
@@ -4417,7 +4417,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
           publicKey: publicKeyData,
           algorithm: "ECDH",
           namedCurve: publicKey[_algorithm].namedCurve,
-          length,
+          length: length ?? 0,
         });
 
         // 8.

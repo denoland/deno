@@ -4452,8 +4452,8 @@ declare namespace Deno {
 
   /** The permission descriptor for the `allow-hrtime` permission, which
    * controls if the runtime code has access to high resolution time. High
-   * resolution time is consider sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might
+   * resolution time is considered sensitive information, because it can be used
+   * by malicious code to gain information about the host that it might not
    * otherwise have access to.
    *
    * @category Permissions */

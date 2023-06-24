@@ -94,10 +94,6 @@ impl ParsedSourceCache {
     }
   }
 
-  pub fn clear(&self) {
-    self.sources.0.lock().clear();
-  }
-
   pub fn get_parsed_source_from_esm_module(
     &self,
     module: &deno_graph::EsmModule,

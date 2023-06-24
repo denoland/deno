@@ -32,9 +32,10 @@ pub use serde_json;
 pub use serde_v8;
 pub use serde_v8::ByteString;
 pub use serde_v8::DetachedBuffer;
+pub use serde_v8::JsBuffer;
 pub use serde_v8::StringOrBuffer;
+pub use serde_v8::ToJsBuffer;
 pub use serde_v8::U16String;
-pub use serde_v8::ZeroCopyBuf;
 pub use sourcemap;
 pub use url;
 pub use v8;
@@ -127,6 +128,7 @@ pub fn v8_version() -> &'static str {
 /// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
+  pub use super::error::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
@@ -137,7 +139,6 @@ pub mod _ops {
   pub use super::runtime::ops::map_async_op4;
   pub use super::runtime::ops::queue_async_op;
   pub use super::runtime::ops::queue_fast_async_op;
-  pub use super::runtime::throw_type_error;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }

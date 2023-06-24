@@ -18,9 +18,9 @@ use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
+use crate::JsBuffer;
 use crate::StringOrBuffer;
 use crate::U16String;
-use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -80,10 +80,6 @@ macro_rules! deserialize_signed {
           x.value() as $t
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
           x.i64_value().0 as $t
-        } else if let Some(x) = self.input.number_value(self.scope) {
-          x as $t
-        } else if let Some(x) = self.input.to_big_int(self.scope) {
-          x.i64_value().0 as $t
         } else {
           return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
         },
@@ -102,10 +98,6 @@ macro_rules! deserialize_unsigned {
         if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
           x.value() as $t
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
-          x.u64_value().0 as $t
-        } else if let Some(x) = self.input.number_value(self.scope) {
-          x as $t
-        } else if let Some(x) = self.input.to_big_int(self.scope) {
           x.u64_value().0 as $t
         } else {
           return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
@@ -183,10 +175,6 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       if let Ok(x) = v8::Local::<v8::Number>::try_from(self.input) {
         x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
-        bigint_to_f64(x)
-      } else if let Some(x) = self.input.number_value(self.scope) {
-        x
-      } else if let Some(x) = self.input.to_big_int(self.scope) {
         bigint_to_f64(x)
       } else {
         return Err(Error::ExpectedNumber(value_to_type_str(self.input)));
@@ -337,8 +325,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     match name {
-      ZeroCopyBuf::MAGIC_NAME => {
-        visit_magic(visitor, ZeroCopyBuf::from_v8(self.scope, self.input)?)
+      JsBuffer::MAGIC_NAME => {
+        visit_magic(visitor, JsBuffer::from_v8(self.scope, self.input)?)
       }
       DetachedBuffer::MAGIC_NAME => {
         visit_magic(visitor, DetachedBuffer::from_v8(self.scope, self.input)?)
@@ -452,7 +440,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
@@ -460,7 +448,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
   }
 }
