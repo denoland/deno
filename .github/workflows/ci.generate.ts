@@ -112,12 +112,10 @@ const reconfigureWindowsStorage = {
     "startsWith(matrix.os, 'windows')",
   ],
   shell: "pwsh",
-  run: [
-    `
+  run: `
 New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
 New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
 `.trim(),
-  ],
 };
 
 const cloneRepoStep = [{
