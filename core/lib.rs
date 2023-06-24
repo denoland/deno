@@ -147,11 +147,6 @@ pub mod _ops {
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
 
-pub(crate) mod deno_core {
-  pub(crate) use crate::_ops;
-  pub(crate) use crate::v8;
-}
-
 // TODO(mmastrac): Temporary while we move code around
 pub mod snapshot_util {
   pub use crate::runtime::create_snapshot;

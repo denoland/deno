@@ -19,6 +19,8 @@ pub struct GeneratorState {
   pub info: Ident,
   /// The `v8::FunctionCallbackArguments` used to pass args into the slow function.
   pub fn_args: Ident,
+  /// The `OpCtx` used for various information required for some ops.
+  pub opctx: Ident,
   /// The `v8::ReturnValue` used in the slow function
   pub retval: Ident,
   /// The "slow" function (ie: the one that isn't a fastcall)
@@ -29,4 +31,6 @@ pub struct GeneratorState {
   pub needs_args: bool,
   pub needs_retval: bool,
   pub needs_scope: bool,
+  pub needs_opstate: bool,
+  pub needs_opctx: bool,
 }
