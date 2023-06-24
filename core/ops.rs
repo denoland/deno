@@ -14,6 +14,7 @@ use futures::Future;
 use pin_project::pin_project;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr::NonNull;
@@ -106,7 +107,10 @@ pub fn to_op_result<R: Serialize + 'static>(
   }
 }
 
-// TODO(@AaronO): optimize OpCtx(s) mem usage ?
+/// Per-op context.
+///
+// Note: We don't worry too much about the size of this struct because it's allocated once per realm, and is
+// stored in a contiguous array.
 pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
@@ -114,6 +118,8 @@ pub struct OpCtx {
   pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
   pub(crate) context_state: Rc<RefCell<ContextState>>,
+  /// If the last fast op failed, stores the error to be picked up by the slow op.
+  pub(crate) last_fast_error: UnsafeCell<Option<AnyError>>,
 }
 
 impl OpCtx {
@@ -145,7 +151,28 @@ impl OpCtx {
       decl,
       context_state,
       fast_fn_c_info,
+      last_fast_error: UnsafeCell::new(None),
     }
+  }
+
+  /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
+  /// can hold a `&mut` to the last_fast_error field.
+  #[inline(always)]
+  // SAFETY: Must only be called from ops
+  pub unsafe fn unsafely_take_last_error_for_ops_only(
+    &self,
+  ) -> Option<AnyError> {
+    let opt_mut = &mut *self.last_fast_error.get();
+    opt_mut.take()
+  }
+
+  /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
+  /// can hold a `&mut` to the last_fast_error field.
+  #[inline(always)]
+  // SAFETY: Must only be called from ops
+  pub unsafe fn unsafely_set_last_error_for_ops_only(&self, error: AnyError) {
+    let opt_mut = &mut *self.last_fast_error.get();
+    *opt_mut = Some(error);
   }
 }
 
