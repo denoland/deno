@@ -15,11 +15,11 @@ path = "./lib.rs"
 proc-macro = true
 
 [dependencies]
+deno-proc-macro-rules.workspace = true
 lazy-regex.workspace = true
 once_cell.workspace = true
 pmutil = "0.5.3"
 proc-macro-crate = "1.1.3"
-proc-macro-rules.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 regex.workspace = true

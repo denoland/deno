@@ -158,7 +158,8 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
 syn2 = { package = "syn", version = "=2.0.18", features = ["full", "extra-traits"] }
-proc-macro-rules = { version = "0.3.0", git = "https://github.com/nrc/proc-macro-rules.git", rev = "3323e68b179d205fb649e9f1c3d1101a33fde254" }
+# Temporary fork while we wait for a more modern version to be published
+deno-proc-macro-rules = "0.3.0"
 
 # unix
 nix = "=0.24.2"
