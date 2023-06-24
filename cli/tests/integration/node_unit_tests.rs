@@ -74,7 +74,8 @@ util::unit_test_factory!(
     tty_test,
     util_test,
     v8_test,
-    worker_threads_test
+    worker_threads_test,
+    zlib_test
   ]
 );
 

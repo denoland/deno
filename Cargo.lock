@@ -1270,6 +1270,7 @@ name = "deno_node"
 version = "0.46.0"
 dependencies = [
  "aes",
+ "brotli",
  "cbc",
  "data-encoding",
  "deno_core",
