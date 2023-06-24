@@ -159,7 +159,7 @@ quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
 syn2 = { package = "syn", version = "=2.0.18", features = ["full", "extra-traits"] }
 # Temporary fork while we wait for a more modern version to be published
-deno-proc-macro-rules = "0.3.0"
+deno-proc-macro-rules = "0.3.2"
 
 # unix
 nix = "=0.24.2"

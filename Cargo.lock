@@ -872,6 +872,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno-proc-macro-rules"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c65c2ffdafc1564565200967edc4851c7b55422d3913466688907efd05ea26f"
+dependencies = [
+ "deno-proc-macro-rules-macros",
+ "proc-macro2 1.0.60",
+ "syn 2.0.18",
+]
+
+[[package]]
+name = "deno-proc-macro-rules-macros"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3047b312b7451e3190865713a4dd6e1f821aed614ada219766ebc3024a690435"
+dependencies = [
+ "once_cell",
+ "proc-macro2 1.0.60",
+ "quote 1.0.28",
+ "syn 2.0.18",
+]
+
+[[package]]
 name = "deno_ast"
 version = "0.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1317,13 +1340,13 @@ dependencies = [
 name = "deno_ops"
 version = "0.69.0"
 dependencies = [
+ "deno-proc-macro-rules",
  "lazy-regex",
  "once_cell",
  "pmutil",
  "pretty_assertions",
  "prettyplease",
  "proc-macro-crate",
- "proc-macro-rules",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "regex",
@@ -3706,27 +3729,6 @@ name = "proc-macro-hack"
 version = "0.5.20+deprecated"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc375e1527247fe1a97d8b7156678dfe7c1af2fc075c9a4db3690ecd2a148068"
-
-[[package]]
-name = "proc-macro-rules"
-version = "0.3.0"
-source = "git+https://github.com/nrc/proc-macro-rules.git?rev=3323e68b179d205fb649e9f1c3d1101a33fde254#3323e68b179d205fb649e9f1c3d1101a33fde254"
-dependencies = [
- "proc-macro-rules-macros",
- "proc-macro2 1.0.60",
- "syn 2.0.18",
-]
-
-[[package]]
-name = "proc-macro-rules-macros"
-version = "0.3.0"
-source = "git+https://github.com/nrc/proc-macro-rules.git?rev=3323e68b179d205fb649e9f1c3d1101a33fde254#3323e68b179d205fb649e9f1c3d1101a33fde254"
-dependencies = [
- "once_cell",
- "proc-macro2 1.0.60",
- "quote 1.0.28",
- "syn 2.0.18",
-]
 
 [[package]]
 name = "proc-macro2"
