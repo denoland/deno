@@ -113,13 +113,8 @@ const reconfigureWindowsStorage = {
   ],
   shell: "pwsh",
   run: [
-    `
-    New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-    New-Item -ItemType "directory" -Path "D:/a"
-    New-Item -ItemType "directory" -Path "D:/a/deno"
-    New-Item -ItemType "directory" -Path "D:/a/deno/deno"
-    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
-    `
+    `New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"`
   ]
 };
 
@@ -387,8 +382,8 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
-        reconfigureWindowsStorage,
         ...cloneRepoStep,
+        reconfigureWindowsStorage,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
         {
