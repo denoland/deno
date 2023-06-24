@@ -222,7 +222,9 @@ mod tests {
       op_test_add,
       op_test_add_option,
       op_test_result_void_ok,
-      op_test_result_void_err
+      op_test_result_void_err,
+      op_test_result_primitive_ok,
+      op_test_result_primitive_err
     ]
   );
 
@@ -304,7 +306,7 @@ mod tests {
   }
 
   #[tokio::test]
-  pub async fn test_op_result() -> Result<(), Box<dyn std::error::Error>> {
+  pub async fn test_op_result_void() -> Result<(), Box<dyn std::error::Error>> {
     run_test(
       "op_test_result_void_err",
       "op_test_result_void_err()",
@@ -317,6 +319,35 @@ mod tests {
       "op_test_result_void_ok",
       "op_test_result_void_ok()",
       |value, _scope| assert!(value.unwrap().is_null_or_undefined()),
+    );
+    Ok(())
+  }
+
+  #[op2(core)]
+  pub fn op_test_result_primitive_err() -> Result<u32, AnyError> {
+    Err(generic_error("failed!!!"))
+  }
+
+  #[op2(core)]
+  pub fn op_test_result_primitive_ok() -> Result<u32, AnyError> {
+    Ok(123)
+  }
+
+  #[tokio::test]
+  pub async fn test_op_result_primitive(
+  ) -> Result<(), Box<dyn std::error::Error>> {
+    run_test(
+      "op_test_result_primitive_err",
+      "op_test_result_primitive_err()",
+      |value, _scope| {
+        let js_error = value.err().unwrap().downcast::<JsError>().unwrap();
+        assert_eq!(js_error.message, Some("failed!!!".to_owned()));
+      },
+    );
+    run_test(
+      "op_test_result_primitive_ok",
+      "op_test_result_primitive_ok()",
+      |value, scope| assert_eq!(value.unwrap().int32_value(scope), Some(123)),
     );
     Ok(())
   }
