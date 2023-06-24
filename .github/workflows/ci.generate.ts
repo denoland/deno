@@ -104,6 +104,22 @@ CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
 
+// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
+// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
+const reconfigureWindowsStorage = {
+  name: "Reconfigure Windows Storage",
+  if: [
+    "startsWith(matrix.os, 'windows')"
+  ],
+  shell: "pwsh",
+  run: [
+    `
+    New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/target"
+    `
+  ]
+};
+
 const cloneRepoStep = [{
   name: "Configure git",
   run: [
@@ -368,6 +384,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
+        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
