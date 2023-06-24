@@ -7,9 +7,10 @@ use brotli::ffi::decompressor::*;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   if mode > 6 {
@@ -70,11 +71,11 @@ fn max_compressed_size(input_size: usize) -> usize {
 
 #[op]
 pub async fn op_brotli_compress_async(
-  input: ZeroCopyBuf,
+  input: JsBuffer,
   quality: i32,
   lgwin: i32,
   mode: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   tokio::task::spawn_blocking(move || {
     let in_buffer = input.as_ptr();
     let in_size = input.len();
@@ -212,7 +213,7 @@ pub fn op_brotli_compress_stream_end(
   }
 }
 
-fn brotli_decompress(buffer: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+fn brotli_decompress(buffer: &[u8]) -> Result<ToJsBuffer, AnyError> {
   let in_buffer = buffer.as_ptr();
   let in_size = buffer.len();
 
@@ -246,14 +247,14 @@ fn brotli_decompress(buffer: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
 }
 
 #[op]
-pub fn op_brotli_decompress(buffer: &[u8]) -> Result<ZeroCopyBuf, AnyError> {
+pub fn op_brotli_decompress(buffer: &[u8]) -> Result<ToJsBuffer, AnyError> {
   brotli_decompress(buffer)
 }
 
 #[op]
 pub async fn op_brotli_decompress_async(
-  buffer: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+  buffer: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
   tokio::task::spawn_blocking(move || brotli_decompress(&buffer)).await?
 }
 
