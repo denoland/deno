@@ -117,7 +117,7 @@ jobs:
         run:
           - |-
             New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-                New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
+            New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'

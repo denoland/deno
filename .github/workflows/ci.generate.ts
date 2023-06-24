@@ -109,13 +109,15 @@ __0`,
 const reconfigureWindowsStorage = {
   name: "Reconfigure Windows Storage",
   if: [
-    "startsWith(matrix.os, 'windows')"
+    "startsWith(matrix.os, 'windows')",
   ],
   shell: "pwsh",
   run: [
-    `New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"`
-  ]
+    `
+New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
+`.trim(),
+  ],
 };
 
 const cloneRepoStep = [{
