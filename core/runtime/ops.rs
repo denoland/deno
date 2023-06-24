@@ -145,3 +145,140 @@ pub fn queue_async_op<'s>(
     .spawn(unsafe { crate::task::MaskFutureAsSend::new(pinned) });
   None
 }
+
+macro_rules! try_number {
+  ($n:ident $type:ident $is:ident) => {
+    if $n.$is() {
+      // SAFETY: v8 handles can be transmuted
+      let n: &v8::Uint32 = unsafe { std::mem::transmute($n) };
+      return n.value() as _;
+    }
+  };
+}
+
+pub fn to_u32(number: &v8::Value) -> u32 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.u64_value().0 as _;
+  }
+  0
+}
+
+pub fn to_i32(number: &v8::Value) -> i32 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.i64_value().0 as _;
+  }
+  0
+}
+
+#[allow(unused)]
+pub fn to_u64(number: &v8::Value) -> u32 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.u64_value().0 as _;
+  }
+  0
+}
+
+#[allow(unused)]
+pub fn to_i64(number: &v8::Value) -> i32 {
+  try_number!(number Uint32 is_uint32);
+  try_number!(number Int32 is_int32);
+  try_number!(number Number is_number);
+  if number.is_big_int() {
+    // SAFETY: v8 handles can be transmuted
+    let n: &v8::BigInt = unsafe { std::mem::transmute(number) };
+    return n.i64_value().0 as _;
+  }
+  0
+}
+
+#[cfg(test)]
+mod tests {
+  use crate::FastString;
+  use crate::JsRuntime;
+  use crate::RuntimeOptions;
+  use deno_ops::op2;
+
+  crate::extension!(testing, ops = [op_test_add, op_test_add_option]);
+
+  /// Run a test for a single op.
+  fn run_test(
+    op: &'static str,
+    test: &'static str,
+    f: impl FnOnce(Result<&v8::Value, anyhow::Error>, &mut v8::HandleScope),
+  ) {
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![testing::init_ops_and_esm()],
+      ..Default::default()
+    });
+    let value: Result<v8::Global<v8::Value>, anyhow::Error> = runtime
+      .execute_script(
+        "",
+        FastString::Owned(
+          format!("const {{ {op} }} = Deno.core.ensureFastOps(); {test}")
+            .into(),
+        ),
+      );
+    let mut scope: v8::HandleScope =
+      // SAFETY: transmute for test (this lifetime should be safe for this purpose)
+      unsafe { std::mem::transmute(runtime.handle_scope()) };
+    match value {
+      Ok(value) => {
+        let value = value.open(&mut scope);
+        f(Ok(value), &mut scope)
+      }
+      Err(err) => f(Err(err), &mut scope),
+    }
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_add(a: u32, b: u32) -> u32 {
+    a + b
+  }
+
+  #[tokio::test]
+  pub async fn test_op_add() -> Result<(), Box<dyn std::error::Error>> {
+    run_test("op_test_add", "op_test_add(1, 11)", |value, scope| {
+      assert_eq!(value.unwrap().int32_value(scope), Some(12));
+    });
+    Ok(())
+  }
+
+  #[op2(core)]
+  pub fn op_test_add_option(a: u32, b: Option<u32>) -> u32 {
+    a + b.unwrap_or(100)
+  }
+
+  #[tokio::test]
+  pub async fn test_op_add_option() -> Result<(), Box<dyn std::error::Error>> {
+    run_test(
+      "op_test_add_option",
+      "op_test_add_option(1, 11)",
+      |value, scope| {
+        assert_eq!(value.unwrap().int32_value(scope), Some(12));
+      },
+    );
+    run_test(
+      "op_test_add_option",
+      "op_test_add_option(1, null)",
+      |value, scope| {
+        assert_eq!(value.unwrap().int32_value(scope), Some(101));
+      },
+    );
+    Ok(())
+  }
+}

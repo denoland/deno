@@ -11,6 +11,7 @@ use crate::OpState;
 use crate::Resource;
 use anyhow::Error;
 use deno_ops::op;
+use deno_ops::op2;
 use serde_v8::ToJsBuffer;
 use std::cell::RefCell;
 use std::io::stderr;
@@ -95,7 +96,7 @@ pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
     .collect()
 }
 
-#[op(fast)]
+#[op2(core, fast)]
 fn op_add(a: i32, b: i32) -> i32 {
   a + b
 }
