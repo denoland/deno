@@ -115,7 +115,10 @@ const reconfigureWindowsStorage = {
   run: [
     `
     New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/target"
+    New-Item -ItemType "directory" -Path "D:/a"
+    New-Item -ItemType "directory" -Path "D:/a/deno"
+    New-Item -ItemType "directory" -Path "D:/a/deno/deno"
+    New-Item -ItemType SymbolicLink -Path "$env:TEMP/__target__" -Target "D:/a/deno/deno/target"
     `
   ]
 };
