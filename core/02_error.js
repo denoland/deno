@@ -14,7 +14,14 @@
     ArrayPrototypePush,
     ArrayPrototypeMap,
     ArrayPrototypeJoin,
+    SymbolFor,
   } = window.__bootstrap.primordials;
+
+  const key = SymbolFor("02_error.js");
+  if (globalThis.__bootstrap[key]) {
+    return;
+  }
+  globalThis.__bootstrap[key] = true;
 
   // Keep in sync with `cli/fmt_errors.rs`.
   function formatLocation(cse) {

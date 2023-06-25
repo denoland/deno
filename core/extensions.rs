@@ -17,10 +17,10 @@ pub enum ExtensionFileSourceCode {
   /// snapshot, the other the static string in the `Extension`.
   IncludedInBinary(&'static str),
 
-  // Source code is loaded from a file on disk. It's meant to be used if the
-  // embedder is creating snapshots. Files will be loaded from the filesystem
-  // during the build time and they will only be present in the V8 snapshot.
-  LoadedFromFsDuringSnapshot(PathBuf),
+  /// Source code is loaded from a file on disk at 'runtime'. It's meant to be
+  /// used in build and dev scripts using the `runtime_js_sources` feature,
+  /// likely to create snapshots.
+  LoadAtRuntime(PathBuf),
 }
 
 #[derive(Clone, Debug)]
@@ -45,7 +45,7 @@ impl ExtensionFileSource {
         );
         Ok(ModuleCode::from_static(code))
       }
-      ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+      ExtensionFileSourceCode::LoadAtRuntime(path) => {
         let msg = || format!("Failed to read \"{}\"", path.display());
         let s = std::fs::read_to_string(path).with_context(msg)?;
         debug_assert!(
@@ -168,7 +168,6 @@ macro_rules! ops {
 ///  * bounds: a comma-separated list of additional type bounds, eg: `bounds = [ P::MyAssociatedType: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
-///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -185,8 +184,8 @@ macro_rules! extension {
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
-    $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
+    $(, force_include_js_sources $($force_include_js_sources:block)? )? // dummy variable
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
     $(, state = $state_fn:expr )?
@@ -211,21 +210,15 @@ macro_rules! extension {
       #[inline(always)]
       #[allow(unused_variables)]
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
-        $( ext.esm(
-          $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
-        ); )?
-        $(
-          ext.esm(vec![ExtensionFileSource {
-            specifier: "ext:setup",
-            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
-          }]);
-        )?
+        ext.esm(
+          $crate::include_js_files!( $name $( force_include_js_sources $($force_include_js_sources)?, )? $( $( dir $dir_esm , )? $( $esm , )* )? )
+        );
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
-        $( ext.js(
-          $crate::include_js_files!( $name $( dir $dir_js , )? $( $js , )* )
-        ); )?
+        ext.js(
+          $crate::include_js_files!( $name $( force_include_js_sources $($force_include_js_sources)?, )? $( $( dir $dir_js , )? $( $js , )* )? )
+        );
       }
 
       // If ops were specified, add those ops to the extension.
@@ -285,23 +278,12 @@ macro_rules! extension {
       }
 
       #[allow(dead_code)]
-      pub fn init_ops_and_esm $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
+      pub fn init_ext $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
       $( where $( $bound : $bound_type ),+ )?
       {
         let mut ext = Self::ext();
         // If esm or JS was specified, add JS files
         Self::with_js(&mut ext);
-        Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
-        Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
-        Self::with_customizer(&mut ext);
-        ext.take()
-      }
-
-      #[allow(dead_code)]
-      pub fn init_ops $( <  $( $param : $type + 'static ),+ > )? ( $( $( $options_id : $options_type ),* )? ) -> $crate::Extension
-      $( where $( $bound : $bound_type ),+ )?
-      {
-        let mut ext = Self::ext();
         Self::with_ops $( ::< $( $param ),+ > )?(&mut ext);
         Self::with_state_and_middleware $( ::< $( $param ),+ > )?(&mut ext, $( $( $options_id , )* )? );
         Self::with_customizer(&mut ext);
@@ -349,8 +331,8 @@ macro_rules! extension {
 #[derive(Default)]
 pub struct Extension {
   pub(crate) name: &'static str,
-  js_files: Option<Vec<ExtensionFileSource>>,
-  esm_files: Option<Vec<ExtensionFileSource>>,
+  js_files: Vec<ExtensionFileSource>,
+  esm_files: Vec<ExtensionFileSource>,
   esm_entry_point: Option<&'static str>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
@@ -406,12 +388,12 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.js_files.as_ref()
+  pub fn get_js_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.js_files
   }
 
-  pub fn get_esm_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.esm_files.as_ref()
+  pub fn get_esm_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.esm_files
   }
 
   pub fn get_esm_entry_point(&self) -> Option<&'static str> {
@@ -532,13 +514,11 @@ impl ExtensionBuilder {
 
   /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
   pub fn take(self) -> Extension {
-    let js_files = Some(self.js);
-    let esm_files = Some(self.esm);
     let ops = Some(self.ops);
     let deps = Some(self.deps);
     Extension {
-      js_files,
-      esm_files,
+      js_files: self.js,
+      esm_files: self.esm,
       esm_entry_point: self.esm_entry_point,
       ops,
       opstate_fn: self.state,
@@ -553,13 +533,11 @@ impl ExtensionBuilder {
   }
 
   pub fn build(&mut self) -> Extension {
-    let js_files = Some(std::mem::take(&mut self.js));
-    let esm_files = Some(std::mem::take(&mut self.esm));
     let ops = Some(std::mem::take(&mut self.ops));
     let deps = Some(std::mem::take(&mut self.deps));
     Extension {
-      js_files,
-      esm_files,
+      js_files: std::mem::take(&mut self.js),
+      esm_files: std::mem::take(&mut self.esm),
       esm_entry_point: self.esm_entry_point.take(),
       ops,
       opstate_fn: self.state.take(),
@@ -608,54 +586,58 @@ impl ExtensionBuilder {
 /// - "ext:my_extension/js/01_hello.js"
 /// - "ext:my_extension/js/02_goodbye.js"
 /// ```
-#[cfg(not(feature = "include_js_files_for_snapshotting"))]
+#[cfg(all(
+  feature = "exclude_js_sources",
+  not(feature = "runtime_js_sources"),
+))]
 #[macro_export]
 macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!(concat!($dir, "/", $file)
-        )),
-      },)+
-    ]
+  ($name:ident $(dir $dir:literal,)? $($file:literal,)*) => {
+    vec![]
   };
 
-  ($name:ident $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!($file)
-        ),
-      },)+
-    ]
+  ($name:ident force_include_js_sources $($dummy:block)?, $($file:literal,)*) => {
+    vec![$($crate::include_js_file!($name $file)),*]
+  };
+
+  ($name:ident force_include_js_sources $($dummy:block)?, dir $dir:literal, $($file:literal,)*) => {
+    vec![$($crate::include_js_file!($name dir $dir, $file)),*]
   };
 }
 
-#[cfg(feature = "include_js_files_for_snapshotting")]
+#[cfg(not(all(
+  feature = "exclude_js_sources",
+  not(feature = "runtime_js_sources"),
+)))]
 #[macro_export]
 macro_rules! include_js_files {
-  ($name:ident dir $dir:literal, $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
-        ),
-      },)+
-    ]
+  ($name:ident $(force_include_js_sources $($dummy:block)?,)? $($file:literal,)*) => {
+    vec![$($crate::include_js_file!($name $file)),*]
   };
 
-  ($name:ident $($file:literal,)+) => {
-    vec![
-      $($crate::ExtensionFileSource {
-        specifier: concat!("ext:", stringify!($name), "/", $file),
-        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
-        ),
-      },)+
-    ]
+  ($name:ident $(force_include_js_sources $($dummy:block)?,)? dir $dir:literal, $($file:literal,)*) => {
+    vec![$($crate::include_js_file!($name dir $dir, $file)),*]
+  };
+}
+
+#[cfg(not(feature = "runtime_js_sources"))]
+#[macro_export]
+macro_rules! include_js_file {
+  ($ext_name:ident $(dir $dir:literal,)? $file:literal) => {
+    $crate::ExtensionFileSource {
+      specifier: concat!("ext:", stringify!($ext_name), "/", $file),
+      code: $crate::ExtensionFileSourceCode::IncludedInBinary(include_str!(concat!($($dir, "/",)? $file))),
+    }
+  };
+}
+
+#[cfg(feature = "runtime_js_sources")]
+#[macro_export]
+macro_rules! include_js_file {
+  ($ext_name:ident $(dir $dir:literal,)? $file:literal) => {
+    $crate::ExtensionFileSource {
+      specifier: concat!("ext:", stringify!($ext_name), "/", $file),
+      code: $crate::ExtensionFileSourceCode::LoadAtRuntime(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))$(.join($dir))?.join($file)),
+    }
   };
 }
