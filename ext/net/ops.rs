@@ -15,11 +15,11 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -52,7 +52,7 @@ pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -109,7 +109,7 @@ async fn op_net_accept_tcp(
 async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  mut buf: JsBuffer,
 ) -> Result<(usize, IpAddr), AnyError> {
   let resource = state
     .borrow_mut()
@@ -130,7 +130,7 @@ async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   addr: IpAddr,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -159,15 +159,12 @@ where
 }
 
 #[op]
-async fn op_net_join_multi_v4_udp<NP>(
+async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: String,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -184,15 +181,12 @@ where
 }
 
 #[op]
-async fn op_net_join_multi_v6_udp<NP>(
+async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -208,15 +202,12 @@ where
 }
 
 #[op]
-async fn op_net_leave_multi_v4_udp<NP>(
+async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: String,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -233,15 +224,12 @@ where
 }
 
 #[op]
-async fn op_net_leave_multi_v6_udp<NP>(
+async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -257,15 +245,12 @@ where
 }
 
 #[op]
-async fn op_net_set_multi_loopback_udp<NP>(
+async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   is_v4_membership: bool,
   loopback: bool,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -283,14 +268,11 @@ where
 }
 
 #[op]
-async fn op_net_set_multi_ttl_udp<NP>(
+async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   ttl: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -780,12 +762,15 @@ fn rdata_to_return_record(
 mod tests {
   use super::*;
   use crate::UnstableChecker;
+  use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
   use socket2::SockRef;
   use std::net::Ipv4Addr;
   use std::net::Ipv6Addr;
   use std::path::Path;
+  use std::sync::Arc;
+  use std::sync::Mutex;
   use trust_dns_proto::rr::rdata::caa::KeyValue;
   use trust_dns_proto::rr::rdata::caa::CAA;
   use trust_dns_proto::rr::rdata::mx::MX;
@@ -1009,7 +994,7 @@ mod tests {
       assert!(socket.nodelay().unwrap());
       assert!(!socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4245"), set_nodelay, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4145"), set_nodelay, test_fn).await;
   }
 
   #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -1021,7 +1006,7 @@ mod tests {
       assert!(!socket.nodelay().unwrap());
       assert!(socket.keepalive().unwrap());
     });
-    check_sockopt(String::from("127.0.0.1:4246"), set_keepalive, test_fn).await;
+    check_sockopt(String::from("127.0.0.1:4146"), set_keepalive, test_fn).await;
   }
 
   #[allow(clippy::type_complexity)]
@@ -1030,11 +1015,15 @@ mod tests {
     set_sockopt_fn: Box<dyn Fn(&mut OpState, u32)>,
     test_fn: Box<dyn FnOnce(SockRef)>,
   ) {
+    let sockets = Arc::new(Mutex::new(vec![]));
     let clone_addr = addr.clone();
-    tokio::spawn(async move {
-      let listener = TcpListener::bind(addr).await.unwrap();
-      let _ = listener.accept().await;
-    });
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let accept_fut = listener.accept().boxed_local();
+    let store_fut = async move {
+      let socket = accept_fut.await.unwrap();
+      sockets.lock().unwrap().push(socket);
+    }
+    .boxed_local();
 
     deno_core::extension!(
       test_ext,
@@ -1045,7 +1034,7 @@ mod tests {
     );
 
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![test_ext::init_ops()],
+      extensions: vec![test_ext::init_ext()],
       ..Default::default()
     });
 
@@ -1057,9 +1046,23 @@ mod tests {
       port: server_addr[1].parse().unwrap(),
     };
 
-    let connect_fut =
-      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr);
-    let (rid, _, _) = connect_fut.await.unwrap();
+    let mut connect_fut =
+      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr)
+        .boxed_local();
+    let mut rid = None;
+
+    tokio::select! {
+      _ = store_fut => {
+        let result = connect_fut.await;
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      },
+      result = &mut connect_fut => {
+        let vals = result.unwrap();
+        rid = rid.or(Some(vals.0));
+      }
+    };
+    let rid = rid.unwrap();
 
     let state = runtime.op_state();
     set_sockopt_fn(&mut state.borrow_mut(), rid);

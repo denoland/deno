@@ -4,6 +4,7 @@ use serde::de::Visitor;
 use serde::de::{self};
 use serde::Deserialize;
 
+use crate::error::value_to_type_str;
 use crate::error::Error;
 use crate::error::Result;
 use crate::keys::v8_struct_key;
@@ -17,9 +18,9 @@ use crate::AnyValue;
 use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
+use crate::JsBuffer;
 use crate::StringOrBuffer;
 use crate::U16String;
-use crate::ZeroCopyBuf;
 
 pub struct Deserializer<'a, 'b, 's> {
   input: v8::Local<'a, v8::Value>,
@@ -79,12 +80,8 @@ macro_rules! deserialize_signed {
           x.value() as $t
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
           x.i64_value().0 as $t
-        } else if let Some(x) = self.input.number_value(self.scope) {
-          x as $t
-        } else if let Some(x) = self.input.to_big_int(self.scope) {
-          x.i64_value().0 as $t
         } else {
-          return Err(Error::ExpectedInteger);
+          return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
         },
       )
     }
@@ -102,12 +99,8 @@ macro_rules! deserialize_unsigned {
           x.value() as $t
         } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
           x.u64_value().0 as $t
-        } else if let Some(x) = self.input.number_value(self.scope) {
-          x as $t
-        } else if let Some(x) = self.input.to_big_int(self.scope) {
-          x.u64_value().0 as $t
         } else {
-          return Err(Error::ExpectedInteger);
+          return Err(Error::ExpectedInteger(value_to_type_str(self.input)));
         },
       )
     }
@@ -183,12 +176,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         x.value()
       } else if let Ok(x) = v8::Local::<v8::BigInt>::try_from(self.input) {
         bigint_to_f64(x)
-      } else if let Some(x) = self.input.number_value(self.scope) {
-        x
-      } else if let Some(x) = self.input.to_big_int(self.scope) {
-        bigint_to_f64(x)
       } else {
-        return Err(Error::ExpectedNumber);
+        return Err(Error::ExpectedNumber(value_to_type_str(self.input)));
       },
     )
   }
@@ -216,7 +205,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let string = to_utf8(v8_string, self.scope);
       visitor.visit_string(string)
     } else {
-      Err(Error::ExpectedString)
+      Err(Error::ExpectedString(value_to_type_str(self.input)))
     }
   }
 
@@ -268,7 +257,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     let arr = v8::Local::<v8::Array>::try_from(self.input)
-      .map_err(|_| Error::ExpectedArray)?;
+      .map_err(|_| Error::ExpectedArray(value_to_type_str(self.input)))?;
     visitor.visit_seq(SeqAccess::new(arr.into(), self.scope, 0..arr.length()))
   }
 
@@ -281,8 +270,9 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     if obj.is_array() {
       // If the obj is an array fail if it's length differs from the tuple length
       let array = v8::Local::<v8::Array>::try_from(self.input).unwrap();
-      if array.length() as usize != len {
-        return Err(Error::LengthMismatch);
+      let array_len = array.length() as usize;
+      if array_len != len {
+        return Err(Error::LengthMismatch(array_len, len));
       }
     }
     visitor.visit_seq(SeqAccess::new(obj, self.scope, 0..len as u32))
@@ -307,7 +297,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   {
     // Assume object, then get_own_property_names
     let obj = v8::Local::<v8::Object>::try_from(self.input)
-      .map_err(|_| Error::ExpectedObject)?;
+      .map_err(|_| Error::ExpectedObject(value_to_type_str(self.input)))?;
 
     if v8::Local::<v8::Map>::try_from(self.input).is_ok() {
       let pairs_array = v8::Local::<v8::Map>::try_from(self.input)
@@ -335,8 +325,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: Visitor<'de>,
   {
     match name {
-      ZeroCopyBuf::MAGIC_NAME => {
-        visit_magic(visitor, ZeroCopyBuf::from_v8(self.scope, self.input)?)
+      JsBuffer::MAGIC_NAME => {
+        visit_magic(visitor, JsBuffer::from_v8(self.scope, self.input)?)
       }
       DetachedBuffer::MAGIC_NAME => {
         visit_magic(visitor, DetachedBuffer::from_v8(self.scope, self.input)?)
@@ -362,7 +352,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       _ => {
         // Regular struct
         let obj = v8::Local::<v8::Object>::try_from(self.input)
-          .or(Err(Error::ExpectedObject))?;
+          .map_err(|_| Error::ExpectedObject(value_to_type_str(self.input)))?;
 
         // Fields names are a hint and must be inferred when not provided
         if fields.is_empty() {
@@ -408,9 +398,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
       let tag = {
         let prop_names =
           obj.get_own_property_names(self.scope, Default::default());
-        let prop_names = prop_names.ok_or(Error::ExpectedEnum)?;
-        if prop_names.length() != 1 {
-          return Err(Error::LengthMismatch);
+        let prop_names = prop_names
+          .ok_or_else(|| Error::ExpectedEnum(value_to_type_str(self.input)))?;
+        let prop_names_len = prop_names.length();
+        if prop_names_len != 1 {
+          return Err(Error::LengthMismatch(prop_names_len as usize, 1));
         }
         prop_names.get_index(self.scope, 0).unwrap()
       };
@@ -422,8 +414,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
         payload,
       })
     } else {
-      // TODO: improve error
-      Err(Error::ExpectedEnum)
+      Err(Error::ExpectedEnum(value_to_type_str(self.input)))
     }
   }
 
@@ -449,7 +440,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_bytes(&zb))
   }
 
@@ -457,7 +448,7 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   where
     V: Visitor<'de>,
   {
-    magic::buffer::ZeroCopyBuf::from_v8(self.scope, self.input)
+    magic::buffer::JsBuffer::from_v8(self.scope, self.input)
       .and_then(|zb| visitor.visit_byte_buf(Vec::from(&*zb)))
   }
 }

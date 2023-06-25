@@ -40,7 +40,7 @@ impl op_listen {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
+            arg_count: 0usize as u8,
         }
     }
     #[inline]

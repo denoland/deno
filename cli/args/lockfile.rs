@@ -11,14 +11,15 @@ use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptionsPackage;
+use deno_npm::resolution::SerializedNpmResolutionSnapshot;
+use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackageSystemInfo;
 use deno_semver::npm::NpmPackageReq;
 
-use crate::args::config_file::LockConfig;
 use crate::args::ConfigFile;
+use crate::npm::CliNpmRegistryApi;
 use crate::Flags;
 
 use super::DenoSubcommand;
@@ -44,22 +45,9 @@ pub fn discover(
     None => match maybe_config_file {
       Some(config_file) => {
         if config_file.specifier.scheme() == "file" {
-          match config_file.to_lock_config()? {
-            Some(LockConfig::Bool(lock)) if !lock => {
-              return Ok(None);
-            }
-            Some(LockConfig::PathBuf(lock)) => config_file
-              .specifier
-              .to_file_path()
-              .unwrap()
-              .parent()
-              .unwrap()
-              .join(lock),
-            _ => {
-              let mut path = config_file.specifier.to_file_path().unwrap();
-              path.set_file_name("deno.lock");
-              path
-            }
+          match config_file.resolve_lockfile_path()? {
+            Some(path) => path,
+            None => return Ok(None),
           }
         } else {
           return Ok(None);
@@ -75,8 +63,8 @@ pub fn discover(
 
 pub async fn snapshot_from_lockfile(
   lockfile: Arc<Mutex<Lockfile>>,
-  api: &dyn NpmRegistryApi,
-) -> Result<NpmResolutionSnapshot, AnyError> {
+  api: &CliNpmRegistryApi,
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
   let (root_packages, mut packages) = {
     let lockfile = lockfile.lock();
 
@@ -95,7 +83,7 @@ pub async fn snapshot_from_lockfile(
     // now fill the packages except for the dist information
     let mut packages = Vec::with_capacity(lockfile.content.npm.packages.len());
     for (key, package) in &lockfile.content.npm.packages {
-      let pkg_id = NpmPackageId::from_serialized(key)?;
+      let id = NpmPackageId::from_serialized(key)?;
 
       // collect the dependencies
       let mut dependencies = HashMap::with_capacity(package.dependencies.len());
@@ -104,38 +92,67 @@ pub async fn snapshot_from_lockfile(
         dependencies.insert(name.clone(), dep_id);
       }
 
-      packages.push(NpmResolutionSnapshotCreateOptionsPackage {
-        pkg_id,
-        dist: Default::default(), // temporarily empty
+      packages.push(SerializedNpmResolutionSnapshotPackage {
+        id,
         dependencies,
+        // temporarily empty
+        system: Default::default(),
+        dist: Default::default(),
+        optional_dependencies: Default::default(),
       });
     }
     (root_packages, packages)
   };
 
   // now that the lockfile is dropped, fetch the package version information
-  let mut version_infos =
-      FuturesOrdered::from_iter(packages.iter().map(|p| p.pkg_id.nv.clone()).map(
-        |nv| async move {
-          let package_info = api.package_info(&nv.name).await?;
-          match package_info.version_info(&nv) {
-            Ok(version_info) => Ok(version_info),
-            Err(err) => {
-              bail!("Could not find '{}' specified in the lockfile. Maybe try again with --reload", err.0);
-            }
-          }
-        },
-      ));
-
+  let pkg_nvs = packages.iter().map(|p| p.id.nv.clone()).collect::<Vec<_>>();
+  let get_version_infos = || {
+    FuturesOrdered::from_iter(pkg_nvs.iter().map(|nv| async move {
+      let package_info = api.package_info(&nv.name).await?;
+      match package_info.version_info(nv) {
+        Ok(version_info) => Ok(version_info),
+        Err(err) => {
+          bail!("Could not find '{}' specified in the lockfile.", err.0);
+        }
+      }
+    }))
+  };
+  let mut version_infos = get_version_infos();
   let mut i = 0;
-  while let Some(version_info) = version_infos.next().await {
-    packages[i].dist = version_info?.dist;
+  while let Some(result) = version_infos.next().await {
+    match result {
+      Ok(version_info) => {
+        let mut package = &mut packages[i];
+        package.dist = version_info.dist;
+        package.system = NpmResolutionPackageSystemInfo {
+          cpu: version_info.cpu,
+          os: version_info.os,
+        };
+        package.optional_dependencies =
+          version_info.optional_dependencies.into_keys().collect();
+      }
+      Err(err) => {
+        if api.mark_force_reload() {
+          // reset and try again
+          version_infos = get_version_infos();
+          i = 0;
+          continue;
+        } else {
+          return Err(err);
+        }
+      }
+    }
+
     i += 1;
   }
 
-  NpmResolutionSnapshot::from_packages(NpmResolutionSnapshotCreateOptions {
+  // clear the memory cache to reduce memory usage
+  api.clear_memory_cache();
+
+  SerializedNpmResolutionSnapshot {
     packages,
     root_packages,
-  })
+  }
+  .into_valid()
   .context("The lockfile is corrupt. You can recreate it with --lock-write")
 }

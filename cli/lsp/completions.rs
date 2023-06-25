@@ -28,7 +28,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
+  lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
@@ -519,13 +519,13 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let mut documents = Documents::new(location, Default::default());
+    let mut documents = Documents::new(location.to_path_buf());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new(location);
+    let http_cache = HttpCache::new(location.to_path_buf());
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -546,7 +546,7 @@ mod tests {
     sources: &[(&str, &str)],
   ) -> Documents {
     let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, &location)
+    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]

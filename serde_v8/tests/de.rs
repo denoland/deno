@@ -7,8 +7,8 @@ use serde_v8::utils::v8_do;
 use serde_v8::BigInt;
 use serde_v8::ByteString;
 use serde_v8::Error;
+use serde_v8::JsBuffer;
 use serde_v8::U16String;
-use serde_v8::ZeroCopyBuf;
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -115,13 +115,13 @@ defail!(
   de_tuple_wrong_len_short,
   (u64, bool, ()),
   "[123, true]",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(2, 3))
 );
 defail!(
   de_tuple_wrong_len_long,
   (u64, bool, ()),
   "[123, true, null, 'extra']",
-  |e| e == Err(Error::LengthMismatch)
+  |e| e == Err(Error::LengthMismatch(4, 3))
 );
 detest!(
   de_mathop,
@@ -248,23 +248,33 @@ fn de_string_or_buffer() {
 fn de_buffers() {
   // ArrayBufferView
   dedo("new Uint8Array([97])", |scope, v| {
-    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    let buf: JsBuffer = serde_v8::from_v8(scope, v).unwrap();
     assert_eq!(&*buf, &[97]);
   });
 
   // ArrayBuffer
   dedo("(new Uint8Array([97])).buffer", |scope, v| {
-    let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+    let buf: JsBuffer = serde_v8::from_v8(scope, v).unwrap();
     assert_eq!(&*buf, &[97]);
   });
 
   dedo(
     "(Uint8Array.from([0x68, 0x65, 0x6C, 0x6C, 0x6F]))",
     |scope, v| {
-      let buf: ZeroCopyBuf = serde_v8::from_v8(scope, v).unwrap();
+      let buf: JsBuffer = serde_v8::from_v8(scope, v).unwrap();
       assert_eq!(&*buf, &[0x68, 0x65, 0x6C, 0x6C, 0x6F]);
     },
   );
+
+  dedo("(new ArrayBuffer(4))", |scope, v| {
+    let buf: JsBuffer = serde_v8::from_v8(scope, v).unwrap();
+    assert_eq!(&*buf, &[0x0, 0x0, 0x0, 0x0]);
+  });
+
+  dedo("(new ArrayBuffer(8, { maxByteLength: 16}))", |scope, v| {
+    let result: Result<JsBuffer, Error> = serde_v8::from_v8(scope, v);
+    matches!(result, Err(Error::ResizableBackingStoreNotSupported));
+  });
 }
 
 // Structs
@@ -408,7 +418,7 @@ detest!(
 );
 
 defail!(defail_struct, MathOp, "123", |e| e
-  == Err(Error::ExpectedObject));
+  == Err(Error::ExpectedObject("Number")));
 
 #[derive(Eq, PartialEq, Debug, Deserialize)]
 pub struct SomeThing {
@@ -497,34 +507,6 @@ detest!(de_neg_inf_i32, i32, "-Infinity", i32::MIN);
 detest!(de_neg_inf_i64, i64, "-Infinity", i64::MIN);
 detest!(de_neg_inf_f32, f32, "-Infinity", f32::NEG_INFINITY);
 detest!(de_neg_inf_f64, f64, "-Infinity", f64::NEG_INFINITY);
-
-// valueOf Number
-detest!(de_valof_u8, u8, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u16, u16, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u32, u32, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u64, u64, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i8, i8, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i16, i16, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i32, i32, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i64, i64, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_f32, f32, "({ valueOf: () => 123 })", 123.0);
-detest!(de_valof_f64, f64, "({ valueOf: () => 123 })", 123.0);
-
-// valueOf BigInt
-detest!(de_valof_bigint_u8, u8, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u16, u16, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u32, u32, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u64, u64, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i8, i8, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i16, i16, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i32, i32, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i64, i64, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_f32, f32, "({ valueOf: () => 123n })", 123.0);
-detest!(de_valof_bigint_f64, f64, "({ valueOf: () => 123n })", 123.0);
-
-// bool
-detest!(de_num_true, u8, "true", 1);
-detest!(de_num_false, u8, "false", 0);
 
 // BigInt to f32/f64 max/min
 detest!(

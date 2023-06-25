@@ -6,10 +6,12 @@ import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
+  FunctionPrototypeBind,
   SymbolFor,
 } = primordials;
 
-const windowDispatchEvent = EventTarget.prototype.dispatchEvent.bind(
+const windowDispatchEvent = FunctionPrototypeBind(
+  EventTarget.prototype.dispatchEvent,
   globalThis,
 );
 

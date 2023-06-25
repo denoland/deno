@@ -34,6 +34,14 @@
 "use strict";
 
 (() => {
+  // Provide bootstrap namespace
+  globalThis.__bootstrap ??= {};
+  const key = Symbol.for("00_primordials.js");
+  if (globalThis.__bootstrap[key]) {
+    return;
+  }
+  globalThis.__bootstrap[key] = true;
+
   const primordials = {};
 
   const {
@@ -297,6 +305,7 @@
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
     FunctionPrototypeCall,
+    ObjectAssign,
     ObjectDefineProperty,
     ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
@@ -405,7 +414,11 @@
     Map,
     class SafeMap extends Map {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -413,7 +426,11 @@
     WeakMap,
     class SafeWeakMap extends WeakMap {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -422,7 +439,11 @@
     Set,
     class SafeSet extends Set {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -430,7 +451,11 @@
     WeakSet,
     class SafeWeakSet extends WeakSet {
       constructor(i) {
-        super(i);
+        if (i == null) {
+          super();
+          return;
+        }
+        super(new SafeArrayIterator(i));
       }
     },
   );
@@ -594,6 +619,5 @@
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);
 
-  // Provide bootstrap namespace
-  globalThis.__bootstrap = { primordials };
+  ObjectAssign(globalThis.__bootstrap, { primordials });
 })();

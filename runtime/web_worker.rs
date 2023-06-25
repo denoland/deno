@@ -3,7 +3,7 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
-use crate::tokio_util::run_local;
+use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -34,10 +34,11 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
 use deno_web::MessagePort;
@@ -329,10 +330,11 @@ pub struct WebWorkerOptions {
   pub extensions: Vec<Extension>,
   pub startup_snapshot: Option<Snapshot>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
+  pub fs: Arc<dyn FileSystem>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -396,17 +398,17 @@ impl WebWorker {
     // `runtime/build.rs`, `runtime/worker.rs` and `cli/build.rs`!
     let mut extensions: Vec<Extension> = vec![
       // Web APIs
-      deno_webidl::deno_webidl::init_ops(),
-      deno_console::deno_console::init_ops(),
-      deno_url::deno_url::init_ops(),
-      deno_web::deno_web::init_ops::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init_ext(),
+      deno_console::deno_console::init_ext(),
+      deno_url::deno_url::init_ext(),
+      deno_web::deno_web::init_ext::<PermissionsContainer>(
         options.blob_store.clone(),
         Some(main_module.clone()),
       ),
-      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ext::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -414,53 +416,57 @@ impl WebWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      deno_cache::deno_cache::init_ext::<SqliteBackedCache>(create_cache),
+      deno_websocket::deno_websocket::init_ext::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_ops(None).disable(),
-      deno_crypto::deno_crypto::init_ops(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops(
+      deno_webstorage::deno_webstorage::init_ext(None).disable(),
+      deno_crypto::deno_crypto::init_ext(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init_ext(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
-      deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+      deno_ffi::deno_ffi::init_ext::<PermissionsContainer>(unstable),
+      deno_net::deno_net::init_ext::<PermissionsContainer>(
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops(),
-      deno_kv::deno_kv::init_ops(
+      deno_tls::deno_tls::init_ext(),
+      deno_kv::deno_kv::init_ext(
         SqliteDbHandler::<PermissionsContainer>::new(None),
         unstable,
       ),
-      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
-      deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_napi::deno_napi::init_ext::<PermissionsContainer>(),
+      deno_http::deno_http::init_ext::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init_ext(Some(options.stdio)),
+      deno_fs::deno_fs::init_ext::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ext::<PermissionsContainer>(
         options.npm_resolver,
+        options.fs,
       ),
       // Runtime ops that are always initialized for WebWorkers
-      ops::web_worker::deno_web_worker::init_ops(),
-      ops::runtime::deno_runtime::init_ops(main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops(
+      ops::web_worker::deno_web_worker::init_ext(),
+      ops::runtime::deno_runtime::init_ext(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ext(
         options.create_web_worker_cb.clone(),
         options.preload_module_cb.clone(),
         options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::fs_events::deno_fs_events::init_ops(),
-      ops::os::deno_os_worker::init_ops(),
-      ops::permissions::deno_permissions::init_ops(),
-      ops::process::deno_process::init_ops(),
-      ops::signal::deno_signal::init_ops(),
-      ops::tty::deno_tty::init_ops(),
-      ops::http::deno_http_runtime::init_ops(),
-      deno_permissions_web_worker::init_ops(
+      ops::fs_events::deno_fs_events::init_ext(),
+      ops::os::deno_os_worker::init_ext(),
+      ops::permissions::deno_permissions::init_ext(),
+      ops::process::deno_process::init_ext(),
+      ops::signal::deno_signal::init_ext(),
+      ops::tty::deno_tty::init_ext(),
+      ops::http::deno_http_runtime::init_ext(),
+      deno_permissions_web_worker::init_ext(
         permissions,
         unstable,
         enable_testing_features,
@@ -478,6 +484,15 @@ impl WebWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
+    // Clear extension modules from the module map, except preserve `ext:deno_node`
+    // modules as `node:` specifiers.
+    let rename_modules = Some(
+      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+        .iter()
+        .map(|p| (p.ext_specifier, p.specifier))
+        .collect(),
+    );
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
@@ -487,6 +502,7 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
+      rename_modules,
       ..Default::default()
     });
 
@@ -832,5 +848,5 @@ pub fn run_web_worker(
     debug!("Worker thread shuts down {}", &name);
     result
   };
-  run_local(fut)
+  create_and_run_current_thread(fut)
 }

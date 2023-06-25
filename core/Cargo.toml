@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_core"
-version = "0.179.0"
+version = "0.191.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,7 +16,12 @@ path = "lib.rs"
 [features]
 default = ["v8_use_custom_libcxx"]
 v8_use_custom_libcxx = ["v8/use_custom_libcxx"]
-include_js_files_for_snapshotting = []
+# Enable to exclude extension!() JS sources from the binary (e.g. if they are already snapshotted).
+exclude_js_sources = []
+# Read extension!() JS sources at 'runtime' instead of statically including them. They will be read
+# from their `CARGO_MANIFEST_DIR`-based paths, so it should only to be used in build and dev scripts
+# where these paths are available. Overrides `exclude_js_sources`.
+runtime_js_sources = ["exclude_js_sources"]
 
 [dependencies]
 anyhow.workspace = true
@@ -36,6 +41,7 @@ serde_json = { workspace = true, features = ["preserve_order"] }
 serde_v8.workspace = true
 smallvec.workspace = true
 sourcemap = "6.1"
+tokio.workspace = true
 url.workspace = true
 v8.workspace = true
 
@@ -43,7 +49,8 @@ v8.workspace = true
 name = "http_bench_json_ops"
 path = "examples/http_bench_json_ops/main.rs"
 
-# These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
+deno_core = { workspace = true, features = ["runtime_js_sources"] }
+
+# These dependencies are only used for the 'http_bench_*_ops' examples.
 deno_ast.workspace = true
-tokio.workspace = true

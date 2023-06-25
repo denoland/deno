@@ -178,7 +178,7 @@ pub struct FileFetcher {
   cache: FileCache,
   cache_setting: CacheSetting,
   pub http_cache: HttpCache,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   blob_store: BlobStore,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
@@ -189,7 +189,7 @@ impl FileFetcher {
     http_cache: HttpCache,
     cache_setting: CacheSetting,
     allow_remote: bool,
-    http_client: HttpClient,
+    http_client: Arc<HttpClient>,
     blob_store: BlobStore,
     progress_bar: Option<ProgressBar>,
   ) -> Self {
@@ -660,7 +660,7 @@ async fn fetch_once<'a>(
   http_client: &HttpClient,
   args: FetchOnceArgs<'a>,
 ) -> Result<FetchOnceResult, AnyError> {
-  let mut request = http_client.get_no_redirect(args.url.clone());
+  let mut request = http_client.get_no_redirect(args.url.clone())?;
 
   if let Some(etag) = args.maybe_etag {
     let if_none_match_val = HeaderValue::from_str(&etag)?;
@@ -744,6 +744,7 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::url::Url;
   use deno_runtime::deno_fetch::create_http_client;
+  use deno_runtime::deno_fetch::CreateHttpClientOptions;
   use deno_runtime::deno_web::Blob;
   use deno_runtime::deno_web::InMemoryBlobPart;
   use std::fs::read;
@@ -763,13 +764,13 @@ mod tests {
     maybe_temp_dir: Option<TempDir>,
   ) -> (FileFetcher, TempDir, BlobStore) {
     let temp_dir = maybe_temp_dir.unwrap_or_default();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let blob_store = BlobStore::default();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       cache_setting,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       blob_store.clone(),
       None,
     );
@@ -826,8 +827,7 @@ mod tests {
 
   async fn test_fetch_local_encoded(charset: &str, expected: String) {
     let p = test_util::testdata_path().join(format!("encoding/{charset}.ts"));
-    let specifier =
-      ModuleSpecifier::from_file_path(p.to_str().unwrap()).unwrap();
+    let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(&*file.source, expected);
   }
@@ -1033,11 +1033,9 @@ mod tests {
   async fn test_insert_cached() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let local = temp_dir.path().join("a.ts");
-    let specifier =
-      ModuleSpecifier::from_file_path(local.as_os_str().to_str().unwrap())
-        .unwrap();
+    let specifier = ModuleSpecifier::from_file_path(&local).unwrap();
     let file = File {
-      local,
+      local: local.to_path_buf(),
       maybe_types: None,
       media_type: MediaType::TypeScript,
       source: "some source code".into(),
@@ -1081,7 +1079,7 @@ mod tests {
   #[test]
   fn test_get_http_cache_location() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
-    let expected = temp_dir.path().join("deps");
+    let expected = temp_dir.path().join("deps").to_path_buf();
     let actual = file_fetcher.get_http_cache_location();
     assert_eq!(actual, expected);
   }
@@ -1202,12 +1200,12 @@ mod tests {
 
     // This creates a totally new instance, simulating another Deno process
     // invocation and indicates to "cache bust".
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::ReloadAll,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1227,12 +1225,12 @@ mod tests {
   async fn test_fetch_uses_cache() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1254,10 +1252,10 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1393,12 +1391,12 @@ mod tests {
   async fn test_fetch_uses_cache_with_redirects() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1423,10 +1421,10 @@ mod tests {
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
 
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1520,12 +1518,12 @@ mod tests {
   async fn test_fetch_no_remote() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       false,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1545,20 +1543,20 @@ mod tests {
   async fn test_fetch_cache_only() {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location.clone()),
       CacheSetting::Only,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
     let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(&location),
+      HttpCache::new(location),
       CacheSetting::Use,
       true,
-      HttpClient::new(None, None).unwrap(),
+      Arc::new(HttpClient::new(None, None)),
       BlobStore::default(),
       None,
     );
@@ -1746,7 +1744,7 @@ mod tests {
 
   fn create_test_client() -> HttpClient {
     HttpClient::from_client(
-      create_http_client("test_client", None, vec![], None, None, None)
+      create_http_client("test_client", CreateHttpClientOptions::default())
         .unwrap(),
     )
   }
@@ -1943,17 +1941,13 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path().join("tls/RootCA.pem"),
+          )
+          .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -1982,15 +1976,11 @@ mod tests {
   async fn test_fetch_with_default_certificate_store() {
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
-    let url = Url::parse("https://deno.land").unwrap();
+    let url = Url::parse("https://deno.land/x").unwrap();
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None, // This will load mozilla certs by default
-        vec![],
-        None,
-        None,
-        None,
+        CreateHttpClientOptions::default(),
       )
       .unwrap(),
     );
@@ -2021,15 +2011,24 @@ mod tests {
   #[ignore] // https://github.com/denoland/deno/issues/12561
   async fn test_fetch_with_empty_certificate_store() {
     use deno_runtime::deno_tls::rustls::RootCertStore;
+    use deno_runtime::deno_tls::RootCertStoreProvider;
+
+    struct ValueRootCertStoreProvider(RootCertStore);
+
+    impl RootCertStoreProvider for ValueRootCertStoreProvider {
+      fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+        Ok(&self.0)
+      }
+    }
 
     let _http_server_guard = test_util::http_server();
     // Relies on external http server with a valid mozilla root CA cert.
     let url = Url::parse("https://deno.land").unwrap();
     let client = HttpClient::new(
-      Some(RootCertStore::empty()), // no certs loaded at all
+      // no certs loaded at all
+      Some(Arc::new(ValueRootCertStoreProvider(RootCertStore::empty()))),
       None,
-    )
-    .unwrap();
+    );
 
     let result = fetch_once(
       &client,
@@ -2059,17 +2058,15 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_string(),
+          )
+          .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2104,17 +2101,15 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_string(),
+          )
+          .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );
@@ -2166,17 +2161,15 @@ mod tests {
     let client = HttpClient::from_client(
       create_http_client(
         version::get_user_agent(),
-        None,
-        vec![read(
-          test_util::testdata_path()
-            .join("tls/RootCA.pem")
-            .to_str()
-            .unwrap(),
-        )
-        .unwrap()],
-        None,
-        None,
-        None,
+        CreateHttpClientOptions {
+          ca_certs: vec![read(
+            test_util::testdata_path()
+              .join("tls/RootCA.pem")
+              .to_string(),
+          )
+          .unwrap()],
+          ..Default::default()
+        },
       )
       .unwrap(),
     );

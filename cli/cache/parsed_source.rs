@@ -73,7 +73,6 @@ impl deno_graph::ParsedSourceStore for ParsedSourceCacheSources {
 
 /// A cache of `ParsedSource`s, which may be used with `deno_graph`
 /// for cached dependency analysis.
-#[derive(Clone)]
 pub struct ParsedSourceCache {
   db: CacheDB,
   sources: ParsedSourceCacheSources,
@@ -91,13 +90,6 @@ impl ParsedSourceCache {
   pub fn new(db: CacheDB) -> Self {
     Self {
       db,
-      sources: Default::default(),
-    }
-  }
-
-  pub fn reset_for_file_watcher(&self) -> Self {
-    Self {
-      db: self.db.clone(),
       sources: Default::default(),
     }
   }

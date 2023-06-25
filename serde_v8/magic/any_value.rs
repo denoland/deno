@@ -1,17 +1,19 @@
 use num_bigint::BigInt;
 
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use super::buffer::ZeroCopyBuf;
+use super::buffer::JsBuffer;
 use super::transl8::FromV8;
 use super::transl8::ToV8;
 use crate::magic::transl8::impl_magic;
 use crate::Error;
+use crate::ToJsBuffer;
 
 /// An untagged enum type that can be any of number, string, bool, bigint, or
 /// buffer.
 #[derive(Debug)]
 pub enum AnyValue {
-  Buffer(ZeroCopyBuf),
+  RustBuffer(ToJsBuffer),
+  V8Buffer(JsBuffer),
   String(String),
   Number(f64),
   BigInt(BigInt),
@@ -26,7 +28,8 @@ impl ToV8 for AnyValue {
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
     match self {
-      Self::Buffer(buf) => buf.to_v8(scope),
+      Self::RustBuffer(buf) => crate::to_v8(scope, buf),
+      Self::V8Buffer(_) => unreachable!(),
       Self::String(s) => crate::to_v8(scope, s),
       Self::Number(num) => crate::to_v8(scope, num),
       Self::BigInt(bigint) => {
@@ -52,8 +55,8 @@ impl FromV8 for AnyValue {
       let bigint = crate::BigInt::from_v8(scope, value)?;
       Ok(AnyValue::BigInt(bigint.into()))
     } else if value.is_array_buffer_view() {
-      let buf = ZeroCopyBuf::from_v8(scope, value)?;
-      Ok(AnyValue::Buffer(buf))
+      let buf = JsBuffer::from_v8(scope, value)?;
+      Ok(AnyValue::V8Buffer(buf))
     } else if value.is_boolean() {
       let string = crate::from_v8(scope, value)?;
       Ok(AnyValue::Bool(string))

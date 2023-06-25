@@ -6,11 +6,13 @@ use crate::io::BufView;
 use crate::ops_builtin_v8;
 use crate::ops_metrics::OpMetrics;
 use crate::resources::ResourceId;
+use crate::JsBuffer;
 use crate::OpState;
 use crate::Resource;
-use crate::ZeroCopyBuf;
 use anyhow::Error;
 use deno_ops::op;
+use deno_ops::op2;
+use serde_v8::ToJsBuffer;
 use std::cell::RefCell;
 use std::io::stderr;
 use std::io::stdout;
@@ -27,8 +29,12 @@ crate::extension!(
     op_wasm_streaming_feed,
     op_wasm_streaming_set_url,
     op_void_sync,
+    op_error_async,
+    op_error_async_deferred,
     op_void_async,
+    op_void_async_deferred,
     op_add,
+    op_add_async,
     // TODO(@AaronO): track IO metrics for builtin streams
     op_read,
     op_read_all,
@@ -43,8 +49,6 @@ crate::extension!(
     op_str_byte_length,
     ops_builtin_v8::op_ref_op,
     ops_builtin_v8::op_unref_op,
-    ops_builtin_v8::op_set_macrotask_callback,
-    ops_builtin_v8::op_set_next_tick_callback,
     ops_builtin_v8::op_set_promise_reject_callback,
     ops_builtin_v8::op_run_microtasks,
     ops_builtin_v8::op_has_tick_scheduled,
@@ -59,6 +63,8 @@ crate::extension!(
     ops_builtin_v8::op_set_promise_hooks,
     ops_builtin_v8::op_get_promise_details,
     ops_builtin_v8::op_get_proxy_details,
+    ops_builtin_v8::op_get_non_index_property_names,
+    ops_builtin_v8::op_get_constructor_name,
     ops_builtin_v8::op_memory_usage,
     ops_builtin_v8::op_set_wasm_streaming_callback,
     ops_builtin_v8::op_abort_wasm_streaming,
@@ -74,6 +80,9 @@ crate::extension!(
     ops_builtin_v8::op_arraybuffer_was_detached,
   ],
   js = ["00_primordials.js", "01_core.js", "02_error.js"],
+  customizer = |ext: &mut crate::ExtensionBuilder| {
+    ext.deno_core();
+  }
 );
 
 /// Return map of resources with id as key
@@ -87,8 +96,13 @@ pub fn op_resources(state: &mut OpState) -> Vec<(ResourceId, String)> {
     .collect()
 }
 
-#[op(fast)]
+#[op2(core, fast)]
 fn op_add(a: i32, b: i32) -> i32 {
+  a + b
+}
+
+#[op]
+pub async fn op_add_async(a: i32, b: i32) -> i32 {
   a + b
 }
 
@@ -97,6 +111,19 @@ pub fn op_void_sync() {}
 
 #[op]
 pub async fn op_void_async() {}
+
+#[op]
+pub async fn op_error_async() -> Result<(), Error> {
+  Err(Error::msg("error"))
+}
+
+#[op(deferred)]
+pub async fn op_error_async_deferred() -> Result<(), Error> {
+  Err(Error::msg("error"))
+}
+
+#[op(deferred)]
+pub async fn op_void_async_deferred() {}
 
 /// Remove a resource from the resource table.
 #[op]
@@ -193,7 +220,7 @@ pub fn op_wasm_streaming_set_url(
 async fn op_read(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufMutView::from(buf);
@@ -204,7 +231,7 @@ async fn op_read(
 async fn op_read_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<ZeroCopyBuf, Error> {
+) -> Result<ToJsBuffer, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
 
   // The number of bytes we attempt to grow the buffer by each time it fills
@@ -266,14 +293,14 @@ async fn op_read_all(
     vec.truncate(nread);
   }
 
-  Ok(ZeroCopyBuf::from(vec))
+  Ok(ToJsBuffer::from(vec))
 }
 
 #[op]
 async fn op_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<u32, Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);
@@ -306,7 +333,7 @@ fn op_write_sync(
 async fn op_write_all(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), Error> {
   let resource = state.borrow().resource_table.get_any(rid)?;
   let view = BufView::from(buf);

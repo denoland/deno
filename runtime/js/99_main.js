@@ -12,27 +12,28 @@ const ops = core.ops;
 const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
   ArrayPrototypeIndexOf,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeShift,
   ArrayPrototypeSplice,
-  ArrayPrototypeMap,
   DateNow,
   Error,
   ErrorPrototype,
-  FunctionPrototypeCall,
   FunctionPrototypeBind,
+  FunctionPrototypeCall,
   ObjectAssign,
-  ObjectDefineProperty,
   ObjectDefineProperties,
+  ObjectDefineProperty,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
+  PromisePrototypeThen,
   PromiseResolve,
+  SafeWeakMap,
   Symbol,
   SymbolIterator,
-  PromisePrototypeThen,
-  SafeWeakMap,
   TypeError,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
@@ -44,12 +45,7 @@ import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
 import * as os from "ext:runtime/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
-import * as colors from "ext:deno_console/01_colors.js";
-import {
-  inspectArgs,
-  quoteString,
-  wrapConsole,
-} from "ext:deno_console/02_console.js";
+import * as consoleMod from "ext:deno_console/01_console.js";
 import * as performance from "ext:deno_web/15_performance.js";
 import * as url from "ext:deno_url/00_url.js";
 import * as fetch from "ext:deno_fetch/26_fetch.js";
@@ -99,7 +95,7 @@ function workerClose() {
 function postMessage(message, transferOrOptions = {}) {
   const prefix =
     "Failed to execute 'postMessage' on 'DedicatedWorkerGlobalScope'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   message = webidl.converters.any(message);
   let options;
   if (
@@ -109,16 +105,15 @@ function postMessage(message, transferOrOptions = {}) {
   ) {
     const transfer = webidl.converters["sequence<object>"](
       transferOrOptions,
-      { prefix, context: "Argument 2" },
+      prefix,
+      "Argument 2",
     );
     options = { transfer };
   } else {
     options = webidl.converters.StructuredSerializeOptions(
       transferOrOptions,
-      {
-        prefix,
-        context: "Argument 2",
-      },
+      prefix,
+      "Argument 2",
     );
   }
   const { transfer } = options;
@@ -146,8 +141,10 @@ async function pollForMessages() {
     const msgEvent = new event.MessageEvent("message", {
       cancelable: false,
       data: message,
-      ports: transferables.filter((t) =>
-        ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t)
+      ports: ArrayPrototypeFilter(
+        transferables,
+        (t) =>
+          ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
 
@@ -218,12 +215,16 @@ function formatException(error) {
     return null;
   } else if (typeof error == "string") {
     return `Uncaught ${
-      inspectArgs([quoteString(error)], {
-        colors: !colors.getNoColor(),
+      consoleMod.inspectArgs([
+        consoleMod.quoteString(error, consoleMod.getDefaultInspectOptions()),
+      ], {
+        colors: !consoleMod.getNoColor(),
       })
     }`;
   } else {
-    return `Uncaught ${inspectArgs([error], { colors: !colors.getNoColor() })}`;
+    return `Uncaught ${
+      consoleMod.inspectArgs([error], { colors: !consoleMod.getNoColor() })
+    }`;
   }
 }
 
@@ -295,7 +296,7 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  debugFlag,
+  logLevel,
   noColor,
   colorSupportLevel,
   isTty,
@@ -312,9 +313,9 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogDebug(debugFlag, source);
-  colors.setNoColor(noColor || !isTty);
-  colors.setSupportLevel(colorSupportLevel);
+  util.setLogLevel(logLevel, source);
+  consoleMod.setNoColor(noColor || !isTty);
+  consoleMod.setColorSupportLevel(colorSupportLevel);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
 }
@@ -344,10 +345,17 @@ function promiseRejectCallback(type, promise, reason) {
   }
 
   return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0;
+    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
 }
 
 function promiseRejectMacrotaskCallback() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
+  if (pendingRejections.length === 0) {
+    return undefined;
+  }
+
   while (pendingRejections.length > 0) {
     const promise = ArrayPrototypeShift(pendingRejections);
     const hasPendingException = ops.op_has_pending_promise_rejection(
@@ -380,6 +388,15 @@ function promiseRejectMacrotaskCallback() {
     globalThis_.addEventListener("error", errorEventCb);
     globalThis_.dispatchEvent(rejectionEvent);
     globalThis_.removeEventListener("error", errorEventCb);
+
+    // If event was not yet prevented, try handing it off to Node compat layer
+    // (if it was initialized)
+    if (
+      !rejectionEvent.defaultPrevented &&
+      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+    ) {
+      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
+    }
 
     // If event was not prevented (or "unhandledrejection" listeners didn't
     // throw) we will let Rust side handle it.
@@ -416,7 +433,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -425,13 +442,12 @@ function bootstrapMainRuntime(runtimeOptions) {
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    11: ppid,
-    12: target,
-    13: v8Version,
-    14: userAgent,
-    15: inspectFlag,
-    // 16: enableTestingFeaturesFlag
-    17: colorSupportLevel,
+    11: target,
+    12: v8Version,
+    13: userAgent,
+    14: inspectFlag,
+    // 15: enableTestingFeaturesFlag
+    16: colorSupportLevel,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -466,7 +482,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (inspectFlag) {
     const consoleFromV8 = core.console;
     const consoleFromDeno = globalThis.console;
-    wrapConsole(consoleFromDeno, consoleFromV8);
+    consoleMod.wrapConsole(consoleFromDeno, consoleFromV8);
   }
 
   event.setEventTargetData(globalThis);
@@ -485,7 +501,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     colorSupportLevel,
     isTty,
@@ -495,9 +511,16 @@ function bootstrapMainRuntime(runtimeOptions) {
   setUserAgent(userAgent);
   setLanguage(locale);
 
+  let ppid = undefined;
   ObjectDefineProperties(finalDenoNs, {
     pid: util.readOnly(pid),
-    ppid: util.readOnly(ppid),
+    ppid: util.getterOnly(() => {
+      // lazy because it's expensive
+      if (ppid === undefined) {
+        ppid = ops.op_ppid();
+      }
+      return ppid;
+    }),
     noColor: util.readOnly(noColor),
     args: util.readOnly(ObjectFreeze(args)),
     mainModule: util.getterOnly(opMainModule),
@@ -526,7 +549,7 @@ function bootstrapWorkerRuntime(
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -535,13 +558,12 @@ function bootstrapWorkerRuntime(
     8: tsVersion,
     9: unstableFlag,
     10: pid,
-    // 11: ppid,
-    12: target,
-    13: v8Version,
-    // 14: userAgent,
-    // 15: inspectFlag,
-    16: enableTestingFeaturesFlag,
-    17: colorSupportLevel,
+    11: target,
+    12: v8Version,
+    // 13: userAgent,
+    // 14: inspectFlag,
+    15: enableTestingFeaturesFlag,
+    16: colorSupportLevel,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -574,7 +596,7 @@ function bootstrapWorkerRuntime(
   ObjectSetPrototypeOf(globalThis, DedicatedWorkerGlobalScope.prototype);
 
   const consoleFromDeno = globalThis.console;
-  wrapConsole(consoleFromDeno, consoleFromV8);
+  consoleMod.wrapConsole(consoleFromDeno, consoleFromV8);
 
   event.setEventTargetData(globalThis);
   event.saveGlobalThisReference(globalThis);
@@ -596,7 +618,7 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     colorSupportLevel,
     isTty,

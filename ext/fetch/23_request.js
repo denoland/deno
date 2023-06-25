@@ -10,7 +10,7 @@
 /// <reference lib="esnext" />
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
@@ -36,7 +36,8 @@ const {
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   TypeError,
@@ -90,7 +91,11 @@ function processUrlList(urlList, urlListProcessed) {
  */
 function newInnerRequest(method, url, headerList, body, maybeBlob) {
   let blobUrlEntry = null;
-  if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
+  if (
+    maybeBlob &&
+    typeof url === "string" &&
+    StringPrototypeStartsWith(url, "blob:")
+  ) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
   return {
@@ -222,7 +227,7 @@ function validateAndNormalizeMethod(m) {
   }
 
   // Regular path
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);
@@ -273,15 +278,13 @@ class Request {
    */
   constructor(input, init = {}) {
     const prefix = "Failed to construct 'Request'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters["RequestInfo_DOMString"](input, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters["RequestInfo_DOMString"](
+      input,
       prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["RequestInit"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
 
     this[webidl.brand] = webidl.brand;
 
@@ -341,7 +344,8 @@ class Request {
         throw webidl.makeException(
           TypeError,
           "`client` must be a Deno.HttpClient",
-          { prefix, context: "Argument 2" },
+          prefix,
+          "Argument 2",
         );
       }
       request.clientRid = init.client?.rid ?? null;
@@ -500,15 +504,15 @@ webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
   RequestPrototype,
 );
-webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
+webidl.converters["RequestInfo_DOMString"] = (V, prefix, context, opts) => {
   // Union for (Request or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
-      return webidl.converters["Request"](V, opts);
+      return webidl.converters["Request"](V, prefix, context, opts);
     }
   }
   // Passed to new URL(...) which implicitly converts DOMString -> USVString
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
   "RequestRedirect",

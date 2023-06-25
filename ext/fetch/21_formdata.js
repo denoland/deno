@@ -22,15 +22,16 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   MathRandom,
   ObjectFreeze,
   ObjectPrototypeIsPrototypeOf,
+  SafeMap,
   SafeRegExp,
   Symbol,
   StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeTrim,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -41,6 +42,7 @@ const {
   StringPrototypeReplaceAll,
   TypeError,
   TypedArrayPrototypeSubarray,
+  Uint8Array,
 } = primordials;
 
 const entryList = Symbol("entry list");
@@ -101,28 +103,28 @@ class FormData {
   append(name, valueOrBlobValue, filename) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'append' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
-      valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["Blob"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
       if (filename !== undefined) {
-        filename = webidl.converters["USVString"](filename, {
+        filename = webidl.converters["USVString"](
+          filename,
           prefix,
-          context: "Argument 3",
-        });
+          "Argument 3",
+        );
       }
     } else {
-      valueOrBlobValue = webidl.converters["USVString"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["USVString"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     }
 
     const entry = createEntry(name, valueOrBlobValue, filename);
@@ -137,12 +139,9 @@ class FormData {
   delete(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'name' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const list = this[entryList];
     for (let i = 0; i < list.length; i++) {
@@ -160,12 +159,9 @@ class FormData {
   get(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'get' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const entries = this[entryList];
     for (let i = 0; i < entries.length; ++i) {
@@ -182,12 +178,9 @@ class FormData {
   getAll(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'getAll' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const returnList = [];
     const entries = this[entryList];
@@ -205,12 +198,9 @@ class FormData {
   has(name) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'has' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
 
     const entries = this[entryList];
     for (let i = 0; i < entries.length; ++i) {
@@ -229,28 +219,28 @@ class FormData {
   set(name, valueOrBlobValue, filename) {
     webidl.assertBranded(this, FormDataPrototype);
     const prefix = "Failed to execute 'set' on 'FormData'";
-    webidl.requiredArguments(arguments.length, 2, { prefix });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
-    name = webidl.converters["USVString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    name = webidl.converters["USVString"](name, prefix, "Argument 1");
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, valueOrBlobValue)) {
-      valueOrBlobValue = webidl.converters["Blob"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["Blob"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
       if (filename !== undefined) {
-        filename = webidl.converters["USVString"](filename, {
+        filename = webidl.converters["USVString"](
+          filename,
           prefix,
-          context: "Argument 3",
-        });
+          "Argument 3",
+        );
       }
     } else {
-      valueOrBlobValue = webidl.converters["USVString"](valueOrBlobValue, {
+      valueOrBlobValue = webidl.converters["USVString"](
+        valueOrBlobValue,
         prefix,
-        context: "Argument 2",
-      });
+        "Argument 2",
+      );
     }
 
     const entry = createEntry(name, valueOrBlobValue, filename);
@@ -346,13 +336,15 @@ function formDataToBlob(formData) {
   });
 }
 
+const QUOTE_CONTENT_PATTERN = new SafeRegExp(/^"([^"]*)"$/);
+
 /**
  * @param {string} value
  * @returns {Map<string, string>}
  */
 function parseContentDisposition(value) {
   /** @type {Map<string, string>} */
-  const params = new Map();
+  const params = new SafeMap();
   // Forced to do so for some Map constructor param mismatch
   const values = ArrayPrototypeSlice(StringPrototypeSplit(value, ";"), 1);
   for (let i = 0; i < values.length; i++) {
@@ -361,11 +353,25 @@ function parseContentDisposition(value) {
       MapPrototypeSet(
         params,
         entries[0],
-        StringPrototypeReplace(entries[1], /^"([^"]*)"$/, "$1"),
+        StringPrototypeReplace(entries[1], QUOTE_CONTENT_PATTERN, "$1"),
       );
     }
   }
   return params;
+}
+
+/**
+ * Decodes a string containing UTF-8 mistakenly decoded as Latin-1 and
+ * decodes it correctly.
+ * @param {string} latin1String
+ * @returns {string}
+ */
+function decodeLatin1StringAsUtf8(latin1String) {
+  const buffer = new Uint8Array(latin1String.length);
+  for (let i = 0; i < latin1String.length; i++) {
+    buffer[i] = StringPrototypeCharCodeAt(latin1String, i);
+  }
+  return core.decode(buffer);
 }
 
 const CRLF = "\r\n";
@@ -475,23 +481,31 @@ class MultipartParser {
             i - boundaryIndex - 1,
           );
           // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
-          const filename = MapPrototypeGet(disposition, "filename");
-          const name = MapPrototypeGet(disposition, "name");
+          // These are UTF-8 decoded as if it was Latin-1.
+          // TODO(@andreubotella): Maybe we shouldn't be parsing entry headers
+          // as Latin-1.
+          const latin1Filename = MapPrototypeGet(disposition, "filename");
+          const latin1Name = MapPrototypeGet(disposition, "name");
 
           state = 5;
           // Reset
           boundaryIndex = 0;
           headerText = "";
 
-          if (!name) {
+          if (!latin1Name) {
             continue; // Skip, unknown name
           }
 
-          if (filename) {
+          const name = decodeLatin1StringAsUtf8(latin1Name);
+          if (latin1Filename) {
             const blob = new Blob([content], {
               type: headers.get("Content-Type") || "application/octet-stream",
             });
-            formData.append(name, blob, filename);
+            formData.append(
+              name,
+              blob,
+              decodeLatin1StringAsUtf8(latin1Filename),
+            );
           } else {
             formData.append(name, core.decode(content));
           }

@@ -3,10 +3,11 @@
 use std::ops::Deref;
 use std::ops::DerefMut;
 
-use serde_v8::ZeroCopyBuf;
+use bytes::Buf;
+use serde_v8::JsBuffer;
 
 /// BufView is a wrapper around an underlying contiguous chunk  of bytes. It can
-/// be created from a [ZeroCopyBuf], [bytes::Bytes], or [Vec<u8>] and implements
+/// be created from a [JsBuffer], [bytes::Bytes], or [Vec<u8>] and implements
 /// `Deref<[u8]>` and `AsRef<[u8]>`.
 ///
 /// The wrapper has the ability to constrain the exposed view to a sub-region of
@@ -21,16 +22,16 @@ pub struct BufView {
 enum BufViewInner {
   Empty,
   Bytes(bytes::Bytes),
-  ZeroCopy(ZeroCopyBuf),
+  JsBuffer(JsBuffer),
   Vec(Vec<u8>),
 }
 
 impl BufView {
-  fn from_inner(inner: BufViewInner) -> Self {
+  const fn from_inner(inner: BufViewInner) -> Self {
     Self { inner, cursor: 0 }
   }
 
-  pub fn empty() -> Self {
+  pub const fn empty() -> Self {
     Self::from_inner(BufViewInner::Empty)
   }
 
@@ -40,7 +41,7 @@ impl BufView {
     match &self.inner {
       BufViewInner::Empty => 0,
       BufViewInner::Bytes(bytes) => bytes.len() - self.cursor,
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.len() - self.cursor,
+      BufViewInner::JsBuffer(js_buf) => js_buf.len() - self.cursor,
       BufViewInner::Vec(vec) => vec.len() - self.cursor,
     }
   }
@@ -65,6 +66,20 @@ impl BufView {
   }
 }
 
+impl Buf for BufView {
+  fn remaining(&self) -> usize {
+    self.len()
+  }
+
+  fn chunk(&self) -> &[u8] {
+    self.deref()
+  }
+
+  fn advance(&mut self, cnt: usize) {
+    self.advance_cursor(cnt)
+  }
+}
+
 impl Deref for BufView {
   type Target = [u8];
 
@@ -72,7 +87,7 @@ impl Deref for BufView {
     let buf = match &self.inner {
       BufViewInner::Empty => &[],
       BufViewInner::Bytes(bytes) => bytes.deref(),
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.deref(),
+      BufViewInner::JsBuffer(js_buf) => js_buf.deref(),
       BufViewInner::Vec(vec) => vec.deref(),
     };
     &buf[self.cursor..]
@@ -85,9 +100,9 @@ impl AsRef<[u8]> for BufView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufView {
-  fn from(buf: ZeroCopyBuf) -> Self {
-    Self::from_inner(BufViewInner::ZeroCopy(buf))
+impl From<JsBuffer> for BufView {
+  fn from(buf: JsBuffer) -> Self {
+    Self::from_inner(BufViewInner::JsBuffer(buf))
   }
 }
 
@@ -108,14 +123,14 @@ impl From<BufView> for bytes::Bytes {
     match buf.inner {
       BufViewInner::Empty => bytes::Bytes::new(),
       BufViewInner::Bytes(bytes) => bytes,
-      BufViewInner::ZeroCopy(zero_copy) => zero_copy.into(),
+      BufViewInner::JsBuffer(js_buf) => js_buf.into(),
       BufViewInner::Vec(vec) => vec.into(),
     }
   }
 }
 
 /// BufMutView is a wrapper around an underlying contiguous chunk of writable
-/// bytes. It can be created from a `ZeroCopyBuf` or a `Vec<u8>` and implements
+/// bytes. It can be created from a `JsBuffer` or a `Vec<u8>` and implements
 /// `DerefMut<[u8]>` and `AsMut<[u8]>`.
 ///
 /// The wrapper has the ability to constrain the exposed view to a sub-region of
@@ -130,7 +145,7 @@ pub struct BufMutView {
 }
 
 enum BufMutViewInner {
-  ZeroCopy(ZeroCopyBuf),
+  JsBuffer(JsBuffer),
   Vec(Vec<u8>),
 }
 
@@ -147,7 +162,7 @@ impl BufMutView {
   /// buffer minus the cursor position.
   pub fn len(&self) -> usize {
     match &self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.len() - self.cursor,
+      BufMutViewInner::JsBuffer(js_buf) => js_buf.len() - self.cursor,
       BufMutViewInner::Vec(vec) => vec.len() - self.cursor,
     }
   }
@@ -174,7 +189,7 @@ impl BufMutView {
   /// Turn this `BufMutView` into a `BufView`.
   pub fn into_view(self) -> BufView {
     let inner = match self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => BufViewInner::ZeroCopy(zero_copy),
+      BufMutViewInner::JsBuffer(js_buf) => BufViewInner::JsBuffer(js_buf),
       BufMutViewInner::Vec(vec) => BufViewInner::Vec(vec),
     };
     BufView {
@@ -186,11 +201,11 @@ impl BufMutView {
   /// Unwrap the underlying buffer into a `Vec<u8>`, consuming the `BufMutView`.
   ///
   /// This method panics when called on a `BufMutView` that was created from a
-  /// `ZeroCopyBuf`.
+  /// `JsBuffer`.
   pub fn unwrap_vec(self) -> Vec<u8> {
     match self.inner {
-      BufMutViewInner::ZeroCopy(_) => {
-        panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
+      BufMutViewInner::JsBuffer(_) => {
+        panic!("Cannot unwrap a JsBuffer backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
     }
@@ -199,14 +214,28 @@ impl BufMutView {
   /// Get a mutable reference to an underlying `Vec<u8>`.
   ///
   /// This method panics when called on a `BufMutView` that was created from a
-  /// `ZeroCopyBuf`.
+  /// `JsBuffer`.
   pub fn get_mut_vec(&mut self) -> &mut Vec<u8> {
     match &mut self.inner {
-      BufMutViewInner::ZeroCopy(_) => {
-        panic!("Cannot unwrap a ZeroCopyBuf backed BufMutView into a Vec");
+      BufMutViewInner::JsBuffer(_) => {
+        panic!("Cannot unwrap a JsBuffer backed BufMutView into a Vec");
       }
       BufMutViewInner::Vec(vec) => vec,
     }
+  }
+}
+
+impl Buf for BufMutView {
+  fn remaining(&self) -> usize {
+    self.len()
+  }
+
+  fn chunk(&self) -> &[u8] {
+    self.deref()
+  }
+
+  fn advance(&mut self, cnt: usize) {
+    self.advance_cursor(cnt)
   }
 }
 
@@ -215,7 +244,7 @@ impl Deref for BufMutView {
 
   fn deref(&self) -> &[u8] {
     let buf = match &self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref(),
+      BufMutViewInner::JsBuffer(js_buf) => js_buf.deref(),
       BufMutViewInner::Vec(vec) => vec.deref(),
     };
     &buf[self.cursor..]
@@ -225,7 +254,7 @@ impl Deref for BufMutView {
 impl DerefMut for BufMutView {
   fn deref_mut(&mut self) -> &mut [u8] {
     let buf = match &mut self.inner {
-      BufMutViewInner::ZeroCopy(zero_copy) => zero_copy.deref_mut(),
+      BufMutViewInner::JsBuffer(js_buf) => js_buf.deref_mut(),
       BufMutViewInner::Vec(vec) => vec.deref_mut(),
     };
     &mut buf[self.cursor..]
@@ -244,9 +273,9 @@ impl AsMut<[u8]> for BufMutView {
   }
 }
 
-impl From<ZeroCopyBuf> for BufMutView {
-  fn from(buf: ZeroCopyBuf) -> Self {
-    Self::from_inner(BufMutViewInner::ZeroCopy(buf))
+impl From<JsBuffer> for BufMutView {
+  fn from(buf: JsBuffer) -> Self {
+    Self::from_inner(BufMutViewInner::JsBuffer(buf))
   }
 }
 

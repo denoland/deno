@@ -5,7 +5,35 @@ use deno_core::ModuleSpecifier;
 use std::thread;
 
 use crate::colors;
-use crate::ops::runtime::ppid;
+
+/// The log level to use when printing diagnostic log messages, warnings,
+/// or errors in the worker.
+///
+/// Note: This is disconnected with the log crate's log level and the Rust code
+/// in this crate will respect that value instead. To specify that, use
+/// `log::set_max_level`.
+#[derive(Debug, Default, Clone, Copy)]
+pub enum WorkerLogLevel {
+  // WARNING: Ensure this is kept in sync with
+  // the JS values (search for LogLevel).
+  Error = 1,
+  Warn = 2,
+  #[default]
+  Info = 3,
+  Debug = 4,
+}
+
+impl From<log::Level> for WorkerLogLevel {
+  fn from(value: log::Level) -> Self {
+    match value {
+      log::Level::Error => WorkerLogLevel::Error,
+      log::Level::Warn => WorkerLogLevel::Warn,
+      log::Level::Info => WorkerLogLevel::Info,
+      log::Level::Debug => WorkerLogLevel::Debug,
+      log::Level::Trace => WorkerLogLevel::Debug,
+    }
+  }
+}
 
 /// Common bootstrap options for MainWorker & WebWorker
 #[derive(Clone)]
@@ -13,7 +41,7 @@ pub struct BootstrapOptions {
   /// Sets `Deno.args` in JS runtime.
   pub args: Vec<String>,
   pub cpu_count: usize,
-  pub debug_flag: bool,
+  pub log_level: WorkerLogLevel,
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
@@ -47,7 +75,7 @@ impl Default for BootstrapOptions {
       color_support_level: colors::use_color_support_level(),
       is_tty: colors::is_tty(),
       enable_testing_features: Default::default(),
-      debug_flag: Default::default(),
+      log_level: Default::default(),
       ts_version: Default::default(),
       locale: "en".to_string(),
       location: Default::default(),
@@ -63,7 +91,7 @@ impl BootstrapOptions {
     &self,
     scope: &mut v8::HandleScope<'s>,
   ) -> v8::Local<'s, v8::Array> {
-    let array = v8::Array::new(scope, 17);
+    let array = v8::Array::new(scope, 16);
 
     {
       let args = v8::Array::new(scope, self.args.len() as i32);
@@ -80,7 +108,7 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Boolean::new(scope, self.debug_flag);
+      let val = v8::Integer::new(scope, self.log_level as i32);
       array.set_index(scope, 2, val.into());
     }
 
@@ -145,17 +173,12 @@ impl BootstrapOptions {
     }
 
     {
-      let val = v8::Integer::new(scope, ppid() as i32);
-      array.set_index(scope, 11, val.into());
-    }
-
-    {
       let val = v8::String::new_external_onebyte_static(
         scope,
         env!("TARGET").as_bytes(),
       )
       .unwrap();
-      array.set_index(scope, 12, val.into());
+      array.set_index(scope, 11, val.into());
     }
 
     {
@@ -165,7 +188,7 @@ impl BootstrapOptions {
         v8::NewStringType::Normal,
       )
       .unwrap();
-      array.set_index(scope, 13, val.into());
+      array.set_index(scope, 12, val.into());
     }
 
     {
@@ -175,17 +198,17 @@ impl BootstrapOptions {
         v8::NewStringType::Normal,
       )
       .unwrap();
-      array.set_index(scope, 14, val.into());
+      array.set_index(scope, 13, val.into());
     }
 
     {
       let val = v8::Boolean::new(scope, self.inspect);
-      array.set_index(scope, 15, val.into());
+      array.set_index(scope, 14, val.into());
     }
 
     {
       let val = v8::Boolean::new(scope, self.enable_testing_features);
-      array.set_index(scope, 16, val.into());
+      array.set_index(scope, 15, val.into());
     }
 
     {
@@ -198,7 +221,7 @@ impl BootstrapOptions {
           colors::TTYColorLevel::None => 0,
         },
       );
-      array.set_index(scope, 17, val.into());
+      array.set_index(scope, 16, val.into());
     }
 
     array
