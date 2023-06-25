@@ -34,6 +34,14 @@
 "use strict";
 
 (() => {
+  // Provide bootstrap namespace
+  globalThis.__bootstrap ??= {};
+  const key = Symbol.for("00_primordials.js");
+  if (globalThis.__bootstrap[key]) {
+    return;
+  }
+  globalThis.__bootstrap[key] = true;
+
   const primordials = {};
 
   const {
@@ -297,6 +305,7 @@
     ArrayPrototypeJoin,
     ArrayPrototypeMap,
     FunctionPrototypeCall,
+    ObjectAssign,
     ObjectDefineProperty,
     ObjectFreeze,
     ObjectPrototypeIsPrototypeOf,
@@ -610,6 +619,5 @@
   ObjectSetPrototypeOf(primordials, null);
   ObjectFreeze(primordials);
 
-  // Provide bootstrap namespace
-  globalThis.__bootstrap = { primordials };
+  ObjectAssign(globalThis.__bootstrap, { primordials });
 })();

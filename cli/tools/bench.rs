@@ -447,7 +447,7 @@ async fn bench_specifier(
     .create_custom_worker(
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::bench::deno_bench::init_ops(sender.clone())],
+      vec![ops::bench::deno_bench::init_ext(sender.clone())],
       Default::default(),
     )
     .await?;

@@ -100,7 +100,7 @@ fn setup(mode: Mode) -> (JsRuntime, Arc<AtomicUsize>) {
     }
   );
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops(mode, dispatch_count.clone())],
+    extensions: vec![test_ext::init_ext(mode, dispatch_count.clone())],
     get_error_class_fn: Some(&|error| {
       crate::error::get_custom_error_class(error).unwrap()
     }),
@@ -217,7 +217,7 @@ fn test_dispatch_no_zero_copy_buf() {
       "filename.js",
       r#"
 
-      Deno.core.opAsync("op_test");
+      Deno.core.opAsync("op_test", 0);
       "#,
     )
     .unwrap();
@@ -233,7 +233,7 @@ fn test_dispatch_stack_zero_copy_bufs() {
       r#"
       const { op_test } = Deno.core.ensureFastOps();
       let zero_copy_a = new Uint8Array([0]);
-      op_test(null, zero_copy_a);
+      op_test(0, zero_copy_a);
       "#,
     )
     .unwrap();
@@ -515,7 +515,7 @@ async fn test_error_builder() {
 
   deno_core::extension!(test_ext, ops = [op_err]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     get_error_class_fn: Some(&get_error_class_name),
     ..Default::default()
   });
@@ -1114,7 +1114,7 @@ async fn test_error_context() {
 
   deno_core::extension!(test_ext, ops = [op_err_sync, op_err_async]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1274,7 +1274,7 @@ async fn test_async_opstate_borrow() {
     state = |state| state.put(InnerState(42))
   );
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1305,7 +1305,7 @@ async fn test_sync_op_serialize_object_with_numbers_as_keys() {
     ops = [op_sync_serialize_object_with_numbers_as_keys]
   );
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1347,7 +1347,7 @@ async fn test_async_op_serialize_object_with_numbers_as_keys() {
     ops = [op_async_serialize_object_with_numbers_as_keys]
   );
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1383,7 +1383,7 @@ async fn test_set_macrotask_callback_set_next_tick_callback() {
 
   deno_core::extension!(test_ext, ops = [op_async_sleep]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1438,7 +1438,7 @@ fn test_has_tick_scheduled() {
 
   deno_core::extension!(test_ext, ops = [op_macrotask, op_next_tick]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1578,7 +1578,7 @@ async fn test_set_promise_reject_callback() {
 
   deno_core::extension!(test_ext, ops = [op_promise_reject]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1717,7 +1717,7 @@ async fn test_set_promise_reject_callback_top_level_await() {
   }
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     module_loader: Some(Rc::new(ModsLoader)),
     ..Default::default()
   });
@@ -1742,7 +1742,7 @@ fn test_op_return_serde_v8_error() {
 
   deno_core::extension!(test_ext, ops = [op_err]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   assert!(runtime
@@ -1767,7 +1767,7 @@ fn test_op_high_arity() {
 
   deno_core::extension!(test_ext, ops = [op_add_4]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   let r = runtime
@@ -1790,7 +1790,7 @@ fn test_op_disabled() {
 
   deno_core::extension!(test_ext, ops_fn = ops);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   let err = runtime
@@ -1817,7 +1817,7 @@ fn test_op_detached_buffer() {
 
   deno_core::extension!(test_ext, ops = [op_sum_take, op_boomerang]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -1886,7 +1886,7 @@ fn test_op_unstable_disabling() {
     middleware = |op| if op.is_unstable { op.disable() } else { op }
   );
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   runtime
@@ -1934,7 +1934,7 @@ fn js_realm_init() {
 
   deno_core::extension!(test_ext, ops = [op_test]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   let realm = runtime.create_realm().unwrap();
@@ -1963,7 +1963,7 @@ fn js_realm_init_snapshot() {
   deno_core::extension!(test_ext, ops = [op_test]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(Snapshot::Boxed(snapshot)),
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
   let realm = runtime.create_realm().unwrap();
@@ -1993,7 +1993,7 @@ fn js_realm_sync_ops() {
 
   deno_core::extension!(test_ext, ops = [op_test]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     get_error_class_fn: Some(&|error| {
       crate::error::get_custom_error_class(error).unwrap()
     }),
@@ -2041,7 +2041,7 @@ async fn js_realm_async_ops() {
 
   deno_core::extension!(test_ext, ops = [op_test]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     get_error_class_fn: Some(&|error| {
       crate::error::get_custom_error_class(error).unwrap()
     }),
@@ -2118,7 +2118,7 @@ async fn js_realm_gc() {
 
   deno_core::extension!(test_ext, ops = [op_pending]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -2165,7 +2165,7 @@ async fn js_realm_ref_unref_ops() {
 
   deno_core::extension!(test_ext, ops = [op_pending]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 
@@ -2265,7 +2265,7 @@ fn duplicate_op_names() {
 
   deno_core::extension!(test_ext, ops = [a::op_test, op_test]);
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 }
@@ -2284,7 +2284,7 @@ fn ops_in_js_have_proper_names() {
 
   deno_core::extension!(test_ext, ops = [op_test_sync, op_test_async]);
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![test_ext::init_ops()],
+    extensions: vec![test_ext::init_ext()],
     ..Default::default()
   });
 

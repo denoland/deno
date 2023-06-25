@@ -100,6 +100,7 @@ async function dlintPreferPrimordials() {
     // "ext/node/polyfills/*.mjs",
     // "ext/node/polyfills/*.ts",
     // ":!:ext/node/polyfills/*.d.ts",
+    ":!:ext/node/polyfills/_brotli.js",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",

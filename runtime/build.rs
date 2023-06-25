@@ -264,22 +264,22 @@ mod startup_snapshot {
     ],
   );
 
-  #[cfg(not(feature = "snapshot_from_snapshot"))]
+  #[cfg(not(feature = "exclude_js_main_from_snapshot"))]
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
     customizer = |ext: &mut deno_core::ExtensionBuilder| {
       ext.esm(vec![ExtensionFileSource {
         specifier: "ext:runtime_main/js/99_main.js",
-        code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("js/99_main.js"),
-        ),
+        code: ExtensionFileSourceCode::LoadAtRuntime(PathBuf::from(
+          "js/99_main.js",
+        )),
       }]);
       ext.esm_entry_point("ext:runtime_main/js/99_main.js");
     }
   );
 
-  #[cfg(feature = "snapshot_from_snapshot")]
+  #[cfg(feature = "exclude_js_main_from_snapshot")]
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
@@ -294,47 +294,45 @@ mod startup_snapshot {
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let fs = std::sync::Arc::new(deno_fs::RealFs);
     let extensions: Vec<Extension> = vec![
-      deno_webidl::deno_webidl::init_ops_and_esm(),
-      deno_console::deno_console::init_ops_and_esm(),
-      deno_url::deno_url::init_ops_and_esm(),
-      deno_web::deno_web::init_ops_and_esm::<Permissions>(
+      deno_webidl::deno_webidl::init_ext(),
+      deno_console::deno_console::init_ext(),
+      deno_url::deno_url::init_ext(),
+      deno_web::deno_web::init_ext::<Permissions>(
         deno_web::BlobStore::default(),
         Default::default(),
       ),
-      deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
-        Default::default(),
-      ),
-      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
-      deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
+      deno_fetch::deno_fetch::init_ext::<Permissions>(Default::default()),
+      deno_cache::deno_cache::init_ext::<SqliteBackedCache>(None),
+      deno_websocket::deno_websocket::init_ext::<Permissions>(
         "".to_owned(),
         None,
         None,
       ),
-      deno_webstorage::deno_webstorage::init_ops_and_esm(None),
-      deno_crypto::deno_crypto::init_ops_and_esm(None),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
+      deno_webstorage::deno_webstorage::init_ext(None),
+      deno_crypto::deno_crypto::init_ext(None),
+      deno_broadcast_channel::deno_broadcast_channel::init_ext(
         deno_broadcast_channel::InMemoryBroadcastChannel::default(),
         false, // No --unstable.
       ),
-      deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(false),
-      deno_net::deno_net::init_ops_and_esm::<Permissions>(
+      deno_ffi::deno_ffi::init_ext::<Permissions>(false),
+      deno_net::deno_net::init_ext::<Permissions>(
         None, false, // No --unstable.
         None,
       ),
-      deno_tls::deno_tls::init_ops_and_esm(),
-      deno_kv::deno_kv::init_ops_and_esm(
+      deno_tls::deno_tls::init_ext(),
+      deno_kv::deno_kv::init_ext(
         deno_kv::sqlite::SqliteDbHandler::<Permissions>::new(None),
         false, // No --unstable
       ),
-      deno_napi::deno_napi::init_ops_and_esm::<Permissions>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
-      deno_io::deno_io::init_ops_and_esm(Default::default()),
-      deno_fs::deno_fs::init_ops_and_esm::<Permissions>(false, fs.clone()),
-      runtime::init_ops_and_esm(),
+      deno_napi::deno_napi::init_ext::<Permissions>(),
+      deno_http::deno_http::init_ext::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init_ext(Default::default()),
+      deno_fs::deno_fs::init_ext::<Permissions>(false, fs.clone()),
+      runtime::init_ext(),
       // FIXME(bartlomieju): these extensions are specified last, because they
       // depend on `runtime`, even though it should be other way around
-      deno_node::deno_node::init_ops_and_esm::<Permissions>(None, fs),
-      runtime_main::init_ops_and_esm(),
+      deno_node::deno_node::init_ext::<Permissions>(None, fs),
+      runtime_main::init_ext(),
     ];
 
     let output = create_snapshot(CreateSnapshotOptions {

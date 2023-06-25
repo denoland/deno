@@ -508,34 +508,6 @@ detest!(de_neg_inf_i64, i64, "-Infinity", i64::MIN);
 detest!(de_neg_inf_f32, f32, "-Infinity", f32::NEG_INFINITY);
 detest!(de_neg_inf_f64, f64, "-Infinity", f64::NEG_INFINITY);
 
-// valueOf Number
-detest!(de_valof_u8, u8, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u16, u16, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u32, u32, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_u64, u64, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i8, i8, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i16, i16, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i32, i32, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_i64, i64, "({ valueOf: () => 123 })", 123);
-detest!(de_valof_f32, f32, "({ valueOf: () => 123 })", 123.0);
-detest!(de_valof_f64, f64, "({ valueOf: () => 123 })", 123.0);
-
-// valueOf BigInt
-detest!(de_valof_bigint_u8, u8, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u16, u16, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u32, u32, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_u64, u64, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i8, i8, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i16, i16, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i32, i32, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_i64, i64, "({ valueOf: () => 123n })", 123);
-detest!(de_valof_bigint_f32, f32, "({ valueOf: () => 123n })", 123.0);
-detest!(de_valof_bigint_f64, f64, "({ valueOf: () => 123n })", 123.0);
-
-// bool
-detest!(de_num_true, u8, "true", 1);
-detest!(de_num_false, u8, "false", 0);
-
 // BigInt to f32/f64 max/min
 detest!(
   de_bigint_f64_max,
