@@ -189,7 +189,7 @@ export class DiffieHellman {
     const generator = this.#checkGenerator();
     const [privateKey, publicKey] = ops.op_node_dh_generate2(
       this.#prime,
-      this.#primeLength,
+      this.#primeLength ?? 0,
       generator,
     );
 

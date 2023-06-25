@@ -24,9 +24,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
@@ -152,17 +150,6 @@ impl NpmResolution {
     *self.snapshot.write() = snapshot;
 
     Ok(())
-  }
-
-  pub fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
-    Ok(NpmPackageNvReference {
-      nv: node_id.nv,
-      sub_path: req_ref.sub_path.clone(),
-    })
   }
 
   pub fn resolve_package_cache_folder_id_from_id(

@@ -18,7 +18,7 @@ use crate::modules::ModuleType;
 use crate::modules::ResolutionKind;
 use crate::modules::SymbolicModule;
 use crate::Extension;
-use crate::ZeroCopyBuf;
+use crate::JsBuffer;
 use crate::*;
 use anyhow::Error;
 use deno_ops::op;
@@ -55,7 +55,7 @@ struct TestState {
 async fn op_test(
   rc_op_state: Rc<RefCell<OpState>>,
   control: u8,
-  buf: Option<ZeroCopyBuf>,
+  buf: Option<JsBuffer>,
 ) -> Result<u8, AnyError> {
   #![allow(clippy::await_holding_refcell_ref)] // False positive.
   let op_state_ = rc_op_state.borrow();
@@ -217,7 +217,7 @@ fn test_dispatch_no_zero_copy_buf() {
       "filename.js",
       r#"
 
-      Deno.core.opAsync("op_test");
+      Deno.core.opAsync("op_test", 0);
       "#,
     )
     .unwrap();
@@ -233,7 +233,7 @@ fn test_dispatch_stack_zero_copy_bufs() {
       r#"
       const { op_test } = Deno.core.ensureFastOps();
       let zero_copy_a = new Uint8Array([0]);
-      op_test(null, zero_copy_a);
+      op_test(0, zero_copy_a);
       "#,
     )
     .unwrap();
@@ -1977,15 +1977,15 @@ fn js_realm_init_snapshot() {
 
 #[test]
 fn js_realm_sync_ops() {
-  // Test that returning a ZeroCopyBuf and throwing an exception from a sync
+  // Test that returning a RustToV8Buf and throwing an exception from a sync
   // op result in objects with prototypes from the right realm. Note that we
   // don't test the result of returning structs, because they will be
   // serialized to objects with null prototype.
 
   #[op]
-  fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
+  fn op_test(fail: bool) -> Result<ToJsBuffer, Error> {
     if !fail {
-      Ok(ZeroCopyBuf::empty())
+      Ok(ToJsBuffer::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }
@@ -2025,15 +2025,15 @@ fn js_realm_sync_ops() {
 
 #[tokio::test]
 async fn js_realm_async_ops() {
-  // Test that returning a ZeroCopyBuf and throwing an exception from a async
+  // Test that returning a RustToV8Buf and throwing an exception from a async
   // op result in objects with prototypes from the right realm. Note that we
   // don't test the result of returning structs, because they will be
   // serialized to objects with null prototype.
 
   #[op]
-  async fn op_test(fail: bool) -> Result<ZeroCopyBuf, Error> {
+  async fn op_test(fail: bool) -> Result<ToJsBuffer, Error> {
     if !fail {
-      Ok(ZeroCopyBuf::empty())
+      Ok(ToJsBuffer::empty())
     } else {
       Err(crate::error::type_error("Test"))
     }

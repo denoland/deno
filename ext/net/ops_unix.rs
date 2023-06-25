@@ -9,11 +9,11 @@ use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -138,7 +138,7 @@ where
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  mut buf: JsBuffer,
 ) -> Result<(usize, Option<String>), AnyError> {
   let resource = state
     .borrow()
@@ -160,7 +160,7 @@ async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   path: String,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,

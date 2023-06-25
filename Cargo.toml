@@ -83,6 +83,7 @@ async-trait = "0.1.51"
 atty = "=0.2.14"
 base64 = "=0.13.1"
 bencher = "0.1"
+brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
@@ -131,6 +132,8 @@ signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
+strum = { version = "0.24", features = ["derive"] }
+strum_macros = "0.24"
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
@@ -155,6 +158,9 @@ hkdf = "0.12.3"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
+syn2 = { package = "syn", version = "=2.0.18", features = ["full", "extra-traits"] }
+# Temporary fork while we wait for a more modern version to be published
+deno-proc-macro-rules = "0.3.2"
 
 # unix
 nix = "=0.24.2"
