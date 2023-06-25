@@ -1,0 +1,50 @@
+#[allow(non_camel_case_types)]
+pub struct op_u32_with_result {}
+impl op_u32_with_result {
+    pub const fn name() -> &'static str {
+        stringify!(op_u32_with_result)
+    }
+    pub const fn decl() -> deno_core::_ops::OpDecl {
+        deno_core::_ops::OpDecl {
+            name: stringify!(op_u32_with_result),
+            v8_fn_ptr: Self::slow_function as _,
+            enabled: true,
+            fast_fn: None,
+            is_async: false,
+            is_unstable: false,
+            is_v8: false,
+            arg_count: 0usize as u8,
+        }
+    }
+    pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
+        let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(unsafe {
+            &*info
+        });
+        let result = Self::call();
+        match result {
+            Ok(result) => {
+                rv.set_uint32(result as u32);
+            }
+            Err(err) => {
+                let scope = &mut unsafe { deno_core::v8::CallbackScope::new(&*info) };
+                let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
+                    &*info
+                });
+                let opctx = unsafe {
+                    &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data())
+                        .value() as *const deno_core::_ops::OpCtx)
+                };
+                let opstate = ::std::cell::RefCell::borrow(&*opctx.state);
+                let exception = deno_core::error::to_v8_error(
+                    scope,
+                    opstate.get_error_class_fn,
+                    &err,
+                );
+                scope.throw_exception(exception);
+                return;
+            }
+        };
+    }
+    #[inline(always)]
+    pub fn call() -> Result<u32, AnyError> {}
+}

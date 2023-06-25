@@ -9,91 +9,93 @@ use super::transl8::ToV8;
 use super::v8slice::V8Slice;
 use crate::magic::transl8::impl_magic;
 
-// An asymmetric wrapper around V8Slice,
-// allowing us to use a single type for familiarity
-pub enum ZeroCopyBuf {
-  FromV8(V8Slice),
-  ToV8(Option<Box<[u8]>>),
-}
+pub struct JsBuffer(V8Slice);
 
-impl_magic!(ZeroCopyBuf);
+impl_magic!(JsBuffer);
 
-impl Debug for ZeroCopyBuf {
+impl Debug for JsBuffer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_list().entries(self.as_ref().iter()).finish()
+    f.debug_list().entries(self.0.as_ref().iter()).finish()
   }
 }
 
-impl ZeroCopyBuf {
-  pub fn empty() -> Self {
-    ZeroCopyBuf::ToV8(Some(vec![0_u8; 0].into_boxed_slice()))
-  }
-}
-
-impl Clone for ZeroCopyBuf {
+impl Clone for JsBuffer {
   fn clone(&self) -> Self {
-    match self {
-      Self::FromV8(zbuf) => Self::FromV8(zbuf.clone()),
-      Self::ToV8(_) => panic!("Don't Clone a ZeroCopyBuf sent to v8"),
-    }
+    Self(self.0.clone())
   }
 }
 
-impl AsRef<[u8]> for ZeroCopyBuf {
+impl AsRef<[u8]> for JsBuffer {
   fn as_ref(&self) -> &[u8] {
-    self
+    &self.0
   }
 }
 
-impl AsMut<[u8]> for ZeroCopyBuf {
+impl AsMut<[u8]> for JsBuffer {
   fn as_mut(&mut self) -> &mut [u8] {
-    &mut *self
+    &mut self.0
   }
 }
 
-impl Deref for ZeroCopyBuf {
+impl Deref for JsBuffer {
   type Target = [u8];
   fn deref(&self) -> &[u8] {
-    match self {
-      Self::FromV8(buf) => buf,
-      Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
-    }
+    &self.0
   }
 }
 
-impl DerefMut for ZeroCopyBuf {
+impl DerefMut for JsBuffer {
   fn deref_mut(&mut self) -> &mut [u8] {
-    match self {
-      Self::FromV8(buf) => &mut *buf,
-      Self::ToV8(_) => panic!("Don't Deref a ZeroCopyBuf sent to v8"),
-    }
+    &mut self.0
   }
 }
 
-impl From<Box<[u8]>> for ZeroCopyBuf {
+impl FromV8 for JsBuffer {
+  fn from_v8(
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+  ) -> Result<Self, crate::Error> {
+    Ok(Self(V8Slice::from_v8(scope, value)?))
+  }
+}
+
+impl From<JsBuffer> for bytes::Bytes {
+  fn from(zbuf: JsBuffer) -> bytes::Bytes {
+    zbuf.0.into()
+  }
+}
+
+// NOTE(bartlomieju): we use Option here, because `to_v8()` uses `&mut self`
+// instead of `self` which is dictated by the `serde` API.
+#[derive(Debug)]
+pub struct ToJsBuffer(Option<Box<[u8]>>);
+
+impl_magic!(ToJsBuffer);
+
+impl ToJsBuffer {
+  pub fn empty() -> Self {
+    ToJsBuffer(Some(vec![0_u8; 0].into_boxed_slice()))
+  }
+}
+
+impl From<Box<[u8]>> for ToJsBuffer {
   fn from(buf: Box<[u8]>) -> Self {
-    ZeroCopyBuf::ToV8(Some(buf))
+    ToJsBuffer(Some(buf))
   }
 }
 
-impl From<Vec<u8>> for ZeroCopyBuf {
+impl From<Vec<u8>> for ToJsBuffer {
   fn from(vec: Vec<u8>) -> Self {
     vec.into_boxed_slice().into()
   }
 }
 
-impl ToV8 for ZeroCopyBuf {
+impl ToV8 for ToJsBuffer {
   fn to_v8<'a>(
     &mut self,
     scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, crate::Error> {
-    let buf: Box<[u8]> = match self {
-      Self::FromV8(buf) => {
-        let value: &[u8] = buf;
-        value.into()
-      }
-      Self::ToV8(ref mut x) => x.take().expect("ZeroCopyBuf was empty"),
-    };
+    let buf: Box<[u8]> = self.0.take().expect("RustToV8Buf was empty");
 
     if buf.is_empty() {
       let ab = v8::ArrayBuffer::new(scope, 0);
@@ -103,7 +105,7 @@ impl ToV8 for ZeroCopyBuf {
           .into(),
       );
     }
-    let buf_len = buf.len();
+    let buf_len: usize = buf.len();
     let backing_store =
       v8::ArrayBuffer::new_backing_store_from_boxed_slice(buf);
     let backing_store_shared = backing_store.make_shared();
@@ -113,25 +115,5 @@ impl ToV8 for ZeroCopyBuf {
         .expect("Failed to create Uint8Array")
         .into(),
     )
-  }
-}
-
-impl FromV8 for ZeroCopyBuf {
-  fn from_v8(
-    scope: &mut v8::HandleScope,
-    value: v8::Local<v8::Value>,
-  ) -> Result<Self, crate::Error> {
-    Ok(Self::FromV8(V8Slice::from_v8(scope, value)?))
-  }
-}
-
-impl From<ZeroCopyBuf> for bytes::Bytes {
-  fn from(zbuf: ZeroCopyBuf) -> bytes::Bytes {
-    match zbuf {
-      ZeroCopyBuf::FromV8(v) => v.into(),
-      ZeroCopyBuf::ToV8(mut v) => {
-        v.take().expect("ZeroCopyBuf was empty").into()
-      }
-    }
   }
 }

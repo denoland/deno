@@ -8,6 +8,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use quote::ToTokens;
+use std::error::Error;
 use syn::parse;
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
@@ -22,6 +23,7 @@ use syn::LifetimeDef;
 mod attrs;
 mod deno;
 mod fast_call;
+mod op2;
 mod optimizer;
 
 const SCOPE_LIFETIME: &str = "'scope";
@@ -233,6 +235,26 @@ pub fn op(attr: TokenStream, item: TokenStream) -> TokenStream {
   let func = parse::<ItemFn>(item).expect("expected a function");
   let op = Op::new(func, margs);
   op.gen().into()
+}
+
+#[proc_macro_attribute]
+pub fn op2(attr: TokenStream, item: TokenStream) -> TokenStream {
+  match crate::op2::op2(attr.into(), item.into()) {
+    Ok(output) => output.into(),
+    Err(err) => {
+      let mut err: &dyn Error = &err;
+      let mut output = "Failed to parse #[op2]:\n".to_owned();
+      loop {
+        output += &format!(" - {err}\n");
+        if let Some(source) = err.source() {
+          err = source;
+        } else {
+          break;
+        }
+      }
+      panic!("{output}");
+    }
+  }
 }
 
 /// Generate the body of a v8 func for an async op
