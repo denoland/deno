@@ -169,7 +169,7 @@ impl OpCtx {
     opt_mut.take()
   }
 
-  /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
+  /// This set the last error for an [`OpCtx`], assuming that no other code anywhere
   /// can hold a `&mut` to the last_fast_error field.
   ///
   /// # Safety
