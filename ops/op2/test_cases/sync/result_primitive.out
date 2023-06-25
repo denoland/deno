@@ -9,7 +9,15 @@ impl op_u32_with_result {
             name: stringify!(op_u32_with_result),
             v8_fn_ptr: Self::slow_function as _,
             enabled: true,
-            fast_fn: None,
+            fast_fn: Some({
+                use deno_core::v8::fast_api::Type;
+                use deno_core::v8::fast_api::CType;
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[Type::V8Value, Type::CallbackOptions],
+                    CType::Uint32,
+                    Self::fast_function as *const ::std::ffi::c_void,
+                )
+            }),
             is_async: false,
             is_unstable: false,
             is_v8: false,
@@ -20,6 +28,27 @@ impl op_u32_with_result {
         let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(unsafe {
             &*info
         });
+        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
+            &*info
+        });
+        let opctx = unsafe {
+            &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
+                as *const deno_core::_ops::OpCtx)
+        };
+        if let Some(err) = unsafe { opctx.unsafely_take_last_error_for_ops_only() } {
+            let scope = &mut unsafe { deno_core::v8::CallbackScope::new(&*info) };
+            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
+                &*info
+            });
+            let opstate = ::std::cell::RefCell::borrow(&*opctx.state);
+            let exception = deno_core::error::to_v8_error(
+                scope,
+                opstate.get_error_class_fn,
+                &err,
+            );
+            scope.throw_exception(exception);
+            return;
+        }
         let result = Self::call();
         match result {
             Ok(result) => {
@@ -30,10 +59,6 @@ impl op_u32_with_result {
                 let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
                     &*info
                 });
-                let opctx = unsafe {
-                    &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data())
-                        .value() as *const deno_core::_ops::OpCtx)
-                };
                 let opstate = ::std::cell::RefCell::borrow(&*opctx.state);
                 let exception = deno_core::error::to_v8_error(
                     scope,
@@ -44,6 +69,30 @@ impl op_u32_with_result {
                 return;
             }
         };
+    }
+    fn fast_function(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+    ) -> u32 {
+        let fast_api_callback_options = unsafe { &mut *fast_api_callback_options };
+        let opctx = unsafe {
+            &*(deno_core::v8::Local::<
+                v8::External,
+            >::cast(unsafe { fast_api_callback_options.data.data })
+                .value() as *const deno_core::_ops::OpCtx)
+        };
+        let result = Self::call();
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                unsafe {
+                    opctx.unsafely_set_last_error_for_ops_only(err);
+                }
+                fast_api_callback_options.fallback = true;
+                return ::std::default::Default::default();
+            }
+        };
+        result
     }
     #[inline(always)]
     pub fn call() -> Result<u32, AnyError> {}

@@ -13,7 +13,7 @@ impl op_has_doc_comment {
                 use deno_core::v8::fast_api::Type;
                 use deno_core::v8::fast_api::CType;
                 deno_core::v8::fast_api::FastFunction::new(
-                    &[],
+                    &[Type::V8Value],
                     CType::Void,
                     Self::fast_function as *const ::std::ffi::c_void,
                 )
@@ -28,7 +28,8 @@ impl op_has_doc_comment {
         let result = Self::call();
     }
     fn fast_function(_: deno_core::v8::Local<deno_core::v8::Object>) -> () {
-        Self::call()
+        let result = Self::call();
+        result
     }
     #[inline(always)]
     pub fn call() -> () {}

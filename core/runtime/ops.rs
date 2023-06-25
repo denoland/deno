@@ -215,12 +215,15 @@ mod tests {
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use deno_ops::op2;
+  use std::cell::Cell;
 
   crate::extension!(
     testing,
     ops = [
+      op_test_fail,
       op_test_add,
       op_test_add_option,
+      op_test_result_void_switch,
       op_test_result_void_ok,
       op_test_result_void_err,
       op_test_result_primitive_ok,
@@ -228,34 +231,70 @@ mod tests {
     ]
   );
 
+  thread_local! {
+    static FAIL: Cell<bool> = Cell::new(false)
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_fail() {
+    FAIL.with(|b| {
+      println!("fail");
+      b.set(true)
+    })
+  }
+
   /// Run a test for a single op.
-  fn run_test(
+  fn run_test2(
+    repeat: usize,
     op: &'static str,
     test: &'static str,
-    f: impl FnOnce(Result<&v8::Value, anyhow::Error>, &mut v8::HandleScope),
-  ) {
+  ) -> Result<(), AnyError> {
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![testing::init_ext()],
       ..Default::default()
     });
-    let value: Result<v8::Global<v8::Value>, anyhow::Error> = runtime
+    runtime
       .execute_script(
         "",
         FastString::Owned(
-          format!("const {{ {op} }} = Deno.core.ensureFastOps(); {test}")
-            .into(),
+          format!(
+            r"
+            const {{ op_test_fail, {op} }} = Deno.core.ensureFastOps();
+            function assert(b) {{
+              if (!b) {{
+                op_test_fail();
+              }}
+            }}
+          "
+          )
+          .into(),
         ),
-      );
-    let mut scope: v8::HandleScope =
-      // SAFETY: transmute for test (this lifetime should be safe for this purpose)
-      unsafe { std::mem::transmute(runtime.handle_scope()) };
-    match value {
-      Ok(value) => {
-        let value = value.open(&mut scope);
-        f(Ok(value), &mut scope)
-      }
-      Err(err) => f(Err(err), &mut scope),
+      )
+      .unwrap();
+    FAIL.with(|b| b.set(false));
+    runtime.execute_script(
+      "",
+      FastString::Owned(
+        format!(
+          r"
+      for (let __index__ = 0; __index__ < {repeat}; __index__++) {{
+        {test}
+      }}
+    "
+        )
+        .into(),
+      ),
+    )?;
+    if FAIL.with(|b| b.get()) {
+      Err(generic_error("test failed"))
+    } else {
+      Ok(())
     }
+  }
+
+  #[tokio::test(flavor = "current_thread")]
+  pub async fn test_op_fail() {
+    assert!(run_test2(1, "", "assert(false)").is_err());
   }
 
   #[op2(core, fast)]
@@ -263,12 +302,13 @@ mod tests {
     a + b
   }
 
-  #[tokio::test]
+  #[tokio::test(flavor = "current_thread")]
   pub async fn test_op_add() -> Result<(), Box<dyn std::error::Error>> {
-    run_test("op_test_add", "op_test_add(1, 11)", |value, scope| {
-      assert_eq!(value.unwrap().int32_value(scope), Some(12));
-    });
-    Ok(())
+    Ok(run_test2(
+      10000,
+      "op_test_add",
+      "assert(op_test_add(1, 11) == 12)",
+    )?)
   }
 
   #[op2(core)]
@@ -276,59 +316,84 @@ mod tests {
     a + b.unwrap_or(100)
   }
 
-  #[tokio::test]
+  #[tokio::test(flavor = "current_thread")]
   pub async fn test_op_add_option() -> Result<(), Box<dyn std::error::Error>> {
-    run_test(
+    // This isn't fast, so we don't repeat it
+    run_test2(
+      1,
       "op_test_add_option",
-      "op_test_add_option(1, 11)",
-      |value, scope| {
-        assert_eq!(value.unwrap().int32_value(scope), Some(12));
-      },
-    );
-    run_test(
+      "assert(op_test_add_option(1, 11) == 12)",
+    )?;
+    run_test2(
+      1,
       "op_test_add_option",
-      "op_test_add_option(1, null)",
-      |value, scope| {
-        assert_eq!(value.unwrap().int32_value(scope), Some(101));
-      },
-    );
+      "assert(op_test_add_option(1, null) == 101)",
+    )?;
     Ok(())
   }
 
-  #[op2(core)]
+  thread_local! {
+    static RETURN_COUNT: Cell<usize> = Cell::new(0);
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_result_void_switch() -> Result<(), AnyError> {
+    let count = RETURN_COUNT.with(|count| {
+      let new = count.get() + 1;
+      count.set(new);
+      new
+    });
+    if count > 5000 {
+      Err(generic_error("failed!!!"))
+    } else {
+      Ok(())
+    }
+  }
+
+  #[op2(core, fast)]
   pub fn op_test_result_void_err() -> Result<(), AnyError> {
     Err(generic_error("failed!!!"))
   }
 
-  #[op2(core)]
+  #[op2(core, fast)]
   pub fn op_test_result_void_ok() -> Result<(), AnyError> {
     Ok(())
   }
 
-  #[tokio::test]
+  #[tokio::test(flavor = "current_thread")]
   pub async fn test_op_result_void() -> Result<(), Box<dyn std::error::Error>> {
-    run_test(
+    // Test the non-switching kinds
+    run_test2(
+      10000,
       "op_test_result_void_err",
-      "op_test_result_void_err()",
-      |value, _scope| {
-        let js_error = value.err().unwrap().downcast::<JsError>().unwrap();
-        assert_eq!(js_error.message, Some("failed!!!".to_owned()));
-      },
-    );
-    run_test(
-      "op_test_result_void_ok",
-      "op_test_result_void_ok()",
-      |value, _scope| assert!(value.unwrap().is_null_or_undefined()),
-    );
+      "try { op_test_result_void_err(); assert(false) } catch (e) {}",
+    )?;
+    run_test2(10000, "op_test_result_void_ok", "op_test_result_void_ok()")?;
     Ok(())
   }
 
-  #[op2(core)]
+  #[tokio::test(flavor = "current_thread")]
+  pub async fn test_op_result_void_switch(
+  ) -> Result<(), Box<dyn std::error::Error>> {
+    RETURN_COUNT.with(|count| count.set(0));
+    let err = run_test2(
+      10000,
+      "op_test_result_void_switch",
+      "op_test_result_void_switch();",
+    )
+    .expect_err("Expected this to fail");
+    let js_err = err.downcast::<JsError>().unwrap();
+    assert_eq!(js_err.message, Some("failed!!!".into()));
+    assert_eq!(RETURN_COUNT.with(|count| count.get()), 5001);
+    Ok(())
+  }
+
+  #[op2(core, fast)]
   pub fn op_test_result_primitive_err() -> Result<u32, AnyError> {
     Err(generic_error("failed!!!"))
   }
 
-  #[op2(core)]
+  #[op2(core, fast)]
   pub fn op_test_result_primitive_ok() -> Result<u32, AnyError> {
     Ok(123)
   }
@@ -336,19 +401,16 @@ mod tests {
   #[tokio::test]
   pub async fn test_op_result_primitive(
   ) -> Result<(), Box<dyn std::error::Error>> {
-    run_test(
+    run_test2(
+      10000,
       "op_test_result_primitive_err",
-      "op_test_result_primitive_err()",
-      |value, _scope| {
-        let js_error = value.err().unwrap().downcast::<JsError>().unwrap();
-        assert_eq!(js_error.message, Some("failed!!!".to_owned()));
-      },
-    );
-    run_test(
+      "try { op_test_result_primitive_err(); assert(false) } catch (e) {}",
+    )?;
+    run_test2(
+      10000,
       "op_test_result_primitive_ok",
       "op_test_result_primitive_ok()",
-      |value, scope| assert_eq!(value.unwrap().int32_value(scope), Some(123)),
-    );
+    )?;
     Ok(())
   }
 }

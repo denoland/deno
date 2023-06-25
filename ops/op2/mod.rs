@@ -50,7 +50,7 @@ pub enum V8MappingError {
 }
 
 #[derive(Default)]
-struct MacroConfig {
+pub(crate) struct MacroConfig {
   pub core: bool,
   pub fast: bool,
 }
@@ -135,6 +135,8 @@ fn generate_op2(
   let opctx = Ident::new("opctx", Span::call_site());
   let slow_function = Ident::new("slow_function", Span::call_site());
   let fast_function = Ident::new("fast_function", Span::call_site());
+  let fast_api_callback_options =
+    Ident::new("fast_api_callback_options", Span::call_site());
 
   let deno_core = if config.core {
     syn2::parse_str::<Path>("crate")
@@ -151,6 +153,7 @@ fn generate_op2(
     scope,
     info,
     opctx,
+    fast_api_callback_options,
     deno_core,
     result,
     retval,
@@ -161,10 +164,14 @@ fn generate_op2(
     needs_scope: false,
     needs_opctx: false,
     needs_opstate: false,
+    needs_fast_opctx: false,
+    needs_fast_api_callback_options: false,
   };
 
   let name = func.sig.ident;
-  let slow_fn = generate_dispatch_slow(&mut generator_state, &signature)?;
+
+  let slow_fn =
+    generate_dispatch_slow(&config, &mut generator_state, &signature)?;
   let (fast_definition, fast_fn) =
     match generate_dispatch_fast(&mut generator_state, &signature)? {
       Some((fast_definition, fast_fn)) => {
