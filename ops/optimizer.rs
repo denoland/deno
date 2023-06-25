@@ -145,7 +145,7 @@ impl Transform {
     match &self.kind {
       // serde_v8::Value
       TransformKind::V8Value => {
-        *ty = parse_quote! { #core::v8::Local<v8::Value> };
+        *ty = parse_quote! { #core::v8::Local<#core::v8::Value> };
 
         q!(Vars { var: &ident }, {
           let var = serde_v8::Value { v8_value: var };
