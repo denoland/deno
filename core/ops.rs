@@ -157,8 +157,11 @@ impl OpCtx {
 
   /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
   /// can hold a `&mut` to the last_fast_error field.
+  ///
+  /// # Safety
+  /// 
+  /// Must only be called from op implementations.
   #[inline(always)]
-  // SAFETY: Must only be called from ops
   pub unsafe fn unsafely_take_last_error_for_ops_only(
     &self,
   ) -> Option<AnyError> {
@@ -168,8 +171,11 @@ impl OpCtx {
 
   /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
   /// can hold a `&mut` to the last_fast_error field.
+  /// 
+  /// # Safety
+  /// 
+  /// Must only be called from op implementations.
   #[inline(always)]
-  // SAFETY: Must only be called from ops
   pub unsafe fn unsafely_set_last_error_for_ops_only(&self, error: AnyError) {
     let opt_mut = &mut *self.last_fast_error.get();
     *opt_mut = Some(error);

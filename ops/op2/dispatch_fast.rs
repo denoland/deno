@@ -205,7 +205,6 @@ pub fn generate_dispatch_fast(
       #with_fast_api_callback_options
       #with_opctx
       let #result = Self::call(#(#call_args as _),*);
-      println!("Fast fn! {:?}", result);
       #handle_error
       #result
     }
