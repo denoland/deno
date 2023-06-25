@@ -2022,7 +2022,7 @@ static ALLOW_READ_HELP: &str = concat!(
 );
 
 static DENY_READ_HELP: &str = concat!(
-  "Allow file system read access. Optionally specify denied paths.\n",
+  "Deny file system read access. Optionally specify denied paths.\n",
   "Docs: https://deno.land/manual@v",
   env!("CARGO_PKG_VERSION"),
   "/basics/permissions\n",

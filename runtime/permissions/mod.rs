@@ -44,11 +44,11 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
 )]
 pub enum PermissionState {
-  Granted,
-  GrantedPartial,
+  Granted = 0,
+  GrantedPartial = 1,
   #[default]
-  Prompt,
-  Denied,
+  Prompt = 2,
+  Denied = 3,
 }
 
 impl PermissionState {
@@ -1470,33 +1470,31 @@ fn global_from_option<T>(flag: &Option<Vec<T>>) -> bool {
 fn parse_net_list(
   list: &Option<Vec<String>>,
 ) -> Result<HashSet<NetDescriptor>, AnyError> {
-  list
-    .as_ref()
-    .map(|v| {
-      v.iter()
-        .map(|x| NetDescriptor::from_str(x))
-        .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
-    })
-    .unwrap_or_else(|| Ok(HashSet::new()))
+  if let Some(v) = list {
+    v.iter()
+      .map(|x| NetDescriptor::from_str(x))
+      .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
+  } else {
+    Ok(HashSet::new())
+  }
 }
 
 fn parse_env_list(
   list: &Option<Vec<String>>,
 ) -> Result<HashSet<EnvDescriptor>, AnyError> {
-  list
-    .as_ref()
-    .map(|v| {
-      v.iter()
-        .map(|x| {
-          if x.is_empty() {
-            Err(AnyError::msg("Empty path is not allowed"))
-          } else {
-            Ok(EnvDescriptor::new(x))
-          }
-        })
-        .collect()
-    })
-    .unwrap_or_else(|| Ok(HashSet::new()))
+  if let Some(v) = list {
+    v.iter()
+      .map(|x| {
+        if x.is_empty() {
+          Err(AnyError::msg("Empty path is not allowed"))
+        } else {
+          Ok(EnvDescriptor::new(x))
+        }
+      })
+      .collect()
+  } else {
+    Ok(HashSet::new())
+  }
 }
 
 fn resolve_read_list(
@@ -1556,39 +1554,37 @@ fn resolve_ffi_list(
 fn parse_sys_list(
   list: &Option<Vec<String>>,
 ) -> Result<HashSet<SysDescriptor>, AnyError> {
-  list
-    .as_ref()
-    .map(|v| {
-      v.iter()
-        .map(|x| {
-          if x.is_empty() {
-            Err(AnyError::msg("empty"))
-          } else {
-            Ok(SysDescriptor(x.to_string()))
-          }
-        })
-        .collect()
-    })
-    .unwrap_or_else(|| Ok(HashSet::new()))
+  if let Some(v) = list {
+    v.iter()
+      .map(|x| {
+        if x.is_empty() {
+          Err(AnyError::msg("empty"))
+        } else {
+          Ok(SysDescriptor(x.to_string()))
+        }
+      })
+      .collect()
+  } else {
+    Ok(HashSet::new())
+  }
 }
 
 fn parse_run_list(
   list: &Option<Vec<String>>,
 ) -> Result<HashSet<RunDescriptor>, AnyError> {
-  list
-    .as_ref()
-    .map(|v| {
-      v.iter()
-        .map(|x| {
-          if x.is_empty() {
-            Err(AnyError::msg("Empty path is not allowed"))
-          } else {
-            Ok(RunDescriptor::from_str(x).unwrap())
-          }
-        })
-        .collect()
-    })
-    .unwrap_or_else(|| Ok(HashSet::new()))
+  if let Some(v) = list {
+    v.iter()
+      .map(|x| {
+        if x.is_empty() {
+          Err(AnyError::msg("Empty path is not allowed"))
+        } else {
+          Ok(RunDescriptor::from_str(x).unwrap())
+        }
+      })
+      .collect()
+  } else {
+    Ok(HashSet::new())
+  }
 }
 
 fn escalation_error() -> AnyError {
