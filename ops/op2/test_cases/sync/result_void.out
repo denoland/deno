@@ -13,7 +13,7 @@ impl op_void_with_result {
                 use deno_core::v8::fast_api::Type;
                 use deno_core::v8::fast_api::CType;
                 deno_core::v8::fast_api::FastFunction::new(
-                    &[],
+                    &[Type::V8Value, Type::CallbackOptions],
                     CType::Void,
                     Self::fast_function as *const ::std::ffi::c_void,
                 )
@@ -69,7 +69,6 @@ impl op_void_with_result {
         _: deno_core::v8::Local<deno_core::v8::Object>,
         fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
     ) -> () {
-        println!("Fast fn!");
         let fast_api_callback_options = unsafe { &mut *fast_api_callback_options };
         let opctx = unsafe {
             &*(deno_core::v8::Local::<

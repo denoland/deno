@@ -13,7 +13,7 @@ impl op_has_doc_comment {
                 use deno_core::v8::fast_api::Type;
                 use deno_core::v8::fast_api::CType;
                 deno_core::v8::fast_api::FastFunction::new(
-                    &[],
+                    &[Type::V8Value],
                     CType::Void,
                     Self::fast_function as *const ::std::ffi::c_void,
                 )
@@ -25,31 +25,9 @@ impl op_has_doc_comment {
         }
     }
     pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
-        let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
-            &*info
-        });
-        let opctx = unsafe {
-            &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
-                as *const deno_core::_ops::OpCtx)
-        };
-        if let Some(err) = unsafe { opctx.unsafely_take_last_error_for_ops_only() } {
-            let scope = &mut unsafe { deno_core::v8::CallbackScope::new(&*info) };
-            let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
-                &*info
-            });
-            let opstate = ::std::cell::RefCell::borrow(&*opctx.state);
-            let exception = deno_core::error::to_v8_error(
-                scope,
-                opstate.get_error_class_fn,
-                &err,
-            );
-            scope.throw_exception(exception);
-            return;
-        }
         let result = Self::call();
     }
     fn fast_function(_: deno_core::v8::Local<deno_core::v8::Object>) -> () {
-        println!("Fast fn!");
         let result = Self::call();
         result
     }

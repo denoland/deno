@@ -18,7 +18,7 @@ pub(crate) fn generate_dispatch_slow(
   let mut output = TokenStream::new();
 
   // Fast ops require the slow of to check op_ctx for the last error
-  if config.fast {
+  if config.fast && matches!(signature.ret_val, RetVal::Result(_)) {
     generator_state.needs_opctx = true;
     let throw_exception = throw_exception(generator_state)?;
     // If the fast op returned an error, we must throw it rather than doing work.
