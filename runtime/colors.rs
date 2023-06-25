@@ -214,7 +214,8 @@ pub fn white_bold_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::{env, ffi::OsString};
+  use std::env;
+  use std::ffi::OsString;
 
   fn reset_env_var(name: &str, value: Option<OsString>) {
     match value {
