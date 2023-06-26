@@ -8,6 +8,7 @@ use super::signature::Special;
 use super::MacroConfig;
 use super::V8MappingError;
 use proc_macro2::TokenStream;
+use quote::format_ident;
 use quote::quote;
 
 pub(crate) fn generate_dispatch_slow(
@@ -151,10 +152,14 @@ pub fn from_arg(
   arg: &Arg,
 ) -> Result<TokenStream, V8MappingError> {
   let GeneratorState {
-    deno_core, args, ..
+    deno_core,
+    args,
+    scope,
+    needs_scope,
+    ..
   } = &mut generator_state;
   let arg_ident = args.get_mut(index).expect("Argument at index was missing");
-
+  let arg_temp = format_ident!("{}_temp", arg_ident);
   let res = match arg {
     Arg::Numeric(NumericArg::bool) => quote! {
       let #arg_ident = #arg_ident.is_true();
@@ -198,13 +203,31 @@ pub fn from_arg(
       }
     }
     Arg::Option(Special::String) => {
+      *needs_scope = true;
       quote! {
-        let #arg_ident = #arg_ident.to_rust_string_lossy();
+        let #arg_ident = #arg_ident.to_rust_string_lossy(#scope);
+      }
+    }
+    Arg::Special(Special::String) => {
+      *needs_scope = true;
+      quote! {
+        let #arg_ident = #arg_ident.to_rust_string_lossy(#scope);
       }
     }
     Arg::Special(Special::RefStr) => {
+      *needs_scope = true;
       quote! {
-        let #arg_ident = #arg_ident.to_rust_string_lossy();
+        // Trade 1024 bytes of stack space for potentially non-allocating strings
+        let mut #arg_temp: [::std::mem::MaybeUninit<u8>; 1024] = [::std::mem::MaybeUninit::uninit(); 1024];
+        let #arg_ident = &#deno_core::_ops::to_str(#scope, &#arg_ident, &mut #arg_temp);
+      }
+    }
+    Arg::Special(Special::CowStr) => {
+      *needs_scope = true;
+      quote! {
+        // Trade 1024 bytes of stack space for potentially non-allocating strings
+        let mut #arg_temp: [::std::mem::MaybeUninit<u8>; 1024] = [::std::mem::MaybeUninit::uninit(); 1024];
+        let #arg_ident = #deno_core::_ops::to_str(#scope, &#arg_ident, &mut #arg_temp);
       }
     }
     _ => return Err(V8MappingError::NoMapping("a slow argument", arg.clone())),
@@ -243,9 +266,12 @@ pub fn return_value_infallible(
   ret_type: &Arg,
 ) -> Result<TokenStream, V8MappingError> {
   let GeneratorState {
+    deno_core,
+    scope,
     result,
     retval,
     needs_retval,
+    needs_scope,
     ..
   } = generator_state;
 
@@ -264,6 +290,38 @@ pub fn return_value_infallible(
     | Arg::Numeric(NumericArg::i32) => {
       *needs_retval = true;
       quote!(#retval.set_int32(#result as i32);)
+    }
+    Arg::Special(Special::String) => {
+      *needs_retval = true;
+      *needs_scope = true;
+      quote! {
+        if #result.is_empty() {
+          #retval.set_empty_string();
+        } else {
+          // This should not fail in normal cases
+          // TODO(mmastrac): This has extra allocations that we need to get rid of, especially if the string
+          // is ASCII. We could make an "external Rust String" string in V8 from these and re-use the allocation.
+          let temp = #deno_core::v8::String::new(#scope, &#result).unwrap();
+          #retval.set(temp.into());
+        }
+      }
+    }
+    Arg::Option(Special::String) => {
+      *needs_retval = true;
+      *needs_scope = true;
+      // End the generator_state borrow
+      let (result, retval) = (result.clone(), retval.clone());
+      let some = return_value_infallible(
+        generator_state,
+        &Arg::Special(Special::String),
+      )?;
+      quote! {
+        if let Some(#result) = #result {
+          #some
+        } else {
+          #retval.set_null();
+        }
+      }
     }
     _ => {
       return Err(V8MappingError::NoMapping(
