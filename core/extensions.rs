@@ -359,7 +359,6 @@ pub struct Extension {
   initialized: bool,
   enabled: bool,
   deps: Option<&'static [&'static str]>,
-  pub(crate) is_core: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -482,7 +481,6 @@ pub struct ExtensionBuilder {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
   deps: &'static [&'static str],
-  is_core: bool,
 }
 
 impl ExtensionBuilder {
@@ -548,7 +546,6 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
-      is_core: self.is_core,
     }
   }
 
@@ -569,14 +566,7 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
-      is_core: self.is_core,
     }
-  }
-
-  #[doc(hidden)]
-  pub(crate) fn deno_core(&mut self) -> &mut Self {
-    self.is_core = true;
-    self
   }
 }
 

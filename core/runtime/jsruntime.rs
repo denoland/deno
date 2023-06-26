@@ -10,6 +10,7 @@ use crate::error::GetErrorClassFn;
 use crate::error::JsError;
 use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
+use crate::include_js_files;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::AssertedModuleType;
@@ -505,7 +506,7 @@ impl JsRuntime {
     maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> JsRuntime {
     let init_mode = InitMode::from_options(&options);
-    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
+    let (op_state, ops) = Self::create_opstate(&mut options);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -841,6 +842,23 @@ impl JsRuntime {
     let mut esm_entrypoints = vec![];
 
     futures::executor::block_on(async {
+      if self.init_mode == InitMode::New {
+        let js_files = include_js_files!(
+          core
+          "00_primordials.js",
+          "01_core.js",
+          "02_error.js",
+        );
+        for file_source in js_files {
+          realm.execute_script(
+            self.v8_isolate(),
+            file_source.specifier,
+            file_source.load()?,
+          )?;
+        }
+      }
+      self.init_cbs(realm);
+
       for extension in &extensions {
         let maybe_esm_entry_point = extension.get_esm_entry_point();
 
@@ -867,10 +885,6 @@ impl JsRuntime {
               file_source.load()?,
             )?;
           }
-        }
-
-        if extension.is_core {
-          self.init_cbs(realm);
         }
       }
 
@@ -967,20 +981,11 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn create_opstate(
-    options: &mut RuntimeOptions,
-    init_mode: InitMode,
-  ) -> (OpState, Vec<OpDecl>) {
+  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    if init_mode == InitMode::FromSnapshot {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops());
-    } else {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
-    }
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::core::init_ops());
 
     let ops = Self::collect_ops(&mut options.extensions);
 
