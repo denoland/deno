@@ -508,7 +508,7 @@ impl Descriptor for NetDescriptor {
   }
 
   fn name(&self) -> Cow<str> {
-    Cow::from(self.0.to_string())
+    Cow::from(format!("{}", self))
   }
 }
 

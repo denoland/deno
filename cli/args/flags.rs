@@ -311,7 +311,6 @@ pub struct Flags {
   pub subcommand: DenoSubcommand,
 
   pub allow_all: bool,
-  pub deny_all: bool,
   pub allow_env: Option<Vec<String>>,
   pub deny_env: Option<Vec<String>>,
   pub allow_hrtime: bool,
@@ -380,11 +379,6 @@ impl Flags {
 
     if self.allow_all {
       args.push("--allow-all".to_string());
-      return args;
-    }
-
-    if self.deny_all {
-      args.push("--deny-all".to_string());
       return args;
     }
 
@@ -652,7 +646,6 @@ impl Flags {
 
   pub fn has_permission(&self) -> bool {
     self.allow_all
-      || self.deny_all
       || self.allow_hrtime
       || self.deny_hrtime
       || self.allow_env.is_some()
@@ -674,7 +667,6 @@ impl Flags {
   pub fn has_permission_in_argv(&self) -> bool {
     self.argv.iter().any(|arg| {
       arg == "--allow-all"
-        || arg == "--deny-all"
         || arg == "--allow-hrtime"
         || arg == "--deny-hrtime"
         || arg.starts_with("--allow-env")
@@ -2180,13 +2172,6 @@ static ALLOW_ALL_HELP: &str = concat!(
   "/basics/permissions\n"
 );
 
-static DENY_ALL_HELP: &str = concat!(
-  "Deny all permissions. Learn more about permissions in Deno:\n",
-  "https://deno.land/manual@v",
-  env!("CARGO_PKG_VERSION"),
-  "/basics/permissions\n"
-);
-
 fn permission_args(app: Command) -> Command {
   app
     .arg(
@@ -2372,13 +2357,6 @@ fn permission_args(app: Command) -> Command {
         .long("allow-all")
         .action(ArgAction::SetTrue)
         .help(ALLOW_ALL_HELP),
-    )
-    .arg(
-      Arg::new("deny-all")
-        .short('D')
-        .long("deny-all")
-        .action(ArgAction::SetTrue)
-        .help(DENY_ALL_HELP),
     )
     .arg(
       Arg::new("prompt")
@@ -3409,18 +3387,6 @@ fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     flags.allow_hrtime = true;
   }
 
-  if matches.get_flag("deny-all") {
-    flags.deny_all = true;
-    flags.deny_read = Some(vec![]);
-    flags.deny_env = Some(vec![]);
-    flags.deny_net = Some(vec![]);
-    flags.deny_run = Some(vec![]);
-    flags.deny_write = Some(vec![]);
-    flags.deny_sys = Some(vec![]);
-    flags.deny_ffi = Some(vec![]);
-    flags.deny_hrtime = true;
-  }
-
   if matches.get_flag("no-prompt") {
     flags.no_prompt = true;
   }
@@ -3931,38 +3897,6 @@ mod tests {
         deny_ffi: None,
         allow_hrtime: true,
         deny_hrtime: false,
-        ..Flags::default()
-      }
-    );
-  }
-
-  #[test]
-  fn deny_all() {
-    let r = flags_from_vec(svec!["deno", "run", "--deny-all", "gist.ts"]);
-    assert_eq!(
-      r.unwrap(),
-      Flags {
-        subcommand: DenoSubcommand::Run(RunFlags {
-          script: "gist.ts".to_string(),
-        }),
-        allow_all: false,
-        deny_all: true,
-        allow_net: None,
-        deny_net: Some(vec![]),
-        allow_env: None,
-        deny_env: Some(vec![]),
-        allow_run: None,
-        deny_run: Some(vec![]),
-        allow_read: None,
-        deny_read: Some(vec![]),
-        allow_sys: None,
-        deny_sys: Some(vec![]),
-        allow_write: None,
-        deny_write: Some(vec![]),
-        allow_ffi: None,
-        deny_ffi: Some(vec![]),
-        allow_hrtime: false,
-        deny_hrtime: true,
         ..Flags::default()
       }
     );
