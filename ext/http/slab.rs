@@ -63,7 +63,7 @@ pub fn slab_get(index: SlabId) -> SlabEntry {
     unsafe { std::mem::transmute(x.borrow_mut()) }
   });
   let Some(entry) = lock.get_mut(index as usize) else {
-    panic!("HTTP state error: Attemped to access invalid request {} ({} in total available)",
+    panic!("HTTP state error: Attempted to access invalid request {} ({} in total available)",
     index,
     lock.len())
   };

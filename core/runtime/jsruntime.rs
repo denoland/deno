@@ -401,7 +401,7 @@ pub struct RuntimeOptions {
   pub create_params: Option<v8::CreateParams>,
 
   /// V8 platform instance to use. Used when Deno initializes V8
-  /// (which it only does once), otherwise it's silenty dropped.
+  /// (which it only does once), otherwise it's silently dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -505,7 +505,7 @@ impl JsRuntime {
     maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> JsRuntime {
     let init_mode = InitMode::from_options(&options);
-    let (op_state, ops) = Self::create_opstate(&mut options);
+    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -844,25 +844,29 @@ impl JsRuntime {
       for extension in &extensions {
         let maybe_esm_entry_point = extension.get_esm_entry_point();
 
-        for file_source in extension.get_esm_sources() {
-          self
-            .load_side_module(
-              &ModuleSpecifier::parse(file_source.specifier)?,
-              None,
-            )
-            .await?;
+        if let Some(esm_files) = extension.get_esm_sources() {
+          for file_source in esm_files {
+            self
+              .load_side_module(
+                &ModuleSpecifier::parse(file_source.specifier)?,
+                None,
+              )
+              .await?;
+          }
         }
 
         if let Some(entry_point) = maybe_esm_entry_point {
           esm_entrypoints.push(entry_point);
         }
 
-        for file_source in extension.get_js_sources() {
-          realm.execute_script(
-            self.v8_isolate(),
-            file_source.specifier,
-            file_source.load()?,
-          )?;
+        if let Some(js_files) = extension.get_js_sources() {
+          for file_source in js_files {
+            realm.execute_script(
+              self.v8_isolate(),
+              file_source.specifier,
+              file_source.load()?,
+            )?;
+          }
         }
 
         if extension.is_core {
@@ -880,16 +884,6 @@ impl JsRuntime {
               panic!("{} not present in the module map", specifier)
             })
         };
-        {
-          let module_map_rc = self.module_map.clone();
-          let module_map = module_map_rc.borrow();
-          let handle = module_map.handles.get(mod_id).unwrap().clone();
-          let mut scope = realm.handle_scope(self.v8_isolate());
-          let handle = v8::Local::new(&mut scope, handle);
-          if handle.get_status() == v8::ModuleStatus::Evaluated {
-            continue;
-          }
-        }
         let receiver = self.mod_evaluate(mod_id);
         self.run_event_loop(false).await?;
         receiver
@@ -930,7 +924,7 @@ impl JsRuntime {
     // macroware wraps an opfn in all the middleware
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
-    // Flatten ops, apply middlware & override disabled ops
+    // Flatten ops, apply middleware & override disabled ops
     let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
@@ -973,11 +967,20 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
+  fn create_opstate(
+    options: &mut RuntimeOptions,
+    init_mode: InitMode,
+  ) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    options
-      .extensions
-      .insert(0, crate::ops_builtin::core::init_ext());
+    if init_mode == InitMode::FromSnapshot {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::core::init_ops());
+    } else {
+      options
+        .extensions
+        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
+    }
 
     let ops = Self::collect_ops(&mut options.extensions);
 
@@ -1768,7 +1771,7 @@ impl JsRuntime {
     let has_dispatched_exception =
       state_rc.borrow_mut().dispatched_exception.is_some();
     if has_dispatched_exception {
-      // This will be overrided in `exception_to_err_result()`.
+      // This will be overridden in `exception_to_err_result()`.
       let exception = v8::undefined(tc_scope).into();
       let pending_mod_evaluate = {
         let mut state = state_rc.borrow_mut();

@@ -874,7 +874,7 @@ Module.prototype.load = function (filename) {
     pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
-  // allow .mjs to be overriden
+  // allow .mjs to be overridden
   if (
     StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
   ) {

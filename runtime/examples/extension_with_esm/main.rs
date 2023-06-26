@@ -26,7 +26,7 @@ async fn main() -> Result<(), AnyError> {
     PermissionsContainer::allow_all(),
     WorkerOptions {
       module_loader: Rc::new(FsModuleLoader),
-      extensions: vec![hello_runtime::init_ext()],
+      extensions: vec![hello_runtime::init_ops_and_esm()],
       ..Default::default()
     },
   );

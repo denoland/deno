@@ -746,7 +746,7 @@ fn codegen_sync_ret(
   } else if is_ptr_cvoid(output) || is_ptr_cvoid_rv(output) {
     quote! {
       if result.is_null() {
-        // External canot contain a null pointer, null pointers are instead represented as null.
+        // External cannot contain a null pointer, null pointers are instead represented as null.
         rv.set_null();
       } else {
         rv.set(v8::External::new(scope, result as *mut ::std::ffi::c_void).into());

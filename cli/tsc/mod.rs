@@ -122,7 +122,7 @@ fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![deno_cli_tsc::init_ext()],
+    extensions: vec![deno_cli_tsc::init_ops()],
     ..Default::default()
   });
   let global = runtime
@@ -787,7 +787,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
     startup_snapshot: Some(compiler_snapshot()),
-    extensions: vec![deno_cli_tsc::init_ext(
+    extensions: vec![deno_cli_tsc::init_ops(
       request,
       root_map,
       remapped_specifiers,
