@@ -27,8 +27,8 @@ harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
 [build-dependencies]
-deno_runtime = { workspace = true, features = ["exclude_js_main_from_snapshot"] }
-deno_core = { workspace = true, features = ["runtime_js_sources"] }
+deno_runtime = { workspace = true, features = ["snapshot_from_snapshot", "include_js_files_for_snapshotting"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -41,14 +41,14 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_core = { workspace = true, features = ["exclude_js_sources"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = "=0.63.1"
 deno_emit = "=0.24.0"
 deno_graph = "=0.49.0"
 deno_lint = { version = "=0.47.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
-deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot"] }
+deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.12.0"
 eszip = "=0.44.0"

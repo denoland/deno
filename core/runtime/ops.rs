@@ -250,7 +250,7 @@ mod tests {
     test: &'static str,
   ) -> Result<(), AnyError> {
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![testing::init_ext()],
+      extensions: vec![testing::init_ops_and_esm()],
       ..Default::default()
     });
     runtime
