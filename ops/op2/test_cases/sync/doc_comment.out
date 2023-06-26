@@ -1,0 +1,36 @@
+#[allow(non_camel_case_types)]
+pub struct op_has_doc_comment {}
+impl op_has_doc_comment {
+    pub const fn name() -> &'static str {
+        stringify!(op_has_doc_comment)
+    }
+    pub const fn decl() -> deno_core::_ops::OpDecl {
+        deno_core::_ops::OpDecl {
+            name: stringify!(op_has_doc_comment),
+            v8_fn_ptr: Self::slow_function as _,
+            enabled: true,
+            fast_fn: Some({
+                use deno_core::v8::fast_api::Type;
+                use deno_core::v8::fast_api::CType;
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[Type::V8Value],
+                    CType::Void,
+                    Self::fast_function as *const ::std::ffi::c_void,
+                )
+            }),
+            is_async: false,
+            is_unstable: false,
+            is_v8: false,
+            arg_count: 0usize as u8,
+        }
+    }
+    pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
+        let result = Self::call();
+    }
+    fn fast_function(_: deno_core::v8::Local<deno_core::v8::Object>) -> () {
+        let result = Self::call();
+        result
+    }
+    #[inline(always)]
+    pub fn call() -> () {}
+}

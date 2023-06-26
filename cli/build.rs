@@ -266,11 +266,7 @@ mod ts {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
-      extensions: vec![deno_tsc::init_ops_and_esm(
-        op_crate_libs,
-        build_libs,
-        path_dts,
-      )],
+      extensions: vec![deno_tsc::init_ext(op_crate_libs, build_libs, path_dts)],
 
       // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
       // ~45s on M1 MacBook Pro; without compression it took ~1s.
@@ -322,7 +318,7 @@ deno_core::extension!(
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
     ext.esm(vec![ExtensionFileSource {
       specifier: "ext:cli/runtime/js/99_main.js",
-      code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+      code: ExtensionFileSourceCode::LoadAtRuntime(
         std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
       ),
     }]);
@@ -335,42 +331,42 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let fs = Arc::new(deno_fs::RealFs);
   let extensions: Vec<Extension> = vec![
-    deno_webidl::deno_webidl::init_ops(),
-    deno_console::deno_console::init_ops(),
-    deno_url::deno_url::init_ops(),
-    deno_web::deno_web::init_ops::<PermissionsContainer>(
+    deno_webidl::deno_webidl::init_ext(),
+    deno_console::deno_console::init_ext(),
+    deno_url::deno_url::init_ext(),
+    deno_web::deno_web::init_ext::<PermissionsContainer>(
       deno_web::BlobStore::default(),
       Default::default(),
     ),
-    deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
-    deno_cache::deno_cache::init_ops::<SqliteBackedCache>(None),
-    deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+    deno_fetch::deno_fetch::init_ext::<PermissionsContainer>(Default::default()),
+    deno_cache::deno_cache::init_ext::<SqliteBackedCache>(None),
+    deno_websocket::deno_websocket::init_ext::<PermissionsContainer>(
       "".to_owned(),
       None,
       None,
     ),
-    deno_webstorage::deno_webstorage::init_ops(None),
-    deno_crypto::deno_crypto::init_ops(None),
-    deno_broadcast_channel::deno_broadcast_channel::init_ops(
+    deno_webstorage::deno_webstorage::init_ext(None),
+    deno_crypto::deno_crypto::init_ext(None),
+    deno_broadcast_channel::deno_broadcast_channel::init_ext(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
       false, // No --unstable.
     ),
-    deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(false),
-    deno_net::deno_net::init_ops::<PermissionsContainer>(
+    deno_ffi::deno_ffi::init_ext::<PermissionsContainer>(false),
+    deno_net::deno_net::init_ext::<PermissionsContainer>(
       None, false, // No --unstable.
       None,
     ),
-    deno_tls::deno_tls::init_ops(),
-    deno_kv::deno_kv::init_ops(
+    deno_tls::deno_tls::init_ext(),
+    deno_kv::deno_kv::init_ext(
       SqliteDbHandler::<PermissionsContainer>::new(None),
       false, // No --unstable.
     ),
-    deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-    deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
-    deno_io::deno_io::init_ops(Default::default()),
-    deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
-    deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
-    cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
+    deno_napi::deno_napi::init_ext::<PermissionsContainer>(),
+    deno_http::deno_http::init_ext::<DefaultHttpPropertyExtractor>(),
+    deno_io::deno_io::init_ext(Default::default()),
+    deno_fs::deno_fs::init_ext::<PermissionsContainer>(false, fs.clone()),
+    deno_node::deno_node::init_ext::<PermissionsContainer>(None, fs),
+    cli::init_ext(),
   ];
 
   create_snapshot(CreateSnapshotOptions {

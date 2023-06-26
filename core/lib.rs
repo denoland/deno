@@ -41,6 +41,7 @@ pub use url;
 pub use v8;
 
 pub use deno_ops::op;
+pub use deno_ops::op2;
 
 pub use crate::async_cancel::CancelFuture;
 pub use crate::async_cancel::CancelHandle;
@@ -130,6 +131,7 @@ pub fn v8_version() -> &'static str {
 pub mod _ops {
   pub use super::error::throw_type_error;
   pub use super::error_codes::get_error_code;
+  pub use super::extensions::OpDecl;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;
   pub use super::ops::OpResult;
@@ -139,6 +141,8 @@ pub mod _ops {
   pub use super::runtime::ops::map_async_op4;
   pub use super::runtime::ops::queue_async_op;
   pub use super::runtime::ops::queue_fast_async_op;
+  pub use super::runtime::ops::to_i32;
+  pub use super::runtime::ops::to_u32;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }
