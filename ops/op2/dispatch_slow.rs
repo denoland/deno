@@ -1,4 +1,3 @@
-use super::MacroConfig;
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::generator_state::GeneratorState;
 use super::signature::Arg;
@@ -6,6 +5,7 @@ use super::signature::NumericArg;
 use super::signature::ParsedSignature;
 use super::signature::RetVal;
 use super::signature::Special;
+use super::MacroConfig;
 use super::V8MappingError;
 use proc_macro2::TokenStream;
 use quote::quote;
