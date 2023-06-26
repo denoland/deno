@@ -364,7 +364,7 @@ fn terminate_execution_webassembly() {
   let (mut runtime, _dispatch_count) = setup(Mode::Async);
   let v8_isolate_handle = runtime.v8_isolate().thread_safe_handle();
 
-  // Run an infinite loop in Webassemby code, which should be terminated.
+  // Run an infinite loop in WebAssembly code, which should be terminated.
   let promise = runtime.execute_script_static("infinite_wasm_loop.js",
                                r#"
                                (async () => {
@@ -1894,7 +1894,7 @@ fn test_op_unstable_disabling() {
       "test.js",
       r#"
       if (Deno.core.ops.op_foo() !== 42) {
-        throw new Error("Exptected op_foo() === 42");
+        throw new Error("Expected op_foo() === 42");
       }
       if (typeof Deno.core.ops.op_bar !== "undefined") {
         throw new Error("Expected op_bar to be disabled")

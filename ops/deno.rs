@@ -22,7 +22,7 @@ pub(crate) fn import() -> TokenStream {
       // TODO(@littledivy): This won't work for `deno_core` examples
       // since `crate` does not refer to `deno_core`.
       // examples must re-export deno_core to make this work
-      // until Span inspection APIs are stabalized.
+      // until Span inspection APIs are stabilized.
       //
       // https://github.com/rust-lang/rust/issues/54725
       quote!(crate)

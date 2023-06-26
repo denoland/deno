@@ -111,7 +111,7 @@ impl TestContextBuilder {
 
   pub fn use_sync_npm_download(self) -> Self {
     self.env(
-      // make downloads determinstic
+      // make downloads deterministic
       "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
       "1",
     )
@@ -379,7 +379,7 @@ impl TestCommandBuilder {
     fn sanitize_output(text: String, args: &[String]) -> String {
       let mut text = strip_ansi_codes(&text).to_string();
       // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occassionally this zero width space
+      // synchronize the output pipes. Occasionally this zero width space
       // might end up in the output so strip it from the output comparison here.
       if args.first().map(|s| s.as_str()) == Some("test") {
         text = text.replace('\u{200B}', "");
@@ -647,7 +647,7 @@ impl TestCommandOutput {
   }
 
   #[track_caller]
-  pub fn assert_stderrr_matches_file(
+  pub fn assert_stderr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
   ) -> &Self {

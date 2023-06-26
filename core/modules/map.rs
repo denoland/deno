@@ -73,7 +73,7 @@ pub(crate) struct ModuleMap {
   pub(crate) pending_dynamic_imports:
     FuturesUnordered<StreamFuture<RecursiveModuleLoad>>,
 
-  // This store is used temporarly, to forward parsed JSON
+  // This store is used temporarily, to forward parsed JSON
   // value from `new_json_module` to `json_module_evaluation_steps`
   json_value_store: HashMap<v8::Global<v8::Module>, v8::Global<v8::Value>>,
 }

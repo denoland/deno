@@ -401,7 +401,7 @@ pub struct RuntimeOptions {
   pub create_params: Option<v8::CreateParams>,
 
   /// V8 platform instance to use. Used when Deno initializes V8
-  /// (which it only does once), otherwise it's silenty dropped.
+  /// (which it only does once), otherwise it's silently dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -924,7 +924,7 @@ impl JsRuntime {
     // macroware wraps an opfn in all the middleware
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
-    // Flatten ops, apply middlware & override disabled ops
+    // Flatten ops, apply middleware & override disabled ops
     let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
@@ -1771,7 +1771,7 @@ impl JsRuntime {
     let has_dispatched_exception =
       state_rc.borrow_mut().dispatched_exception.is_some();
     if has_dispatched_exception {
-      // This will be overrided in `exception_to_err_result()`.
+      // This will be overridden in `exception_to_err_result()`.
       let exception = v8::undefined(tc_scope).into();
       let pending_mod_evaluate = {
         let mut state = state_rc.borrow_mut();

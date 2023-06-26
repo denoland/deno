@@ -13,7 +13,7 @@ import {
 } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
-/** These options aren't funcitonally used right now, as `Dir` doesn't yet support them.
+/** These options aren't functionally used right now, as `Dir` doesn't yet support them.
  * However, these values are still validated.
  */
 type Options = {

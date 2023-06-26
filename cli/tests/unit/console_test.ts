@@ -3,7 +3,7 @@
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
 
-// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// TODO(ry) These tests currently strip all the ANSI colors out. We don't have a
 // good way to control whether we produce color output or not since
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
@@ -1069,7 +1069,7 @@ Deno.test(function consoleTestWithCustomInspectorError() {
     () => stringify(a),
     Error,
     "BOOM",
-    "Inpsect should fail and maintain a clear CTX_STACK",
+    "Inspect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1779,7 +1779,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
 });
 
 // console.log(Invalid Date) test
-Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
