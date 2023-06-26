@@ -1111,12 +1111,9 @@ impl Permissions {
   }
 
   pub fn new_hrtime(allow_state: bool, deny_state: bool) -> UnitPermission {
-    unit_permission_from_flag_bool(
-      if deny_state == true {
-        false
-      } else {
-        allow_state
-      }, // deny_state takes precedence over allow_state
+    unit_permission_from_flag_bools(
+      allow_state,
+      deny_state,
       "hrtime",
       "high precision time",
       false, // never prompt for hrtime
@@ -1445,8 +1442,9 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
   }
 }
 
-fn unit_permission_from_flag_bool(
-  flag: bool,
+fn unit_permission_from_flag_bools(
+  allow_flag: bool,
+  deny_flag: bool,
   name: &'static str,
   description: &'static str,
   prompt: bool,
@@ -1454,7 +1452,9 @@ fn unit_permission_from_flag_bool(
   UnitPermission {
     name,
     description,
-    state: if flag {
+    state: if deny_flag {
+      PermissionState::Denied
+    } else if allow_flag {
       PermissionState::Granted
     } else {
       PermissionState::Prompt
