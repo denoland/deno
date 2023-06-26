@@ -37,8 +37,8 @@ use anyhow::Context as AnyhowContext;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
-use futures::future::Future;
 use futures::stream::StreamExt;
+use futures::task::AtomicWaker;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -301,6 +301,7 @@ pub struct JsRuntimeState {
   dyn_module_evaluate_idle_counter: u32,
   pub(crate) source_map_getter: Option<Rc<Box<dyn SourceMapGetter>>>,
   pub(crate) source_map_cache: Rc<RefCell<SourceMapCache>>,
+  pub(crate) have_unpolled_ops: bool,
   pub(crate) op_state: Rc<RefCell<OpState>>,
   pub(crate) shared_array_buffer_store: Option<SharedArrayBufferStore>,
   pub(crate) compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -311,6 +312,7 @@ pub struct JsRuntimeState {
   // flimsy. Try to poll it similarly to `pending_promise_rejections`.
   pub(crate) dispatched_exception: Option<v8::Global<v8::Value>>,
   pub(crate) inspector: Option<Rc<RefCell<JsRuntimeInspector>>>,
+  waker: AtomicWaker,
 }
 
 impl JsRuntimeState {
@@ -537,6 +539,8 @@ impl JsRuntime {
       source_map_cache: Default::default(),
       shared_array_buffer_store: options.shared_array_buffer_store,
       compiled_wasm_module_store: options.compiled_wasm_module_store,
+      have_unpolled_ops: false,
+      waker: AtomicWaker::new(),
       op_state: op_state.clone(),
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
@@ -1307,7 +1311,7 @@ impl JsRuntime {
     {
       let state = self.inner.state.borrow();
       has_inspector = state.inspector.is_some();
-      state.op_state.borrow().waker.register(cx.waker());
+      state.waker.register(cx.waker());
     }
 
     if has_inspector {
@@ -1399,11 +1403,12 @@ impl JsRuntime {
     // TODO(andreubotella) The event loop will spin as long as there are pending
     // background tasks. We should look into having V8 notify us when a
     // background task is done.
-    if pending_state.has_pending_background_tasks
+    if state.have_unpolled_ops
+      || pending_state.has_pending_background_tasks
       || pending_state.has_tick_scheduled
       || maybe_scheduling
     {
-      state.op_state.borrow().waker.wake();
+      state.waker.wake();
     }
 
     drop(state);
@@ -1456,7 +1461,7 @@ impl JsRuntime {
         // evaluation may complete during this, in which case the counter will
         // reset.
         state.dyn_module_evaluate_idle_counter += 1;
-        state.op_state.borrow().waker.wake();
+        state.waker.wake();
       }
     }
 
@@ -1597,7 +1602,7 @@ impl JsRuntimeState {
   /// after initiating new dynamic import load.
   pub fn notify_new_dynamic_import(&mut self) {
     // Notify event loop to poll again soon.
-    self.op_state.borrow().waker.wake();
+    self.waker.wake();
   }
 }
 
@@ -2238,6 +2243,10 @@ impl JsRuntime {
   // Polls pending ops and then runs `Deno.core.eventLoopTick` callback.
   fn do_js_event_loop_tick(&mut self, cx: &mut Context) -> Result<(), Error> {
     // Handle responses for each realm.
+    {
+      let mut state = self.inner.state.borrow_mut();
+      state.have_unpolled_ops = false;
+    }
     let state = self.inner.state.clone();
     let isolate = &mut self.inner.v8_isolate;
     let realm_count = state.borrow().known_realms.len();
@@ -2260,15 +2269,10 @@ impl JsRuntime {
       let mut args: SmallVec<[v8::Local<v8::Value>; 32]> =
         SmallVec::with_capacity(32);
 
-      loop {
-        let item = {
-          let next = std::pin::pin!(context_state.pending_ops.join_next());
-          let Poll::Ready(Some(item)) = next.poll(cx) else {
-            break;
-          };
-          item
-        };
-        let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
+      while let Poll::Ready(Some(item)) =
+        context_state.pending_ops.poll_next_unpin(cx)
+      {
+        let (promise_id, op_id, mut resp) = item;
         state
           .borrow()
           .op_state

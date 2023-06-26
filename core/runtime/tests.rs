@@ -2090,7 +2090,6 @@ async fn js_realm_async_ops() {
   }
 }
 
-#[ignore]
 #[tokio::test]
 async fn js_realm_gc() {
   static INVOKE_COUNT: AtomicUsize = AtomicUsize::new(0);
