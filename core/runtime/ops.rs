@@ -235,7 +235,7 @@ mod tests {
     f: impl FnOnce(Result<&v8::Value, anyhow::Error>, &mut v8::HandleScope),
   ) {
     let mut runtime = JsRuntime::new(RuntimeOptions {
-      extensions: vec![testing::init_ext()],
+      extensions: vec![testing::init_ops_and_esm()],
       ..Default::default()
     });
     let value: Result<v8::Global<v8::Value>, anyhow::Error> = runtime

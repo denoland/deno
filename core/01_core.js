@@ -38,13 +38,6 @@
     URIError,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
-
-  const key = SymbolFor("01_core.js");
-  if (globalThis.__bootstrap[key]) {
-    return;
-  }
-  globalThis.__bootstrap[key] = true;
-
   const { ops, asyncOps } = window.Deno.core;
 
   const build = {
