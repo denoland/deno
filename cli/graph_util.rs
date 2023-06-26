@@ -144,6 +144,7 @@ pub fn graph_valid(
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
+      Module::Esm(module) if module.media_type.is_declaration() => continue, // skip declaration files
       Module::Esm(module) => &module.source,
       Module::Json(module) => &module.source,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
