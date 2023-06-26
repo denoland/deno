@@ -13,7 +13,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { fromFileUrl, join } from "ext:deno_node/path.ts";
+import { join } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,
   chdir,
@@ -705,7 +706,7 @@ internals.__bootstrapNodeProcess = function (
   Object.defineProperty(argv, "1", {
     get: () => {
       if (Deno.mainModule.startsWith("file:")) {
-        return fromFileUrl(Deno.mainModule);
+        return pathFromURL(new URL(Deno.mainModule));
       } else {
         return join(Deno.cwd(), "$deno$node.js");
       }

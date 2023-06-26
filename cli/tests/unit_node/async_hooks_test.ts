@@ -62,7 +62,7 @@ Deno.test(async function bar() {
   const res = await fetch("http://localhost:4000");
   assertEquals(await res.text(), "Hello World");
   ac.abort();
-  await server;
+  await server.finished;
   assert(differentScopeDone);
 });
 

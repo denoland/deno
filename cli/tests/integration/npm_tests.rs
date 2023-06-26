@@ -183,6 +183,13 @@ itest!(dynamic_import_reload_same_package {
   http_server: true,
 });
 
+itest!(dynamic_import_invalid_package_name {
+  args: "run -A --reload npm/dynamic_import_invalid_package_name/main.ts",
+  output: "npm/dynamic_import_invalid_package_name/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(env_var_re_export_dev {
   args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("dev\n"),

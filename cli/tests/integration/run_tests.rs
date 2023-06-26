@@ -2484,7 +2484,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost() {
-    // Port 4600 is chosen to not colide with those used by
+    // Port 4600 is chosen to not collide with those used by
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,

@@ -1,9 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
-use crate::bindings;
+use super::bindings;
+use crate::error::exception_to_err_result;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
-use crate::runtime::exception_to_err_result;
 use crate::runtime::JsRuntimeState;
 use crate::task::MaskResultAsSend;
 use crate::JsRuntime;
@@ -201,7 +200,7 @@ impl JsRealmInner {
 
     // Expect that this context is dead (we only check this in debug mode)
     // TODO(mmastrac): This check fails for some tests, will need to fix this
-    // debug_assert_eq!(Rc::strong_count(&self.context), 1, "Realm was still alive when we wanted to destory it. Not dropped?");
+    // debug_assert_eq!(Rc::strong_count(&self.context), 1, "Realm was still alive when we wanted to destroy it. Not dropped?");
   }
 }
 

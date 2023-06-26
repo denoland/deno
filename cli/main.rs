@@ -23,7 +23,6 @@ mod tools;
 mod tsc;
 mod util;
 mod version;
-mod watcher;
 mod worker;
 
 use crate::args::flags_from_vec;
@@ -33,7 +32,6 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
-use args::CliOptions;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -84,13 +82,10 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
-      let cli_options = CliOptions::from_flags(flags)?;
-      let bench_options = cli_options.resolve_bench_options(bench_flags)?;
-      if cli_options.watch_paths().is_some() {
-        tools::bench::run_benchmarks_with_watch(cli_options, bench_options)
-          .await
+      if bench_flags.watch.is_some() {
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
       } else {
-        tools::bench::run_benchmarks(cli_options, bench_options).await
+        tools::bench::run_benchmarks(flags, bench_flags).await
       }
     }),
     DenoSubcommand::Bundle(bundle_flags) => spawn_subcommand(async {
@@ -125,11 +120,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
       tools::coverage::cover_files(flags, coverage_flags).await
     }),
-    DenoSubcommand::Fmt(fmt_flags) => spawn_subcommand(async move {
-      let cli_options = CliOptions::from_flags(flags.clone())?;
-      let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
-      tools::fmt::format(cli_options, fmt_options).await
-    }),
+    DenoSubcommand::Fmt(fmt_flags) => {
+      spawn_subcommand(
+        async move { tools::fmt::format(flags, fmt_flags).await },
+      )
+    }
     DenoSubcommand::Init(init_flags) => {
       spawn_subcommand(async { tools::init::init_project(init_flags).await })
     }
@@ -148,9 +143,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
         tools::lint::print_rules_list(lint_flags.json);
         Ok(())
       } else {
-        let cli_options = CliOptions::from_flags(flags)?;
-        let lint_options = cli_options.resolve_lint_options(lint_flags)?;
-        tools::lint::lint(cli_options, lint_options).await
+        tools::lint::lint(flags, lint_flags).await
       }
     }),
     DenoSubcommand::Repl(repl_flags) => {
@@ -160,7 +153,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       if run_flags.is_stdin() {
         tools::run::run_from_stdin(flags).await
       } else {
-        tools::run::run_script(flags).await
+        tools::run::run_script(flags, run_flags).await
       }
     }),
     DenoSubcommand::Task(task_flags) => spawn_subcommand(async {
@@ -168,7 +161,7 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
-        if let Some(ref coverage_dir) = flags.coverage_dir {
+        if let Some(ref coverage_dir) = test_flags.coverage_dir {
           std::fs::create_dir_all(coverage_dir)
             .with_context(|| format!("Failed creating: {coverage_dir}"))?;
           // this is set in order to ensure spawned processes use the same
@@ -178,13 +171,11 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
             PathBuf::from(coverage_dir).canonicalize()?,
           );
         }
-        let cli_options = CliOptions::from_flags(flags)?;
-        let test_options = cli_options.resolve_test_options(test_flags)?;
 
-        if cli_options.watch_paths().is_some() {
-          tools::test::run_tests_with_watch(cli_options, test_options).await
+        if test_flags.watch.is_some() {
+          tools::test::run_tests_with_watch(flags, test_flags).await
         } else {
-          tools::test::run_tests(cli_options, test_options).await
+          tools::test::run_tests(flags, test_flags).await
         }
       })
     }

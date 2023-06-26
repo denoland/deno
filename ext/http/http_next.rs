@@ -20,6 +20,7 @@ use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
 use deno_core::task::spawn;
@@ -96,10 +97,10 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
 /// MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty.
 const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
-/// ALPN negotation for "h2"
+/// ALPN negotiation for "h2"
 const TLS_ALPN_HTTP_2: &[u8] = b"h2";
 
-/// ALPN negotation for "http/1.1"
+/// ALPN negotiation for "http/1.1"
 const TLS_ALPN_HTTP_11: &[u8] = b"http/1.1";
 
 /// Name a trait for streams we can serve HTTP over.
@@ -208,8 +209,8 @@ pub async fn op_http_upgrade_websocket_next(
   ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
-#[op(fast)]
-pub fn op_http_set_promise_complete(slab_id: SlabId, status: u16) {
+#[op2(fast)]
+pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
   // The Javascript code will never provide a status that is invalid here (see 23_response.js)
   *http.response().status_mut() = StatusCode::from_u16(status).unwrap();
@@ -376,12 +377,17 @@ pub fn op_http_read_request_body(
 }
 
 #[op(fast)]
-pub fn op_http_set_response_header(slab_id: SlabId, name: &str, value: &str) {
+pub fn op_http_set_response_header(
+  slab_id: SlabId,
+  name: ByteString,
+  value: ByteString,
+) {
   let mut http = slab_get(slab_id);
   let resp_headers = http.response().headers_mut();
   // These are valid latin-1 strings
-  let name = HeaderName::from_bytes(name.as_bytes()).unwrap();
-  let value = HeaderValue::from_bytes(value.as_bytes()).unwrap();
+  let name = HeaderName::from_bytes(&name).unwrap();
+  // SAFETY: These are valid latin-1 strings
+  let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
   resp_headers.append(name, value);
 }
 
@@ -410,7 +416,9 @@ fn op_http_set_response_headers(
     let v8_name: ByteString = from_v8(scope, name).unwrap();
     let v8_value: ByteString = from_v8(scope, value).unwrap();
     let header_name = HeaderName::from_bytes(&v8_name).unwrap();
-    let header_value = HeaderValue::from_bytes(&v8_value).unwrap();
+    let header_value =
+      // SAFETY: These are valid latin-1 strings
+      unsafe { HeaderValue::from_maybe_shared_unchecked(v8_value) };
     resp_headers.append(header_name, header_value);
   }
 }
@@ -425,7 +433,8 @@ pub fn op_http_set_response_trailers(
   for (name, value) in trailers {
     // These are valid latin-1 strings
     let name = HeaderName::from_bytes(&name).unwrap();
-    let value = HeaderValue::from_bytes(&value).unwrap();
+    // SAFETY: These are valid latin-1 strings
+    let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
     trailer_map.append(name, value);
   }
   *http.trailers().borrow_mut() = Some(trailer_map);

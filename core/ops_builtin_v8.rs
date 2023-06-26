@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use crate::bindings::script_origin;
 use crate::error::custom_error;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
@@ -7,11 +6,13 @@ use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url;
+use crate::runtime::script_origin;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map;
+use crate::JsBuffer;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::ZeroCopyBuf;
+use crate::ToJsBuffer;
 use anyhow::Error;
 use deno_ops::op;
 use serde::Deserialize;
@@ -375,7 +376,7 @@ fn op_serialize(
   value: serde_v8::Value,
   options: Option<SerializeDeserializeOptions>,
   error_callback: Option<serde_v8::Value>,
-) -> Result<ZeroCopyBuf, Error> {
+) -> Result<ToJsBuffer, Error> {
   let options = options.unwrap_or_default();
   let error_callback = match error_callback {
     Some(cb) => Some(
@@ -448,7 +449,7 @@ fn op_serialize(
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.
-    Ok(ZeroCopyBuf::empty())
+    Ok(ToJsBuffer::empty())
   } else if let Some(true) = ret {
     let vector = value_serializer.release();
     Ok(vector.into())
@@ -460,7 +461,7 @@ fn op_serialize(
 #[op(v8)]
 fn op_deserialize<'a>(
   scope: &mut v8::HandleScope<'a>,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
   options: Option<SerializeDeserializeOptions>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let options = options.unwrap_or_default();

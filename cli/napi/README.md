@@ -3,7 +3,7 @@
 This directory contains source for Deno's Node-API implementation. It depends on
 `napi_sym` and `deno_napi`.
 
-- [`async.rs`](./async.rs) - Asyncronous work related functions.
+- [`async.rs`](./async.rs) - Asynchronous work related functions.
 - [`env.rs`](./env.rs) - Environment related functions.
 - [`js_native_api.rs`](./js_native_api.rs) - V8/JS related functions.
 - [`thread_safe_function.rs`](./threadsafe_functions.rs) - Thread safe function
