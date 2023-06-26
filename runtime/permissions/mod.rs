@@ -39,7 +39,7 @@ pub use prompter::PromptCallback;
 static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
-/// Tri-state value for storing permission state
+/// Quadri-state value for storing permission state
 #[derive(
   Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
 )]
@@ -504,7 +504,7 @@ impl Descriptor for NetDescriptor {
   }
 
   fn type_description() -> &'static str {
-    "description"
+    "network access"
   }
 
   fn name(&self) -> Cow<str> {

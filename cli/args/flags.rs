@@ -3829,6 +3829,9 @@ mod tests {
     let r = flags_from_vec(svec!["deno", "run", "--allow-read", "x.ts"]);
     assert_eq!(r.unwrap().has_permission(), true);
 
+    let r = flags_from_vec(svec!["deno", "run", "--deny-read", "x.ts"]);
+    assert_eq!(r.unwrap().has_permission(), true);
+
     let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
     assert_eq!(r.unwrap().has_permission(), false);
   }
@@ -3836,6 +3839,9 @@ mod tests {
   #[test]
   fn has_permission_in_argv() {
     let r = flags_from_vec(svec!["deno", "run", "x.ts", "--allow-read"]);
+    assert_eq!(r.unwrap().has_permission_in_argv(), true);
+
+    let r = flags_from_vec(svec!["deno", "run", "x.ts", "--deny-read"]);
     assert_eq!(r.unwrap().has_permission_in_argv(), true);
 
     let r = flags_from_vec(svec!["deno", "run", "x.ts"]);
@@ -3876,13 +3882,21 @@ mod tests {
         }),
         allow_all: true,
         allow_net: Some(vec![]),
+        deny_net: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         ..Flags::default()
       }
     );
@@ -4679,13 +4693,21 @@ mod tests {
           code: "1+2".to_string(),
         }),
         allow_net: Some(vec![]),
+        deny_net: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         ..Flags::default()
       }
     );
@@ -4703,13 +4725,21 @@ mod tests {
           code: "'console.log(\"hello\")'".to_string(),
         }),
         allow_net: Some(vec![]),
+        deny_net: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         ext: Some("ts".to_string()),
         ..Flags::default()
       }
@@ -4771,13 +4801,21 @@ mod tests {
         }),
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),
+        deny_net: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         ..Flags::default()
       }
     );
@@ -4797,12 +4835,19 @@ mod tests {
         allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         ..Flags::default()
       }
     );
@@ -4835,13 +4880,21 @@ mod tests {
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         allow_all: true,
         allow_net: Some(vec![]),
+        deny_net: None,
         allow_env: Some(vec![]),
+        deny_env: None,
         allow_run: Some(vec![]),
+        deny_run: None,
         allow_read: Some(vec![]),
+        deny_read: None,
         allow_sys: Some(vec![]),
+        deny_sys: None,
         allow_write: Some(vec![]),
+        deny_write: None,
         allow_ffi: Some(vec![]),
+        deny_ffi: None,
         allow_hrtime: true,
+        deny_hrtime: false,
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
@@ -5162,7 +5215,7 @@ mod tests {
   }
 
   #[test]
-  fn deny_sys_allowlist() {
+  fn deny_sys_denylist() {
     let r =
       flags_from_vec(svec!["deno", "run", "--deny-sys=hostname", "script.ts"]);
     assert_eq!(
