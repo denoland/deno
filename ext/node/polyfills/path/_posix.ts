@@ -12,7 +12,6 @@ import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   _format,
   assertPath,
-  encodeWhitespace,
   isPosixPathSeparator,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
@@ -476,25 +475,6 @@ export function parse(path: string): ParsedPath {
 
   return ret;
 }
-
-/**
- * Converts a path string to a file URL.
- *
- * ```ts
- *      toFileUrl("/home/foo"); // new URL("file:///home/foo")
- * ```
- * @param path to convert to file URL
- */
-export function toFileUrl(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(
-    path.replace(/%/g, "%25").replace(/\\/g, "%5C"),
-  );
-  return url;
-}
 export default {
   basename,
   delimiter,
@@ -508,6 +488,5 @@ export default {
   relative,
   resolve,
   sep,
-  toFileUrl,
   toNamespacedPath,
 };
