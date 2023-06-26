@@ -3,7 +3,9 @@
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArraySplit,
   ObjectDefineProperties,
+  StringSlice,
   SymbolFor,
 } = primordials;
 
@@ -257,7 +259,7 @@ const mainRuntimeGlobalProperties = {
       const stack = new Error().stack;
       util.logWarn(
         "%c[deprecated] The `window` global will be removed in Deno 2.0 (https://github.com/denoland/deno/issues/13367). Use `globalThis` instead." +
-          (stack == null ? "" : `\n${stack.split("\n").slice(2)}`),
+          (stack == null ? "" : `\n${StringSlice(ArraySplit(stack, "\n"), 2)}`),
         "color: yellow",
       );
     }
