@@ -49,6 +49,7 @@ util::unit_test_factory!(
     _fs_writeFile_test = _fs / _fs_writeFile_test,
     _fs_write_test = _fs / _fs_write_test,
     async_hooks_test,
+    assertion_error_test,
     buffer_test,
     child_process_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
