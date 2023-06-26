@@ -91,7 +91,7 @@ pub async fn op_sleep(
   // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
   // timers longer than 100ms are a reasonable cutoff here.
 
-  // The high-res timers on Windows are still limited. Unfortuntely this means that our shortest duration 4ms timers
+  // The high-res timers on Windows are still limited. Unfortunately this means that our shortest duration 4ms timers
   // can still be 25% late, but without a more complex timer system or spinning on the clock itself, we're somewhat
   // bounded by the OS' scheduler itself.
   let _hr_timer_lock = if millis <= 100 {

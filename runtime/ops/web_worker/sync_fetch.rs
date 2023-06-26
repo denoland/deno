@@ -51,7 +51,7 @@ pub fn op_worker_sync_fetch(
     .clone();
 
   // TODO(andreubotella): make the below thread into a resource that can be
-  // re-used. This would allow parallel fecthing of multiple scripts.
+  // re-used. This would allow parallel fetching of multiple scripts.
 
   let thread = std::thread::spawn(move || {
     let runtime = tokio::runtime::Builder::new_current_thread()

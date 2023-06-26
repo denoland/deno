@@ -32,11 +32,16 @@ const {
   ObjectHasOwn,
   RegExpPrototypeExec,
   SafeArrayIterator,
-  SafeRegExp,
+  SafeMap,
+  MapPrototypeGet,
+  MapPrototypeHas,
+  MapPrototypeSet,
+  MapPrototypeClear,
   Symbol,
   SymbolFor,
   SymbolIterator,
   StringPrototypeReplaceAll,
+  StringPrototypeCharCodeAt,
   TypeError,
 } = primordials;
 
@@ -87,9 +92,34 @@ function fillHeaders(headers, object) {
   }
 }
 
-// Regex matching illegal chars in a header value
-// deno-lint-ignore no-control-regex
-const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
+function checkForInvalidValueChars(value) {
+  for (let i = 0; i < value.length; i++) {
+    const c = StringPrototypeCharCodeAt(value, i);
+
+    if (c === 0x0a || c === 0x0d || c === 0x00) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+const HEADER_NAME_CACHE = new SafeMap();
+const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
+function checkHeaderNameForHttpTokenCodePoint(name) {
+  if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
+    return MapPrototypeGet(HEADER_NAME_CACHE, name);
+  }
+
+  const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
+
+  if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
+    MapPrototypeClear(HEADER_NAME_CACHE);
+  }
+  MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
+
+  return valid;
+}
 
 /**
  * https://fetch.spec.whatwg.org/#concept-headers-append
@@ -102,10 +132,10 @@ function appendHeader(headers, name, value) {
   value = normalizeHeaderValue(value);
 
   // 2.
-  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+  if (!checkHeaderNameForHttpTokenCodePoint(name)) {
     throw new TypeError("Header name is not valid.");
   }
-  if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
+  if (!checkForInvalidValueChars(value)) {
     throw new TypeError("Header value is not valid.");
   }
 
@@ -282,7 +312,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
     if (this[_guard] == "immutable") {
@@ -307,7 +337,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -323,7 +353,7 @@ class Headers {
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -351,10 +381,10 @@ class Headers {
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) === null) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
-    if (RegExpPrototypeExec(ILLEGAL_VALUE_CHARS, value) !== null) {
+    if (!checkForInvalidValueChars(value)) {
       throw new TypeError("Header value is not valid.");
     }
 

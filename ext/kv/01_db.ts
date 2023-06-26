@@ -26,6 +26,20 @@ async function openKv(path: string) {
   return new Kv(rid, kvSymbol);
 }
 
+const millisecondsInOneWeek = 7 * 24 * 60 * 60 * 1000;
+
+function validateQueueDelay(delay: number) {
+  if (delay < 0) {
+    throw new TypeError("delay cannot be negative");
+  }
+  if (delay > millisecondsInOneWeek) {
+    throw new TypeError("delay cannot be greater than one week");
+  }
+  if (isNaN(delay)) {
+    throw new TypeError("delay cannot be NaN");
+  }
+}
+
 interface RawKvEntry {
   key: Deno.KvKey;
   value: RawValue;
@@ -47,6 +61,7 @@ const kvSymbol = Symbol("KvRid");
 
 class Kv {
   #rid: number;
+  #closed: boolean;
 
   constructor(rid: number = undefined, symbol: symbol = undefined) {
     if (kvSymbol !== symbol) {
@@ -55,6 +70,7 @@ class Kv {
       );
     }
     this.#rid = rid;
+    this.#closed = false;
   }
 
   atomic() {
@@ -203,8 +219,98 @@ class Kv {
     };
   }
 
+  async enqueue(
+    message: unknown,
+    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+  ) {
+    if (opts?.delay !== undefined) {
+      validateQueueDelay(opts?.delay);
+    }
+
+    const enqueues = [
+      [
+        core.serialize(message, { forStorage: true }),
+        opts?.delay ?? 0,
+        opts?.keysIfUndelivered ?? [],
+        null,
+      ],
+    ];
+
+    const versionstamp = await core.opAsync(
+      "op_kv_atomic_write",
+      this.#rid,
+      [],
+      [],
+      enqueues,
+    );
+    if (versionstamp === null) throw new TypeError("Failed to enqueue value");
+    return { ok: true, versionstamp };
+  }
+
+  async listenQueue(
+    handler: (message: unknown) => Promise<void> | void,
+  ): Promise<void> {
+    const finishMessageOps = new Map<number, Promise<void>>();
+    while (!this.#closed) {
+      // Wait for the next message.
+      let next: { 0: Uint8Array; 1: number };
+      try {
+        next = await core.opAsync(
+          "op_kv_dequeue_next_message",
+          this.#rid,
+        );
+      } catch (error) {
+        if (this.#closed) {
+          break;
+        } else {
+          throw error;
+        }
+      }
+
+      // Deserialize the payload.
+      const { 0: payload, 1: handleId } = next;
+      const deserializedPayload = core.deserialize(payload, {
+        forStorage: true,
+      });
+
+      // Dispatch the payload.
+      (async () => {
+        let success = false;
+        try {
+          const result = handler(deserializedPayload);
+          const _res = result instanceof Promise ? (await result) : result;
+          success = true;
+        } catch (error) {
+          console.error("Exception in queue handler", error);
+        } finally {
+          if (this.#closed) {
+            core.close(handleId);
+          } else {
+            const promise: Promise<void> = core.opAsync(
+              "op_kv_finish_dequeued_message",
+              handleId,
+              success,
+            );
+            finishMessageOps.set(handleId, promise);
+            try {
+              await promise;
+            } finally {
+              finishMessageOps.delete(handleId);
+            }
+          }
+        }
+      })();
+    }
+
+    for (const promise of finishMessageOps.values()) {
+      await promise;
+    }
+    finishMessageOps.clear();
+  }
+
   close() {
     core.close(this.#rid);
+    this.#closed = true;
   }
 }
 
@@ -213,6 +319,7 @@ class AtomicOperation {
 
   #checks: [Deno.KvKey, string | null][] = [];
   #mutations: [Deno.KvKey, string, RawValue | null][] = [];
+  #enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][] = [];
 
   constructor(rid: number) {
     this.#rid = rid;
@@ -280,13 +387,29 @@ class AtomicOperation {
     return this;
   }
 
+  enqueue(
+    message: unknown,
+    opts?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+  ): this {
+    if (opts?.delay !== undefined) {
+      validateQueueDelay(opts?.delay);
+    }
+    this.#enqueues.push([
+      core.serialize(message, { forStorage: true }),
+      opts?.delay ?? 0,
+      opts?.keysIfUndelivered ?? [],
+      null,
+    ]);
+    return this;
+  }
+
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
       this.#mutations,
-      [], // TODO(@losfair): enqueue
+      this.#enqueues,
     );
     if (versionstamp === null) return { ok: false };
     return { ok: true, versionstamp };

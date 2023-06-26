@@ -17,9 +17,7 @@ use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -92,11 +90,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
@@ -218,6 +211,16 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
+    ops::zlib::brotli::op_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_async,
+    ops::zlib::brotli::op_create_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_stream,
+    ops::zlib::brotli::op_brotli_compress_stream_end,
+    ops::zlib::brotli::op_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_async,
+    ops::zlib::brotli::op_create_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_stream,
+    ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
     op_node_build_os,
     ops::require::op_require_init_paths,
@@ -249,6 +252,7 @@ deno_core::extension!(deno_node,
     "00_globals.js",
     "01_require.js",
     "02_init.js",
+    "_brotli.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
     "_fs/_fs_appendFile.ts",

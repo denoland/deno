@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use deno_core::task::MaskFutureAsSend;
+#[cfg(tokio_unstable)]
 use tokio_metrics::RuntimeMonitor;
 
 /// Default configuration for tokio. In the future, this method may have different defaults
@@ -70,6 +71,7 @@ where
   // SAFETY: this this is guaranteed to be running on a current-thread executor
   let future = unsafe { MaskFutureAsSend::new(future) };
 
+  #[cfg(tokio_unstable)]
   let join_handle = if metrics_enabled {
     rt.spawn(async move {
       let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
@@ -93,6 +95,10 @@ where
   } else {
     rt.spawn(future)
   };
+
+  #[cfg(not(tokio_unstable))]
+  let join_handle = rt.spawn(future);
+
   rt.block_on(join_handle).unwrap().into_inner()
 }
 

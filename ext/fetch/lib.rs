@@ -23,6 +23,7 @@ use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
+use deno_core::task::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -31,11 +32,11 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -58,6 +59,8 @@ use reqwest::RequestBuilder;
 use reqwest::Response;
 use serde::Deserialize;
 use serde::Serialize;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -109,6 +112,7 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
+    op_fetch_response_upgrade,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -228,7 +232,7 @@ pub fn op_fetch<FP>(
   client_rid: Option<u32>,
   has_body: bool,
   body_length: Option<u64>,
-  data: Option<ZeroCopyBuf>,
+  data: Option<JsBuffer>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -414,6 +418,8 @@ pub struct FetchResponse {
   pub url: String,
   pub response_rid: ResourceId,
   pub content_length: Option<u64>,
+  pub remote_addr_ip: Option<String>,
+  pub remote_addr_port: Option<u16>,
 }
 
 #[op]
@@ -436,7 +442,6 @@ pub async fn op_fetch_send(
     Err(_) => return Err(type_error("request was cancelled")),
   };
 
-  //debug!("Fetch response {}", url);
   let status = res.status();
   let url = res.url().to_string();
   let mut res_headers = Vec::new();
@@ -445,27 +450,134 @@ pub async fn op_fetch_send(
   }
 
   let content_length = res.content_length();
+  let remote_addr = res.remote_addr();
+  let (remote_addr_ip, remote_addr_port) = if let Some(addr) = remote_addr {
+    (Some(addr.ip().to_string()), Some(addr.port()))
+  } else {
+    (None, None)
+  };
 
-  let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
-    r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-  }));
-  let rid = state
+  let response_rid = state
     .borrow_mut()
     .resource_table
-    .add(FetchResponseBodyResource {
-      reader: AsyncRefCell::new(stream.peekable()),
-      cancel: CancelHandle::default(),
-      size: content_length,
-    });
+    .add(FetchResponseResource::new(res, content_length));
 
   Ok(FetchResponse {
     status: status.as_u16(),
     status_text: status.canonical_reason().unwrap_or("").to_string(),
     headers: res_headers,
     url,
-    response_rid: rid,
+    response_rid,
     content_length,
+    remote_addr_ip,
+    remote_addr_port,
   })
+}
+
+#[op]
+pub async fn op_fetch_response_upgrade(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> Result<ResourceId, AnyError> {
+  let raw_response = state
+    .borrow_mut()
+    .resource_table
+    .take::<FetchResponseResource>(rid)?;
+  let raw_response = Rc::try_unwrap(raw_response)
+    .expect("Someone is holding onto FetchResponseResource");
+
+  let (read, write) = tokio::io::duplex(1024);
+  let (read_rx, write_tx) = tokio::io::split(read);
+  let (mut write_rx, mut read_tx) = tokio::io::split(write);
+  let upgraded = raw_response.upgrade().await?;
+  {
+    // Stage 3: Pump the data
+    let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
+
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = upgraded_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        read_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+    spawn(async move {
+      let mut buf = [0; 1024];
+      loop {
+        let read = write_rx.read(&mut buf).await?;
+        if read == 0 {
+          break;
+        }
+        upgraded_tx.write_all(&buf[..read]).await?;
+      }
+      Ok::<_, AnyError>(())
+    });
+  }
+
+  Ok(
+    state
+      .borrow_mut()
+      .resource_table
+      .add(UpgradeStream::new(read_rx, write_tx)),
+  )
+}
+
+struct UpgradeStream {
+  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
+  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+  cancel_handle: CancelHandle,
+}
+
+impl UpgradeStream {
+  pub fn new(
+    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
+    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
+  ) -> Self {
+    Self {
+      read: AsyncRefCell::new(read),
+      write: AsyncRefCell::new(write),
+      cancel_handle: CancelHandle::new(),
+    }
+  }
+
+  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let read = RcRef::map(self, |this| &this.read);
+      let mut read = read.borrow_mut().await;
+      Ok(Pin::new(&mut *read).read(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+
+  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
+    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
+    async {
+      let write = RcRef::map(self, |this| &this.write);
+      let mut write = write.borrow_mut().await;
+      Ok(Pin::new(&mut *write).write(buf).await?)
+    }
+    .try_or_cancel(cancel_handle)
+    .await
+  }
+}
+
+impl Resource for UpgradeStream {
+  fn name(&self) -> Cow<str> {
+    "fetchUpgradedStream".into()
+  }
+
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
@@ -545,23 +657,72 @@ impl Resource for FetchRequestBodyResource {
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
-pub struct FetchResponseBodyResource {
-  pub reader: AsyncRefCell<Peekable<BytesStream>>,
+pub enum FetchResponseReader {
+  Start(Response),
+  BodyReader(Peekable<BytesStream>),
+}
+
+impl Default for FetchResponseReader {
+  fn default() -> Self {
+    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
+    Self::BodyReader(stream.peekable())
+  }
+}
+#[derive(Debug)]
+pub struct FetchResponseResource {
+  pub response_reader: AsyncRefCell<FetchResponseReader>,
   pub cancel: CancelHandle,
   pub size: Option<u64>,
 }
 
-impl Resource for FetchResponseBodyResource {
+impl FetchResponseResource {
+  pub fn new(response: Response, size: Option<u64>) -> Self {
+    Self {
+      response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
+      cancel: CancelHandle::default(),
+      size,
+    }
+  }
+
+  pub async fn upgrade(self) -> Result<reqwest::Upgraded, AnyError> {
+    let reader = self.response_reader.into_inner();
+    match reader {
+      FetchResponseReader::Start(resp) => Ok(resp.upgrade().await?),
+      _ => unreachable!(),
+    }
+  }
+}
+
+impl Resource for FetchResponseResource {
   fn name(&self) -> Cow<str> {
-    "fetchResponseBody".into()
+    "fetchResponse".into()
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      let reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
+      let mut reader =
+        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
 
+      let body = loop {
+        match &mut *reader {
+          FetchResponseReader::BodyReader(reader) => break reader,
+          FetchResponseReader::Start(_) => {}
+        }
+
+        match std::mem::take(&mut *reader) {
+          FetchResponseReader::Start(resp) => {
+            let stream: BytesStream = Box::pin(resp.bytes_stream().map(|r| {
+              r.map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, err)
+              })
+            }));
+            *reader = FetchResponseReader::BodyReader(stream.peekable());
+          }
+          FetchResponseReader::BodyReader(_) => unreachable!(),
+        }
+      };
       let fut = async move {
-        let mut reader = Pin::new(reader);
+        let mut reader = Pin::new(body);
         loop {
           match reader.as_mut().peek_mut().await {
             Some(Ok(chunk)) if !chunk.is_empty() => {

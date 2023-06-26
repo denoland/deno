@@ -86,13 +86,13 @@ export class FileHandle extends EventEmitter {
   ): Promise<WriteResult>;
   write(
     bufferOrStr: Buffer | string,
-    offsetOrPotition: number,
+    offsetOrPosition: number,
     lengthOrEncoding: number | string,
     position?: number,
   ): Promise<WriteResult> {
     if (bufferOrStr instanceof Buffer) {
       const buffer = bufferOrStr;
-      const offset = offsetOrPotition;
+      const offset = offsetOrPosition;
       const length = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {
@@ -110,7 +110,7 @@ export class FileHandle extends EventEmitter {
       });
     } else {
       const str = bufferOrStr;
-      const position = offsetOrPotition;
+      const position = offsetOrPosition;
       const encoding = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {
