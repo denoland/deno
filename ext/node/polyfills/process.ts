@@ -13,7 +13,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { fromFileUrl, join } from "ext:deno_node/path.ts";
+import { join } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,
   chdir,
@@ -91,7 +92,7 @@ export const exit = (code?: number | string) => {
     process.emit("exit", process.exitCode || 0);
   }
 
-  Deno.exit(process.exitCode || 0);
+  process.reallyExit(process.exitCode || 0);
 };
 
 function addReadOnlyProcessAlias(
@@ -379,6 +380,13 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
+
+  // Undocumented Node API that is used by `signal-exit` which in turn
+  // is used by `node-tap`. It was marked for removal a couple of years
+  // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+  reallyExit = (code: number) => {
+    return Deno.exit(code || 0);
+  };
 
   _exiting = _exiting;
 
@@ -698,7 +706,7 @@ internals.__bootstrapNodeProcess = function (
   Object.defineProperty(argv, "1", {
     get: () => {
       if (Deno.mainModule.startsWith("file:")) {
-        return fromFileUrl(Deno.mainModule);
+        return pathFromURL(new URL(Deno.mainModule));
       } else {
         return join(Deno.cwd(), "$deno$node.js");
       }

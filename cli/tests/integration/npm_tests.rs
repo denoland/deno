@@ -183,6 +183,13 @@ itest!(dynamic_import_reload_same_package {
   http_server: true,
 });
 
+itest!(dynamic_import_invalid_package_name {
+  args: "run -A --reload npm/dynamic_import_invalid_package_name/main.ts",
+  output: "npm/dynamic_import_invalid_package_name/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(env_var_re_export_dev {
   args: "run --allow-read --allow-env --quiet npm/env_var_re_export/main.js",
   output_str: Some("dev\n"),
@@ -880,7 +887,7 @@ fn ensure_registry_files_local() {
         if file_text.contains("https://registry.npmjs.org/") {
           panic!(
             "file {} contained a reference to the npm registry",
-            registry_json_path.display(),
+            registry_json_path
           );
         }
       }

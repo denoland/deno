@@ -30,7 +30,6 @@ impl send_stdin {
             is_async: true,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
             arg_count: 2usize as u8,
         }
     }

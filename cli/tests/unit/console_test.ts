@@ -3,7 +3,7 @@
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
 
-// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// TODO(ry) These tests currently strip all the ANSI colors out. We don't have a
 // good way to control whether we produce color output or not since
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
@@ -1069,7 +1069,7 @@ Deno.test(function consoleTestWithCustomInspectorError() {
     () => stringify(a),
     Error,
     "BOOM",
-    "Inpsect should fail and maintain a clear CTX_STACK",
+    "Inspect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1779,7 +1779,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
 });
 
 // console.log(Invalid Date) test
-Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
@@ -2193,6 +2193,31 @@ Deno.test(function inspectEmptyUint8Array() {
   );
 });
 
+Deno.test(function inspectLargeArrayBuffer() {
+  const arrayBuffer = new ArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    `ArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+  structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    "ArrayBuffer { (detached), byteLength: 0 }",
+  );
+
+  const sharedArrayBuffer = new SharedArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(sharedArrayBuffer),
+    `SharedArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+});
+
 Deno.test(function inspectStringAbbreviation() {
   const LONG_STRING =
     "This is a really long string which will be abbreviated with ellipsis.";
@@ -2276,5 +2301,29 @@ Deno.test(function inspectAnonymousFunctions() {
   assertEquals(
     Deno.inspect(async function* () {}),
     "[AsyncGeneratorFunction (anonymous)]",
+  );
+});
+
+Deno.test(function inspectBreakLengthOption() {
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 34 }),
+    `"123456789\\n123456789\\n123456789\\n"`,
+  );
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 33 }),
+    `"123456789\\n" +
+  "123456789\\n" +
+  "123456789\\n"`,
+  );
+});
+
+Deno.test(function inspectEscapeSequencesFalse() {
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: true }),
+    '"foo\\nbar"',
+  ); // default behavior
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: false }),
+    '"foo\nbar"',
   );
 });

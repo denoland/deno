@@ -3,11 +3,11 @@
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::node;
@@ -18,7 +18,6 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::watcher::FileWatcherReporter;
 use crate::worker::ModuleLoaderFactory;
 
 use deno_ast::MediaType;
@@ -37,7 +36,6 @@ use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
 use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
-use deno_core::OpState;
 use deno_core::ResolutionKind;
 use deno_core::SourceMapGetter;
 use deno_graph::source::Resolver;
@@ -54,7 +52,6 @@ use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use std::borrow::Cow;
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -118,12 +115,10 @@ impl ModuleLoadPreparer {
     let maybe_imports = self.options.to_maybe_imports()?;
     let graph_resolver = self.resolver.as_graph_resolver();
     let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
-    let maybe_file_watcher_reporter: Option<&dyn deno_graph::source::Reporter> =
-      if let Some(reporter) = &self.maybe_file_watcher_reporter {
-        Some(reporter)
-      } else {
-        None
-      };
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
 
     let analyzer = self.parsed_source_cache.as_analyzer();
 
@@ -171,7 +166,7 @@ impl ModuleLoadPreparer {
     drop(_pb_clear_guard);
 
     // type check if necessary
-    if self.options.type_check_mode() != TypeCheckMode::None
+    if self.options.type_check_mode().is_true()
       && !self.graph_container.is_type_checked(&roots, lib)
     {
       let graph = Arc::new(graph.segment(&roots));
@@ -566,7 +561,6 @@ impl ModuleLoader for CliModuleLoader {
 
   fn prepare_load(
     &self,
-    _op_state: Rc<RefCell<OpState>>,
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
@@ -804,10 +798,6 @@ impl NpmModuleLoader {
 pub struct CjsResolutionStore(Mutex<HashSet<ModuleSpecifier>>);
 
 impl CjsResolutionStore {
-  pub fn clear(&self) {
-    self.0.lock().clear();
-  }
-
   pub fn contains(&self, specifier: &ModuleSpecifier) -> bool {
     self.0.lock().contains(specifier)
   }

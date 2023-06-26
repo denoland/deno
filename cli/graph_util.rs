@@ -3,7 +3,6 @@
 use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
@@ -23,6 +22,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
 use deno_core::TaskQueuePermit;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
@@ -34,6 +34,7 @@ use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -56,7 +57,7 @@ pub fn graph_valid_with_cli_options(
     roots,
     GraphValidOptions {
       is_vendoring: false,
-      follow_type_only: options.type_check_mode() != TypeCheckMode::None,
+      follow_type_only: options.type_check_mode().is_true(),
       check_js: options.check_js(),
     },
   )
@@ -169,6 +170,7 @@ pub struct ModuleGraphBuilder {
   npm_resolver: Arc<CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
   type_checker: Arc<TypeChecker>,
@@ -182,6 +184,7 @@ impl ModuleGraphBuilder {
     npm_resolver: Arc<CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
     type_checker: Arc<TypeChecker>,
@@ -192,6 +195,7 @@ impl ModuleGraphBuilder {
       npm_resolver,
       parsed_source_cache,
       lockfile,
+      maybe_file_watcher_reporter,
       emit_cache,
       file_fetcher,
       type_checker,
@@ -200,6 +204,7 @@ impl ModuleGraphBuilder {
 
   pub async fn create_graph_with_loader(
     &self,
+    graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
@@ -209,8 +214,12 @@ impl ModuleGraphBuilder {
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
 
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(graph_kind);
     self
       .build_graph_with_npm_resolution(
         &mut graph,
@@ -222,14 +231,12 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
-          reporter: None,
+          reporter: maybe_file_watcher_reporter,
         },
       )
       .await?;
 
-    if graph.has_node_specifier
-      && self.options.type_check_mode() != TypeCheckMode::None
-    {
+    if graph.has_node_specifier && self.options.type_check_mode().is_true() {
       self
         .npm_resolver
         .inject_synthetic_types_node_package()
@@ -249,7 +256,13 @@ impl ModuleGraphBuilder {
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
     let analyzer = self.parsed_source_cache.as_analyzer();
-    let mut graph = ModuleGraph::default();
+    let graph_kind = self.options.type_check_mode().as_graph_kind();
+    let mut graph = ModuleGraph::new(graph_kind);
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
+
     self
       .build_graph_with_npm_resolution(
         &mut graph,
@@ -261,7 +274,7 @@ impl ModuleGraphBuilder {
           resolver: Some(graph_resolver),
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
-          reporter: None,
+          reporter: maybe_file_watcher_reporter,
         },
       )
       .await?;
@@ -272,7 +285,7 @@ impl ModuleGraphBuilder {
       graph_lock_or_exit(&graph, &mut lockfile.lock());
     }
 
-    if self.options.type_check_mode() != TypeCheckMode::None {
+    if self.options.type_check_mode().is_true() {
       self
         .type_checker
         .check(
@@ -338,10 +351,13 @@ impl ModuleGraphBuilder {
 
   pub async fn create_graph(
     &self,
+    graph_kind: GraphKind,
     roots: Vec<ModuleSpecifier>,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let mut cache = self.create_graph_loader();
-    self.create_graph_with_loader(roots, &mut cache).await
+    self
+      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .await
   }
 }
 
@@ -404,14 +420,13 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
   checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Default)]
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
@@ -421,8 +436,14 @@ pub struct ModuleGraphContainer {
 }
 
 impl ModuleGraphContainer {
-  pub fn clear(&self) {
-    self.graph_data.write().graph = Default::default();
+  pub fn new(graph_kind: GraphKind) -> Self {
+    Self {
+      update_queue: Default::default(),
+      graph_data: Arc::new(RwLock::new(GraphData {
+        graph: Arc::new(ModuleGraph::new(graph_kind)),
+        checked_libs: Default::default(),
+      })),
+    }
   }
 
   /// Acquires a permit to modify the module graph without other code
@@ -482,6 +503,33 @@ impl ModuleGraphContainer {
   }
 }
 
+/// Gets if any of the specified root's "file:" dependents are in the
+/// provided changed set.
+pub fn has_graph_root_local_dependent_changed(
+  graph: &ModuleGraph,
+  root: &ModuleSpecifier,
+  changed_specifiers: &HashSet<ModuleSpecifier>,
+) -> bool {
+  let roots = vec![root.clone()];
+  let mut dependent_specifiers = graph.walk(
+    &roots,
+    deno_graph::WalkOptions {
+      follow_dynamic: true,
+      follow_type_only: true,
+      check_js: true,
+    },
+  );
+  while let Some((s, _)) = dependent_specifiers.next() {
+    if s.scheme() != "file" {
+      // skip walking this remote module's dependencies
+      dependent_specifiers.skip_previous_dependencies();
+    } else if changed_specifiers.contains(s) {
+      return true;
+    }
+  }
+  false
+}
+
 /// A permit for updating the module graph. When complete and
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
@@ -504,6 +552,43 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
     self.graph_data.write().graph = graph.clone();
     drop(self.permit); // explicit drop for clarity
     graph
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileWatcherReporter {
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl FileWatcherReporter {
+  pub fn new(sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>) -> Self {
+    Self {
+      sender,
+      file_paths: Default::default(),
+    }
+  }
+
+  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
+    self
+  }
+}
+
+impl deno_graph::source::Reporter for FileWatcherReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    let mut file_paths = self.file_paths.lock();
+    if specifier.scheme() == "file" {
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
   }
 }
 

@@ -37,6 +37,7 @@ const {
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
+  ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
@@ -247,6 +248,17 @@ defineColorAlias("doubleunderline", "doubleUnderline");
 // https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
 let _getSharedArrayBufferByteLength;
 
+function getSharedArrayBufferByteLength(value) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+}
+
 function isObjectLike(value) {
   return value !== null && typeof value === "object";
 }
@@ -427,15 +439,8 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value,
 ) {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    // deno-lint-ignore prefer-primordials
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   try {
-    FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+    getSharedArrayBufferByteLength(value);
     return true;
   } catch {
     return false;
@@ -1397,7 +1402,7 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
   return output;
 }
 
-function formatMap(value, ctx, _gnored, recurseTimes) {
+function formatMap(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
   const values = [...new SafeMapIterator(value)];
@@ -1578,7 +1583,7 @@ function inspectError(value, ctx) {
     if (stack?.includes("\n    at")) {
       finalMessage += stack;
     } else {
-      finalMessage += `[${stack || value.toString()}]`;
+      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
   finalMessage += ArrayPrototypeJoin(
@@ -1607,7 +1612,7 @@ const hexSliceLookupTable = function () {
 }();
 
 function hexSlice(buf, start, end) {
-  const len = buf.length;
+  const len = TypedArrayPrototypeGetLength(buf);
   if (!start || start < 0) {
     start = 0;
   }
@@ -1623,21 +1628,24 @@ function hexSlice(buf, start, end) {
 
 const arrayBufferRegExp = new SafeRegExp("(.{2})", "g");
 function formatArrayBuffer(ctx, value) {
+  let valLen;
+  try {
+    valLen = ArrayBufferPrototypeGetByteLength(value);
+  } catch {
+    valLen = getSharedArrayBufferByteLength(value);
+  }
+  const len = MathMin(MathMax(0, ctx.maxArrayLength), valLen);
   let buffer;
   try {
-    buffer = new Uint8Array(value);
+    buffer = new Uint8Array(value, 0, len);
   } catch {
     return [ctx.stylize("(detached)", "special")];
   }
   let str = StringPrototypeTrim(
-    StringPrototypeReplace(
-      hexSlice(buffer, 0, MathMin(ctx.maxArrayLength, buffer.length)),
-      arrayBufferRegExp,
-      "$1 ",
-    ),
+    StringPrototypeReplace(hexSlice(buffer), arrayBufferRegExp, "$1 "),
   );
 
-  const remaining = buffer.length - ctx.maxArrayLength;
+  const remaining = valLen - len;
   if (remaining > 0) {
     str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
   }
@@ -2427,6 +2435,7 @@ const denoInspectDefaultOptions = {
   colors: false,
   showProxy: false,
   breakLength: 80,
+  escapeSequences: true,
   compact: 3,
   sorted: false,
   getters: false,
@@ -2500,7 +2509,9 @@ function quoteString(string, ctx) {
     ctx.quotes[0];
   const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
-  string = replaceEscapeSequences(string);
+  if (ctx.escapeSequences) {
+    string = replaceEscapeSequences(string);
+  }
   return `${quote}${string}${quote}`;
 }
 

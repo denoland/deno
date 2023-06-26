@@ -15,7 +15,6 @@ const {
   MapPrototypeSet,
   Uint8Array,
   Uint32Array,
-  NumberPOSITIVE_INFINITY,
   PromisePrototypeThen,
   SafeArrayIterator,
   SafeMap,
@@ -27,10 +26,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
-const { op_sleep, op_void_async_deferred } = core.generateAsyncOpHandler(
-  "op_sleep",
-  "op_void_async_deferred",
-);
+const { op_sleep, op_void_async_deferred } = core.ensureFastOps();
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -57,8 +53,10 @@ const timerTasks = [];
 let timerNestingLevel = 0;
 
 function handleTimerMacrotask() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
   if (timerTasks.length === 0) {
-    return true;
+    return undefined;
   }
 
   const task = ArrayPrototypeShift(timerTasks);
@@ -191,7 +189,7 @@ function initializeTimer(
   // 13. Run steps after a timeout given global, "setTimeout/setInterval",
   // timeout, completionStep, and id.
   runAfterTimeout(
-    () => ArrayPrototypePush(timerTasks, task),
+    task,
     timeout,
     timerInfo,
   );
@@ -204,7 +202,7 @@ function initializeTimer(
 /**
  * @typedef ScheduledTimer
  * @property {number} millis
- * @property {() => void} cb
+ * @property { {action: () => void, nestingLevel: number}[] } task
  * @property {boolean} resolved
  * @property {ScheduledTimer | null} prev
  * @property {ScheduledTimer | null} next
@@ -217,12 +215,12 @@ function initializeTimer(
 const scheduledTimers = { head: null, tail: null };
 
 /**
- * @param {() => void} cb Will be run after the timeout, if it hasn't been
- * cancelled.
+ * @param { {action: () => void, nestingLevel: number}[] } task Will be run
+ * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
  */
-function runAfterTimeout(cb, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
   let sleepPromise;
   // If this timeout is scheduled for 0ms it means we want it to run at the
@@ -242,7 +240,6 @@ function runAfterTimeout(cb, millis, timerInfo) {
   /** @type {ScheduledTimer} */
   const timerObject = {
     millis,
-    cb,
     resolved: false,
     prev: scheduledTimers.tail,
     next: null,
@@ -261,6 +258,10 @@ function runAfterTimeout(cb, millis, timerInfo) {
   PromisePrototypeThen(
     sleepPromise,
     (cancelled) => {
+      if (timerObject.resolved) {
+        return;
+      }
+
       // "op_void_async_deferred" returns null
       if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
@@ -281,18 +282,15 @@ function runAfterTimeout(cb, millis, timerInfo) {
       //   b) its timeout is lower than the lowest unresolved timeout found so
       //      far in the list.
 
-      timerObject.resolved = true;
-
-      let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
-
       let currentEntry = scheduledTimers.head;
       while (currentEntry !== null) {
-        if (currentEntry.millis < lowestUnresolvedTimeout) {
-          if (currentEntry.resolved) {
-            currentEntry.cb();
-            removeFromScheduledTimers(currentEntry);
-          } else {
-            lowestUnresolvedTimeout = currentEntry.millis;
+        if (currentEntry.millis <= timerObject.millis) {
+          currentEntry.resolved = true;
+          ArrayPrototypePush(timerTasks, task);
+          removeFromScheduledTimers(currentEntry);
+
+          if (currentEntry === timerObject) {
+            break;
           }
         }
 

@@ -7,6 +7,7 @@ use std::os::raw::c_void;
 use v8::MapFnTo;
 
 use crate::error::is_instance_of_error;
+use crate::error::throw_type_error;
 use crate::error::JsStackFrame;
 use crate::modules::get_asserted_module_type_from_assertions;
 use crate::modules::parse_import_assertions;
@@ -15,7 +16,7 @@ use crate::modules::ImportAssertionsKind;
 use crate::modules::ModuleMap;
 use crate::modules::ResolutionKind;
 use crate::ops::OpCtx;
-use crate::snapshot_util::SnapshotOptions;
+use crate::runtime::InitMode;
 use crate::JsRealm;
 use crate::JsRuntime;
 
@@ -78,25 +79,6 @@ pub fn script_origin<'a>(
   )
 }
 
-pub fn module_origin<'a>(
-  s: &mut v8::HandleScope<'a>,
-  resource_name: v8::Local<'a, v8::String>,
-) -> v8::ScriptOrigin<'a> {
-  let source_map_url = v8::String::empty(s);
-  v8::ScriptOrigin::new(
-    s,
-    resource_name.into(),
-    0,
-    0,
-    false,
-    123,
-    source_map_url.into(),
-    true,
-    false,
-    true,
-  )
-}
-
 fn get<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   from: v8::Local<v8::Object>,
@@ -118,7 +100,7 @@ pub(crate) fn initialize_context<'s>(
   scope: &mut v8::HandleScope<'s>,
   context: v8::Local<'s, v8::Context>,
   op_ctxs: &[OpCtx],
-  snapshot_options: SnapshotOptions,
+  init_mode: InitMode,
 ) -> v8::Local<'s, v8::Context> {
   let global = context.global(scope);
 
@@ -128,17 +110,11 @@ pub(crate) fn initialize_context<'s>(
     codegen,
     "Deno.__op__ = function(opFns, callConsole, console) {{"
   );
-  if !snapshot_options.loaded() {
+  if init_mode == InitMode::New {
     _ = writeln!(codegen, "Deno.__op__console(callConsole, console);");
   }
   for op_ctx in op_ctxs {
     if op_ctx.decl.enabled {
-      // If we're loading from a snapshot, we can skip registration for most ops
-      if matches!(snapshot_options, SnapshotOptions::Load)
-        && !op_ctx.decl.force_registration
-      {
-        continue;
-      }
       _ = writeln!(
         codegen,
         "Deno.__op__registerOp({}, opFns[{}], \"{}\");",
@@ -173,7 +149,7 @@ pub(crate) fn initialize_context<'s>(
     let op_fn = op_ctx_function(scope, op_ctx);
     op_fns.set_index(scope, op_ctx.id as u32, op_fn.into());
   }
-  if snapshot_options.loaded() {
+  if init_mode == InitMode::FromSnapshot {
     op_fn.call(scope, recv.into(), &[op_fns.into()]);
   } else {
     // Bind functions to Deno.core.*
@@ -284,7 +260,7 @@ pub fn host_import_module_dynamically_callback<'s>(
 
   let resolver_handle = v8::Global::new(scope, resolver);
   {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let module_map_rc = JsRuntime::module_map_from(scope);
 
     debug!(
@@ -393,7 +369,7 @@ fn empty_fn(
   //Do Nothing
 }
 
-//It creates a reference to an empty function which can be mantained after the snapshots
+//It creates a reference to an empty function which can be maintained after the snapshots
 pub fn create_empty_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Option<v8::Local<'s, v8::Function>> {
@@ -484,7 +460,7 @@ pub extern "C" fn promise_reject_callback(message: v8::PromiseRejectMessage) {
       };
 
     if has_unhandled_rejection_handler {
-      let state_rc = JsRuntime::state(tc_scope);
+      let state_rc = JsRuntime::state_from(tc_scope);
       let mut state = state_rc.borrow_mut();
       if let Some(pending_mod_evaluate) = state.pending_mod_evaluate.as_mut() {
         if !pending_mod_evaluate.has_evaluated {
@@ -566,58 +542,4 @@ fn call_console(
 
   inspector_console_method.call(scope, receiver.into(), &call_args);
   deno_console_method.call(scope, receiver.into(), &call_args);
-}
-
-/// Called by V8 during `JsRuntime::instantiate_module`.
-///
-/// This function borrows `ModuleMap` from the isolate slot,
-/// so it is crucial to ensure there are no existing borrows
-/// of `ModuleMap` when `JsRuntime::instantiate_module` is called.
-pub fn module_resolve_callback<'s>(
-  context: v8::Local<'s, v8::Context>,
-  specifier: v8::Local<'s, v8::String>,
-  import_assertions: v8::Local<'s, v8::FixedArray>,
-  referrer: v8::Local<'s, v8::Module>,
-) -> Option<v8::Local<'s, v8::Module>> {
-  // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
-  let scope = &mut unsafe { v8::CallbackScope::new(context) };
-
-  let module_map_rc = JsRuntime::module_map_from(scope);
-  let module_map = module_map_rc.borrow();
-
-  let referrer_global = v8::Global::new(scope, referrer);
-
-  let referrer_info = module_map
-    .get_info(&referrer_global)
-    .expect("ModuleInfo not found");
-  let referrer_name = referrer_info.name.as_str();
-
-  let specifier_str = specifier.to_rust_string_lossy(scope);
-
-  let assertions = parse_import_assertions(
-    scope,
-    import_assertions,
-    ImportAssertionsKind::StaticImport,
-  );
-  let maybe_module = module_map.resolve_callback(
-    scope,
-    &specifier_str,
-    referrer_name,
-    assertions,
-  );
-  if let Some(module) = maybe_module {
-    return Some(module);
-  }
-
-  let msg = format!(
-    r#"Cannot resolve module "{specifier_str}" from "{referrer_name}""#
-  );
-  throw_type_error(scope, msg);
-  None
-}
-
-pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
-  let message = v8::String::new(scope, message.as_ref()).unwrap();
-  let exception = v8::Exception::type_error(scope, message);
-  scope.throw_exception(exception);
 }

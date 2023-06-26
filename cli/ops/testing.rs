@@ -43,9 +43,6 @@ deno_core::extension!(deno_test,
     state.put(options.sender);
     state.put(TestContainer::default());
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[derive(Clone)]

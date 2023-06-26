@@ -40,7 +40,6 @@ impl op_is_proxy {
             is_async: false,
             is_unstable: false,
             is_v8: false,
-            force_registration: false,
             arg_count: 1usize as u8,
         }
     }
@@ -89,7 +88,7 @@ impl op_is_proxy {
 #[allow(clippy::too_many_arguments)]
 fn op_is_proxy_fast_fn<'scope>(
     _: deno_core::v8::Local<deno_core::v8::Object>,
-    value: deno_core::v8::Local<v8::Value>,
+    value: deno_core::v8::Local<deno_core::v8::Value>,
 ) -> bool {
     use deno_core::v8;
     use deno_core::_ops;

@@ -360,6 +360,79 @@ fn lsp_import_map_embedded_in_config_file() {
 }
 
 #[test]
+fn lsp_import_map_embedded_in_config_file_after_initialize() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.embedded_import_map.jsonc", "{}");
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.embedded_import_map.jsonc");
+  });
+
+  let uri = temp_dir.uri().join("a.ts").unwrap();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
+
+  assert_eq!(diagnostics.all().len(), 1);
+
+  // update the import map
+  temp_dir.write(
+    "deno.embedded_import_map.jsonc",
+    r#"{
+  "imports": {
+    "/~/": "./lib/"
+  }
+}"#,
+  );
+
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.embedded_import_map.jsonc").unwrap(),
+      "type": 2
+    }]
+  }));
+
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
+      }
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1252,7 +1325,7 @@ fn lsp_hover_change_mbc() {
             "end": {
               "line": 1,
               // the LSP uses utf16 encoded characters indexes, so
-              // after the deno emoiji is character index 15
+              // after the deno emoji is character index 15
               "character": 15
             }
           },
@@ -2015,7 +2088,7 @@ fn lsp_document_symbol() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(newVavlue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
+        "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(_newValue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
       }
     }),
   );
@@ -3041,7 +3114,7 @@ fn lsp_code_lens_test_disabled() {
           "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
         }
       }),
-      // diable test code lens
+      // disable test code lens
       json!([{
         "enable": true,
         "codeLens": {
@@ -4715,7 +4788,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6810|file:///a/b",
+          "exportMapKey": "foo|6812|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -7300,7 +7373,7 @@ Deno.test({
     .as_str()
     .unwrap();
   // deno test's output capturing flushes with a zero-width space in order to
-  // synchronize the output pipes. Occassionally this zero width space
+  // synchronize the output pipes. Occasionally this zero width space
   // might end up in the output so strip it from the output comparison here.
   assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
   assert_eq!(
@@ -7452,6 +7525,62 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
   );
 
   // won't have results because the document won't be pre-loaded
+  assert_eq!(res, json!([]));
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_closed_file_find_references_excluded_path() {
+  // we exclude any files or folders in the "exclude" part of
+  // the config file from being pre-loaded
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("sub_dir");
+  temp_dir.create_dir_all("other_dir/sub_dir");
+  temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
+  temp_dir.write(
+    "./sub_dir/mod.test.ts",
+    "import { a } from './mod.ts'; console.log(a);",
+  );
+  temp_dir.write(
+    "./other_dir/sub_dir/mod.test.ts",
+    "import { a } from '../../sub_dir/mod.ts'; console.log(a);",
+  );
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "exclude": [
+    "./sub_dir/mod.test.ts",
+    "./other_dir/sub_dir",
+  ]
+}"#,
+  );
+  let temp_dir_url = temp_dir.uri();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"export const a = 5;"#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 13 },
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // won't have results because the documents won't be pre-loaded
   assert_eq!(res, json!([]));
 
   client.shutdown();
@@ -7670,7 +7799,7 @@ fn lsp_node_modules_dir() {
     .as_str()
     .unwrap();
   // canonicalize for mac
-  let path = temp_dir.path().join("node_modules").canonicalize().unwrap();
+  let path = temp_dir.path().join("node_modules").canonicalize();
   assert_starts_with!(
     uri,
     ModuleSpecifier::from_file_path(&path).unwrap().as_str()

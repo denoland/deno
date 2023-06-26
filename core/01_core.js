@@ -22,6 +22,7 @@
     PromiseReject,
     PromiseResolve,
     PromisePrototypeThen,
+    Proxy,
     RangeError,
     ReferenceError,
     ReflectHas,
@@ -186,7 +187,16 @@
       const cb = macrotaskCallbacks[i];
       while (true) {
         const res = cb();
+
+        // If callback returned `undefined` then it has no work to do, we don't
+        // need to perform microtask checkpoint.
+        if (res === undefined) {
+          break;
+        }
+
         ops.op_run_microtasks();
+        // If callback returned `true` then it has no more work to do, stop
+        // calling it then.
         if (res === true) {
           break;
         }
@@ -211,7 +221,7 @@
       error = errorMap[className]?.(message);
     } catch (e) {
       throw new Error(
-        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+        `Unable to build custom error for "${className}"\n  ${e.message}`,
       );
     }
     // Strip buildCustomError() calls from stack trace
@@ -762,19 +772,19 @@ for (let i = 0; i < 10; i++) {
     setUpAsyncStub(opName);
   }
 
-  function generateAsyncOpHandler(/* opNames... */) {
-    const fastOps = {};
-    for (const opName of new SafeArrayIterator(arguments)) {
-      if (ops[opName] === undefined) {
-        throw new Error(`Unknown or disabled op '${opName}'`);
-      }
-      if (asyncOps[opName] !== undefined) {
-        fastOps[opName] = setUpAsyncStub(opName);
-      } else {
-        fastOps[opName] = ops[opName];
-      }
-    }
-    return fastOps;
+  function ensureFastOps() {
+    return new Proxy({}, {
+      get(_target, opName) {
+        if (ops[opName] === undefined) {
+          throw new Error(`Unknown or disabled op '${opName}'`);
+        }
+        if (asyncOps[opName] !== undefined) {
+          return setUpAsyncStub(opName);
+        } else {
+          return ops[opName];
+        }
+      },
+    });
   }
 
   const {
@@ -787,22 +797,12 @@ for (let i = 0; i < 10; i++) {
     op_read_sync: readSync,
     op_write_sync: writeSync,
     op_shutdown: shutdown,
-  } = generateAsyncOpHandler(
-    "op_close",
-    "op_try_close",
-    "op_read",
-    "op_read_all",
-    "op_write",
-    "op_write_all",
-    "op_read_sync",
-    "op_write_sync",
-    "op_shutdown",
-  );
+  } = ensureFastOps();
 
   // Extra Deno.core.* exports
   const core = ObjectAssign(globalThis.Deno.core, {
     asyncStub,
-    generateAsyncOpHandler,
+    ensureFastOps,
     opAsync,
     resources,
     metrics,

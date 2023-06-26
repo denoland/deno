@@ -650,7 +650,7 @@ impl Assets {
   }
 
   /// Initializes with the assets in the isolate.
-  pub async fn intitialize(&self, state_snapshot: Arc<StateSnapshot>) {
+  pub async fn initialize(&self, state_snapshot: Arc<StateSnapshot>) {
     let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
     let mut assets_map = self.assets.lock();
     for asset in assets {
@@ -3261,9 +3261,6 @@ deno_core::extension!(deno_tsc,
       options.performance,
     ));
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 /// Instruct a language server runtime to start the language server and provide
@@ -3906,7 +3903,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location.to_path_buf());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3929,7 +3926,7 @@ mod tests {
     config: Value,
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
-    let location = temp_dir.path().join("deps");
+    let location = temp_dir.path().join("deps").to_path_buf();
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default());
     start(&mut runtime, debug).unwrap();
@@ -4409,7 +4406,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(&location);
+    let cache = HttpCache::new(location);
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
@@ -4740,7 +4737,7 @@ mod tests {
   }
 
   #[test]
-  fn include_supress_inlay_hit_settings() {
+  fn include_suppress_inlay_hit_settings() {
     let mut settings = WorkspaceSettings::default();
     settings
       .inlay_hints

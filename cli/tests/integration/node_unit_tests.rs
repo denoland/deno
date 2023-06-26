@@ -19,12 +19,16 @@ util::unit_test_factory!(
     _fs_close_test = _fs / _fs_close_test,
     _fs_copy_test = _fs / _fs_copy_test,
     _fs_dir_test = _fs / _fs_dir_test,
+    _fs_dirent_test = _fs / _fs_dirent_test,
+    _fs_open_test = _fs / _fs_open_test,
+    _fs_read_test = _fs / _fs_read_test,
     _fs_exists_test = _fs / _fs_exists_test,
     _fs_fdatasync_test = _fs / _fs_fdatasync_test,
     _fs_fstat_test = _fs / _fs_fstat_test,
     _fs_fsync_test = _fs / _fs_fsync_test,
     _fs_ftruncate_test = _fs / _fs_ftruncate_test,
     _fs_futimes_test = _fs / _fs_futimes_test,
+    _fs_handle_test = _fs / _fs_handle_test,
     _fs_link_test = _fs / _fs_link_test,
     _fs_lstat_test = _fs / _fs_lstat_test,
     _fs_mkdir_test = _fs / _fs_mkdir_test,
@@ -43,8 +47,10 @@ util::unit_test_factory!(
     _fs_unlink_test = _fs / _fs_unlink_test,
     _fs_utimes_test = _fs / _fs_utimes_test,
     _fs_watch_test = _fs / _fs_watch_test,
+    _fs_writeFile_test = _fs / _fs_writeFile_test,
     _fs_write_test = _fs / _fs_write_test,
     async_hooks_test,
+    buffer_test,
     child_process_test,
     crypto_cipher_test = crypto / crypto_cipher_test,
     crypto_hash_test = crypto / crypto_hash_test,
@@ -52,6 +58,7 @@ util::unit_test_factory!(
     crypto_sign_test = crypto / crypto_sign_test,
     fs_test,
     http_test,
+    http2_test,
     _randomBytes_test = internal / _randomBytes_test,
     _randomFill_test = internal / _randomFill_test,
     _randomInt_test = internal / _randomInt_test,
@@ -68,7 +75,8 @@ util::unit_test_factory!(
     tty_test,
     util_test,
     v8_test,
-    worker_threads_test
+    worker_threads_test,
+    zlib_test
   ]
 );
 

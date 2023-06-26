@@ -4240,6 +4240,14 @@ declare namespace Deno {
      *
      * @default {4} */
     depth?: number;
+    /** The maximum length for an inspection to take up a single line.
+     *
+     * @default {80} */
+    breakLength?: number;
+    /** Whether or not to escape sequences.
+     *
+     * @default {true} */
+    escapeSequences?: boolean;
     /** The maximum number of iterable entries to print.
      *
      * @default {100} */
@@ -4444,8 +4452,8 @@ declare namespace Deno {
 
   /** The permission descriptor for the `allow-hrtime` permission, which
    * controls if the runtime code has access to high resolution time. High
-   * resolution time is consider sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might
+   * resolution time is considered sensitive information, because it can be used
+   * by malicious code to gain information about the host that it might not
    * otherwise have access to.
    *
    * @category Permissions */

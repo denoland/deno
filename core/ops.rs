@@ -1,26 +1,26 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::error::AnyError;
+use crate::error::GetErrorClassFn;
 use crate::gotham_state::GothamState;
-use crate::realm::ContextState;
 use crate::resources::ResourceTable;
-use crate::runtime::GetErrorClassFn;
+use crate::runtime::ContextState;
 use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
-use futures::future::MaybeDone;
+use futures::task::AtomicWaker;
 use futures::Future;
-use futures::FutureExt;
 use pin_project::pin_project;
 use serde::Serialize;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
+use std::sync::Arc;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
 
@@ -28,40 +28,26 @@ pub type PromiseId = i32;
 pub type OpId = u16;
 
 #[pin_project]
-pub struct OpCall {
+pub struct OpCall<F: Future<Output = OpResult>> {
   promise_id: PromiseId,
   op_id: OpId,
   /// Future is not necessarily Unpin, so we need to pin_project.
   #[pin]
-  fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
+  fut: F,
 }
 
-impl OpCall {
+impl<F: Future<Output = OpResult>> OpCall<F> {
   /// Wraps a future; the inner future is polled the usual way (lazily).
-  pub fn pending(
-    op_ctx: &OpCtx,
-    promise_id: PromiseId,
-    fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
-  ) -> Self {
+  pub fn new(op_ctx: &OpCtx, promise_id: PromiseId, fut: F) -> Self {
     Self {
       op_id: op_ctx.id,
       promise_id,
-      fut: MaybeDone::Future(fut),
-    }
-  }
-
-  /// Create a future by specifying its output. This is basically the same as
-  /// `async { value }` or `futures::future::ready(value)`.
-  pub fn ready(op_ctx: &OpCtx, promise_id: PromiseId, value: OpResult) -> Self {
-    Self {
-      op_id: op_ctx.id,
-      promise_id,
-      fut: MaybeDone::Done(value),
+      fut,
     }
   }
 }
 
-impl Future for OpCall {
+impl<F: Future<Output = OpResult>> Future for OpCall<F> {
   type Output = (PromiseId, OpId, OpResult);
 
   fn poll(
@@ -70,21 +56,8 @@ impl Future for OpCall {
   ) -> std::task::Poll<Self::Output> {
     let promise_id = self.promise_id;
     let op_id = self.op_id;
-    let fut = &mut *self.project().fut;
-    match fut {
-      MaybeDone::Done(_) => {
-        // Let's avoid using take_output as it keeps our Pin::box
-        let res = std::mem::replace(fut, MaybeDone::Gone);
-        let MaybeDone::Done(res) = res
-        else {
-          unreachable!()
-        };
-        std::task::Poll::Ready(res)
-      }
-      MaybeDone::Future(f) => f.poll_unpin(cx),
-      MaybeDone::Gone => std::task::Poll::Pending,
-    }
-    .map(move |res| (promise_id, op_id, res))
+    let fut = self.project().fut;
+    fut.poll(cx).map(move |res| (promise_id, op_id, res))
   }
 }
 
@@ -134,7 +107,10 @@ pub fn to_op_result<R: Serialize + 'static>(
   }
 }
 
-// TODO(@AaronO): optimize OpCtx(s) mem usage ?
+/// Per-op context.
+///
+// Note: We don't worry too much about the size of this struct because it's allocated once per realm, and is
+// stored in a contiguous array.
 pub struct OpCtx {
   pub id: OpId,
   pub state: Rc<RefCell<OpState>>,
@@ -142,6 +118,8 @@ pub struct OpCtx {
   pub fast_fn_c_info: Option<NonNull<v8::fast_api::CFunctionInfo>>,
   pub runtime_state: Weak<RefCell<JsRuntimeState>>,
   pub(crate) context_state: Rc<RefCell<ContextState>>,
+  /// If the last fast op failed, stores the error to be picked up by the slow op.
+  pub(crate) last_fast_error: UnsafeCell<Option<AnyError>>,
 }
 
 impl OpCtx {
@@ -173,7 +151,34 @@ impl OpCtx {
       decl,
       context_state,
       fast_fn_c_info,
+      last_fast_error: UnsafeCell::new(None),
     }
+  }
+
+  /// This takes the last error from an [`OpCtx`], assuming that no other code anywhere
+  /// can hold a `&mut` to the last_fast_error field.
+  ///
+  /// # Safety
+  ///
+  /// Must only be called from op implementations.
+  #[inline(always)]
+  pub unsafe fn unsafely_take_last_error_for_ops_only(
+    &self,
+  ) -> Option<AnyError> {
+    let opt_mut = &mut *self.last_fast_error.get();
+    opt_mut.take()
+  }
+
+  /// This set the last error for an [`OpCtx`], assuming that no other code anywhere
+  /// can hold a `&mut` to the last_fast_error field.
+  ///
+  /// # Safety
+  ///
+  /// Must only be called from op implementations.
+  #[inline(always)]
+  pub unsafe fn unsafely_set_last_error_for_ops_only(&self, error: AnyError) {
+    let opt_mut = &mut *self.last_fast_error.get();
+    *opt_mut = Some(error);
   }
 }
 
@@ -183,7 +188,8 @@ pub struct OpState {
   pub get_error_class_fn: GetErrorClassFn,
   pub tracker: OpsTracker,
   pub last_fast_op_error: Option<AnyError>,
-  gotham_state: GothamState,
+  pub(crate) gotham_state: GothamState,
+  pub waker: Arc<AtomicWaker>,
 }
 
 impl OpState {
@@ -194,7 +200,14 @@ impl OpState {
       gotham_state: Default::default(),
       last_fast_op_error: None,
       tracker: OpsTracker::new(ops_count),
+      waker: Arc::new(AtomicWaker::new()),
     }
+  }
+
+  /// Clear all user-provided resources and state.
+  pub(crate) fn clear(&mut self) {
+    std::mem::take(&mut self.gotham_state);
+    std::mem::take(&mut self.resource_table);
   }
 }
 
