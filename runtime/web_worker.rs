@@ -4,6 +4,7 @@ use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
 use crate::tokio_util::create_and_run_current_thread;
+use crate::worker::init_runtime_module_map;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -484,15 +485,6 @@ impl WebWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
-    // Clear extension modules from the module map, except preserve `ext:deno_node`
-    // modules as `node:` specifiers.
-    let rename_modules = Some(
-      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|p| (p.ext_specifier, p.specifier))
-        .collect(),
-    );
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
@@ -502,9 +494,9 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
-      rename_modules,
       ..Default::default()
     });
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

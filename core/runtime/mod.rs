@@ -32,3 +32,4 @@ pub use snapshot_util::FilterFn;
 pub(crate) use snapshot_util::SnapshottedData;
 
 pub use bindings::script_origin;
+pub use bindings::throw_type_error;

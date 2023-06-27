@@ -129,7 +129,6 @@ pub fn v8_version() -> &'static str {
 /// An internal module re-exporting functions used by the #[op] (`deno_ops`) macro
 #[doc(hidden)]
 pub mod _ops {
-  pub use super::error::throw_type_error;
   pub use super::error_codes::get_error_code;
   pub use super::extensions::OpDecl;
   pub use super::ops::to_op_result;
@@ -143,6 +142,7 @@ pub mod _ops {
   pub use super::runtime::ops::queue_fast_async_op;
   pub use super::runtime::ops::to_i32;
   pub use super::runtime::ops::to_u32;
+  pub use super::runtime::throw_type_error;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;
 }

@@ -695,12 +695,6 @@ pub(crate) fn exception_to_err_result<T>(
   Err(js_error.into())
 }
 
-pub fn throw_type_error(scope: &mut v8::HandleScope, message: impl AsRef<str>) {
-  let message = v8::String::new(scope, message.as_ref()).unwrap();
-  let exception = v8::Exception::type_error(scope, message);
-  scope.throw_exception(exception);
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;

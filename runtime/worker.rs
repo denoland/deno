@@ -58,6 +58,16 @@ impl ExitCode {
   }
 }
 
+/// Clear extension modules from the module map, except preserve `ext:deno_node`
+/// modules as `node:` specifiers.
+pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
+  js_runtime.clear_module_map(
+    deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+      .iter()
+      .map(|p| (p.ext_specifier, p.specifier)),
+  );
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -313,15 +323,6 @@ impl MainWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
-    // Clear extension modules from the module map, except preserve `ext:deno_node`
-    // modules as `node:` specifiers.
-    let rename_modules = Some(
-      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|p| (p.ext_specifier, p.specifier))
-        .collect(),
-    );
-
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
@@ -331,11 +332,11 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      rename_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
     });
+    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(
