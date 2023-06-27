@@ -49,3 +49,14 @@ macro_rules! assert_not_contains {
     }
   }
 }
+
+#[track_caller]
+pub fn assert_wildcard_match(actual: &str, expected: &str) {
+  if !expected.contains("[WILDCARD]") {
+    pretty_assertions::assert_eq!(actual, expected);
+  } else if !crate::wildcard_match(expected, actual) {
+    println!("OUTPUT START\n{actual}\nOUTPUT END");
+    println!("EXPECTED START\n{expected}\nEXPECTED END");
+    panic!("pattern match failed");
+  }
+}

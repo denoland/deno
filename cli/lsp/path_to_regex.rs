@@ -626,7 +626,7 @@ pub fn tokens_to_regex(
       route.push('$');
     }
   } else {
-    let is_end_deliminated = match maybe_end_token {
+    let is_end_delimited = match maybe_end_token {
       Some(Token::String(mut s)) => {
         if let Some(c) = s.pop() {
           delimiter.contains(c)
@@ -642,7 +642,7 @@ pub fn tokens_to_regex(
       write!(route, r"(?:{delimiter}(?={ends_with}))?").unwrap();
     }
 
-    if !is_end_deliminated {
+    if !is_end_delimited {
       write!(route, r"(?={delimiter}|{ends_with})").unwrap();
     }
   }

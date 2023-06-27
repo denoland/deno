@@ -13,7 +13,7 @@ impl op_add {
                 use deno_core::v8::fast_api::Type;
                 use deno_core::v8::fast_api::CType;
                 deno_core::v8::fast_api::FastFunction::new(
-                    &[Type::Int32, Type::Uint32],
+                    &[Type::V8Value, Type::Int32, Type::Uint32],
                     CType::Uint32,
                     Self::fast_function as *const ::std::ffi::c_void,
                 )
@@ -43,9 +43,8 @@ impl op_add {
         arg0: i32,
         arg1: u32,
     ) -> u32 {
-        let arg0 = arg0 as _;
-        let arg1 = arg1 as _;
-        Self::call(arg0, arg1)
+        let result = Self::call(arg0 as _, arg1 as _);
+        result
     }
     #[inline(always)]
     fn call(id: ResourceId, extra: u16) -> u32 {}

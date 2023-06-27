@@ -1662,7 +1662,7 @@ Deno.test({
       await db.enqueue("msg2");
       await promise;
 
-      // Close the database and wait for the listerner to finish.
+      // Close the database and wait for the listener to finish.
       db.close();
       await listener;
 
@@ -1718,7 +1718,7 @@ Deno.test({
       await db.enqueue("msg1", { delay: 10000 });
       await db.enqueue("msg2", { delay: 10000 });
 
-      // Close the database and wait for the listerner to finish.
+      // Close the database and wait for the listener to finish.
       db.close();
       await listener;
 
