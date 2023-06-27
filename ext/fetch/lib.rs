@@ -214,6 +214,7 @@ pub fn get_or_create_client_from_state(
         client_cert_chain_and_key: options.client_cert_chain_and_key.clone(),
         pool_max_idle_per_host: None,
         pool_idle_timeout: None,
+        default_headers: vec![],
         http1: true,
         http2: true,
       },
@@ -791,6 +792,7 @@ pub struct CreateHttpClientArgs {
   private_key: Option<String>,
   pool_max_idle_per_host: Option<usize>,
   pool_idle_timeout: Option<PoolIdleTimeout>,
+  default_headers: Vec<(ByteString, ByteString)>,
   #[serde(default = "default_true")]
   http1: bool,
   #[serde(default = "default_true")]
@@ -855,6 +857,7 @@ where
           PoolIdleTimeout::Specify(specify) => Some(Some(specify)),
         },
       ),
+      default_headers: args.default_headers,
       http1: args.http1,
       http2: args.http2,
     },
@@ -873,6 +876,7 @@ pub struct CreateHttpClientOptions {
   pub client_cert_chain_and_key: Option<(String, String)>,
   pub pool_max_idle_per_host: Option<usize>,
   pub pool_idle_timeout: Option<Option<u64>>,
+  pub default_headers: Vec<(ByteString, ByteString)>,
   pub http1: bool,
   pub http2: bool,
 }
@@ -887,6 +891,7 @@ impl Default for CreateHttpClientOptions {
       client_cert_chain_and_key: None,
       pool_max_idle_per_host: None,
       pool_idle_timeout: None,
+      default_headers: vec![],
       http1: true,
       http2: true,
     }
@@ -915,11 +920,20 @@ pub fn create_http_client(
   }
   tls_config.alpn_protocols = alpn_protocols;
 
-  let mut headers = HeaderMap::new();
-  headers.insert(USER_AGENT, user_agent.parse().unwrap());
+  let mut header_map = HeaderMap::new();
+  header_map.insert(USER_AGENT, user_agent.parse().unwrap());
+
+  for (key, value) in options.default_headers {
+    let name = HeaderName::from_bytes(&key)
+      .map_err(|err| type_error(err.to_string()))?;
+    let v = HeaderValue::from_bytes(&value)
+      .map_err(|err| type_error(err.to_string()))?;
+    header_map.append(name, v);
+  }
+
   let mut builder = Client::builder()
     .redirect(Policy::none())
-    .default_headers(headers)
+    .default_headers(header_map)
     .use_preconfigured_tls(tls_config);
 
   if let Some(proxy) = options.proxy {

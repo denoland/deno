@@ -10,6 +10,8 @@
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
 
+import { headerListFromHeaders, Headers } from "ext:deno_fetch/20_headers.js";
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
@@ -19,9 +21,13 @@ const ops = core.ops;
  */
 function createHttpClient(options) {
   options.caCerts ??= [];
+  let defaultHeaders = [];
+  if (options.defaultHeaders) {
+    defaultHeaders = headerListFromHeaders(new Headers(options.defaultHeaders));
+  }
   return new HttpClient(
     ops.op_fetch_custom_client(
-      options,
+      { ...options, defaultHeaders },
     ),
   );
 }

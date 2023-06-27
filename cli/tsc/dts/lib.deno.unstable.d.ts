@@ -837,6 +837,10 @@ declare namespace Deno {
      * @default {true}
      */
     http2?: boolean;
+    /**
+     * Default set of headers to use for every request.
+     */
+    defaultHeaders?: HeadersInit;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
