@@ -229,6 +229,14 @@ export function createHash(algorithm: string, opts?: TransformOptions) {
   return new Hash(algorithm, opts);
 }
 
+/**
+ * Get the list of implemented hash algorithms.
+ * @returns Array of hash algorithm names.
+ */
+export function getHashes() {
+  return ops.op_node_get_hashes();
+}
+
 export default {
   Hash,
   Hmac,

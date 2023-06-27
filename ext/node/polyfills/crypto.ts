@@ -134,7 +134,12 @@ import type {
   VerifyKeyObjectInput,
   VerifyPublicKeyInput,
 } from "ext:deno_node/internal/crypto/sig.ts";
-import { createHash, Hash, Hmac } from "ext:deno_node/internal/crypto/hash.ts";
+import {
+  createHash,
+  getHashes,
+  Hash,
+  Hmac,
+} from "ext:deno_node/internal/crypto/hash.ts";
 import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
   PeerCertificate,
@@ -143,7 +148,6 @@ import type {
 import {
   getCiphers,
   getCurves,
-  getHashes,
   secureHeapUsed,
   setEngine,
 } from "ext:deno_node/internal/crypto/util.ts";
