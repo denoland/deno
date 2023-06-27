@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+use crate::bindings::script_origin;
 use crate::error::custom_error;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
@@ -6,7 +7,6 @@ use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url;
-use crate::runtime::script_origin;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map;
 use crate::JsBuffer;

@@ -9,7 +9,8 @@ use std::fmt::Formatter;
 
 use anyhow::Error;
 
-use crate::runtime::JsRealm;
+use crate::realm::JsRealm;
+use crate::runtime::GetErrorClassFn;
 use crate::runtime::JsRuntime;
 use crate::source_map::apply_source_map;
 use crate::source_map::get_source_line;
@@ -18,9 +19,6 @@ use crate::url::Url;
 /// A generic wrapper that can encapsulate any concrete error type.
 // TODO(ry) Deprecate AnyError and encourage deno_core::anyhow::Error instead.
 pub type AnyError = anyhow::Error;
-
-pub type JsErrorCreateFn = dyn Fn(JsError) -> Error;
-pub type GetErrorClassFn = &'static dyn for<'e> Fn(&'e Error) -> &'static str;
 
 /// Creates a new error with a caller-specified error class name and message.
 pub fn custom_error(
@@ -643,56 +641,6 @@ fn abbrev_file_name(file_name: &str) -> Option<String> {
   let start = tail.get(0..20)?;
   let end = tail.get(len - 20..)?;
   Some(format!("{}:{},{}......{}", url.scheme(), head, start, end))
-}
-
-pub(crate) fn exception_to_err_result<T>(
-  scope: &mut v8::HandleScope,
-  exception: v8::Local<v8::Value>,
-  in_promise: bool,
-) -> Result<T, Error> {
-  let state_rc = JsRuntime::state_from(scope);
-
-  let was_terminating_execution = scope.is_execution_terminating();
-  // Disable running microtasks for a moment. When upgrading to V8 v11.4
-  // we discovered that canceling termination here will cause the queued
-  // microtasks to run which breaks some tests.
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
-  // If TerminateExecution was called, cancel isolate termination so that the
-  // exception can be created. Note that `scope.is_execution_terminating()` may
-  // have returned false if TerminateExecution was indeed called but there was
-  // no JS to execute after the call.
-  scope.cancel_terminate_execution();
-  let mut exception = exception;
-  {
-    // If termination is the result of a `op_dispatch_exception` call, we want
-    // to use the exception that was passed to it rather than the exception that
-    // was passed to this function.
-    let state = state_rc.borrow();
-    exception = if let Some(exception) = &state.dispatched_exception {
-      v8::Local::new(scope, exception.clone())
-    } else if was_terminating_execution && exception.is_null_or_undefined() {
-      let message = v8::String::new(scope, "execution terminated").unwrap();
-      v8::Exception::error(scope, message)
-    } else {
-      exception
-    };
-  }
-
-  let mut js_error = JsError::from_v8_exception(scope, exception);
-  if in_promise {
-    js_error.exception_message = format!(
-      "Uncaught (in promise) {}",
-      js_error.exception_message.trim_start_matches("Uncaught ")
-    );
-  }
-
-  if was_terminating_execution {
-    // Resume exception termination.
-    scope.terminate_execution();
-  }
-  scope.set_microtasks_policy(v8::MicrotasksPolicy::Auto);
-
-  Err(js_error.into())
 }
 
 #[cfg(test)]

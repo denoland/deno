@@ -78,6 +78,25 @@ pub fn script_origin<'a>(
   )
 }
 
+pub fn module_origin<'a>(
+  s: &mut v8::HandleScope<'a>,
+  resource_name: v8::Local<'a, v8::String>,
+) -> v8::ScriptOrigin<'a> {
+  let source_map_url = v8::String::empty(s);
+  v8::ScriptOrigin::new(
+    s,
+    resource_name.into(),
+    0,
+    0,
+    false,
+    123,
+    source_map_url.into(),
+    true,
+    false,
+    true,
+  )
+}
+
 fn get<'s, T>(
   scope: &mut v8::HandleScope<'s>,
   from: v8::Local<v8::Object>,
