@@ -23,8 +23,6 @@ use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -69,6 +67,9 @@ use std::rc::Rc;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+
+use tokio::task::spawn_local;
+use tokio::task::JoinHandle;
 
 type Request = hyper1::Request<Incoming>;
 type Response = hyper1::Response<ResponseBytes>;
@@ -124,7 +125,8 @@ pub fn op_http_upgrade_raw(
   let (read, write) = tokio::io::duplex(1024);
   let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  spawn(async move {
+
+  spawn_local(async move {
     let mut upgrade_stream = WebSocketUpgrade::<ResponseBytes>::default();
 
     // Stage 2: Extract the Upgraded connection
@@ -148,7 +150,7 @@ pub fn op_http_upgrade_raw(
     // Stage 3: Pump the data
     let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
 
-    spawn(async move {
+    spawn_local(async move {
       let mut buf = [0; 1024];
       loop {
         let read = upgraded_rx.read(&mut buf).await?;
@@ -159,7 +161,7 @@ pub fn op_http_upgrade_raw(
       }
       Ok::<_, AnyError>(())
     });
-    spawn(async move {
+    spawn_local(async move {
       let mut buf = [0; 1024];
       loop {
         let read = write_rx.read(&mut buf).await?;
@@ -736,10 +738,11 @@ fn serve_https(
   cancel: Rc<CancelHandle>,
   tx: tokio::sync::mpsc::Sender<SlabId>,
 ) -> JoinHandle<Result<(), AnyError>> {
+  // TODO(mmastrac): This is faster if we can use tokio::spawn but then the send bounds get us
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn(
+  spawn_local(
     async {
       io.handshake().await?;
       // If the client specifically negotiates a protocol, we will use it. If not, we'll auto-detect
@@ -763,10 +766,11 @@ fn serve_http(
   cancel: Rc<CancelHandle>,
   tx: tokio::sync::mpsc::Sender<SlabId>,
 ) -> JoinHandle<Result<(), AnyError>> {
+  // TODO(mmastrac): This is faster if we can use tokio::spawn but then the send bounds get us
   let svc = service_fn(move |req: Request| {
     new_slab_future(req, request_info.clone(), tx.clone())
   });
-  spawn(serve_http2_autodetect(io, svc).try_or_cancel(cancel))
+  spawn_local(serve_http2_autodetect(io, svc).try_or_cancel(cancel))
 }
 
 fn serve_http_on<HTTP>(
@@ -849,7 +853,7 @@ where
   let cancel_clone = resource.cancel_handle();
 
   let listen_properties_clone: HttpListenProperties = listen_properties.clone();
-  let handle = spawn(async move {
+  let handle = spawn_local(async move {
     loop {
       let conn = HTTP::accept_connection_from_listener(&listener)
         .try_or_cancel(cancel_clone.clone())

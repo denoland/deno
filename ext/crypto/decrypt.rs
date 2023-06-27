@@ -20,7 +20,6 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::task::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
@@ -100,7 +99,7 @@ pub async fn op_crypto_decrypt(
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
-  let buf = spawn_blocking(fun).await.unwrap()?;
+  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 

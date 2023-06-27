@@ -26,7 +26,6 @@ use deno_core::futures::task::Waker;
 use deno_core::op;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -75,6 +74,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
+use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
@@ -224,9 +224,9 @@ impl Drop for TlsStream {
     let use_linger_task = inner.poll_close(&mut cx).is_pending();
 
     if use_linger_task {
-      spawn(poll_fn(move |cx| inner.poll_close(cx)));
+      spawn_local(poll_fn(move |cx| inner.poll_close(cx)));
     } else if cfg!(debug_assertions) {
-      spawn(async {}); // Spawn dummy task to detect missing runtime.
+      spawn_local(async {}); // Spawn dummy task to detect missing LocalSet.
     }
   }
 }

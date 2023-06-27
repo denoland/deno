@@ -23,7 +23,6 @@ use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
-use deno_core::task::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -62,6 +61,7 @@ use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
+use tokio::task::spawn;
 
 // Re-export reqwest and data_url
 pub use data_url;

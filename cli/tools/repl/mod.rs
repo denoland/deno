@@ -8,7 +8,6 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::task::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -33,7 +32,7 @@ async fn read_line_and_poll(
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
   #![allow(clippy::await_holding_refcell_ref)]
-  let mut line_fut = spawn_blocking(move || editor.readline());
+  let mut line_fut = tokio::task::spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
   let mut notifications = notifications_rc.borrow_mut();

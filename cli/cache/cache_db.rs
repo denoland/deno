@@ -3,7 +3,6 @@
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
-use deno_core::task::spawn_blocking;
 use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
@@ -96,7 +95,7 @@ impl Drop for CacheDB {
       // Hand off SQLite connection to another thread to do the surprisingly expensive cleanup
       let inner = inner.into_inner().into_inner();
       if let Some(conn) = inner {
-        spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
           drop(conn);
           log::trace!(
             "Cleaned up SQLite connection at {}",
@@ -168,7 +167,7 @@ impl CacheDB {
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
     debug_assert!(tokio::runtime::Handle::try_current().is_ok());
-    spawn_blocking(move || {
+    tokio::task::spawn_blocking(move || {
       let lock = clone.conn.lock();
       clone.initialize(&lock);
     });

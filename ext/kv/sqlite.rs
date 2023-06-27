@@ -17,8 +17,6 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
 use rusqlite::params;
@@ -30,6 +28,8 @@ use tokio::sync::watch;
 use tokio::sync::OnceCell;
 use tokio::sync::OwnedSemaphorePermit;
 use tokio::sync::Semaphore;
+use tokio::task::spawn_blocking;
+use tokio::task::spawn_local;
 use uuid::Uuid;
 
 use crate::AtomicWrite;
@@ -321,7 +321,7 @@ impl SqliteQueue {
     let (waker_tx, waker_rx) = mpsc::channel::<()>(1);
     let (dequeue_tx, dequeue_rx) = mpsc::channel::<(Vec<u8>, String)>(64);
 
-    spawn(async move {
+    spawn_local(async move {
       // Oneshot requeue of all inflight messages.
       Self::requeue_inflight_messages(conn.clone()).await.unwrap();
 

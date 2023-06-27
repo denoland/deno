@@ -36,15 +36,15 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
-use deno_core::task::JoinHandle;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::tokio_util::run_local;
 use factory::CliFactory;
 use std::env;
 use std::env::current_exe;
 use std::future::Future;
 use std::path::PathBuf;
+use tokio::task::JoinHandle;
 
 /// Ensures that all subcommands return an i32 exit code and an [`AnyError`] error type.
 trait SubcommandOutput {
@@ -76,7 +76,7 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  deno_core::task::spawn(f.map(|r| r.output()))
+  tokio::task::spawn_local(f.map(|r| r.output()))
 }
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -299,8 +299,7 @@ pub fn main() {
     run_subcommand(flags).await
   };
 
-  let exit_code =
-    unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
+  let exit_code = unwrap_or_exit(run_local(future));
 
   std::process::exit(exit_code);
 }

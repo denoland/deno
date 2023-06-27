@@ -8,7 +8,6 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -57,7 +56,7 @@ impl Client {
   ) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    spawn(async move {
+    tokio::task::spawn(async move {
       client.send_registry_state_notification(params).await;
     });
   }
@@ -71,7 +70,7 @@ impl Client {
   ) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    spawn(async move {
+    tokio::task::spawn(async move {
       client.send_diagnostic_batch_notification(params).await;
     });
   }
@@ -79,7 +78,7 @@ impl Client {
   pub fn send_test_notification(&self, params: TestingNotification) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    spawn(async move {
+    tokio::task::spawn(async move {
       client.send_test_notification(params).await;
     });
   }
@@ -92,7 +91,7 @@ impl Client {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     let message = message.to_string();
-    spawn(async move {
+    tokio::task::spawn(async move {
       client.show_message(message_type, message).await;
     });
   }

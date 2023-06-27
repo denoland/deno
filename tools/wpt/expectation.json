@@ -4345,9 +4345,7 @@
         ],
         "request-referrer.any.html": false,
         "request-referrer.any.worker.html": false,
-        "response-null-body.any.html": {
-          "ignore": true
-        }
+        "response-null-body.any.html": true
       },
       "response": {
         "json.any.html": true,

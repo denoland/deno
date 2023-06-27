@@ -9,7 +9,6 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -321,7 +320,7 @@ impl LanguageServer {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
-          let handle = spawn(async move {
+          let handle = tokio::task::spawn_local(async move {
             create_graph_for_caching(cli_options, roots, open_docs).await
           });
           if let Err(err) = handle.await.unwrap() {
@@ -1468,8 +1467,9 @@ impl Inner {
     let package_reqs = self.documents.npm_package_reqs();
     let npm_resolver = self.npm.resolver.clone();
     // spawn to avoid the LSP's Send requirements
-    let handle =
-      spawn(async move { npm_resolver.set_package_reqs(&package_reqs).await });
+    let handle = tokio::task::spawn_local(async move {
+      npm_resolver.set_package_reqs(&package_reqs).await
+    });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }

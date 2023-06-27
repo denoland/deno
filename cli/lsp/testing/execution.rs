@@ -24,11 +24,9 @@ use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::tokio_util::run_local;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -286,7 +284,7 @@ impl TestRun {
       };
       let token = self.token.clone();
 
-      spawn_blocking(move || {
+      tokio::task::spawn_blocking(move || {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
@@ -294,13 +292,13 @@ impl TestRun {
         let file_result = if token.is_cancelled() {
           Ok(())
         } else {
-          create_and_run_current_thread(test::test_specifier(
-            worker_factory,
+          run_local(test::test_specifier(
+            &worker_factory,
             permissions,
             specifier,
             sender.clone(),
             fail_fast_tracker,
-            test::TestSpecifierOptions {
+            &test::TestSpecifierOptions {
               filter,
               shuffle: None,
               trace_ops: false,
@@ -333,7 +331,7 @@ impl TestRun {
     ));
 
     let handler = {
-      spawn(async move {
+      tokio::task::spawn(async move {
         let earlier = Instant::now();
         let mut summary = test::TestSummary::new();
         let mut used_only = false;

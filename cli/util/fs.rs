@@ -3,7 +3,6 @@
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 pub use deno_core::normalize_path;
-use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
 use deno_runtime::deno_node::PathClean;
@@ -504,7 +503,7 @@ impl LaxSingleProcessFsFlag {
               // This uses a blocking task because we use a single threaded
               // runtime and this is time sensitive so we don't want it to update
               // at the whims of of whatever is occurring on the runtime thread.
-              spawn_blocking({
+              tokio::task::spawn_blocking({
                 let token = token.clone();
                 let last_updated_path = last_updated_path.clone();
                 move || {

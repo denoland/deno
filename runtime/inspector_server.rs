@@ -15,7 +15,6 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
@@ -110,7 +109,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    tokio::task::spawn_local(fut);
   }
 }
 
@@ -161,7 +160,7 @@ fn handle_ws_request(
 
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
-  spawn(async move {
+  tokio::task::spawn_local(async move {
     let websocket = if let Ok(w) = fut.await {
       w
     } else {

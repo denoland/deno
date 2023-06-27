@@ -26,8 +26,6 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -249,9 +247,9 @@ impl DiagnosticsServer {
 
       runtime.block_on(async {
         let mut token = CancellationToken::new();
-        let mut ts_handle: Option<JoinHandle<()>> = None;
-        let mut lint_handle: Option<JoinHandle<()>> = None;
-        let mut deps_handle: Option<JoinHandle<()>> = None;
+        let mut ts_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut lint_handle: Option<tokio::task::JoinHandle<()>> = None;
+        let mut deps_handle: Option<tokio::task::JoinHandle<()>> = None;
         let diagnostics_publisher = DiagnosticsPublisher::new(client.clone());
 
         loop {
@@ -275,7 +273,7 @@ impl DiagnosticsServer {
               diagnostics_publisher.clear().await;
 
               let previous_ts_handle = ts_handle.take();
-              ts_handle = Some(spawn({
+              ts_handle = Some(tokio::spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let ts_server = ts_server.clone();
@@ -339,7 +337,7 @@ impl DiagnosticsServer {
               }));
 
               let previous_deps_handle = deps_handle.take();
-              deps_handle = Some(spawn({
+              deps_handle = Some(tokio::spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();
@@ -381,7 +379,7 @@ impl DiagnosticsServer {
               }));
 
               let previous_lint_handle = lint_handle.take();
-              lint_handle = Some(spawn({
+              lint_handle = Some(tokio::spawn({
                 let performance = performance.clone();
                 let diagnostics_publisher = diagnostics_publisher.clone();
                 let token = token.clone();

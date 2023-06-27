@@ -17,7 +17,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -199,7 +198,7 @@ pub fn check_for_upgrades(
   if update_checker.should_check_for_new_version() {
     let env = update_checker.env.clone();
     // do this asynchronously on a separate task
-    spawn(async move {
+    tokio::spawn(async move {
       // Sleep for a small amount of time to not unnecessarily impact startup
       // time.
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;

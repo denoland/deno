@@ -7,10 +7,9 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use serde::Serialize;
+use tokio::task::JoinHandle;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
@@ -94,7 +93,7 @@ impl IncrementalCacheInner {
       tokio::sync::mpsc::unbounded_channel::<ReceiverMessage>();
 
     // sqlite isn't `Sync`, so we do all the updating on a dedicated task
-    let handle = spawn(async move {
+    let handle = tokio::task::spawn(async move {
       while let Some(message) = receiver.recv().await {
         match message {
           ReceiverMessage::Update(path, hash) => {

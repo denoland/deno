@@ -9,14 +9,9 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ToJsBuffer;
-
-use deno_core::task::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use serde::Deserialize;
-use shared::operation_error;
-
+use deno_core::ToJsBuffer;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rand::rngs::OsRng;
@@ -38,10 +33,12 @@ use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
+use shared::operation_error;
 use signature::RandomizedSigner;
 use signature::Signer;
 use signature::Verifier;
@@ -604,7 +601,7 @@ pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
   data: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
-  let output = spawn_blocking(move || {
+  let output = tokio::task::spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()

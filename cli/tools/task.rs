@@ -21,7 +21,6 @@ use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
-use tokio::task::LocalSet;
 
 pub async fn execute_script(
   flags: Flags,
@@ -60,10 +59,9 @@ pub async fn execute_script(
     let seq_list = deno_task_shell::parser::parse(&script)
       .with_context(|| format!("Error parsing script '{task_name}'."))?;
     let env_vars = collect_env_vars();
-    let local = LocalSet::new();
-    let future =
-      deno_task_shell::execute(seq_list, env_vars, &cwd, Default::default());
-    let exit_code = local.run_until(future).await;
+    let exit_code =
+      deno_task_shell::execute(seq_list, env_vars, &cwd, Default::default())
+        .await;
     Ok(exit_code)
   } else if package_json_scripts.contains_key(task_name) {
     let package_json_deps_provider = factory.package_json_deps_provider();
@@ -122,10 +120,9 @@ pub async fn execute_script(
           .with_context(|| format!("Error parsing script '{task_name}'."))?;
         let npx_commands = resolve_npm_commands(npm_resolver, node_resolver)?;
         let env_vars = collect_env_vars();
-        let local = LocalSet::new();
-        let future =
-          deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands);
-        let exit_code = local.run_until(future).await;
+        let exit_code =
+          deno_task_shell::execute(seq_list, env_vars, &cwd, npx_commands)
+            .await;
         if exit_code > 0 {
           return Ok(exit_code);
         }

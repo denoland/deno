@@ -20,8 +20,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
 use deno_core::url::Url;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
@@ -33,6 +31,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
+use tokio::task::JoinHandle;
 
 use crate::npm::cache::mixed_case_package_name_encode;
 use crate::npm::cache::should_sync_download;
@@ -306,7 +305,7 @@ async fn sync_resolution_with_fs(
       let cache = cache.clone();
       let registry_url = registry_url.clone();
       let package = package.clone();
-      let handle = spawn(async move {
+      let handle = tokio::task::spawn(async move {
         cache
           .ensure_package(&package.id.nv, &package.dist, &registry_url)
           .await?;

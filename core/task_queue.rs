@@ -127,7 +127,7 @@ mod tests {
     for i in 0..100 {
       let data = data.clone();
       tasks.push(task_queue.queue(async move {
-        crate::task::spawn_blocking(move || {
+        tokio::task::spawn_blocking(move || {
           let mut data = data.lock();
           if *data != i {
             panic!("Value was not equal.");

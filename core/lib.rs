@@ -20,7 +20,6 @@ mod path;
 mod resources;
 mod runtime;
 mod source_map;
-pub mod task;
 mod task_queue;
 
 // Re-exports
