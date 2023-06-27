@@ -120,7 +120,13 @@ pub fn queue_async_op<'s>(
   let mut pinned = op.map(move |res| (promise_id, id, res)).boxed_local();
 
   match pinned.poll_unpin(&mut Context::from_waker(noop_waker_ref())) {
-    Poll::Pending => {}
+    Poll::Pending => {
+      // TODO(mmastrac): We are polling a future directly, and then shoving it into a task where it gets polled
+      // in a completely different way. While this shouldn't necessarily be an issue, this appears to cause a loss
+      // of wakeup events in certain situations that are not entirely clear. For now we're going to force the event
+      // loop to wake up which will then poll the JoinSet, correct the wakers, and ensures that we don't lose events.
+      ctx.state.borrow_mut().waker.wake();
+    }
     Poll::Ready(mut res) => {
       if deferred {
         ctx
