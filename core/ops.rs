@@ -9,14 +9,17 @@ use crate::runtime::JsRuntimeState;
 use crate::OpDecl;
 use crate::OpsTracker;
 use anyhow::Error;
+use futures::future::MaybeDone;
 use futures::task::AtomicWaker;
 use futures::Future;
+use futures::FutureExt;
 use pin_project::pin_project;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::rc::Weak;
@@ -28,26 +31,40 @@ pub type PromiseId = i32;
 pub type OpId = u16;
 
 #[pin_project]
-pub struct OpCall<F: Future<Output = OpResult>> {
+pub struct OpCall {
   promise_id: PromiseId,
   op_id: OpId,
   /// Future is not necessarily Unpin, so we need to pin_project.
   #[pin]
-  fut: F,
+  fut: MaybeDone<Pin<Box<dyn Future<Output = OpResult>>>>,
 }
 
-impl<F: Future<Output = OpResult>> OpCall<F> {
+impl OpCall {
   /// Wraps a future; the inner future is polled the usual way (lazily).
-  pub fn new(op_ctx: &OpCtx, promise_id: PromiseId, fut: F) -> Self {
+  pub fn pending(
+    op_ctx: &OpCtx,
+    promise_id: PromiseId,
+    fut: Pin<Box<dyn Future<Output = OpResult> + 'static>>,
+  ) -> Self {
     Self {
       op_id: op_ctx.id,
       promise_id,
-      fut,
+      fut: MaybeDone::Future(fut),
+    }
+  }
+
+  /// Create a future by specifying its output. This is basically the same as
+  /// `async { value }` or `futures::future::ready(value)`.
+  pub fn ready(op_ctx: &OpCtx, promise_id: PromiseId, value: OpResult) -> Self {
+    Self {
+      op_id: op_ctx.id,
+      promise_id,
+      fut: MaybeDone::Done(value),
     }
   }
 }
 
-impl<F: Future<Output = OpResult>> Future for OpCall<F> {
+impl Future for OpCall {
   type Output = (PromiseId, OpId, OpResult);
 
   fn poll(
@@ -56,8 +73,21 @@ impl<F: Future<Output = OpResult>> Future for OpCall<F> {
   ) -> std::task::Poll<Self::Output> {
     let promise_id = self.promise_id;
     let op_id = self.op_id;
-    let fut = self.project().fut;
-    fut.poll(cx).map(move |res| (promise_id, op_id, res))
+    let fut = &mut *self.project().fut;
+    match fut {
+      MaybeDone::Done(_) => {
+        // Let's avoid using take_output as it keeps our Pin::box
+        let res = std::mem::replace(fut, MaybeDone::Gone);
+        let MaybeDone::Done(res) = res
+        else {
+          unreachable!()
+        };
+        std::task::Poll::Ready(res)
+      }
+      MaybeDone::Future(f) => f.poll_unpin(cx),
+      MaybeDone::Gone => std::task::Poll::Pending,
+    }
+    .map(move |res| (promise_id, op_id, res))
   }
 }
 
