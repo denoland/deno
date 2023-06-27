@@ -20,6 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { createStylizeWithColor, formatValue, formatNumber, formatBigInt, styles, colors } from "ext:deno_console/01_console.js";

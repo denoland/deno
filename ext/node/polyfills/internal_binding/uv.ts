@@ -26,6 +26,9 @@
 //
 // See also: http://docs.libuv.org/en/v1.x/errors.html#error-constants
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { osType } from "ext:deno_node/_util/os.ts";
 import { uvTranslateSysError } from "ext:deno_node/internal_binding/_libuv_winerror.ts";
