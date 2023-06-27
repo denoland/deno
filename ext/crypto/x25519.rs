@@ -3,7 +3,7 @@
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use elliptic_curve::subtle::ConstantTimeEq;
 use rand::rngs::OsRng;
@@ -101,7 +101,7 @@ pub fn op_crypto_import_pkcs8_x25519(key_data: &[u8], out: &mut [u8]) -> bool {
 #[op]
 pub fn op_crypto_export_spki_x25519(
   pubkey: &[u8],
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifier {
       // id-X25519
@@ -116,7 +116,7 @@ pub fn op_crypto_export_spki_x25519(
 #[op]
 pub fn op_crypto_export_pkcs8_x25519(
   pkey: &[u8],
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
     public_key: None,

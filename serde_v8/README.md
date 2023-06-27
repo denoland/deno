@@ -29,9 +29,9 @@ nested HashMaps), so when writing ops we recommend directly using rust
 structs/tuples or primitives, since mapping to `serde_json::Value` will add
 extra overhead and result in slower ops.
 
-I also recommend avoiding unecessary "wrappers", if your op takes a single-keyed
-struct, consider unwrapping that as a plain value unless you plan to add fields
-in the near-future.
+I also recommend avoiding unnecessary "wrappers", if your op takes a
+single-keyed struct, consider unwrapping that as a plain value unless you plan
+to add fields in the near-future.
 
 Instead of returning "nothing" via `Ok(json!({}))`, change your return type to
 rust's unit type `()` and returning `Ok(())`, `serde_v8` will efficiently encode

@@ -369,7 +369,7 @@ fn empty_fn(
   //Do Nothing
 }
 
-//It creates a reference to an empty function which can be mantained after the snapshots
+//It creates a reference to an empty function which can be maintained after the snapshots
 pub fn create_empty_fn<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> Option<v8::Local<'s, v8::Function>> {

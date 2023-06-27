@@ -19,10 +19,11 @@ use deno_core::op;
 use deno_core::serde_v8::AnyValue;
 use deno_core::serde_v8::BigInt;
 use deno_core::ByteString;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -122,7 +123,8 @@ impl From<AnyValue> for KeyPart {
       AnyValue::Number(n) => KeyPart::Float(n),
       AnyValue::BigInt(n) => KeyPart::Int(n),
       AnyValue::String(s) => KeyPart::String(s),
-      AnyValue::Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
+      AnyValue::V8Buffer(buf) => KeyPart::Bytes(buf.to_vec()),
+      AnyValue::RustBuffer(_) => unreachable!(),
     }
   }
 }
@@ -135,51 +137,61 @@ impl From<KeyPart> for AnyValue {
       KeyPart::Float(n) => AnyValue::Number(n),
       KeyPart::Int(n) => AnyValue::BigInt(n),
       KeyPart::String(s) => AnyValue::String(s),
-      KeyPart::Bytes(buf) => AnyValue::Buffer(buf.into()),
+      KeyPart::Bytes(buf) => AnyValue::RustBuffer(buf.into()),
     }
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize)]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
-enum V8Value {
-  V8(ZeroCopyBuf),
-  Bytes(ZeroCopyBuf),
+enum FromV8Value {
+  V8(JsBuffer),
+  Bytes(JsBuffer),
   U64(BigInt),
 }
 
-impl TryFrom<V8Value> for Value {
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+enum ToV8Value {
+  V8(ToJsBuffer),
+  Bytes(ToJsBuffer),
+  U64(BigInt),
+}
+
+impl TryFrom<FromV8Value> for Value {
   type Error = AnyError;
-  fn try_from(value: V8Value) -> Result<Self, AnyError> {
+  fn try_from(value: FromV8Value) -> Result<Self, AnyError> {
     Ok(match value {
-      V8Value::V8(buf) => Value::V8(buf.to_vec()),
-      V8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
-      V8Value::U64(n) => Value::U64(num_bigint::BigInt::from(n).try_into()?),
+      FromV8Value::V8(buf) => Value::V8(buf.to_vec()),
+      FromV8Value::Bytes(buf) => Value::Bytes(buf.to_vec()),
+      FromV8Value::U64(n) => {
+        Value::U64(num_bigint::BigInt::from(n).try_into()?)
+      }
     })
   }
 }
 
-impl From<Value> for V8Value {
+impl From<Value> for ToV8Value {
   fn from(value: Value) -> Self {
     match value {
-      Value::V8(buf) => V8Value::V8(buf.into()),
-      Value::Bytes(buf) => V8Value::Bytes(buf.into()),
-      Value::U64(n) => V8Value::U64(num_bigint::BigInt::from(n).into()),
+      Value::V8(buf) => ToV8Value::V8(buf.into()),
+      Value::Bytes(buf) => ToV8Value::Bytes(buf.into()),
+      Value::U64(n) => ToV8Value::U64(num_bigint::BigInt::from(n).into()),
     }
   }
 }
 
-#[derive(Deserialize, Serialize)]
-struct V8KvEntry {
+#[derive(Serialize)]
+struct ToV8KvEntry {
   key: KvKey,
-  value: V8Value,
+  value: ToV8Value,
   versionstamp: ByteString,
 }
 
-impl TryFrom<KvEntry> for V8KvEntry {
+impl TryFrom<KvEntry> for ToV8KvEntry {
   type Error = AnyError;
   fn try_from(entry: KvEntry) -> Result<Self, AnyError> {
-    Ok(V8KvEntry {
+    Ok(ToV8KvEntry {
       key: decode_key(&entry.key)?
         .0
         .into_iter()
@@ -223,7 +235,7 @@ async fn op_kv_snapshot_read<DBH>(
   rid: ResourceId,
   ranges: Vec<SnapshotReadRange>,
   consistency: V8Consistency,
-) -> Result<Vec<Vec<V8KvEntry>>, AnyError>
+) -> Result<Vec<Vec<ToV8KvEntry>>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -301,7 +313,7 @@ impl<QMH: QueueMessageHandle + 'static> Resource for QueueMessageResource<QMH> {
 async fn op_kv_dequeue_next_message<DBH>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(ZeroCopyBuf, ResourceId), AnyError>
+) -> Result<(ToJsBuffer, ResourceId), AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
@@ -364,7 +376,7 @@ impl TryFrom<V8KvCheck> for KvCheck {
   }
 }
 
-type V8KvMutation = (KvKey, String, Option<V8Value>);
+type V8KvMutation = (KvKey, String, Option<FromV8Value>);
 
 impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
@@ -389,7 +401,7 @@ impl TryFrom<V8KvMutation> for KvMutation {
   }
 }
 
-type V8Enqueue = (ZeroCopyBuf, u64, Vec<KvKey>, Option<Vec<u32>>);
+type V8Enqueue = (JsBuffer, u64, Vec<KvKey>, Option<Vec<u32>>);
 
 impl TryFrom<V8Enqueue> for Enqueue {
   type Error = AnyError;

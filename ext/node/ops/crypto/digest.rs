@@ -99,6 +99,19 @@ impl Hash {
       Sha512(context) => context.finalize(),
     }
   }
+
+  pub fn get_hashes() -> Vec<&'static str> {
+    vec![
+      "md4",
+      "md5",
+      "ripemd160",
+      "sha1",
+      "sha224",
+      "sha256",
+      "sha384",
+      "sha512",
+    ]
+  }
 }
 
 impl Clone for Hash {

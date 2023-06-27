@@ -20,6 +20,8 @@ util::unit_test_factory!(
     _fs_copy_test = _fs / _fs_copy_test,
     _fs_dir_test = _fs / _fs_dir_test,
     _fs_dirent_test = _fs / _fs_dirent_test,
+    _fs_open_test = _fs / _fs_open_test,
+    _fs_read_test = _fs / _fs_read_test,
     _fs_exists_test = _fs / _fs_exists_test,
     _fs_fdatasync_test = _fs / _fs_fdatasync_test,
     _fs_fstat_test = _fs / _fs_fstat_test,
@@ -45,6 +47,7 @@ util::unit_test_factory!(
     _fs_unlink_test = _fs / _fs_unlink_test,
     _fs_utimes_test = _fs / _fs_utimes_test,
     _fs_watch_test = _fs / _fs_watch_test,
+    _fs_writeFile_test = _fs / _fs_writeFile_test,
     _fs_write_test = _fs / _fs_write_test,
     async_hooks_test,
     buffer_test,
@@ -72,7 +75,8 @@ util::unit_test_factory!(
     tty_test,
     util_test,
     v8_test,
-    worker_threads_test
+    worker_threads_test,
+    zlib_test
   ]
 );
 
