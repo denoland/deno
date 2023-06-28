@@ -29,7 +29,7 @@ impl<T: serde::Serialize> Serializable for T {
 }
 
 /// SerializablePkg exists to provide a fast path for op returns,
-/// allowing them to avoid boxing primtives (ints/floats/bool/unit/...)
+/// allowing them to avoid boxing primitives (ints/floats/bool/unit/...)
 pub enum SerializablePkg {
   Primitive(Primitive),
   Serializable(Box<dyn Serializable>),

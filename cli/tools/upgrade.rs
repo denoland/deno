@@ -125,7 +125,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   /// Returns the version if a new one is available and it should be prompted about.
   pub fn should_prompt(&self) -> Option<String> {
     let file = self.maybe_file.as_ref()?;
-    // If the current version saved is not the actualy current version of the binary
+    // If the current version saved is not the actually current version of the binary
     // It means
     // - We already check for a new version today
     // - The user have probably upgraded today

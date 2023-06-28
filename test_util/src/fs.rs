@@ -11,6 +11,8 @@ use std::sync::Arc;
 use anyhow::Context;
 use lsp_types::Url;
 
+use crate::assertions::assert_wildcard_match;
+
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -105,7 +107,7 @@ impl PathRef {
 
   pub fn read_to_string_if_exists(&self) -> Result<String, anyhow::Error> {
     fs::read_to_string(self)
-      .with_context(|| format!("Could not find file: {}", self))
+      .with_context(|| format!("Could not read file: {}", self))
   }
 
   pub fn rename(&self, to: impl AsRef<Path>) {
@@ -194,6 +196,19 @@ impl PathRef {
     } else if cfg!(unix) {
       Command::new("chmod").arg("555").arg(self).output().unwrap();
     }
+  }
+
+  pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
+    let wildcard_file = PathRef::new(wildcard_file);
+    println!("output path {}", wildcard_file);
+    let expected_text = wildcard_file.read_to_string();
+    self.assert_matches_text(&expected_text)
+  }
+
+  pub fn assert_matches_text(&self, wildcard_text: impl AsRef<str>) -> &Self {
+    let actual = self.read_to_string();
+    assert_wildcard_match(&actual, wildcard_text.as_ref());
+    self
   }
 }
 

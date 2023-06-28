@@ -38,13 +38,6 @@
     URIError,
     setQueueMicrotask,
   } = window.__bootstrap.primordials;
-
-  const key = SymbolFor("01_core.js");
-  if (globalThis.__bootstrap[key]) {
-    return;
-  }
-  globalThis.__bootstrap[key] = true;
-
   const { ops, asyncOps } = window.Deno.core;
 
   const build = {
@@ -228,7 +221,7 @@
       error = errorMap[className]?.(message);
     } catch (e) {
       throw new Error(
-        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+        `Unable to build custom error for "${className}"\n  ${e.message}`,
       );
     }
     // Strip buildCustomError() calls from stack trace

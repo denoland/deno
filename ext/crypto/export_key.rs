@@ -130,7 +130,7 @@ fn export_key_rsa(
         algorithm: spki::AlgorithmIdentifier {
           // rsaEncryption(1)
           oid: const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
-          // parameters field should not be ommited (None).
+          // parameters field should not be omitted (None).
           // It MUST have ASN.1 type NULL.
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
@@ -158,7 +158,7 @@ fn export_key_rsa(
         algorithm: rsa::pkcs8::AlgorithmIdentifier {
           // rsaEncryption(1)
           oid: rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
-          // parameters field should not be ommited (None).
+          // parameters field should not be omitted (None).
           // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },

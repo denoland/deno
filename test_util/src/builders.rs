@@ -12,8 +12,8 @@ use std::process::Stdio;
 use std::rc::Rc;
 
 use os_pipe::pipe;
-use pretty_assertions::assert_eq;
 
+use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::fs::PathRef;
@@ -23,7 +23,6 @@ use crate::new_deno_dir;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
-use crate::wildcard_match;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -111,7 +110,7 @@ impl TestContextBuilder {
 
   pub fn use_sync_npm_download(self) -> Self {
     self.env(
-      // make downloads determinstic
+      // make downloads deterministic
       "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
       "1",
     )
@@ -379,7 +378,7 @@ impl TestCommandBuilder {
     fn sanitize_output(text: String, args: &[String]) -> String {
       let mut text = strip_ansi_codes(&text).to_string();
       // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occassionally this zero width space
+      // synchronize the output pipes. Occasionally this zero width space
       // might end up in the output so strip it from the output comparison here.
       if args.first().map(|s| s.as_str()) == Some("test") {
         text = text.replace('\u{200B}', "");
@@ -647,7 +646,7 @@ impl TestCommandOutput {
   }
 
   #[track_caller]
-  pub fn assert_stderrr_matches_file(
+  pub fn assert_stderr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
   ) -> &Self {
@@ -660,14 +659,7 @@ impl TestCommandOutput {
     actual: &str,
     expected: impl AsRef<str>,
   ) -> &Self {
-    let expected = expected.as_ref();
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected);
-    } else if !wildcard_match(expected, actual) {
-      println!("OUTPUT START\n{actual}\nOUTPUT END");
-      println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed");
-    }
+    assert_wildcard_match(actual, expected.as_ref());
     self
   }
 
@@ -679,10 +671,7 @@ impl TestCommandOutput {
   ) -> &Self {
     let output_path = self.testdata_dir().join(file_path);
     println!("output path {}", output_path);
-    let expected_text =
-      std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
-        panic!("failed loading {}\n\n{err:#}", output_path)
-      });
+    let expected_text = output_path.read_to_string();
     self.inner_assert_matches_text(actual, expected_text)
   }
 }

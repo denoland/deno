@@ -66,7 +66,7 @@ https://github.com/denoland/deno_install
   (#19355)
 - perf(ext/http): Use flat list of headers for multiple set/get methods (#19336)
 - perf(ext/websocket): Make send sync for non-stream websockets (#19376)
-- perf(ext/websocket): Reduce GC pressure & monomorpize op_ws_next_event
+- perf(ext/websocket): Reduce GC pressure & monomorphize op_ws_next_event
   (#19405)
 - perf(ext/websocket): monomorphize code (#19394)
 - perf(http): avoid flattening http headers (#19384)
@@ -217,7 +217,7 @@ https://github.com/denoland/deno_install
 - feat(bench): add `--no-run` flag (#18433)
 - feat(cli): don't check permissions for statically analyzable dynamic imports
   (#18713)
-- feat(cli): flatten deno.json configuaration (#17799)
+- feat(cli): flatten deno.json configuration (#17799)
 - feat(ext/ffi): support marking symbols as optional (#18529)
 - feat(ext/http): Rework Deno.serve using hyper 1.0-rc3 (#18619)
 - feat(ext/kv): add more atomic operation helpers (#18854)
@@ -431,7 +431,7 @@ https://github.com/denoland/deno_install
 - fix(npm): improve peer dependency resolution with circular dependencies
   (#18069)
 - fix(prompt): better output with control chars (#18108)
-- fix(rumtime): Add `Deno.` prefix for registered symbols (#18086)
+- fix(runtime): Add `Deno.` prefix for registered symbols (#18086)
 - fix(runtime/windows): ensure `Deno.stdin.setRaw(false)` properly disables raw
   mode (#17983)
 - fix: Split extension registration and snapshotting (#18098)
@@ -609,7 +609,7 @@ https://github.com/denoland/deno_install
 
 - feat(core): Reland support for async ops in realms (#17204)
 - fix(cli/fmt): show filepath for InvalidData error (#17361)
-- fix(core): Add `Generator` and `AsyncGenerator` to promordials (#17241)
+- fix(core): Add `Generator` and `AsyncGenerator` to primordials (#17241)
 - fix(ext/fetch) Fix request clone error in flash server (#16174)
 - fix(ext/fetch): remove Response.trailer from types (#17284)
 - fix(ext/ffi): use SafeMap in getTypeSizeAndAlignment (#17305)
@@ -690,7 +690,7 @@ https://github.com/denoland/deno_install
 - fix(lsp): "Add all missing imports" uses correct specifiers (#17216)
 - fix(lsp): completions for private variables (#17220)
 - fix(lsp): don't error if completionItem/resolve request fails (#17250)
-- fix(lsp): less agressive completion triggers (#17225)
+- fix(lsp): less aggressive completion triggers (#17225)
 - fix(lsp/format): language formatter used should be based on language id
   (#17148)
 - fix(lsp/testing): fallback name for non-analyzable tests in collector (#17120)
@@ -1242,7 +1242,7 @@ https://github.com/denoland/deno_install
 - feat(unstable): initial support for npm specifiers (#15484)
 - feat: `queueMicrotask()` error handling (#15522)
 - feat: add "deno init" subcommand (#15469)
-- fix(cache): do not attempt to emit non-emitable files (#15562)
+- fix(cache): do not attempt to emit non-emittable files (#15562)
 - fix(core/runtime): always cancel termination in exception handling (#15514)
 - fix(coverage): ensure coverage is only collected in certain situations
   (#15467)
@@ -1446,7 +1446,7 @@ https://github.com/denoland/deno_install
 - feat(web): enable deflate-raw compression format (#14863)
 - fix(check): use "moduleDetection": "force" (#14875)
 - fix(cli): add config flag to `deno info` (#14706)
-- fix(console): constrol inspect() indent with option (#14867)
+- fix(console): control inspect() indent with option (#14867)
 - fix(url): properly indent when inspecting URLs (#14867)
 - upgrade: v8 10.4.132.5 (#14874)
 
@@ -2008,7 +2008,7 @@ Note 1.20.0 was dead on arrival, see https://github.com/denoland/deno/pull/13993
 - feat(core): update to V8 9.7 (#12685)
 - fix(cli): do not cache emit when diagnostics present (#12541)
 - fix(cli): don't panic when mapping unknown errors (#12659)
-- fix(cli): lint/format all discoverd files on each change (#12518)
+- fix(cli): lint/format all discovered files on each change (#12518)
 - fix(cli): linter/formater watches current directory without args (#12550)
 - fix(cli): no-check respects inlineSources compiler option (#12559)
 - fix(cli/upgrade): nice error when unzip is missing (#12693)
@@ -2236,7 +2236,7 @@ Note 1.20.0 was dead on arrival, see https://github.com/denoland/deno/pull/13993
 - feat(lsp): ignore specific lint for entire file (#12023)
 - feat(unstable): Add file locking APIs (#11746)
 - feat(unstable): Support file URLs in Deno.dlopen() (#11658)
-- feat(unstable): allow specifing gid and uid for subprocess (#11586)
+- feat(unstable): allow specifying gid and uid for subprocess (#11586)
 - feat(workers): Make the `Deno` namespace configurable and unfrozen (#11888)
 - feat: ArrayBuffer in structured clone transfer (#11840)
 - feat: add URLPattern API (#11941)
@@ -4257,7 +4257,7 @@ Read more about this release at https://deno.land/v1
 - feat: Deno.test() sanitizes ops and resources (#4399)
 - feat: Fetch should accept a FormData body (#4363)
 - feat: First pass at "deno upgrade" (#4328)
-- feat: Prvode way to build Deno without building V8 from source (#4412)
+- feat: Provide way to build Deno without building V8 from source (#4412)
 - feat: Remove `Object.prototype.__proto__` (#4341)
 - fix(std/http): Close open connections on server close (#3679)
 - fix(std/http): Properly await ops in a server test (#4436)
@@ -5301,7 +5301,7 @@ details.
 - Upgrade V8 to 7.2.502.16 (#1403)
 - make stdout unbuffered (#1355)
 - Implement `Body.formData` for fetch (#1393)
-- Improve handling of non-coercable objects in assertEqual (#1385)
+- Improve handling of non-coercible objects in assertEqual (#1385)
 - Avoid fetch segfault on empty Uri (#1394)
 - Expose deno.inspect (#1378)
 - Add illegal header name and value guards (#1375)

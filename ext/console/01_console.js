@@ -147,6 +147,12 @@ function getNoColor() {
   return noColor;
 }
 
+function assert(cond, msg = "Assertion failed.") {
+  if (!cond) {
+    throw new AssertionError(msg);
+  }
+}
+
 // Don't use 'blue' not visible on cmd.exe
 const styles = {
   special: "cyan",
@@ -1402,7 +1408,7 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
   return output;
 }
 
-function formatMap(value, ctx, _gnored, recurseTimes) {
+function formatMap(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
   const values = [...new SafeMapIterator(value)];

@@ -119,6 +119,7 @@ impl ExtModuleLoader {
       extensions
         .iter()
         .flat_map(|e| e.get_esm_sources())
+        .flatten()
         .map(|s| (s.specifier.to_string(), s.clone())),
     );
     ExtModuleLoader {
@@ -175,6 +176,29 @@ impl ModuleLoader for ExtModuleLoader {
     _is_dyn_import: bool,
   ) -> Pin<Box<dyn Future<Output = Result<(), Error>>>> {
     async { Ok(()) }.boxed_local()
+  }
+}
+
+impl Drop for ExtModuleLoader {
+  fn drop(&mut self) {
+    let sources = self.sources.get_mut();
+    let used_specifiers = self.used_specifiers.get_mut();
+    let unused_modules: Vec<_> = sources
+      .iter()
+      .filter(|(k, _)| !used_specifiers.contains(k.as_str()))
+      .collect();
+
+    if !unused_modules.is_empty() {
+      let mut msg =
+        "Following modules were passed to ExtModuleLoader but never used:\n"
+          .to_string();
+      for m in unused_modules {
+        msg.push_str("  - ");
+        msg.push_str(m.0);
+        msg.push('\n');
+      }
+      panic!("{}", msg);
+    }
   }
 }
 

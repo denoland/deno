@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file prefer-primordials
+
 export const ArrayIsArray = Array.isArray;
 export const ArrayPrototypeFilter = (that, ...args) => that.filter(...args);
 export const ArrayPrototypeForEach = (that, ...args) => that.forEach(...args);
