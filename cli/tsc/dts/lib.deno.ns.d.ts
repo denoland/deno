@@ -5785,7 +5785,7 @@ declare namespace Deno {
    *
    * @category HTTP Server
    */
-  export function serve(handler: ServeHandler): Promise<void>;
+  export function serve(handler: ServeHandler): Server;
   /** Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -5846,7 +5846,7 @@ declare namespace Deno {
   export function serve(
     options: ServeOptions | ServeTlsOptions,
     handler: ServeHandler,
-  ): Promise<void>;
+  ): Server;
   /** Serves HTTP requests with the given handler.
    *
    * You can specify an object with a port and hostname option, which is the
@@ -5906,5 +5906,5 @@ declare namespace Deno {
    */
   export function serve(
     options: ServeInit & (ServeOptions | ServeTlsOptions),
-  ): Promise<void>;
+  ): Server;
 }
