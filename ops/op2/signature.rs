@@ -312,26 +312,24 @@ fn parse_generics(
           ($t:ident) => (t.to_string(), None),
         })
       }).map_err(|_| SignatureError::InvalidGeneric(ty.to_string()))?;
-      match bound {
+      let bound = match bound {
         Some(bound) => {
           if where_clauses.contains_key(&name) {
             return Err(SignatureError::GenericBoundCardinality(name));
           }
-          if res.contains_key(&name) {
-            return Err(SignatureError::DuplicateGeneric(name));
-          }
-          res.insert(name, bound);
+          bound
         }
         None => {
           let Some(bound) = where_clauses.remove(&name) else {
             return Err(SignatureError::GenericBoundCardinality(name));
           };
-          if res.contains_key(&name) {
-            return Err(SignatureError::DuplicateGeneric(name));
-          }
-          res.insert(name, bound);
+          bound
         }
+      };
+      if res.contains_key(&name) {
+        return Err(SignatureError::DuplicateGeneric(name));
       }
+      res.insert(name, bound);
     }
   }
   if !where_clauses.is_empty() {
