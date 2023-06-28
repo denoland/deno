@@ -328,6 +328,10 @@ export function userInfo(
     gid = -1;
   }
 
+  // TODO(@crowlKats): figure out how to do this correctly:
+  //  The value of homedir returned by os.userInfo() is provided by the operating system.
+  //  This differs from the result of os.homedir(), which queries environment
+  //  variables for the home directory before falling back to the operating system response.
   let _homedir = homedir();
   if (!_homedir) {
     throw new ERR_OS_NO_HOMEDIR();
