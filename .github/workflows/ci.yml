@@ -226,7 +226,7 @@ jobs:
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}
+          sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16 clang-tools-16 clang-format-16 clang-tidy-16 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16 clang-tools-16 clang-format-16 clang-tidy-16
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) || true
 
