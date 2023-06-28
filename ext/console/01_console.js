@@ -147,6 +147,12 @@ function getNoColor() {
   return noColor;
 }
 
+function assert(cond, msg = "Assertion failed.") {
+  if (!cond) {
+    throw new AssertionError(msg);
+  }
+}
+
 // Don't use 'blue' not visible on cmd.exe
 const styles = {
   special: "cyan",

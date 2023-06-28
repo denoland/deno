@@ -23,5 +23,8 @@
 // This module ports:
 // - https://github.com/nodejs/node/blob/master/src/node_symbols.cc
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 export const asyncIdSymbol: unique symbol = Symbol("asyncIdSymbol");
 export const ownerSymbol: unique symbol = Symbol("ownerSymbol");
