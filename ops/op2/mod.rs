@@ -8,6 +8,7 @@ use quote::quote;
 use quote::ToTokens;
 use std::iter::zip;
 use syn2::parse2;
+use syn2::parse_str;
 use syn2::FnArg;
 use syn2::ItemFn;
 use syn2::Path;
@@ -104,6 +105,7 @@ fn generate_op2(
   let call = Ident::new("call", Span::call_site());
   let mut op_fn = func.clone();
   op_fn.attrs.clear();
+  op_fn.sig.generics.params.clear();
   op_fn.sig.ident = call.clone();
 
   // Clear inert attributes
@@ -196,13 +198,25 @@ fn generate_op2(
 
   let arg_count: usize = generator_state.args.len();
   let vis = func.vis;
+  let generic = signature
+    .generic_bounds
+    .keys()
+    .map(|s| format_ident!("{s}"))
+    .collect::<Vec<_>>();
+  let bound = signature
+    .generic_bounds
+    .values()
+    .map(|p| parse_str::<Path>(p).expect("Failed to reparse path"))
+    .collect::<Vec<_>>();
 
   Ok(quote! {
     #[allow(non_camel_case_types)]
-    #vis struct #name {
+    #vis struct #name <#(#generic),*> {
+      // We need to mark these type parameters as used, so we use a PhantomData
+      _unconstructable: ::std::marker::PhantomData<(#(#generic),*)>
     }
 
-    impl #name {
+    impl <#(#generic : #bound),*> #name <#(#generic),*> {
       pub const fn name() -> &'static str {
         stringify!(#name)
       }

@@ -1,5 +1,7 @@
 #[allow(non_camel_case_types)]
-struct op_add {}
+struct op_add {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
 impl op_add {
     pub const fn name() -> &'static str {
         stringify!(op_add)

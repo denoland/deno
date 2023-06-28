@@ -1,5 +1,7 @@
 #[allow(non_camel_case_types)]
-pub struct op_void_with_result {}
+pub struct op_void_with_result {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
 impl op_void_with_result {
     pub const fn name() -> &'static str {
         stringify!(op_void_with_result)
