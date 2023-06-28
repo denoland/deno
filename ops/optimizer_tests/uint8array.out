@@ -27,8 +27,8 @@ impl op_import_spki_x25519 {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, TypedArray(CType::Uint8), TypedArray(CType::Uint8)],
@@ -45,6 +45,7 @@ impl op_import_spki_x25519 {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     pub fn call<'scope>(key_data: &[u8], out: &mut [u8]) -> bool {}
     pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,

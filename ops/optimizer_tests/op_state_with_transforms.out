@@ -30,8 +30,8 @@ where
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, TypedArray(CType::Uint8), CallbackOptions],
@@ -48,6 +48,7 @@ where
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     pub fn call<'scope>(state: &mut OpState, buf: &mut [u8]) {}
     pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,

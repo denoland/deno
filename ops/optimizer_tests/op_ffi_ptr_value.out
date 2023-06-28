@@ -27,8 +27,8 @@ impl op_ffi_ptr_value {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, Pointer, TypedArray(CType::Uint32), CallbackOptions],
@@ -45,6 +45,7 @@ impl op_ffi_ptr_value {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     pub fn call<'scope>(ptr: *mut c_void, out: &mut [u32]) {}
     pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,

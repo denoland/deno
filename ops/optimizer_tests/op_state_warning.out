@@ -27,8 +27,8 @@ impl op_listen {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, CallbackOptions],
@@ -45,6 +45,7 @@ impl op_listen {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     fn call<'scope>(state: &mut OpState) -> Result<ResourceId, Error> {
         log::debug!("listen");
         let addr = "127.0.0.1:4570".parse::<SocketAddr>().unwrap();

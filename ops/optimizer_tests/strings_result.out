@@ -35,6 +35,7 @@ impl op_string_length {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     fn call<'scope>(string: &str) -> Result<u32, AnyError> {
         Ok(string.len() as u32)
     }

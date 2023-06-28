@@ -27,8 +27,8 @@ impl foo {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, Uint32, Uint32, CallbackOptions],
@@ -45,6 +45,7 @@ impl foo {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     fn call<'scope>(state: &mut OpState, a: u32, b: u32) -> Result<u32, AnyError> {
         Ok(a + b)
     }

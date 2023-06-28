@@ -27,8 +27,8 @@ impl op_string_length {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, SeqOneByteString, CallbackOptions],
@@ -45,6 +45,7 @@ impl op_string_length {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     fn call<'scope>(string: String) -> u32 {
         string.len() as u32
     }

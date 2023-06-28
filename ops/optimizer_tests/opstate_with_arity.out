@@ -27,8 +27,8 @@ impl op_add_4 {
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, Uint32, Uint32, Uint32, Uint32, CallbackOptions],
@@ -45,6 +45,7 @@ impl op_add_4 {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::extra_unused_lifetimes)]
     fn call<'scope>(x1: u32, x2: u32, x3: u32, x4: u32) -> Result<u32, anyhow::Error> {
         Ok(x1 + x2 + x3 + x4)
     }
