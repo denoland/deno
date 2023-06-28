@@ -114,7 +114,7 @@ const reconfigureWindowsStorage = {
   shell: "pwsh",
   run: `
 New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno/target"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno"
 `.trim(),
 };
 
@@ -382,8 +382,8 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
-        ...cloneRepoStep,
         reconfigureWindowsStorage,
+        ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
         {
