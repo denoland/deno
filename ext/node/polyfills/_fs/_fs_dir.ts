@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";

@@ -15,11 +15,11 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -109,7 +109,7 @@ async fn op_net_accept_tcp(
 async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  mut buf: JsBuffer,
 ) -> Result<(usize, IpAddr), AnyError> {
   let resource = state
     .borrow_mut()
@@ -130,7 +130,7 @@ async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   addr: IpAddr,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -159,15 +159,12 @@ where
 }
 
 #[op]
-async fn op_net_join_multi_v4_udp<NP>(
+async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: String,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -184,15 +181,12 @@ where
 }
 
 #[op]
-async fn op_net_join_multi_v6_udp<NP>(
+async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -208,15 +202,12 @@ where
 }
 
 #[op]
-async fn op_net_leave_multi_v4_udp<NP>(
+async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: String,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -233,15 +224,12 @@ where
 }
 
 #[op]
-async fn op_net_leave_multi_v6_udp<NP>(
+async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   address: String,
   multi_interface: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -257,15 +245,12 @@ where
 }
 
 #[op]
-async fn op_net_set_multi_loopback_udp<NP>(
+async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   is_v4_membership: bool,
   loopback: bool,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -283,14 +268,11 @@ where
 }
 
 #[op]
-async fn op_net_set_multi_ttl_udp<NP>(
+async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   ttl: u32,
-) -> Result<(), AnyError>
-where
-  NP: NetPermissions + 'static,
-{
+) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table

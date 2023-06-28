@@ -1,9 +1,9 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
+NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2933
+Total: 2934
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -88,7 +88,6 @@ Total: 2933
 - [internet/test-dns-cares-domains.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-cares-domains.js)
 - [internet/test-dns-txt-sigsegv.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-txt-sigsegv.js)
 - [internet/test-http-dns-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-dns-fail.js)
-- [internet/test-http-https-default-ports.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-https-default-ports.js)
 - [internet/test-http2-issue-32922.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http2-issue-32922.js)
 - [internet/test-https-issue-43963.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-https-issue-43963.js)
 - [internet/test-inspector-help-page.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-inspector-help-page.js)
@@ -359,6 +358,7 @@ Total: 2933
 - [parallel/test-cli-syntax-eval.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-eval.js)
 - [parallel/test-cli-syntax-piped-bad.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-bad.js)
 - [parallel/test-cli-syntax-piped-good.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-good.js)
+- [parallel/test-client-request-destroy.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-client-request-destroy.js)
 - [parallel/test-cluster-accept-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-accept-fail.js)
 - [parallel/test-cluster-advanced-serialization.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-advanced-serialization.js)
 - [parallel/test-cluster-basic.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-basic.js)
@@ -1083,6 +1083,7 @@ Total: 2933
 - [parallel/test-http-no-content-length.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-no-content-length.js)
 - [parallel/test-http-no-read-no-dump.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-no-read-no-dump.js)
 - [parallel/test-http-nodelay.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-nodelay.js)
+- [parallel/test-http-outgoing-buffer.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-buffer.js)
 - [parallel/test-http-outgoing-destroy.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-destroy.js)
 - [parallel/test-http-outgoing-destroyed.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-destroyed.js)
 - [parallel/test-http-outgoing-end-cork.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-end-cork.js)
@@ -1093,6 +1094,7 @@ Total: 2933
 - [parallel/test-http-outgoing-finished.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-finished.js)
 - [parallel/test-http-outgoing-first-chunk-singlebyte-encoding.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-first-chunk-singlebyte-encoding.js)
 - [parallel/test-http-outgoing-message-capture-rejection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-message-capture-rejection.js)
+- [parallel/test-http-outgoing-message-inheritance.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-message-inheritance.js)
 - [parallel/test-http-outgoing-message-write-callback.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-message-write-callback.js)
 - [parallel/test-http-outgoing-properties.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-properties.js)
 - [parallel/test-http-outgoing-proto.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-outgoing-proto.js)
@@ -2370,7 +2372,6 @@ Total: 2933
 - [parallel/test-ttywrap-stack.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-ttywrap-stack.js)
 - [parallel/test-unhandled-exception-rethrow-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unhandled-exception-rethrow-error.js)
 - [parallel/test-unicode-node-options.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-unicode-node-options.js)
-- [parallel/test-url-format-whatwg.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-format-whatwg.js)
 - [parallel/test-url-null-char.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-null-char.js)
 - [parallel/test-url-parse-format.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-url-parse-format.js)
 - [parallel/test-utf8-scripts.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-utf8-scripts.js)

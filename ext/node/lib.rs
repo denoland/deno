@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -16,9 +17,7 @@ use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -32,7 +31,6 @@ mod resolution;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
-pub use polyfill::resolve_builtin_node_module;
 pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::NodeModuleKind;
@@ -41,12 +39,24 @@ pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
 
 pub trait NodePermissions {
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_read(&self, path: &Path) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
 
 impl NodePermissions for AllowAllNodePermissions {
+  fn check_net_url(
+    &mut self,
+    _url: &Url,
+    _api_name: &str,
+  ) -> Result<(), AnyError> {
+    Ok(())
+  }
   fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
     Ok(())
   }
@@ -80,11 +90,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
@@ -134,6 +139,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_cipheriv_final,
     ops::crypto::op_node_create_cipheriv,
     ops::crypto::op_node_create_hash,
+    ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_hash_update,
@@ -206,6 +212,17 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
+    ops::zlib::brotli::op_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_async,
+    ops::zlib::brotli::op_create_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_stream,
+    ops::zlib::brotli::op_brotli_compress_stream_end,
+    ops::zlib::brotli::op_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_async,
+    ops::zlib::brotli::op_create_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_stream,
+    ops::zlib::brotli::op_brotli_decompress_stream_end,
+    ops::http::op_node_http_request<P>,
     op_node_build_os,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
@@ -236,6 +253,7 @@ deno_core::extension!(deno_node,
     "00_globals.js",
     "01_require.js",
     "02_init.js",
+    "_brotli.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
     "_fs/_fs_appendFile.ts",
@@ -379,6 +397,7 @@ deno_core::extension!(deno_node,
     "internal/fixed_queue.ts",
     "internal/fs/streams.mjs",
     "internal/fs/utils.mjs",
+    "internal/fs/handle.ts",
     "internal/hide_stack_frames.ts",
     "internal/http.ts",
     "internal/idna.ts",
@@ -489,6 +508,8 @@ pub fn initialize_runtime(
         usesLocalNodeModulesDir,
         argv0
       );
+      // Make the nodeGlobalThisName unconfigurable here.
+      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
     }})('{}', {}, {});"#,
     NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
   );

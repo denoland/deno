@@ -3122,6 +3122,22 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blocks: number | null;
+    /**  True if this is info for a block device.
+     *
+     * _Linux/Mac OS only._ */
+    isBlockDevice: boolean | null;
+    /**  True if this is info for a char device.
+     *
+     * _Linux/Mac OS only._ */
+    isCharDevice: boolean | null;
+    /**  True if this is info for a fifo.
+     *
+     * _Linux/Mac OS only._ */
+    isFifo: boolean | null;
+    /**  True if this is info for a socket.
+     *
+     * _Linux/Mac OS only._ */
+    isSocket: boolean | null;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -4224,6 +4240,14 @@ declare namespace Deno {
      *
      * @default {4} */
     depth?: number;
+    /** The maximum length for an inspection to take up a single line.
+     *
+     * @default {80} */
+    breakLength?: number;
+    /** Whether or not to escape sequences.
+     *
+     * @default {true} */
+    escapeSequences?: boolean;
     /** The maximum number of iterable entries to print.
      *
      * @default {100} */
@@ -4428,8 +4452,8 @@ declare namespace Deno {
 
   /** The permission descriptor for the `allow-hrtime` permission, which
    * controls if the runtime code has access to high resolution time. High
-   * resolution time is consider sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might
+   * resolution time is considered sensitive information, because it can be used
+   * by malicious code to gain information about the host that it might not
    * otherwise have access to.
    *
    * @category Permissions */

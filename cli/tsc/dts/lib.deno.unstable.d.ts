@@ -821,6 +821,22 @@ declare namespace Deno {
     certChain?: string;
     /** PEM formatted (RSA or PKCS8) private key of client certificate. */
     privateKey?: string;
+    /** Sets the maximum numer of idle connections per host allowed in the pool. */
+    poolMaxIdlePerHost?: number;
+    /** Set an optional timeout for idle sockets being kept-alive.
+     * Set to false to disable the timeout. */
+    poolIdleTimeout?: number | false;
+    /**
+     * Whether HTTP/1.1 is allowed or not.
+     *
+     * @default {true}
+     */
+    http1?: boolean;
+    /** Whether HTTP/2 is allowed or not.
+     *
+     * @default {true}
+     */
+    http2?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1613,6 +1629,14 @@ declare namespace Deno {
      */
     delete(key: KvKey): this;
     /**
+     * Add to the operation a mutation that enqueues a value into the queue
+     * if all checks pass during the commit.
+     */
+    enqueue(
+      value: unknown,
+      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    ): this;
+    /**
      * Commit the operation to the KV store. Returns a value indicating whether
      * checks passed and mutations were performed. If the operation failed
      * because of a failed check, the return value will be a {@linkcode
@@ -1786,6 +1810,57 @@ declare namespace Deno {
     ): KvListIterator<T>;
 
     /**
+     * Add a value into the database queue to be delivered to the queue
+     * listener via {@linkcode Deno.Kv.listenQueue}.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar");
+     * ```
+     *
+     * The `delay` option can be used to specify the delay (in milliseconds)
+     * of the value delivery. The default delay is 0, which means immediate
+     * delivery.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar", { delay: 60000 });
+     * ```
+     *
+     * The `keysIfUndelivered` option can be used to specify the keys to
+     * be set if the value is not successfully delivered to the queue
+     * listener after several attempts. The values are set to the value of
+     * the queued message.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * await db.enqueue("bar", { keysIfUndelivered: [["foo", "bar"]] });
+     * ```
+     */
+    enqueue(
+      value: unknown,
+      options?: { delay?: number; keysIfUndelivered?: Deno.KvKey[] },
+    ): Promise<KvCommitResult>;
+
+    /**
+     * Listen for queue values to be delivered from the database queue, which
+     * were enqueued with {@linkcode Deno.Kv.enqueue}. The provided handler
+     * callback is invoked on every dequeued value. A failed callback
+     * invocation is automatically retried multiple times until it succeeds
+     * or until the maximum number of retries is reached.
+     *
+     * ```ts
+     * const db = await Deno.openKv();
+     * db.listenQueue(async (msg: unknown) => {
+     *   await db.set(["foo"], msg);
+     * });
+     * ```
+     */
+    listenQueue(
+      handler: (value: unknown) => Promise<void> | void,
+    ): Promise<void>;
+
+    /**
      * Create a new {@linkcode Deno.AtomicOperation} object which can be used to
      * perform an atomic transaction on the database. This does not perform any
      * operations on the database - the atomic transaction must be committed
@@ -1796,10 +1871,10 @@ declare namespace Deno {
 
     /**
      * Close the database connection. This will prevent any further operations
-     * from being performed on the database, but will wait for any in-flight
-     * operations to complete before closing the underlying database connection.
+     * from being performed on the database, and interrupt any in-flight
+     * operations immediately.
      */
-    close(): Promise<void>;
+    close(): void;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.

@@ -145,7 +145,7 @@ impl Transform {
     match &self.kind {
       // serde_v8::Value
       TransformKind::V8Value => {
-        *ty = parse_quote! { #core::v8::Local<v8::Value> };
+        *ty = parse_quote! { #core::v8::Local<#core::v8::Value> };
 
         q!(Vars { var: &ident }, {
           let var = serde_v8::Value { v8_value: var };
@@ -329,7 +329,7 @@ pub(crate) struct Optimizer {
 
   pub(crate) has_rc_opstate: bool,
 
-  // Do we need an explict FastApiCallbackOptions argument?
+  // Do we need an explicit FastApiCallbackOptions argument?
   pub(crate) has_fast_callback_option: bool,
   // Do we depend on FastApiCallbackOptions?
   pub(crate) needs_fast_callback_option: bool,
@@ -426,7 +426,7 @@ impl Optimizer {
       }
     };
 
-    // The reciever, which we don't actually care about.
+    // The receiver, which we don't actually care about.
     self.fast_parameters.push(FastValue::V8Value);
 
     if self.is_async {

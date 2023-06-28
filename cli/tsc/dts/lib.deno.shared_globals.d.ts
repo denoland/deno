@@ -348,7 +348,7 @@ declare namespace WebAssembly {
   export function validate(bytes: BufferSource): boolean;
 }
 
-/** Sets a timer which executes a function once after the timer expires. Returns
+/** Sets a timer which executes a function once after the delay (in milliseconds) elapses. Returns
  * an id which may be used to cancel the timeout.
  *
  * ```ts
@@ -579,7 +579,7 @@ declare class Performance extends EventTarget {
 
   /** Returns a current time from Deno's start in milliseconds.
    *
-   * Use the permission flag `--allow-hrtime` return a precise value.
+   * Use the permission flag `--allow-hrtime` to return a precise value.
    *
    * ```ts
    * const t = performance.now();

@@ -12,7 +12,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -112,9 +112,6 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 /// Second member stores the pid separately from the RefCell. It's needed for
@@ -201,8 +198,8 @@ impl TryFrom<ExitStatus> for ChildStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ZeroCopyBuf>,
-  stderr: Option<ZeroCopyBuf>,
+  stdout: Option<ToJsBuffer>,
+  stderr: Option<ToJsBuffer>,
 }
 
 fn create_command(

@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use crate::bindings::script_origin;
 use crate::error::custom_error;
 use crate::error::is_instance_of_error;
 use crate::error::range_error;
@@ -7,11 +6,13 @@ use crate::error::type_error;
 use crate::error::JsError;
 use crate::ops_builtin::WasmStreamingResource;
 use crate::resolve_url;
+use crate::runtime::script_origin;
 use crate::serde_v8::from_v8;
 use crate::source_map::apply_source_map;
+use crate::JsBuffer;
 use crate::JsRealm;
 use crate::JsRuntime;
-use crate::ZeroCopyBuf;
+use crate::ToJsBuffer;
 use anyhow::Error;
 use deno_ops::op;
 use serde::Deserialize;
@@ -72,14 +73,14 @@ fn op_run_microtasks(scope: &mut v8::HandleScope) {
 
 #[op(v8)]
 fn op_has_tick_scheduled(scope: &mut v8::HandleScope) -> bool {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRuntime::state_from(scope);
   let state = state_rc.borrow();
   state.has_tick_scheduled
 }
 
 #[op(v8)]
 fn op_set_has_tick_scheduled(scope: &mut v8::HandleScope, v: bool) {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRuntime::state_from(scope);
   state_rc.borrow_mut().has_tick_scheduled = v;
 }
 
@@ -242,7 +243,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
     if self.for_storage {
       return None;
     }
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
       let backing_store = shared_array_buffer.get_backing_store();
@@ -263,7 +264,7 @@ impl<'a> v8::ValueSerializerImpl for SerializeDeserialize<'a> {
       self.throw_data_clone_error(scope, message);
       return None;
     }
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
     {
@@ -305,7 +306,7 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     if self.for_storage {
       return None;
     }
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
       let backing_store = shared_array_buffer_store.take(transfer_id)?;
@@ -325,7 +326,7 @@ impl<'a> v8::ValueDeserializerImpl for SerializeDeserialize<'a> {
     if self.for_storage {
       return None;
     }
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     if let Some(compiled_wasm_module_store) = &state.compiled_wasm_module_store
     {
@@ -375,7 +376,7 @@ fn op_serialize(
   value: serde_v8::Value,
   options: Option<SerializeDeserializeOptions>,
   error_callback: Option<serde_v8::Value>,
-) -> Result<ZeroCopyBuf, Error> {
+) -> Result<ToJsBuffer, Error> {
   let options = options.unwrap_or_default();
   let error_callback = match error_callback {
     Some(cb) => Some(
@@ -409,7 +410,7 @@ fn op_serialize(
   value_serializer.write_header();
 
   if let Some(transferred_array_buffers) = transferred_array_buffers {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     for index in 0..transferred_array_buffers.length() {
       let i = v8::Number::new(scope, index as f64).into();
@@ -448,7 +449,7 @@ fn op_serialize(
   if scope.has_caught() || scope.has_terminated() {
     scope.rethrow();
     // Dummy value, this result will be discarded because an error was thrown.
-    Ok(ZeroCopyBuf::empty())
+    Ok(ToJsBuffer::empty())
   } else if let Some(true) = ret {
     let vector = value_serializer.release();
     Ok(vector.into())
@@ -460,7 +461,7 @@ fn op_serialize(
 #[op(v8)]
 fn op_deserialize<'a>(
   scope: &mut v8::HandleScope<'a>,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
   options: Option<SerializeDeserializeOptions>,
 ) -> Result<serde_v8::Value<'a>, Error> {
   let options = options.unwrap_or_default();
@@ -494,7 +495,7 @@ fn op_deserialize<'a>(
   }
 
   if let Some(transferred_array_buffers) = transferred_array_buffers {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow_mut();
     if let Some(shared_array_buffer_store) = &state.shared_array_buffer_store {
       for i in 0..transferred_array_buffers.length() {
@@ -625,21 +626,21 @@ fn op_get_non_index_property_names<'a>(
     Err(_) => return None,
   };
 
-  let mut property_filter = v8::ALL_PROPERTIES;
+  let mut property_filter = v8::PropertyFilter::ALL_PROPERTIES;
   if filter & 1 == 1 {
-    property_filter = property_filter | v8::ONLY_WRITABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_WRITABLE
   }
   if filter & 2 == 2 {
-    property_filter = property_filter | v8::ONLY_ENUMERABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_ENUMERABLE
   }
   if filter & 4 == 4 {
-    property_filter = property_filter | v8::ONLY_CONFIGURABLE
+    property_filter = property_filter | v8::PropertyFilter::ONLY_CONFIGURABLE
   }
   if filter & 8 == 8 {
-    property_filter = property_filter | v8::SKIP_STRINGS
+    property_filter = property_filter | v8::PropertyFilter::SKIP_STRINGS
   }
   if filter & 16 == 16 {
-    property_filter = property_filter | v8::SKIP_SYMBOLS
+    property_filter = property_filter | v8::PropertyFilter::SKIP_SYMBOLS
   }
 
   let maybe_names = obj.get_property_names(
@@ -724,7 +725,7 @@ fn op_set_wasm_streaming_callback(
         .as_ref()
         .unwrap()
         .clone();
-      let state_rc = JsRuntime::state(scope);
+      let state_rc = JsRuntime::state_from(scope);
       let streaming_rid = state_rc
         .borrow()
         .op_state
@@ -751,7 +752,7 @@ fn op_abort_wasm_streaming(
   error: serde_v8::Value,
 ) -> Result<(), Error> {
   let wasm_streaming = {
-    let state_rc = JsRuntime::state(scope);
+    let state_rc = JsRuntime::state_from(scope);
     let state = state_rc.borrow();
     let wsr = state
       .op_state
@@ -790,7 +791,7 @@ fn op_dispatch_exception(
   scope: &mut v8::HandleScope,
   exception: serde_v8::Value,
 ) {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRuntime::state_from(scope);
   let mut state = state_rc.borrow_mut();
   if let Some(inspector) = &state.inspector {
     let inspector = inspector.borrow();
@@ -828,7 +829,7 @@ fn op_apply_source_map(
   scope: &mut v8::HandleScope,
   location: Location,
 ) -> Result<Location, Error> {
-  let state_rc = JsRuntime::state(scope);
+  let state_rc = JsRuntime::state_from(scope);
   let (getter, cache) = {
     let state = state_rc.borrow();
     (

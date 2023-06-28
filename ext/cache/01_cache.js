@@ -128,6 +128,7 @@ class Cache {
       "op_cache_put",
       {
         cacheId: this[_id],
+        // deno-lint-ignore prefer-primordials
         requestUrl: reqUrl.toString(),
         responseHeaders: innerResponse.headerList,
         requestHeaders: innerRequest.headerList,
@@ -243,6 +244,7 @@ class Cache {
         "op_cache_match",
         {
           cacheId: this[_id],
+          // deno-lint-ignore prefer-primordials
           requestUrl: url.toString(),
           requestHeaders: innerRequest.headerList,
         },

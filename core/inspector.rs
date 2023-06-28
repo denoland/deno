@@ -72,7 +72,7 @@ enum PollState {
 /// After creating this structure it's possible to connect multiple sessions
 /// to the inspector, in case of Deno it's either: a "websocket session" that
 /// provides integration with Chrome Devtools, or an "in-memory session" that
-/// is used for REPL or converage collection.
+/// is used for REPL or coverage collection.
 pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
@@ -143,16 +143,14 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
 
 impl JsRuntimeInspector {
   /// Currently Deno supports only a single context in `JsRuntime`
-  /// and thus it's id is provided as an associated contant.
+  /// and thus it's id is provided as an associated constant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut v8::OwnedIsolate,
-    context: v8::Global<v8::Context>,
+    scope: &mut v8::HandleScope,
+    context: v8::Local<v8::Context>,
     is_main: bool,
   ) -> Rc<RefCell<Self>> {
-    let scope = &mut v8::HandleScope::new(isolate);
-
     let (new_session_tx, new_session_rx) =
       mpsc::unbounded::<InspectorSessionProxy>();
 
@@ -182,7 +180,6 @@ impl JsRuntimeInspector {
     ));
 
     // Tell the inspector about the global context.
-    let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
@@ -273,7 +270,7 @@ impl JsRuntimeInspector {
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
     // The futures this function uses do not have re-entrant poll() functions.
-    // However it is can happpen that poll_sessions() gets re-entered, e.g.
+    // However it is can happen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
     // by the task executor. We let the caller know by returning some error.
     let mut sessions = self.sessions.try_borrow_mut()?;

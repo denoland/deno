@@ -1211,7 +1211,7 @@ class SubtleCrypto {
     const length = getKeyLength(normalizedDerivedKeyAlgorithmLength);
 
     // 14.
-    const secret = await this.deriveBits(
+    const secret = await deriveBits(
       normalizedAlgorithm,
       baseKey,
       length,
@@ -2319,7 +2319,12 @@ function importKeyEd25519(
       // 9.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+        let privateKeyData;
+        try {
+          privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
+        } catch (_) {
+          throw new DOMException("invalid private key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, privateKeyData);
@@ -2337,7 +2342,12 @@ function importKeyEd25519(
         );
       } else {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
-        const publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+        let publicKeyData;
+        try {
+          publicKeyData = ops.op_crypto_base64url_decode(jwk.x);
+        } catch (_) {
+          throw new DOMException("invalid public key data", "DataError");
+        }
 
         const handle = {};
         WeakMapPrototypeSet(KEY_STORE, handle, publicKeyData);
@@ -2656,7 +2666,7 @@ function importKeyAES(
           TypedArrayPrototypeGetByteLength(keyData) * 8,
         )
       ) {
-        throw new DOMException("Invalid key length", "Datarror");
+        throw new DOMException("Invalid key length", "DataError");
       }
 
       break;
@@ -4407,7 +4417,7 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
           publicKey: publicKeyData,
           algorithm: "ECDH",
           namedCurve: publicKey[_algorithm].namedCurve,
-          length,
+          length: length ?? 0,
         });
 
         // 8.

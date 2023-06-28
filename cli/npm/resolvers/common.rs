@@ -1,9 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
@@ -54,6 +56,69 @@ pub trait NpmPackageFsResolver: Send + Sync {
   ) -> Result<(), AnyError>;
 }
 
+#[derive(Debug)]
+pub struct RegistryReadPermissionChecker {
+  fs: Arc<dyn FileSystem>,
+  cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  registry_path: PathBuf,
+}
+
+impl RegistryReadPermissionChecker {
+  pub fn new(fs: Arc<dyn FileSystem>, registry_path: PathBuf) -> Self {
+    Self {
+      fs,
+      registry_path,
+      cache: Default::default(),
+    }
+  }
+
+  pub fn ensure_registry_read_permission(
+    &self,
+    permissions: &dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    // allow reading if it's in the node_modules
+    let is_path_in_node_modules = path.starts_with(&self.registry_path)
+      && path
+        .components()
+        .all(|c| !matches!(c, std::path::Component::ParentDir));
+
+    if is_path_in_node_modules {
+      let mut cache = self.cache.lock().unwrap();
+      let registry_path_canon = match cache.get(&self.registry_path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(&self.registry_path)?;
+          cache.insert(self.registry_path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      let path_canon = match cache.get(path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(path);
+          if let Err(e) = &canon {
+            if e.kind() == ErrorKind::NotFound {
+              return Ok(());
+            }
+          }
+
+          let canon = canon?;
+          cache.insert(path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      if path_canon.starts_with(registry_path_canon) {
+        return Ok(());
+      }
+    }
+
+    permissions.check_read(path)
+  }
+}
+
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
@@ -64,17 +129,16 @@ pub async fn cache_packages(
   if sync_download {
     // we're running the tests not with --quiet
     // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.pkg_id.cmp(&b.pkg_id));
+    packages.sort_by(|a, b| a.id.cmp(&b.id));
   }
 
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
-    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
     let handle = spawn(async move {
       cache
-        .ensure_package(&package.pkg_id.nv, &package.dist, &registry_url)
+        .ensure_package(&package.id.nv, &package.dist, &registry_url)
         .await
     });
     if sync_download {
@@ -89,35 +153,6 @@ pub async fn cache_packages(
     result??;
   }
   Ok(())
-}
-
-pub fn ensure_registry_read_permission(
-  fs: &Arc<dyn FileSystem>,
-  permissions: &dyn NodePermissions,
-  registry_path: &Path,
-  path: &Path,
-) -> Result<(), AnyError> {
-  // allow reading if it's in the node_modules
-  if path.starts_with(registry_path)
-    && path
-      .components()
-      .all(|c| !matches!(c, std::path::Component::ParentDir))
-  {
-    // todo(dsherret): cache this?
-    if let Ok(registry_path) = fs.realpath_sync(registry_path) {
-      match fs.realpath_sync(path) {
-        Ok(path) if path.starts_with(registry_path) => {
-          return Ok(());
-        }
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-          return Ok(());
-        }
-        _ => {} // ignore
-      }
-    }
-  }
-
-  permissions.check_read(path)
 }
 
 /// Gets the corresponding @types package for the provided package name.

@@ -18,15 +18,14 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
@@ -35,10 +34,11 @@ use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
-use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+
+pub use self::common::NpmPackageFsResolver;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,6 +87,16 @@ impl CliNpmResolver {
 
   pub fn node_modules_path(&self) -> Option<PathBuf> {
     self.fs_resolver.node_modules_path()
+  }
+
+  /// Checks if the provided package req's folder is cached.
+  pub fn is_pkg_req_folder_cached(&self, req: &NpmPackageReq) -> bool {
+    self
+      .resolve_pkg_id_from_pkg_req(req)
+      .ok()
+      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .map(|folder| folder.exists())
+      .unwrap_or(false)
   }
 
   pub fn resolve_pkg_id_from_pkg_req(
@@ -157,7 +167,7 @@ impl CliNpmResolver {
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     if packages.is_empty() {
       return Ok(());
@@ -180,7 +190,7 @@ impl CliNpmResolver {
   /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     self.resolution.set_package_reqs(packages).await
   }
@@ -188,7 +198,10 @@ impl CliNpmResolver {
   /// Gets the state of npm for the process.
   pub fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
-      snapshot: self.resolution.serialized_snapshot(),
+      snapshot: self
+        .resolution
+        .serialized_valid_snapshot()
+        .into_serialized(),
       local_node_modules_path: self
         .fs_resolver
         .node_modules_path()
@@ -210,7 +223,7 @@ impl CliNpmResolver {
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
     let package_reqs = vec![NpmPackageReq::from_str("@types/node").unwrap()];
-    self.resolution.add_package_reqs(package_reqs).await?;
+    self.resolution.add_package_reqs(&package_reqs).await?;
     self.fs_resolver.cache_packages().await?;
 
     Ok(())
@@ -260,13 +273,6 @@ impl NpmResolver for CliNpmResolver {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
 
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    self.resolution.resolve_nv_ref_from_pkg_req_ref(req_ref)
-  }
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .resolve_package_folder_from_specifier(specifier)
@@ -289,6 +295,7 @@ pub fn create_npm_fs_resolver(
   registry_url: Url,
   resolution: Arc<NpmResolution>,
   maybe_node_modules_path: Option<PathBuf>,
+  system_info: NpmSystemInfo,
 ) -> Arc<dyn NpmPackageFsResolver> {
   match maybe_node_modules_path {
     Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
@@ -298,12 +305,14 @@ pub fn create_npm_fs_resolver(
       registry_url,
       node_modules_folder,
       resolution,
+      system_info,
     )),
     None => Arc::new(GlobalNpmPackageResolver::new(
       fs,
       cache,
       registry_url,
       resolution,
+      system_info,
     )),
   }
 }

@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   O_APPEND,
   O_CREAT,
@@ -8,10 +12,10 @@ import {
   O_WRONLY,
 } from "ext:deno_node/_fs/_fs_constants.ts";
 import { getOpenOptions } from "ext:deno_node/_fs/_fs_common.ts";
-import { promisify } from "ext:deno_node/internal/util.mjs";
 import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
 import type { Buffer } from "ext:deno_node/buffer.ts";
 
 function existsSync(filePath: string | URL): boolean {
@@ -139,16 +143,18 @@ export function open(
   }
 }
 
-export const openPromise = promisify(open) as (
-  & ((path: string | Buffer | URL) => Promise<number>)
-  & ((path: string | Buffer | URL, flags: openFlags) => Promise<number>)
-  & ((path: string | Buffer | URL, mode?: number) => Promise<number>)
-  & ((
-    path: string | Buffer | URL,
-    flags?: openFlags,
-    mode?: number,
-  ) => Promise<number>)
-);
+export function openPromise(
+  path: string | Buffer | URL,
+  flags?: openFlags = "r",
+  mode? = 0o666,
+): Promise<FileHandle> {
+  return new Promise((resolve, reject) => {
+    open(path, flags, mode, (err, fd) => {
+      if (err) reject(err);
+      else resolve(new FileHandle(fd));
+    });
+  });
+}
 
 export function openSync(path: string | Buffer | URL): number;
 export function openSync(

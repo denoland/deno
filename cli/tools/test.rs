@@ -2,19 +2,20 @@
 
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
-use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
+use crate::args::Flags;
+use crate::args::TestFlags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::checksum;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
@@ -29,6 +30,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
@@ -62,11 +64,11 @@ use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -1007,6 +1009,21 @@ pub async fn test_specifier(
       continue;
     }
     sender.send(TestEvent::Wait(desc.id))?;
+
+    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
+    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
+    // `JoinSet` all pending ops are immediately polled and that caused a problem
+    // when some async ops were fired and canceled before running tests (giving
+    // false positives in the ops sanitizer). We should probably rewrite sanitizers
+    // to be done in Rust instead of in JS (40_testing.js).
+    {
+      // Poll event loop once, this will allow all ops that are already resolved,
+      // but haven't responded to settle.
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+    }
+
     let earlier = SystemTime::now();
     let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
@@ -1625,11 +1642,12 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
+  let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
   let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
@@ -1692,199 +1710,9 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
-  let module_load_preparer = factory.module_load_preparer().await?;
-  let file_fetcher = factory.file_fetcher()?;
-  let file_watcher = factory.file_watcher()?;
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
-  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
-  let log_level = cli_options.log_level();
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = test_options.files.include.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
-    let files_changed = changed.is_some();
-    let test_options = &test_options;
-    let cli_options = cli_options.clone();
-    let module_graph_builder = module_graph_builder.clone();
-
-    async move {
-      let test_modules = if test_options.doc {
-        collect_specifiers(&test_options.files, is_supported_test_ext)
-      } else {
-        collect_specifiers(&test_options.files, is_supported_test_path)
-      }?;
-
-      let mut paths_to_watch = paths_to_watch_clone;
-      let mut modules_to_reload = if files_changed {
-        Vec::new()
-      } else {
-        test_modules.clone()
-      };
-      let graph = module_graph_builder
-        .create_graph(test_modules.clone())
-        .await?;
-      graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
-
-      // TODO(@kitsonk) - This should be totally derivable from the graph.
-      for specifier in test_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // This test module and all it's dependencies
-        let mut modules = HashSet::new();
-        modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
-
-        paths_to_watch.extend(
-          modules
-            .iter()
-            .filter_map(|specifier| specifier.to_file_path().ok()),
-        );
-
-        if let Some(changed) = &changed {
-          for path in changed
-            .iter()
-            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
-          {
-            if modules.contains(&path) {
-              modules_to_reload.push(specifier);
-              break;
-            }
-          }
-        }
-      }
-
-      Ok((paths_to_watch, modules_to_reload))
-    }
-    .map(move |result| {
-      if files_changed
-        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        match result {
-          Ok((paths_to_watch, modules_to_reload)) => {
-            ResolutionResult::Restart {
-              paths_to_watch,
-              result: Ok(modules_to_reload),
-            }
-          }
-          Err(e) => ResolutionResult::Restart {
-            paths_to_watch,
-            result: Err(e),
-          },
-        }
-      }
-    })
-  };
-
-  let create_cli_main_worker_factory =
-    factory.create_cli_main_worker_factory_func().await?;
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let permissions = &permissions;
-    let test_options = &test_options;
-    file_watcher.reset();
-    let cli_options = cli_options.clone();
-    let file_fetcher = file_fetcher.clone();
-    let module_load_preparer = module_load_preparer.clone();
-    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
-
-    async move {
-      let worker_factory = Arc::new(create_cli_main_worker_factory());
-      let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &file_fetcher,
-        &test_options.files,
-        &test_options.doc,
-      )
-      .await?
-      .into_iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
-      .collect::<Vec<(ModuleSpecifier, TestMode)>>();
-
-      check_specifiers(
-        &cli_options,
-        &file_fetcher,
-        &module_load_preparer,
-        specifiers_with_mode.clone(),
-      )
-      .await?;
-
-      if test_options.no_run {
-        return Ok(());
-      }
-
-      test_specifiers(
-        worker_factory,
-        permissions,
-        specifiers_with_mode
-          .into_iter()
-          .filter_map(|(s, m)| match m {
-            TestMode::Documentation => None,
-            _ => Some(s),
-          })
-          .collect(),
-        TestSpecifiersOptions {
-          concurrent_jobs: test_options.concurrent_jobs,
-          fail_fast: test_options.fail_fast,
-          log_level,
-          specifier: TestSpecifierOptions {
-            filter: TestFilter::from_flag(&test_options.filter),
-            shuffle: test_options.shuffle,
-            trace_ops: test_options.trace_ops,
-          },
-        },
-      )
-      .await?;
-
-      Ok(())
-    }
-  };
-
   // On top of the sigint handlers which are added and unbound for each test
   // run, a process-scoped basic exit handler is required due to a tokio
   // limitation where it doesn't unbind its own handler for the entire process
@@ -1898,13 +1726,118 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
-    resolver,
-    operation,
+    flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen,
+      clear_screen: !test_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
+    },
+    move |flags, sender, changed_paths| {
+      let test_flags = test_flags.clone();
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let test_options = cli_options.resolve_test_options(test_flags)?;
+
+        let _ = sender.send(cli_options.watch_paths());
+        let _ = sender.send(test_options.files.include.clone());
+
+        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let log_level = cli_options.log_level();
+        let cli_options = cli_options.clone();
+        let module_graph_builder = factory.module_graph_builder().await?;
+        let file_fetcher = factory.file_fetcher()?;
+        let test_modules = if test_options.doc {
+          collect_specifiers(&test_options.files, is_supported_test_ext)
+        } else {
+          collect_specifiers(&test_options.files, is_supported_test_path)
+        }?;
+        let permissions =
+          Permissions::from_options(&cli_options.permissions_options())?;
+
+        let graph = module_graph_builder
+          .create_graph(graph_kind, test_modules.clone())
+          .await?;
+        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+
+        let test_modules_to_reload = if let Some(changed_paths) = changed_paths
+        {
+          let changed_specifiers = changed_paths
+            .into_iter()
+            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+            .collect::<HashSet<_>>();
+          let mut result = Vec::new();
+          for test_module_specifier in test_modules {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &test_module_specifier,
+              &changed_specifiers,
+            ) {
+              result.push(test_module_specifier.clone());
+            }
+          }
+          result
+        } else {
+          test_modules.clone()
+        };
+
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let module_load_preparer = factory.module_load_preparer().await?;
+        let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          file_fetcher,
+          &test_options.files,
+          &test_options.doc,
+        )
+        .await?
+        .into_iter()
+        .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
+        .collect::<Vec<(ModuleSpecifier, TestMode)>>();
+
+        check_specifiers(
+          &cli_options,
+          file_fetcher,
+          module_load_preparer,
+          specifiers_with_mode.clone(),
+        )
+        .await?;
+
+        if test_options.no_run {
+          return Ok(());
+        }
+
+        test_specifiers(
+          worker_factory,
+          &permissions,
+          specifiers_with_mode
+            .into_iter()
+            .filter_map(|(s, m)| match m {
+              TestMode::Documentation => None,
+              _ => Some(s),
+            })
+            .collect(),
+          TestSpecifiersOptions {
+            concurrent_jobs: test_options.concurrent_jobs,
+            fail_fast: test_options.fail_fast,
+            log_level,
+            specifier: TestSpecifierOptions {
+              filter: TestFilter::from_flag(&test_options.filter),
+              shuffle: test_options.shuffle,
+              trace_ops: test_options.trace_ops,
+            },
+          },
+        )
+        .await?;
+
+        Ok(())
+      })
     },
   )
   .await?;
