@@ -978,8 +978,10 @@ mod tests {
     let expected = std::fs::read_to_string(input.with_extension("out"))
       .expect("Failed to read expected output file");
 
+    // Print the raw tokens in case we fail to parse
     let actual = op.gen();
-    println!("{}", actual);
+    println!("-----Raw tokens-----\n{}----------\n", actual);
+
     // Validate syntax tree.
     let tree = syn::parse2(actual).unwrap();
     let actual = prettyplease::unparse(&tree);
