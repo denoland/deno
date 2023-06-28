@@ -276,7 +276,7 @@ Deno.test({
 Deno.test({
   name:
     "os.setPriority() throw os permission denied error & os.getPriority() doesn't",
-  fn() {
+  async fn() {
     const child = new Deno.Command(Deno.execPath(), {
       args: ["eval", "while (true) { console.log('foo') }"],
     }).spawn();
@@ -286,5 +286,6 @@ Deno.test({
     );
     os.getPriority(child.pid);
     child.kill();
+    await child.status;
   },
 });
