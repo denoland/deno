@@ -45,14 +45,13 @@ struct Op {
   ///   - `async fn`
   ///   - returns a Future
   is_async: bool,
-  type_params: Punctuated<GenericParam, Comma>,
   // optimizer: Optimizer,
   core: TokenStream2,
   attrs: Attributes,
 }
 
 impl Op {
-  fn new(mut item: ItemFn, attrs: Attributes) -> Self {
+  fn new(item: ItemFn, attrs: Attributes) -> Self {
     // Preserve the original function. Change the name to `call`.
     //
     // impl op_foo {
@@ -63,7 +62,6 @@ impl Op {
     orig.sig.ident = Ident::new("call", Span::call_site());
 
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
-    let type_params = exclude_lifetime_params(&item.sig.generics.params);
     let scope_params = exclude_non_lifetime_params(&item.sig.generics.params);
     orig.sig.generics.params = scope_params;
     orig.sig.generics.where_clause.take();
@@ -77,7 +75,6 @@ impl Op {
     Self {
       orig,
       item,
-      type_params,
       is_async,
       core,
       attrs,
@@ -100,9 +97,10 @@ impl Op {
       is_async,
       orig,
       attrs,
-      type_params,
     } = self;
     let name = &item.sig.ident;
+
+    // TODO(mmastrac): this code is a little awkward but eventually it'll disappear in favour of op2
     let mut generics = item.sig.generics.clone();
     generics.where_clause.take();
     generics.params = exclude_lifetime_params(&generics.params);
@@ -154,6 +152,7 @@ impl Op {
 
           #[inline]
           #[allow(clippy::too_many_arguments)]
+          #[allow(clippy::extra_unused_lifetimes)]
           #orig
         }
 
@@ -217,6 +216,7 @@ impl Op {
 
         #[inline]
         #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::extra_unused_lifetimes)]
         #orig
 
         pub fn v8_func<'scope>(
@@ -283,7 +283,6 @@ fn codegen_v8_async(
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
-  let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let wrapper = match (asyncness, is_result(&f.sig.output)) {
     (true, true) => {
@@ -417,7 +416,6 @@ fn codegen_v8_sync(
   let args_head = special_args.into_iter().collect::<TokenStream2>();
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 0, false);
   let ret = codegen_sync_ret(core, &f.sig.output);
-  let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let fast_error_handler = if has_fallible_fast_call {
     quote! {
