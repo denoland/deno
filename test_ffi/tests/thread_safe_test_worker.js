@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
+import { call } from "../../core/examples/wasm.ts";
+
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 const [libPrefix, libSuffix] = {
   darwin: ["lib", "dylib"],
@@ -35,7 +37,7 @@ self.addEventListener("message", ({ data }) => {
   } else if (data === "call") {
     dylib.symbols.call_stored_function();
   } else if (data === "unref") {
-    callback.unref();
+    callback.close();
   }
   self.postMessage("done");
 });
