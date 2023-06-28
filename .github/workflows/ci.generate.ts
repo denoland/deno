@@ -109,7 +109,7 @@ __0`,
 const reconfigureWindowsStorage = {
   name: "Reconfigure Windows Storage",
   if: [
-    "startsWith(matrix.os, 'windows')",
+    "startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-xl')",
   ],
   shell: "pwsh",
   run: `

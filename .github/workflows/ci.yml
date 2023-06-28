@@ -101,7 +101,7 @@ jobs:
       RUST_BACKTRACE: full
     steps:
       - name: Reconfigure Windows Storage
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows''))'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows'') && !endsWith(matrix.os, ''-xl''))'
         shell: pwsh
         run: |-
           New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
