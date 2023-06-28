@@ -282,14 +282,16 @@ pub(crate) fn generate(
   let fast_fn = q!(
     Vars { core, pre_transforms, op_name_fast: &fast_fn_ident, op_name: &ident, fast_fn_inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
-      #[allow(clippy::too_many_arguments)]
-      fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output where_clause {
-        use core::v8;
-        use core::_ops;
-        pre_transforms
-        transforms
-        let result = op_name::call call_generics (idents);
-        output_transforms
+      impl generics op_name generics where_clause {
+        #[allow(clippy::too_many_arguments)]
+        fn op_name_fast (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output {
+          use core::v8;
+          use core::_ops;
+          pre_transforms
+          transforms
+          let result = Self::call (idents);
+          output_transforms
+        }
       }
     }
   );
@@ -307,7 +309,7 @@ pub(crate) fn generate(
       Some(core::v8::fast_api::FastFunction::new(
         &[ inputs ],
         CType :: output,
-        fast_fn_ident generics as *const ::std::ffi::c_void
+        Self::fast_fn_ident as *const ::std::ffi::c_void
       ))
     }}
   ).dump();

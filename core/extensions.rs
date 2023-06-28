@@ -239,7 +239,7 @@ macro_rules! extension {
           ext.ops(vec![
             $(
               $( #[ $m ] )*
-              $( $op )::+ :: decl $( :: < $($op_param),* > )? ()
+              $( $op )::+ $( :: < $($op_param),* > )? :: decl ()
             ),+
           ]);
         )?
