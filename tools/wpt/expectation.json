@@ -7212,9 +7212,7 @@
         "close.any.html?wpt_flags=h2": false,
         "close.any.html?wss": true,
         "close.any.worker.html?wpt_flags=h2": false,
-        "close.any.worker.html?wss": {
-          "ignore": true
-        },
+        "close.any.worker.html?wss": true,
         "constructor.any.html?wpt_flags=h2": false,
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": false,
