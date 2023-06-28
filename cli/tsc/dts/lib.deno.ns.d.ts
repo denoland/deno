@@ -5754,8 +5754,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *    { signal: ac.signal },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -5812,8 +5815,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *    { signal: ac.signal },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
@@ -5873,8 +5879,11 @@ declare namespace Deno {
    * ```ts
    * const ac = new AbortController();
    *
-   * Deno.serve({ signal: ac.signal }, (_req) => new Response("Hello, world"))
-   *  .then(() => console.log("Server closed"));
+   * const server = Deno.serve(
+   *    { signal: ac.signal },
+   *    (_req) => new Response("Hello, world")
+   * );
+   * server.finished.then(() => console.log("Server closed"));
    *
    * console.log("Closing server...");
    * ac.abort();
