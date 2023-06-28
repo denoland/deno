@@ -7215,7 +7215,9 @@
           "ignore": true
         },
         "backpressure-send.any.worker.html?wss": true,
-        "close.any.html?wpt_flags=h2": false,
+        "close.any.html?wpt_flags=h2": {
+          "ignore": true
+        },
         "close.any.html?wss": true,
         "close.any.worker.html?wpt_flags=h2": {
           "ignore": true
