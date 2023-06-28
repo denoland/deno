@@ -30,6 +30,8 @@
 const common = require('../common');
 const assert = require('assert');
 const path = require('path');
+const posix = require('path/posix');
+const win32 = require('path/win32');
 
 // Test thrown TypeErrors
 const typeErrorTests = [true, false, 7, null, {}, undefined, [], NaN];
@@ -74,8 +76,15 @@ assert.strictEqual(path.win32.delimiter, ';');
 // posix
 assert.strictEqual(path.posix.delimiter, ':');
 
-// TODO(wafuwafu13): Enable this
-// if (common.isWindows)
-//   assert.strictEqual(path, path.win32);
-// else
-//   assert.strictEqual(path, path.posix);
+if (common.isWindows)
+  assert.strictEqual(path, path.win32);
+else
+  assert.strictEqual(path, path.posix);
+
+// referential invariants
+assert.strictEqual(path.posix, posix);
+assert.strictEqual(path.win32, win32);
+assert.strictEqual(path.posix, path.posix.posix);
+assert.strictEqual(path.win32, path.posix.win32);
+assert.strictEqual(path.posix, path.win32.posix);
+assert.strictEqual(path.win32, path.win32.win32);

@@ -21,14 +21,12 @@ use crate::modules::ModuleId;
 use crate::modules::ModuleLoadId;
 use crate::modules::ModuleLoader;
 use crate::modules::ModuleMap;
-use crate::modules::ModuleName;
 use crate::ops::*;
 use crate::runtime::ContextState;
 use crate::runtime::JsRealm;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
-use crate::ModuleType;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -391,6 +389,11 @@ pub struct RuntimeOptions {
   /// JavaScript sources in the extensions.
   pub extensions: Vec<Extension>,
 
+  /// If provided, the module map will be cleared and left only with the specifiers
+  /// in this list, with the new names provided. If not provided, the module map is
+  /// left intact.
+  pub rename_modules: Option<Vec<(&'static str, &'static str)>>,
+
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
 
@@ -398,7 +401,7 @@ pub struct RuntimeOptions {
   pub create_params: Option<v8::CreateParams>,
 
   /// V8 platform instance to use. Used when Deno initializes V8
-  /// (which it only does once), otherwise it's silenty dropped.
+  /// (which it only does once), otherwise it's silently dropped.
   pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -694,6 +697,15 @@ impl JsRuntime {
     js_runtime
       .init_extension_js(&realm, maybe_load_callback)
       .unwrap();
+
+    // If the user has requested that we rename modules
+    if let Some(rename_modules) = options.rename_modules {
+      js_runtime
+        .module_map
+        .borrow_mut()
+        .clear_module_map(rename_modules.into_iter());
+    }
+
     js_runtime
   }
 
@@ -912,7 +924,7 @@ impl JsRuntime {
     // macroware wraps an opfn in all the middleware
     let macroware = move |d| middleware.iter().fold(d, |d, m| m(d));
 
-    // Flatten ops, apply middlware & override disabled ops
+    // Flatten ops, apply middleware & override disabled ops
     let ops: Vec<_> = exts
       .iter_mut()
       .filter_map(|e| e.init_ops())
@@ -1143,31 +1155,11 @@ impl JsRuntime {
     &mut self,
     module_id: ModuleId,
   ) -> Result<v8::Global<v8::Object>, Error> {
-    let module_handle = self
+    self
       .module_map
+      .clone()
       .borrow()
-      .get_handle(module_id)
-      .expect("ModuleInfo not found");
-
-    let scope = &mut self.handle_scope();
-
-    let module = module_handle.open(scope);
-
-    if module.get_status() == v8::ModuleStatus::Errored {
-      let exception = module.get_exception();
-      return exception_to_err_result(scope, exception, false);
-    }
-
-    assert!(matches!(
-      module.get_status(),
-      v8::ModuleStatus::Instantiated | v8::ModuleStatus::Evaluated
-    ));
-
-    let module_namespace: v8::Local<v8::Object> =
-      v8::Local::try_from(module.get_module_namespace())
-        .map_err(|err: v8::DataError| generic_error(err.to_string()))?;
-
-    Ok(v8::Global::new(scope, module_namespace))
+      .get_module_namespace(&mut self.handle_scope(), module_id)
   }
 
   /// Registers a callback on the isolate when the memory limits are approached.
@@ -1323,6 +1315,7 @@ impl JsRuntime {
       let _ = self.inspector().borrow().poll_sessions(Some(cx)).unwrap();
     }
 
+    let module_map = self.module_map.clone();
     self.pump_v8_message_loop()?;
 
     // Dynamic module loading - ie. modules loaded using "import()"
@@ -1426,7 +1419,7 @@ impl JsRuntime {
         // pass, will be polled again
       } else {
         let scope = &mut self.handle_scope();
-        let messages = find_stalled_top_level_await(scope);
+        let messages = module_map.borrow().find_stalled_top_level_await(scope);
         // We are gonna print only a single message to provide a nice formatting
         // with source line of offending promise shown. Once user fixed it, then
         // they will get another error message for the next promise (but this
@@ -1448,7 +1441,7 @@ impl JsRuntime {
       } else if self.inner.state.borrow().dyn_module_evaluate_idle_counter >= 1
       {
         let scope = &mut self.handle_scope();
-        let messages = find_stalled_top_level_await(scope);
+        let messages = module_map.borrow().find_stalled_top_level_await(scope);
         // We are gonna print only a single message to provide a nice formatting
         // with source line of offending promise shown. Once user fixed it, then
         // they will get another error message for the next promise (but this
@@ -1537,58 +1530,6 @@ impl JsRuntimeForSnapshot {
   }
 }
 
-fn get_stalled_top_level_await_message_for_module(
-  scope: &mut v8::HandleScope,
-  module_id: ModuleId,
-) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map_from(scope);
-  let module_map = module_map.borrow();
-  let module_handle = module_map.handles.get(module_id).unwrap();
-
-  let module = v8::Local::new(scope, module_handle);
-  let stalled = module.get_stalled_top_level_await_message(scope);
-  let mut messages = vec![];
-  for (_, message) in stalled {
-    messages.push(v8::Global::new(scope, message));
-  }
-  messages
-}
-
-fn find_stalled_top_level_await(
-  scope: &mut v8::HandleScope,
-) -> Vec<v8::Global<v8::Message>> {
-  let module_map = JsRuntime::module_map_from(scope);
-  let module_map = module_map.borrow();
-
-  // First check if that's root module
-  let root_module_id = module_map
-    .info
-    .iter()
-    .filter(|m| m.main)
-    .map(|m| m.id)
-    .next();
-
-  if let Some(root_module_id) = root_module_id {
-    let messages =
-      get_stalled_top_level_await_message_for_module(scope, root_module_id);
-    if !messages.is_empty() {
-      return messages;
-    }
-  }
-
-  // It wasn't a top module, so iterate over all modules and try to find
-  // any with stalled top level await
-  for module_id in 0..module_map.handles.len() {
-    let messages =
-      get_stalled_top_level_await_message_for_module(scope, module_id);
-    if !messages.is_empty() {
-      return messages;
-    }
-  }
-
-  unreachable!()
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct EventLoopPendingState {
   has_pending_refed_ops: bool,
@@ -1666,32 +1607,11 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> Result<(), v8::Global<v8::Value>> {
-    let module_map_rc = self.module_map.clone();
-    let scope = &mut self.handle_scope();
-    let tc_scope = &mut v8::TryCatch::new(scope);
-
-    let module = module_map_rc
-      .borrow()
-      .get_handle(id)
-      .map(|handle| v8::Local::new(tc_scope, handle))
-      .expect("ModuleInfo not found");
-
-    if module.get_status() == v8::ModuleStatus::Errored {
-      return Err(v8::Global::new(tc_scope, module.get_exception()));
-    }
-
-    // IMPORTANT: No borrows to `ModuleMap` can be held at this point because
-    // `module_resolve_callback` will be calling into `ModuleMap` from within
-    // the isolate.
-    let instantiate_result =
-      module.instantiate_module(tc_scope, bindings::module_resolve_callback);
-
-    if instantiate_result.is_none() {
-      let exception = tc_scope.exception().unwrap();
-      return Err(v8::Global::new(tc_scope, exception));
-    }
-
-    Ok(())
+    self
+      .module_map
+      .clone()
+      .borrow_mut()
+      .instantiate_module(&mut self.handle_scope(), id)
   }
 
   fn dynamic_import_module_evaluate(
@@ -1851,7 +1771,7 @@ impl JsRuntime {
     let has_dispatched_exception =
       state_rc.borrow_mut().dispatched_exception.is_some();
     if has_dispatched_exception {
-      // This will be overrided in `exception_to_err_result()`.
+      // This will be overridden in `exception_to_err_result()`.
       let exception = v8::undefined(tc_scope).into();
       let pending_mod_evaluate = {
         let mut state = state_rc.borrow_mut();
@@ -1901,29 +1821,6 @@ impl JsRuntime {
     }
 
     receiver
-  }
-
-  /// Clear the module map, meant to be used after initializing extensions.
-  /// Optionally pass a list of exceptions `(old_name, new_name)` representing
-  /// specifiers which will be renamed and preserved in the module map.
-  pub fn clear_module_map(
-    &self,
-    exceptions: impl Iterator<Item = (&'static str, &'static str)>,
-  ) {
-    let mut module_map = self.module_map.borrow_mut();
-    let handles = exceptions
-      .map(|(old_name, new_name)| {
-        (module_map.get_handle_by_name(old_name).unwrap(), new_name)
-      })
-      .collect::<Vec<_>>();
-    module_map.clear();
-    for (handle, new_name) in handles {
-      module_map.inject_handle(
-        ModuleName::from_static(new_name),
-        ModuleType::JavaScript,
-        handle,
-      )
-    }
   }
 
   fn dynamic_import_reject(

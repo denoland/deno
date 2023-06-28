@@ -17,9 +17,7 @@ use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -97,11 +95,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
 
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError>;
-
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
 
   fn in_npm_package_at_path(&self, path: &Path) -> bool {
@@ -150,6 +143,7 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_cipheriv_final,
     ops::crypto::op_node_create_cipheriv,
     ops::crypto::op_node_create_hash,
+    ops::crypto::op_node_get_hashes,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_hash_update,
@@ -222,6 +216,16 @@ deno_core::extension!(deno_node,
     ops::zlib::op_zlib_write_async,
     ops::zlib::op_zlib_init,
     ops::zlib::op_zlib_reset,
+    ops::zlib::brotli::op_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_async,
+    ops::zlib::brotli::op_create_brotli_compress,
+    ops::zlib::brotli::op_brotli_compress_stream,
+    ops::zlib::brotli::op_brotli_compress_stream_end,
+    ops::zlib::brotli::op_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_async,
+    ops::zlib::brotli::op_create_brotli_decompress,
+    ops::zlib::brotli::op_brotli_decompress_stream,
+    ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
@@ -256,6 +260,7 @@ deno_core::extension!(deno_node,
     "00_globals.js",
     "01_require.js",
     "02_init.js",
+    "_brotli.js",
     "_events.mjs",
     "_fs/_fs_access.ts",
     "_fs/_fs_appendFile.ts",

@@ -310,9 +310,13 @@ impl NodeResolver {
     mode: NodeResolutionMode,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<NodeResolution>, AnyError> {
-    let reference = self
+    let pkg_id = self
       .npm_resolver
-      .resolve_nv_ref_from_pkg_req_ref(reference)?;
+      .resolve_pkg_id_from_pkg_req(&reference.req)?;
+    let reference = NpmPackageNvReference {
+      nv: pkg_id.nv,
+      sub_path: reference.sub_path.clone(),
+    };
     self.resolve_npm_reference(&reference, mode, permissions)
   }
 

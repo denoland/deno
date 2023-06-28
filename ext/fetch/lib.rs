@@ -32,11 +32,11 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -112,7 +112,6 @@ deno_core::extension!(deno_fetch,
   ops = [
     op_fetch<FP>,
     op_fetch_send,
-    op_fetch_response_into_byte_stream,
     op_fetch_response_upgrade,
     op_fetch_custom_client<FP>,
   ],
@@ -233,7 +232,7 @@ pub fn op_fetch<FP>(
   client_rid: Option<u32>,
   has_body: bool,
   body_length: Option<u64>,
-  data: Option<ZeroCopyBuf>,
+  data: Option<JsBuffer>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,
@@ -427,7 +426,6 @@ pub struct FetchResponse {
 pub async fn op_fetch_send(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  into_byte_stream: bool,
 ) -> Result<FetchResponse, AnyError> {
   let request = state
     .borrow_mut()
@@ -459,27 +457,10 @@ pub async fn op_fetch_send(
     (None, None)
   };
 
-  let response_rid = if !into_byte_stream {
-    state
-      .borrow_mut()
-      .resource_table
-      .add(FetchResponseResource {
-        response: res,
-        size: content_length,
-      })
-  } else {
-    let stream: BytesStream = Box::pin(res.bytes_stream().map(|r| {
-      r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-    }));
-    state
-      .borrow_mut()
-      .resource_table
-      .add(FetchResponseBodyResource {
-        reader: AsyncRefCell::new(stream.peekable()),
-        cancel: CancelHandle::default(),
-        size: content_length,
-      })
-  };
+  let response_rid = state
+    .borrow_mut()
+    .resource_table
+    .add(FetchResponseResource::new(res, content_length));
 
   Ok(FetchResponse {
     status: status.as_u16(),
@@ -491,28 +472,6 @@ pub async fn op_fetch_send(
     remote_addr_ip,
     remote_addr_port,
   })
-}
-
-#[op]
-pub fn op_fetch_response_into_byte_stream(
-  state: &mut OpState,
-  rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let raw_response = state.resource_table.take::<FetchResponseResource>(rid)?;
-  let raw_response = Rc::try_unwrap(raw_response)
-    .expect("Someone is holding onto FetchResponseResource");
-  let stream: BytesStream =
-    Box::pin(raw_response.response.bytes_stream().map(|r| {
-      r.map_err(|err| std::io::Error::new(std::io::ErrorKind::Other, err))
-    }));
-
-  let rid = state.resource_table.add(FetchResponseBodyResource {
-    reader: AsyncRefCell::new(stream.peekable()),
-    cancel: CancelHandle::default(),
-    size: raw_response.size,
-  });
-
-  Ok(rid)
 }
 
 #[op]
@@ -530,7 +489,7 @@ pub async fn op_fetch_response_upgrade(
   let (read, write) = tokio::io::duplex(1024);
   let (read_rx, write_tx) = tokio::io::split(read);
   let (mut write_rx, mut read_tx) = tokio::io::split(write);
-  let upgraded = raw_response.response.upgrade().await?;
+  let upgraded = raw_response.upgrade().await?;
   {
     // Stage 3: Pump the data
     let (mut upgraded_rx, mut upgraded_tx) = tokio::io::split(upgraded);
@@ -698,35 +657,72 @@ impl Resource for FetchRequestBodyResource {
 type BytesStream =
   Pin<Box<dyn Stream<Item = Result<bytes::Bytes, std::io::Error>> + Unpin>>;
 
+pub enum FetchResponseReader {
+  Start(Response),
+  BodyReader(Peekable<BytesStream>),
+}
+
+impl Default for FetchResponseReader {
+  fn default() -> Self {
+    let stream: BytesStream = Box::pin(deno_core::futures::stream::empty());
+    Self::BodyReader(stream.peekable())
+  }
+}
 #[derive(Debug)]
 pub struct FetchResponseResource {
-  pub response: Response,
+  pub response_reader: AsyncRefCell<FetchResponseReader>,
+  pub cancel: CancelHandle,
   pub size: Option<u64>,
+}
+
+impl FetchResponseResource {
+  pub fn new(response: Response, size: Option<u64>) -> Self {
+    Self {
+      response_reader: AsyncRefCell::new(FetchResponseReader::Start(response)),
+      cancel: CancelHandle::default(),
+      size,
+    }
+  }
+
+  pub async fn upgrade(self) -> Result<reqwest::Upgraded, AnyError> {
+    let reader = self.response_reader.into_inner();
+    match reader {
+      FetchResponseReader::Start(resp) => Ok(resp.upgrade().await?),
+      _ => unreachable!(),
+    }
+  }
 }
 
 impl Resource for FetchResponseResource {
   fn name(&self) -> Cow<str> {
     "fetchResponse".into()
   }
-}
-
-pub struct FetchResponseBodyResource {
-  pub reader: AsyncRefCell<Peekable<BytesStream>>,
-  pub cancel: CancelHandle,
-  pub size: Option<u64>,
-}
-
-impl Resource for FetchResponseBodyResource {
-  fn name(&self) -> Cow<str> {
-    "fetchResponseBody".into()
-  }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(async move {
-      let reader = RcRef::map(&self, |r| &r.reader).borrow_mut().await;
+      let mut reader =
+        RcRef::map(&self, |r| &r.response_reader).borrow_mut().await;
 
+      let body = loop {
+        match &mut *reader {
+          FetchResponseReader::BodyReader(reader) => break reader,
+          FetchResponseReader::Start(_) => {}
+        }
+
+        match std::mem::take(&mut *reader) {
+          FetchResponseReader::Start(resp) => {
+            let stream: BytesStream = Box::pin(resp.bytes_stream().map(|r| {
+              r.map_err(|err| {
+                std::io::Error::new(std::io::ErrorKind::Other, err)
+              })
+            }));
+            *reader = FetchResponseReader::BodyReader(stream.peekable());
+          }
+          FetchResponseReader::BodyReader(_) => unreachable!(),
+        }
+      };
       let fut = async move {
-        let mut reader = Pin::new(reader);
+        let mut reader = Pin::new(body);
         loop {
           match reader.as_mut().peek_mut().await {
             Some(Ok(chunk)) if !chunk.is_empty() => {

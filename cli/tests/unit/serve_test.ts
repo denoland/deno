@@ -67,7 +67,7 @@ Deno.test(
   async function httpServerUnref() {
     const [statusCode, _output] = await execCode(`
       async function main() {
-        const server = Deno.serve({ port: 4501, handler: () => null });
+        const server = Deno.serve({ port: ${servePort}, handler: () => null });
         server.unref();
         await server.finished; // This doesn't block the program from exiting
       }
@@ -2153,16 +2153,16 @@ const compressionTestCases = [
   //   out: { "Content-Type": "text/plain" },
   //   expect: null,
   // },
-  { name: "Uncompressible", length: 1024, in: {}, out: {}, expect: null },
+  { name: "Incompressible", length: 1024, in: {}, out: {}, expect: null },
   {
-    name: "UncompressibleAcceptGzip",
+    name: "IncompressibleAcceptGzip",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: {},
     expect: null,
   },
   {
-    name: "UncompressibleType",
+    name: "IncompressibleType",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/fake" },
@@ -2190,21 +2190,21 @@ const compressionTestCases = [
     expect: "br",
   },
   {
-    name: "UncompressibleRange",
+    name: "IncompressibleRange",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Content-Range": "1" },
     expect: null,
   },
   {
-    name: "UncompressibleCE",
+    name: "IncompressibleCE",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Content-Encoding": "random" },
     expect: null,
   },
   {
-    name: "UncompressibleCC",
+    name: "IncompressibleCC",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },

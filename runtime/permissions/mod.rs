@@ -1659,7 +1659,7 @@ impl Permissions {
           v.iter()
             .map(|x| {
               if x.is_empty() {
-                Err(AnyError::msg("emtpy"))
+                Err(AnyError::msg("empty"))
               } else {
                 Ok(SysDescriptor(x.to_string()))
               }
