@@ -138,7 +138,7 @@ async fn test_ref_unref_ops() {
     )
     .unwrap();
   {
-    let realm = runtime.global_realm();
+    let realm = runtime.main_realm();
     assert_eq!(realm.num_pending_ops(), 2);
     assert_eq!(realm.num_unrefed_ops(), 0);
   }
@@ -152,7 +152,7 @@ async fn test_ref_unref_ops() {
     )
     .unwrap();
   {
-    let realm = runtime.global_realm();
+    let realm = runtime.main_realm();
     assert_eq!(realm.num_pending_ops(), 2);
     assert_eq!(realm.num_unrefed_ops(), 2);
   }
@@ -166,7 +166,7 @@ async fn test_ref_unref_ops() {
     )
     .unwrap();
   {
-    let realm = runtime.global_realm();
+    let realm = runtime.main_realm();
     assert_eq!(realm.num_pending_ops(), 2);
     assert_eq!(realm.num_unrefed_ops(), 0);
   }
@@ -1626,12 +1626,12 @@ async fn test_set_promise_reject_callback() {
 #[tokio::test]
 async fn test_set_promise_reject_callback_realms() {
   let mut runtime = JsRuntime::new(RuntimeOptions::default());
-  let global_realm = runtime.global_realm();
+  let main_realm = runtime.main_realm();
   let realm1 = runtime.create_realm().unwrap();
   let realm2 = runtime.create_realm().unwrap();
 
   let realm_expectations = &[
-    (&global_realm, "global_realm", 42),
+    (&main_realm, "main_realm", 42),
     (&realm1, "realm1", 140),
     (&realm2, "realm2", 720),
   ];
@@ -1907,7 +1907,7 @@ fn test_op_unstable_disabling() {
 #[test]
 fn js_realm_simple() {
   let mut runtime = JsRuntime::new(Default::default());
-  let main_context = runtime.global_context();
+  let main_context = runtime.main_context();
   let main_global = {
     let scope = &mut runtime.handle_scope();
     let local_global = main_context.open(scope).global(scope);
@@ -2002,7 +2002,7 @@ fn js_realm_sync_ops() {
   let new_realm = runtime.create_realm().unwrap();
 
   // Test in both realms
-  for realm in [runtime.global_realm(), new_realm].into_iter() {
+  for realm in [runtime.main_realm(), new_realm].into_iter() {
     let ret = realm
       .execute_script_static(
         runtime.v8_isolate(),
@@ -2048,13 +2048,13 @@ async fn js_realm_async_ops() {
     ..Default::default()
   });
 
-  let global_realm = runtime.global_realm();
+  let main_realm = runtime.main_realm();
   let new_realm = runtime.create_realm().unwrap();
 
   let mut rets = vec![];
 
   // Test in both realms
-  for realm in [global_realm, new_realm].into_iter() {
+  for realm in [main_realm, new_realm].into_iter() {
     let ret = realm
       .execute_script_static(
         runtime.v8_isolate(),
@@ -2170,7 +2170,7 @@ async fn js_realm_ref_unref_ops() {
   });
 
   poll_fn(move |cx| {
-    let main_realm = runtime.global_realm();
+    let main_realm = runtime.main_realm();
     let other_realm = runtime.create_realm().unwrap();
 
     main_realm

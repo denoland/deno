@@ -149,7 +149,7 @@ impl JsRuntimeInspector {
   pub fn new(
     scope: &mut v8::HandleScope,
     context: v8::Local<v8::Context>,
-    is_main: bool,
+    is_main_runtime: bool,
   ) -> Rc<RefCell<Self>> {
     let (new_session_tx, new_session_rx) =
       mpsc::unbounded::<InspectorSessionProxy>();
@@ -179,12 +179,12 @@ impl JsRuntimeInspector {
       new_session_rx,
     ));
 
-    // Tell the inspector about the global context.
-    let context_name = v8::inspector::StringView::from(&b"global context"[..]);
+    // Tell the inspector about the main realm.
+    let context_name = v8::inspector::StringView::from(&b"main realm"[..]);
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
     // program completes
-    let aux_data = if is_main {
+    let aux_data = if is_main_runtime {
       r#"{"isDefault": true}"#
     } else {
       r#"{"isDefault": false}"#

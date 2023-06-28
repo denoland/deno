@@ -212,7 +212,7 @@ pub struct JsRuntime {
   event_loop_middlewares: Vec<Box<OpEventLoopFn>>,
   init_mode: InitMode,
   // Marks if this is considered the top-level runtime. Used only be inspector.
-  is_main: bool,
+  is_main_runtime: bool,
 }
 
 /// The runtime type used for snapshot creation.
@@ -291,7 +291,7 @@ pub type CompiledWasmModuleStore = CrossIsolateStore<v8::CompiledWasmModule>;
 /// Internal state for JsRuntime which is stored in one of v8::Isolate's
 /// embedder slots.
 pub struct JsRuntimeState {
-  global_realm: Option<JsRealm>,
+  main_realm: Option<JsRealm>,
   known_realms: Vec<JsRealmInner>,
   pub(crate) has_tick_scheduled: bool,
   pub(crate) pending_dyn_mod_evaluate: Vec<DynImportModEvaluate>,
@@ -315,7 +315,7 @@ pub struct JsRuntimeState {
 
 impl JsRuntimeState {
   pub(crate) fn destroy_all_realms(&mut self) {
-    self.global_realm.take();
+    self.main_realm.take();
     for realm in self.known_realms.drain(..) {
       realm.destroy()
     }
@@ -541,7 +541,7 @@ impl JsRuntime {
       dispatched_exception: None,
       // Some fields are initialized later after isolate is created
       inspector: None,
-      global_realm: None,
+      main_realm: None,
       known_realms: Vec::with_capacity(1),
     }));
 
@@ -604,7 +604,7 @@ impl JsRuntime {
       bindings::wasm_async_resolve_promise_callback,
     );
 
-    let (global_context, snapshotted_data) = {
+    let (main_context, snapshotted_data) = {
       let scope = &mut v8::HandleScope::new(&mut isolate);
       let context = v8::Context::new(scope);
 
@@ -626,9 +626,9 @@ impl JsRuntime {
     };
 
     let mut context_scope: v8::HandleScope =
-      v8::HandleScope::with_context(&mut isolate, global_context.clone());
+      v8::HandleScope::with_context(&mut isolate, main_context.clone());
     let scope = &mut context_scope;
-    let context = v8::Local::new(scope, global_context.clone());
+    let context = v8::Local::new(scope, main_context.clone());
 
     bindings::initialize_context(
       scope,
@@ -651,16 +651,12 @@ impl JsRuntime {
       .unwrap_or_else(|| Rc::new(NoopModuleLoader));
 
     {
-      let global_realm = JsRealmInner::new(
-        context_state,
-        global_context,
-        state_rc.clone(),
-        true,
-      );
+      let main_realm =
+        JsRealmInner::new(context_state, main_context, state_rc.clone(), true);
       let mut state = state_rc.borrow_mut();
-      state.global_realm = Some(JsRealm::new(global_realm.clone()));
+      state.main_realm = Some(JsRealm::new(main_realm.clone()));
       state.inspector = inspector;
-      state.known_realms.push(global_realm);
+      state.known_realms.push(main_realm);
     }
     scope.set_data(
       STATE_DATA_OFFSET,
@@ -689,10 +685,10 @@ impl JsRuntime {
       event_loop_middlewares,
       extensions: options.extensions,
       module_map: module_map_rc,
-      is_main: options.is_main,
+      is_main_runtime: options.is_main,
     };
 
-    let realm = js_runtime.global_realm();
+    let realm = js_runtime.main_realm();
     // TODO(mmastrac): We should thread errors back out of the runtime
     js_runtime
       .init_extension_js(&realm, maybe_load_callback)
@@ -716,13 +712,13 @@ impl JsRuntime {
   }
 
   #[inline]
-  pub fn global_context(&self) -> v8::Global<v8::Context> {
+  pub fn main_context(&self) -> v8::Global<v8::Context> {
     self
       .inner
       .state
       .borrow()
-      .known_realms
-      .get(0)
+      .main_realm
+      .as_ref()
       .unwrap()
       .context()
       .clone()
@@ -739,9 +735,9 @@ impl JsRuntime {
   }
 
   #[inline]
-  pub fn global_realm(&mut self) -> JsRealm {
+  pub fn main_realm(&mut self) -> JsRealm {
     let state = self.inner.state.borrow();
-    state.global_realm.clone().unwrap()
+    state.main_realm.clone().unwrap()
   }
 
   /// Returns the extensions that this runtime is using (including internal ones).
@@ -757,7 +753,7 @@ impl JsRuntime {
     let realm = {
       let context_state = Rc::new(RefCell::new(ContextState::default()));
       let op_ctxs: Box<[OpCtx]> = self
-        .global_realm()
+        .main_realm()
         .0
         .state()
         .borrow()
@@ -811,7 +807,7 @@ impl JsRuntime {
 
   #[inline]
   pub fn handle_scope(&mut self) -> v8::HandleScope {
-    self.global_realm().handle_scope(self.v8_isolate())
+    self.main_realm().handle_scope(self.v8_isolate())
   }
 
   /// Initializes JS of provided Extensions in the given realm.
@@ -1078,7 +1074,7 @@ impl JsRuntime {
 
   /// Executes traditional JavaScript code (traditional = not ES modules).
   ///
-  /// The execution takes place on the current global context, so it is possible
+  /// The execution takes place on the current main realm, so it is possible
   /// to maintain local JS state and invoke this method multiple times.
   ///
   /// `name` can be a filepath or any other string, but it is required to be 7-bit ASCII, eg.
@@ -1096,13 +1092,13 @@ impl JsRuntime {
     source_code: ModuleCode,
   ) -> Result<v8::Global<v8::Value>, Error> {
     self
-      .global_realm()
+      .main_realm()
       .execute_script(self.v8_isolate(), name, source_code)
   }
 
   /// Executes traditional JavaScript code (traditional = not ES modules).
   ///
-  /// The execution takes place on the current global context, so it is possible
+  /// The execution takes place on the current main realm, so it is possible
   /// to maintain local JS state and invoke this method multiple times.
   ///
   /// `name` can be a filepath or any other string, but it is required to be 7-bit ASCII, eg.
@@ -1119,7 +1115,7 @@ impl JsRuntime {
     name: &'static str,
     source_code: &'static str,
   ) -> Result<v8::Global<v8::Value>, Error> {
-    self.global_realm().execute_script(
+    self.main_realm().execute_script(
       self.v8_isolate(),
       name,
       ModuleCode::from_static(source_code),
@@ -1221,7 +1217,7 @@ impl JsRuntime {
       return;
     }
 
-    let context = self.global_context();
+    let context = self.main_context();
     let scope = &mut v8::HandleScope::with_context(
       self.inner.v8_isolate.as_mut(),
       context.clone(),
@@ -1229,8 +1225,11 @@ impl JsRuntime {
     let context = v8::Local::new(scope, context);
 
     let mut state = self.inner.state.borrow_mut();
-    state.inspector =
-      Some(JsRuntimeInspector::new(scope, context, self.is_main));
+    state.inspector = Some(JsRuntimeInspector::new(
+      scope,
+      context,
+      self.is_main_runtime,
+    ));
   }
 
   pub fn poll_value(
@@ -1377,7 +1376,7 @@ impl JsRuntime {
           // debugger that the program has finished running and we're ready
           // to exit the process once debugger disconnects.
           if !has_blocking_sessions {
-            let context = self.global_context();
+            let context = self.main_context();
             let scope = &mut self.handle_scope();
             inspector.borrow_mut().context_destroyed(scope, context);
             println!("Program finished. Waiting for inspector to disconnect to exit the process...");
@@ -1495,7 +1494,7 @@ impl JsRuntimeForSnapshot {
 
     // Set the context to be snapshot's default context
     {
-      let context = self.global_context();
+      let context = self.main_context();
       let mut scope = self.handle_scope();
       let local_context = v8::Local::new(&mut scope, context);
       scope.set_default_context(local_context);
@@ -1512,7 +1511,7 @@ impl JsRuntimeForSnapshot {
         module_map.serialize_for_snapshotting(&mut self.handle_scope())
       };
 
-      let context = self.global_context();
+      let context = self.main_context();
       let mut scope = self.handle_scope();
       snapshot_util::set_snapshotted_data(
         &mut scope,
@@ -1647,9 +1646,8 @@ impl JsRuntime {
     // For more details see:
     // https://github.com/denoland/deno/issues/4908
     // https://v8.dev/features/top-level-await#module-execution-order
-    let global_realm =
-      self.inner.state.borrow_mut().global_realm.clone().unwrap();
-    let scope = &mut global_realm.handle_scope(&mut self.inner.v8_isolate);
+    let main_realm = self.inner.state.borrow_mut().main_realm.clone().unwrap();
+    let scope = &mut main_realm.handle_scope(&mut self.inner.v8_isolate);
     let tc_scope = &mut v8::TryCatch::new(scope);
     let module = v8::Local::new(tc_scope, &module_handle);
     let maybe_value = module.evaluate(tc_scope);
@@ -1708,7 +1706,7 @@ impl JsRuntime {
     &mut self,
     id: ModuleId,
   ) -> oneshot::Receiver<Result<(), Error>> {
-    let global_realm = self.global_realm();
+    let main_realm = self.main_realm();
     let state_rc = self.inner.state.clone();
     let module_map_rc = self.module_map.clone();
     let scope = &mut self.handle_scope();
@@ -1796,7 +1794,7 @@ impl JsRuntime {
           .handled_promise_rejections
           .contains(&promise_global);
         if !pending_rejection_was_already_handled {
-          global_realm
+          main_realm
             .0
             .state()
             .borrow_mut()
