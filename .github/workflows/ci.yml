@@ -100,6 +100,12 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
     steps:
+      - name: Reconfigure Windows Storage
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows''))'
+        shell: pwsh
+        run: |-
+          New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+          New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
       - name: Configure git
         run: |-
           git config --global core.symlinks true
