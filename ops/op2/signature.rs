@@ -699,6 +699,11 @@ mod tests {
 
   expect_fail!(op_with_two_lifetimes, TooManyLifetimes, fn f<'a, 'b>() {});
   expect_fail!(
+    op_with_lifetime_bounds,
+    LifetimesMayNotHaveBounds("'a"),
+    fn f<'a: 'b, 'b>() {}
+  );
+  expect_fail!(
     op_with_missing_bounds,
     GenericBoundCardinality("B"),
     fn f<'a, B>() {}
