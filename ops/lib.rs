@@ -130,6 +130,21 @@ impl Op {
           _phantom_data: ::std::marker::PhantomData<(#(#params),*)>
         }
 
+        impl #generics #core::_ops::Op for #name #generics #where_clause {
+          const NAME: &'static str = stringify!(#name);
+          const DECL: #core::OpDecl = #core::OpDecl {
+            name: Self::name(),
+            v8_fn_ptr: #v8_fn::v8_fn_ptr as _,
+            enabled: true,
+            fast_fn: #decl,
+            is_async: #is_async,
+            is_unstable: #is_unstable,
+            is_v8: #is_v8,
+            // TODO(mmastrac)
+            arg_count: 0,
+          };
+        }
+
         #[doc(hidden)]
         impl #generics #name #generics #where_clause {
           pub const fn name() -> &'static str {
@@ -184,6 +199,21 @@ impl Op {
       #[doc="you can include in a `deno_core::Extension`."]
       pub struct #name #generics {
         _phantom_data: ::std::marker::PhantomData<(#(#params),*)>
+      }
+
+      impl #generics #core::_ops::Op for #name #generics #where_clause {
+        const NAME: &'static str = stringify!(#name);
+        const DECL: #core::OpDecl = #core::OpDecl {
+          name: Self::name(),
+          v8_fn_ptr: Self::v8_fn_ptr as _,
+          enabled: true,
+          fast_fn: #decl,
+          is_async: #is_async,
+          is_unstable: #is_unstable,
+          is_v8: #is_v8,
+          // TODO(mmastrac)
+          arg_count: 0,
+        };
       }
 
       #[doc(hidden)]

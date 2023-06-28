@@ -6,6 +6,32 @@
 pub struct op_now<TP> {
     _phantom_data: ::std::marker::PhantomData<(TP)>,
 }
+impl<TP> deno_core::_ops::Op for op_now<TP>
+where
+    TP: TimersPermission + 'static,
+{
+    const NAME: &'static str = stringify!(op_now);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[V8Value, TypedArray(CType::Uint8), CallbackOptions],
+                    CType::Void,
+                    Self::op_now_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
 impl<TP> op_now<TP>
 where

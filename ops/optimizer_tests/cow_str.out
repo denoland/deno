@@ -6,6 +6,29 @@
 pub struct op_cow_str {
     _phantom_data: ::std::marker::PhantomData<()>,
 }
+impl deno_core::_ops::Op for op_cow_str {
+    const NAME: &'static str = stringify!(op_cow_str);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[V8Value, SeqOneByteString, CallbackOptions],
+                    CType::Void,
+                    Self::op_cow_str_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
 impl op_cow_str {
     pub const fn name() -> &'static str {

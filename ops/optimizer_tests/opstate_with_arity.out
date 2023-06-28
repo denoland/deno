@@ -6,6 +6,29 @@
 pub struct op_add_4 {
     _phantom_data: ::std::marker::PhantomData<()>,
 }
+impl deno_core::_ops::Op for op_add_4 {
+    const NAME: &'static str = stringify!(op_add_4);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[V8Value, Uint32, Uint32, Uint32, Uint32, CallbackOptions],
+                    CType::Uint32,
+                    Self::op_add_4_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
 impl op_add_4 {
     pub const fn name() -> &'static str {

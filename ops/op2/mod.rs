@@ -135,8 +135,8 @@ fn generate_op2(
   let scope = Ident::new("scope", Span::call_site());
   let info = Ident::new("info", Span::call_site());
   let opctx = Ident::new("opctx", Span::call_site());
-  let slow_function = Ident::new("slow_function", Span::call_site());
-  let fast_function = Ident::new("fast_function", Span::call_site());
+  let slow_function = Ident::new("v8_fn_ptr", Span::call_site());
+  let fast_function = Ident::new("v8_fn_ptr_fast", Span::call_site());
   let fast_api_callback_options =
     Ident::new("fast_api_callback_options", Span::call_site());
 
@@ -216,6 +216,20 @@ fn generate_op2(
       _unconstructable: ::std::marker::PhantomData<(#(#generic),*)>
     }
 
+    impl <#(#generic : #bound),*> #deno_core::_ops::Op for #name <#(#generic),*> {
+      const NAME: &'static str = stringify!(#name);
+      const DECL: #deno_core::_ops::OpDecl = #deno_core::_ops::OpDecl {
+        name: stringify!(#name),
+        v8_fn_ptr: Self::#slow_function as _,
+        enabled: true,
+        fast_fn: #fast_definition,
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: #arg_count as u8,
+      };
+    }
+
     impl <#(#generic : #bound),*> #name <#(#generic),*> {
       pub const fn name() -> &'static str {
         stringify!(#name)
@@ -234,8 +248,8 @@ fn generate_op2(
         }
       }
 
-      #slow_fn
       #fast_fn
+      #slow_fn
 
       #[inline(always)]
       #op_fn
