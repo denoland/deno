@@ -39,6 +39,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
+use super::analysis::QuickFixImportMapper;
 use super::cache;
 use super::capabilities;
 use super::client::Client;
@@ -1913,6 +1914,7 @@ impl Inner {
                 codes,
               )
               .await;
+            eprintln!("CODE FIXES: {:#?}", actions);
             for action in actions {
               code_actions
                 .add_ts_fix_action(&specifier, &action, diagnostic, self)
@@ -2030,7 +2032,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.documents,
+          &self.get_quick_fix_import_mapper(),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
@@ -2080,6 +2082,14 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  pub fn get_quick_fix_import_mapper<'a>(&'a self) -> QuickFixImportMapper<'a> {
+    QuickFixImportMapper::new(
+      &self.documents,
+      &self.npm.resolution,
+      &self.npm.resolver,
+    )
   }
 
   async fn code_lens(
@@ -2407,6 +2417,7 @@ impl Inner {
           },
         )
         .await;
+      eprintln!("COMPLETION INFO: {:?}", maybe_completion_info);
 
       if let Some(completions) = maybe_completion_info {
         let results = completions.as_completion_response(
@@ -2428,6 +2439,7 @@ impl Inner {
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
+    eprintln!("HERE: {:#?}", params);
     let mark = self.performance.mark("completion_resolve", Some(&params));
     let completion_item = if let Some(data) = &params.data {
       let data: completions::CompletionItemData =
@@ -2439,10 +2451,12 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        eprintln!("DATA: {:#?}", data);
         let result = self
           .ts_server
           .get_completion_details(self.snapshot(), data.into())
           .await;
+        eprintln!("RESULT: {:#?}", result);
         match result {
           Ok(maybe_completion_info) => {
             if let Some(completion_info) = maybe_completion_info {

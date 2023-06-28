@@ -18,6 +18,7 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_semver::npm::NpmPackageNv;
 
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
@@ -129,6 +130,15 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .cache
         .package_folder_for_id(&pkg_folder_id, &self.registry_url),
     )
+  }
+
+  fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageCacheFolderId, AnyError> {
+    self
+      .cache
+      .resolve_package_folder_id_from_specifier(specifier, &self.registry_url)
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {

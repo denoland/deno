@@ -5,6 +5,8 @@ use super::documents::Documents;
 use super::language_server;
 use super::tsc;
 
+use crate::npm::CliNpmResolver;
+use crate::npm::NpmResolution;
 use crate::tools::lint::create_linter;
 
 use deno_ast::SourceRange;
@@ -148,21 +150,50 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
   }
 }
 
-/// Iterate over the supported extensions, concatenating the extension on the
-/// specifier, returning the first specifier that is resolve-able, otherwise
-/// None if none match.
-fn check_specifier(
-  specifier: &str,
-  referrer: &ModuleSpecifier,
-  documents: &Documents,
-) -> Option<String> {
-  for ext in SUPPORTED_EXTENSIONS {
-    let specifier_with_ext = format!("{specifier}{ext}");
-    if documents.contains_import(&specifier_with_ext, referrer) {
-      return Some(specifier_with_ext);
+/// Rewrites imports in quick fixes to be Deno specific.
+pub struct QuickFixImportMapper<'a> {
+  documents: &'a Documents,
+  npm_resolution: &'a NpmResolution,
+  npm_resolver: &'a CliNpmResolver,
+}
+
+impl<'a> QuickFixImportMapper<'a> {
+  pub fn new(
+    documents: &'a Documents,
+    npm_resolution: &'a NpmResolution,
+    npm_resolver: &'a CliNpmResolver,
+  ) -> Self {
+    Self {
+      documents,
+      npm_resolution,
+      npm_resolver,
     }
   }
-  None
+
+  /// Iterate over the supported extensions, concatenating the extension on the
+  /// specifier, returning the first specifier that is resolve-able, otherwise
+  /// None if none match.
+  pub fn check_specifier(
+    &self,
+    specifier: &str,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
+    if let Some(specifier) = ModuleSpecifier::parse(specifier) {
+      if self.npm_resolver.in_npm_package(specifier) {
+        if self.npm_resolver.resolve_pkg_folder_from_pkg_id(pkg_id)
+      }
+    }
+    for ext in SUPPORTED_EXTENSIONS {
+      let specifier_with_ext = format!("{specifier}{ext}");
+      if self
+        .documents
+        .contains_import(&specifier_with_ext, referrer)
+      {
+        return Some(specifier_with_ext);
+      }
+    }
+    None
+  }
 }
 
 /// For a set of tsc changes, can them for any that contain something that looks
@@ -170,7 +201,7 @@ fn check_specifier(
 pub fn fix_ts_import_changes(
   referrer: &ModuleSpecifier,
   changes: &[tsc::FileTextChanges],
-  documents: &Documents,
+  import_mapper: &QuickFixImportMapper,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
   for change in changes {
@@ -184,7 +215,7 @@ pub fn fix_ts_import_changes(
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
             let specifier = captures.get(1).unwrap().as_str();
             if let Some(new_specifier) =
-              check_specifier(specifier, referrer, documents)
+              import_mapper.check_specifier(specifier, referrer)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -215,7 +246,7 @@ pub fn fix_ts_import_changes(
 fn fix_ts_import_action(
   referrer: &ModuleSpecifier,
   action: &tsc::CodeFixAction,
-  documents: &Documents,
+  import_mapper: &QuickFixImportMapper,
 ) -> Result<tsc::CodeFixAction, AnyError> {
   if action.fix_name == "import" {
     let change = action
@@ -233,7 +264,7 @@ fn fix_ts_import_action(
         .ok_or_else(|| anyhow!("Missing capture."))?
         .as_str();
       if let Some(new_specifier) =
-        check_specifier(specifier, referrer, documents)
+        import_mapper.check_specifier(specifier, referrer)
       {
         let description = action.description.replace(specifier, &new_specifier);
         let changes = action
@@ -554,8 +585,11 @@ impl CodeActionCollection {
         "The action returned from TypeScript is unsupported.",
       ));
     }
-    let action =
-      fix_ts_import_action(specifier, action, &language_server.documents)?;
+    let action = fix_ts_import_action(
+      specifier,
+      action,
+      &language_server.get_quick_fix_import_mapper(),
+    )?;
     let edit = ts_changes_to_edit(&action.changes, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
