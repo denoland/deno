@@ -79,6 +79,40 @@ webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
   ],
 );
 
+// This method is somewhat expensive, but it's only called for close and abort.
+function isValidReason(reason) {
+  if (!reason) {
+    return true;
+  }
+
+  // 7.4.2. Reserved Status Code Ranges
+  // Status codes in the range 0-999 are not used.
+  if (reason.code < 1000) {
+    return false;
+  }
+
+  const reasonStr = reason.reason;
+
+  if (!reasonStr) {
+    return true;
+  }
+
+  if (typeof reasonStr !== "string") {
+    return false;
+  }
+
+  // It is impossible for a UTF-16 string of < 30 codepoints to encode to > 123 bytes
+  if (reasonStr.length < 30) {
+    return true;
+  }
+
+  if (new TextEncoder().encode(reasonStr).length > 123) {
+    return false;
+  }
+
+  return true;
+}
+
 const CLOSE_RESPONSE_TIMEOUT = 5000;
 
 const _rid = Symbol("[[rid]]");
@@ -225,10 +259,8 @@ class WebSocketStream {
                 }
               },
               close: async (reason) => {
-                // 7.4.2. Reserved Status Code Ranges
-                // Status codes in the range 0-999 are not used.
-                if (reason?.code < 1000) {
-                  // Ignore this call with an invalid code
+                // Ignore this call with an invalid code or reason string
+                if (!isValidReason(reason)) {
                   return;
                 }
                 try {
@@ -239,10 +271,8 @@ class WebSocketStream {
                 await this.closed;
               },
               abort: async (reason) => {
-                // 7.4.2. Reserved Status Code Ranges
-                // Status codes in the range 0-999 are not used.
-                if (reason?.code < 1000) {
-                  // Ignore this call with an invalid code
+                // Ignore this call with an invalid code or reason string
+                if (!isValidReason(reason)) {
                   return;
                 }
                 try {
@@ -336,10 +366,8 @@ class WebSocketStream {
               },
               pull,
               cancel: async (reason) => {
-                // 7.4.2. Reserved Status Code Ranges
-                // Status codes in the range 0-999 are not used.
-                if (reason?.code < 1000) {
-                  // Ignore this call with an invalid code
+                // Ignore this call with an invalid code or reason string
+                if (!isValidReason(reason)) {
                   return;
                 }
                 try {
