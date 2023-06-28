@@ -260,19 +260,16 @@ fn parse_lifetime(
 ) -> Result<Option<String>, SignatureError> {
   let mut res = None;
   for param in &generics.params {
-    match param {
-      GenericParam::Lifetime(lt) => {
-        if !lt.bounds.is_empty() {
-          return Err(SignatureError::LifetimesMayNotHaveBounds(
-            lt.lifetime.to_string(),
-          ));
-        }
-        if res.is_some() {
-          return Err(SignatureError::TooManyLifetimes);
-        }
-        res = Some(lt.lifetime.ident.to_string());
+    if let GenericParam::Lifetime(lt) = param {
+      if !lt.bounds.is_empty() {
+        return Err(SignatureError::LifetimesMayNotHaveBounds(
+          lt.lifetime.to_string(),
+        ));
       }
-      _ => {}
+      if res.is_some() {
+        return Err(SignatureError::TooManyLifetimes);
+      }
+      res = Some(lt.lifetime.ident.to_string());
     }
   }
   Ok(res)
@@ -306,43 +303,40 @@ fn parse_generics(
 
   let mut res = BTreeMap::new();
   for param in &generics.params {
-    match param {
-      GenericParam::Type(ty) => {
-        let ty = ty.to_token_stream();
-        let (name, bound) = std::panic::catch_unwind(|| {
-          use syn2 as syn;
-          rules!(ty => {
-            ($t:ident : $bound:path) => (t.to_string(), Some(stringify_token(bound))),
-            ($t:ident) => (t.to_string(), None),
-          })
-        }).map_err(|_| SignatureError::InvalidGeneric(ty.to_string()))?;
-        match bound {
-          Some(bound) => {
-            if where_clauses.contains_key(&name) {
-              return Err(SignatureError::GenericBoundCardinality(name));
-            }
-            if res.contains_key(&name) {
-              return Err(SignatureError::DuplicateGeneric(name));
-            }
-            res.insert(name, bound);
+    if let GenericParam::Type(ty) = param {
+      let ty = ty.to_token_stream();
+      let (name, bound) = std::panic::catch_unwind(|| {
+        use syn2 as syn;
+        rules!(ty => {
+          ($t:ident : $bound:path) => (t.to_string(), Some(stringify_token(bound))),
+          ($t:ident) => (t.to_string(), None),
+        })
+      }).map_err(|_| SignatureError::InvalidGeneric(ty.to_string()))?;
+      match bound {
+        Some(bound) => {
+          if where_clauses.contains_key(&name) {
+            return Err(SignatureError::GenericBoundCardinality(name));
           }
-          None => {
-            let Some(bound) = where_clauses.remove(&name) else {
-              return Err(SignatureError::GenericBoundCardinality(name));
-            };
-            if res.contains_key(&name) {
-              return Err(SignatureError::DuplicateGeneric(name));
-            }
-            res.insert(name, bound);
+          if res.contains_key(&name) {
+            return Err(SignatureError::DuplicateGeneric(name));
           }
+          res.insert(name, bound);
+        }
+        None => {
+          let Some(bound) = where_clauses.remove(&name) else {
+            return Err(SignatureError::GenericBoundCardinality(name));
+          };
+          if res.contains_key(&name) {
+            return Err(SignatureError::DuplicateGeneric(name));
+          }
+          res.insert(name, bound);
         }
       }
-      _ => {}
     }
   }
   if !where_clauses.is_empty() {
     return Err(SignatureError::WherePredicateMustAppearInGenerics(
-      where_clauses.into_keys().next().unwrap().clone(),
+      where_clauses.into_keys().next().unwrap(),
     ));
   }
 
