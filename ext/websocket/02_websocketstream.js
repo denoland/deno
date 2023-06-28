@@ -225,6 +225,12 @@ class WebSocketStream {
                 }
               },
               close: async (reason) => {
+                // 7.4.2. Reserved Status Code Ranges
+                // Status codes in the range 0-999 are not used.
+                if (reason?.code < 1000) {
+                  // Ignore this call with an invalid code
+                  return;
+                }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -233,6 +239,12 @@ class WebSocketStream {
                 await this.closed;
               },
               abort: async (reason) => {
+                // 7.4.2. Reserved Status Code Ranges
+                // Status codes in the range 0-999 are not used.
+                if (reason?.code < 1000) {
+                  // Ignore this call with an invalid code
+                  return;
+                }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -324,6 +336,12 @@ class WebSocketStream {
               },
               pull,
               cancel: async (reason) => {
+                // 7.4.2. Reserved Status Code Ranges
+                // Status codes in the range 0-999 are not used.
+                if (reason?.code < 1000) {
+                  // Ignore this call with an invalid code
+                  return;
+                }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
