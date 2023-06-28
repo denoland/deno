@@ -114,7 +114,7 @@ const reconfigureWindowsStorage = {
   shell: "pwsh",
   run: `
 New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
-New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
 `.trim(),
 };
 
