@@ -28,13 +28,12 @@ pub async fn bundle(
     "Use alternative bundlers like \"deno_emit\", \"esbuild\" or \"rollup\" instead."
   );
 
-  if flags.watch.is_some() {
-    let clear_screen = !flags.no_clear_screen;
+  if let Some(watch_flags) = &bundle_flags.watch {
     util::file_watcher::watch_func(
       flags,
       util::file_watcher::PrintConfig {
         job_name: "Bundle".to_string(),
-        clear_screen,
+        clear_screen: !watch_flags.no_clear_screen,
       },
       move |flags, sender, _changed_paths| {
         let bundle_flags = bundle_flags.clone();
@@ -44,11 +43,7 @@ pub async fn bundle(
             .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();
-
-          if let Some(watch_paths) = cli_options.watch_paths() {
-            let _ = sender.send(watch_paths);
-          }
-
+          let _ = sender.send(cli_options.watch_paths());
           bundle_action(factory, &bundle_flags).await?;
 
           Ok(())

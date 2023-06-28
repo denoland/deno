@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 
 const core = globalThis.__bootstrap.core;
@@ -595,13 +598,7 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const [res, _] = await Promise.all([
-          core.opAsync(
-            "op_fetch_send",
-            this._req.requestRid,
-            /* false because we want to have access to actual Response,
-          not the bytes stream of response (because we need to handle upgrades) */
-            false,
-          ),
+          core.opAsync("op_fetch_send", this._req.requestRid),
           (async () => {
             if (this._bodyWriteRid) {
               try {
@@ -700,10 +697,7 @@ class ClientRequest extends OutgoingMessage {
           this.emit("close");
         } else {
           {
-            const responseRid = core.ops.op_fetch_response_into_byte_stream(
-              res.responseRid,
-            );
-            incoming._bodyRid = responseRid;
+            incoming._bodyRid = res.responseRid;
           }
           this.emit("response", incoming);
         }

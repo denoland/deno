@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 39;
+const cacheVersion = 41;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -102,6 +102,20 @@ __1
 CC=clang-15
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
+};
+
+// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
+// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
+const reconfigureWindowsStorage = {
+  name: "Reconfigure Windows Storage",
+  if: [
+    "startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-xl')",
+  ],
+  shell: "pwsh",
+  run: `
+New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
+`.trim(),
 };
 
 const cloneRepoStep = [{
@@ -368,6 +382,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
+        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),

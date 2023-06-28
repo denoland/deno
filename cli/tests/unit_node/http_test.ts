@@ -288,7 +288,7 @@ Deno.test("[node/http] non-string buffer response", {
 });
 
 // TODO(kt3k): Enable this test
-// Currently ImcomingMessage constructor has incompatible signature.
+// Currently IncomingMessage constructor has incompatible signature.
 /*
 Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
   const message = new http.IncomingMessage(

@@ -2,6 +2,10 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "ext:deno_node/events.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";

@@ -3,11 +3,11 @@ use deno_core::anyhow::Error;
 use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::JsBuffer;
 use deno_core::JsRuntimeForSnapshot;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use std::cell::RefCell;
 use std::env;
 use std::net::SocketAddr;
@@ -116,7 +116,7 @@ fn create_js_runtime() -> JsRuntimeForSnapshot {
 async fn op_read_socket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut data: ZeroCopyBuf,
+  mut data: JsBuffer,
 ) -> Result<u32, Error> {
   let resource = state.borrow_mut().resource_table.get::<TcpStream>(rid)?;
   let nread = resource.read(&mut data).await?;

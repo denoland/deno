@@ -221,7 +221,7 @@
       error = errorMap[className]?.(message);
     } catch (e) {
       throw new Error(
-        `Unsable to build custom error for "${className}"\n  ${e.message}`,
+        `Unable to build custom error for "${className}"\n  ${e.message}`,
       );
     }
     // Strip buildCustomError() calls from stack trace
