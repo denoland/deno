@@ -697,7 +697,7 @@ const ci = {
         {
           name: "Test debug (fast)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
             "!startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
           run: [
@@ -705,6 +705,17 @@ const ci = {
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
             "cargo test --locked --test '*'",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test examples debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // Only regression tests here for now.
+            // Regression test for https://github.com/denoland/deno/pull/19615.
+            "cargo run -p deno_runtime --example extension_with_esm",
+            "cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
