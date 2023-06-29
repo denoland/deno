@@ -132,6 +132,7 @@ pub fn v8_version() -> &'static str {
 pub mod _ops {
   pub use super::error::throw_type_error;
   pub use super::error_codes::get_error_code;
+  pub use super::extensions::Op;
   pub use super::extensions::OpDecl;
   pub use super::ops::to_op_result;
   pub use super::ops::OpCtx;

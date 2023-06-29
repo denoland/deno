@@ -218,7 +218,8 @@ mod tests {
       op_test_result_void_ok,
       op_test_result_void_err,
       op_test_result_primitive_ok,
-      op_test_result_primitive_err
+      op_test_result_primitive_err,
+      op_test_generics<String>,
     ]
   );
 
@@ -404,4 +405,8 @@ mod tests {
     )?;
     Ok(())
   }
+
+  // We don't actually test this one -- we just want it to compile
+  #[op2(core, fast)]
+  pub fn op_test_generics<T: Clone>() {}
 }

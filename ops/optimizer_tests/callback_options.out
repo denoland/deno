@@ -3,16 +3,39 @@
 ///
 ///Use `op_fallback::decl()` to get an op-declaration
 ///you can include in a `deno_core::Extension`.
-pub struct op_fallback;
+pub struct op_fallback {
+    _phantom_data: ::std::marker::PhantomData<()>,
+}
+impl deno_core::_ops::Op for op_fallback {
+    const NAME: &'static str = stringify!(op_fallback);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[V8Value, CallbackOptions],
+                    CType::Void,
+                    Self::op_fallback_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
 impl op_fallback {
     pub const fn name() -> &'static str {
         stringify!(op_fallback)
     }
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub extern "C" fn v8_fn_ptr<'scope>(
-        info: *const deno_core::v8::FunctionCallbackInfo,
-    ) {
+    pub extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let info = unsafe { &*info };
         let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
@@ -21,19 +44,19 @@ impl op_fallback {
         let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
         Self::v8_func(scope, args, rv);
     }
-    pub const fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, CallbackOptions],
                         CType::Void,
-                        op_fallback_fast_fn as *const ::std::ffi::c_void,
+                        Self::op_fallback_fast_fn as *const ::std::ffi::c_void,
                     ),
                 )
             },
@@ -45,7 +68,8 @@ impl op_fallback {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    fn call(options: Option<&mut FastApiCallbackOptions>) {
+    #[allow(clippy::extra_unused_lifetimes)]
+    fn call<'scope>(options: Option<&mut FastApiCallbackOptions>) {
         if let Some(options) = options {
             options.fallback = true;
         }
@@ -65,16 +89,18 @@ impl op_fallback {
         op_state.tracker.track_sync(ctx.id);
     }
 }
-#[allow(clippy::too_many_arguments)]
-fn op_fallback_fast_fn<'scope>(
-    _: deno_core::v8::Local<deno_core::v8::Object>,
-    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> () {
-    use deno_core::v8;
-    use deno_core::_ops;
-    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
-        &mut *fast_api_callback_options
-    };
-    let result = op_fallback::call(options);
-    result
+impl op_fallback {
+    #[allow(clippy::too_many_arguments)]
+    fn op_fallback_fast_fn(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+    ) -> () {
+        use deno_core::v8;
+        use deno_core::_ops;
+        let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+            &mut *fast_api_callback_options
+        };
+        let result = Self::call(options);
+        result
+    }
 }

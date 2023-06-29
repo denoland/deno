@@ -3,43 +3,66 @@
 ///
 ///Use `op_now::decl()` to get an op-declaration
 ///you can include in a `deno_core::Extension`.
-pub struct op_now;
+pub struct op_now<TP> {
+    _phantom_data: ::std::marker::PhantomData<(TP)>,
+}
+impl<TP> deno_core::_ops::Op for op_now<TP>
+where
+    TP: TimersPermission + 'static,
+{
+    const NAME: &'static str = stringify!(op_now);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[V8Value, TypedArray(CType::Uint8), CallbackOptions],
+                    CType::Void,
+                    Self::op_now_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
-impl op_now {
+impl<TP> op_now<TP>
+where
+    TP: TimersPermission + 'static,
+{
     pub const fn name() -> &'static str {
         stringify!(op_now)
     }
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub extern "C" fn v8_fn_ptr<'scope, TP>(
-        info: *const deno_core::v8::FunctionCallbackInfo,
-    )
-    where
-        TP: TimersPermission + 'static,
-    {
+    pub extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let info = unsafe { &*info };
         let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
             info,
         );
         let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-        Self::v8_func::<TP>(scope, args, rv);
+        Self::v8_func(scope, args, rv);
     }
-    pub const fn decl<'scope, TP>() -> deno_core::OpDecl
-    where
-        TP: TimersPermission + 'static,
-    {
+    pub const fn decl() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<TP> as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[V8Value, TypedArray(CType::Uint8), CallbackOptions],
                         CType::Void,
-                        op_now_fast_fn::<TP> as *const ::std::ffi::c_void,
+                        Self::op_now_fast_fn as *const ::std::ffi::c_void,
                     ),
                 )
             },
@@ -51,18 +74,13 @@ impl op_now {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    pub fn call<TP>(state: &mut OpState, buf: &mut [u8])
-    where
-        TP: TimersPermission + 'static,
-    {}
-    pub fn v8_func<'scope, TP>(
+    #[allow(clippy::extra_unused_lifetimes)]
+    pub fn call<'scope>(state: &mut OpState, buf: &mut [u8]) {}
+    pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,
         args: deno_core::v8::FunctionCallbackArguments,
         mut rv: deno_core::v8::ReturnValue,
-    )
-    where
-        TP: TimersPermission + 'static,
-    {
+    ) {
         let ctx = unsafe {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
@@ -112,33 +130,33 @@ impl op_now {
                 }
             }
         };
-        let result = Self::call::<
-            TP,
-        >(&mut std::cell::RefCell::borrow_mut(&ctx.state), arg_0);
+        let result = Self::call(&mut std::cell::RefCell::borrow_mut(&ctx.state), arg_0);
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
     }
 }
-#[allow(clippy::too_many_arguments)]
-fn op_now_fast_fn<'scope, TP>(
-    _: deno_core::v8::Local<deno_core::v8::Object>,
-    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
-    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> ()
+impl<TP> op_now<TP>
 where
     TP: TimersPermission + 'static,
 {
-    use deno_core::v8;
-    use deno_core::_ops;
-    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
-        &mut *fast_api_callback_options
-    };
-    let __ctx = unsafe {
-        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
-            as *const _ops::OpCtx)
-    };
-    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() };
-    let result = op_now::call::<TP>(state, buf);
-    result
+    #[allow(clippy::too_many_arguments)]
+    fn op_now_fast_fn(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
+        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+    ) -> () {
+        use deno_core::v8;
+        use deno_core::_ops;
+        let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+            &mut *fast_api_callback_options
+        };
+        let __ctx = unsafe {
+            &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+                as *const _ops::OpCtx)
+        };
+        let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+        let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() };
+        let result = Self::call(state, buf);
+        result
+    }
 }
