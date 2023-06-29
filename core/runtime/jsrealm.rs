@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use super::bindings;
 use crate::error::exception_to_err_result;
+use crate::joinset::JoinSet;
 use crate::modules::ModuleCode;
 use crate::ops::OpCtx;
 use crate::runtime::JsRuntimeState;
-use crate::task::MaskResultAsSend;
 use crate::JsRuntime;
 use crate::OpId;
 use crate::OpResult;
@@ -17,7 +17,6 @@ use std::hash::BuildHasherDefault;
 use std::hash::Hasher;
 use std::option::Option;
 use std::rc::Rc;
-use tokio::task::JoinSet;
 use v8::HandleScope;
 use v8::Local;
 
@@ -50,8 +49,7 @@ pub(crate) struct ContextState {
   pub(crate) pending_promise_rejections:
     VecDeque<(v8::Global<v8::Promise>, v8::Global<v8::Value>)>,
   pub(crate) unrefed_ops: HashSet<i32, BuildHasherDefault<IdentityHasher>>,
-  pub(crate) pending_ops:
-    JoinSet<MaskResultAsSend<(PromiseId, OpId, OpResult)>>,
+  pub(crate) pending_ops: JoinSet<(PromiseId, OpId, OpResult)>,
   // We don't explicitly re-read this prop but need the slice to live alongside
   // the context
   pub(crate) op_ctxs: Box<[OpCtx]>,

@@ -37,7 +37,6 @@ use anyhow::Context as AnyhowContext;
 use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
-use futures::future::Future;
 use futures::stream::StreamExt;
 use smallvec::SmallVec;
 use std::any::Any;
@@ -2261,14 +2260,11 @@ impl JsRuntime {
         SmallVec::with_capacity(32);
 
       loop {
-        let item = {
-          let next = std::pin::pin!(context_state.pending_ops.join_next());
-          let Poll::Ready(Some(item)) = next.poll(cx) else {
-            break;
-          };
-          item
+        let Poll::Ready(item) = context_state.pending_ops.poll_join_next(cx) else {
+          break;
         };
-        let (promise_id, op_id, mut resp) = item.unwrap().into_inner();
+        // TODO(mmastrac): If this task is really errored, things could be pretty bad
+        let (promise_id, op_id, mut resp) = item.unwrap();
         state
           .borrow()
           .op_state
