@@ -36,6 +36,9 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
+use cooked_waker::IntoWaker;
+use cooked_waker::Wake;
+use cooked_waker::WakeRef;
 
 // deno_ops macros generate code assuming deno_core in scope.
 mod deno_core {
@@ -267,8 +270,6 @@ fn test_execute_script_return_value() {
   }
 }
 
-use cooked_waker::{Wake, WakeRef, IntoWaker};
-
 #[derive(Default)]
 struct LoggingWaker {
   woken: AtomicBool,
@@ -286,8 +287,14 @@ impl WakeRef for LoggingWaker {
   }
 }
 
+/// This is a reproduction for a very obscure bug where the Deno runtime locks up we end up polling
+/// an empty JoinSet and attempt to resolve ops after-the-fact. There's a small footgun in the JoinSet
+/// API where polling it while empty returns Ready(None), which means that it never holds on to the
+/// waker. This means that if we aren't testing for this particular return value and don't stash the waker
+/// ourselves for a future async op to eventually queue, we can end up losing the waker entirely and the
+/// op wakes up, notifies tokio, which notifies the JoinSet, which then has nobody to notify )`:.
 #[tokio::test]
-async fn test_runtime_lockup() {
+async fn test_wakers_for_async_ops() {
   static STATE: AtomicI8 = AtomicI8::new(0);
 
   #[op]
@@ -322,7 +329,14 @@ async fn test_runtime_lockup() {
 
   println!("start AIIFE");
   // Start the AIIFE
-  runtime.execute_script("", FastString::from_static("(async () => { await Deno.core.opAsync('op_async_sleep'); })()")).unwrap();
+  runtime
+    .execute_script(
+      "",
+      FastString::from_static(
+        "(async () => { await Deno.core.opAsync('op_async_sleep'); })()",
+      ),
+    )
+    .unwrap();
   println!("done AIIFE");
 
   println!("wait");
@@ -332,7 +346,8 @@ async fn test_runtime_lockup() {
     tokio::time::sleep(Duration::from_millis(1)).await;
   }
 
-  for i in 0..(60 * 1000) {
+  // This shouldn't take one minute, but if it does, things are definitely locked up
+  for _ in 0..Duration::from_secs(60).as_millis() {
     if logging_waker.woken.load(Ordering::SeqCst) {
       // Success
       return;
