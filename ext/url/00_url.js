@@ -171,7 +171,7 @@ class URLSearchParams {
    * @param {string} name
    * @param {string} [value]
    */
-  delete(name, value) {
+  delete(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -243,7 +243,7 @@ class URLSearchParams {
    * @param {string} [value]
    * @return {boolean}
    */
-  has(name, value) {
+  has(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
