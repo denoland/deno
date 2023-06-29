@@ -608,6 +608,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
+name = "cooked-waker"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "147be55d677052dabc6b22252d5dd0fd4c29c8c27aa4f2fbef0f94aa003b406f"
+
+[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -971,6 +977,7 @@ version = "0.191.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "cooked-waker",
  "deno_ast",
  "deno_ops",
  "futures",
@@ -1203,9 +1210,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.47.0"
+version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "044678646b9b5b01a8f6bcb19d106de8ed465e98eed1a49488ac86f807fc37b0"
+checksum = "30eb5082e8fdcb885bb81fb69742a1cb65881190f9465c08a9bd496c96a99c6e"
 dependencies = [
  "anyhow",
  "deno_ast",

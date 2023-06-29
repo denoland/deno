@@ -65,6 +65,12 @@ pub type OpMiddlewareFn = dyn Fn(OpDecl) -> OpDecl;
 pub type OpStateFn = dyn FnOnce(&mut OpState);
 pub type OpEventLoopFn = dyn Fn(Rc<RefCell<OpState>>, &mut Context) -> bool;
 
+/// Trait implemented by all generated ops.
+pub trait Op {
+  const NAME: &'static str;
+  const DECL: OpDecl;
+}
+
 pub struct OpDecl {
   pub name: &'static str,
   pub v8_fn_ptr: OpFnRef,
@@ -239,7 +245,7 @@ macro_rules! extension {
           ext.ops(vec![
             $(
               $( #[ $m ] )*
-              $( $op )::+ :: decl $( :: < $($op_param),* > )? ()
+              $( $op )::+ $( :: < $($op_param),* > )? :: decl ()
             ),+
           ]);
         )?

@@ -10,7 +10,6 @@ use quote::quote;
 use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::token::Comma;
-use syn::GenericParam;
 use syn::Generics;
 use syn::Ident;
 use syn::ItemFn;
@@ -67,14 +66,6 @@ pub(crate) fn generate(
   // Deal with generics.
   let generics = &item_fn.sig.generics;
   let (impl_generics, _, where_clause) = generics.split_for_impl();
-
-  // struct op_foo_fast <T, U> { ... }
-  let struct_generics = exclude_lifetime_params(&generics.params);
-  // op_foo_fast_fn :: <T>
-  let caller_generics: Quote = match struct_generics {
-    Some(ref params) => q!(Vars { params }, { ::params }),
-    None => q!({}),
-  };
 
   // This goes in the FastFunction impl block.
   // let mut segments = Punctuated::new();
@@ -280,16 +271,18 @@ pub(crate) fn generate(
   //   r.into()
   // }
   let fast_fn = q!(
-    Vars { core, pre_transforms, op_name_fast: &fast_fn_ident, op_name: &ident, fast_fn_inputs, generics, call_generics: &caller_generics, where_clause, idents, transforms, output_transforms, output: &output },
+    Vars { core, pre_transforms, op_name_fast: &fast_fn_ident, op_name: &ident, fast_fn_inputs, generics, where_clause, idents, transforms, output_transforms, output: &output },
     {
-      #[allow(clippy::too_many_arguments)]
-      fn op_name_fast generics (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output where_clause {
-        use core::v8;
-        use core::_ops;
-        pre_transforms
-        transforms
-        let result = op_name::call call_generics (idents);
-        output_transforms
+      impl generics op_name generics where_clause {
+        #[allow(clippy::too_many_arguments)]
+        fn op_name_fast (_: core::v8::Local<core::v8::Object>, fast_fn_inputs) -> output {
+          use core::v8;
+          use core::_ops;
+          pre_transforms
+          transforms
+          let result = Self::call (idents);
+          output_transforms
+        }
       }
     }
   );
@@ -300,17 +293,25 @@ pub(crate) fn generate(
 
   // fast_api::FastFunction::new(&[ CType::T, CType::U ], CType::T, f::<P> as *const ::std::ffi::c_void)
   let decl = q!(
-    Vars { core: core, fast_fn_ident: fast_fn_ident, generics: caller_generics, inputs: input_variants, output: output_variant },
-    {{
-      use core::v8::fast_api::Type::*;
-      use core::v8::fast_api::CType;
-      Some(core::v8::fast_api::FastFunction::new(
-        &[ inputs ],
-        CType :: output,
-        fast_fn_ident generics as *const ::std::ffi::c_void
-      ))
-    }}
-  ).dump();
+    Vars {
+      core: core,
+      fast_fn_ident: fast_fn_ident,
+      inputs: input_variants,
+      output: output_variant
+    },
+    {
+      {
+        use core::v8::fast_api::CType;
+        use core::v8::fast_api::Type::*;
+        Some(core::v8::fast_api::FastFunction::new(
+          &[inputs],
+          CType::output,
+          Self::fast_fn_ident as *const ::std::ffi::c_void,
+        ))
+      }
+    }
+  )
+  .dump();
 
   let impl_and_fn = fast_fn.dump();
 
@@ -359,24 +360,4 @@ fn q_fast_ty_variant(v: &FastValue) -> Quote {
     FastValue::Float64Array => q!({ TypedArray(CType::Float64) }),
     FastValue::SeqOneByteString => q!({ SeqOneByteString }),
   }
-}
-
-fn exclude_lifetime_params(
-  generic_params: &Punctuated<GenericParam, Comma>,
-) -> Option<Generics> {
-  let params = generic_params
-    .iter()
-    .filter(|t| !matches!(t, GenericParam::Lifetime(_)))
-    .cloned()
-    .collect::<Punctuated<GenericParam, Comma>>();
-  if params.is_empty() {
-    // <()>
-    return None;
-  }
-  Some(Generics {
-    lt_token: Some(Default::default()),
-    params,
-    gt_token: Some(Default::default()),
-    where_clause: None,
-  })
 }

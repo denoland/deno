@@ -1,7 +1,8 @@
-// deno-lint-ignore-file no-explicit-any
-
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
 import { kAesKeyLengths } from "ext:deno_node/internal/crypto/util.ts";

@@ -46,4 +46,5 @@ path = "examples/http_bench_json_ops/main.rs"
 
 # These dependencies are only used for the 'http_bench_*_ops' examples.
 [dev-dependencies]
+cooked-waker = "5"
 deno_ast.workspace = true

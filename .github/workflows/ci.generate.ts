@@ -104,6 +104,20 @@ CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
 
+// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
+// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
+const reconfigureWindowsStorage = {
+  name: "Reconfigure Windows Storage",
+  if: [
+    "startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-xl')",
+  ],
+  shell: "pwsh",
+  run: `
+New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
+`.trim(),
+};
+
 const cloneRepoStep = [{
   name: "Configure git",
   run: [
@@ -368,6 +382,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
+        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
@@ -682,7 +697,7 @@ const ci = {
         {
           name: "Test debug (fast)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
             "!startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
           run: [
@@ -690,6 +705,17 @@ const ci = {
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
             "cargo test --locked --test '*'",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test examples debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // Only regression tests here for now.
+            // Regression test for https://github.com/denoland/deno/pull/19615.
+            "cargo run -p deno_runtime --example extension_with_esm",
+            "cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },

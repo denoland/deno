@@ -100,6 +100,12 @@ jobs:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
     steps:
+      - name: Reconfigure Windows Storage
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows'') && !endsWith(matrix.os, ''-xl''))'
+        shell: pwsh
+        run: |-
+          New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+          New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
       - name: Configure git
         run: |-
           git config --global core.symlinks true
@@ -422,11 +428,18 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test debug (fast)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' && 
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(matrix.os, 'ubuntu'))
         run: |-
           cargo test --locked --lib
           cargo test --locked --test '*'
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+      - name: Test examples debug
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
+        run: |-
+          cargo run -p deno_runtime --example extension_with_esm
+          cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test release
