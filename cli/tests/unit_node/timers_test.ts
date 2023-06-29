@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assert } from "../../../test_util/std/testing/asserts.ts";
+import { assert, fail } from "../../../test_util/std/testing/asserts.ts";
 import * as timers from "node:timers";
 import * as timersPromises from "node:timers/promises";
 
@@ -49,4 +49,14 @@ Deno.test("[node/timers/promises setTimeout]", () => {
 
   assert(p instanceof Promise);
   return p;
+});
+
+// Regression test for https://github.com/denoland/deno/issues/17981
+Deno.test("[node/timers refresh cancelled timer]", () => {
+  const { setTimeout, clearTimeout } = timers;
+  const p = setTimeout(() => {
+    fail()
+  }, 1);
+  clearTimeout(p)
+  p.refresh()
 });
