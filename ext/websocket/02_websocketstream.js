@@ -79,40 +79,6 @@ webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
   ],
 );
 
-// This method is somewhat expensive, but it's only called for close and abort.
-function isValidReason(reason) {
-  if (!reason) {
-    return true;
-  }
-
-  // 7.4.2. Reserved Status Code Ranges
-  // Status codes in the range 0-999 are not used.
-  if (reason.code < 1000) {
-    return false;
-  }
-
-  const reasonStr = reason.reason;
-
-  if (!reasonStr) {
-    return true;
-  }
-
-  if (typeof reasonStr !== "string") {
-    return false;
-  }
-
-  // It is impossible for a UTF-16 string of < 30 codepoints to encode to > 123 bytes
-  if (reasonStr.length < 30) {
-    return true;
-  }
-
-  if (new TextEncoder().encode(reasonStr).length > 123) {
-    return false;
-  }
-
-  return true;
-}
-
 const CLOSE_RESPONSE_TIMEOUT = 5000;
 
 const _rid = Symbol("[[rid]]");
@@ -121,6 +87,7 @@ const _connection = Symbol("[[connection]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
+const _reason = Symbol("[[reason]]");
 class WebSocketStream {
   [_rid];
 
@@ -259,10 +226,10 @@ class WebSocketStream {
                 }
               },
               close: async (reason) => {
-                // Ignore this call with an invalid code or reason string
-                if (!isValidReason(reason)) {
-                  return;
+                if (this[_reason]) {
+                  reason = this[_reason];
                 }
+                console.trace("close", reason);
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -271,10 +238,7 @@ class WebSocketStream {
                 await this.closed;
               },
               abort: async (reason) => {
-                // Ignore this call with an invalid code or reason string
-                if (!isValidReason(reason)) {
-                  return;
-                }
+                console.trace("abort", reason);
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -284,8 +248,9 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
+              // Remember that this pull method may be re-entered before it has completed
               const kind = await op_ws_next_event(this[_rid]);
-
+              console.error("kind", kind);
               switch (kind) {
                 case 0:
                   /* string */
@@ -305,21 +270,26 @@ class WebSocketStream {
                   const err = new Error(op_ws_get_error(this[_rid]));
                   this[_closed].reject(err);
                   controller.error(err);
+                  console.trace("trace");
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case 4: {
+                case 1005: {
                   /* closed */
-                  this[_closed].resolve(undefined);
+                  this[_closed].resolve({ code: 1005, reason: '' });
+                  console.trace("trace");
                   core.tryClose(this[_rid]);
                   break;
                 }
                 default: {
                   /* close */
+                  const reason = op_ws_get_error(this[_rid]);
+                  console.error("reason", reason);
                   this[_closed].resolve({
                     code: kind,
-                    reason: op_ws_get_error(this[_rid]),
+                    reason,
                   });
+                  console.trace("trace");
                   core.tryClose(this[_rid]);
                   break;
                 }
@@ -336,19 +306,23 @@ class WebSocketStream {
                   return pull(controller);
                 }
 
-                this[_closed].resolve(op_ws_get_error(this[_rid]));
+                const error = op_ws_get_error(this[_rid]);
+                this[_closed].reject(new Error(error));
+                console.trace("trace");
                 core.tryClose(this[_rid]);
               }
             };
             const readable = new ReadableStream({
               start: (controller) => {
-                PromisePrototypeThen(this.closed, () => {
+                PromisePrototypeThen(this.closed, (reason) => {
+                  console.error("reason", reason);
                   try {
                     controller.close();
                   } catch (_) {
                     // needed to ignore warnings & assertions
                   }
                   try {
+                    writable[_reason] = reason;
                     PromisePrototypeCatch(
                       writableStreamClose(writable),
                       () => {},
@@ -366,10 +340,6 @@ class WebSocketStream {
               },
               pull,
               cancel: async (reason) => {
-                // Ignore this call with an invalid code or reason string
-                if (!isValidReason(reason)) {
-                  return;
-                }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -392,6 +362,7 @@ class WebSocketStream {
             // The signal was aborted.
             err = options.signal.reason;
           } else {
+            console.trace("trace");
             core.tryClose(cancelRid);
           }
           this[_connection].reject(err);
@@ -416,6 +387,7 @@ class WebSocketStream {
   }
 
   close(closeInfo) {
+    console.error("closeinfo", closeInfo);
     webidl.assertBranded(this, WebSocketStreamPrototype);
     closeInfo = webidl.converters.WebSocketCloseInfo(
       closeInfo,
@@ -453,6 +425,7 @@ class WebSocketStream {
     if (this[_connection].state === "pending") {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
+      console.error("closeinfo final", code, closeInfo);
       PromisePrototypeThen(
         op_ws_close(this[_rid], code, closeInfo.reason),
         () => {
@@ -461,6 +434,7 @@ class WebSocketStream {
           }, 0);
         },
         (err) => {
+          console.trace("trace");
           this[_rid] && core.tryClose(this[_rid]);
           this[_closed].reject(err);
         },

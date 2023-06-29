@@ -131,6 +131,7 @@ pub fn op_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
 ) -> Result<(), Error> {
+  eprintln!("close {rid:?}");
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;
@@ -145,6 +146,7 @@ pub fn op_try_close(
   state: &mut OpState,
   rid: Option<ResourceId>,
 ) -> Result<(), Error> {
+  eprintln!("try_close {rid:?}");
   // TODO(@AaronO): drop Option after improving type-strictness balance in
   // serde_v8.
   let rid = rid.ok_or_else(|| type_error("missing or invalid `rid`"))?;

@@ -611,6 +611,7 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   for (const result of expectedFailedButPassed) {
     console.log(`        ${JSON.stringify(result.name)}`);
   }
+  console.log("\nstderr:\n" + result.stderr);
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
