@@ -3205,10 +3205,10 @@
     "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-constructor.any.worker.html": true,
     "urlsearchparams-delete.any.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-delete.any.worker.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-foreach.any.worker.html": true,
