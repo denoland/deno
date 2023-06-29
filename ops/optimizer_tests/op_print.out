@@ -3,16 +3,29 @@
 ///
 ///Use `op_print::decl()` to get an op-declaration
 ///you can include in a `deno_core::Extension`.
-pub struct op_print;
+pub struct op_print {
+    _phantom_data: ::std::marker::PhantomData<()>,
+}
+impl deno_core::_ops::Op for op_print {
+    const NAME: &'static str = stringify!(op_print);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: None,
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
 impl op_print {
     pub const fn name() -> &'static str {
         stringify!(op_print)
     }
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub extern "C" fn v8_fn_ptr<'scope>(
-        info: *const deno_core::v8::FunctionCallbackInfo,
-    ) {
+    pub extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let info = unsafe { &*info };
         let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
@@ -21,7 +34,7 @@ impl op_print {
         let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
         Self::v8_func(scope, args, rv);
     }
-    pub const fn decl<'scope>() -> deno_core::OpDecl {
+    pub const fn decl() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
             v8_fn_ptr: Self::v8_fn_ptr as _,
@@ -35,7 +48,12 @@ impl op_print {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    fn call(state: &mut OpState, msg: &str, is_err: bool) -> Result<(), AnyError> {}
+    #[allow(clippy::extra_unused_lifetimes)]
+    fn call<'scope>(
+        state: &mut OpState,
+        msg: &str,
+        is_err: bool,
+    ) -> Result<(), AnyError> {}
     pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,
         args: deno_core::v8::FunctionCallbackArguments,
