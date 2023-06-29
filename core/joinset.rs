@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// Some code and comments under MIT license where adapter from Tokio code
+// Some code and comments under MIT license where adapted from Tokio code
 // Copyright (c) 2023 Tokio Contributors
 
 use std::task::Context;
