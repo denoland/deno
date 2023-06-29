@@ -55,8 +55,8 @@ Deno.test("[node/timers/promises setTimeout]", () => {
 Deno.test("[node/timers refresh cancelled timer]", () => {
   const { setTimeout, clearTimeout } = timers;
   const p = setTimeout(() => {
-    fail()
+    fail();
   }, 1);
-  clearTimeout(p)
-  p.refresh()
+  clearTimeout(p);
+  p.refresh();
 });
