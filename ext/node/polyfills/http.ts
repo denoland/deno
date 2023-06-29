@@ -557,11 +557,12 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
-    this.onSocket(new FakeSocket(    {
+    this.onSocket(
+      new FakeSocket({
         remoteAddress: remoteAddr.hostname,
         remotePort: remoteAddr.port,
-      }
-    ));
+      }),
+    );
 
     const url = this._createUrlStrFromOptions();
 
