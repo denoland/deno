@@ -227,7 +227,7 @@ class WebSocketStream {
               },
               close: async (reason) => {
                 if (this[_reason]) {
-                  reason = this[_reason];
+                  // reason = this[_reason];
                 }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
