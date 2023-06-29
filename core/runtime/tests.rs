@@ -327,7 +327,6 @@ async fn test_wakers_for_async_ops() {
     }
   }
 
-  println!("start AIIFE");
   // Start the AIIFE
   runtime
     .execute_script(
@@ -337,9 +336,6 @@ async fn test_wakers_for_async_ops() {
       ),
     )
     .unwrap();
-  println!("done AIIFE");
-
-  println!("wait");
 
   // Wait for future to finish
   while STATE.load(Ordering::SeqCst) < 2 {
