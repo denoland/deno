@@ -21,6 +21,9 @@ use crate::Extension;
 use crate::JsBuffer;
 use crate::*;
 use anyhow::Error;
+use cooked_waker::IntoWaker;
+use cooked_waker::Wake;
+use cooked_waker::WakeRef;
 use deno_ops::op;
 use futures::future::poll_fn;
 use futures::future::Future;
@@ -36,9 +39,6 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-use cooked_waker::IntoWaker;
-use cooked_waker::Wake;
-use cooked_waker::WakeRef;
 
 // deno_ops macros generate code assuming deno_core in scope.
 mod deno_core {
