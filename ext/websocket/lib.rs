@@ -601,7 +601,7 @@ pub async fn op_ws_next_event(
       }
     };
 
-    let res = match val.opcode {
+    break match val.opcode {
       OpCode::Text => match String::from_utf8(val.payload) {
         Ok(s) => {
           resource.string.set(Some(s));
@@ -636,7 +636,6 @@ pub async fn op_ws_next_event(
         continue;
       }
     };
-    return res;
   }
 }
 
