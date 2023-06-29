@@ -1250,3 +1250,71 @@ fn import_meta_snapshot() {
     )
     .unwrap();
 }
+
+#[test]
+fn hang_on_eager_future() {
+  const MAIN_WITH_CODE_SRC: FastString = ascii_str!(
+    r#"
+const timer =  Deno.core.ops.op_timer();
+Deno.core.ops.op_load_file();
+await timer;
+"#
+  );
+
+  #[op]
+  fn op_load_file() -> Result<(), Error> {
+    eprintln!("start load");
+    futures::executor::block_on(async {
+      tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    });
+    eprintln!("finish load");
+    Ok(())
+  }
+
+  #[op]
+  async fn op_timer() -> Result<(), Error> {
+    eprintln!("start timer");
+    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    eprintln!("finish timer");
+    Ok(())
+  }
+  deno_core::extension!(test_ext, ops = [op_load_file, op_timer]);
+
+  for i in 0..10 {
+    let rt = tokio::runtime::Builder::new_current_thread()
+      .enable_io()
+      .enable_time()
+      .build()
+      .unwrap();
+    let loader = MockLoader::new();
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      module_loader: Some(loader),
+      ..Default::default()
+    });
+
+    let join_handle = rt.spawn(unsafe {
+      crate::task::MaskFutureAsSend::new(async move {
+        let spec = resolve_url("file:///main_with_code.js").unwrap();
+        let main_id = runtime
+          .load_main_module(&spec, Some(MAIN_WITH_CODE_SRC))
+          .await
+          .unwrap();
+
+        let rx = runtime.mod_evaluate(main_id);
+        let rx = tokio::spawn(async move {
+          match rx.await {
+            Ok(err @ Err(_)) => err,
+            Ok(Ok(())) | Err(_) => Ok(()),
+          }
+        });
+
+        eprintln!("before event loop {}", i);
+        runtime.run_event_loop(false).await.unwrap();
+        eprintln!("after event loop {}", i);
+        rx.await.unwrap().unwrap();
+      })
+    });
+    rt.block_on(join_handle).unwrap();
+  }
+}
