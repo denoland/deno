@@ -115,6 +115,7 @@ pub use crate::runtime::JsRealm;
 pub use crate::runtime::JsRuntime;
 pub use crate::runtime::JsRuntimeForSnapshot;
 pub use crate::runtime::RuntimeOptions;
+pub use crate::runtime::RuntimeSnapshotOptions;
 pub use crate::runtime::SharedArrayBufferStore;
 pub use crate::runtime::Snapshot;
 pub use crate::runtime::V8_WRAPPER_OBJECT_INDEX;
