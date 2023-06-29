@@ -3206,11 +3206,9 @@
     "urlsearchparams-constructor.any.worker.html": true,
     "urlsearchparams-delete.any.html": [
       "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
     ],
     "urlsearchparams-delete.any.worker.html": [
       "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
     ],
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-foreach.any.worker.html": true,
@@ -3218,12 +3216,8 @@
     "urlsearchparams-get.any.worker.html": true,
     "urlsearchparams-getall.any.html": true,
     "urlsearchparams-getall.any.worker.html": true,
-    "urlsearchparams-has.any.html": [
-      "Two-argument has()"
-    ],
-    "urlsearchparams-has.any.worker.html": [
-      "Two-argument has()"
-    ],
+    "urlsearchparams-has.any.html": true,
+    "urlsearchparams-has.any.worker.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-set.any.worker.html": true,
     "urlsearchparams-size.any.html": true,
