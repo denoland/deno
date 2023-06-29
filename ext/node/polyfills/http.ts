@@ -557,12 +557,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
-    this.onSocket(
-      new FakeSocket({
-        remoteAddress: remoteAddr.hostname,
-        remotePort: remoteAddr.port,
-      }),
-    );
+    this.onSocket(new FakeSocket());
 
     const url = this._createUrlStrFromOptions();
 
@@ -1457,7 +1452,10 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = new FakeSocket();
+    this.socket = new FakeSocket({
+      remoteAddress: remoteAddr.hostname,
+      remotePort: remoteAddr.port,
+    });
     this.#req = req;
   }
 
