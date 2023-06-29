@@ -144,7 +144,8 @@ impl OpCtx {
           args.as_ptr(),
           fast_fn.args.len(),
           ret.as_ptr(),
-          // TODO(bartlomieju): what's the correct value to use here?
+          // TODO(bartlomieju): in the future we might want to change it
+          // to use BigInt representation.
           Int64Representation::Number,
         )
       };
