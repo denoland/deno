@@ -350,7 +350,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestHeaders.has("transfer-encoding"), false);
     assertEquals(requestBody, "hello world");
   });
-  req.on('socket', (socket) => {
+  req.on("socket", (socket) => {
     socket.setKeepAlive();
   });
   req.write("hello ");
