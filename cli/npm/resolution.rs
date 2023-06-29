@@ -317,9 +317,9 @@ async fn add_package_reqs_to_snapshot(
   }
 }
 
-fn get_npm_pending_resolver<'a>(
-  api: &'a CliNpmRegistryApi,
-) -> NpmResolutionSnapshotPendingResolver<'a, CliNpmRegistryApi> {
+fn get_npm_pending_resolver(
+  api: &CliNpmRegistryApi,
+) -> NpmResolutionSnapshotPendingResolver<CliNpmRegistryApi> {
   NpmResolutionSnapshotPendingResolver::new(
     NpmResolutionSnapshotPendingResolverOptions {
       api,
