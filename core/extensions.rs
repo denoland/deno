@@ -622,8 +622,8 @@ macro_rules! include_js_files {
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!(concat!($dir, "/", $file)
-        )),
+          include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $dir, "/", $file))
+        ),
       },)+
     ]
   };
@@ -633,7 +633,7 @@ macro_rules! include_js_files {
       $($crate::ExtensionFileSource {
         specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::IncludedInBinary(
-          include_str!($file)
+          include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $file))
         ),
       },)+
     ]

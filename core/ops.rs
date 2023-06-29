@@ -23,6 +23,7 @@ use std::rc::Weak;
 use std::sync::Arc;
 use v8::fast_api::CFunctionInfo;
 use v8::fast_api::CTypeInfo;
+use v8::fast_api::Int64Representation;
 
 pub type PromiseId = i32;
 pub type OpId = u16;
@@ -139,7 +140,14 @@ impl OpCtx {
       // SAFETY: all arguments are coming from the trait and they have
       // static lifetime
       let c_fn = unsafe {
-        CFunctionInfo::new(args.as_ptr(), fast_fn.args.len(), ret.as_ptr())
+        CFunctionInfo::new(
+          args.as_ptr(),
+          fast_fn.args.len(),
+          ret.as_ptr(),
+          // TODO(bartlomieju): in the future we might want to change it
+          // to use BigInt representation.
+          Int64Representation::Number,
+        )
       };
       fast_fn_c_info = Some(c_fn);
     }
