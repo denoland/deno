@@ -126,7 +126,7 @@ class _Worker extends EventEmitter {
       }
       if (
         !(specifier.toString().endsWith(".mjs") ||
-          (pkg && pkg.exists && pkg.typ == "module"))
+          (pkg && pkg.exists && pkg.type == "module"))
       ) {
         const cwdFileUrl = toFileUrl(Deno.cwd());
         specifier =
