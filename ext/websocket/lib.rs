@@ -384,10 +384,6 @@ impl Resource for ServerWebSocket {
   fn name(&self) -> Cow<str> {
     "serverWebSocket".into()
   }
-
-  fn close(self: Rc<Self>) {
-    eprintln!("closed????");
-  }
 }
 
 pub fn ws_create_server_stream(
@@ -564,11 +560,9 @@ pub fn op_ws_get_buffer_as_string(
 
 #[op]
 pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
-  eprintln!("rid {rid}");
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return "Bad resource".into();
   };
-  eprintln!("rid found {rid}");
   resource.errored.set(false);
   resource.error.take().unwrap_or_default()
 }
@@ -578,7 +572,6 @@ pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> u16 {
-  eprintln!("entering poll {rid}");
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
@@ -594,14 +587,12 @@ pub async fn op_ws_next_event(
 
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
   loop {
-    eprintln!("entering loop {rid}");
     let val = match ws.read_frame().await {
       Ok(val) => val,
       Err(err) => {
         // No message was received, socket closed while we waited.
         // Report closed status to JavaScript.
         if resource.closed.get() {
-          eprintln!("closeeeeee");
           return MessageKind::ClosedDefault as u16;
         }
 
@@ -628,7 +619,6 @@ pub async fn op_ws_next_event(
       OpCode::Close => {
         // Close reason is returned through error
         if val.payload.len() < 2 {
-          eprintln!("no error");
           resource.set_error(None);
           MessageKind::ClosedDefault as u16
         } else {
@@ -637,7 +627,6 @@ pub async fn op_ws_next_event(
             val.payload[1],
           ]));
           let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
-          eprintln!("reason: {close_code:?} {rid} {:?} {}", reason, <CloseCode as Into<u16>>::into(close_code));
           resource.set_error(reason);
           close_code.into()
         }
@@ -647,7 +636,6 @@ pub async fn op_ws_next_event(
         continue;
       }
     };
-    eprintln!("{rid} res = {res}");
     return res;
   }
 }

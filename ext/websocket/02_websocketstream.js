@@ -229,7 +229,6 @@ class WebSocketStream {
                 if (this[_reason]) {
                   reason = this[_reason];
                 }
-                console.trace("close", reason);
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -238,7 +237,6 @@ class WebSocketStream {
                 await this.closed;
               },
               abort: async (reason) => {
-                console.trace("abort", reason);
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -250,7 +248,6 @@ class WebSocketStream {
             const pull = async (controller) => {
               // Remember that this pull method may be re-entered before it has completed
               const kind = await op_ws_next_event(this[_rid]);
-              console.error("kind", kind);
               switch (kind) {
                 case 0:
                   /* string */
@@ -270,26 +267,22 @@ class WebSocketStream {
                   const err = new Error(op_ws_get_error(this[_rid]));
                   this[_closed].reject(err);
                   controller.error(err);
-                  console.trace("trace");
                   core.tryClose(this[_rid]);
                   break;
                 }
                 case 1005: {
                   /* closed */
-                  this[_closed].resolve({ code: 1005, reason: '' });
-                  console.trace("trace");
+                  this[_closed].resolve({ code: 1005, reason: "" });
                   core.tryClose(this[_rid]);
                   break;
                 }
                 default: {
                   /* close */
                   const reason = op_ws_get_error(this[_rid]);
-                  console.error("reason", reason);
                   this[_closed].resolve({
                     code: kind,
                     reason,
                   });
-                  console.trace("trace");
                   core.tryClose(this[_rid]);
                   break;
                 }
@@ -308,14 +301,12 @@ class WebSocketStream {
 
                 const error = op_ws_get_error(this[_rid]);
                 this[_closed].reject(new Error(error));
-                console.trace("trace");
                 core.tryClose(this[_rid]);
               }
             };
             const readable = new ReadableStream({
               start: (controller) => {
                 PromisePrototypeThen(this.closed, (reason) => {
-                  console.error("reason", reason);
                   try {
                     controller.close();
                   } catch (_) {
@@ -362,7 +353,6 @@ class WebSocketStream {
             // The signal was aborted.
             err = options.signal.reason;
           } else {
-            console.trace("trace");
             core.tryClose(cancelRid);
           }
           this[_connection].reject(err);
@@ -387,7 +377,6 @@ class WebSocketStream {
   }
 
   close(closeInfo) {
-    console.error("closeinfo", closeInfo);
     webidl.assertBranded(this, WebSocketStreamPrototype);
     closeInfo = webidl.converters.WebSocketCloseInfo(
       closeInfo,
@@ -425,7 +414,6 @@ class WebSocketStream {
     if (this[_connection].state === "pending") {
       this[_earlyClose] = true;
     } else if (this[_closed].state === "pending") {
-      console.error("closeinfo final", code, closeInfo);
       PromisePrototypeThen(
         op_ws_close(this[_rid], code, closeInfo.reason),
         () => {
@@ -434,7 +422,6 @@ class WebSocketStream {
           }, 0);
         },
         (err) => {
-          console.trace("trace");
           this[_rid] && core.tryClose(this[_rid]);
           this[_closed].reject(err);
         },

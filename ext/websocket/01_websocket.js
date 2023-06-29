@@ -467,7 +467,7 @@ class WebSocket extends EventTarget {
         default: {
           /* close */
           const code = kind;
-          const reason = code == 1005 ? '' : op_ws_get_error(rid);
+          const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
           clearTimeout(this[_idleTimeoutTimeout]);
