@@ -261,7 +261,7 @@ Deno.test("[node/http] non-string buffer response", {
 }, async () => {
   const promise = deferred<void>();
   const server = http.createServer((_, res) => {
-    res.socket.end();
+    res.socket!.end();
     gzip(
       Buffer.from("a".repeat(100), "utf8"),
       {},
