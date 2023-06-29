@@ -87,7 +87,6 @@ const _connection = Symbol("[[connection]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
-const _reason = Symbol("[[reason]]");
 class WebSocketStream {
   [_rid];
 
@@ -226,9 +225,6 @@ class WebSocketStream {
                 }
               },
               close: async (reason) => {
-                if (this[_reason]) {
-                  // reason = this[_reason];
-                }
                 try {
                   this.close(reason?.code !== undefined ? reason : {});
                 } catch (_) {
@@ -306,14 +302,13 @@ class WebSocketStream {
             };
             const readable = new ReadableStream({
               start: (controller) => {
-                PromisePrototypeThen(this.closed, (reason) => {
+                PromisePrototypeThen(this.closed, () => {
                   try {
                     controller.close();
                   } catch (_) {
                     // needed to ignore warnings & assertions
                   }
                   try {
-                    writable[_reason] = reason;
                     PromisePrototypeCatch(
                       writableStreamClose(writable),
                       () => {},
