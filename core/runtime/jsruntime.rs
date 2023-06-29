@@ -2263,7 +2263,9 @@ impl JsRuntime {
       loop {
         let item = {
           let next = std::pin::pin!(context_state.pending_ops.join_next());
-          let Poll::Ready(Some(item)) = next.poll(cx) else {
+          let res = next.poll(cx);
+          println!("ready = {:?}", res.is_ready());
+          let Poll::Ready(Some(item)) = res else {
             break;
           };
           item

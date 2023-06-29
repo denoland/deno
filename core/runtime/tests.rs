@@ -28,11 +28,14 @@ use futures::FutureExt;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicI8;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 
 // deno_ops macros generate code assuming deno_core in scope.
 mod deno_core {
@@ -262,6 +265,82 @@ fn test_execute_script_return_value() {
       "foobar"
     );
   }
+}
+
+use cooked_waker::{Wake, WakeRef, IntoWaker};
+
+#[derive(Default)]
+struct LoggingWaker {
+  woken: AtomicBool,
+}
+
+impl Wake for LoggingWaker {
+  fn wake(self) {
+    self.woken.store(true, Ordering::SeqCst);
+  }
+}
+
+impl WakeRef for LoggingWaker {
+  fn wake_by_ref(&self) {
+    self.woken.store(true, Ordering::SeqCst);
+  }
+}
+
+#[tokio::test]
+async fn test_runtime_lockup() {
+  static STATE: AtomicI8 = AtomicI8::new(0);
+
+  #[op]
+  async fn op_async_sleep() -> Result<(), Error> {
+    STATE.store(1, Ordering::SeqCst);
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    STATE.store(2, Ordering::SeqCst);
+    Ok(())
+  }
+
+  STATE.store(0, Ordering::SeqCst);
+
+  let logging_waker = Arc::new(LoggingWaker::default());
+  let waker = logging_waker.clone().into_waker();
+
+  deno_core::extension!(test_ext, ops = [op_async_sleep]);
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    extensions: vec![test_ext::init_ops()],
+    ..Default::default()
+  });
+
+  // Drain events until we get to Ready
+  loop {
+    logging_waker.woken.store(false, Ordering::SeqCst);
+    let res = runtime.poll_event_loop(&mut Context::from_waker(&waker), false);
+    let ready = matches!(res, Poll::Ready(Ok(())));
+    assert!(ready || logging_waker.woken.load(Ordering::SeqCst));
+    if ready {
+      break;
+    }
+  }
+
+  println!("start AIIFE");
+  // Start the AIIFE
+  runtime.execute_script("", FastString::from_static("(async () => { await Deno.core.opAsync('op_async_sleep'); })()")).unwrap();
+  println!("done AIIFE");
+
+  println!("wait");
+
+  // Wait for future to finish
+  while STATE.load(Ordering::SeqCst) < 2 {
+    tokio::time::sleep(Duration::from_millis(1)).await;
+  }
+
+  for i in 0..(60 * 1000) {
+    if logging_waker.woken.load(Ordering::SeqCst) {
+      // Success
+      return;
+    }
+    tokio::time::sleep(Duration::from_millis(1)).await;
+  }
+
+  panic!("The waker was never woken after the future completed");
 }
 
 #[tokio::test]

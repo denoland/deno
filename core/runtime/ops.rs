@@ -120,7 +120,14 @@ pub fn queue_async_op<'s>(
   let mut pinned = op.map(move |res| (promise_id, id, res)).boxed_local();
 
   match pinned.poll_unpin(&mut Context::from_waker(noop_waker_ref())) {
-    Poll::Pending => {}
+    Poll::Pending => {
+      if ctx
+        .context_state
+        .borrow_mut()
+        .pending_ops.is_empty() {
+        ctx.state.borrow_mut().waker.wake();
+      }
+    }
     Poll::Ready(mut res) => {
       if deferred {
         ctx
