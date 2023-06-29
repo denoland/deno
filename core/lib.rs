@@ -9,6 +9,7 @@ mod flags;
 mod gotham_state;
 mod inspector;
 mod io;
+mod joinset;
 mod module_specifier;
 mod modules;
 mod normalize_path;
