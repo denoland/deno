@@ -567,8 +567,9 @@ function analyzeTestResult(
 
 function reportVariation(result: TestResult, expectation: boolean | string[]) {
   if (result.status !== 0 || result.harnessStatus === null) {
-    console.log(`test stderr:`);
-    writeAllSync(Deno.stdout, new TextEncoder().encode(result.stderr));
+    if (result.stderr) {
+      console.log(`test stderr:\n${result.stderr}\n`);
+    }
 
     const expectFail = expectation === false;
     const failReason = result.status !== 0
@@ -611,7 +612,9 @@ function reportVariation(result: TestResult, expectation: boolean | string[]) {
   for (const result of expectedFailedButPassed) {
     console.log(`        ${JSON.stringify(result.name)}`);
   }
-  console.log("\nstderr:\n" + result.stderr);
+  if (result.stderr) {
+    console.log("\ntest stderr:\n" + result.stderr);
+  }
   console.log(
     `\nfile result: ${
       failedCount > 0 ? red("failed") : green("ok")
