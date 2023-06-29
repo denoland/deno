@@ -74,7 +74,7 @@ pub(crate) fn generate_dispatch_slow(
   } = &generator_state;
 
   Ok(quote! {
-    pub extern "C" fn #slow_function(#info: *const #deno_core::v8::FunctionCallbackInfo) {
+    extern "C" fn #slow_function(#info: *const #deno_core::v8::FunctionCallbackInfo) {
     #with_scope
     #with_retval
     #with_args

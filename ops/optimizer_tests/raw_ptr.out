@@ -3,38 +3,66 @@
 ///
 ///Use `op_ffi_ptr_of::decl()` to get an op-declaration
 ///you can include in a `deno_core::Extension`.
-pub struct op_ffi_ptr_of;
+pub struct op_ffi_ptr_of<FP> {
+    _phantom_data: ::std::marker::PhantomData<(FP)>,
+}
+impl<FP> deno_core::_ops::Op for op_ffi_ptr_of<FP>
+where
+    FP: FfiPermissions + 'static,
+{
+    const NAME: &'static str = stringify!(op_ffi_ptr_of);
+    const DECL: deno_core::OpDecl = deno_core::OpDecl {
+        name: Self::name(),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: {
+            use deno_core::v8::fast_api::CType;
+            use deno_core::v8::fast_api::Type::*;
+            Some(
+                deno_core::v8::fast_api::FastFunction::new(
+                    &[
+                        V8Value,
+                        TypedArray(CType::Uint8),
+                        TypedArray(CType::Uint32),
+                        CallbackOptions,
+                    ],
+                    CType::Void,
+                    Self::op_ffi_ptr_of_fast_fn as *const ::std::ffi::c_void,
+                ),
+            )
+        },
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0,
+    };
+}
 #[doc(hidden)]
-impl op_ffi_ptr_of {
+impl<FP> op_ffi_ptr_of<FP>
+where
+    FP: FfiPermissions + 'static,
+{
     pub const fn name() -> &'static str {
         stringify!(op_ffi_ptr_of)
     }
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    pub extern "C" fn v8_fn_ptr<'scope, FP>(
-        info: *const deno_core::v8::FunctionCallbackInfo,
-    )
-    where
-        FP: FfiPermissions + 'static,
-    {
+    pub extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let info = unsafe { &*info };
         let scope = &mut unsafe { deno_core::v8::CallbackScope::new(info) };
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(
             info,
         );
         let rv = deno_core::v8::ReturnValue::from_function_callback_info(info);
-        Self::v8_func::<FP>(scope, args, rv);
+        Self::v8_func(scope, args, rv);
     }
-    pub const fn decl<'scope, FP>() -> deno_core::OpDecl
-    where
-        FP: FfiPermissions + 'static,
-    {
+    pub const fn decl() -> deno_core::OpDecl {
         deno_core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<FP> as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: {
-                use deno_core::v8::fast_api::Type::*;
                 use deno_core::v8::fast_api::CType;
+                use deno_core::v8::fast_api::Type::*;
                 Some(
                     deno_core::v8::fast_api::FastFunction::new(
                         &[
@@ -44,7 +72,7 @@ impl op_ffi_ptr_of {
                             CallbackOptions,
                         ],
                         CType::Void,
-                        op_ffi_ptr_of_fast_fn::<FP> as *const ::std::ffi::c_void,
+                        Self::op_ffi_ptr_of_fast_fn as *const ::std::ffi::c_void,
                     ),
                 )
             },
@@ -56,18 +84,13 @@ impl op_ffi_ptr_of {
     }
     #[inline]
     #[allow(clippy::too_many_arguments)]
-    fn call<FP>(state: &mut OpState, buf: *const u8, out: &mut [u32])
-    where
-        FP: FfiPermissions + 'static,
-    {}
-    pub fn v8_func<'scope, FP>(
+    #[allow(clippy::extra_unused_lifetimes)]
+    fn call<'scope>(state: &mut OpState, buf: *const u8, out: &mut [u32]) {}
+    pub fn v8_func<'scope>(
         scope: &mut deno_core::v8::HandleScope<'scope>,
         args: deno_core::v8::FunctionCallbackArguments,
         mut rv: deno_core::v8::ReturnValue,
-    )
-    where
-        FP: FfiPermissions + 'static,
-    {
+    ) {
         let ctx = unsafe {
             &*(deno_core::v8::Local::<deno_core::v8::External>::cast(args.data()).value()
                 as *const deno_core::_ops::OpCtx)
@@ -143,41 +166,46 @@ impl op_ffi_ptr_of {
                 format!("Expected Uint32Array at position {}", 1usize),
             );
         };
-        let result = Self::call::<
-            FP,
-        >(&mut std::cell::RefCell::borrow_mut(&ctx.state), arg_0, arg_1);
+        let result = Self::call(
+            &mut std::cell::RefCell::borrow_mut(&ctx.state),
+            arg_0,
+            arg_1,
+        );
         let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
         op_state.tracker.track_sync(ctx.id);
     }
 }
-#[allow(clippy::too_many_arguments)]
-fn op_ffi_ptr_of_fast_fn<'scope, FP>(
-    _: deno_core::v8::Local<deno_core::v8::Object>,
-    buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
-    out: *const deno_core::v8::fast_api::FastApiTypedArray<u32>,
-    fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-) -> ()
+impl<FP> op_ffi_ptr_of<FP>
 where
     FP: FfiPermissions + 'static,
 {
-    use deno_core::v8;
-    use deno_core::_ops;
-    let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
-        &mut *fast_api_callback_options
-    };
-    let __ctx = unsafe {
-        &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
-            as *const _ops::OpCtx)
-    };
-    let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
-    let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() }.as_ptr();
-    let out = match unsafe { &*out }.get_storage_if_aligned() {
-        Some(v) => v,
-        None => {
-            unsafe { &mut *fast_api_callback_options }.fallback = true;
-            return Default::default();
-        }
-    };
-    let result = op_ffi_ptr_of::call::<FP>(state, buf, out);
-    result
+    #[allow(clippy::too_many_arguments)]
+    fn op_ffi_ptr_of_fast_fn(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        buf: *const deno_core::v8::fast_api::FastApiTypedArray<u8>,
+        out: *const deno_core::v8::fast_api::FastApiTypedArray<u32>,
+        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+    ) -> () {
+        use deno_core::v8;
+        use deno_core::_ops;
+        let __opts: &mut v8::fast_api::FastApiCallbackOptions = unsafe {
+            &mut *fast_api_callback_options
+        };
+        let __ctx = unsafe {
+            &*(v8::Local::<v8::External>::cast(unsafe { __opts.data.data }).value()
+                as *const _ops::OpCtx)
+        };
+        let state = &mut ::std::cell::RefCell::borrow_mut(&__ctx.state);
+        let buf = unsafe { (&*buf).get_storage_if_aligned().unwrap_unchecked() }
+            .as_ptr();
+        let out = match unsafe { &*out }.get_storage_if_aligned() {
+            Some(v) => v,
+            None => {
+                unsafe { &mut *fast_api_callback_options }.fallback = true;
+                return Default::default();
+            }
+        };
+        let result = Self::call(state, buf, out);
+        result
+    }
 }

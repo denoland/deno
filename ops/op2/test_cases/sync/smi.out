@@ -1,5 +1,28 @@
 #[allow(non_camel_case_types)]
-struct op_add {}
+struct op_add {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
+impl deno_core::_ops::Op for op_add {
+    const NAME: &'static str = stringify!(op_add);
+    const DECL: deno_core::_ops::OpDecl = deno_core::_ops::OpDecl {
+        name: stringify!(op_add),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: Some({
+            use deno_core::v8::fast_api::Type;
+            use deno_core::v8::fast_api::CType;
+            deno_core::v8::fast_api::FastFunction::new(
+                &[Type::V8Value, Type::Int32, Type::Uint32],
+                CType::Uint32,
+                Self::v8_fn_ptr_fast as *const ::std::ffi::c_void,
+            )
+        }),
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 2usize as u8,
+    };
+}
 impl op_add {
     pub const fn name() -> &'static str {
         stringify!(op_add)
@@ -7,7 +30,7 @@ impl op_add {
     pub const fn decl() -> deno_core::_ops::OpDecl {
         deno_core::_ops::OpDecl {
             name: stringify!(op_add),
-            v8_fn_ptr: Self::slow_function as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: Some({
                 use deno_core::v8::fast_api::Type;
@@ -15,7 +38,7 @@ impl op_add {
                 deno_core::v8::fast_api::FastFunction::new(
                     &[Type::V8Value, Type::Int32, Type::Uint32],
                     CType::Uint32,
-                    Self::fast_function as *const ::std::ffi::c_void,
+                    Self::v8_fn_ptr_fast as *const ::std::ffi::c_void,
                 )
             }),
             is_async: false,
@@ -24,7 +47,15 @@ impl op_add {
             arg_count: 2usize as u8,
         }
     }
-    pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
+    fn v8_fn_ptr_fast(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        arg0: i32,
+        arg1: u32,
+    ) -> u32 {
+        let result = Self::call(arg0 as _, arg1 as _);
+        result
+    }
+    extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(unsafe {
             &*info
         });
@@ -37,14 +68,6 @@ impl op_add {
         let arg1 = deno_core::_ops::to_u32(&arg1) as _;
         let result = Self::call(arg0, arg1);
         rv.set_uint32(result as u32);
-    }
-    fn fast_function(
-        _: deno_core::v8::Local<deno_core::v8::Object>,
-        arg0: i32,
-        arg1: u32,
-    ) -> u32 {
-        let result = Self::call(arg0 as _, arg1 as _);
-        result
     }
     #[inline(always)]
     fn call(id: ResourceId, extra: u16) -> u32 {}
