@@ -883,7 +883,6 @@ pub fn source_range_to_lsp_range(
 
 #[cfg(test)]
 mod tests {
-
   use std::path::PathBuf;
 
   use super::*;
