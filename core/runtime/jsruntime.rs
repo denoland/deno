@@ -28,6 +28,7 @@ use crate::runtime::JsRealm;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -39,6 +40,7 @@ use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::stream::StreamExt;
+use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -196,6 +198,16 @@ impl InitMode {
     }
   }
 }
+
+pub(crate) static BUILTIN_SOURCES: Lazy<Vec<ExtensionFileSource>> =
+  Lazy::new(|| {
+    include_js_files!(
+      core
+      "00_primordials.js",
+      "01_core.js",
+      "02_error.js",
+    )
+  });
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM.
@@ -842,13 +854,7 @@ impl JsRuntime {
 
     futures::executor::block_on(async {
       if self.init_mode == InitMode::New {
-        let js_files = include_js_files!(
-          core
-          "00_primordials.js",
-          "01_core.js",
-          "02_error.js",
-        );
-        for file_source in js_files {
+        for file_source in &*BUILTIN_SOURCES {
           realm.execute_script(
             self.v8_isolate(),
             file_source.specifier,
