@@ -4023,6 +4023,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "gist.ts".to_string(),
         }),
         deny_read: Some(vec![]),
@@ -4054,6 +4055,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "gist.ts".to_string(),
         }),
         deny_hrtime: true,
@@ -5109,6 +5111,7 @@ mod tests {
       Flags {
         deny_read: Some(vec![PathBuf::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         ..Flags::default()
@@ -5158,6 +5161,7 @@ mod tests {
       Flags {
         deny_write: Some(vec![PathBuf::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         ..Flags::default()
@@ -5194,6 +5198,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_net: Some(svec!["127.0.0.1"]),
@@ -5227,6 +5232,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_env: Some(svec!["HOME"]),
@@ -5264,6 +5270,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_env: Some(svec!["HOME", "PATH"]),
@@ -5321,6 +5328,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_sys: Some(vec![]),
@@ -5354,6 +5362,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_sys: Some(svec!["hostname"]),
@@ -5395,6 +5404,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_sys: Some(svec!["hostname", "osRelease"]),
@@ -6298,6 +6308,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_net: Some(svec![
@@ -6358,6 +6369,7 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
+          watch: None,
           script: "script.ts".to_string(),
         }),
         deny_net: Some(svec![
