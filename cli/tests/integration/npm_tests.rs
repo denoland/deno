@@ -332,6 +332,18 @@ itest!(types_general {
   exit_code: 1,
 });
 
+// This test currently asserts wrong behavior to verify
+// https://github.com/denoland/deno/issues/19096.
+// Once that bug has been fixed the content of main.out
+// should be deleted and the test renamed accordingly.
+itest!(types_export_default_should_actually_fail {
+  args: "check --quiet npm/types_export_default/main.ts",
+  output: "npm/types_export_default/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(types_ambient_module {
   args: "check --quiet npm/types_ambient_module/main.ts",
   output: "npm/types_ambient_module/main.out",

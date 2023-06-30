@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/types-export-default",
+  "version": "1.0.0",
+  "types": "./index.d.ts"
+}

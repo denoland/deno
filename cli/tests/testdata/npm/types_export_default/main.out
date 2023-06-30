@@ -1,0 +1,5 @@
+error: TS2349 [ERROR]: This expression is not callable.
+  Type 'typeof import("file:///[WILDCARD]/@denotest/types-export-default/1.0.0/index.d.ts")' has no call signatures.
+foo();
+~~~
+    at file:///[WILDCARD]/types_export_default/main.ts:2:1
