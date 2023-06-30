@@ -2,11 +2,6 @@
 import * as perfHooks from "node:perf_hooks";
 import { performance } from "node:perf_hooks";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
-import {
-  assertSpyCall,
-  assertSpyCalls,
-  spy,
-} from "../../../test_util/std/testing/mock.ts";
 
 Deno.test({
   name: "[perf_hooks] performance",
@@ -15,13 +10,13 @@ Deno.test({
     assertEquals(perfHooks.performance.clearMarks, performance.clearMarks);
     assertEquals(perfHooks.performance.mark, performance.mark);
     assertEquals(perfHooks.performance.now, performance.now);
-    // @ts-ignore
+    // @ts-ignore toJSON is not in Performance interface
     assertEquals(perfHooks.performance.toJSON, performance.toJSON);
     perfHooks.performance.measure("test");
     perfHooks.performance.mark("test");
     perfHooks.performance.clearMarks("test");
     perfHooks.performance.now();
-    // @ts-ignore
+    // @ts-ignore toJSON is not in Performance interface
     perfHooks.performance.toJSON();
   },
 });
@@ -33,7 +28,7 @@ Deno.test({
     performance.mark("test");
     performance.clearMarks("test");
     performance.now();
-    // @ts-ignore
+    // @ts-ignore toJSON is not in Performance interface
     performance.toJSON();
   },
 });
