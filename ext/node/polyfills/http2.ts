@@ -16,6 +16,7 @@ import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
 
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
@@ -184,6 +185,8 @@ export class ClientHttp2Session extends Http2Session {
       }
     }
 
+    const client = createHttpClient({ http1: false, http2: true });
+    request.client = client;
     const fetchPromise = fetch(`http://${authority}${path}`, request);
     const readerPromise = deferred();
     const headersPromise = deferred();
