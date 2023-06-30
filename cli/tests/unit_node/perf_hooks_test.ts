@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import * as perfHooks from "../../../ext/node/polyfills/perf_hooks.ts";
-import { performance } from "../../../ext/node/polyfills/perf_hooks.ts";
+import * as perfHooks from "node:perf_hooks";
+import { performance } from "node:perf_hooks";
 import { assertEquals } from ".../../../test_util/std/testing/asserts.ts";
 import { assertSpyCall, assertSpyCalls, spy } from ".../../../test_util/std/testing/mock.ts";
 
