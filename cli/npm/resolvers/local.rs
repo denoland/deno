@@ -604,9 +604,7 @@ mod test {
     for (input, output) in cases {
       assert_eq!(get_package_folder_id_folder_name(&input), output);
       let folder_id = get_package_folder_id_from_folder_name(&output).unwrap();
-      // todo(dsherret): make NpmPackageFolderId PartialEq
-      assert_eq!(folder_id.nv, input.nv);
-      assert_eq!(folder_id.copy_index, input.copy_index);
+      assert_eq!(folder_id, input);
     }
   }
 }
