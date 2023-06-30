@@ -45,14 +45,13 @@ struct Op {
   ///   - `async fn`
   ///   - returns a Future
   is_async: bool,
-  type_params: Punctuated<GenericParam, Comma>,
   // optimizer: Optimizer,
   core: TokenStream2,
   attrs: Attributes,
 }
 
 impl Op {
-  fn new(mut item: ItemFn, attrs: Attributes) -> Self {
+  fn new(item: ItemFn, attrs: Attributes) -> Self {
     // Preserve the original function. Change the name to `call`.
     //
     // impl op_foo {
@@ -62,10 +61,11 @@ impl Op {
     let mut orig = item.clone();
     orig.sig.ident = Ident::new("call", Span::call_site());
 
-    add_scope_lifetime(&mut item);
-
     let is_async = item.sig.asyncness.is_some() || is_future(&item.sig.output);
-    let type_params = exclude_lifetime_params(&item.sig.generics.params);
+    let scope_params = exclude_non_lifetime_params(&item.sig.generics.params);
+    orig.sig.generics.params = scope_params;
+    orig.sig.generics.where_clause.take();
+    add_scope_lifetime(&mut orig);
 
     #[cfg(test)]
     let core = quote!(deno_core);
@@ -75,7 +75,6 @@ impl Op {
     Self {
       orig,
       item,
-      type_params,
       is_async,
       core,
       attrs,
@@ -98,10 +97,14 @@ impl Op {
       is_async,
       orig,
       attrs,
-      type_params,
     } = self;
     let name = &item.sig.ident;
-    let generics = &item.sig.generics;
+
+    // TODO(mmastrac): this code is a little awkward but eventually it'll disappear in favour of op2
+    let mut generics = item.sig.generics.clone();
+    generics.where_clause.take();
+    generics.params = exclude_lifetime_params(&generics.params);
+    let params = &generics.params.iter().collect::<Vec<_>>();
     let where_clause = &item.sig.generics.where_clause;
 
     // First generate fast call bindings to opt-in to error handling in slow call
@@ -123,23 +126,35 @@ impl Op {
         #[doc=""]
         #[doc=#docline]
         #[doc="you can include in a `deno_core::Extension`."]
-        pub struct #name;
+        pub struct #name #generics {
+          _phantom_data: ::std::marker::PhantomData<(#(#params),*)>
+        }
+
+        impl #generics #core::_ops::Op for #name #generics #where_clause {
+          const NAME: &'static str = stringify!(#name);
+          const DECL: #core::OpDecl = #core::OpDecl {
+            name: Self::name(),
+            v8_fn_ptr: #v8_fn::v8_fn_ptr as _,
+            enabled: true,
+            fast_fn: #decl,
+            is_async: #is_async,
+            is_unstable: #is_unstable,
+            is_v8: #is_v8,
+            // TODO(mmastrac)
+            arg_count: 0,
+          };
+        }
 
         #[doc(hidden)]
-        impl #name {
-          pub fn name() -> &'static str {
+        impl #generics #name #generics #where_clause {
+          pub const fn name() -> &'static str {
             stringify!(#name)
           }
 
-          pub fn v8_fn_ptr #generics () -> #core::v8::FunctionCallback #where_clause {
-            use #core::v8::MapFnTo;
-            #v8_fn::v8_func::<#type_params>.map_fn_to()
-          }
-
-          pub fn decl #generics () -> #core::OpDecl #where_clause {
+          pub const fn decl () -> #core::OpDecl {
             #core::OpDecl {
               name: Self::name(),
-              v8_fn_ptr: Self::v8_fn_ptr::<#type_params>(),
+              v8_fn_ptr: #v8_fn::v8_fn_ptr as _,
               enabled: true,
               fast_fn: #decl,
               is_async: #is_async,
@@ -152,6 +167,7 @@ impl Op {
 
           #[inline]
           #[allow(clippy::too_many_arguments)]
+          #[allow(clippy::extra_unused_lifetimes)]
           #orig
         }
 
@@ -181,27 +197,44 @@ impl Op {
       #[doc=""]
       #[doc=#docline]
       #[doc="you can include in a `deno_core::Extension`."]
-      pub struct #name;
+      pub struct #name #generics {
+        _phantom_data: ::std::marker::PhantomData<(#(#params),*)>
+      }
+
+      impl #generics #core::_ops::Op for #name #generics #where_clause {
+        const NAME: &'static str = stringify!(#name);
+        const DECL: #core::OpDecl = #core::OpDecl {
+          name: Self::name(),
+          v8_fn_ptr: Self::v8_fn_ptr as _,
+          enabled: true,
+          fast_fn: #decl,
+          is_async: #is_async,
+          is_unstable: #is_unstable,
+          is_v8: #is_v8,
+          // TODO(mmastrac)
+          arg_count: 0,
+        };
+      }
 
       #[doc(hidden)]
-      impl #name {
+      impl #generics #name #generics #where_clause {
         pub const fn name() -> &'static str {
           stringify!(#name)
         }
 
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        pub extern "C" fn v8_fn_ptr #generics (info: *const #core::v8::FunctionCallbackInfo) #where_clause {
+        pub extern "C" fn v8_fn_ptr (info: *const #core::v8::FunctionCallbackInfo) {
           let info = unsafe { &*info };
           let scope = &mut unsafe { #core::v8::CallbackScope::new(info) };
           let args = #core::v8::FunctionCallbackArguments::from_function_callback_info(info);
           let rv = #core::v8::ReturnValue::from_function_callback_info(info);
-          Self::v8_func::<#type_params>(scope, args, rv);
+          Self::v8_func(scope, args, rv);
         }
 
-        pub const fn decl #generics () -> #core::OpDecl #where_clause {
+        pub const fn decl () -> #core::OpDecl {
           #core::OpDecl {
             name: Self::name(),
-            v8_fn_ptr: Self::v8_fn_ptr::<#type_params> as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: #decl,
             is_async: #is_async,
@@ -213,13 +246,14 @@ impl Op {
 
         #[inline]
         #[allow(clippy::too_many_arguments)]
+        #[allow(clippy::extra_unused_lifetimes)]
         #orig
 
-        pub fn v8_func #generics (
+        pub fn v8_func<'scope>(
           scope: &mut #core::v8::HandleScope<'scope>,
           args: #core::v8::FunctionCallbackArguments,
           mut rv: #core::v8::ReturnValue,
-        ) #where_clause {
+        ) {
           #v8_body
         }
       }
@@ -279,12 +313,11 @@ fn codegen_v8_async(
   let args_head = special_args.into_iter().collect::<TokenStream2>();
 
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 1, asyncness);
-  let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let wrapper = match (asyncness, is_result(&f.sig.output)) {
     (true, true) => {
       quote! {
-        let fut = #core::_ops::map_async_op1(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let fut = #core::_ops::map_async_op1(ctx, Self::call(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
@@ -296,7 +329,7 @@ fn codegen_v8_async(
     }
     (true, false) => {
       quote! {
-        let fut = #core::_ops::map_async_op2(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let fut = #core::_ops::map_async_op2(ctx, Self::call(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
@@ -308,7 +341,7 @@ fn codegen_v8_async(
     }
     (false, true) => {
       quote! {
-        let fut = #core::_ops::map_async_op3(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let fut = #core::_ops::map_async_op3(ctx, Self::call(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
@@ -320,7 +353,7 @@ fn codegen_v8_async(
     }
     (false, false) => {
       quote! {
-        let fut = #core::_ops::map_async_op4(ctx, Self::call::<#type_params>(#args_head #args_tail));
+        let fut = #core::_ops::map_async_op4(ctx, Self::call(#args_head #args_tail));
         let maybe_response = #core::_ops::queue_async_op(
           ctx,
           scope,
@@ -413,7 +446,6 @@ fn codegen_v8_sync(
   let args_head = special_args.into_iter().collect::<TokenStream2>();
   let (arg_decls, args_tail, _) = codegen_args(core, f, rust_i0, 0, false);
   let ret = codegen_sync_ret(core, &f.sig.output);
-  let type_params = exclude_lifetime_params(&f.sig.generics.params);
 
   let fast_error_handler = if has_fallible_fast_call {
     quote! {
@@ -440,7 +472,7 @@ fn codegen_v8_sync(
     #fast_error_handler
     #arg_decls
 
-    let result = Self::call::<#type_params>(#args_head #args_tail);
+    let result = Self::call(#args_head #args_tail);
 
     // use RefCell::borrow instead of state.borrow to avoid clash with std::borrow::Borrow
     let op_state = ::std::cell::RefCell::borrow(&*ctx.state);
@@ -937,6 +969,16 @@ fn exclude_lifetime_params(
     .collect::<Punctuated<GenericParam, Comma>>()
 }
 
+fn exclude_non_lifetime_params(
+  generic_params: &Punctuated<GenericParam, Comma>,
+) -> Punctuated<GenericParam, Comma> {
+  generic_params
+    .iter()
+    .filter(|t| tokens(t).starts_with('\''))
+    .cloned()
+    .collect::<Punctuated<GenericParam, Comma>>()
+}
+
 #[cfg(test)]
 mod tests {
   use crate::Attributes;
@@ -966,7 +1008,10 @@ mod tests {
     let expected = std::fs::read_to_string(input.with_extension("out"))
       .expect("Failed to read expected output file");
 
+    // Print the raw tokens in case we fail to parse
     let actual = op.gen();
+    println!("-----Raw tokens-----\n{}----------\n", actual);
+
     // Validate syntax tree.
     let tree = syn::parse2(actual).unwrap();
     let actual = prettyplease::unparse(&tree);
