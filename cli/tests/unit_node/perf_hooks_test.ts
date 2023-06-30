@@ -2,7 +2,11 @@
 import * as perfHooks from "node:perf_hooks";
 import { performance } from "node:perf_hooks";
 import { assertEquals } from ".../../../test_util/std/testing/asserts.ts";
-import { assertSpyCall, assertSpyCalls, spy } from ".../../../test_util/std/testing/mock.ts";
+import {
+  assertSpyCall,
+  assertSpyCalls,
+  spy,
+} from ".../../../test_util/std/testing/mock.ts";
 
 Deno.test({
   name: "[perf_hooks] performance",
