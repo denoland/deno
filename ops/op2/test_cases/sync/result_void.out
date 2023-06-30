@@ -1,5 +1,28 @@
 #[allow(non_camel_case_types)]
-pub struct op_void_with_result {}
+pub struct op_void_with_result {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
+impl deno_core::_ops::Op for op_void_with_result {
+    const NAME: &'static str = stringify!(op_void_with_result);
+    const DECL: deno_core::_ops::OpDecl = deno_core::_ops::OpDecl {
+        name: stringify!(op_void_with_result),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: Some({
+            use deno_core::v8::fast_api::Type;
+            use deno_core::v8::fast_api::CType;
+            deno_core::v8::fast_api::FastFunction::new(
+                &[Type::V8Value, Type::CallbackOptions],
+                CType::Void,
+                Self::v8_fn_ptr_fast as *const ::std::ffi::c_void,
+            )
+        }),
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0usize as u8,
+    };
+}
 impl op_void_with_result {
     pub const fn name() -> &'static str {
         stringify!(op_void_with_result)
@@ -7,7 +30,7 @@ impl op_void_with_result {
     pub const fn decl() -> deno_core::_ops::OpDecl {
         deno_core::_ops::OpDecl {
             name: stringify!(op_void_with_result),
-            v8_fn_ptr: Self::slow_function as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: Some({
                 use deno_core::v8::fast_api::Type;
@@ -15,7 +38,7 @@ impl op_void_with_result {
                 deno_core::v8::fast_api::FastFunction::new(
                     &[Type::V8Value, Type::CallbackOptions],
                     CType::Void,
-                    Self::fast_function as *const ::std::ffi::c_void,
+                    Self::v8_fn_ptr_fast as *const ::std::ffi::c_void,
                 )
             }),
             is_async: false,
@@ -24,7 +47,31 @@ impl op_void_with_result {
             arg_count: 0usize as u8,
         }
     }
-    pub extern "C" fn slow_function(info: *const deno_core::v8::FunctionCallbackInfo) {
+    fn v8_fn_ptr_fast(
+        _: deno_core::v8::Local<deno_core::v8::Object>,
+        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
+    ) -> () {
+        let fast_api_callback_options = unsafe { &mut *fast_api_callback_options };
+        let opctx = unsafe {
+            &*(deno_core::v8::Local::<
+                v8::External,
+            >::cast(unsafe { fast_api_callback_options.data.data })
+                .value() as *const deno_core::_ops::OpCtx)
+        };
+        let result = Self::call();
+        let result = match result {
+            Ok(result) => result,
+            Err(err) => {
+                unsafe {
+                    opctx.unsafely_set_last_error_for_ops_only(err);
+                }
+                fast_api_callback_options.fallback = true;
+                return ::std::default::Default::default();
+            }
+        };
+        result
+    }
+    extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
         let args = deno_core::v8::FunctionCallbackArguments::from_function_callback_info(unsafe {
             &*info
         });
@@ -64,30 +111,6 @@ impl op_void_with_result {
                 return;
             }
         };
-    }
-    fn fast_function(
-        _: deno_core::v8::Local<deno_core::v8::Object>,
-        fast_api_callback_options: *mut deno_core::v8::fast_api::FastApiCallbackOptions,
-    ) -> () {
-        let fast_api_callback_options = unsafe { &mut *fast_api_callback_options };
-        let opctx = unsafe {
-            &*(deno_core::v8::Local::<
-                v8::External,
-            >::cast(unsafe { fast_api_callback_options.data.data })
-                .value() as *const deno_core::_ops::OpCtx)
-        };
-        let result = Self::call();
-        let result = match result {
-            Ok(result) => result,
-            Err(err) => {
-                unsafe {
-                    opctx.unsafely_set_last_error_for_ops_only(err);
-                }
-                fast_api_callback_options.fallback = true;
-                return ::std::default::Default::default();
-            }
-        };
-        result
     }
     #[inline(always)]
     pub fn call() -> Result<(), AnyError> {}

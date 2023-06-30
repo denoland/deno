@@ -34,6 +34,12 @@
           "default": false,
           "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
         },
+        "exactOptionalPropertyTypes": {
+          "description": "Differentiate between undefined and not present when type checking",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+        },
         "experimentalDecorators": {
           "description": "Enable experimental support for TC39 stage 2 draft decorators.",
           "type": "boolean",

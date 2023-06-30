@@ -1,7 +1,7 @@
 Check [WILDCARD]/test/shuffle/bar_test.ts
 Check [WILDCARD]/test/shuffle/baz_test.ts
 Check [WILDCARD]/test/shuffle/foo_test.ts
-running 10 tests from ./test/shuffle/foo_test.ts
+running 10 tests from [WILDCARD]/test/shuffle/foo_test.ts
 test 3 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])
 test 7 ... ok ([WILDCARD])
@@ -12,7 +12,7 @@ test 9 ... ok ([WILDCARD])
 test 4 ... ok ([WILDCARD])
 test 6 ... ok ([WILDCARD])
 test 1 ... ok ([WILDCARD])
-running 10 tests from ./test/shuffle/baz_test.ts
+running 10 tests from [WILDCARD]/test/shuffle/baz_test.ts
 test 3 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])
 test 7 ... ok ([WILDCARD])
@@ -23,7 +23,7 @@ test 9 ... ok ([WILDCARD])
 test 4 ... ok ([WILDCARD])
 test 6 ... ok ([WILDCARD])
 test 1 ... ok ([WILDCARD])
-running 10 tests from ./test/shuffle/bar_test.ts
+running 10 tests from [WILDCARD]/test/shuffle/bar_test.ts
 test 3 ... ok ([WILDCARD])
 test 2 ... ok ([WILDCARD])
 test 7 ... ok ([WILDCARD])

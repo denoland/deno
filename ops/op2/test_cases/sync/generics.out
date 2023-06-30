@@ -1,11 +1,11 @@
 #[allow(non_camel_case_types)]
-pub struct op_has_doc_comment {
-    _unconstructable: ::std::marker::PhantomData<()>,
+pub struct op_generics<T> {
+    _unconstructable: ::std::marker::PhantomData<(T)>,
 }
-impl deno_core::_ops::Op for op_has_doc_comment {
-    const NAME: &'static str = stringify!(op_has_doc_comment);
+impl<T: Trait> deno_core::_ops::Op for op_generics<T> {
+    const NAME: &'static str = stringify!(op_generics);
     const DECL: deno_core::_ops::OpDecl = deno_core::_ops::OpDecl {
-        name: stringify!(op_has_doc_comment),
+        name: stringify!(op_generics),
         v8_fn_ptr: Self::v8_fn_ptr as _,
         enabled: true,
         fast_fn: Some({
@@ -23,13 +23,13 @@ impl deno_core::_ops::Op for op_has_doc_comment {
         arg_count: 0usize as u8,
     };
 }
-impl op_has_doc_comment {
+impl<T: Trait> op_generics<T> {
     pub const fn name() -> &'static str {
-        stringify!(op_has_doc_comment)
+        stringify!(op_generics)
     }
     pub const fn decl() -> deno_core::_ops::OpDecl {
         deno_core::_ops::OpDecl {
-            name: stringify!(op_has_doc_comment),
+            name: stringify!(op_generics),
             v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: Some({
@@ -55,5 +55,5 @@ impl op_has_doc_comment {
         let result = Self::call();
     }
     #[inline(always)]
-    pub fn call() -> () {}
+    pub fn call() {}
 }
