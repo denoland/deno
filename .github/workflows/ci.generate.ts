@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 41;
+const cacheVersion = 42;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -27,19 +27,21 @@ const Runners = (() => {
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
+// Note that you may need to add more version to the `apt-get remove` line below if you change this
+const llvmVersion = 16;
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
+  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
 # Remove older clang before we install
-sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
-# Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+# Install clang-XXX, lld-XXX, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -78,8 +80,8 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -90,8 +92,8 @@ RUSTFLAGS<<__1
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -99,7 +101,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-15
+CC=clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
