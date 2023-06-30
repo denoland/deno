@@ -18,7 +18,6 @@ use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_semver::npm::NpmPackageNv;
 
 use crate::npm::resolution::NpmResolution;
 use crate::npm::resolvers::common::cache_packages;
@@ -83,7 +82,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
     let folder_id = self
       .resolution
-      .resolve_package_cache_folder_id_from_id(id)
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)
       .unwrap();
     Ok(
       self

@@ -19,7 +19,6 @@ use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
-use deno_semver::npm::NpmPackageNv;
 
 use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;

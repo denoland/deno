@@ -139,7 +139,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
-    match self.resolution.resolve_package_cache_folder_id_from_id(id) {
+    match self.resolution.resolve_pkg_cache_folder_id_from_pkg_id(id) {
       // package is stored at:
       // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
       Some(cache_folder_id) => Ok(
