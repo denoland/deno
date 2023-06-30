@@ -173,6 +173,7 @@ const denoNsUnstable = {
   upgradeHttp: http.upgradeHttp,
   serve: http.serve,
   openKv: kv.openKv,
+  AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
