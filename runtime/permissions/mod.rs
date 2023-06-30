@@ -2225,7 +2225,13 @@ mod tests {
     ];
 
     for (host, port, is_ok) in domain_tests {
-      assert_eq!(is_ok, perms.net.check(&(host, Some(port)), None).is_ok());
+      assert_eq!(
+        is_ok,
+        perms.net.check(&(host, Some(port)), None).is_ok(),
+        "{}:{}",
+        host,
+        port,
+      );
     }
   }
 
@@ -2357,7 +2363,7 @@ mod tests {
 
     for (url_str, is_ok) in url_tests {
       let u = url::Url::parse(url_str).unwrap();
-      assert_eq!(is_ok, perms.net.check_url(&u, None).is_ok());
+      assert_eq!(is_ok, perms.net.check_url(&u, None).is_ok(), "{}", u);
     }
   }
 
@@ -2406,7 +2412,12 @@ mod tests {
     }
 
     for (specifier, expected) in fixtures {
-      assert_eq!(perms.check_specifier(&specifier).is_ok(), expected);
+      assert_eq!(
+        perms.check_specifier(&specifier).is_ok(),
+        expected,
+        "{}",
+        specifier,
+      );
     }
   }
 
