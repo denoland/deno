@@ -1,5 +1,20 @@
 #[allow(non_camel_case_types)]
-pub struct op_test_add_option {}
+pub struct op_test_add_option {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
+impl crate::_ops::Op for op_test_add_option {
+    const NAME: &'static str = stringify!(op_test_add_option);
+    const DECL: crate::_ops::OpDecl = crate::_ops::OpDecl {
+        name: stringify!(op_test_add_option),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: None,
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 2usize as u8,
+    };
+}
 impl op_test_add_option {
     pub const fn name() -> &'static str {
         stringify!(op_test_add_option)
@@ -7,7 +22,7 @@ impl op_test_add_option {
     pub const fn decl() -> crate::_ops::OpDecl {
         crate::_ops::OpDecl {
             name: stringify!(op_test_add_option),
-            v8_fn_ptr: Self::slow_function as _,
+            v8_fn_ptr: Self::v8_fn_ptr as _,
             enabled: true,
             fast_fn: None,
             is_async: false,
@@ -16,7 +31,7 @@ impl op_test_add_option {
             arg_count: 2usize as u8,
         }
     }
-    pub extern "C" fn slow_function(info: *const crate::v8::FunctionCallbackInfo) {
+    extern "C" fn v8_fn_ptr(info: *const crate::v8::FunctionCallbackInfo) {
         let mut rv = crate::v8::ReturnValue::from_function_callback_info(unsafe {
             &*info
         });

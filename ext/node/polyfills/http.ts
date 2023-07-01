@@ -274,6 +274,7 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  setKeepAlive() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */
