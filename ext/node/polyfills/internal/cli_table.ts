@@ -1,27 +1,25 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { getStringWidth } from "internal:deno_node/polyfills/internal/util/inspect.mjs";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
-// The use of Unicode characters below is the only non-comment use of non-ASCII
-// Unicode characters in Node.js built-in modules. If they are ever removed or
-// rewritten with \u escapes, then a test will need to be (re-)added to Node.js
-// core to verify that Unicode characters work in built-ins.
-// Refs: https://github.com/nodejs/node/issues/10673
+import { getStringWidth } from "ext:deno_node/internal/util/inspect.mjs";
+
 const tableChars = {
-  middleMiddle: "─",
-  rowMiddle: "┼",
-  topRight: "┐",
-  topLeft: "┌",
-  leftMiddle: "├",
-  topMiddle: "┬",
-  bottomRight: "┘",
-  bottomLeft: "└",
-  bottomMiddle: "┴",
-  rightMiddle: "┤",
-  left: "│ ",
-  right: " │",
-  middle: " │ ",
+  middleMiddle: "\u2500",
+  rowMiddle: "\u253c",
+  topRight: "\u2510",
+  topLeft: "\u250c",
+  leftMiddle: "\u251c",
+  topMiddle: "\u252c",
+  bottomRight: "\u2518",
+  bottomLeft: "\u2514",
+  bottomMiddle: "\u2534",
+  rightMiddle: "\u2524",
+  left: "\u2502 ",
+  right: " \u2502",
+  middle: " \u2502 ",
 };
 
 const renderRow = (row: string[], columnWidths: number[]) => {

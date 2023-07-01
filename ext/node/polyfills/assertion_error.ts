@@ -21,8 +21,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { inspect } from "internal:deno_node/polyfills/util.ts";
-import { stripColor as removeColors } from "internal:deno_node/polyfills/_util/std_fmt_colors.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { inspect } from "ext:deno_node/util.ts";
+import { stripColor as removeColors } from "ext:deno_node/_util/std_fmt_colors.ts";
+import * as io from "ext:deno_io/12_io.js";
 
 function getConsoleWidth(): number {
   try {
@@ -44,7 +48,7 @@ const {
   keys: ObjectKeys,
 } = Object;
 
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 
 let blue = "";
 let green = "";
@@ -159,7 +163,7 @@ export function createErrDiff(
       // If the stderr is a tty and the input length is lower than the current
       // columns per line, add a mismatch indicator below the output. If it is
       // not a tty, use a default value of 80 characters.
-      const maxLength = Deno.isatty(Deno.stderr.rid) ? getConsoleWidth() : 80;
+      const maxLength = Deno.isatty(io.stderr.rid) ? getConsoleWidth() : 80;
       if (inputLength < maxLength) {
         while (actualRaw[i] === expectedRaw[i]) {
           i++;
@@ -402,7 +406,7 @@ export class AssertionError extends Error {
     if (message != null) {
       super(String(message));
     } else {
-      if (Deno.isatty(Deno.stderr.rid)) {
+      if (Deno.isatty(io.stderr.rid)) {
         // Reset on each call to make sure we handle dynamically set environment
         // variables correct.
         if (Deno.noColor) {

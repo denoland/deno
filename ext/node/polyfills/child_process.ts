@@ -2,7 +2,10 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { core } from "internal:deno_node/polyfills/_core.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   ChildProcess,
   ChildProcessOptions,
@@ -12,13 +15,13 @@ import {
   type SpawnSyncOptions,
   type SpawnSyncResult,
   stdioStringToArray,
-} from "internal:deno_node/polyfills/internal/child_process.ts";
+} from "ext:deno_node/internal/child_process.ts";
 import {
   validateAbortSignal,
   validateFunction,
   validateObject,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_CHILD_PROCESS_IPC_REQUIRED,
   ERR_CHILD_PROCESS_STDIO_MAXBUFFER,
@@ -26,7 +29,7 @@ import {
   ERR_INVALID_ARG_VALUE,
   ERR_OUT_OF_RANGE,
   genericNodeError,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   ArrayIsArray,
   ArrayPrototypeJoin,
@@ -34,18 +37,17 @@ import {
   ArrayPrototypeSlice,
   ObjectAssign,
   StringPrototypeSlice,
-} from "internal:deno_node/polyfills/internal/primordials.mjs";
-import {
-  getSystemErrorName,
-  promisify,
-} from "internal:deno_node/polyfills/util.ts";
-import { createDeferredPromise } from "internal:deno_node/polyfills/internal/util.mjs";
-import process from "internal:deno_node/polyfills/process.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+} from "ext:deno_node/internal/primordials.mjs";
+import { getSystemErrorName, promisify } from "ext:deno_node/util.ts";
+import { createDeferredPromise } from "ext:deno_node/internal/util.mjs";
+import process from "ext:deno_node/process.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   convertToValidSignal,
   kEmptyObject,
-} from "internal:deno_node/polyfills/internal/util.mjs";
+} from "ext:deno_node/internal/util.mjs";
+
+const { core } = globalThis.__bootstrap;
 
 const MAX_BUFFER = 1024 * 1024;
 

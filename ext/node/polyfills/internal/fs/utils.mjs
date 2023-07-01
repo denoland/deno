@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 "use strict";
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   ERR_FS_EISDIR,
   ERR_FS_INVALID_SYMLINK_TYPE,
@@ -10,17 +14,17 @@ import {
   ERR_OUT_OF_RANGE,
   hideStackFrames,
   uvException,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 
 import {
   isArrayBufferView,
   isBigUint64Array,
   isDate,
   isUint8Array,
-} from "internal:deno_node/polyfills/internal/util/types.ts";
-import { once } from "internal:deno_node/polyfills/internal/util.mjs";
-import { deprecate } from "internal:deno_node/polyfills/util.ts";
-import { toPathIfFileURL } from "internal:deno_node/polyfills/internal/url.ts";
+} from "ext:deno_node/internal/util/types.ts";
+import { once } from "ext:deno_node/internal/util.mjs";
+import { deprecate } from "ext:deno_node/util.ts";
+import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import {
   validateAbortSignal,
   validateBoolean,
@@ -29,20 +33,20 @@ import {
   validateInteger,
   validateObject,
   validateUint32,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import pathModule from "internal:deno_node/polyfills/path.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import pathModule from "ext:deno_node/path.ts";
 const kType = Symbol("type");
 const kStats = Symbol("stats");
-import assert from "internal:deno_node/polyfills/internal/assert.mjs";
-import { lstat, lstatSync } from "internal:deno_node/polyfills/_fs/_fs_lstat.ts";
-import { stat, statSync } from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import process from "internal:deno_node/polyfills/process.ts";
+import assert from "ext:deno_node/internal/assert.mjs";
+import { lstat, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import { stat, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import process from "ext:deno_node/process.ts";
 
 import {
   fs as fsConstants,
   os as osConstants,
-} from "internal:deno_node/polyfills/internal_binding/constants.ts";
+} from "ext:deno_node/internal_binding/constants.ts";
 const {
   F_OK = 0,
   W_OK = 0,

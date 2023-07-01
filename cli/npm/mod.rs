@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 mod cache;
+mod installer;
 mod registry;
 mod resolution;
 mod resolvers;
@@ -8,14 +9,11 @@ mod tarball;
 
 pub use cache::should_sync_download;
 pub use cache::NpmCache;
-#[cfg(test)]
-pub use registry::NpmPackageVersionDistInfo;
-pub use registry::NpmRegistryApi;
-#[cfg(test)]
-pub use registry::TestNpmRegistryApiInner;
-pub use resolution::NpmPackageId;
+pub use cache::NpmCacheDir;
+pub use installer::PackageJsonDepsInstaller;
+pub use registry::CliNpmRegistryApi;
 pub use resolution::NpmResolution;
-pub use resolution::NpmResolutionPackage;
-pub use resolution::NpmResolutionSnapshot;
-pub use resolvers::NpmPackageResolver;
+pub use resolvers::create_npm_fs_resolver;
+pub use resolvers::CliNpmResolver;
+pub use resolvers::NpmPackageFsResolver;
 pub use resolvers::NpmProcessState;

@@ -2,8 +2,8 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { aggregateTwoErrors, ERR_MULTIPLE_CALLBACK } from "internal:deno_node/polyfills/internal/errors.ts";
-import * as process from "internal:deno_node/polyfills/_process/process.ts";
+import { aggregateTwoErrors, ERR_MULTIPLE_CALLBACK } from "ext:deno_node/internal/errors.ts";
+import * as process from "ext:deno_node/_process/process.ts";
 
 const kDestroy = Symbol("kDestroy");
 const kConstruct = Symbol("kConstruct");

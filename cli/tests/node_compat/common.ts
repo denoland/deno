@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { join } from "std/path/mod.ts";
-
+import { partition } from "../../../test_util/std/collections/partition.ts";
+import { join } from "../../../test_util/std/path/mod.ts";
+import * as JSONC from "../../../test_util/std/encoding/jsonc.ts";
 /**
  * The test suite matches the folders inside the `test` folder inside the
  * node repo
@@ -25,16 +26,16 @@ interface Config {
   darwinIgnore: TestSuites;
 }
 
-export const config: Config = JSON.parse(
-  await Deno.readTextFile(new URL("./config.json", import.meta.url)),
-);
+export const config: Config = JSONC.parse(
+  await Deno.readTextFile(new URL("./config.jsonc", import.meta.url)),
+) as unknown as Config;
 
 export const ignoreList = Object.entries(config.ignore).reduce(
   (total: RegExp[], [suite, paths]) => {
     paths.forEach((path) => total.push(new RegExp(join(suite, path))));
     return total;
   },
-  [],
+  [/package\.json/],
 );
 
 export function getPathsFromTestSuites(suites: TestSuites): string[] {
@@ -51,4 +52,13 @@ export function getPathsFromTestSuites(suites: TestSuites): string[] {
     }
   }
   return testPaths;
+}
+
+const PARALLEL_PATTERN = /^parallel[\/\\]/;
+
+export function partitionParallelTestPaths(
+  testPaths: string[],
+): { parallel: string[]; sequential: string[] } {
+  const partitions = partition(testPaths, (p) => !!p.match(PARALLEL_PATTERN));
+  return { parallel: partitions[0], sequential: partitions[1] };
 }

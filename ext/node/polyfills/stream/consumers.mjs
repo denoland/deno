@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
 
 /**
  * @typedef {import('../_global.d.ts').ReadableStream

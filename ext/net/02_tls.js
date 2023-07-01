@@ -2,7 +2,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { Conn, Listener } from "internal:deno_net/01_net.js";
+import { Conn, Listener } from "ext:deno_net/01_net.js";
 const primordials = globalThis.__bootstrap.primordials;
 const { TypeError } = primordials;
 

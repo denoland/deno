@@ -1,9 +1,0 @@
-Download http://localhost:4545/npm/registry/@denotest/esm-basic
-Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz
-Check file://[WILDCARD]/main.test.ts
-0
-running 1 test from [WILDCARD]main.test.ts
-should add ... ok ([WILDCARD])
-
-ok | 1 passed | 0 failed ([WILDCARD])
-

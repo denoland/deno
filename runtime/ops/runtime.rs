@@ -3,19 +3,17 @@
 use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
-pub fn init(main_module: ModuleSpecifier) -> Extension {
-  Extension::builder("deno_runtime")
-    .ops(vec![op_main_module::decl()])
-    .state(move |state| {
-      state.put::<ModuleSpecifier>(main_module.clone());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(
+  deno_runtime,
+  ops = [op_main_module, op_ppid],
+  options = { main_module: ModuleSpecifier },
+  state = |state, options| {
+    state.put::<ModuleSpecifier>(options.main_module);
+  },
+);
 
 #[op]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
@@ -30,7 +28,10 @@ fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
   Ok(main_path)
 }
 
-pub fn ppid() -> i64 {
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retrieve the ppid on Windows.
+#[op]
+pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:

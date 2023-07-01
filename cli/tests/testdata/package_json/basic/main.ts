@@ -1,11 +1,3 @@
-import * as test from "@denotest/esm-basic";
+import { getValue } from "./lib.ts";
 
-console.log(test.getValue());
-
-export function add(a: number, b: number) {
-  return a + b;
-}
-
-export function getValue() {
-  return test.getValue();
-}
+console.log(getValue());

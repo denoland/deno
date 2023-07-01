@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import type { BindingName } from "internal:deno_node/polyfills/internal_binding/mod.ts";
+import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
+import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
 
 export function internalBinding(name: BindingName) {
   return getBinding(name);

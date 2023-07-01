@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { strict } from "internal:deno_node/polyfills/assert.ts";
+import { strict } from "ext:deno_node/assert.ts";
 
 export {
   AssertionError,
@@ -20,7 +20,7 @@ export {
   rejects,
   strictEqual,
   throws,
-} from "internal:deno_node/polyfills/assert.ts";
+} from "ext:deno_node/assert.ts";
 
 export { strict };
 export default strict;

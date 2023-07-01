@@ -21,9 +21,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // These are simplified versions of the "real" errors in Node.
 
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 class NodeFalsyValueRejectionError extends Error {
   public reason: unknown;

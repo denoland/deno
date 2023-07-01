@@ -1,16 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  setUnrefTimeout,
-  Timeout,
-} from "internal:deno_node/polyfills/internal/timers.mjs";
-import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
-export { setUnrefTimeout } from "internal:deno_node/polyfills/internal/timers.mjs";
-import * as timers from "internal:deno_web/02_timers.js";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { setUnrefTimeout, Timeout } from "ext:deno_node/internal/timers.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { promisify } from "ext:deno_node/internal/util.mjs";
+export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
+import * as timers from "ext:deno_web/02_timers.js";
 
 const clearTimeout_ = timers.clearTimeout;
 const clearInterval_ = timers.clearInterval;
+const setTimeoutUnclamped = timers.setTimeoutUnclamped;
 
 export function setTimeout(
   callback: (...args: unknown[]) => void,
@@ -49,10 +50,12 @@ export function clearInterval(timeout?: Timeout | number | string) {
 }
 // TODO(bartlomieju): implement the 'NodeJS.Immediate' versions of the timers.
 // https://github.com/DefinitelyTyped/DefinitelyTyped/blob/1163ead296d84e7a3c80d71e7c81ecbd1a130e9a/types/node/v12/globals.d.ts#L1120-L1131
-export const setImmediate = (
+export function setImmediate(
   cb: (...args: unknown[]) => void,
   ...args: unknown[]
-): Timeout => setTimeout(cb, 0, ...args);
+): Timeout {
+  return setTimeoutUnclamped(cb, 0, ...args);
+}
 export const clearImmediate = clearTimeout;
 
 export default {

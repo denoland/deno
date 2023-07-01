@@ -24,17 +24,20 @@
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/cares_wrap.h
 
-import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { isIPv4 } from "internal:deno_node/polyfills/internal/net.ts";
-import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+import { isIPv4 } from "ext:deno_node/internal/net.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
 // deno-lint-ignore camelcase
-import { ares_strerror } from "internal:deno_node/polyfills/internal_binding/ares.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
+import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
 
 interface LookupAddress {
   address: string;

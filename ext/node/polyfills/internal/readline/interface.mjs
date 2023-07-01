@@ -20,32 +20,35 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
-import { ERR_INVALID_ARG_VALUE, ERR_USE_AFTER_CLOSE } from "internal:deno_node/polyfills/internal/errors.ts";
+import { ERR_INVALID_ARG_VALUE, ERR_USE_AFTER_CLOSE } from "ext:deno_node/internal/errors.ts";
 import {
   validateAbortSignal,
   validateArray,
   validateString,
   validateUint32,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
   //   inspect,
   getStringWidth,
   stripVTControlCharacters,
-} from "internal:deno_node/polyfills/internal/util/inspect.mjs";
-import EventEmitter from "internal:deno_node/polyfills/events.ts";
-import { emitKeypressEvents } from "internal:deno_node/polyfills/internal/readline/emitKeypressEvents.mjs";
+} from "ext:deno_node/internal/util/inspect.mjs";
+import EventEmitter from "ext:deno_node/events.ts";
+import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 import {
   charLengthAt,
   charLengthLeft,
   commonPrefix,
   kSubstringSearch,
-} from "internal:deno_node/polyfills/internal/readline/utils.mjs";
-import { clearScreenDown, cursorTo, moveCursor } from "internal:deno_node/polyfills/internal/readline/callbacks.mjs";
-import { Readable } from "internal:deno_node/polyfills/_stream.mjs";
+} from "ext:deno_node/internal/readline/utils.mjs";
+import { clearScreenDown, cursorTo, moveCursor } from "ext:deno_node/internal/readline/callbacks.mjs";
+import { Readable } from "ext:deno_node/_stream.mjs";
+import process from "ext:deno_node/process.ts";
 
-import { StringDecoder } from "internal:deno_node/polyfills/string_decoder.ts";
+import { StringDecoder } from "ext:deno_node/string_decoder.ts";
 import {
   kAddHistory,
   kDecoder,
@@ -78,7 +81,7 @@ import {
   kWordLeft,
   kWordRight,
   kWriteToOutput,
-} from "internal:deno_node/polyfills/internal/readline/symbols.mjs";
+} from "ext:deno_node/internal/readline/symbols.mjs";
 
 const kHistorySize = 30;
 const kMincrlfDelay = 100;

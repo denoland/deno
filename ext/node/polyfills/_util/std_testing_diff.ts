@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // This file was vendored from std/testing/_diff.ts
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   bgGreen,
   bgRed,
@@ -9,7 +12,7 @@ import {
   green,
   red,
   white,
-} from "internal:deno_node/polyfills/_util/std_fmt_colors.ts";
+} from "ext:deno_node/_util/std_fmt_colors.ts";
 
 interface FarthestPoint {
   y: number;

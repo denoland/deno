@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/d9df51e34526f48bef4e2546a006157b391ad96c/types/node/fs.d.ts
 
-import { ErrnoException } from "internal:deno_node/polyfills/_global.d.ts";
+import { ErrnoException } from "ext:deno_node/_global.d.ts";
 
 /**
  * Write an array of `ArrayBufferView`s to the file specified by `fd` using`writev()`.

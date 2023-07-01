@@ -333,6 +333,8 @@ declare namespace Deno {
    *
    * Requires `allow-sys` permission.
    *
+   * On Windows there is no API available to retrieve this information and this method returns `[ 0, 0, 0 ]`.
+   *
    * @tags allow-sys
    * @category Observability
    */
@@ -1486,6 +1488,12 @@ declare namespace Deno {
      * would resolve to `n` < `p.byteLength`. `write()` must not modify the
      * slice data, even temporarily.
      *
+     * This function is one of the lowest
+     * level APIs and most users should not work with this directly, but rather use
+     * [`writeAll()`](https://deno.land/std/streams/write_all.ts?s=writeAll) from
+     * [`std/streams/write_all.ts`](https://deno.land/std/streams/write_all.ts)
+     * instead.
+     *
      * Implementations should not retain a reference to `p`.
      */
     write(p: Uint8Array): Promise<number>;
@@ -1557,7 +1565,7 @@ declare namespace Deno {
      *
      * It returns the updated offset.
      */
-    seekSync(offset: number, whence: SeekMode): number;
+    seekSync(offset: number | bigint, whence: SeekMode): number;
   }
 
   /**
@@ -1830,7 +1838,7 @@ declare namespace Deno {
    * // Seek 2 more bytes from the current position
    * console.log(await Deno.seek(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
-   * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * console.log(await Deno.seek(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * file.close();
    * ```
    *
@@ -1877,7 +1885,7 @@ declare namespace Deno {
    * // Seek 2 more bytes from the current position
    * console.log(Deno.seekSync(file.rid, 2, Deno.SeekMode.Current)); // "8"
    * // Seek backwards 2 bytes from the end of the file
-   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+   * console.log(Deno.seekSync(file.rid, -2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
    * file.close();
    * ```
    *
@@ -1885,7 +1893,7 @@ declare namespace Deno {
    */
   export function seekSync(
     rid: number,
-    offset: number,
+    offset: number | bigint,
     whence: SeekMode,
   ): number;
 
@@ -2015,7 +2023,6 @@ declare namespace Deno {
      * for await (const chunk of file.readable) {
      *   console.log(decoder.decode(chunk));
      * }
-     * file.close();
      * ```
      */
     readonly readable: ReadableStream<Uint8Array>;
@@ -2199,7 +2206,7 @@ declare namespace Deno {
      * // Seek 2 more bytes from the current position
      * console.log(await file.seek(2, Deno.SeekMode.Current)); // "8"
      * // Seek backwards 2 bytes from the end of the file
-     * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+     * console.log(await file.seek(-2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
      * ```
      */
     seek(offset: number | bigint, whence: SeekMode): Promise<number>;
@@ -2237,7 +2244,7 @@ declare namespace Deno {
      * // Seek 2 more bytes from the current position
      * console.log(file.seekSync(2, Deno.SeekMode.Current)); // "8"
      * // Seek backwards 2 bytes from the end of the file
-     * console.log(file.seekSync(-2, Deno.SeekMode.End)); // "9" (e.g. 11-2)
+     * console.log(file.seekSync(-2, Deno.SeekMode.End)); // "9" (i.e. 11-2)
      * file.close();
      * ```
      */
@@ -2292,6 +2299,10 @@ declare namespace Deno {
    * ```ts
    * const { columns, rows } = Deno.consoleSize();
    * ```
+   *
+   * This returns the size of the console window as reported by the operating
+   * system. It's not a reflection of how many characters will fit within the
+   * console window, but can be used as part of that calculation.
    *
    * @category I/O
    */
@@ -3076,10 +3087,8 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** ID of the device containing the file.
-     *
-     * _Linux/Mac OS only._ */
-    dev: number | null;
+    /** ID of the device containing the file. */
+    dev: number;
     /** Inode number.
      *
      * _Linux/Mac OS only._ */
@@ -3113,6 +3122,22 @@ declare namespace Deno {
      *
      * _Linux/Mac OS only._ */
     blocks: number | null;
+    /**  True if this is info for a block device.
+     *
+     * _Linux/Mac OS only._ */
+    isBlockDevice: boolean | null;
+    /**  True if this is info for a char device.
+     *
+     * _Linux/Mac OS only._ */
+    isCharDevice: boolean | null;
+    /**  True if this is info for a fifo.
+     *
+     * _Linux/Mac OS only._ */
+    isFifo: boolean | null;
+    /**  True if this is info for a socket.
+     *
+     * _Linux/Mac OS only._ */
+    isSocket: boolean | null;
   }
 
   /** Resolves to the absolute normalized path, with symbolic links resolved.
@@ -3479,7 +3504,7 @@ declare namespace Deno {
    *
    * ### Truncate part of the file
    *
-   * ```
+   * ```ts
    * const file = await Deno.makeTempFile();
    * await Deno.writeFile(file, new TextEncoder().encode("Hello World"));
    * await Deno.truncate(file, 7);
@@ -3688,7 +3713,10 @@ declare namespace Deno {
     options?: { recursive: boolean },
   ): FsWatcher;
 
-  /** Options which can be used with {@linkcode Deno.run}.
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * Options which can be used with {@linkcode Deno.run}.
    *
    * @category Sub Process */
   export interface RunOptions {
@@ -3746,7 +3774,10 @@ declare namespace Deno {
     stdin?: "inherit" | "piped" | "null" | number;
   }
 
-  /** The status resolved from the `.status()` method of a
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * The status resolved from the `.status()` method of a
    * {@linkcode Deno.Process} instance.
    *
    * If `success` is `true`, then `code` will be `0`, but if `success` is
@@ -3766,6 +3797,8 @@ declare namespace Deno {
     };
 
   /**
+   * * @deprecated Use {@linkcode Deno.Command} instead.
+   *
    * Represents an instance of a sub process that is returned from
    * {@linkcode Deno.run} which can be used to manage the sub-process.
    *
@@ -3922,7 +3955,10 @@ declare namespace Deno {
     handler: () => void,
   ): void;
 
-  /** Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
+  /**
+   * @deprecated Use {@linkcode Deno.Command} instead.
+   *
+   * Spawns new subprocess. RunOptions must contain at a minimum the `opt.cmd`,
    * an array of program arguments, the first of which is the binary.
    *
    * ```ts
@@ -3989,11 +4025,14 @@ declare namespace Deno {
    *     "console.log('Hello World')",
    *   ],
    *   stdin: "piped",
+   *   stdout: "piped",
    * });
    * const child = command.spawn();
    *
    * // open a file and pipe the subprocess output to it.
-   * child.stdout.pipeTo(Deno.openSync("output").writable);
+   * child.stdout.pipeTo(
+   *   Deno.openSync("output", { write: true, create: true }).writable,
+   * );
    *
    * // manually close stdin
    * child.stdin.close();
@@ -4030,6 +4069,7 @@ declare namespace Deno {
    * console.assert("world\n" === new TextDecoder().decode(stderr));
    * ```
    *
+   * @tags allow-run
    * @category Sub Process
    */
   export class Command {
@@ -4093,7 +4133,7 @@ declare namespace Deno {
     unref(): void;
   }
 
-  /** 
+  /**
    * Options which can be set when calling {@linkcode Deno.Command}.
    *
    * @category Sub Process
@@ -4157,7 +4197,7 @@ declare namespace Deno {
     windowsRawArguments?: boolean;
   }
 
-  /** 
+  /**
    * @category Sub Process
    */
   export interface CommandStatus {
@@ -4170,9 +4210,9 @@ declare namespace Deno {
     signal: Signal | null;
   }
 
-  /** 
-   * The interface returned from calling {@linkcode Command.output} or
-   * {@linkcode Command.outputSync} which represents the result of spawning the
+  /**
+   * The interface returned from calling {@linkcode Deno.Command.output} or
+   * {@linkcode Deno.Command.outputSync} which represents the result of spawning the
    * child process.
    *
    * @category Sub Process
@@ -4200,6 +4240,14 @@ declare namespace Deno {
      *
      * @default {4} */
     depth?: number;
+    /** The maximum length for an inspection to take up a single line.
+     *
+     * @default {80} */
+    breakLength?: number;
+    /** Whether or not to escape sequences.
+     *
+     * @default {true} */
+    escapeSequences?: boolean;
     /** The maximum number of iterable entries to print.
      *
      * @default {100} */
@@ -4404,8 +4452,8 @@ declare namespace Deno {
 
   /** The permission descriptor for the `allow-hrtime` permission, which
    * controls if the runtime code has access to high resolution time. High
-   * resolution time is consider sensitive information, because it can be used
-   * by malicious code to gain information about the host that it might
+   * resolution time is considered sensitive information, because it can be used
+   * by malicious code to gain information about the host that it might not
    * otherwise have access to.
    *
    * @category Permissions */
@@ -4563,7 +4611,6 @@ declare namespace Deno {
      */
     request(desc: PermissionDescriptor): Promise<PermissionStatus>;
 
-
     /** Requests the permission, and returns the state of the permission.
      *
      * If the permission is already granted, the user will not be prompted to
@@ -4675,7 +4722,15 @@ declare namespace Deno {
     arch: "x86_64" | "aarch64";
     /** The operating system that the Deno CLI was built for. `"darwin"` is
      * also known as OSX or MacOS. */
-    os: "darwin" | "linux" | "windows" | "freebsd" | "netbsd" | "aix" | "solaris" | "illumos";
+    os:
+      | "darwin"
+      | "linux"
+      | "windows"
+      | "freebsd"
+      | "netbsd"
+      | "aix"
+      | "solaris"
+      | "illumos";
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
@@ -4718,7 +4773,7 @@ declare namespace Deno {
    *
    * Then `Deno.args` will contain:
    *
-   * ```
+   * ```ts
    * [ "/etc/passwd" ]
    * ```
    *

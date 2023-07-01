@@ -200,7 +200,7 @@ fn path_with_extension(path: &Path, new_ext: &str) -> PathBuf {
         // maintain casing
         return path.to_path_buf();
       }
-      let media_type: MediaType = path.into();
+      let media_type = MediaType::from_path(path);
       if media_type == MediaType::Unknown {
         return path.with_file_name(format!(
           "{}.{}",

@@ -1,50 +1,30 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use clap::value_parser;
 use clap::Arg;
+use clap::ArgAction;
 use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
-use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
 use log::debug;
 use log::Level;
-use once_cell::sync::Lazy;
 use std::env;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::num::NonZeroU8;
 use std::num::NonZeroUsize;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use crate::util::fs::canonicalize_path;
 
 use super::flags_allow_net;
-
-static LONG_VERSION: Lazy<String> = Lazy::new(|| {
-  format!(
-    "{} ({}, {})\nv8 {}\ntypescript {}",
-    crate::version::deno(),
-    if crate::version::is_canary() {
-      "canary"
-    } else {
-      env!("PROFILE")
-    },
-    env!("TARGET"),
-    deno_core::v8_version(),
-    crate::version::TYPESCRIPT
-  )
-});
-
-static SHORT_VERSION: Lazy<String> = Lazy::new(|| {
-  crate::version::deno()
-    .split('+')
-    .next()
-    .unwrap()
-    .to_string()
-});
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct FileFlags {
@@ -57,12 +37,15 @@ pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
   pub json: bool,
+  pub no_run: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BundleFlags {
   pub source_file: String,
   pub out_file: Option<PathBuf>,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -81,6 +64,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub include: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -121,13 +105,11 @@ pub struct DocFlags {
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
-  pub ext: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FmtFlags {
   pub check: bool,
-  pub ext: String,
   pub files: FileFlags,
   pub use_tabs: Option<bool>,
   pub line_width: Option<NonZeroU32>,
@@ -135,6 +117,14 @@ pub struct FmtFlags {
   pub single_quote: Option<bool>,
   pub prose_wrap: Option<String>,
   pub no_semicolons: Option<bool>,
+  pub watch: Option<WatchFlags>,
+}
+
+impl FmtFlags {
+  pub fn is_stdin(&self) -> bool {
+    let args = &self.files.include;
+    args.len() == 1 && args[0].to_string_lossy() == "-"
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -172,6 +162,14 @@ pub struct LintFlags {
   pub maybe_rules_exclude: Option<Vec<String>>,
   pub json: bool,
   pub compact: bool,
+  pub watch: Option<WatchFlags>,
+}
+
+impl LintFlags {
+  pub fn is_stdin(&self) -> bool {
+    let args = &self.files.include;
+    args.len() == 1 && args[0].to_string_lossy() == "-"
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -184,12 +182,24 @@ pub struct ReplFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RunFlags {
   pub script: String,
+  pub watch: Option<WatchFlagsWithPaths>,
 }
 
 impl RunFlags {
   pub fn is_stdin(&self) -> bool {
     self.script == "-"
   }
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct WatchFlags {
+  pub no_clear_screen: bool,
+}
+
+#[derive(Clone, Default, Debug, Eq, PartialEq)]
+pub struct WatchFlagsWithPaths {
+  pub paths: Vec<PathBuf>,
+  pub no_clear_screen: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -202,6 +212,7 @@ pub struct TaskFlags {
 pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
+  pub coverage_dir: Option<String>,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
   pub allow_none: bool,
@@ -209,6 +220,7 @@ pub struct TestFlags {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_ops: bool,
+  pub watch: Option<WatchFlags>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -276,6 +288,25 @@ pub enum TypeCheckMode {
   Local,
 }
 
+impl TypeCheckMode {
+  /// Gets if type checking will occur under this mode.
+  pub fn is_true(&self) -> bool {
+    match self {
+      Self::None => false,
+      Self::Local | Self::All => true,
+    }
+  }
+
+  /// Gets the corresponding module `GraphKind` that should be created
+  /// for the current `TypeCheckMode`.
+  pub fn as_graph_kind(&self) -> GraphKind {
+    match self.is_true() {
+      true => GraphKind::All,
+      false => GraphKind::CodeOnly,
+    }
+  }
+}
+
 impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
@@ -330,8 +361,8 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
-  pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
+  pub ext: Option<String>,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
@@ -350,9 +381,6 @@ pub struct Flags {
   pub unstable: bool,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub v8_flags: Vec<String>,
-  pub version: bool,
-  pub watch: Option<Vec<PathBuf>>,
-  pub no_clear_screen: bool,
 }
 
 fn join_paths(allowlist: &[PathBuf], d: &str) -> String {
@@ -474,16 +502,17 @@ impl Flags {
 
   /// Extract path arguments for config search paths.
   /// If it returns Some(vec), the config should be discovered
-  /// from the current dir after trying to discover from each entry in vec.
+  /// from the passed `current_dir` after trying to discover from each entry in
+  /// the returned vector.
   /// If it returns None, the config file shouldn't be discovered at all.
-  pub fn config_path_args(&self) -> Option<Vec<PathBuf>> {
+  pub fn config_path_args(&self, current_dir: &Path) -> Option<Vec<PathBuf>> {
     use DenoSubcommand::*;
 
     match &self.subcommand {
       Fmt(FmtFlags { files, .. }) => Some(files.include.clone()),
       Lint(LintFlags { files, .. }) => Some(files.include.clone()),
-      Run(RunFlags { script }) => {
-        if let Ok(module_specifier) = deno_core::resolve_url_or_path(script) {
+      Run(RunFlags { script, .. }) => {
+        if let Ok(module_specifier) = resolve_url_or_path(script, current_dir) {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
@@ -520,12 +549,12 @@ impl Flags {
   /// from the `path` dir.
   /// If it returns None, the `package.json` file shouldn't be discovered at
   /// all.
-  pub fn package_json_search_dir(&self) -> Option<PathBuf> {
+  pub fn package_json_search_dir(&self, current_dir: &Path) -> Option<PathBuf> {
     use DenoSubcommand::*;
 
     match &self.subcommand {
-      Run(RunFlags { script }) => {
-        let module_specifier = deno_core::resolve_url_or_path(script).ok()?;
+      Run(RunFlags { script, .. }) => {
+        let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
         if module_specifier.scheme() == "file" {
           let p = module_specifier
             .to_file_path()
@@ -540,14 +569,17 @@ impl Flags {
         }
       }
       Task(TaskFlags { cwd: Some(cwd), .. }) => {
-        deno_core::resolve_url_or_path(cwd)
+        resolve_url_or_path(cwd, current_dir)
           .ok()?
           .to_file_path()
           .ok()
       }
       Task(_) | Check(_) | Coverage(_) | Cache(_) | Info(_) | Eval(_)
-      | Test(_) | Bench(_) => std::env::current_dir().ok(),
-      _ => None,
+      | Test(_) | Bench(_) | Repl(_) | Compile(_) => {
+        std::env::current_dir().ok()
+      }
+      Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
+      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
     }
   }
 
@@ -590,12 +622,15 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     DENO_DIR             Set the cache directory
     DENO_INSTALL_ROOT    Set deno install's output directory
                          (defaults to $HOME/.deno/bin)
+    DENO_REPL_HISTORY    Set REPL history file path
+                         History file is disabled when the value is empty
+                         (defaults to $DENO_DIR/deno_history.txt)
+    DENO_NO_PACKAGE_JSON Disables auto-resolution of package.json
     DENO_NO_PROMPT       Set to disable permission prompts on access
                          (alternative to passing --no-prompt on invocation)
     DENO_NO_UPDATE_CHECK Set to disable checking if a newer Deno version is
                          available
     DENO_V8_FLAGS        Set V8 command line options
-    DENO_WEBGPU_TRACE    Directory to use for wgpu traces
     DENO_JOBS            Number of parallel workers used for the --parallel
                          flag with the test subcommand. Defaults to number
                          of available CPUs.
@@ -608,11 +643,12 @@ static ENV_VARIABLES_HELP: &str = r#"ENVIRONMENT VARIABLES:
     NO_PROXY             Comma-separated list of hosts which do not use a proxy
                          (module downloads, fetch)"#;
 
-static DENO_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "A modern JavaScript and TypeScript runtime
+static DENO_HELP: &str = concat!(
+  "A modern JavaScript and TypeScript runtime
 
-Docs: https://deno.land/manual@v{}
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "
 Modules: https://deno.land/std/ https://deno.land/x/
 Bugs: https://github.com/denoland/deno/issues
 
@@ -627,65 +663,66 @@ To execute a script:
 To evaluate code in the shell:
 
   deno eval \"console.log(30933 + 404)\"
-",
-    SHORT_VERSION.as_str()
-  )
-});
+"
+);
 
 /// Main entry point for parsing deno's command line flags.
-pub fn flags_from_vec(args: Vec<String>) -> clap::Result<Flags> {
-  let version = crate::version::deno();
-  let mut app = clap_root(&version);
-  let matches = app.try_get_matches_from_mut(&args)?;
+pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
+  let mut app = clap_root();
+  let mut matches = app.try_get_matches_from_mut(&args)?;
 
   let mut flags = Flags::default();
 
-  if matches.is_present("unstable") {
+  if matches.get_flag("unstable") {
     flags.unstable = true;
   }
 
-  if matches.is_present("quiet") {
+  if matches.get_flag("quiet") {
     flags.log_level = Some(Level::Error);
-  } else {
-    match matches.value_of("log-level") {
-      Some("debug") => flags.log_level = Some(Level::Debug),
-      Some("info") => flags.log_level = Some(Level::Info),
-      _ => {}
-    }
+  } else if let Some(log_level) = matches.get_one::<String>("log-level") {
+    flags.log_level = match log_level.as_str() {
+      "debug" => Some(Level::Debug),
+      "info" => Some(Level::Info),
+      _ => unreachable!(),
+    };
   }
 
-  match matches.subcommand() {
-    Some(("bench", m)) => bench_parse(&mut flags, m),
-    Some(("bundle", m)) => bundle_parse(&mut flags, m),
-    Some(("cache", m)) => cache_parse(&mut flags, m),
-    Some(("check", m)) => check_parse(&mut flags, m),
-    Some(("compile", m)) => compile_parse(&mut flags, m),
-    Some(("completions", m)) => completions_parse(&mut flags, m, app),
-    Some(("coverage", m)) => coverage_parse(&mut flags, m),
-    Some(("doc", m)) => doc_parse(&mut flags, m),
-    Some(("eval", m)) => eval_parse(&mut flags, m),
-    Some(("fmt", m)) => fmt_parse(&mut flags, m),
-    Some(("init", m)) => init_parse(&mut flags, m),
-    Some(("info", m)) => info_parse(&mut flags, m),
-    Some(("install", m)) => install_parse(&mut flags, m),
-    Some(("lint", m)) => lint_parse(&mut flags, m),
-    Some(("lsp", m)) => lsp_parse(&mut flags, m),
-    Some(("repl", m)) => repl_parse(&mut flags, m),
-    Some(("run", m)) => run_parse(&mut flags, m),
-    Some(("task", m)) => task_parse(&mut flags, m, &args),
-    Some(("test", m)) => test_parse(&mut flags, m),
-    Some(("types", m)) => types_parse(&mut flags, m),
-    Some(("uninstall", m)) => uninstall_parse(&mut flags, m),
-    Some(("upgrade", m)) => upgrade_parse(&mut flags, m),
-    Some(("vendor", m)) => vendor_parse(&mut flags, m),
-    _ => handle_repl_flags(
+  if let Some((subcommand, mut m)) = matches.remove_subcommand() {
+    match subcommand.as_str() {
+      "bench" => bench_parse(&mut flags, &mut m),
+      "bundle" => bundle_parse(&mut flags, &mut m),
+      "cache" => cache_parse(&mut flags, &mut m),
+      "check" => check_parse(&mut flags, &mut m),
+      "compile" => compile_parse(&mut flags, &mut m),
+      "completions" => completions_parse(&mut flags, &mut m, app),
+      "coverage" => coverage_parse(&mut flags, &mut m),
+      "doc" => doc_parse(&mut flags, &mut m),
+      "eval" => eval_parse(&mut flags, &mut m),
+      "fmt" => fmt_parse(&mut flags, &mut m),
+      "init" => init_parse(&mut flags, &mut m),
+      "info" => info_parse(&mut flags, &mut m),
+      "install" => install_parse(&mut flags, &mut m),
+      "lint" => lint_parse(&mut flags, &mut m),
+      "lsp" => lsp_parse(&mut flags, &mut m),
+      "repl" => repl_parse(&mut flags, &mut m),
+      "run" => run_parse(&mut flags, &mut m),
+      "task" => task_parse(&mut flags, &mut m),
+      "test" => test_parse(&mut flags, &mut m),
+      "types" => types_parse(&mut flags, &mut m),
+      "uninstall" => uninstall_parse(&mut flags, &mut m),
+      "upgrade" => upgrade_parse(&mut flags, &mut m),
+      "vendor" => vendor_parse(&mut flags, &mut m),
+      _ => unreachable!(),
+    }
+  } else {
+    handle_repl_flags(
       &mut flags,
       ReplFlags {
         eval_files: None,
         eval: None,
         is_default_command: true,
       },
-    ),
+    )
   }
 
   Ok(flags)
@@ -706,17 +743,31 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
   flags.subcommand = DenoSubcommand::Repl(repl_flags);
 }
 
-fn clap_root(version: &str) -> Command {
-  clap::Command::new("deno")
+fn clap_root() -> Command {
+  let long_version = format!(
+    "{} ({}, {})\nv8 {}\ntypescript {}",
+    crate::version::deno(),
+    if crate::version::is_canary() {
+      "canary"
+    } else {
+      env!("PROFILE")
+    },
+    env!("TARGET"),
+    deno_core::v8_version(),
+    crate::version::TYPESCRIPT
+  );
+
+  Command::new("deno")
     .bin_name("deno")
     .color(ColorChoice::Never)
     .max_term_width(80)
-    .version(version)
-    .long_version(LONG_VERSION.as_str())
+    .version(crate::version::deno())
+    .long_version(long_version)
     .arg(
       Arg::new("unstable")
         .long("unstable")
         .help("Enable unstable features and APIs")
+        .action(ArgAction::SetTrue)
         .global(true),
     )
     .arg(
@@ -725,8 +776,7 @@ fn clap_root(version: &str) -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .takes_value(true)
-        .possible_values(["debug", "info"])
+        .value_parser(["debug", "info"])
         .global(true),
     )
     .arg(
@@ -734,102 +784,102 @@ fn clap_root(version: &str) -> Command {
         .short('q')
         .long("quiet")
         .help("Suppress diagnostic output")
+        .action(ArgAction::SetTrue)
         .global(true),
     )
-    .subcommand(bench_subcommand())
-    .subcommand(bundle_subcommand())
-    .subcommand(cache_subcommand())
-    .subcommand(check_subcommand())
-    .subcommand(compile_subcommand())
-    .subcommand(completions_subcommand())
-    .subcommand(coverage_subcommand())
-    .subcommand(doc_subcommand())
-    .subcommand(eval_subcommand())
-    .subcommand(fmt_subcommand())
-    .subcommand(init_subcommand())
-    .subcommand(info_subcommand())
-    .subcommand(install_subcommand())
-    .subcommand(uninstall_subcommand())
-    .subcommand(lsp_subcommand())
-    .subcommand(lint_subcommand())
-    .subcommand(repl_subcommand())
     .subcommand(run_subcommand())
-    .subcommand(task_subcommand())
-    .subcommand(test_subcommand())
-    .subcommand(types_subcommand())
-    .subcommand(upgrade_subcommand())
-    .subcommand(vendor_subcommand())
-    .long_about(DENO_HELP.as_str())
+    .defer(|cmd| {
+      cmd
+        .subcommand(bench_subcommand())
+        .subcommand(bundle_subcommand())
+        .subcommand(cache_subcommand())
+        .subcommand(check_subcommand())
+        .subcommand(compile_subcommand())
+        .subcommand(completions_subcommand())
+        .subcommand(coverage_subcommand())
+        .subcommand(doc_subcommand())
+        .subcommand(eval_subcommand())
+        .subcommand(fmt_subcommand())
+        .subcommand(init_subcommand())
+        .subcommand(info_subcommand())
+        .subcommand(install_subcommand())
+        .subcommand(uninstall_subcommand())
+        .subcommand(lsp_subcommand())
+        .subcommand(lint_subcommand())
+        .subcommand(repl_subcommand())
+        .subcommand(task_subcommand())
+        .subcommand(test_subcommand())
+        .subcommand(types_subcommand())
+        .subcommand(upgrade_subcommand())
+        .subcommand(vendor_subcommand())
+    })
+    .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
 }
 
-fn bench_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("bench"), true, false)
-    .trailing_var_arg(true)
-    .arg(
-      Arg::new("json")
-        .long("json")
-        .help("UNSTABLE: Output benchmark result in JSON format")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore files"),
-    )
-    .arg(
-      Arg::new("filter")
-        .allow_hyphen_values(true)
-        .long("filter")
-        .takes_value(true)
-        .help("Run benchmarks with this string or pattern in the bench name"),
-    )
-    .arg(
-      Arg::new("files")
-        .help("List of file names to run")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true),
-    )
-    .arg(watch_arg(false))
-    .arg(no_clear_screen_arg())
-    .arg(script_arg().last(true))
+fn bench_subcommand() -> Command {
+  Command::new("bench")
     .about("Run benchmarks")
     .long_about(
       "Run benchmarks using Deno's built-in bench tool.
 
-Evaluate the given modules, run all benches declared with 'Deno.bench()' \
+Evaluate the given modules, run all benches declared with 'Deno.bench()'
 and report results to standard output:
 
   deno bench src/fetch_bench.ts src/signal_bench.ts
 
-Directory arguments are expanded to all contained files matching the \
+Directory arguments are expanded to all contained files matching the
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
     )
+    .defer(|cmd| {
+      runtime_args(cmd, true, false)
+        .arg(check_arg(true))
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .action(ArgAction::SetTrue)
+            .help("UNSTABLE: Output benchmark result in JSON format"),
+        )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore files")
+            .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(
+          Arg::new("filter")
+            .long("filter")
+            .allow_hyphen_values(true)
+            .help(
+              "Run benchmarks with this string or pattern in the bench name",
+            ),
+        )
+        .arg(
+          Arg::new("files")
+            .help("List of file names to run")
+            .num_args(..)
+            .value_parser(value_parser!(PathBuf))
+            .action(ArgAction::Append),
+        )
+        .arg(
+          Arg::new("no-run")
+            .long("no-run")
+            .help("Cache bench modules, but don't run benchmarks")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(script_arg().last(true))
+    })
 }
 
-fn bundle_subcommand<'a>() -> Command<'a> {
-  compile_args(Command::new("bundle"))
-    .hide(true)
-    .arg(
-      Arg::new("source_file")
-        .takes_value(true)
-        .required(true)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(
-      Arg::new("out_file")
-        .takes_value(true)
-        .required(false)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(watch_arg(false))
-    .arg(no_clear_screen_arg())
+fn bundle_subcommand() -> Command {
+  Command::new("bundle")
     .about("Bundle module and dependencies into single file")
     .long_about(
       "Output a single JavaScript file with all dependencies.
@@ -840,88 +890,87 @@ If no output file is given, the output is written to standard output:
 
   deno bundle https://deno.land/std/examples/colors.ts",
     )
+    .defer(|cmd| {
+      compile_args(cmd)
+        .hide(true)
+        .arg(check_arg(true))
+        .arg(
+          Arg::new("source_file")
+            .required(true)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("out_file")
+            .value_parser(value_parser!(PathBuf))
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(executable_ext_arg())
+    })
 }
 
-fn cache_subcommand<'a>() -> Command<'a> {
-  compile_args(Command::new("cache"))
-    .arg(
-      Arg::new("file")
-        .takes_value(true)
-        .required(true)
-        .min_values(1)
-        .value_hint(ValueHint::FilePath),
-    )
+fn cache_subcommand() -> Command {
+  Command::new("cache")
     .about("Cache the dependencies")
     .long_about(
       "Cache and compile remote dependencies recursively.
 
-Download and compile a module with all of its static dependencies and save \
+Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
 
   deno cache https://deno.land/std/http/file_server.ts
 
-Future runs of this module will trigger no downloads or compilation unless \
+Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
     )
+    .defer(|cmd| {
+      compile_args(cmd).arg(check_arg(false)).arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required(true)
+          .value_hint(ValueHint::FilePath),
+      )
+    })
 }
 
-fn check_subcommand<'a>() -> Command<'a> {
-  compile_args_without_check_args(Command::new("check"))
-    .arg(
-      Arg::new("all")
-        .long("all")
-        .help("Type-check all code, including remote modules and npm packages")
-        .conflicts_with("no-remote")
-    )
-    .arg(
-      // past alias for --all
-      Arg::new("remote")
-        .long("remote")
-        .help("Type-check all modules, including remote")
-        .conflicts_with("no-remote")
-        .hide(true)
-      )
-    .arg(
-      Arg::new("file")
-        .takes_value(true)
-        .required(true)
-        .min_values(1)
-        .value_hint(ValueHint::FilePath),
-    )
-    .about("Type-check the dependencies")
-    .long_about(
-      "Download and type-check without execution.
+fn check_subcommand() -> Command {
+  Command::new("check")
+      .about("Type-check the dependencies")
+      .long_about(
+        "Download and type-check without execution.
 
   deno check https://deno.land/std/http/file_server.ts
 
 Unless --reload is specified, this command will not re-download already cached dependencies.",
+      )
+    .defer(|cmd| compile_args_without_check_args(cmd).arg(
+      Arg::new("all")
+        .long("all")
+        .help("Type-check all code, including remote modules and npm packages")
+        .action(ArgAction::SetTrue)
+        .conflicts_with("no-remote")
+    )
+      .arg(
+        // past alias for --all
+        Arg::new("remote")
+          .long("remote")
+          .help("Type-check all modules, including remote")
+          .action(ArgAction::SetTrue)
+          .conflicts_with("no-remote")
+          .hide(true)
+      )
+      .arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required(true)
+          .value_hint(ValueHint::FilePath),
+      )
     )
 }
 
-fn compile_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("compile"), true, false)
-    .trailing_var_arg(true)
-    .arg(script_arg().required(true))
-    .arg(
-      Arg::new("output")
-        .long("output")
-        .short('o')
-        .help("Output file (defaults to $PWD/<inferred-name>)")
-        .takes_value(true)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(
-      Arg::new("target")
-        .long("target")
-        .help("Target OS architecture")
-        .takes_value(true)
-        .possible_values([
-          "x86_64-unknown-linux-gnu",
-          "x86_64-pc-windows-msvc",
-          "x86_64-apple-darwin",
-          "aarch64-apple-darwin",
-        ]),
-    )
+fn compile_subcommand() -> Command {
+  Command::new("compile")
     .about("UNSTABLE: Compile the script into a self contained executable")
     .long_about(
       "UNSTABLE: Compiles the given script into a self contained executable.
@@ -929,32 +978,64 @@ fn compile_subcommand<'a>() -> Command<'a> {
   deno compile -A https://deno.land/std/http/file_server.ts
   deno compile --output color_util https://deno.land/std/examples/colors.ts
 
-Any flags passed which affect runtime behavior, such as '--unstable', \
-'--allow-*', '--v8-flags', etc. are encoded into the output executable and \
+Any flags passed which affect runtime behavior, such as '--unstable',
+'--allow-*', '--v8-flags', etc. are encoded into the output executable and
 used at runtime as if they were passed to a similar 'deno run' command.
 
-The executable name is inferred by default: Attempt to take the file stem of \
-the URL path. The above example would become 'file_server'. If the file stem \
-is something generic like 'main', 'mod', 'index' or 'cli', and the path has no \
-parent, take the file name of the parent path. Otherwise settle with the \
+The executable name is inferred by default: Attempt to take the file stem of
+the URL path. The above example would become 'file_server'. If the file stem
+is something generic like 'main', 'mod', 'index' or 'cli', and the path has no
+parent, take the file name of the parent path. Otherwise settle with the
 generic name. If the resulting name has an '@...' suffix, strip it.
 
-Cross-compiling to different target architectures is supported using the \
-`--target` flag. On the first invocation with deno will download proper \
-binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not \
+Cross-compiling to different target architectures is supported using the
+`--target` flag. On the first invocation with deno will download proper
+binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not
 supported in canary.
 ",
     )
+    .defer(|cmd| {
+      runtime_args(cmd, true, false)
+      .arg(script_arg().required(true))
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("include")
+          .long("include")
+          .help("UNSTABLE: Additional module to include in the module graph")
+          .long_help(
+            "Includes an additional module in the compiled executable's module
+    graph. Use this flag if a dynamically imported module or a web worker main
+    module fails to load in the executable. This flag can be passed multiple
+    times, to include multiple additional modules.",
+          )
+          .action(ArgAction::Append)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .short('o')
+          .value_parser(value_parser!(PathBuf))
+          .help("Output file (defaults to $PWD/<inferred-name>)")
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("target")
+          .long("target")
+          .help("Target OS architecture")
+          .value_parser([
+            "x86_64-unknown-linux-gnu",
+            "x86_64-pc-windows-msvc",
+            "x86_64-apple-darwin",
+            "aarch64-apple-darwin",
+          ]),
+      )
+      .arg(executable_ext_arg())
+    })
 }
 
-fn completions_subcommand<'a>() -> Command<'a> {
+fn completions_subcommand() -> Command {
   Command::new("completions")
-    .disable_help_subcommand(true)
-    .arg(
-      Arg::new("shell")
-        .possible_values(["bash", "fish", "powershell", "zsh", "fig"])
-        .required(true),
-    )
     .about("Generate shell completions")
     .long_about(
       "Output shell completion script to standard output.
@@ -962,9 +1043,16 @@ fn completions_subcommand<'a>() -> Command<'a> {
   deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
   source /usr/local/etc/bash_completion.d/deno.bash",
     )
+    .defer(|cmd| {
+      cmd.disable_help_subcommand(true).arg(
+        Arg::new("shell")
+          .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
+          .required(true),
+      )
+    })
 }
 
-fn coverage_subcommand<'a>() -> Command<'a> {
+fn coverage_subcommand() -> Command {
   Command::new("coverage")
     .about("Print coverage reports")
     .long_about(
@@ -986,8 +1074,8 @@ Exclude urls ending with test.ts and test.js:
 
   deno coverage --exclude=\"test\\.(ts|js)\" cov_profile
 
-Include urls that start with the file schema and exclude files ending with \
-test.ts and test.js, for an url to match it must match the include pattern and \
+Include urls that start with the file schema and exclude files ending with
+test.ts and test.js, for an url to match it must match the include pattern and
 not match the exclude pattern:
 
   deno coverage --include=\"^file:\" --exclude=\"test\\.(ts|js)\" cov_profile
@@ -1001,68 +1089,69 @@ Generate html reports from lcov:
   genhtml -o html_cov cov.lcov
 ",
     )
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore coverage files")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("include")
-        .long("include")
-        .takes_value(true)
-        .value_name("regex")
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .require_equals(true)
-        .default_value(r"^file:")
-        .help("Include source files in the report"),
-    )
-    .arg(
-      Arg::new("exclude")
-        .long("exclude")
-        .takes_value(true)
-        .value_name("regex")
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .require_equals(true)
-        .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
-        .help("Exclude source files from the report"),
-    )
-    .arg(
-      Arg::new("lcov")
-        .long("lcov")
-        .help("Output coverage report in lcov format")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("output")
-        .requires("lcov")
-        .long("output")
-        .help("Output file (defaults to stdout) for lcov")
-        .long_help(
-          "Exports the coverage report in lcov format to the given file. \
-    Filename should be passed along with '=' For example '--output=foo.lcov' \
-    If no --output arg is specified then the report is written to stdout.",
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore coverage files")
+            .value_hint(ValueHint::AnyPath),
         )
-        .takes_value(true)
-        .require_equals(true)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(
-      Arg::new("files")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .required(true)
-        .value_hint(ValueHint::AnyPath),
-    )
+        .arg(
+          Arg::new("include")
+            .long("include")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_name("regex")
+            .require_equals(true)
+            .default_value(r"^file:")
+            .help("Include source files in the report"),
+        )
+        .arg(
+          Arg::new("exclude")
+            .long("exclude")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_name("regex")
+            .require_equals(true)
+            .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
+            .help("Exclude source files from the report"),
+        )
+        .arg(
+          Arg::new("lcov")
+            .long("lcov")
+            .help("Output coverage report in lcov format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("output")
+            .requires("lcov")
+            .long("output")
+            .value_parser(value_parser!(PathBuf))
+            .help("Output file (defaults to stdout) for lcov")
+            .long_help(
+              "Exports the coverage report in lcov format to the given file.
+    Filename should be passed along with '=' For example '--output=foo.lcov'
+    If no --output arg is specified then the report is written to stdout.",
+            )
+            .require_equals(true)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("files")
+            .num_args(1..)
+            .value_parser(value_parser!(PathBuf))
+            .action(ArgAction::Append)
+            .required(true)
+            .value_hint(ValueHint::AnyPath),
+        )
+    })
 }
 
-fn doc_subcommand<'a>() -> Command<'a> {
+fn doc_subcommand() -> Command {
   Command::new("doc")
     .about("Show documentation for a module")
     .long_about(
@@ -1089,41 +1178,43 @@ Show documentation for runtime built-ins:
     deno doc
     deno doc --builtin Deno.Listener",
     )
-    .arg(import_map_arg())
-    .arg(reload_arg())
-    .arg(
-      Arg::new("json")
-        .long("json")
-        .help("Output documentation in JSON format")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("private")
-        .long("private")
-        .help("Output private documentation")
-        .takes_value(false),
-    )
-    // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
-    // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
-    // just a possible value of `source_file` so leading hyphens must be
-    // enabled.
-    .allow_hyphen_values(true)
-    .arg(
-      Arg::new("source_file")
-        .takes_value(true)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(
-      Arg::new("filter")
-        .help("Dot separated path to symbol")
-        .takes_value(true)
-        .required(false)
-        .conflicts_with("json"),
-    )
+    .defer(|cmd| {
+      cmd
+        .arg(import_map_arg())
+        .arg(reload_arg())
+        .arg(lock_arg())
+        .arg(no_lock_arg())
+        .arg(no_npm_arg())
+        .arg(no_remote_arg())
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .help("Output documentation in JSON format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("private")
+            .long("private")
+            .help("Output private documentation")
+            .action(ArgAction::SetTrue),
+        )
+        // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
+        // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
+        // just a possible value of `source_file` so leading hyphens must be
+        // enabled.
+        .allow_hyphen_values(true)
+        .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
+        .arg(
+          Arg::new("filter")
+            .help("Dot separated path to symbol")
+            .required(false)
+            .conflicts_with("json"),
+        )
+    })
 }
 
-fn eval_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("eval"), false, true)
+fn eval_subcommand() -> Command {
+  Command::new("eval")
     .about("Eval script")
     .long_about(
       "Evaluate JavaScript from the command line.
@@ -1136,45 +1227,39 @@ To evaluate as TypeScript:
 
 This command has implicit access to all permissions (--allow-all).",
     )
-    .arg(
-      // TODO(@satyarohith): remove this argument in 2.0.
-      Arg::new("ts")
-        .long("ts")
-        .short('T')
-        .help("Treat eval input as TypeScript")
-        .takes_value(false)
-        .multiple_occurrences(false)
-        .multiple_values(false)
-        .hide(true),
-    )
-    .arg(
-      Arg::new("ext")
-        .long("ext")
-        .help("Set standard input (stdin) content type")
-        .takes_value(true)
-        .default_value("js")
-        .possible_values(["ts", "tsx", "js", "jsx"]),
-    )
-    .arg(
-      Arg::new("print")
-        .long("print")
-        .short('p')
-        .help("print result to stdout")
-        .takes_value(false)
-        .multiple_occurrences(false)
-        .multiple_values(false),
-    )
-    .arg(
-      Arg::new("code_arg")
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .help("Code arg")
-        .value_name("CODE_ARG")
-        .required(true),
-    )
+    .defer(|cmd| {
+      runtime_args(cmd, false, true)
+        .arg(check_arg(false))
+        .arg(
+          // TODO(@satyarohith): remove this argument in 2.0.
+          Arg::new("ts")
+            .conflicts_with("ext")
+            .long("ts")
+            .short('T')
+            .help("deprecated: Treat eval input as TypeScript")
+            .action(ArgAction::SetTrue)
+            .hide(true),
+        )
+        .arg(executable_ext_arg())
+        .arg(
+          Arg::new("print")
+            .long("print")
+            .short('p')
+            .help("print result to stdout")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("code_arg")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .help("Code arg")
+            .value_name("CODE_ARG")
+            .required(true),
+        )
+    })
 }
 
-fn fmt_subcommand<'a>() -> Command<'a> {
+fn fmt_subcommand() -> Command {
   Command::new("fmt")
     .about("Format source files")
     .long_about(
@@ -1196,122 +1281,117 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
     )
-    .arg(config_arg())
-    .arg(no_config_arg())
-    .arg(
-      Arg::new("check")
-        .long("check")
-        .help("Check if the source files are formatted")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("ext")
-        .long("ext")
-        .help("Set standard input (stdin) content type")
-        .takes_value(true)
-        .default_value("ts")
-        .possible_values(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
-    )
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore formatting particular source files")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("files")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .required(false)
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(watch_arg(false))
-    .arg(no_clear_screen_arg())
-    .arg(
-      Arg::new("use-tabs")
-        .long("use-tabs")
-        .alias("options-use-tabs")
-        .takes_value(true)
-        .min_values(0)
-        .max_values(1)
-        .require_equals(true)
-        .possible_values(["true", "false"])
-        .help("Use tabs instead of spaces for indentation. Defaults to false."),
-    )
-    .arg(
-      Arg::new("line-width")
-        .long("line-width")
-        .alias("options-line-width")
-        .help("Define maximum line width. Defaults to 80.")
-        .takes_value(true)
-        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
-          Ok(_) => Ok(()),
-          Err(_) => Err("line-width should be a non zero integer".to_string()),
-        }),
-    )
-    .arg(
-      Arg::new("indent-width")
-        .long("indent-width")
-        .alias("options-indent-width")
-        .help("Define indentation width. Defaults to 2.")
-        .takes_value(true)
-        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
-          Ok(_) => Ok(()),
-          Err(_) => {
-            Err("indent-width should be a non zero integer".to_string())
-          }
-        }),
-    )
-    .arg(
-      Arg::new("single-quote")
-        .long("single-quote")
-        .alias("options-single-quote")
-        .min_values(0)
-        .max_values(1)
-        .takes_value(true)
-        .require_equals(true)
-        .possible_values(["true", "false"])
-        .help("Use single quotes. Defaults to false."),
-    )
-    .arg(
-      Arg::new("prose-wrap")
-        .long("prose-wrap")
-        .alias("options-prose-wrap")
-        .takes_value(true)
-        .possible_values(["always", "never", "preserve"])
-        .help("Define how prose should be wrapped. Defaults to always."),
-    )
-    .arg(
-      Arg::new("no-semicolons")
-        .long("no-semicolons")
-        .alias("options-no-semicolons")
-        .min_values(0)
-        .max_values(1)
-        .takes_value(true)
-        .require_equals(true)
-        .possible_values(["true", "false"])
-        .help("Don't use semicolons except where necessary."),
-    )
+    .defer(|cmd| {
+      cmd
+        .arg(config_arg())
+        .arg(no_config_arg())
+        .arg(
+          Arg::new("check")
+            .long("check")
+            .help("Check if the source files are formatted")
+            .num_args(0),
+        )
+        .arg(
+          Arg::new("ext")
+            .long("ext")
+            .help("Set content type of the supplied file")
+            // prefer using ts for formatting instead of js because ts works in more scenarios
+            .default_value("ts")
+            .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+        )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore formatting particular source files")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(
+          Arg::new("files")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .required(false)
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(
+          Arg::new("use-tabs")
+            .long("use-tabs")
+            .alias("options-use-tabs")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help(
+              "Use tabs instead of spaces for indentation. Defaults to false.",
+            ),
+        )
+        .arg(
+          Arg::new("line-width")
+            .long("line-width")
+            .alias("options-line-width")
+            .help("Define maximum line width. Defaults to 80.")
+            .value_parser(value_parser!(NonZeroU32)),
+        )
+        .arg(
+          Arg::new("indent-width")
+            .long("indent-width")
+            .alias("options-indent-width")
+            .help("Define indentation width. Defaults to 2.")
+            .value_parser(value_parser!(NonZeroU8)),
+        )
+        .arg(
+          Arg::new("single-quote")
+            .long("single-quote")
+            .alias("options-single-quote")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help("Use single quotes. Defaults to false."),
+        )
+        .arg(
+          Arg::new("prose-wrap")
+            .long("prose-wrap")
+            .alias("options-prose-wrap")
+            .value_parser(["always", "never", "preserve"])
+            .help("Define how prose should be wrapped. Defaults to always."),
+        )
+        .arg(
+          Arg::new("no-semicolons")
+            .long("no-semicolons")
+            .alias("options-no-semicolons")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help("Don't use semicolons except where necessary."),
+        )
+    })
 }
 
-fn init_subcommand<'a>() -> Command<'a> {
-  Command::new("init").about("Initialize a new project").arg(
-    Arg::new("dir")
-      .takes_value(true)
-      .required(false)
-      .value_hint(ValueHint::DirPath),
-  )
+fn init_subcommand() -> Command {
+  Command::new("init")
+    .about("Initialize a new project")
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("dir")
+          .required(false)
+          .value_hint(ValueHint::DirPath),
+      )
+    })
 }
 
-fn info_subcommand<'a>() -> Command<'a> {
+fn info_subcommand() -> Command {
   Command::new("info")
-    .about("Show info about cache or info related to source file")
-    .long_about(
-      "Information about a module or the cache directories.
+      .about("Show info about cache or info related to source file")
+      .long_about(
+        "Information about a module or the cache directories.
 
 Get information about a module:
 
@@ -1329,57 +1409,38 @@ Without any additional arguments, 'deno info' shows:
 DENO_DIR: Directory containing Deno-managed files.
 Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
-    )
-    .arg(Arg::new("file").takes_value(true).required(false).value_hint(ValueHint::FilePath))
-    .arg(reload_arg().requires("file"))
-    .arg(ca_file_arg())
-    .arg(
-      location_arg()
-        .conflicts_with("file")
-        .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
-    )
-    // TODO(lucacasonato): remove for 2.0
-    .arg(no_check_arg().hide(true))
-    .arg(no_config_arg())
-    .arg(config_arg())
-    .arg(import_map_arg())
-    .arg(local_npm_arg())
-    .arg(
-      Arg::new("json")
-        .long("json")
-        .help("UNSTABLE: Outputs the information in JSON format")
-        .takes_value(false),
-    )
+      )
+    .defer(|cmd| cmd
+      .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
+      .arg(reload_arg().requires("file"))
+      .arg(ca_file_arg())
+      .arg(
+        location_arg()
+          .conflicts_with("file")
+          .help("Show files used for origin bound APIs like the Web Storage API when running a script with '--location=<HREF>'")
+      )
+      .arg(no_check_arg().hide(true)) // TODO(lucacasonato): remove for 2.0
+      .arg(no_config_arg())
+      .arg(no_remote_arg())
+      .arg(no_npm_arg())
+      .arg(no_lock_arg())
+      .arg(lock_arg())
+      .arg(config_arg())
+      .arg(import_map_arg())
+      .arg(node_modules_dir_arg())
+      .arg(
+        Arg::new("json")
+          .long("json")
+          .help("UNSTABLE: Outputs the information in JSON format")
+          .action(ArgAction::SetTrue),
+      ))
 }
 
-fn install_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("install"), true, true)
-    .trailing_var_arg(true)
-    .arg(Arg::new("cmd").required(true).multiple_values(true).value_hint(ValueHint::FilePath))
-    .arg(
-      Arg::new("name")
-        .long("name")
-        .short('n')
-        .help("Executable file name")
-        .takes_value(true)
-        .required(false))
-    .arg(
-      Arg::new("root")
-        .long("root")
-        .help("Installation root")
-        .takes_value(true)
-        .multiple_occurrences(false)
-        .multiple_values(false)
-        .value_hint(ValueHint::DirPath))
-    .arg(
-      Arg::new("force")
-        .long("force")
-        .short('f')
-        .help("Forcefully overwrite existing installation")
-        .takes_value(false))
+fn install_subcommand() -> Command {
+  Command::new("install")
     .about("Install script as an executable")
     .long_about(
-      "Installs a script as an executable in the installation root's bin directory.
+        "Installs a script as an executable in the installation root's bin directory.
 
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
   deno install https://deno.land/std/examples/colors.ts
@@ -1406,25 +1467,34 @@ The installation root is determined, in order of precedence:
   - $HOME/.deno
 
 These must be added to the path manually if required.")
+    .defer(|cmd| runtime_args(cmd, true, true).arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("name")
+          .long("name")
+          .short('n')
+          .help("Executable file name")
+          .required(false))
+      .arg(
+        Arg::new("root")
+          .long("root")
+          .help("Installation root")
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath))
+      .arg(
+        Arg::new("force")
+          .long("force")
+          .short('f')
+          .help("Forcefully overwrite existing installation")
+          .action(ArgAction::SetTrue))
+      )
 }
 
-fn uninstall_subcommand<'a>() -> Command<'a> {
+fn uninstall_subcommand() -> Command {
   Command::new("uninstall")
-    .trailing_var_arg(true)
-    .arg(
-      Arg::new("name")
-        .required(true)
-        .multiple_occurrences(false))
-    .arg(
-      Arg::new("root")
-        .long("root")
-        .help("Installation root")
-        .takes_value(true)
-        .multiple_occurrences(false)
-        .value_hint(ValueHint::DirPath))
-    .about("Uninstall a script previously installed with deno install")
-    .long_about(
-      "Uninstalls an executable script in the installation root's bin directory.
+      .about("Uninstall a script previously installed with deno install")
+      .long_about(
+        "Uninstalls an executable script in the installation root's bin directory.
 
   deno uninstall serve
 
@@ -1436,28 +1506,35 @@ The installation root is determined, in order of precedence:
   - --root option
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno")
+    .defer(|cmd| cmd.arg(Arg::new("name").required(true))
+      .arg(
+        Arg::new("root")
+          .long("root")
+          .help("Installation root")
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath))
+)
 }
 
-static LSP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The 'deno lsp' subcommand provides a way for code editors and IDEs to
+static LSP_HELP: &str = concat!(
+  "The 'deno lsp' subcommand provides a way for code editors and IDEs to
 interact with Deno using the Language Server Protocol. Usually humans do not
 use this subcommand directly. For example, 'deno lsp' can provide IDEs with
 go-to-definition support and automatic code formatting.
 
 How to connect various editors and IDEs to 'deno lsp':
-https://deno.land/manual@v{}/getting_started/setup_your_environment#editors-and-ides",
-    SHORT_VERSION.as_str()
-  )
-});
+https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/setup_your_environment#editors-and-ides",
+);
 
-fn lsp_subcommand<'a>() -> Command<'a> {
+fn lsp_subcommand() -> Command {
   Command::new("lsp")
     .about("Start the language server")
-    .long_about(LSP_HELP.as_str())
+    .long_about(LSP_HELP)
 }
 
-fn lint_subcommand<'a>() -> Command<'a> {
+fn lint_subcommand() -> Command {
   Command::new("lint")
     .about("Lint source files")
     .long_about(
@@ -1492,94 +1569,105 @@ Ignore linting a file by adding an ignore comment at the top of the file:
   // deno-lint-ignore-file
 ",
     )
-    .arg(Arg::new("rules").long("rules").help("List available rules"))
-    .arg(
-      Arg::new("rules-tags")
-        .long("rules-tags")
-        .require_equals(true)
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .conflicts_with("rules")
-        .help("Use set of rules with a tag"),
-    )
-    .arg(
-      Arg::new("rules-include")
-        .long("rules-include")
-        .require_equals(true)
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .conflicts_with("rules")
-        .help("Include lint rules"),
-    )
-    .arg(
-      Arg::new("rules-exclude")
-        .long("rules-exclude")
-        .require_equals(true)
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .conflicts_with("rules")
-        .help("Exclude lint rules"),
-    )
-    .arg(no_config_arg())
-    .arg(config_arg())
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore linting particular source files")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("json")
-        .long("json")
-        .help("Output lint result in JSON format")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("compact")
-        .long("compact")
-        .help("Output lint result in compact format")
-        .takes_value(false)
-        .conflicts_with("json"),
-    )
-    .arg(
-      Arg::new("files")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .required(false)
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(watch_arg(false))
-    .arg(no_clear_screen_arg())
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("rules")
+            .long("rules")
+            .help("List available rules")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("rules-tags")
+            .long("rules-tags")
+            .require_equals(true)
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Use set of rules with a tag"),
+        )
+        .arg(
+          Arg::new("rules-include")
+            .long("rules-include")
+            .require_equals(true)
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Include lint rules"),
+        )
+        .arg(
+          Arg::new("rules-exclude")
+            .long("rules-exclude")
+            .require_equals(true)
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Exclude lint rules"),
+        )
+        .arg(no_config_arg())
+        .arg(config_arg())
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .value_parser(value_parser!(PathBuf))
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore linting particular source files")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .help("Output lint result in JSON format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("compact")
+            .long("compact")
+            .help("Output lint result in compact format")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("json"),
+        )
+        .arg(
+          Arg::new("files")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .required(false)
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+    })
 }
 
-fn repl_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("repl"), true, true)
+fn repl_subcommand() -> Command {
+  Command::new("repl")
     .about("Read Eval Print Loop")
-    .arg(
-      Arg::new("eval-file")
-        .long("eval-file")
-        .min_values(1)
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs.")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("eval")
-        .long("eval")
-        .help("Evaluates the provided code when the REPL starts.")
-        .takes_value(true)
-        .value_name("code"),
-    )
+    .defer(|cmd| runtime_args(cmd, true, true)
+      .arg(check_arg(false))
+      .arg(
+        Arg::new("eval-file")
+          .long("eval-file")
+          .num_args(1..)
+          .use_value_delimiter(true)
+          .require_equals(true)
+          .help("Evaluates the provided file(s) as scripts when the REPL starts. Accepts file paths and URLs.")
+          .value_hint(ValueHint::AnyPath),
+      )
+      .arg(
+        Arg::new("eval")
+          .long("eval")
+          .help("Evaluates the provided code when the REPL starts.")
+          .value_name("code"),
+      ))
 }
 
-fn run_subcommand<'a>() -> Command<'a> {
+fn run_subcommand() -> Command {
   runtime_args(Command::new("run"), true, true)
+    .arg(check_arg(false))
     .arg(
       watch_arg(true)
         .conflicts_with("inspect")
@@ -1587,8 +1675,12 @@ fn run_subcommand<'a>() -> Command<'a> {
         .conflicts_with("inspect-brk"),
     )
     .arg(no_clear_screen_arg())
-    .trailing_var_arg(true)
-    .arg(script_arg().required(true))
+    .arg(executable_ext_arg())
+    .arg(
+      script_arg()
+        .required_unless_present("v8-flags")
+        .trailing_var_arg(true),
+    )
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -1616,154 +1708,31 @@ Specifying the filename '-' to read the file from stdin.
     )
 }
 
-fn task_subcommand<'a>() -> Command<'a> {
+fn task_subcommand() -> Command {
   Command::new("task")
-    .trailing_var_arg(true)
-    .arg(config_arg())
-    .arg(
-      Arg::new("cwd")
-        .long("cwd")
-        .value_name("DIR")
-        .help("Specify the directory to run the task in")
-        .takes_value(true)
-        .value_hint(ValueHint::DirPath)
-    )
-    // Ideally the task name and trailing arguments should be two separate clap
-    // arguments, but there is a bug in clap that's preventing us from doing
-    // this (https://github.com/clap-rs/clap/issues/1538). Once that's fixed,
-    // then we can revert this back to what it used to be.
-    .arg(Arg::new("task_name_and_args")
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .allow_hyphen_values(true)
-    .help("Task to be executed with any additional arguments passed to the task"))
     .about("Run a task defined in the configuration file")
     .long_about(
       "Run a task defined in the configuration file
 
   deno task build",
     )
+    .defer(|cmd| {
+      cmd
+        .allow_external_subcommands(true)
+        .subcommand_value_name("TASK")
+        .arg(config_arg())
+        .arg(
+          Arg::new("cwd")
+            .long("cwd")
+            .value_name("DIR")
+            .help("Specify the directory to run the task in")
+            .value_hint(ValueHint::DirPath),
+        )
+    })
 }
 
-fn test_subcommand<'a>() -> Command<'a> {
-  runtime_args(Command::new("test"), true, true)
-    .trailing_var_arg(true)
-    .arg(
-      Arg::new("ignore")
-        .long("ignore")
-        .takes_value(true)
-        .use_value_delimiter(true)
-        .require_equals(true)
-        .help("Ignore files")
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      Arg::new("no-run")
-        .long("no-run")
-        .help("Cache test modules, but don't run tests")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("trace-ops")
-        .long("trace-ops")
-        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("doc")
-        .long("doc")
-        .help("Type-check code blocks in JSDoc and Markdown")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("fail-fast")
-        .long("fail-fast")
-        .alias("failfast")
-        .help("Stop after N errors. Defaults to stopping after first failure.")
-        .min_values(0)
-        .required(false)
-        .takes_value(true)
-        .require_equals(true)
-        .value_name("N")
-        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
-          Ok(_) => Ok(()),
-          Err(_) => Err("fail-fast should be a non zero integer".to_string()),
-        }),
-    )
-    .arg(
-      Arg::new("allow-none")
-        .long("allow-none")
-        .help("Don't return error code if no test files are found")
-        .takes_value(false),
-    )
-    .arg(
-      Arg::new("filter")
-        .allow_hyphen_values(true)
-        .long("filter")
-        .takes_value(true)
-        .help("Run tests with this string or pattern in the test name"),
-    )
-    .arg(
-      Arg::new("shuffle")
-        .long("shuffle")
-        .value_name("NUMBER")
-        .help("Shuffle the order in which the tests are run")
-        .min_values(0)
-        .max_values(1)
-        .require_equals(true)
-        .takes_value(true)
-        .validator(|val: &str| match val.parse::<u64>() {
-          Ok(_) => Ok(()),
-          Err(_) => Err("Shuffle seed should be a number".to_string()),
-        }),
-    )
-    .arg(
-      Arg::new("coverage")
-        .long("coverage")
-        .require_equals(true)
-        .takes_value(true)
-        .value_name("DIR")
-        .conflicts_with("inspect")
-        .conflicts_with("inspect-wait")
-        .conflicts_with("inspect-brk")
-        .help("Collect coverage profile data into DIR"),
-    )
-    .arg(
-      Arg::new("parallel")
-        .long("parallel")
-        .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
-        .conflicts_with("jobs")
-        .takes_value(false)
-    )
-    .arg(
-      Arg::new("jobs")
-        .short('j')
-        .long("jobs")
-        .help("deprecated: Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
-        .hide(true)
-        .min_values(0)
-        .max_values(1)
-        .takes_value(true)
-        .validator(|val: &str| match val.parse::<NonZeroUsize>() {
-          Ok(_) => Ok(()),
-          Err(_) => Err("jobs should be a non zero unsigned integer".to_string()),
-        }),
-    )
-    .arg(
-      Arg::new("files")
-        .help("List of file names to run")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .value_hint(ValueHint::AnyPath),
-    )
-    .arg(
-      watch_arg(false)
-        .conflicts_with("no-run")
-        .conflicts_with("coverage"),
-    )
-    .arg(no_clear_screen_arg())
-    .arg(script_arg().last(true))
+fn test_subcommand() -> Command {
+  Command::new("test")
     .about("Run tests")
     .long_about(
       "Run tests using Deno's built-in test runner.
@@ -1778,9 +1747,112 @@ Directory arguments are expanded to all contained files matching the glob
 
   deno test src/",
     )
+  .defer(|cmd| runtime_args(cmd, true, true)
+    .arg(check_arg(true))
+    .arg(
+      Arg::new("ignore")
+        .long("ignore")
+        .num_args(1..)
+        .value_parser(value_parser!(PathBuf))
+        .use_value_delimiter(true)
+        .require_equals(true)
+        .help("Ignore files")
+        .value_hint(ValueHint::AnyPath),
+    )
+    .arg(
+      Arg::new("no-run")
+        .long("no-run")
+        .help("Cache test modules, but don't run tests")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("trace-ops")
+        .long("trace-ops")
+        .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("doc")
+        .long("doc")
+        .help("Type-check code blocks in JSDoc and Markdown")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("fail-fast")
+        .long("fail-fast")
+        .alias("failfast")
+        .help("Stop after N errors. Defaults to stopping after first failure.")
+        .num_args(0..=1)
+        .require_equals(true)
+        .value_name("N")
+        .value_parser(value_parser!(NonZeroUsize)),
+    )
+    .arg(
+      Arg::new("allow-none")
+        .long("allow-none")
+        .help("Don't return error code if no test files are found")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
+      Arg::new("filter")
+        .allow_hyphen_values(true)
+        .long("filter")
+        .help("Run tests with this string or pattern in the test name"),
+    )
+    .arg(
+      Arg::new("shuffle")
+        .long("shuffle")
+        .value_name("NUMBER")
+        .help("Shuffle the order in which the tests are run")
+        .num_args(0..=1)
+        .require_equals(true)
+        .value_parser(value_parser!(u64)),
+    )
+    .arg(
+      Arg::new("coverage")
+        .long("coverage")
+        .require_equals(true)
+        .value_name("DIR")
+        .conflicts_with("inspect")
+        .conflicts_with("inspect-wait")
+        .conflicts_with("inspect-brk")
+        .help("Collect coverage profile data into DIR"),
+    )
+    .arg(
+      Arg::new("parallel")
+        .long("parallel")
+        .help("Run test modules in parallel. Parallelism defaults to the number of available CPUs or the value in the DENO_JOBS environment variable.")
+        .conflicts_with("jobs")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("jobs")
+        .short('j')
+        .long("jobs")
+        .help("deprecated: Number of parallel workers, defaults to number of available CPUs when no value is provided. Defaults to 1 when the option is not present.")
+        .hide(true)
+        .num_args(0..=1)
+        .value_parser(value_parser!(NonZeroUsize)),
+    )
+    .arg(
+      Arg::new("files")
+        .help("List of file names to run")
+        .num_args(0..)
+        .action(ArgAction::Append)
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::AnyPath),
+    )
+    .arg(
+      watch_arg(false)
+        .conflicts_with("no-run")
+        .conflicts_with("coverage"),
+    )
+    .arg(no_clear_screen_arg())
+    .arg(script_arg().last(true))
+  )
 }
 
-fn types_subcommand<'a>() -> Command<'a> {
+fn types_subcommand() -> Command {
   Command::new("types")
     .about("Print runtime TypeScript declarations")
     .long_about(
@@ -1792,7 +1864,7 @@ The declaration file could be saved and used for typing information.",
     )
 }
 
-fn upgrade_subcommand<'a>() -> Command<'a> {
+fn upgrade_subcommand() -> Command {
   Command::new("upgrade")
     .about("Upgrade deno executable to given version")
     .long_about(
@@ -1808,43 +1880,48 @@ update to a different location, use the --output flag
 
   deno upgrade --output $HOME/my_deno",
     )
-    .arg(
-      Arg::new("version")
-        .long("version")
-        .help("The version to upgrade to")
-        .takes_value(true),
-    )
-    .arg(
-      Arg::new("output")
-        .long("output")
-        .help("The path to output the updated version to")
-        .takes_value(true)
-        .value_hint(ValueHint::FilePath),
-    )
-    .arg(
-      Arg::new("dry-run")
-        .long("dry-run")
-        .help("Perform all checks without replacing old exe"),
-    )
-    .arg(
-      Arg::new("force")
-        .long("force")
-        .short('f')
-        .help("Replace current exe even if not out-of-date"),
-    )
-    .arg(
-      Arg::new("canary")
-        .long("canary")
-        .help("Upgrade to canary builds"),
-    )
-    .arg(ca_file_arg())
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("version")
+            .long("version")
+            .help("The version to upgrade to"),
+        )
+        .arg(
+          Arg::new("output")
+            .long("output")
+            .help("The path to output the updated version to")
+            .value_parser(value_parser!(PathBuf))
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("dry-run")
+            .long("dry-run")
+            .help("Perform all checks without replacing old exe")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("force")
+            .long("force")
+            .short('f')
+            .help("Replace current exe even if not out-of-date")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("canary")
+            .long("canary")
+            .help("Upgrade to canary builds")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(ca_file_arg())
+    })
 }
 
-fn vendor_subcommand<'a>() -> Command<'a> {
+fn vendor_subcommand() -> Command {
   Command::new("vendor")
-    .about("Vendor remote modules into a local directory")
-    .long_about(
-      "Vendor remote modules into a local directory.
+      .about("Vendor remote modules into a local directory")
+      .long_about(
+        "Vendor remote modules into a local directory.
 
 Analyzes the provided modules along with their dependencies, downloads
 remote modules to the output directory, and produces an import map that
@@ -1856,53 +1933,41 @@ maps remote specifiers to the downloaded files.
 Remote modules and multiple modules may also be specified:
 
   deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
-    )
-    .arg(
-      Arg::new("specifiers")
-        .takes_value(true)
-        .multiple_values(true)
-        .multiple_occurrences(true)
-        .required(true),
-    )
-    .arg(
-      Arg::new("output")
-        .long("output")
-        .help("The directory to output the vendored modules to")
-        .takes_value(true)
-        .value_hint(ValueHint::DirPath),
-    )
-    .arg(
-      Arg::new("force")
-        .long("force")
-        .short('f')
-        .help(
-          "Forcefully overwrite conflicting files in existing output directory",
-        )
-        .takes_value(false),
-    )
-    .arg(no_config_arg())
-    .arg(config_arg())
-    .arg(import_map_arg())
-    .arg(lock_arg())
-    .arg(reload_arg())
-    .arg(ca_file_arg())
+      )
+    .defer(|cmd| cmd
+      .arg(
+        Arg::new("specifiers")
+          .num_args(1..)
+          .action(ArgAction::Append)
+          .required(true),
+      )
+      .arg(
+        Arg::new("output")
+          .long("output")
+          .help("The directory to output the vendored modules to")
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("force")
+          .long("force")
+          .short('f')
+          .help(
+            "Forcefully overwrite conflicting files in existing output directory",
+          )
+          .action(ArgAction::SetTrue),
+      )
+      .arg(no_config_arg())
+      .arg(config_arg())
+      .arg(import_map_arg())
+      .arg(lock_arg())
+      .arg(node_modules_dir_arg())
+      .arg(reload_arg())
+      .arg(ca_file_arg()))
 }
 
 fn compile_args(app: Command) -> Command {
-  app
-    .arg(import_map_arg())
-    .arg(no_remote_arg())
-    .arg(no_npm_arg())
-    .arg(local_npm_arg())
-    .arg(no_config_arg())
-    .arg(config_arg())
-    .arg(no_check_arg())
-    .arg(check_arg())
-    .arg(reload_arg())
-    .arg(lock_arg())
-    .arg(lock_write_arg())
-    .arg(no_lock_arg())
-    .arg(ca_file_arg())
+  compile_args_without_check_args(app.arg(no_check_arg()))
 }
 
 fn compile_args_without_check_args(app: Command) -> Command {
@@ -1910,7 +1975,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(import_map_arg())
     .arg(no_remote_arg())
     .arg(no_npm_arg())
-    .arg(local_npm_arg())
+    .arg(node_modules_dir_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -1920,107 +1985,201 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(ca_file_arg())
 }
 
+static ALLOW_READ_HELP: &str = concat!(
+  "Allow file system read access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-read\n",
+  "  --allow-read=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_WRITE_HELP: &str = concat!(
+  "Allow file system write access. Optionally specify allowed paths.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-write\n",
+  "  --allow-write=\"/etc,/var/log.txt\""
+);
+
+static ALLOW_NET_HELP: &str = concat!(
+  "Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-net\n",
+  "  --allow-net=\"localhost:8080,deno.land\""
+);
+
+static ALLOW_ENV_HELP: &str = concat!(
+  "Allow access to system environment information. Optionally specify accessible environment variables.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-env\n",
+  "  --allow-env=\"PORT,HOME,PATH\""
+);
+
+static ALLOW_SYS_HELP: &str = concat!(
+  "Allow access to OS information. Optionally allow specific APIs by function name.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-sys\n",
+  "  --allow-sys=\"systemMemoryInfo,osRelease\""
+);
+
+static ALLOW_RUN_HELP: &str = concat!(
+  "Allow running subprocesses. Optionally specify allowed runnable program names.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-run\n",
+  "  --allow-run=\"whoami,ps\""
+);
+
+static ALLOW_FFI_HELP: &str = concat!(
+  "(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n",
+  "Examples:\n",
+  "  --allow-ffi\n",
+  "  --allow-ffi=\"./libfoo.so\""
+);
+
+static ALLOW_HRTIME_HELP: &str = concat!(
+  "Allow high-resolution time measurement. Note: this can enable timing attacks and fingerprinting.\n",
+  "Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
+static ALLOW_ALL_HELP: &str = concat!(
+  "Allow all permissions. Learn more about permissions in Deno:\n",
+  "https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/basics/permissions\n"
+);
+
 fn permission_args(app: Command) -> Command {
   app
     .arg(
       Arg::new("allow-read")
         .long("allow-read")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system read access")
+        .value_name("PATH")
+        .help(ALLOW_READ_HELP)
+        .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-write")
         .long("allow-write")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow file system write access")
+        .value_name("PATH")
+        .help(ALLOW_WRITE_HELP)
+        .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-net")
         .long("allow-net")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow network access")
-        .validator(flags_allow_net::validator),
+        .value_name("IP_OR_HOSTNAME")
+        .help(ALLOW_NET_HELP)
+        .value_parser(flags_allow_net::validator),
     )
     .arg(unsafely_ignore_certificate_errors_arg())
     .arg(
       Arg::new("allow-env")
         .long("allow-env")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow environment access")
-        .validator(|keys| {
-          for key in keys.split(',') {
-            if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
-              return Err(format!("invalid key \"{key}\""));
-            }
+        .value_name("VARIABLE_NAME")
+        .help(ALLOW_ENV_HELP)
+        .value_parser(|key: &str| {
+          if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
+            return Err(format!("invalid key \"{key}\""));
           }
-          Ok(())
+
+          Ok(if cfg!(windows) {
+            key.to_uppercase()
+          } else {
+            key.to_string()
+          })
         }),
     )
     .arg(
       Arg::new("allow-sys")
         .long("allow-sys")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow access to system info")
-        .validator(|keys| {
-          for key in keys.split(',') {
-            parse_sys_kind(key)?;
-          }
-          Ok::<(), AnyError>(())
-        }),
+        .value_name("API_NAME")
+        .help(ALLOW_SYS_HELP)
+        .value_parser(|key: &str| parse_sys_kind(key).map(ToString::to_string)),
     )
     .arg(
       Arg::new("allow-run")
         .long("allow-run")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow running subprocesses"),
+        .value_name("PROGRAM_NAME")
+        .help(ALLOW_RUN_HELP),
     )
     .arg(
       Arg::new("allow-ffi")
         .long("allow-ffi")
-        .min_values(0)
-        .takes_value(true)
+        .num_args(0..)
         .use_value_delimiter(true)
         .require_equals(true)
-        .help("Allow loading dynamic libraries")
+        .value_name("PATH")
+        .help(ALLOW_FFI_HELP)
+        .value_parser(value_parser!(PathBuf))
         .value_hint(ValueHint::AnyPath),
     )
     .arg(
       Arg::new("allow-hrtime")
         .long("allow-hrtime")
-        .help("Allow high resolution time measurement"),
+        .action(ArgAction::SetTrue)
+        .help(ALLOW_HRTIME_HELP),
     )
     .arg(
       Arg::new("allow-all")
         .short('A')
         .long("allow-all")
-        .help("Allow all permissions"),
+        .action(ArgAction::SetTrue)
+        .help(ALLOW_ALL_HELP),
     )
-    .arg(Arg::new("prompt").long("prompt").hide(true).help(
-      "deprecated: Fallback to prompt if required permission wasn't passed",
-    ))
+    .arg(
+      Arg::new("prompt")
+        .long("prompt")
+        .action(ArgAction::SetTrue)
+        .hide(true)
+        .help(
+          "deprecated: Fallback to prompt if required permission wasn't passed",
+        ),
+    )
     .arg(
       Arg::new("no-prompt")
         .long("no-prompt")
+        .action(ArgAction::SetTrue)
         .help("Always throw if required permission wasn't passed"),
     )
 }
@@ -2056,11 +2215,9 @@ fn inspect_args(app: Command) -> Command {
         .long("inspect")
         .value_name("HOST_AND_PORT")
         .help("Activate inspector on host:port (default: 127.0.0.1:9229)")
-        .min_values(0)
-        .max_values(1)
+        .num_args(0..=1)
         .require_equals(true)
-        .takes_value(true)
-        .validator(inspect_arg_validate),
+        .value_parser(value_parser!(SocketAddr)),
     )
     .arg(
       Arg::new("inspect-brk")
@@ -2069,11 +2226,9 @@ fn inspect_args(app: Command) -> Command {
         .help(
           "Activate inspector on host:port, wait for debugger to connect and break at the start of user script",
         )
-        .min_values(0)
-        .max_values(1)
+        .num_args(0..=1)
         .require_equals(true)
-        .takes_value(true)
-        .validator(inspect_arg_validate),
+        .value_parser(value_parser!(SocketAddr)),
     )
     .arg(
       Arg::new("inspect-wait")
@@ -2082,40 +2237,35 @@ fn inspect_args(app: Command) -> Command {
         .help(
           "Activate inspector on host:port and wait for debugger to connect before running user code",
         )
-        .min_values(0)
-        .max_values(1)
+        .num_args(0..=1)
         .require_equals(true)
-        .takes_value(true)
-        .validator(inspect_arg_validate),
+        .value_parser(value_parser!(SocketAddr)),
     )
 }
 
-static IMPORT_MAP_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "Load import map file from local file or remote URL.
-  Docs: https://deno.land/manual@v{}/linking_to_external_code/import_maps
-  Specification: https://wicg.github.io/import-maps/
-  Examples: https://github.com/WICG/import-maps#the-import-map",
-    SHORT_VERSION.as_str()
-  )
-});
+static IMPORT_MAP_HELP: &str = concat!(
+  "Load import map file from local file or remote URL.
+Docs: https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/linking_to_external_code/import_maps
+Specification: https://wicg.github.io/import-maps/
+Examples: https://github.com/WICG/import-maps#the-import-map",
+);
 
-fn import_map_arg<'a>() -> Arg<'a> {
+fn import_map_arg() -> Arg {
   Arg::new("import-map")
     .long("import-map")
     .alias("importmap")
     .value_name("FILE")
     .help("Load import map file")
-    .long_help(IMPORT_MAP_HELP.as_str())
-    .takes_value(true)
+    .long_help(IMPORT_MAP_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
-fn reload_arg<'a>() -> Arg<'a> {
+fn reload_arg() -> Arg {
   Arg::new("reload")
     .short('r')
-    .min_values(0)
-    .takes_value(true)
+    .num_args(0..)
     .use_value_delimiter(true)
     .require_equals(true)
     .long("reload")
@@ -2135,30 +2285,40 @@ fn reload_arg<'a>() -> Arg<'a> {
   Reload specific npm module",
     )
     .value_hint(ValueHint::FilePath)
-    .validator(reload_arg_validate)
+    .value_parser(reload_arg_validate)
 }
 
-fn ca_file_arg<'a>() -> Arg<'a> {
+fn ca_file_arg() -> Arg {
   Arg::new("cert")
     .long("cert")
     .value_name("FILE")
     .help("Load certificate authority from PEM encoded file")
-    .takes_value(true)
     .value_hint(ValueHint::FilePath)
 }
 
-fn cached_only_arg<'a>() -> Arg<'a> {
+fn cached_only_arg() -> Arg {
   Arg::new("cached-only")
     .long("cached-only")
+    .action(ArgAction::SetTrue)
     .help("Require that remote dependencies are already cached")
 }
 
-fn location_arg<'a>() -> Arg<'a> {
+/// Used for subcommands that operate on executable scripts only.
+/// `deno fmt` has its own `--ext` arg because its possible values differ.
+/// If --ext is not provided and the script doesn't have a file extension,
+/// deno_graph::parse_module() defaults to js.
+fn executable_ext_arg() -> Arg {
+  Arg::new("ext")
+    .long("ext")
+    .help("Set content type of the supplied file")
+    .value_parser(["ts", "tsx", "js", "jsx"])
+}
+
+fn location_arg() -> Arg {
   Arg::new("location")
     .long("location")
-    .takes_value(true)
     .value_name("HREF")
-    .validator(|href| {
+    .value_parser(|href: &str| -> Result<Url, String> {
       let url = Url::parse(href);
       if url.is_err() {
         return Err("Failed to parse URL".to_string());
@@ -2169,43 +2329,40 @@ fn location_arg<'a>() -> Arg<'a> {
       }
       url.set_username("").unwrap();
       url.set_password(None).unwrap();
-      Ok(())
+      Ok(url)
     })
     .help("Value of 'globalThis.location' used by some web APIs")
     .value_hint(ValueHint::Url)
 }
 
-fn enable_testing_features_arg<'a>() -> Arg<'a> {
+fn enable_testing_features_arg() -> Arg {
   Arg::new("enable-testing-features-do-not-use")
     .long("enable-testing-features-do-not-use")
     .help("INTERNAL: Enable internal features used during integration testing")
+    .action(ArgAction::SetTrue)
     .hide(true)
 }
 
-fn v8_flags_arg<'a>() -> Arg<'a> {
+fn v8_flags_arg() -> Arg {
   Arg::new("v8-flags")
     .long("v8-flags")
-    .takes_value(true)
+    .num_args(..)
     .use_value_delimiter(true)
     .require_equals(true)
     .help("Set V8 command line options")
-    .long_help("To see a list of all available flags use --v8-flags=--help.\
+    .long_help("To see a list of all available flags use --v8-flags=--help.
     Any flags set with this flag are appended after the DENO_V8_FLAGS environmental variable")
 }
 
-fn seed_arg<'a>() -> Arg<'a> {
+fn seed_arg() -> Arg {
   Arg::new("seed")
     .long("seed")
     .value_name("NUMBER")
     .help("Set the random number generator seed")
-    .takes_value(true)
-    .validator(|val| match val.parse::<u64>() {
-      Ok(_) => Ok(()),
-      Err(_) => Err("Seed should be a number".to_string()),
-    })
+    .value_parser(value_parser!(u64))
 }
 
-fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
+fn watch_arg(takes_files: bool) -> Arg {
   let arg = Arg::new("watch")
     .long("watch")
     .help("Watch for file changes and restart automatically");
@@ -2213,8 +2370,8 @@ fn watch_arg<'a>(takes_files: bool) -> Arg<'a> {
   if takes_files {
     arg
       .value_name("FILES")
-      .min_values(0)
-      .takes_value(true)
+      .num_args(0..)
+      .value_parser(value_parser!(PathBuf))
       .use_value_delimiter(true)
       .require_equals(true)
       .long_help(
@@ -2224,160 +2381,171 @@ Additional paths might be watched by passing them as arguments to this flag.",
       )
       .value_hint(ValueHint::AnyPath)
   } else {
-    arg.long_help(
-      "Watch for file changes and restart process automatically. \
+    arg.action(ArgAction::SetTrue).long_help(
+      "Watch for file changes and restart process automatically.
       Only local files from entry point module graph are watched.",
     )
   }
 }
 
-fn no_clear_screen_arg<'a>() -> Arg<'a> {
+fn no_clear_screen_arg() -> Arg {
   Arg::new("no-clear-screen")
     .requires("watch")
     .long("no-clear-screen")
+    .action(ArgAction::SetTrue)
     .help("Do not clear terminal screen when under watch mode")
 }
 
-fn no_check_arg<'a>() -> Arg<'a> {
+fn no_check_arg() -> Arg {
   Arg::new("no-check")
-    .takes_value(true)
+    .num_args(0..=1)
     .require_equals(true)
-    .min_values(0)
     .value_name("NO_CHECK_TYPE")
     .long("no-check")
     .help("Skip type-checking modules")
     .long_help(
-      "Skip type-checking. If the value of '--no-check=remote' is supplied, \
-      diagnostic errors from remote modules will be ignored.",
+      "Skip type-checking. If the value of '--no-check=remote' is supplied,
+diagnostic errors from remote modules will be ignored.",
     )
 }
 
-fn check_arg<'a>() -> Arg<'a> {
-  Arg::new("check")
+fn check_arg(checks_local_by_default: bool) -> Arg {
+  let arg = Arg::new("check")
     .conflicts_with("no-check")
     .long("check")
-    .takes_value(true)
+    .num_args(0..=1)
     .require_equals(true)
-    .min_values(0)
     .value_name("CHECK_TYPE")
-    .help("Type-check modules")
-    .long_help(
-      "Type-check modules.
+    .help("Type-check modules");
 
-Deno does not type-check modules automatically from v1.23 onwards. Pass this \
-flag to enable type-checking or use the 'deno check' subcommand.
-
+  if checks_local_by_default {
+    arg.long_help(
+      "Set type-checking behavior. This subcommand type-checks local modules by
+default, so adding --check is redundant.
 If the value of '--check=all' is supplied, diagnostic errors from remote modules
-will be included.",
+will be included.
+
+Alternatively, the 'deno check' subcommand can be used.",
     )
+  } else {
+    arg.long_help(
+      "Enable type-checking. This subcommand does not type-check by default.
+If the value of '--check=all' is supplied, diagnostic errors from remote modules
+will be included.
+
+Alternatively, the 'deno check' subcommand can be used.",
+    )
+  }
 }
 
-fn script_arg<'a>() -> Arg<'a> {
+fn script_arg() -> Arg {
   Arg::new("script_arg")
-    .multiple_values(true)
-    .multiple_occurrences(true)
+    .num_args(0..)
+    .action(ArgAction::Append)
     // NOTE: these defaults are provided
     // so `deno run --v8-flags=--help` works
     // without specifying file to run.
-    .default_value_ifs(&[
-      ("v8-flags", Some("--help"), Some("_")),
-      ("v8-flags", Some("-help"), Some("_")),
+    .default_value_ifs([
+      ("v8-flags", "--help", Some("_")),
+      ("v8-flags", "-help", Some("_")),
     ])
     .help("Script arg")
     .value_name("SCRIPT_ARG")
     .value_hint(ValueHint::FilePath)
 }
 
-fn lock_arg<'a>() -> Arg<'a> {
+fn lock_arg() -> Arg {
   Arg::new("lock")
     .long("lock")
     .value_name("FILE")
-    .help("Check the specified lock file. If value is not provided, defaults to \"deno.lock\" in the current working directory.")
-    .takes_value(true)
-    .min_values(0)
-    .max_values(1)
+    .help("Check the specified lock file.
+
+If value is not provided, defaults to \"deno.lock\" in the current working directory.")
+    .num_args(0..=1)
+    .value_parser(value_parser!(PathBuf))
     .value_hint(ValueHint::FilePath)
 }
 
-fn lock_write_arg<'a>() -> Arg<'a> {
+fn lock_write_arg() -> Arg {
   Arg::new("lock-write")
+    .action(ArgAction::SetTrue)
     .long("lock-write")
     .help("Force overwriting the lock file.")
+    .conflicts_with("no-lock")
 }
 
-fn no_lock_arg<'a>() -> Arg<'a> {
+fn no_lock_arg() -> Arg {
   Arg::new("no-lock")
     .long("no-lock")
+    .action(ArgAction::SetTrue)
     .help("Disable auto discovery of the lock file.")
     .conflicts_with("lock")
-    .conflicts_with("lock-write")
 }
 
-static CONFIG_HELP: Lazy<String> = Lazy::new(|| {
-  format!(
-    "The configuration file can be used to configure different aspects of \
-      deno including TypeScript, linting, and code formatting. Typically the \
-      configuration file will be called `deno.json` or `deno.jsonc` and \
-      automatically detected; in that case this flag is not necessary. \
-      See https://deno.land/manual@v{}/getting_started/configuration_file",
-    SHORT_VERSION.as_str()
-  )
-});
+static CONFIG_HELP: &str = concat!(
+  "The configuration file can be used to configure different aspects of
+deno including TypeScript, linting, and code formatting. Typically the
+configuration file will be called `deno.json` or `deno.jsonc` and
+automatically detected; in that case this flag is not necessary.
+See https://deno.land/manual@v",
+  env!("CARGO_PKG_VERSION"),
+  "/getting_started/configuration_file"
+);
 
-fn config_arg<'a>() -> Arg<'a> {
+fn config_arg() -> Arg {
   Arg::new("config")
     .short('c')
     .long("config")
     .value_name("FILE")
     .help("Specify the configuration file")
-    .long_help(CONFIG_HELP.as_str())
-    .takes_value(true)
+    .long_help(CONFIG_HELP)
     .value_hint(ValueHint::FilePath)
 }
 
-fn no_config_arg<'a>() -> Arg<'a> {
+fn no_config_arg() -> Arg {
   Arg::new("no-config")
     .long("no-config")
+    .action(ArgAction::SetTrue)
     .help("Disable automatic loading of the configuration file.")
     .conflicts_with("config")
 }
 
-fn no_remote_arg<'a>() -> Arg<'a> {
+fn no_remote_arg() -> Arg {
   Arg::new("no-remote")
     .long("no-remote")
+    .action(ArgAction::SetTrue)
     .help("Do not resolve remote modules")
 }
 
-fn no_npm_arg<'a>() -> Arg<'a> {
+fn no_npm_arg() -> Arg {
   Arg::new("no-npm")
     .long("no-npm")
+    .action(ArgAction::SetTrue)
     .help("Do not resolve npm modules")
 }
 
-fn local_npm_arg<'a>() -> Arg<'a> {
+fn node_modules_dir_arg() -> Arg {
   Arg::new("node-modules-dir")
     .long("node-modules-dir")
-    .min_values(0)
-    .max_values(1)
-    .takes_value(true)
+    .num_args(0..=1)
+    .value_parser(value_parser!(bool))
+    .default_missing_value("true")
     .require_equals(true)
-    .possible_values(["true", "false"])
-    .help("Creates a local node_modules folder. This option is implicitly true when a package.json is auto-discovered.")
+    .help("Enables or disables the use of a local node_modules folder for npm packages")
 }
 
-fn unsafely_ignore_certificate_errors_arg<'a>() -> Arg<'a> {
+fn unsafely_ignore_certificate_errors_arg() -> Arg {
   Arg::new("unsafely-ignore-certificate-errors")
     .long("unsafely-ignore-certificate-errors")
-    .min_values(0)
-    .takes_value(true)
+    .num_args(0..)
     .use_value_delimiter(true)
     .require_equals(true)
     .value_name("HOSTNAMES")
     .help("DANGER: Disables verification of TLS certificates")
-    .validator(flags_allow_net::validator)
+    .value_parser(flags_allow_net::validator)
 }
 
-fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn bench_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
 
   runtime_args_parse(flags, matches, true, false);
@@ -2386,119 +2554,106 @@ fn bench_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
-  let json = matches.is_present("json");
+  let json = matches.get_flag("json");
 
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+    Some(f) => f.collect(),
     None => vec![],
   };
 
-  let filter = matches.value_of("filter").map(String::from);
+  let filter = matches.remove_one::<String>("filter");
 
-  if matches.is_present("script_arg") {
-    let script_arg: Vec<String> = matches
-      .values_of("script_arg")
-      .unwrap()
-      .map(String::from)
-      .collect();
-
-    for v in script_arg {
-      flags.argv.push(v);
-    }
+  if matches.contains_id("script_arg") {
+    flags
+      .argv
+      .extend(matches.remove_many::<String>("script_arg").unwrap());
   }
 
-  let include = if matches.is_present("files") {
-    let files = matches
-      .values_of("files")
-      .unwrap()
-      .map(PathBuf::from)
-      .collect();
-    files
+  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+    files.collect()
   } else {
     Vec::new()
   };
 
-  watch_arg_parse(flags, matches, false);
+  let no_run = matches.get_flag("no-run");
+
   flags.subcommand = DenoSubcommand::Bench(BenchFlags {
     files: FileFlags { include, ignore },
     filter,
     json,
+    no_run,
+    watch: watch_arg_parse(matches),
   });
 }
 
-fn bundle_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn bundle_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
 
   compile_args_parse(flags, matches);
 
-  let source_file = matches.value_of("source_file").unwrap().to_string();
+  let source_file = matches.remove_one::<String>("source_file").unwrap();
 
-  let out_file = if let Some(out_file) = matches.value_of("out_file") {
-    flags.allow_write = Some(vec![]);
-    Some(PathBuf::from(out_file))
-  } else {
-    None
-  };
+  let out_file =
+    if let Some(out_file) = matches.remove_one::<PathBuf>("out_file") {
+      flags.allow_write = Some(vec![]);
+      Some(out_file)
+    } else {
+      None
+    };
 
-  watch_arg_parse(flags, matches, false);
+  ext_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Bundle(BundleFlags {
     source_file,
     out_file,
+    watch: watch_arg_parse(matches),
   });
 }
 
-fn cache_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn cache_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   compile_args_parse(flags, matches);
-  let files = matches
-    .values_of("file")
-    .unwrap()
-    .map(String::from)
-    .collect();
+  let files = matches.remove_many::<String>("file").unwrap().collect();
   flags.subcommand = DenoSubcommand::Cache(CacheFlags { files });
 }
 
-fn check_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn check_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
-  compile_args_without_no_check_parse(flags, matches);
-  let files = matches
-    .values_of("file")
-    .unwrap()
-    .map(String::from)
-    .collect();
-  if matches.is_present("all") || matches.is_present("remote") {
+  compile_args_without_check_parse(flags, matches);
+  let files = matches.remove_many::<String>("file").unwrap().collect();
+  if matches.get_flag("all") || matches.get_flag("remote") {
     flags.type_check_mode = TypeCheckMode::All;
   }
   flags.subcommand = DenoSubcommand::Check(CheckFlags { files });
 }
 
-fn compile_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, false);
 
-  let mut script: Vec<String> = matches
-    .values_of("script_arg")
-    .unwrap()
-    .map(String::from)
-    .collect();
-  assert!(!script.is_empty());
-  let args = script.split_off(1);
-  let source_file = script[0].to_string();
-  let output = matches.value_of("output").map(PathBuf::from);
-  let target = matches.value_of("target").map(String::from);
+  let mut script = matches.remove_many::<String>("script_arg").unwrap();
+  let source_file = script.next().unwrap();
+  let args = script.collect();
+  let output = matches.remove_one::<PathBuf>("output");
+  let target = matches.remove_one::<String>("target");
+  let include = match matches.remove_many::<String>("include") {
+    Some(f) => f.collect(),
+    None => vec![],
+  };
+  ext_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Compile(CompileFlags {
     source_file,
     output,
     args,
     target,
+    include,
   });
 }
 
 fn completions_parse(
   flags: &mut Flags,
-  matches: &clap::ArgMatches,
-  mut app: clap::Command,
+  matches: &mut ArgMatches,
+  mut app: Command,
 ) {
   use clap_complete::generate;
   use clap_complete::shells::Bash;
@@ -2510,7 +2665,7 @@ fn completions_parse(
   let mut buf: Vec<u8> = vec![];
   let name = "deno";
 
-  match matches.value_of("shell").unwrap() {
+  match matches.get_one::<String>("shell").unwrap().as_str() {
     "bash" => generate(Bash, &mut app, name, &mut buf),
     "fish" => generate(Fish, &mut app, name, &mut buf),
     "powershell" => generate(PowerShell, &mut app, name, &mut buf),
@@ -2524,25 +2679,25 @@ fn completions_parse(
   });
 }
 
-fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let files = match matches.values_of("files") {
-    Some(f) => f.map(PathBuf::from).collect(),
+fn coverage_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let files = match matches.remove_many::<PathBuf>("files") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let include = match matches.values_of("include") {
-    Some(f) => f.map(String::from).collect(),
+  let include = match matches.remove_many::<String>("include") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let exclude = match matches.values_of("exclude") {
-    Some(f) => f.map(String::from).collect(),
+  let exclude = match matches.remove_many::<String>("exclude") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let lcov = matches.is_present("lcov");
-  let output = matches.value_of("output").map(PathBuf::from);
+  let lcov = matches.get_flag("lcov");
+  let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Coverage(CoverageFlags {
     files: FileFlags {
       include: files,
@@ -2555,23 +2710,27 @@ fn coverage_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
-fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn doc_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   import_map_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
 
   let source_file = matches
-    .value_of("source_file")
+    .remove_one::<String>("source_file")
     .map(|value| {
       if value == "--builtin" {
         DocSourceFileFlag::Builtin
       } else {
-        DocSourceFileFlag::Path(value.to_string())
+        DocSourceFileFlag::Path(value)
       }
     })
     .unwrap_or_default();
-  let private = matches.is_present("private");
-  let json = matches.is_present("json");
-  let filter = matches.value_of("filter").map(String::from);
+  let private = matches.get_flag("private");
+  let json = matches.get_flag("json");
+  let filter = matches.remove_one::<String>("filter");
   flags.subcommand = DenoSubcommand::Doc(DocFlags {
     source_file,
     json,
@@ -2580,7 +2739,7 @@ fn doc_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
-fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn eval_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, false, true);
   flags.allow_net = Some(vec![]);
   flags.allow_env = Some(vec![]);
@@ -2590,67 +2749,53 @@ fn eval_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   flags.allow_write = Some(vec![]);
   flags.allow_ffi = Some(vec![]);
   flags.allow_hrtime = true;
-  // TODO(@satyarohith): remove this flag in 2.0.
-  let as_typescript = matches.is_present("ts");
-  let ext = if as_typescript {
-    "ts".to_string()
-  } else {
-    matches.value_of("ext").unwrap().to_string()
-  };
 
-  let print = matches.is_present("print");
-  let mut code: Vec<String> = matches
-    .values_of("code_arg")
-    .unwrap()
-    .map(String::from)
-    .collect();
-  assert!(!code.is_empty());
-  let code_args = code.split_off(1);
-  let code = code[0].to_string();
-  for v in code_args {
-    flags.argv.push(v);
+  ext_arg_parse(flags, matches);
+
+  // TODO(@satyarohith): remove this flag in 2.0.
+  let as_typescript = matches.get_flag("ts");
+
+  if as_typescript {
+    eprintln!(
+      "{}",
+      crate::colors::yellow(
+        "Warning: --ts/-T flag is deprecated. Use --ext=ts instead."
+      ),
+    );
+
+    flags.ext = Some("ts".to_string());
   }
-  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code, ext });
+
+  let print = matches.get_flag("print");
+  let mut code_args = matches.remove_many::<String>("code_arg").unwrap();
+  let code = code_args.next().unwrap();
+  flags.argv.extend(code_args);
+
+  flags.subcommand = DenoSubcommand::Eval(EvalFlags { print, code });
 }
 
-fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn fmt_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
-  watch_arg_parse(flags, matches, false);
+  ext_arg_parse(flags, matches);
 
-  let include = match matches.values_of("files") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let include = match matches.remove_many::<PathBuf>("files") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let ext = matches.value_of("ext").unwrap().to_string();
 
-  let use_tabs = optional_bool_parse(matches, "use-tabs");
-  let line_width = if matches.is_present("line-width") {
-    Some(matches.value_of("line-width").unwrap().parse().unwrap())
-  } else {
-    None
-  };
-  let indent_width = if matches.is_present("indent-width") {
-    Some(
-      matches
-        .value_of("indent-width")
-        .unwrap_or("true")
-        .parse()
-        .unwrap(),
-    )
-  } else {
-    None
-  };
-  let single_quote = optional_bool_parse(matches, "single-quote");
-  let prose_wrap = matches.value_of("prose-wrap").map(ToString::to_string);
-  let no_semicolons = optional_bool_parse(matches, "no-semicolons");
+  let use_tabs = matches.remove_one::<bool>("use-tabs");
+  let line_width = matches.remove_one::<NonZeroU32>("line-width");
+  let indent_width = matches.remove_one::<NonZeroU8>("indent-width");
+  let single_quote = matches.remove_one::<bool>("single-quote");
+  let prose_wrap = matches.remove_one::<String>("prose-wrap");
+  let no_semicolons = matches.remove_one::<bool>("no-semicolons");
 
   flags.subcommand = DenoSubcommand::Fmt(FmtFlags {
-    check: matches.is_present("check"),
-    ext,
+    check: matches.get_flag("check"),
     files: FileFlags { include, ignore },
     use_tabs,
     line_width,
@@ -2658,52 +2803,45 @@ fn fmt_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     single_quote,
     prose_wrap,
     no_semicolons,
+    watch: watch_arg_parse(matches),
   });
 }
 
-fn optional_bool_parse(matches: &ArgMatches, name: &str) -> Option<bool> {
-  if matches.is_present(name) {
-    Some(matches.value_of(name).unwrap_or("true").parse().unwrap())
-  } else {
-    None
-  }
-}
-
-fn init_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn init_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Init(InitFlags {
-    dir: matches.value_of("dir").map(|f| f.to_string()),
+    dir: matches.remove_one::<String>("dir"),
   });
 }
 
-fn info_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   reload_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
-  let json = matches.is_present("json");
+  node_modules_dir_arg_parse(flags, matches);
+  lock_arg_parse(flags, matches);
+  no_lock_arg_parse(flags, matches);
+  no_remote_arg_parse(flags, matches);
+  no_npm_arg_parse(flags, matches);
+  let json = matches.get_flag("json");
   flags.subcommand = DenoSubcommand::Info(InfoFlags {
-    file: matches.value_of("file").map(|f| f.to_string()),
+    file: matches.remove_one::<String>("file"),
     json,
   });
 }
 
-fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let root = matches.value_of("root").map(PathBuf::from);
+  let root = matches.remove_one::<PathBuf>("root");
 
-  let force = matches.is_present("force");
-  let name = matches.value_of("name").map(|s| s.to_string());
-  let cmd_values = matches.values_of("cmd").unwrap();
-  let mut cmd = vec![];
-  for value in cmd_values {
-    cmd.push(value.to_string());
-  }
+  let force = matches.get_flag("force");
+  let name = matches.remove_one::<String>("name");
+  let mut cmd_values = matches.remove_many::<String>("cmd").unwrap();
 
-  let module_url = cmd[0].to_string();
-  let args = cmd[1..].to_vec();
+  let module_url = cmd_values.next().unwrap();
+  let args = cmd_values.collect();
 
   flags.subcommand = DenoSubcommand::Install(InstallFlags {
     name,
@@ -2714,43 +2852,42 @@ fn install_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
-fn uninstall_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  let root = matches.value_of("root").map(PathBuf::from);
+fn uninstall_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let root = matches.remove_one::<PathBuf>("root");
 
-  let name = matches.value_of("name").unwrap().to_string();
+  let name = matches.remove_one::<String>("name").unwrap();
   flags.subcommand = DenoSubcommand::Uninstall(UninstallFlags { name, root });
 }
 
-fn lsp_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+fn lsp_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Lsp;
 }
 
-fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
-  watch_arg_parse(flags, matches, false);
-  let files = match matches.values_of("files") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let files = match matches.remove_many::<PathBuf>("files") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+    Some(f) => f.collect(),
     None => vec![],
   };
-  let rules = matches.is_present("rules");
+  let rules = matches.get_flag("rules");
   let maybe_rules_tags = matches
-    .values_of("rules-tags")
-    .map(|f| f.map(String::from).collect());
+    .remove_many::<String>("rules-tags")
+    .map(|f| f.collect());
 
   let maybe_rules_include = matches
-    .values_of("rules-include")
-    .map(|f| f.map(String::from).collect());
+    .remove_many::<String>("rules-include")
+    .map(|f| f.collect());
 
   let maybe_rules_exclude = matches
-    .values_of("rules-exclude")
-    .map(|f| f.map(String::from).collect());
+    .remove_many::<String>("rules-exclude")
+    .map(|f| f.collect());
 
-  let json = matches.is_present("json");
-  let compact = matches.is_present("compact");
+  let json = matches.get_flag("json");
+  let compact = matches.get_flag("compact");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
       include: files,
@@ -2760,170 +2897,121 @@ fn lint_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     maybe_rules_tags,
     maybe_rules_include,
     maybe_rules_exclude,
-
     json,
     compact,
+    watch: watch_arg_parse(matches),
   });
 }
 
-fn repl_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
   unsafely_ignore_certificate_errors_parse(flags, matches);
 
-  let eval_files: Option<Vec<String>> = matches
-    .values_of("eval-file")
-    .map(|values| values.map(String::from).collect());
+  let eval_files = matches
+    .remove_many::<String>("eval-file")
+    .map(|values| values.collect());
 
   handle_repl_flags(
     flags,
     ReplFlags {
       eval_files,
-      eval: matches.value_of("eval").map(ToOwned::to_owned),
+      eval: matches.remove_one::<String>("eval"),
       is_default_command: false,
     },
   );
 }
 
-fn run_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   runtime_args_parse(flags, matches, true, true);
 
-  let mut script: Vec<String> = matches
-    .values_of("script_arg")
-    .unwrap()
-    .map(String::from)
-    .collect();
-  assert!(!script.is_empty());
-  let script_args = script.split_off(1);
-  let script = script[0].to_string();
-  for v in script_args {
-    flags.argv.push(v);
-  }
+  let mut script_arg = matches.remove_many::<String>("script_arg").unwrap();
 
-  watch_arg_parse(flags, matches, true);
-  flags.subcommand = DenoSubcommand::Run(RunFlags { script });
+  let script = script_arg.next().unwrap();
+  flags.argv.extend(script_arg);
+
+  ext_arg_parse(flags, matches);
+
+  flags.subcommand = DenoSubcommand::Run(RunFlags {
+    script,
+    watch: watch_arg_parse_with_paths(matches),
+  });
 }
 
-fn task_parse(
-  flags: &mut Flags,
-  matches: &clap::ArgMatches,
-  raw_args: &[String],
-) {
-  flags.config_flag = if let Some(config) = matches.value_of("config") {
-    ConfigFlag::Path(config.to_string())
-  } else {
-    ConfigFlag::Discover
-  };
+fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.config_flag = matches
+    .remove_one::<String>("config")
+    .map(ConfigFlag::Path)
+    .unwrap_or(ConfigFlag::Discover);
 
   let mut task_flags = TaskFlags {
-    cwd: None,
+    cwd: matches.remove_one::<String>("cwd"),
     task: None,
   };
 
-  if let Some(cwd) = matches.value_of("cwd") {
-    task_flags.cwd = Some(cwd.to_string());
-  }
+  if let Some((task, mut matches)) = matches.remove_subcommand() {
+    task_flags.task = Some(task);
 
-  if let Some(mut index) = matches.index_of("task_name_and_args") {
-    let task_word_index = raw_args.iter().position(|el| el == "task").unwrap();
-    let raw_args = &raw_args[task_word_index..];
-
-    // temporary workaround until https://github.com/clap-rs/clap/issues/1538 is fixed
-    while index < raw_args.len() {
-      match raw_args[index].as_str() {
-        "-c" | "--config" => {
-          flags.config_flag = ConfigFlag::Path(raw_args[index + 1].to_string());
-          index += 2;
-        }
-        "--cwd" => {
-          task_flags.cwd = Some(raw_args[index + 1].to_string());
-          index += 2;
-        }
-        "--no-config" => {
-          flags.config_flag = ConfigFlag::Disabled;
-          index += 1;
-        }
-        "-q" | "--quiet" => {
-          flags.log_level = Some(Level::Error);
-          index += 1;
-        }
-        _ => break,
-      }
-    }
-
-    if index < raw_args.len() {
-      task_flags.task = Some(raw_args[index].to_string());
-      index += 1;
-
-      if index < raw_args.len() {
-        flags
-          .argv
-          .extend(raw_args[index..].iter().map(String::from));
-      }
-    }
+    flags.argv.extend(
+      matches
+        .remove_many::<std::ffi::OsString>("")
+        .into_iter()
+        .flatten()
+        .filter_map(|arg| arg.into_string().ok()),
+    );
   }
 
   flags.subcommand = DenoSubcommand::Task(task_flags);
 }
 
-fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.type_check_mode = TypeCheckMode::Local;
   runtime_args_parse(flags, matches, true, true);
   // NOTE: `deno test` always uses `--no-prompt`, tests shouldn't ever do
   // interactive prompts, unless done by user code
   flags.no_prompt = true;
 
-  let ignore = match matches.values_of("ignore") {
-    Some(f) => f.map(PathBuf::from).collect(),
+  let ignore = match matches.remove_many::<PathBuf>("ignore") {
+    Some(f) => f.collect(),
     None => vec![],
   };
 
-  let no_run = matches.is_present("no-run");
-  let trace_ops = matches.is_present("trace-ops");
-  let doc = matches.is_present("doc");
-  let allow_none = matches.is_present("allow-none");
-  let filter = matches.value_of("filter").map(String::from);
+  let no_run = matches.get_flag("no-run");
+  let trace_ops = matches.get_flag("trace-ops");
+  let doc = matches.get_flag("doc");
+  let allow_none = matches.get_flag("allow-none");
+  let filter = matches.remove_one::<String>("filter");
 
-  let fail_fast = if matches.is_present("fail-fast") {
-    if let Some(value) = matches.value_of("fail-fast") {
-      Some(value.parse().unwrap())
-    } else {
-      Some(NonZeroUsize::new(1).unwrap())
-    }
+  let fail_fast = if matches.contains_id("fail-fast") {
+    Some(
+      matches
+        .remove_one::<NonZeroUsize>("fail-fast")
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+    )
   } else {
     None
   };
 
-  let shuffle = if matches.is_present("shuffle") {
-    let value = if let Some(value) = matches.value_of("shuffle") {
-      value.parse::<u64>().unwrap()
-    } else {
-      rand::random::<u64>()
-    };
-
-    Some(value)
+  let shuffle = if matches.contains_id("shuffle") {
+    Some(
+      matches
+        .remove_one::<u64>("shuffle")
+        .unwrap_or_else(rand::random),
+    )
   } else {
     None
   };
 
-  if matches.is_present("script_arg") {
-    let script_arg: Vec<String> = matches
-      .values_of("script_arg")
-      .unwrap()
-      .map(String::from)
-      .collect();
-
-    for v in script_arg {
-      flags.argv.push(v);
-    }
+  if let Some(script_arg) = matches.remove_many::<String>("script_arg") {
+    flags.argv.extend(script_arg);
   }
 
-  let concurrent_jobs = if matches.is_present("parallel") {
+  let concurrent_jobs = if matches.get_flag("parallel") {
     if let Ok(value) = env::var("DENO_JOBS") {
       value.parse::<NonZeroUsize>().ok()
     } else {
       std::thread::available_parallelism().ok()
     }
-  } else if matches.is_present("jobs") {
+  } else if matches.contains_id("jobs") {
     // We can't change this to use the log crate because its not configured
     // yet at this point since the flags haven't been parsed. This flag is
     // deprecated though so it's not worth changing the code to use the log
@@ -2932,8 +3020,8 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
       "{}",
       crate::colors::yellow("Warning: --jobs flag is deprecated. Use the --parallel flag with possibly the 'DENO_JOBS' environment variable."),
     );
-    if let Some(value) = matches.value_of("jobs") {
-      Some(value.parse().unwrap())
+    if let Some(value) = matches.remove_one::<NonZeroUsize>("jobs") {
+      Some(value)
     } else {
       std::thread::available_parallelism().ok()
     }
@@ -2941,21 +3029,16 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     None
   };
 
-  let include = if matches.is_present("files") {
-    matches
-      .values_of("files")
-      .unwrap()
-      .map(PathBuf::from)
-      .collect::<Vec<_>>()
+  let include = if let Some(files) = matches.remove_many::<PathBuf>("files") {
+    files.collect()
   } else {
     Vec::new()
   };
 
-  flags.coverage_dir = matches.value_of("coverage").map(String::from);
-  watch_arg_parse(flags, matches, false);
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
+    coverage_dir: matches.remove_one::<String>("coverage"),
     fail_fast,
     files: FileFlags { include, ignore },
     filter,
@@ -2963,26 +3046,22 @@ fn test_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     allow_none,
     concurrent_jobs,
     trace_ops,
+    watch: watch_arg_parse(matches),
   });
 }
 
-fn types_parse(flags: &mut Flags, _matches: &clap::ArgMatches) {
+fn types_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Types;
 }
 
-fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn upgrade_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   ca_file_arg_parse(flags, matches);
 
-  let dry_run = matches.is_present("dry-run");
-  let force = matches.is_present("force");
-  let canary = matches.is_present("canary");
-  let version = matches.value_of("version").map(|s| s.to_string());
-  let output = if matches.is_present("output") {
-    let install_root = matches.value_of("output").unwrap();
-    Some(PathBuf::from(install_root))
-  } else {
-    None
-  };
+  let dry_run = matches.get_flag("dry-run");
+  let force = matches.get_flag("force");
+  let canary = matches.get_flag("canary");
+  let version = matches.remove_one::<String>("version");
+  let output = matches.remove_one::<PathBuf>("output");
   flags.subcommand = DenoSubcommand::Upgrade(UpgradeFlags {
     dry_run,
     force,
@@ -2992,105 +3071,83 @@ fn upgrade_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
   });
 }
 
-fn vendor_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   ca_file_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
     specifiers: matches
-      .values_of("specifiers")
-      .map(|p| p.map(ToString::to_string).collect())
+      .remove_many::<String>("specifiers")
+      .map(|p| p.collect())
       .unwrap_or_default(),
-    output_path: matches.value_of("output").map(PathBuf::from),
-    force: matches.is_present("force"),
+    output_path: matches.remove_one::<PathBuf>("output"),
+    force: matches.get_flag("force"),
   });
 }
 
-fn compile_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  import_map_arg_parse(flags, matches);
-  no_remote_arg_parse(flags, matches);
-  no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
-  config_args_parse(flags, matches);
+fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  compile_args_without_check_parse(flags, matches);
   no_check_arg_parse(flags, matches);
   check_arg_parse(flags, matches);
-  reload_arg_parse(flags, matches);
-  lock_args_parse(flags, matches);
-  ca_file_arg_parse(flags, matches);
 }
 
-fn compile_args_without_no_check_parse(
+fn compile_args_without_check_parse(
   flags: &mut Flags,
-  matches: &clap::ArgMatches,
+  matches: &mut ArgMatches,
 ) {
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  local_npm_args_parse(flags, matches);
+  node_modules_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
 }
 
-fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn permission_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   unsafely_ignore_certificate_errors_parse(flags, matches);
-  if let Some(read_wl) = matches.values_of("allow-read") {
-    let read_allowlist: Vec<PathBuf> = read_wl.map(PathBuf::from).collect();
-    flags.allow_read = Some(read_allowlist);
+  if let Some(read_wl) = matches.remove_many::<PathBuf>("allow-read") {
+    flags.allow_read = Some(read_wl.collect());
   }
 
-  if let Some(write_wl) = matches.values_of("allow-write") {
-    let write_allowlist: Vec<PathBuf> = write_wl.map(PathBuf::from).collect();
-    flags.allow_write = Some(write_allowlist);
+  if let Some(write_wl) = matches.remove_many::<PathBuf>("allow-write") {
+    flags.allow_write = Some(write_wl.collect());
   }
 
-  if let Some(net_wl) = matches.values_of("allow-net") {
-    let net_allowlist: Vec<String> =
-      flags_allow_net::parse(net_wl.map(ToString::to_string).collect())
-        .unwrap();
+  if let Some(net_wl) = matches.remove_many::<String>("allow-net") {
+    let net_allowlist = flags_allow_net::parse(net_wl.collect()).unwrap();
     flags.allow_net = Some(net_allowlist);
   }
 
-  if let Some(env_wl) = matches.values_of("allow-env") {
-    let env_allowlist: Vec<String> = env_wl
-      .map(|env: &str| {
-        if cfg!(windows) {
-          env.to_uppercase()
-        } else {
-          env.to_string()
-        }
-      })
-      .collect();
-    flags.allow_env = Some(env_allowlist);
+  if let Some(env_wl) = matches.remove_many::<String>("allow-env") {
+    flags.allow_env = Some(env_wl.collect());
     debug!("env allowlist: {:#?}", &flags.allow_env);
   }
 
-  if let Some(run_wl) = matches.values_of("allow-run") {
-    let run_allowlist: Vec<String> = run_wl.map(ToString::to_string).collect();
-    flags.allow_run = Some(run_allowlist);
+  if let Some(run_wl) = matches.remove_many::<String>("allow-run") {
+    flags.allow_run = Some(run_wl.collect());
     debug!("run allowlist: {:#?}", &flags.allow_run);
   }
 
-  if let Some(sys_wl) = matches.values_of("allow-sys") {
-    let sys_allowlist: Vec<String> = sys_wl.map(ToString::to_string).collect();
-    flags.allow_sys = Some(sys_allowlist);
+  if let Some(sys_wl) = matches.remove_many::<String>("allow-sys") {
+    flags.allow_sys = Some(sys_wl.collect());
     debug!("sys info allowlist: {:#?}", &flags.allow_sys);
   }
 
-  if let Some(ffi_wl) = matches.values_of("allow-ffi") {
-    let ffi_allowlist: Vec<PathBuf> = ffi_wl.map(PathBuf::from).collect();
-    flags.allow_ffi = Some(ffi_allowlist);
+  if let Some(ffi_wl) = matches.remove_many::<PathBuf>("allow-ffi") {
+    flags.allow_ffi = Some(ffi_wl.collect());
     debug!("ffi allowlist: {:#?}", &flags.allow_ffi);
   }
 
-  if matches.is_present("allow-hrtime") {
+  if matches.get_flag("allow-hrtime") {
     flags.allow_hrtime = true;
   }
-  if matches.is_present("allow-all") {
+  if matches.get_flag("allow-all") {
     flags.allow_all = true;
     flags.allow_read = Some(vec![]);
     flags.allow_env = Some(vec![]);
@@ -3101,23 +3158,25 @@ fn permission_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
     flags.allow_ffi = Some(vec![]);
     flags.allow_hrtime = true;
   }
-  if matches.is_present("no-prompt") {
+  if matches.get_flag("no-prompt") {
     flags.no_prompt = true;
   }
 }
 fn unsafely_ignore_certificate_errors_parse(
   flags: &mut Flags,
-  matches: &clap::ArgMatches,
+  matches: &mut ArgMatches,
 ) {
-  if let Some(ic_wl) = matches.values_of("unsafely-ignore-certificate-errors") {
-    let ic_allowlist: Vec<String> =
-      flags_allow_net::parse(ic_wl.map(ToString::to_string).collect()).unwrap();
+  if let Some(ic_wl) =
+    matches.remove_many::<String>("unsafely-ignore-certificate-errors")
+  {
+    let ic_allowlist = flags_allow_net::parse(ic_wl.collect()).unwrap();
     flags.unsafely_ignore_certificate_errors = Some(ic_allowlist);
   }
 }
+
 fn runtime_args_parse(
   flags: &mut Flags,
-  matches: &clap::ArgMatches,
+  matches: &mut ArgMatches,
   include_perms: bool,
   include_inspector: bool,
 ) {
@@ -3135,45 +3194,44 @@ fn runtime_args_parse(
   enable_testing_features_arg_parse(flags, matches);
 }
 
-fn inspect_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let default = || "127.0.0.1:9229".parse::<SocketAddr>().unwrap();
-  flags.inspect = if matches.is_present("inspect") {
-    if let Some(host) = matches.value_of("inspect") {
-      Some(host.parse().unwrap())
-    } else {
-      Some(default())
-    }
+  flags.inspect = if matches.contains_id("inspect") {
+    Some(
+      matches
+        .remove_one::<SocketAddr>("inspect")
+        .unwrap_or_else(default),
+    )
   } else {
     None
   };
-  flags.inspect_brk = if matches.is_present("inspect-brk") {
-    if let Some(host) = matches.value_of("inspect-brk") {
-      Some(host.parse().unwrap())
-    } else {
-      Some(default())
-    }
+  flags.inspect_brk = if matches.contains_id("inspect-brk") {
+    Some(
+      matches
+        .remove_one::<SocketAddr>("inspect-brk")
+        .unwrap_or_else(default),
+    )
   } else {
     None
   };
-  flags.inspect_wait = if matches.is_present("inspect-wait") {
-    if let Some(host) = matches.value_of("inspect-wait") {
-      Some(host.parse().unwrap())
-    } else {
-      Some(default())
-    }
+  flags.inspect_wait = if matches.contains_id("inspect-wait") {
+    Some(
+      matches
+        .remove_one::<SocketAddr>("inspect-wait")
+        .unwrap_or_else(default),
+    )
   } else {
     None
   };
 }
 
-fn import_map_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.import_map_path = matches.value_of("import-map").map(ToOwned::to_owned);
+fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.import_map_path = matches.remove_one::<String>("import-map");
 }
 
-fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if let Some(cache_bl) = matches.values_of("reload") {
-    let raw_cache_blocklist: Vec<String> =
-      cache_bl.map(ToString::to_string).collect();
+fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(cache_bl) = matches.remove_many::<String>("reload") {
+    let raw_cache_blocklist: Vec<String> = cache_bl.collect();
     if raw_cache_blocklist.is_empty() {
       flags.reload = true;
     } else {
@@ -3184,158 +3242,153 @@ fn reload_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
   }
 }
 
-fn ca_file_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.ca_data = matches
-    .value_of("cert")
-    .map(ToOwned::to_owned)
-    .map(CaData::File);
+fn ca_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.ca_data = matches.remove_one::<String>("cert").map(CaData::File);
 }
 
 fn enable_testing_features_arg_parse(
   flags: &mut Flags,
-  matches: &clap::ArgMatches,
+  matches: &mut ArgMatches,
 ) {
-  if matches.is_present("enable-testing-features-do-not-use") {
+  if matches.get_flag("enable-testing-features-do-not-use") {
     flags.enable_testing_features = true
   }
 }
 
-fn cached_only_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("cached-only") {
+fn cached_only_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("cached-only") {
     flags.cached_only = true;
   }
 }
 
-fn location_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  flags.location = matches
-    .value_of("location")
-    .map(|href| Url::parse(href).unwrap());
+fn ext_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.ext = matches.remove_one::<String>("ext");
 }
 
-fn v8_flags_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if let Some(v8_flags) = matches.values_of("v8-flags") {
-    flags.v8_flags = v8_flags.map(String::from).collect();
+fn location_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.location = matches.remove_one::<Url>("location");
+}
+
+fn v8_flags_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(v8_flags) = matches.remove_many::<String>("v8-flags") {
+    flags.v8_flags = v8_flags.collect();
   }
 }
 
-fn seed_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
-  if matches.is_present("seed") {
-    let seed_string = matches.value_of("seed").unwrap();
-    let seed = seed_string.parse::<u64>().unwrap();
+fn seed_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(seed) = matches.remove_one::<u64>("seed") {
     flags.seed = Some(seed);
 
     flags.v8_flags.push(format!("--random-seed={seed}"));
   }
 }
 
-fn no_check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if let Some(cache_type) = matches.value_of("no-check") {
-    match cache_type {
+fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(cache_type) = matches.get_one::<String>("no-check") {
+    match cache_type.as_str() {
       "remote" => flags.type_check_mode = TypeCheckMode::Local,
       _ => debug!(
         "invalid value for 'no-check' of '{}' using default",
         cache_type
       ),
     }
-  } else if matches.is_present("no-check") {
+  } else if matches.contains_id("no-check") {
     flags.type_check_mode = TypeCheckMode::None;
   }
 }
 
-fn check_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if let Some(cache_type) = matches.value_of("check") {
-    match cache_type {
+fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if let Some(cache_type) = matches.get_one::<String>("check") {
+    match cache_type.as_str() {
       "all" => flags.type_check_mode = TypeCheckMode::All,
       _ => debug!(
         "invalid value for 'check' of '{}' using default",
         cache_type
       ),
     }
-  } else if matches.is_present("check") {
+  } else if matches.contains_id("check") {
     flags.type_check_mode = TypeCheckMode::Local;
   }
 }
 
-fn lock_args_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
+fn lock_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   lock_arg_parse(flags, matches);
-  if matches.is_present("lock-write") {
+  no_lock_arg_parse(flags, matches);
+  if matches.get_flag("lock-write") {
     flags.lock_write = true;
   }
-  if matches.is_present("no-lock") {
+}
+
+fn lock_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.contains_id("lock") {
+    let lockfile = matches
+      .remove_one::<PathBuf>("lock")
+      .unwrap_or_else(|| PathBuf::from("./deno.lock"));
+    flags.lock = Some(lockfile);
+  }
+}
+
+fn no_lock_arg_parse(flags: &mut Flags, matches: &ArgMatches) {
+  if matches.get_flag("no-lock") {
     flags.no_lock = true;
   }
 }
 
-fn lock_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("lock") {
-    let lockfile = if let Some(path) = matches.value_of("lock") {
-      path
-    } else {
-      "./deno.lock"
-    };
-    flags.lock = Some(PathBuf::from(lockfile));
-  }
-}
-
-fn config_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  flags.config_flag = if matches.is_present("no-config") {
+fn config_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.config_flag = if matches.get_flag("no-config") {
     ConfigFlag::Disabled
-  } else if let Some(config) = matches.value_of("config") {
-    ConfigFlag::Path(config.to_string())
+  } else if let Some(config) = matches.remove_one::<String>("config") {
+    ConfigFlag::Path(config)
   } else {
     ConfigFlag::Discover
   };
 }
 
-fn no_remote_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("no-remote") {
+fn no_remote_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("no-remote") {
     flags.no_remote = true;
   }
 }
 
-fn no_npm_arg_parse(flags: &mut Flags, matches: &clap::ArgMatches) {
-  if matches.is_present("no-npm") {
+fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("no-npm") {
     flags.no_npm = true;
   }
 }
 
-fn local_npm_args_parse(flags: &mut Flags, matches: &ArgMatches) {
-  flags.node_modules_dir = optional_bool_parse(matches, "node-modules-dir");
+fn node_modules_dir_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
 }
 
-fn inspect_arg_validate(val: &str) -> Result<(), String> {
-  match val.parse::<SocketAddr>() {
-    Ok(_) => Ok(()),
-    Err(e) => Err(e.to_string()),
-  }
-}
-
-fn reload_arg_validate(urlstr: &str) -> Result<(), String> {
+fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
   if urlstr.is_empty() {
     return Err(String::from("Missing url. Check for extra commas."));
   }
   match Url::from_str(urlstr) {
-    Ok(_) => Ok(()),
+    Ok(_) => Ok(urlstr.to_string()),
     Err(e) => Err(e.to_string()),
   }
 }
 
-fn watch_arg_parse(
-  flags: &mut Flags,
-  matches: &clap::ArgMatches,
-  allow_extra: bool,
-) {
-  if allow_extra {
-    if let Some(f) = matches.values_of("watch") {
-      flags.watch = Some(f.map(PathBuf::from).collect());
-    }
-  } else if matches.is_present("watch") {
-    flags.watch = Some(vec![]);
+fn watch_arg_parse(matches: &mut ArgMatches) -> Option<WatchFlags> {
+  if matches.get_flag("watch") {
+    Some(WatchFlags {
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    })
+  } else {
+    None
   }
+}
 
-  if matches.is_present("no-clear-screen") {
-    flags.no_clear_screen = true;
-  }
+fn watch_arg_parse_with_paths(
+  matches: &mut ArgMatches,
+) -> Option<WatchFlagsWithPaths> {
+  matches
+    .remove_many::<PathBuf>("watch")
+    .map(|f| WatchFlagsWithPaths {
+      paths: f.collect(),
+      no_clear_screen: matches.get_flag("no-clear-screen"),
+    })
 }
 
 // TODO(ry) move this to utility module and add test.
@@ -3378,6 +3431,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         unstable: true,
         log_level: Some(Level::Error),
@@ -3412,9 +3466,15 @@ mod tests {
   #[test]
   fn version() {
     let r = flags_from_vec(svec!["deno", "--version"]);
-    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::DisplayVersion
+    );
     let r = flags_from_vec(svec!["deno", "-V"]);
-    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::DisplayVersion);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::DisplayVersion
+    );
   }
 
   #[test]
@@ -3426,6 +3486,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         reload: true,
         ..Flags::default()
@@ -3442,8 +3503,11 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            paths: vec![],
+            no_clear_screen: false,
+          }),
         }),
-        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -3459,8 +3523,11 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            paths: vec![PathBuf::from("file1"), PathBuf::from("file2")],
+            no_clear_screen: false,
+          }),
         }),
-        watch: Some(vec![PathBuf::from("file1"), PathBuf::from("file2")]),
         ..Flags::default()
       }
     );
@@ -3482,9 +3549,11 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Some(WatchFlagsWithPaths {
+            paths: vec![],
+            no_clear_screen: true,
+          })
         }),
-        watch: Some(vec![]),
-        no_clear_screen: true,
         ..Flags::default()
       }
     );
@@ -3500,6 +3569,7 @@ mod tests {
         reload: true,
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_write: Some(vec![]),
         ..Flags::default()
@@ -3515,6 +3585,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "_".to_string(),
+          watch: Default::default(),
         }),
         v8_flags: svec!["--help"],
         ..Flags::default()
@@ -3532,6 +3603,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         v8_flags: svec!["--expose-gc", "--gc-stats=1"],
         ..Flags::default()
@@ -3572,6 +3644,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "gist.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["--title", "X"],
         allow_net: Some(vec![]),
@@ -3588,6 +3661,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "gist.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_all: true,
         allow_net: Some(vec![]),
@@ -3611,6 +3685,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "gist.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_read: Some(vec![]),
         ..Flags::default()
@@ -3626,6 +3701,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "gist.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_hrtime: true,
         ..Flags::default()
@@ -3652,6 +3728,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["--", "-D", "--allow-net"],
         allow_write: Some(vec![]),
@@ -3668,7 +3745,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![
               PathBuf::from("script_1.ts"),
@@ -3682,7 +3758,9 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3693,7 +3771,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3704,7 +3781,9 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3715,7 +3794,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3726,7 +3804,9 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3737,7 +3817,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3748,8 +3827,11 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          })
         }),
-        watch: Some(vec![]),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3761,7 +3843,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3772,9 +3853,11 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: true,
+          })
         }),
-        watch: Some(vec![]),
-        no_clear_screen: true,
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3792,7 +3875,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: true,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![PathBuf::from("foo.ts")],
             ignore: vec![PathBuf::from("bar.js")],
@@ -3803,8 +3885,11 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          })
         }),
-        watch: Some(vec![]),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3815,7 +3900,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3826,7 +3910,9 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
         ..Flags::default()
       }
@@ -3845,7 +3931,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![PathBuf::from("foo.ts")],
             ignore: vec![],
@@ -3856,9 +3941,12 @@ mod tests {
           single_quote: None,
           prose_wrap: None,
           no_semicolons: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          })
         }),
         config_flag: ConfigFlag::Path("deno.jsonc".to_string()),
-        watch: Some(vec![]),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3881,7 +3969,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3892,7 +3979,9 @@ mod tests {
           single_quote: Some(true),
           prose_wrap: Some("never".to_string()),
           no_semicolons: Some(true),
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3910,7 +3999,6 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Fmt(FmtFlags {
           check: false,
-          ext: "ts".to_string(),
           files: FileFlags {
             include: vec![],
             ignore: vec![],
@@ -3921,7 +4009,9 @@ mod tests {
           single_quote: Some(false),
           prose_wrap: None,
           no_semicolons: Some(false),
+          watch: Default::default(),
         }),
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -3947,6 +4037,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -3976,8 +4067,10 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          })
         }),
-        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -4007,9 +4100,10 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
+          watch: Some(WatchFlags {
+            no_clear_screen: true,
+          })
         }),
-        watch: Some(vec![]),
-        no_clear_screen: true,
         ..Flags::default()
       }
     );
@@ -4033,6 +4127,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4053,6 +4148,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: false,
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4079,6 +4175,7 @@ mod tests {
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
           json: false,
           compact: false,
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4099,6 +4196,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: true,
           compact: false,
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4126,6 +4224,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: true,
           compact: false,
+          watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -4154,6 +4253,7 @@ mod tests {
           maybe_rules_exclude: None,
           json: false,
           compact: true,
+          watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -4221,7 +4321,10 @@ mod tests {
         "--no-remote",
         "script.ts"
       ]);
-      assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::ArgumentConflict);
+      assert_eq!(
+        r.unwrap_err().kind(),
+        clap::error::ErrorKind::ArgumentConflict
+      );
     }
   }
 
@@ -4288,7 +4391,14 @@ mod tests {
       }
     );
 
-    let r = flags_from_vec(svec!["deno", "info", "--config", "tsconfig.json"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "info",
+      "--no-npm",
+      "--no-remote",
+      "--config",
+      "tsconfig.json"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -4297,6 +4407,8 @@ mod tests {
           file: None
         }),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -4311,6 +4423,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         config_flag: ConfigFlag::Path("tsconfig.json".to_owned()),
         ..Flags::default()
@@ -4327,7 +4440,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ext: "js".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4351,7 +4463,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: true,
           code: "1+2".to_string(),
-          ext: "js".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4376,7 +4487,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "'console.log(\"hello\")'".to_string(),
-          ext: "ts".to_string(),
         }),
         allow_net: Some(vec![]),
         allow_env: Some(vec![]),
@@ -4386,6 +4496,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        ext: Some("ts".to_string()),
         ..Flags::default()
       }
     );
@@ -4401,7 +4512,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "42".to_string(),
-          ext: "js".to_string(),
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -4444,7 +4554,6 @@ mod tests {
         subcommand: DenoSubcommand::Eval(EvalFlags {
           print: false,
           code: "console.log(Deno.args)".to_string(),
-          ext: "js".to_string(),
         }),
         argv: svec!["arg1", "arg2"],
         allow_net: Some(vec![]),
@@ -4584,6 +4693,7 @@ mod tests {
         allow_read: Some(vec![PathBuf::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4608,6 +4718,7 @@ mod tests {
         allow_write: Some(vec![PathBuf::from("."), temp_dir]),
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         ..Flags::default()
       }
@@ -4627,6 +4738,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_net: Some(svec!["127.0.0.1"]),
         ..Flags::default()
@@ -4643,6 +4755,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_env: Some(svec!["HOME"]),
         ..Flags::default()
@@ -4663,6 +4776,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_env: Some(svec!["HOME", "PATH"]),
         ..Flags::default()
@@ -4691,6 +4805,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_sys: Some(vec![]),
         ..Flags::default()
@@ -4707,6 +4822,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_sys: Some(svec!["hostname"]),
         ..Flags::default()
@@ -4727,6 +4843,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_sys: Some(svec!["hostname", "osRelease"]),
         ..Flags::default()
@@ -4839,6 +4956,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -4863,6 +4981,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: Some(PathBuf::from("bundle.js")),
+          watch: Default::default(),
         }),
         allow_write: Some(vec![]),
         no_remote: true,
@@ -4882,6 +5001,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: Some(PathBuf::from("bundle.js")),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         allow_write: Some(vec![]),
@@ -4905,6 +5025,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         lock_write: true,
@@ -4924,6 +5045,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -4941,6 +5063,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "script.ts".to_string(),
           out_file: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
@@ -4957,9 +5080,11 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          }),
         }),
         type_check_mode: TypeCheckMode::Local,
-        watch: Some(vec![]),
         ..Flags::default()
       }
     )
@@ -4980,10 +5105,11 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: true,
+          }),
         }),
         type_check_mode: TypeCheckMode::Local,
-        watch: Some(vec![]),
-        no_clear_screen: true,
         ..Flags::default()
       }
     )
@@ -5002,6 +5128,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         import_map_path: Some("import_map.json".to_owned()),
         ..Flags::default()
@@ -5096,6 +5223,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         seed: Some(250_u64),
         v8_flags: svec!["--random-seed=250"],
@@ -5119,6 +5247,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         seed: Some(250_u64),
         v8_flags: svec!["--expose-gc", "--random-seed=250"],
@@ -5201,7 +5330,7 @@ mod tests {
   #[test]
   fn uninstall_with_help_flag() {
     let r = flags_from_vec(svec!["deno", "uninstall", "--help"]);
-    assert_eq!(r.err().unwrap().kind(), clap::ErrorKind::DisplayHelp);
+    assert_eq!(r.err().unwrap().kind(), clap::error::ErrorKind::DisplayHelp);
   }
 
   #[test]
@@ -5213,6 +5342,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         log_level: Some(Level::Debug),
         ..Flags::default()
@@ -5228,6 +5358,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         log_level: Some(Level::Error),
         ..Flags::default()
@@ -5261,6 +5392,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["--allow-read", "--allow-net"],
         ..Flags::default()
@@ -5284,6 +5416,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_read: Some(vec![]),
@@ -5298,6 +5431,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["foo", "bar"],
         ..Flags::default()
@@ -5309,6 +5443,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["-"],
         ..Flags::default()
@@ -5322,6 +5457,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         argv: svec!["-", "foo", "bar"],
         ..Flags::default()
@@ -5337,6 +5473,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
@@ -5353,6 +5490,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -5397,6 +5535,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
@@ -5417,6 +5556,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         unsafely_ignore_certificate_errors: Some(svec![
           "deno.land",
@@ -5467,6 +5607,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         no_remote: true,
         ..Flags::default()
@@ -5482,6 +5623,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         no_npm: true,
         ..Flags::default()
@@ -5498,6 +5640,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         node_modules_dir: Some(true),
         ..Flags::default()
@@ -5515,6 +5658,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         node_modules_dir: Some(false),
         ..Flags::default()
@@ -5530,6 +5674,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         cached_only: true,
         ..Flags::default()
@@ -5550,6 +5695,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_net: Some(svec![
           "deno.land",
@@ -5578,6 +5724,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         allow_net: Some(svec![
           "deno.land",
@@ -5610,6 +5757,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         lock_write: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5623,6 +5771,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         no_lock: true,
         ..Flags::default()
@@ -5641,6 +5790,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         lock_write: true,
         lock: Some(PathBuf::from("./deno.lock")),
@@ -5661,6 +5811,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         lock_write: true,
         lock: Some(PathBuf::from("lock.json")),
@@ -5674,6 +5825,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         lock_write: true,
         ..Flags::default()
@@ -5714,7 +5866,7 @@ mod tests {
   #[test]
   fn test_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
+    let r = flags_from_vec(svec!["deno", "test", "--unstable", "--no-npm", "--no-remote", "--trace-ops", "--no-run", "--filter", "- foo", "--coverage=cov", "--location", "https:foo", "--allow-net", "--allow-none", "dir1/", "dir2/", "--", "arg1", "arg2"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5731,10 +5883,13 @@ mod tests {
           shuffle: None,
           concurrent_jobs: None,
           trace_ops: true,
+          coverage_dir: Some("cov".to_string()),
+          watch: Default::default(),
         }),
         unstable: true,
         no_prompt: true,
-        coverage_dir: Some("cov".to_string()),
+        no_npm: true,
+        no_remote: true,
         location: Some(Url::parse("https://foo/").unwrap()),
         type_check_mode: TypeCheckMode::Local,
         allow_net: Some(vec![]),
@@ -5758,6 +5913,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         ca_data: Some(CaData::File("example.crt".to_owned())),
         ..Flags::default()
@@ -5778,6 +5934,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         enable_testing_features: true,
         ..Flags::default()
@@ -5804,6 +5961,8 @@ mod tests {
           },
           concurrent_jobs: Some(NonZeroUsize::new(4).unwrap()),
           trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -5834,6 +5993,8 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -5868,6 +6029,8 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -5896,9 +6059,10 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
         }),
         no_prompt: true,
-        watch: None,
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
       }
@@ -5924,10 +6088,13 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          }),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
-        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -5951,10 +6118,13 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          }),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
-        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -5980,10 +6150,12 @@ mod tests {
           },
           concurrent_jobs: None,
           trace_ops: false,
+          coverage_dir: None,
+          watch: Some(WatchFlags {
+            no_clear_screen: true,
+          }),
         }),
-        watch: Some(vec![]),
         type_check_mode: TypeCheckMode::Local,
-        no_clear_screen: true,
         no_prompt: true,
         ..Flags::default()
       }
@@ -6005,6 +6177,7 @@ mod tests {
         subcommand: DenoSubcommand::Bundle(BundleFlags {
           source_file: "source.ts".to_string(),
           out_file: None,
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         ca_data: Some(CaData::File("example.crt".to_owned())),
@@ -6139,8 +6312,14 @@ mod tests {
       }
     );
 
-    let r =
-      flags_from_vec(svec!["deno", "doc", "--private", "path/to/module.js"]);
+    let r = flags_from_vec(svec![
+      "deno",
+      "doc",
+      "--no-npm",
+      "--no-remote",
+      "--private",
+      "path/to/module.js"
+    ]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6150,6 +6329,8 @@ mod tests {
           source_file: DocSourceFileFlag::Path("path/to/module.js".to_string()),
           filter: None,
         }),
+        no_npm: true,
+        no_remote: true,
         ..Flags::default()
       }
     );
@@ -6163,6 +6344,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "foo.js".to_string(),
+          watch: Default::default(),
         }),
         inspect: Some("127.0.0.1:9229".parse().unwrap()),
         ..Flags::default()
@@ -6178,6 +6360,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "foo.js".to_string(),
+          watch: Default::default(),
         }),
         inspect_wait: Some("127.0.0.1:9229".parse().unwrap()),
         ..Flags::default()
@@ -6195,6 +6378,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "foo.js".to_string(),
+          watch: Default::default(),
         }),
         inspect_wait: Some("127.0.0.1:3567".parse().unwrap()),
         ..Flags::default()
@@ -6217,6 +6401,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6236,6 +6421,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
@@ -6318,30 +6504,28 @@ mod tests {
   #[test]
   fn test_config_path_args() {
     let flags = flags_from_vec(svec!["deno", "run", "foo.js"]).unwrap();
-    assert_eq!(
-      flags.config_path_args(),
-      Some(vec![std::env::current_dir().unwrap().join("foo.js")])
-    );
+    let cwd = std::env::current_dir().unwrap();
+    assert_eq!(flags.config_path_args(&cwd), Some(vec![cwd.join("foo.js")]));
 
     let flags =
       flags_from_vec(svec!["deno", "run", "https://example.com/foo.js"])
         .unwrap();
-    assert_eq!(flags.config_path_args(), None);
+    assert_eq!(flags.config_path_args(&cwd), None);
 
     let flags =
       flags_from_vec(svec!["deno", "lint", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(),
+      flags.config_path_args(&cwd),
       Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
 
     let flags = flags_from_vec(svec!["deno", "lint"]).unwrap();
-    assert!(flags.config_path_args().unwrap().is_empty());
+    assert!(flags.config_path_args(&cwd).unwrap().is_empty());
 
     let flags =
       flags_from_vec(svec!["deno", "fmt", "dir/a.js", "dir/b.js"]).unwrap();
     assert_eq!(
-      flags.config_path_args(),
+      flags.config_path_args(&cwd),
       Some(vec![PathBuf::from("dir/a.js"), PathBuf::from("dir/b.js")])
     );
   }
@@ -6352,7 +6536,7 @@ mod tests {
     assert!(r.is_err());
     let error_message = r.unwrap_err().to_string();
     assert!(&error_message
-      .contains("error: The following required arguments were not provided:"));
+      .contains("error: the following required arguments were not provided:"));
     assert!(&error_message.contains("--watch[=<FILES>...]"));
   }
 
@@ -6606,7 +6790,10 @@ mod tests {
   #[test]
   fn task_subcommand_noconfig_invalid() {
     let r = flags_from_vec(svec!["deno", "task", "--no-config"]);
-    assert_eq!(r.unwrap_err().kind(), clap::ErrorKind::UnknownArgument);
+    assert_eq!(
+      r.unwrap_err().kind(),
+      clap::error::ErrorKind::UnknownArgument
+    );
   }
 
   #[test]
@@ -6616,6 +6803,9 @@ mod tests {
       "bench",
       "--json",
       "--unstable",
+      "--no-npm",
+      "--no-remote",
+      "--no-run",
       "--filter",
       "- foo",
       "--location",
@@ -6633,12 +6823,16 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: Some("- foo".to_string()),
           json: true,
+          no_run: true,
           files: FileFlags {
             include: vec![PathBuf::from("dir1/"), PathBuf::from("dir2/")],
             ignore: vec![],
           },
+          watch: Default::default(),
         }),
         unstable: true,
+        no_npm: true,
+        no_remote: true,
         type_check_mode: TypeCheckMode::Local,
         location: Some(Url::parse("https://foo/").unwrap()),
         allow_net: Some(vec![]),
@@ -6658,14 +6852,17 @@ mod tests {
         subcommand: DenoSubcommand::Bench(BenchFlags {
           filter: None,
           json: false,
+          no_run: false,
           files: FileFlags {
             include: vec![],
             ignore: vec![],
           },
+          watch: Some(WatchFlags {
+            no_clear_screen: false,
+          }),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
-        watch: Some(vec![]),
         ..Flags::default()
       }
     );
@@ -6679,6 +6876,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         ..Flags::default()
@@ -6691,6 +6889,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::All,
         ..Flags::default()
@@ -6703,6 +6902,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         type_check_mode: TypeCheckMode::None,
         ..Flags::default()
@@ -6727,6 +6927,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Run(RunFlags {
           script: "script.ts".to_string(),
+          watch: Default::default(),
         }),
         config_flag: ConfigFlag::Disabled,
         ..Flags::default()

@@ -20,16 +20,19 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
-import { customPromisifyArgs } from "internal:deno_node/polyfills/internal/util.mjs";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { customPromisifyArgs } from "ext:deno_node/internal/util.mjs";
 import {
   validateBoolean,
   validateFunction,
   validateNumber,
   validateOneOf,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { isIP } from "internal:deno_node/polyfills/internal/net.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { isIP } from "ext:deno_node/internal/net.ts";
 import {
   emitInvalidHostnameWarning,
   getDefaultResolver,
@@ -42,7 +45,7 @@ import {
   setDefaultResolver,
   setDefaultResultOrder,
   validateHints,
-} from "internal:deno_node/polyfills/internal/dns/utils.ts";
+} from "ext:deno_node/internal/dns/utils.ts";
 import type {
   AnyAaaaRecord,
   AnyARecord,
@@ -70,27 +73,27 @@ import type {
   ResolveWithTtlOptions,
   SoaRecord,
   SrvRecord,
-} from "internal:deno_node/polyfills/internal/dns/utils.ts";
-import promisesBase from "internal:deno_node/polyfills/internal/dns/promises.ts";
-import type { ErrnoException } from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/dns/utils.ts";
+import promisesBase from "ext:deno_node/internal/dns/promises.ts";
+import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
 import {
   dnsException,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   AI_ADDRCONFIG as ADDRCONFIG,
   AI_ALL as ALL,
   AI_V4MAPPED as V4MAPPED,
-} from "internal:deno_node/polyfills/internal_binding/ares.ts";
+} from "ext:deno_node/internal_binding/ares.ts";
 import {
   ChannelWrapQuery,
   getaddrinfo,
   GetAddrInfoReqWrap,
   QueryReqWrap,
-} from "internal:deno_node/polyfills/internal_binding/cares_wrap.ts";
-import { toASCII } from "internal:deno_node/polyfills/punycode.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+} from "ext:deno_node/internal_binding/cares_wrap.ts";
+import { toASCII } from "ext:deno_node/punycode.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 function onlookup(
   this: GetAddrInfoReqWrap,

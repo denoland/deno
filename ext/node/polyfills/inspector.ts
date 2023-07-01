@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const connectionSymbol = Symbol("connectionProperty");
 const messageCallbacksSymbol = Symbol("messageCallbacks");

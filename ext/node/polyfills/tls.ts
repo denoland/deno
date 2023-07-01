@@ -1,9 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import tlsCommon from "internal:deno_node/polyfills/_tls_common.ts";
-import tlsWrap from "internal:deno_node/polyfills/_tls_wrap.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import tlsCommon from "ext:deno_node/_tls_common.ts";
+import tlsWrap from "ext:deno_node/_tls_wrap.ts";
 
 // openssl -> rustls
 const cipherMap = {

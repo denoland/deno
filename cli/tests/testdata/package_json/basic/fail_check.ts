@@ -1,3 +1,3 @@
-import { getValue } from "./main.ts";
+import { getValue } from "./lib.ts";
 
 const _test: string = getValue();

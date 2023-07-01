@@ -20,15 +20,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { charLengthAt, CSI, emitKeys } from "internal:deno_node/polyfills/internal/readline/utils.mjs";
-import { kSawKeyPress } from "internal:deno_node/polyfills/internal/readline/symbols.mjs";
-import { clearTimeout, setTimeout } from "internal:deno_node/polyfills/timers.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { charLengthAt, CSI, emitKeys } from "ext:deno_node/internal/readline/utils.mjs";
+import { kSawKeyPress } from "ext:deno_node/internal/readline/symbols.mjs";
+import { clearTimeout, setTimeout } from "ext:deno_node/timers.ts";
 
 const {
   kEscape,
 } = CSI;
 
-import { StringDecoder } from "internal:deno_node/polyfills/string_decoder.ts";
+import { StringDecoder } from "ext:deno_node/string_decoder.ts";
 
 const KEYPRESS_DECODER = Symbol("keypress-decoder");
 const ESCAPE_DECODER = Symbol("escape-decoder");

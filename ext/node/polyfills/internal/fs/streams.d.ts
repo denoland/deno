@@ -2,14 +2,11 @@
 // Copyright DefinitelyTyped contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file no-explicit-any
 
-import * as stream from "internal:deno_node/polyfills/_stream.d.ts";
-import * as promises from "internal:deno_node/polyfills/fs/promises.ts";
+import * as stream from "ext:deno_node/_stream.d.ts";
+import * as promises from "ext:deno_node/fs/promises.ts";
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import {
-  BufferEncoding,
-  ErrnoException,
-} from "internal:deno_node/polyfills/_global.d.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { BufferEncoding, ErrnoException } from "ext:deno_node/_global.d.ts";
 
 type PathLike = string | Buffer | URL;
 
@@ -253,7 +250,7 @@ interface ReadStreamOptions extends StreamOptions {
  * also required.
  *
  * ```js
- * import { createReadStream } from "internal:deno_node/polyfills/internal/fs/fs";
+ * import { createReadStream } from "ext:deno_node/internal/fs/fs";
  *
  * // Create a stream from some character device.
  * const stream = createReadStream('/dev/input/event0');
@@ -281,7 +278,7 @@ interface ReadStreamOptions extends StreamOptions {
  * An example to read the last 10 bytes of a file which is 100 bytes long:
  *
  * ```js
- * import { createReadStream } from "internal:deno_node/polyfills/internal/fs/fs";
+ * import { createReadStream } from "ext:deno_node/internal/fs/fs";
  *
  * createReadStream('sample.txt', { start: 90, end: 99 });
  * ```

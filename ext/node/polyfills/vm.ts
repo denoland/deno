@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+
+const { core } = globalThis.__bootstrap;
 
 export class Script {
   code: string;
@@ -11,7 +14,11 @@ export class Script {
   }
 
   runInThisContext(_options: any) {
-    return eval.call(globalThis, this.code);
+    const [result, error] = core.evalContext(this.code, "data:");
+    if (error) {
+      throw error.thrown;
+    }
+    return result;
   }
 
   runInContext(_contextifiedObject: any, _options: any) {

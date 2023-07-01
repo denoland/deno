@@ -5,7 +5,65 @@ macro_rules! itest(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
-    (test_util::CheckOutputIntegrationTest {
+    let test = test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    };
+    let output = test.output();
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      output.assert_matches_file(test.output);
+    } else {
+      output.assert_matches_text(test.output_str.unwrap_or(""));
+    }
+  }
+}
+);
+
+#[macro_export]
+macro_rules! itest_flaky(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[flaky_test::flaky_test]
+  fn $name() {
+    let test = test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    };
+    let output = test.output();
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      output.assert_matches_file(test.output);
+    } else {
+      output.assert_matches_text(test.output_str.unwrap_or(""));
+    }
+  }
+}
+);
+
+#[macro_export]
+macro_rules! context(
+({$( $key:ident: $value:expr,)*})  => {
+  test_util::TestContext::create(test_util::TestContextOptions {
+    $(
+      $key: $value,
+      )*
+    .. Default::default()
+  })
+}
+);
+
+#[macro_export]
+macro_rules! itest_steps(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[test]
+  fn $name() {
+    (test_util::CheckOutputIntegrationTestSteps {
       $(
         $key: $value,
        )*
@@ -16,16 +74,13 @@ macro_rules! itest(
 );
 
 #[macro_export]
-macro_rules! itest_flaky(
-($name:ident {$( $key:ident: $value:expr,)*})  => {
-  #[flaky_test::flaky_test]
-  fn $name() {
-    (test_util::CheckOutputIntegrationTest {
-      $(
-        $key: $value,
-       )*
-      .. Default::default()
-    }).run()
+macro_rules! command_step(
+({$( $key:ident: $value:expr,)*})  => {
+  test_util::CheckOutputIntegrationTestCommandStep {
+    $(
+      $key: $value,
+      )*
+    .. Default::default()
   }
 }
 );
@@ -80,6 +135,8 @@ mod npm;
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "shared_library_tests.rs"]
+mod shared_library_tests;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]

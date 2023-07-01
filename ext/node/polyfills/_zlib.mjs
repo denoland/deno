@@ -4,13 +4,13 @@
 
 // deno-lint-ignore-file
 
-import { Buffer, kMaxLength } from "internal:deno_node/polyfills/buffer.ts";
-import { Transform } from "internal:deno_node/polyfills/stream.ts";
-import * as binding from "internal:deno_node/polyfills/_zlib_binding.mjs";
-import util from "internal:deno_node/polyfills/util.ts";
-import { ok as assert } from "internal:deno_node/polyfills/assert.ts";
-import { zlib as zlibConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
+import { Buffer, kMaxLength } from "ext:deno_node/buffer.ts";
+import { Transform } from "ext:deno_node/stream.ts";
+import * as binding from "ext:deno_node/_zlib_binding.mjs";
+import util from "ext:deno_node/util.ts";
+import { ok as assert } from "ext:deno_node/assert.ts";
+import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 
 var kRangeErrorMessage = "Cannot create final Buffer. It would be larger " +
   "than 0x" + kMaxLength.toString(16) + " bytes";

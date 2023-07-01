@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.30.3"
+version = "1.34.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -29,13 +29,11 @@ path = "./bench/lsp_bench_standalone.rs"
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot_from_snapshot", "include_js_files_for_snapshotting"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-regex.workspace = true
+lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
-
-lzzzz = '1.0'
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -44,13 +42,16 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "0.57.0"
-deno_emit = "0.16.0"
-deno_graph = "0.44.0"
-deno_lint = { version = "0.40.0", features = ["docs"] }
+deno_doc = "=0.63.1"
+deno_emit = "=0.24.0"
+deno_graph = "=0.49.0"
+deno_lint = { version = "=0.48.0", features = ["docs"] }
 deno_lockfile.workspace = true
+deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
-deno_task_shell = "0.10.0"
+deno_semver.workspace = true
+deno_task_shell = "=0.12.0"
+eszip = "=0.45.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -58,31 +59,33 @@ atty.workspace = true
 base32 = "=0.4.0"
 base64.workspace = true
 cache_control.workspace = true
-chrono = { version = "=0.4.22", default-features = false, features = ["clock"] }
-clap = "=3.1.12"
-clap_complete = "=3.1.2"
-clap_complete_fig = "=3.1.5"
-console_static_text = "=0.3.4"
+chrono = { version = "=0.4.22", default-features = false, features = ["std"] }
+clap = { version = "=4.3.3", features = ["string"] }
+clap_complete = "=4.3.1"
+clap_complete_fig = "=4.3.1"
+console_static_text.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
-dprint-plugin-json = "=0.17.0"
-dprint-plugin-markdown = "=0.15.2"
-dprint-plugin-typescript = "=0.83.0"
+dprint-plugin-json = "=0.17.4"
+dprint-plugin-markdown = "=0.15.3"
+dprint-plugin-typescript = "=0.85.0"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
-eszip = "=0.37.0"
 fancy-regex = "=0.10.0"
+fastwebsockets.workspace = true
 flate2.workspace = true
+fs3.workspace = true
+glob = "0.3.1"
 http.workspace = true
+hyper.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
-jsonc-parser = { version = "=0.21.0", features = ["serde"] }
+jsonc-parser = { version = "=0.21.1", features = ["serde"] }
+lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
-lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
-lzzzz = '1.0'
-mitata = "=0.0.7"
-monch = "=0.4.0"
+lsp-types.workspace = true
+monch = "=0.4.2"
 notify.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
@@ -93,17 +96,17 @@ regex.workspace = true
 ring.workspace = true
 rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 rustyline-derive = "=0.7.0"
-secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
 serde.workspace = true
 serde_repr.workspace = true
 shell-escape = "=0.1.5"
 tar.workspace = true
+tempfile.workspace = true
 text-size = "=1.1.0"
 text_lines = "=0.6.0"
-thiserror = "=1.0.38"
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-tower-lsp = { version = "=0.17.0", features = ["proposed"] }
+tower-lsp.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }

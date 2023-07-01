@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   O_APPEND,
   O_CREAT,
@@ -7,15 +11,15 @@ import {
   O_RDWR,
   O_TRUNC,
   O_WRONLY,
-} from "internal:deno_node/polyfills/_fs/_fs_constants.ts";
-import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
-import type { ErrnoException } from "internal:deno_node/polyfills/_global.d.ts";
+} from "ext:deno_node/_fs/_fs_constants.ts";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import type { ErrnoException } from "ext:deno_node/_global.d.ts";
 import {
   BinaryEncodings,
   Encodings,
   notImplemented,
   TextEncodings,
-} from "internal:deno_node/polyfills/_utils.ts";
+} from "ext:deno_node/_utils.ts";
 
 export type CallbackWithError = (err: ErrnoException | null) => void;
 
@@ -32,6 +36,13 @@ export type BinaryOptionsArgument =
   | BinaryEncodings
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
+
+export type ReadOptions = {
+  buffer: Buffer | Uint8Array;
+  offset: number;
+  length: number;
+  position: number | null;
+};
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
@@ -74,7 +85,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
   if (!encoding) return null;
 
   encoding = encoding.toLowerCase() as Encodings;
-  if (["utf8", "hex", "base64"].includes(encoding)) return encoding;
+  if (["utf8", "hex", "base64", "ascii"].includes(encoding)) return encoding;
 
   if (encoding === "utf-8") {
     return "utf8";
@@ -85,7 +96,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
     // node -e "require('fs').readFile('../world.txt', 'buffer', console.log)"
   }
 
-  const notImplementedEncodings = ["utf16le", "latin1", "ascii", "ucs2"];
+  const notImplementedEncodings = ["utf16le", "latin1", "ucs2"];
 
   if (notImplementedEncodings.includes(encoding as string)) {
     notImplemented(`"${encoding}" encoding`);
@@ -212,7 +223,7 @@ export function getOpenOptions(
   return openOptions;
 }
 
-export { isUint32 as isFd } from "internal:deno_node/polyfills/internal/validators.mjs";
+export { isUint32 as isFd } from "ext:deno_node/internal/validators.mjs";
 
 export function maybeCallback(cb: unknown) {
   validateFunction(cb, "cb");

@@ -48,6 +48,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
+    #[allow(clippy::disallowed_methods)]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -384,7 +385,7 @@ pub fn os_uptime() -> u64 {
   #[cfg(target_family = "windows")]
   // SAFETY: windows API usage
   unsafe {
-    // Windows is the only one that returns `uptime` in milisecond precision,
+    // Windows is the only one that returns `uptime` in millisecond precision,
     // so we need to get the seconds out of it to be in sync with other envs.
     uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
   }

@@ -1,49 +1,64 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "internal:deno_node/polyfills/internal/util/types.ts";
-import { crypto as constants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+} from "ext:deno_node/internal/util/types.ts";
+import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
 import {
   kHandle,
   kKeyObject,
-} from "internal:deno_node/polyfills/internal/crypto/constants.ts";
+} from "ext:deno_node/internal/crypto/constants.ts";
 
-// TODO(kt3k): Generate this list from `digestAlgorithms`
-// of std/crypto/_wasm/mod.ts
-const digestAlgorithms = [
-  "blake2b256",
-  "blake2b384",
-  "blake2b",
-  "blake2s",
-  "blake3",
-  "keccak-224",
-  "keccak-256",
-  "keccak-384",
-  "keccak-512",
-  "sha384",
-  "sha3-224",
-  "sha3-256",
-  "sha3-384",
-  "sha3-512",
-  "shake128",
-  "shake256",
-  "tiger",
-  "rmd160",
-  "sha224",
-  "sha256",
-  "sha512",
-  "md4",
-  "md5",
-  "sha1",
+export type EllipticCurve = {
+  name: string;
+  ephemeral: boolean;
+  privateKeySize: number;
+  publicKeySize: number;
+  sharedSecretSize: number;
+};
+
+export const ellipticCurves: Array<EllipticCurve> = [
+  {
+    name: "secp256k1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // Weierstrass-class EC used by Bitcoin
+  {
+    name: "prime256v1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC
+  {
+    name: "secp256r1",
+    privateKeySize: 32,
+    publicKeySize: 65,
+    sharedSecretSize: 32,
+  }, // NIST P-256 EC (same as above)
+  {
+    name: "secp384r1",
+    privateKeySize: 48,
+    publicKeySize: 97,
+    sharedSecretSize: 48,
+  }, // NIST P-384 EC
+  {
+    name: "secp224r1",
+    privateKeySize: 28,
+    publicKeySize: 57,
+    sharedSecretSize: 28,
+  }, // NIST P-224 EC
 ];
 
 // deno-fmt-ignore
@@ -107,15 +122,9 @@ export const validateByteSource = hideStackFrames((val, name) => {
   );
 });
 
-/**
- * Returns an array of the names of the supported hash algorithms, such as 'sha1'.
- */
-export function getHashes(): readonly string[] {
-  return digestAlgorithms;
-}
-
+const curveNames = ellipticCurves.map((x) => x.name);
 export function getCurves(): readonly string[] {
-  notImplemented("crypto.getCurves");
+  return curveNames;
 }
 
 export interface SecureHeapUsage {
@@ -133,11 +142,12 @@ export function setEngine(_engine: string, _flags: typeof constants) {
   notImplemented("crypto.setEngine");
 }
 
-export { kHandle, kKeyObject };
+const kAesKeyLengths = [128, 192, 256];
+
+export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,
-  getHashes,
   setDefaultEncoding,
   getCiphers,
   getCurves,
@@ -147,4 +157,5 @@ export default {
   toBuf,
   kHandle,
   kKeyObject,
+  kAesKeyLengths,
 };

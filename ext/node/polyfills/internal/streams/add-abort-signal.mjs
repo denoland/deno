@@ -2,8 +2,8 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { AbortError, ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
-import eos from "internal:deno_node/polyfills/internal/streams/end-of-stream.mjs";
+import { AbortError, ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import eos from "ext:deno_node/internal/streams/end-of-stream.mjs";
 
 // This method is inlined here for readable-stream
 // It also does not allow for signal to not exist on the stream

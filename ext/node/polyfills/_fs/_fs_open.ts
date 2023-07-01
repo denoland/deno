@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   O_APPEND,
   O_CREAT,
@@ -6,13 +10,13 @@ import {
   O_RDWR,
   O_TRUNC,
   O_WRONLY,
-} from "internal:deno_node/polyfills/_fs/_fs_constants.ts";
-import { getOpenOptions } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
-import { parseFileMode } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { ERR_INVALID_ARG_TYPE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import type { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+} from "ext:deno_node/_fs/_fs_constants.ts";
+import { getOpenOptions } from "ext:deno_node/_fs/_fs_common.ts";
+import { parseFileMode } from "ext:deno_node/internal/validators.mjs";
+import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { FileHandle } from "ext:deno_node/internal/fs/handle.ts";
+import type { Buffer } from "ext:deno_node/buffer.ts";
 
 function existsSync(filePath: string | URL): boolean {
   try {
@@ -139,16 +143,18 @@ export function open(
   }
 }
 
-export const openPromise = promisify(open) as (
-  & ((path: string | Buffer | URL) => Promise<number>)
-  & ((path: string | Buffer | URL, flags: openFlags) => Promise<number>)
-  & ((path: string | Buffer | URL, mode?: number) => Promise<number>)
-  & ((
-    path: string | Buffer | URL,
-    flags?: openFlags,
-    mode?: number,
-  ) => Promise<number>)
-);
+export function openPromise(
+  path: string | Buffer | URL,
+  flags?: openFlags = "r",
+  mode? = 0o666,
+): Promise<FileHandle> {
+  return new Promise((resolve, reject) => {
+    open(path, flags, mode, (err, fd) => {
+      if (err) reject(err);
+      else resolve(new FileHandle(fd));
+    });
+  });
+}
 
 export function openSync(path: string | Buffer | URL): number;
 export function openSync(

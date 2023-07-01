@@ -8,11 +8,10 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_http::http_create_conn_resource;
 use deno_http::HttpRequestReader;
 use deno_http::HttpStreamResource;
@@ -28,15 +27,10 @@ use deno_net::io::UnixStreamResource;
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_http_runtime")
-    .ops(vec![
-      op_http_start::decl(),
-      op_http_upgrade::decl(),
-      op_flash_upgrade_http::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_http_runtime,
+  ops = [op_http_start, op_http_upgrade],
+);
 
 #[op]
 fn op_http_start(
@@ -94,29 +88,12 @@ fn op_http_start(
   Err(bad_resource_id())
 }
 
-#[op]
-fn op_flash_upgrade_http(
-  state: &mut OpState,
-  token: u32,
-  server_id: u32,
-) -> Result<deno_core::ResourceId, AnyError> {
-  let flash_ctx = state.borrow_mut::<deno_flash::FlashContext>();
-  let ctx = flash_ctx.servers.get_mut(&server_id).unwrap();
-
-  let tcp_stream = deno_flash::detach_socket(ctx, token)?;
-  Ok(
-    state
-      .resource_table
-      .add(TcpStreamResource::new(tcp_stream.into_split())),
-  )
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HttpUpgradeResult {
   conn_rid: ResourceId,
   conn_type: &'static str,
-  read_buf: ZeroCopyBuf,
+  read_buf: ToJsBuffer,
 }
 
 #[op]

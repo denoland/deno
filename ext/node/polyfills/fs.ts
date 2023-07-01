@@ -3,178 +3,115 @@ import {
   access,
   accessPromise,
   accessSync,
-} from "internal:deno_node/polyfills/_fs/_fs_access.ts";
+} from "ext:deno_node/_fs/_fs_access.ts";
 import {
   appendFile,
   appendFilePromise,
   appendFileSync,
-} from "internal:deno_node/polyfills/_fs/_fs_appendFile.ts";
-import {
-  chmod,
-  chmodPromise,
-  chmodSync,
-} from "internal:deno_node/polyfills/_fs/_fs_chmod.ts";
-import {
-  chown,
-  chownPromise,
-  chownSync,
-} from "internal:deno_node/polyfills/_fs/_fs_chown.ts";
-import {
-  close,
-  closeSync,
-} from "internal:deno_node/polyfills/_fs/_fs_close.ts";
-import * as constants from "internal:deno_node/polyfills/_fs/_fs_constants.ts";
+} from "ext:deno_node/_fs/_fs_appendFile.ts";
+import { chmod, chmodPromise, chmodSync } from "ext:deno_node/_fs/_fs_chmod.ts";
+import { chown, chownPromise, chownSync } from "ext:deno_node/_fs/_fs_chown.ts";
+import { close, closeSync } from "ext:deno_node/_fs/_fs_close.ts";
+import * as constants from "ext:deno_node/_fs/_fs_constants.ts";
 import {
   copyFile,
   copyFilePromise,
   copyFileSync,
-} from "internal:deno_node/polyfills/_fs/_fs_copy.ts";
-import Dir from "internal:deno_node/polyfills/_fs/_fs_dir.ts";
-import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
-import {
-  exists,
-  existsSync,
-} from "internal:deno_node/polyfills/_fs/_fs_exists.ts";
-import {
-  fdatasync,
-  fdatasyncSync,
-} from "internal:deno_node/polyfills/_fs/_fs_fdatasync.ts";
-import {
-  fstat,
-  fstatSync,
-} from "internal:deno_node/polyfills/_fs/_fs_fstat.ts";
-import {
-  fsync,
-  fsyncSync,
-} from "internal:deno_node/polyfills/_fs/_fs_fsync.ts";
-import {
-  ftruncate,
-  ftruncateSync,
-} from "internal:deno_node/polyfills/_fs/_fs_ftruncate.ts";
-import {
-  futimes,
-  futimesSync,
-} from "internal:deno_node/polyfills/_fs/_fs_futimes.ts";
-import {
-  link,
-  linkPromise,
-  linkSync,
-} from "internal:deno_node/polyfills/_fs/_fs_link.ts";
-import {
-  lstat,
-  lstatPromise,
-  lstatSync,
-} from "internal:deno_node/polyfills/_fs/_fs_lstat.ts";
-import {
-  mkdir,
-  mkdirPromise,
-  mkdirSync,
-} from "internal:deno_node/polyfills/_fs/_fs_mkdir.ts";
+} from "ext:deno_node/_fs/_fs_copy.ts";
+import Dir from "ext:deno_node/_fs/_fs_dir.ts";
+import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import { exists, existsSync } from "ext:deno_node/_fs/_fs_exists.ts";
+import { fdatasync, fdatasyncSync } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { fstat, fstatSync } from "ext:deno_node/_fs/_fs_fstat.ts";
+import { fsync, fsyncSync } from "ext:deno_node/_fs/_fs_fsync.ts";
+import { ftruncate, ftruncateSync } from "ext:deno_node/_fs/_fs_ftruncate.ts";
+import { futimes, futimesSync } from "ext:deno_node/_fs/_fs_futimes.ts";
+import { link, linkPromise, linkSync } from "ext:deno_node/_fs/_fs_link.ts";
+import { lstat, lstatPromise, lstatSync } from "ext:deno_node/_fs/_fs_lstat.ts";
+import { mkdir, mkdirPromise, mkdirSync } from "ext:deno_node/_fs/_fs_mkdir.ts";
 import {
   mkdtemp,
   mkdtempPromise,
   mkdtempSync,
-} from "internal:deno_node/polyfills/_fs/_fs_mkdtemp.ts";
-import {
-  open,
-  openPromise,
-  openSync,
-} from "internal:deno_node/polyfills/_fs/_fs_open.ts";
+} from "ext:deno_node/_fs/_fs_mkdtemp.ts";
+import { open, openPromise, openSync } from "ext:deno_node/_fs/_fs_open.ts";
 import {
   opendir,
   opendirPromise,
   opendirSync,
-} from "internal:deno_node/polyfills/_fs/_fs_opendir.ts";
-import { read, readSync } from "internal:deno_node/polyfills/_fs/_fs_read.ts";
+} from "ext:deno_node/_fs/_fs_opendir.ts";
+import { read, readSync } from "ext:deno_node/_fs/_fs_read.ts";
 import {
   readdir,
   readdirPromise,
   readdirSync,
-} from "internal:deno_node/polyfills/_fs/_fs_readdir.ts";
+} from "ext:deno_node/_fs/_fs_readdir.ts";
 import {
   readFile,
   readFilePromise,
   readFileSync,
-} from "internal:deno_node/polyfills/_fs/_fs_readFile.ts";
+} from "ext:deno_node/_fs/_fs_readFile.ts";
 import {
   readlink,
   readlinkPromise,
   readlinkSync,
-} from "internal:deno_node/polyfills/_fs/_fs_readlink.ts";
+} from "ext:deno_node/_fs/_fs_readlink.ts";
 import {
   realpath,
   realpathPromise,
   realpathSync,
-} from "internal:deno_node/polyfills/_fs/_fs_realpath.ts";
+} from "ext:deno_node/_fs/_fs_realpath.ts";
 import {
   rename,
   renamePromise,
   renameSync,
-} from "internal:deno_node/polyfills/_fs/_fs_rename.ts";
-import {
-  rmdir,
-  rmdirPromise,
-  rmdirSync,
-} from "internal:deno_node/polyfills/_fs/_fs_rmdir.ts";
-import {
-  rm,
-  rmPromise,
-  rmSync,
-} from "internal:deno_node/polyfills/_fs/_fs_rm.ts";
-import {
-  stat,
-  statPromise,
-  statSync,
-} from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
+} from "ext:deno_node/_fs/_fs_rename.ts";
+import { rmdir, rmdirPromise, rmdirSync } from "ext:deno_node/_fs/_fs_rmdir.ts";
+import { rm, rmPromise, rmSync } from "ext:deno_node/_fs/_fs_rm.ts";
+import { stat, statPromise, statSync } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   symlink,
   symlinkPromise,
   symlinkSync,
-} from "internal:deno_node/polyfills/_fs/_fs_symlink.ts";
+} from "ext:deno_node/_fs/_fs_symlink.ts";
 import {
   truncate,
   truncatePromise,
   truncateSync,
-} from "internal:deno_node/polyfills/_fs/_fs_truncate.ts";
+} from "ext:deno_node/_fs/_fs_truncate.ts";
 import {
   unlink,
   unlinkPromise,
   unlinkSync,
-} from "internal:deno_node/polyfills/_fs/_fs_unlink.ts";
+} from "ext:deno_node/_fs/_fs_unlink.ts";
 import {
   utimes,
   utimesPromise,
   utimesSync,
-} from "internal:deno_node/polyfills/_fs/_fs_utimes.ts";
+} from "ext:deno_node/_fs/_fs_utimes.ts";
 import {
   unwatchFile,
   watch,
   watchFile,
   watchPromise,
-} from "internal:deno_node/polyfills/_fs/_fs_watch.ts";
+} from "ext:deno_node/_fs/_fs_watch.ts";
 // @deno-types="./_fs/_fs_write.d.ts"
-import {
-  write,
-  writeSync,
-} from "internal:deno_node/polyfills/_fs/_fs_write.mjs";
+import { write, writeSync } from "ext:deno_node/_fs/_fs_write.mjs";
 // @deno-types="./_fs/_fs_writev.d.ts"
-import {
-  writev,
-  writevSync,
-} from "internal:deno_node/polyfills/_fs/_fs_writev.mjs";
+import { writev, writevSync } from "ext:deno_node/_fs/_fs_writev.mjs";
 import {
   writeFile,
   writeFilePromise,
   writeFileSync,
-} from "internal:deno_node/polyfills/_fs/_fs_writeFile.ts";
-import { Stats } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
+} from "ext:deno_node/_fs/_fs_writeFile.ts";
+import { Stats } from "ext:deno_node/internal/fs/utils.mjs";
 // @deno-types="./internal/fs/streams.d.ts"
 import {
   createReadStream,
   createWriteStream,
   ReadStream,
   WriteStream,
-} from "internal:deno_node/polyfills/internal/fs/streams.mjs";
+} from "ext:deno_node/internal/fs/streams.mjs";
 
 const {
   F_OK,

@@ -29,7 +29,7 @@ const dylib = Deno.dlopen(
 let retry = false;
 const tripleLogCallback = () => {
   console.log("Sync");
-  Promise.resolve().then(() => {
+  queueMicrotask(() => {
     console.log("Async");
     callback.unref();
   });
@@ -44,7 +44,7 @@ const tripleLogCallback = () => {
       callback.ref();
       dylib.symbols.call_stored_function_thread_safe_and_log();
     }
-  }, 10);
+  }, 100);
 };
 
 const callback = Deno.UnsafeCallback.threadSafe(
@@ -60,17 +60,19 @@ dylib.symbols.store_function(callback.pointer);
 
 // Synchronous callback logging
 console.log("SYNCHRONOUS");
+// This function only calls the callback, and does not log.
 dylib.symbols.call_stored_function();
 console.log("STORED_FUNCTION called");
 
 // Wait to make sure synch logging and async logging
-await new Promise((res) => setTimeout(res, 100));
+await new Promise((res) => setTimeout(res, 200));
 
-// Ref once to make sure both `Promise.resolve().then()` and `setTimeout()`
+// Ref once to make sure both `queueMicrotask()` and `setTimeout()`
 // must resolve and unref before isolate exists.
 // One ref'ing has been done by `threadSafe` constructor.
 callback.ref();
 
 console.log("THREAD SAFE");
 retry = true;
+// This function calls the callback and logs 'STORED_FUNCTION called'
 dylib.symbols.call_stored_function_thread_safe_and_log();

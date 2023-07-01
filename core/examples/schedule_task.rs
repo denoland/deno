@@ -34,8 +34,6 @@ fn main() {
       let (tx, rx) = mpsc::unbounded::<Task>();
       state.put(tx);
       state.put(rx);
-
-      Ok(())
     })
     .build();
 
@@ -52,7 +50,7 @@ fn main() {
   let future = async move {
     // Schedule 10 tasks.
     js_runtime
-      .execute_script(
+      .execute_script_static(
         "<usage>",
         r#"for (let i = 1; i <= 10; i++) Deno.core.ops.op_schedule_task(i);"#,
       )

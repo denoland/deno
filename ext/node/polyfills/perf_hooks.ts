@@ -1,9 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   performance as shimPerformance,
   PerformanceEntry,
-} from "internal:deno_web/15_performance.js";
+} from "ext:deno_web/15_performance.js";
 
 // FIXME(bartlomieju)
 const PerformanceObserver = undefined;
@@ -22,6 +26,8 @@ const performance:
     timerify: any;
     // deno-lint-ignore no-explicit-any
     timeOrigin: any;
+    // deno-lint-ignore no-explicit-any
+    markResourceTiming: any;
   } = {
     clearMarks: (markName: string) => shimPerformance.clearMarks(markName),
     eventLoopUtilization: () =>
@@ -50,6 +56,7 @@ const performance:
     timerify: () => notImplemented("timerify from performance"),
     // deno-lint-ignore no-explicit-any
     timeOrigin: (shimPerformance as any).timeOrigin,
+    markResourceTiming: () => {},
     // @ts-ignore waiting on update in `deno`, but currently this is
     // a circular dependency
     toJSON: () => shimPerformance.toJSON(),

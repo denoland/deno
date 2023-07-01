@@ -1,21 +1,25 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "ext:deno_node/buffer.ts";
 import {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
-} from "internal:deno_node/polyfills/internal/readline/callbacks.mjs";
-import { Duplex, Readable, Writable } from "internal:deno_node/polyfills/stream.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { fs as fsConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import * as files from "internal:runtime/js/40_files.js";
+} from "ext:deno_node/internal/readline/callbacks.mjs";
+import { Duplex, Readable, Writable } from "ext:deno_node/stream.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
+import * as io from "ext:deno_io/12_io.js";
 
 // https://github.com/nodejs/node/blob/00738314828074243c9a52a228ab4c68b04259ef/lib/internal/bootstrap/switches/is_main_thread.js#L41
 export function createWritableStdioStream(writer, name) {
   const stream = new Writable({
+    emitClose: false,
     write(buf, enc, cb) {
       if (!writer) {
         this.destroy(
@@ -140,7 +144,7 @@ function _guessStdinType(fd) {
 
 const _read = function (size) {
   const p = Buffer.alloc(size || 16 * 1024);
-  files.stdin?.read(p).then((length) => {
+  io.stdin?.read(p).then((length) => {
     this.push(length === null ? null : p.slice(0, length));
   }, (error) => {
     this.destroy(error);
@@ -151,7 +155,7 @@ const _read = function (size) {
 // https://github.com/nodejs/node/blob/v18.12.1/lib/internal/bootstrap/switches/is_main_thread.js#L189
 /** Create process.stdin */
 export const initStdin = () => {
-  const fd = files.stdin?.rid;
+  const fd = io.stdin?.rid;
   let stdin;
   const stdinType = _guessStdinType(fd);
 
@@ -210,18 +214,18 @@ export const initStdin = () => {
     }
   }
 
-  stdin.on("close", () => files.stdin?.close());
-  stdin.fd = files.stdin?.rid ?? -1;
+  stdin.on("close", () => io.stdin?.close());
+  stdin.fd = io.stdin?.rid ?? -1;
   Object.defineProperty(stdin, "isTTY", {
     enumerable: true,
     configurable: true,
     get() {
-      return Deno.isatty?.(Deno.stdin.rid);
+      return Deno.isatty?.(io.stdin.rid);
     },
   });
   stdin._isRawMode = false;
   stdin.setRawMode = (enable) => {
-    files.stdin?.setRaw?.(enable);
+    io.stdin?.setRaw?.(enable);
     stdin._isRawMode = enable;
     return stdin;
   };

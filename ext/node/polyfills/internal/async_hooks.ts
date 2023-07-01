@@ -1,13 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // deno-lint-ignore camelcase
-import * as async_wrap from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
-import { ERR_ASYNC_CALLBACK } from "internal:deno_node/polyfills/internal/errors.ts";
+import * as async_wrap from "ext:deno_node/internal_binding/async_wrap.ts";
+import { ERR_ASYNC_CALLBACK } from "ext:deno_node/internal/errors.ts";
 export {
   asyncIdSymbol,
   ownerSymbol,
-} from "internal:deno_node/polyfills/internal_binding/symbols.ts";
+} from "ext:deno_node/internal_binding/symbols.ts";
 
 interface ActiveHooks {
   array: AsyncHook[];

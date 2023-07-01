@@ -23,9 +23,15 @@ declare namespace Deno {
 
     /**
      * List of all registered ops, in the form of a map that maps op
-     * name to internal numerical op id.
+     * name to function.
      */
     const ops: Record<string, (...args: unknown[]) => any>;
+
+    /**
+     * List of all registered async ops, in the form of a map that maps op
+     * name to function.
+     */
+    const asyncOps: Record<string, (...args: unknown[]) => any>;
 
     /**
      * Retrieve a list of all open resources, in the form of a map that maps
@@ -59,6 +65,16 @@ declare namespace Deno {
      * Write to a (stream) resource that implements write()
      */
     function writeAll(rid: number, buf: Uint8Array): Promise<void>;
+
+    /**
+     * Synchronously read from a (stream) resource that implements readSync().
+     */
+    function readSync(rid: number, buf: Uint8Array): number;
+
+    /**
+     * Synchronously write to a (stream) resource that implements writeSync().
+     */
+    function writeSync(rid: number, buf: Uint8Array): number;
 
     /**
      * Print a message to stdout or stderr
@@ -184,5 +200,13 @@ declare namespace Deno {
       after_hook?: (promise: Promise<unknown>) => void,
       resolve_hook?: (promise: Promise<unknown>) => void,
     ): void;
+
+    const build: {
+      target: string;
+      arch: string;
+      os: string;
+      vendor: string;
+      env: string | undefined;
+    };
   }
 }

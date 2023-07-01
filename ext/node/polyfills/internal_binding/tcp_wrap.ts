@@ -24,24 +24,27 @@
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.h
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { unreachable } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { ConnectionWrap } from "internal:deno_node/polyfills/internal_binding/connection_wrap.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { unreachable } from "ext:deno_node/_util/asserts.ts";
+import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
-import { LibuvStreamWrap } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
-import { ownerSymbol } from "internal:deno_node/polyfills/internal_binding/symbols.ts";
-import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { delay } from "internal:deno_node/polyfills/_util/async.ts";
-import { kStreamBaseField } from "internal:deno_node/polyfills/internal_binding/stream_wrap.ts";
-import { isIP } from "internal:deno_node/polyfills/internal/net.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
+import { LibuvStreamWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { ownerSymbol } from "ext:deno_node/internal_binding/symbols.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+import { delay } from "ext:deno_node/_util/async.ts";
+import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
+import { isIP } from "ext:deno_node/internal/net.ts";
 import {
   ceilPowOf2,
   INITIAL_ACCEPT_BACKOFF_DELAY,
   MAX_ACCEPT_BACKOFF_DELAY,
-} from "internal:deno_node/polyfills/internal_binding/_listen.ts";
+} from "ext:deno_node/internal_binding/_listen.ts";
 
 /** The type of TCP socket. */
 enum socketType {

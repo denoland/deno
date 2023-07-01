@@ -20,6 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 "use strict";
 
 const kUTF16SurrogateThreshold = 0x10000; // 2 ** 16
@@ -38,10 +41,10 @@ export function CSI(strings, ...args) {
 }
 
 CSI.kEscape = kEscape;
-CSI.kClearToLineBeginning = CSI`1K`;
-CSI.kClearToLineEnd = CSI`0K`;
-CSI.kClearLine = CSI`2K`;
-CSI.kClearScreenDown = CSI`0J`;
+CSI.kClearToLineBeginning = `${kEscape}[1K`;
+CSI.kClearToLineEnd = `${kEscape}[0K`;
+CSI.kClearLine = `${kEscape}[2K`;
+CSI.kClearScreenDown = `${kEscape}[0J`;
 
 // TODO(BridgeAR): Treat combined characters as single character, i.e,
 // 'a\u0301' and '\u0301a' (both have the same visual output).

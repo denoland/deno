@@ -1,30 +1,37 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import {
-  TextDecoder,
-  TextEncoder,
-} from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { Transform } from "internal:deno_node/polyfills/stream.ts";
-import { encode as encodeToHex } from "internal:deno_node/polyfills/internal/crypto/_hex.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { Transform } from "ext:deno_node/stream.ts";
 import {
   forgivingBase64Encode as encodeToBase64,
   forgivingBase64UrlEncode as encodeToBase64Url,
-} from "internal:deno_web/00_infra.js";
-import type { TransformOptions } from "internal:deno_node/polyfills/_stream.d.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_web/00_infra.js";
+import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import type {
   BinaryToTextEncoding,
   Encoding,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
 import {
+  getKeyMaterial,
   KeyObject,
   prepareSecretKey,
-} from "internal:deno_node/polyfills/internal/crypto/keys.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+} from "ext:deno_node/internal/crypto/keys.ts";
 
 const { ops } = globalThis.__bootstrap.core;
+
+// TODO(@littledivy): Use Result<T, E> instead of boolean when
+// https://bugs.chromium.org/p/v8/issues/detail?id=13600 is fixed.
+function unwrapErr(ok: boolean) {
+  if (!ok) {
+    throw new Error("Context is not initialized");
+  }
+}
 
 const coerceToBytes = (data: string | BufferSource): Uint8Array => {
   if (data instanceof Uint8Array) {
@@ -62,15 +69,18 @@ export class Hash extends Transform {
         callback();
       },
       flush(callback: () => void) {
-        this.push(context.digest(undefined));
+        this.push(this.digest(undefined));
         callback();
       },
     });
 
     if (typeof algorithm === "string") {
       this.#context = ops.op_node_create_hash(
-        algorithm,
+        algorithm.toLowerCase(),
       );
+      if (this.#context === 0) {
+        throw new TypeError(`Unknown hash algorithm: ${algorithm}`);
+      }
     } else {
       this.#context = algorithm;
     }
@@ -86,15 +96,11 @@ export class Hash extends Transform {
    * Updates the hash content with the given data.
    */
   update(data: string | ArrayBuffer, _encoding?: string): this {
-    let bytes;
     if (typeof data === "string") {
-      data = new TextEncoder().encode(data);
-      bytes = coerceToBytes(data);
+      unwrapErr(ops.op_node_hash_update_str(this.#context, data));
     } else {
-      bytes = coerceToBytes(data);
+      unwrapErr(ops.op_node_hash_update(this.#context, coerceToBytes(data)));
     }
-
-    ops.op_node_hash_update(this.#context, bytes);
 
     return this;
   }
@@ -107,14 +113,17 @@ export class Hash extends Transform {
    * Supported encodings are currently 'hex', 'binary', 'base64', 'base64url'.
    */
   digest(encoding?: string): Buffer | string {
+    if (encoding === "hex") {
+      return ops.op_node_hash_digest_hex(this.#context);
+    }
+
     const digest = ops.op_node_hash_digest(this.#context);
     if (encoding === undefined) {
       return Buffer.from(digest);
     }
 
+    // TODO(@littedivy): Fast paths for below encodings.
     switch (encoding) {
-      case "hex":
-        return new TextDecoder().decode(encodeToHex(new Uint8Array(digest)));
       case "binary":
         return String.fromCharCode(...digest);
       case "base64":
@@ -164,15 +173,14 @@ class HmacImpl extends Transform {
     });
     // deno-lint-ignore no-this-alias
     const self = this;
-    if (key instanceof KeyObject) {
-      notImplemented("Hmac: KeyObject key is not implemented");
-    }
 
     validateString(hmac, "hmac");
-    const u8Key = prepareSecretKey(key, options?.encoding) as Buffer;
+
+    const u8Key = key instanceof KeyObject
+      ? getKeyMaterial(key)
+      : prepareSecretKey(key, options?.encoding) as Buffer;
 
     const alg = hmac.toLowerCase();
-    this.#hash = new Hash(alg, options);
     this.#algorithm = alg;
     const blockSize = (alg === "sha512" || alg === "sha384") ? 128 : 64;
     const keySize = u8Key.length;
@@ -180,7 +188,8 @@ class HmacImpl extends Transform {
     let bufKey: Buffer;
 
     if (keySize > blockSize) {
-      bufKey = this.#hash.update(u8Key).digest() as Buffer;
+      const hash = new Hash(alg, options);
+      bufKey = hash.update(u8Key).digest() as Buffer;
     } else {
       bufKey = Buffer.concat([u8Key, this.#ZEROES], blockSize);
     }
@@ -221,6 +230,14 @@ Hmac.prototype = HmacImpl.prototype;
  */
 export function createHash(algorithm: string, opts?: TransformOptions) {
   return new Hash(algorithm, opts);
+}
+
+/**
+ * Get the list of implemented hash algorithms.
+ * @returns Array of hash algorithm names.
+ */
+export function getHashes() {
+  return ops.op_node_get_hashes();
 }
 
 export default {

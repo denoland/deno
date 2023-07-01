@@ -15,7 +15,9 @@ use deno_core::op;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::serde_v8::ExternalPointer;
+use deno_core::task::spawn_blocking;
 use deno_core::v8;
+use deno_core::OpState;
 use deno_core::ResourceId;
 use libffi::middle::Arg;
 use serde::Serialize;
@@ -274,7 +276,7 @@ fn ffi_call(
 #[op(v8)]
 pub fn op_ffi_call_ptr_nonblocking<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,
@@ -297,7 +299,7 @@ where
     .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = tokio::task::spawn_blocking(move || {
+  let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
     ffi_call(
       call_args,
@@ -322,7 +324,7 @@ where
 #[op(v8)]
 pub fn op_ffi_call_nonblocking<'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   symbol: String,
   parameters: serde_v8::Value<'scope>,
@@ -344,7 +346,7 @@ pub fn op_ffi_call_nonblocking<'scope>(
     .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = tokio::task::spawn_blocking(move || {
+  let join_handle = spawn_blocking(move || {
     let Symbol {
       cif,
       ptr,
@@ -374,7 +376,7 @@ pub fn op_ffi_call_nonblocking<'scope>(
 #[op(v8)]
 pub fn op_ffi_call_ptr<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   pointer: *mut c_void,
   def: ForeignFunction,
   parameters: serde_v8::Value<'scope>,

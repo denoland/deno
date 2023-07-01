@@ -20,13 +20,16 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { lookup as defaultLookup } from "internal:deno_node/polyfills/dns.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { lookup as defaultLookup } from "ext:deno_node/dns.ts";
 import type {
   ErrnoException,
   NodeSystemErrorCtx,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   ERR_BUFFER_OUT_OF_BOUNDS,
   ERR_INVALID_ARG_TYPE,
@@ -40,34 +43,28 @@ import {
   ERR_SOCKET_DGRAM_NOT_RUNNING,
   errnoException,
   exceptionWithHostPort,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import type { Abortable } from "internal:deno_node/polyfills/_events.d.ts";
-import {
-  kStateSymbol,
-  newHandle,
-} from "internal:deno_node/polyfills/internal/dgram.ts";
-import type { SocketType } from "internal:deno_node/polyfills/internal/dgram.ts";
+} from "ext:deno_node/internal/errors.ts";
+import type { Abortable } from "ext:deno_node/_events.d.ts";
+import { kStateSymbol, newHandle } from "ext:deno_node/internal/dgram.ts";
+import type { SocketType } from "ext:deno_node/internal/dgram.ts";
 import {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
   ownerSymbol,
-} from "internal:deno_node/polyfills/internal/async_hooks.ts";
-import {
-  SendWrap,
-  UDP,
-} from "internal:deno_node/polyfills/internal_binding/udp_wrap.ts";
+} from "ext:deno_node/internal/async_hooks.ts";
+import { SendWrap, UDP } from "ext:deno_node/internal_binding/udp_wrap.ts";
 import {
   isInt32,
   validateAbortSignal,
   validateNumber,
   validatePort,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import { guessHandleType } from "internal:deno_node/polyfills/internal_binding/util.ts";
-import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { nextTick } from "internal:deno_node/polyfills/process.ts";
-import { channel } from "internal:deno_node/polyfills/diagnostics_channel.ts";
-import { isArrayBufferView } from "internal:deno_node/polyfills/internal/util/types.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
+import { nextTick } from "ext:deno_node/process.ts";
+import { channel } from "ext:deno_node/diagnostics_channel.ts";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 
 const { UV_UDP_REUSEADDR, UV_UDP_IPV6ONLY } = os;
 
@@ -247,8 +244,8 @@ export class Socket extends EventEmitter {
    * `EADDRINUSE` error will occur:
    *
    * ```js
-   * import cluster from "internal:deno_node/polyfills/cluster";
-   * import dgram from "internal:deno_node/polyfills/dgram";
+   * import cluster from "ext:deno_node/cluster";
+   * import dgram from "ext:deno_node/dgram";
    *
    * if (cluster.isPrimary) {
    *   cluster.fork(); // Works ok.
@@ -349,7 +346,7 @@ export class Socket extends EventEmitter {
    * Example of a UDP server listening on port 41234:
    *
    * ```js
-   * import dgram from "internal:deno_node/polyfills/dgram";
+   * import dgram from "ext:deno_node/dgram";
    *
    * const server = dgram.createSocket('udp4');
    *
@@ -798,8 +795,8 @@ export class Socket extends EventEmitter {
    * Example of sending a UDP packet to a port on `localhost`;
    *
    * ```js
-   * import dgram from "internal:deno_node/polyfills/dgram";
-   * import { Buffer } from "internal:deno_node/polyfills/buffer";
+   * import dgram from "ext:deno_node/dgram";
+   * import { Buffer } from "ext:deno_node/buffer";
    *
    * const message = Buffer.from('Some bytes');
    * const client = dgram.createSocket('udp4');
@@ -812,8 +809,8 @@ export class Socket extends EventEmitter {
    * `127.0.0.1`;
    *
    * ```js
-   * import dgram from "internal:deno_node/polyfills/dgram";
-   * import { Buffer } from "internal:deno_node/polyfills/buffer";
+   * import dgram from "ext:deno_node/dgram";
+   * import { Buffer } from "ext:deno_node/buffer";
    *
    * const buf1 = Buffer.from('Some ');
    * const buf2 = Buffer.from('bytes');
@@ -832,8 +829,8 @@ export class Socket extends EventEmitter {
    * `localhost`:
    *
    * ```js
-   * import dgram from "internal:deno_node/polyfills/dgram";
-   * import { Buffer } from "internal:deno_node/polyfills/buffer";
+   * import dgram from "ext:deno_node/dgram";
+   * import { Buffer } from "ext:deno_node/buffer";
    *
    * const message = Buffer.from('Some bytes');
    * const client = dgram.createSocket('udp4');

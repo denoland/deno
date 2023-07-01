@@ -1,14 +1,17 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_CRYPTO_FIPS_FORCED } from "internal:deno_node/polyfills/internal/errors.ts";
-import { crypto as constants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { ERR_CRYPTO_FIPS_FORCED } from "ext:deno_node/internal/errors.ts";
+import { crypto as constants } from "ext:deno_node/internal_binding/constants.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import {
   getFipsCrypto,
   setFipsCrypto,
   timingSafeEqual,
-} from "internal:deno_node/polyfills/internal_binding/crypto.ts";
+} from "ext:deno_node/internal_binding/crypto.ts";
 import {
   checkPrime,
   checkPrimeSync,
@@ -19,36 +22,27 @@ import {
   randomFillSync,
   randomInt,
   randomUUID,
-} from "internal:deno_node/polyfills/internal/crypto/random.ts";
+} from "ext:deno_node/internal/crypto/random.ts";
 import type {
   CheckPrimeOptions,
   GeneratePrimeOptions,
   GeneratePrimeOptionsArrayBuffer,
   GeneratePrimeOptionsBigInt,
   LargeNumberLike,
-} from "internal:deno_node/polyfills/internal/crypto/random.ts";
-import {
-  pbkdf2,
-  pbkdf2Sync,
-} from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
+} from "ext:deno_node/internal/crypto/random.ts";
+import { pbkdf2, pbkdf2Sync } from "ext:deno_node/internal/crypto/pbkdf2.ts";
 import type {
   Algorithms,
   NormalizedAlgorithms,
-} from "internal:deno_node/polyfills/internal/crypto/pbkdf2.ts";
-import {
-  scrypt,
-  scryptSync,
-} from "internal:deno_node/polyfills/internal/crypto/scrypt.ts";
-import {
-  hkdf,
-  hkdfSync,
-} from "internal:deno_node/polyfills/internal/crypto/hkdf.ts";
+} from "ext:deno_node/internal/crypto/pbkdf2.ts";
+import { scrypt, scryptSync } from "ext:deno_node/internal/crypto/scrypt.ts";
+import { hkdf, hkdfSync } from "ext:deno_node/internal/crypto/hkdf.ts";
 import {
   generateKey,
   generateKeyPair,
   generateKeyPairSync,
   generateKeySync,
-} from "internal:deno_node/polyfills/internal/crypto/keygen.ts";
+} from "ext:deno_node/internal/crypto/keygen.ts";
 import type {
   BasePrivateKeyEncodingOptions,
   DSAKeyPairKeyObjectOptions,
@@ -69,26 +63,26 @@ import type {
   X25519KeyPairOptions,
   X448KeyPairKeyObjectOptions,
   X448KeyPairOptions,
-} from "internal:deno_node/polyfills/internal/crypto/keygen.ts";
+} from "ext:deno_node/internal/crypto/keygen.ts";
 import {
   createPrivateKey,
   createPublicKey,
   createSecretKey,
   KeyObject,
-} from "internal:deno_node/polyfills/internal/crypto/keys.ts";
+} from "ext:deno_node/internal/crypto/keys.ts";
 import type {
   AsymmetricKeyDetails,
   JsonWebKeyInput,
   JwkKeyExportOptions,
   KeyExportOptions,
   KeyObjectType,
-} from "internal:deno_node/polyfills/internal/crypto/keys.ts";
+} from "ext:deno_node/internal/crypto/keys.ts";
 import {
   DiffieHellman,
   diffieHellman,
   DiffieHellmanGroup,
   ECDH,
-} from "internal:deno_node/polyfills/internal/crypto/diffiehellman.ts";
+} from "ext:deno_node/internal/crypto/diffiehellman.ts";
 import {
   Cipheriv,
   Decipheriv,
@@ -97,7 +91,7 @@ import {
   privateEncrypt,
   publicDecrypt,
   publicEncrypt,
-} from "internal:deno_node/polyfills/internal/crypto/cipher.ts";
+} from "ext:deno_node/internal/crypto/cipher.ts";
 import type {
   Cipher,
   CipherCCM,
@@ -114,7 +108,7 @@ import type {
   DecipherCCM,
   DecipherGCM,
   DecipherOCB,
-} from "internal:deno_node/polyfills/internal/crypto/cipher.ts";
+} from "ext:deno_node/internal/crypto/cipher.ts";
 import type {
   BinaryLike,
   BinaryToTextEncoding,
@@ -127,13 +121,13 @@ import type {
   LegacyCharacterEncoding,
   PrivateKeyInput,
   PublicKeyInput,
-} from "internal:deno_node/polyfills/internal/crypto/types.ts";
+} from "ext:deno_node/internal/crypto/types.ts";
 import {
   Sign,
   signOneShot,
   Verify,
   verifyOneShot,
-} from "internal:deno_node/polyfills/internal/crypto/sig.ts";
+} from "ext:deno_node/internal/crypto/sig.ts";
 import type {
   DSAEncoding,
   KeyLike,
@@ -142,31 +136,31 @@ import type {
   SignPrivateKeyInput,
   VerifyKeyObjectInput,
   VerifyPublicKeyInput,
-} from "internal:deno_node/polyfills/internal/crypto/sig.ts";
+} from "ext:deno_node/internal/crypto/sig.ts";
 import {
   createHash,
+  getHashes,
   Hash,
   Hmac,
-} from "internal:deno_node/polyfills/internal/crypto/hash.ts";
-import { X509Certificate } from "internal:deno_node/polyfills/internal/crypto/x509.ts";
+} from "ext:deno_node/internal/crypto/hash.ts";
+import { X509Certificate } from "ext:deno_node/internal/crypto/x509.ts";
 import type {
   PeerCertificate,
   X509CheckOptions,
-} from "internal:deno_node/polyfills/internal/crypto/x509.ts";
+} from "ext:deno_node/internal/crypto/x509.ts";
 import {
   getCiphers,
   getCurves,
-  getHashes,
   secureHeapUsed,
   setEngine,
-} from "internal:deno_node/polyfills/internal/crypto/util.ts";
-import type { SecureHeapUsage } from "internal:deno_node/polyfills/internal/crypto/util.ts";
-import Certificate from "internal:deno_node/polyfills/internal/crypto/certificate.ts";
+} from "ext:deno_node/internal/crypto/util.ts";
+import type { SecureHeapUsage } from "ext:deno_node/internal/crypto/util.ts";
+import Certificate from "ext:deno_node/internal/crypto/certificate.ts";
 import type {
   TransformOptions,
   WritableOptions,
-} from "internal:deno_node/polyfills/_stream.d.ts";
-import { crypto as webcrypto } from "internal:deno_crypto/00_crypto.js";
+} from "ext:deno_node/_stream.d.ts";
+import { crypto as webcrypto } from "ext:deno_crypto/00_crypto.js";
 
 const fipsForced = getOptionValue("--force-fips");
 

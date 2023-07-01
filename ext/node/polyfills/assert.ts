@@ -1,19 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file ban-types
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file ban-types prefer-primordials
+
 import {
   AssertionError,
   AssertionErrorConstructorOptions,
-} from "internal:deno_node/polyfills/assertion_error.ts";
-import * as asserts from "internal:deno_node/polyfills/_util/std_asserts.ts";
-import { inspect } from "internal:deno_node/polyfills/util.ts";
+} from "ext:deno_node/assertion_error.ts";
+import * as asserts from "ext:deno_node/_util/std_asserts.ts";
+import { inspect } from "ext:deno_node/util.ts";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_RETURN_VALUE,
   ERR_MISSING_ARGS,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { isDeepEqual } from "internal:deno_node/polyfills/internal/util/comparisons.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { isDeepEqual } from "ext:deno_node/internal/util/comparisons.ts";
 
 function innerFail(obj: {
   actual?: unknown;

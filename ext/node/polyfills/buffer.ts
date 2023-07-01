@@ -10,4 +10,4 @@ export {
   kMaxLength,
   kStringMaxLength,
   SlowBuffer,
-} from "internal:deno_node/polyfills/internal/buffer.mjs";
+} from "ext:deno_node/internal/buffer.mjs";

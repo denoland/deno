@@ -27,15 +27,18 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
-import { TextEncoder } from "internal:deno_web/08_text_encoding.js";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { HandleWrap } from "internal:deno_node/polyfills/internal_binding/handle_wrap.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
-import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;

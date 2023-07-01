@@ -1,15 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  TextDecoder,
-  TextEncoder,
-} from "internal:deno_web/08_text_encoding.js";
-import { asyncIterableToCallback } from "internal:deno_node/polyfills/_fs/_fs_watch.ts";
-import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
-import { denoErrorToNodeError } from "internal:deno_node/polyfills/internal/errors.ts";
-import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { promisify } from "internal:deno_node/polyfills/internal/util.mjs";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { asyncIterableToCallback } from "ext:deno_node/_fs/_fs_watch.ts";
+import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 function toDirent(val: Deno.DirEntry): Dirent {
   return new Dirent(val);

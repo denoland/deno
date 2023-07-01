@@ -18,7 +18,7 @@ import {
   Stream,
   Transform,
   Writable,
-} from "internal:deno_node/polyfills/_stream.mjs";
+} from "ext:deno_node/_stream.mjs";
 
 export {
   _isUint8Array,

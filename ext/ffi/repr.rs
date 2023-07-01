@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::v8;
+use deno_core::OpState;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ffi::CStr;
@@ -15,7 +16,7 @@ use std::ptr;
 
 #[op(fast)]
 fn op_ffi_ptr_create<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr_number: usize,
 ) -> Result<*mut c_void, AnyError>
 where
@@ -30,7 +31,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_ptr_equals<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   a: *const c_void,
   b: *const c_void,
 ) -> Result<bool, AnyError>
@@ -46,7 +47,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_ptr_of<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   buf: *const u8,
 ) -> Result<*mut c_void, AnyError>
 where
@@ -61,7 +62,7 @@ where
 
 #[op(fast)]
 fn op_ffi_ptr_offset<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<*mut c_void, AnyError>
@@ -89,7 +90,7 @@ unsafe extern "C" fn noop_deleter_callback(
 
 #[op(fast)]
 fn op_ffi_ptr_value<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   out: &mut [u32],
 ) -> Result<(), AnyError>
@@ -117,7 +118,7 @@ where
 #[op(v8)]
 pub fn op_ffi_get_buf<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
   len: usize,
@@ -151,7 +152,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_buf_copy_into<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   src: *mut c_void,
   offset: isize,
   dst: &mut [u8],
@@ -186,7 +187,7 @@ where
 #[op(v8)]
 pub fn op_ffi_cstr_read<FP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<serde_v8::Value<'scope>, AnyError>
@@ -216,7 +217,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_bool<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<bool, AnyError>
@@ -238,7 +239,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_u8<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<u32, AnyError>
@@ -262,7 +263,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_i8<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<i32, AnyError>
@@ -286,7 +287,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_u16<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<u32, AnyError>
@@ -310,7 +311,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_i16<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<i32, AnyError>
@@ -334,7 +335,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_u32<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<u32, AnyError>
@@ -356,7 +357,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_i32<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<i32, AnyError>
@@ -378,7 +379,7 @@ where
 
 #[op]
 pub fn op_ffi_read_u64<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
   out: &mut [u32],
@@ -413,7 +414,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_i64<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
   out: &mut [u32],
@@ -447,7 +448,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_f32<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<f32, AnyError>
@@ -469,7 +470,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_f64<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<f64, AnyError>
@@ -491,7 +492,7 @@ where
 
 #[op(fast)]
 pub fn op_ffi_read_ptr<FP>(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   ptr: *mut c_void,
   offset: isize,
 ) -> Result<*mut c_void, AnyError>

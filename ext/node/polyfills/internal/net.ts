@@ -20,9 +20,12 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { uvException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { writeBuffer } from "internal:deno_node/polyfills/internal_binding/node_file.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { uvException } from "ext:deno_node/internal/errors.ts";
+import { writeBuffer } from "ext:deno_node/internal_binding/node_file.ts";
 
 // IPv4 Segment
 const v4Seg = "(?:[0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-4][0-9]|25[0-5])";

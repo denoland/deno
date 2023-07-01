@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { kKeyObject } from "internal:deno_node/polyfills/internal/crypto/constants.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { kKeyObject } from "ext:deno_node/internal/crypto/constants.ts";
 
 export const kKeyType = Symbol("kKeyType");
 

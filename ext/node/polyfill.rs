@@ -1,202 +1,217 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-pub fn find_builtin_node_module(
-  module_name: &str,
-) -> Option<&NodeModulePolyfill> {
+/// e.g. `is_builtin_node_module("assert")`
+pub fn is_builtin_node_module(module_name: &str) -> bool {
   SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
-    .find(|m| m.name == module_name)
-}
-
-pub fn is_builtin_node_module(module_name: &str) -> bool {
-  find_builtin_node_module(module_name).is_some()
+    .any(|m| m.module_name() == module_name)
 }
 
 pub struct NodeModulePolyfill {
   /// Name of the module like "assert" or "timers/promises"
-  pub name: &'static str,
   pub specifier: &'static str,
+  pub ext_specifier: &'static str,
 }
 
+impl NodeModulePolyfill {
+  pub fn module_name(&self) -> &'static str {
+    debug_assert!(self.specifier.starts_with("node:"));
+    &self.specifier[5..]
+  }
+}
+
+// NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
 pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
   NodeModulePolyfill {
-    name: "assert",
-    specifier: "internal:deno_node/polyfills/assert.ts",
+    specifier: "node:assert",
+    ext_specifier: "ext:deno_node/assert.ts",
   },
   NodeModulePolyfill {
-    name: "assert/strict",
-    specifier: "internal:deno_node/polyfills/assert/strict.ts",
+    specifier: "node:assert/strict",
+    ext_specifier: "ext:deno_node/assert/strict.ts",
   },
   NodeModulePolyfill {
-    name: "async_hooks",
-    specifier: "internal:deno_node/polyfills/async_hooks.ts",
+    specifier: "node:async_hooks",
+    ext_specifier: "ext:deno_node/async_hooks.ts",
   },
   NodeModulePolyfill {
-    name: "buffer",
-    specifier: "internal:deno_node/polyfills/buffer.ts",
+    specifier: "node:buffer",
+    ext_specifier: "ext:deno_node/buffer.ts",
   },
   NodeModulePolyfill {
-    name: "child_process",
-    specifier: "internal:deno_node/polyfills/child_process.ts",
+    specifier: "node:child_process",
+    ext_specifier: "ext:deno_node/child_process.ts",
   },
   NodeModulePolyfill {
-    name: "cluster",
-    specifier: "internal:deno_node/polyfills/cluster.ts",
+    specifier: "node:cluster",
+    ext_specifier: "ext:deno_node/cluster.ts",
   },
   NodeModulePolyfill {
-    name: "console",
-    specifier: "internal:deno_node/polyfills/console.ts",
+    specifier: "node:console",
+    ext_specifier: "ext:deno_node/console.ts",
   },
   NodeModulePolyfill {
-    name: "constants",
-    specifier: "internal:deno_node/polyfills/constants.ts",
+    specifier: "node:constants",
+    ext_specifier: "ext:deno_node/constants.ts",
   },
   NodeModulePolyfill {
-    name: "crypto",
-    specifier: "internal:deno_node/polyfills/crypto.ts",
+    specifier: "node:crypto",
+    ext_specifier: "ext:deno_node/crypto.ts",
   },
   NodeModulePolyfill {
-    name: "dgram",
-    specifier: "internal:deno_node/polyfills/dgram.ts",
+    specifier: "node:dgram",
+    ext_specifier: "ext:deno_node/dgram.ts",
   },
   NodeModulePolyfill {
-    name: "dns",
-    specifier: "internal:deno_node/polyfills/dns.ts",
+    specifier: "node:diagnostics_channel",
+    ext_specifier: "ext:deno_node/diagnostics_channel.ts",
   },
   NodeModulePolyfill {
-    name: "dns/promises",
-    specifier: "internal:deno_node/polyfills/dns/promises.ts",
+    specifier: "node:dns",
+    ext_specifier: "ext:deno_node/dns.ts",
   },
   NodeModulePolyfill {
-    name: "domain",
-    specifier: "internal:deno_node/polyfills/domain.ts",
+    specifier: "node:dns/promises",
+    ext_specifier: "ext:deno_node/dns/promises.ts",
   },
   NodeModulePolyfill {
-    name: "events",
-    specifier: "internal:deno_node/polyfills/events.ts",
+    specifier: "node:domain",
+    ext_specifier: "ext:deno_node/domain.ts",
   },
   NodeModulePolyfill {
-    name: "fs",
-    specifier: "internal:deno_node/polyfills/fs.ts",
+    specifier: "node:events",
+    ext_specifier: "ext:deno_node/events.ts",
   },
   NodeModulePolyfill {
-    name: "fs/promises",
-    specifier: "internal:deno_node/polyfills/fs/promises.ts",
+    specifier: "node:fs",
+    ext_specifier: "ext:deno_node/fs.ts",
   },
   NodeModulePolyfill {
-    name: "http",
-    specifier: "internal:deno_node/polyfills/http.ts",
+    specifier: "node:fs/promises",
+    ext_specifier: "ext:deno_node/fs/promises.ts",
   },
   NodeModulePolyfill {
-    name: "https",
-    specifier: "internal:deno_node/polyfills/https.ts",
+    specifier: "node:http",
+    ext_specifier: "ext:deno_node/http.ts",
   },
   NodeModulePolyfill {
-    name: "module",
-    specifier: "internal:deno_node_loading/module_es_shim.js",
+    specifier: "node:http2",
+    ext_specifier: "ext:deno_node/http2.ts",
   },
   NodeModulePolyfill {
-    name: "net",
-    specifier: "internal:deno_node/polyfills/net.ts",
+    specifier: "node:https",
+    ext_specifier: "ext:deno_node/https.ts",
   },
   NodeModulePolyfill {
-    name: "os",
-    specifier: "internal:deno_node/polyfills/os.ts",
+    specifier: "node:module",
+    ext_specifier: "ext:deno_node/01_require.js",
   },
   NodeModulePolyfill {
-    name: "path",
-    specifier: "internal:deno_node/polyfills/path.ts",
+    specifier: "node:net",
+    ext_specifier: "ext:deno_node/net.ts",
   },
   NodeModulePolyfill {
-    name: "path/posix",
-    specifier: "internal:deno_node/polyfills/path/posix.ts",
+    specifier: "node:os",
+    ext_specifier: "ext:deno_node/os.ts",
   },
   NodeModulePolyfill {
-    name: "path/win32",
-    specifier: "internal:deno_node/polyfills/path/win32.ts",
+    specifier: "node:path",
+    ext_specifier: "ext:deno_node/path.ts",
   },
   NodeModulePolyfill {
-    name: "perf_hooks",
-    specifier: "internal:deno_node/polyfills/perf_hooks.ts",
+    specifier: "node:path/posix",
+    ext_specifier: "ext:deno_node/path/posix.ts",
   },
   NodeModulePolyfill {
-    name: "process",
-    specifier: "internal:deno_node/polyfills/process.ts",
+    specifier: "node:path/win32",
+    ext_specifier: "ext:deno_node/path/win32.ts",
   },
   NodeModulePolyfill {
-    name: "querystring",
-    specifier: "internal:deno_node/polyfills/querystring.ts",
+    specifier: "node:perf_hooks",
+    ext_specifier: "ext:deno_node/perf_hooks.ts",
   },
   NodeModulePolyfill {
-    name: "readline",
-    specifier: "internal:deno_node/polyfills/readline.ts",
+    specifier: "node:process",
+    ext_specifier: "ext:deno_node/process.ts",
   },
   NodeModulePolyfill {
-    name: "stream",
-    specifier: "internal:deno_node/polyfills/stream.ts",
+    specifier: "node:punycode",
+    ext_specifier: "ext:deno_node/punycode.ts",
   },
   NodeModulePolyfill {
-    name: "stream/consumers",
-    specifier: "internal:deno_node/polyfills/stream/consumers.mjs",
+    specifier: "node:querystring",
+    ext_specifier: "ext:deno_node/querystring.ts",
   },
   NodeModulePolyfill {
-    name: "stream/promises",
-    specifier: "internal:deno_node/polyfills/stream/promises.mjs",
+    specifier: "node:readline",
+    ext_specifier: "ext:deno_node/readline.ts",
   },
   NodeModulePolyfill {
-    name: "stream/web",
-    specifier: "internal:deno_node/polyfills/stream/web.ts",
+    specifier: "node:stream",
+    ext_specifier: "ext:deno_node/stream.ts",
   },
   NodeModulePolyfill {
-    name: "string_decoder",
-    specifier: "internal:deno_node/polyfills/string_decoder.ts",
+    specifier: "node:stream/consumers",
+    ext_specifier: "ext:deno_node/stream/consumers.mjs",
   },
   NodeModulePolyfill {
-    name: "sys",
-    specifier: "internal:deno_node/polyfills/sys.ts",
+    specifier: "node:stream/promises",
+    ext_specifier: "ext:deno_node/stream/promises.mjs",
   },
   NodeModulePolyfill {
-    name: "timers",
-    specifier: "internal:deno_node/polyfills/timers.ts",
+    specifier: "node:stream/web",
+    ext_specifier: "ext:deno_node/stream/web.ts",
   },
   NodeModulePolyfill {
-    name: "timers/promises",
-    specifier: "internal:deno_node/polyfills/timers/promises.ts",
+    specifier: "node:string_decoder",
+    ext_specifier: "ext:deno_node/string_decoder.ts",
   },
   NodeModulePolyfill {
-    name: "tls",
-    specifier: "internal:deno_node/polyfills/tls.ts",
+    specifier: "node:sys",
+    ext_specifier: "ext:deno_node/sys.ts",
   },
   NodeModulePolyfill {
-    name: "tty",
-    specifier: "internal:deno_node/polyfills/tty.ts",
+    specifier: "node:timers",
+    ext_specifier: "ext:deno_node/timers.ts",
   },
   NodeModulePolyfill {
-    name: "url",
-    specifier: "internal:deno_node/polyfills/url.ts",
+    specifier: "node:timers/promises",
+    ext_specifier: "ext:deno_node/timers/promises.ts",
   },
   NodeModulePolyfill {
-    name: "util",
-    specifier: "internal:deno_node/polyfills/util.ts",
+    specifier: "node:tls",
+    ext_specifier: "ext:deno_node/tls.ts",
   },
   NodeModulePolyfill {
-    name: "util/types",
-    specifier: "internal:deno_node/polyfills/util/types.ts",
+    specifier: "node:tty",
+    ext_specifier: "ext:deno_node/tty.ts",
   },
   NodeModulePolyfill {
-    name: "v8",
-    specifier: "internal:deno_node/polyfills/v8.ts",
+    specifier: "node:url",
+    ext_specifier: "ext:deno_node/url.ts",
   },
   NodeModulePolyfill {
-    name: "vm",
-    specifier: "internal:deno_node/polyfills/vm.ts",
+    specifier: "node:util",
+    ext_specifier: "ext:deno_node/util.ts",
   },
   NodeModulePolyfill {
-    name: "worker_threads",
-    specifier: "internal:deno_node/polyfills/worker_threads.ts",
+    specifier: "node:util/types",
+    ext_specifier: "ext:deno_node/util/types.ts",
   },
   NodeModulePolyfill {
-    name: "zlib",
-    specifier: "internal:deno_node/polyfills/zlib.ts",
+    specifier: "node:v8",
+    ext_specifier: "ext:deno_node/v8.ts",
+  },
+  NodeModulePolyfill {
+    specifier: "node:vm",
+    ext_specifier: "ext:deno_node/vm.ts",
+  },
+  NodeModulePolyfill {
+    specifier: "node:worker_threads",
+    ext_specifier: "ext:deno_node/worker_threads.ts",
+  },
+  NodeModulePolyfill {
+    specifier: "node:zlib",
+    ext_specifier: "ext:deno_node/zlib.ts",
   },
 ];

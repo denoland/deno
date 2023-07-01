@@ -2,37 +2,34 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import {
-  notImplemented,
-  warnNotImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
-import {
-  Readable,
-  Stream,
-  Writable,
-} from "internal:deno_node/polyfills/stream.ts";
-import { deferred } from "internal:deno_node/polyfills/_util/async.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { Readable, Stream, Writable } from "ext:deno_node/stream.ts";
+import { deferred } from "ext:deno_node/_util/async.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   AbortError,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
   ERR_UNKNOWN_SIGNAL,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { errnoException } from "internal:deno_node/polyfills/internal/errors.ts";
-import { ErrnoException } from "internal:deno_node/polyfills/_global.d.ts";
-import { codeMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { errnoException } from "ext:deno_node/internal/errors.ts";
+import { ErrnoException } from "ext:deno_node/_global.d.ts";
+import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   isInt32,
   validateBoolean,
   validateObject,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
   ArrayIsArray,
   ArrayPrototypeFilter,
@@ -41,12 +38,12 @@ import {
   ArrayPrototypeSlice,
   ArrayPrototypeSort,
   ArrayPrototypeUnshift,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   StringPrototypeToUpperCase,
-} from "internal:deno_node/polyfills/internal/primordials.mjs";
-import { kEmptyObject } from "internal:deno_node/polyfills/internal/util.mjs";
-import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import process from "internal:deno_node/polyfills/process.ts";
+} from "ext:deno_node/internal/primordials.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import process from "ext:deno_node/process.ts";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -184,9 +181,9 @@ export class ChildProcess extends EventEmitter {
         args: cmdArgs,
         cwd,
         env: stringEnv,
-        stdin: toDenoStdio(stdin as NodeStdio | number),
-        stdout: toDenoStdio(stdout as NodeStdio | number),
-        stderr: toDenoStdio(stderr as NodeStdio | number),
+        stdin: toDenoStdio(stdin),
+        stdout: toDenoStdio(stdout),
+        stderr: toDenoStdio(stderr),
         windowsRawArguments: windowsVerbatimArguments,
       }).spawn();
       this.pid = this.#process.pid;
@@ -194,6 +191,16 @@ export class ChildProcess extends EventEmitter {
       if (stdin === "pipe") {
         assert(this.#process.stdin);
         this.stdin = Writable.fromWeb(this.#process.stdin);
+      }
+
+      if (stdin instanceof Stream) {
+        this.stdin = stdin;
+      }
+      if (stdout instanceof Stream) {
+        this.stdout = stdout;
+      }
+      if (stderr instanceof Stream) {
+        this.stderr = stderr;
       }
 
       if (stdout === "pipe") {
@@ -292,15 +299,22 @@ export class ChildProcess extends EventEmitter {
 
   async #_waitForChildStreamsToClose() {
     const promises = [] as Array<Promise<void>>;
-    if (this.stdin && !this.stdin.destroyed) {
+    // Don't close parent process stdin if that's passed through
+    if (this.stdin && !this.stdin.destroyed && this.stdin !== process.stdin) {
       assert(this.stdin);
       this.stdin.destroy();
       promises.push(waitForStreamToClose(this.stdin));
     }
-    if (this.stdout && !this.stdout.destroyed) {
+    // Only readable streams need to be closed
+    if (
+      this.stdout && !this.stdout.destroyed && this.stdout instanceof Readable
+    ) {
       promises.push(waitForReadableToClose(this.stdout));
     }
-    if (this.stderr && !this.stderr.destroyed) {
+    // Only readable streams need to be closed
+    if (
+      this.stderr && !this.stderr.destroyed && this.stderr instanceof Readable
+    ) {
       promises.push(waitForReadableToClose(this.stderr));
     }
     await Promise.all(promises);
@@ -324,9 +338,13 @@ const supportedNodeStdioTypes: NodeStdio[] = ["pipe", "ignore", "inherit"];
 function toDenoStdio(
   pipe: NodeStdio | number | Stream | null | undefined,
 ): DenoStdio {
+  if (pipe instanceof Stream) {
+    return "inherit";
+  }
+
   if (
     !supportedNodeStdioTypes.includes(pipe as NodeStdio) ||
-    typeof pipe === "number" || pipe instanceof Stream
+    typeof pipe === "number"
   ) {
     notImplemented(`toDenoStdio pipe=${typeof pipe} (${pipe})`);
   }
@@ -436,7 +454,7 @@ function copyProcessEnvToEnv(
   if (
     Deno.env.get(name) &&
     (!optionEnv ||
-      !ObjectPrototypeHasOwnProperty(optionEnv, name))
+      !ObjectHasOwn(optionEnv, name))
   ) {
     env[name] = Deno.env.get(name);
   }
@@ -448,8 +466,24 @@ function normalizeStdioOption(
     "pipe",
     "pipe",
   ],
-) {
+): [
+  Stream | NodeStdio | number,
+  Stream | NodeStdio | number,
+  Stream | NodeStdio | number,
+  ...Array<Stream | NodeStdio | number>,
+] {
   if (Array.isArray(stdio)) {
+    // `[0, 1, 2]` is equivalent to `"inherit"`
+    if (
+      stdio.length === 3 && stdio[0] === 0 && stdio[1] === 1 && stdio[2] === 2
+    ) {
+      return ["inherit", "inherit", "inherit"];
+    }
+
+    // At least 3 stdio must be created to match node
+    while (stdio.length < 3) {
+      ArrayPrototypePush(stdio, undefined);
+    }
     return stdio;
   } else {
     switch (stdio) {
@@ -803,8 +837,8 @@ export function spawnSync(
       args,
       cwd,
       env,
-      stdout: toDenoStdio(normalizedStdio[1] as NodeStdio | number),
-      stderr: toDenoStdio(normalizedStdio[2] as NodeStdio | number),
+      stdout: toDenoStdio(normalizedStdio[1]),
+      stderr: toDenoStdio(normalizedStdio[2]),
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,

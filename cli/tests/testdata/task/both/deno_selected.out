@@ -1,4 +1,2 @@
-Download http://localhost:4545/npm/registry/@denotest/bin
-Download http://localhost:4545/npm/registry/@denotest/bin/1.0.0.tgz
 Task other deno eval 'console.log(2)'
 2

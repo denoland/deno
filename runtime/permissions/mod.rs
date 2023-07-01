@@ -13,10 +13,12 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use log;
 use once_cell::sync::Lazy;
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
@@ -38,9 +40,12 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Tri-state value for storing permission state
-#[derive(Eq, PartialEq, Debug, Clone, Copy, Deserialize, PartialOrd)]
+#[derive(
+  Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
+)]
 pub enum PermissionState {
   Granted = 0,
+  #[default]
   Prompt = 1,
   Denied = 2,
 }
@@ -67,7 +72,9 @@ impl PermissionState {
     format!(
       "{} access{}",
       name,
-      info().map_or(String::new(), |info| { format!(" to {info}") }),
+      info()
+        .map(|info| { format!(" to {info}") })
+        .unwrap_or_default(),
     )
   }
 
@@ -111,7 +118,9 @@ impl PermissionState {
         let msg = format!(
           "{} access{}",
           name,
-          info().map_or(String::new(), |info| { format!(" to {info}") }),
+          info()
+            .map(|info| { format!(" to {info}") })
+            .unwrap_or_default(),
         );
         match permission_prompt(&msg, name, api_name, true) {
           PromptResponse::Allow => {
@@ -137,12 +146,6 @@ impl fmt::Display for PermissionState {
       PermissionState::Prompt => f.pad("prompt"),
       PermissionState::Denied => f.pad("denied"),
     }
-  }
-}
-
-impl Default for PermissionState {
-  fn default() -> Self {
-    PermissionState::Prompt
   }
 }
 
@@ -666,6 +669,40 @@ impl UnaryPermission<WriteDescriptor> {
     }
     result
   }
+
+  /// As `check()`, but permission error messages will anonymize the path
+  /// by replacing it with the given `display`.
+  pub fn check_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    let resolved_path = resolve_from_cwd(path)?;
+    let (result, prompted, is_allow_all) =
+      self.query(Some(&resolved_path)).check(
+        self.name,
+        Some(api_name),
+        Some(&format!("<{display}>")),
+        self.prompt,
+      );
+    if prompted {
+      if result.is_ok() {
+        if is_allow_all {
+          self.granted_list.clear();
+          self.global_state = PermissionState::Granted;
+        } else {
+          self.granted_list.insert(WriteDescriptor(resolved_path));
+        }
+      } else {
+        self.global_state = PermissionState::Denied;
+        if !is_allow_all {
+          self.denied_list.insert(WriteDescriptor(resolved_path));
+        }
+      }
+    }
+    result
+  }
 }
 
 impl Default for UnaryPermission<WriteDescriptor> {
@@ -836,8 +873,8 @@ impl UnaryPermission<NetDescriptor> {
       .ok_or_else(|| uri_error("Missing host"))?
       .to_string();
     let display_host = match url.port() {
-      None => hostname.clone(),
-      Some(port) => format!("{hostname}:{port}"),
+      None => Cow::Borrowed(&hostname),
+      Some(port) => Cow::Owned(format!("{hostname}:{port}")),
     };
     let host = &(&hostname, url.port_or_known_default());
     let (result, prompted, is_allow_all) = self.query(Some(host)).check(
@@ -1572,14 +1609,14 @@ impl Permissions {
   ) -> Result<UnaryPermission<NetDescriptor>, AnyError> {
     Ok(UnaryPermission::<NetDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| NetDescriptor::from_str(x))
             .collect::<Result<HashSet<NetDescriptor>, AnyError>>()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1591,9 +1628,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<EnvDescriptor>, AnyError> {
     Ok(UnaryPermission::<EnvDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1603,8 +1640,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1616,20 +1653,20 @@ impl Permissions {
   ) -> Result<UnaryPermission<SysDescriptor>, AnyError> {
     Ok(UnaryPermission::<SysDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
-                Err(AnyError::msg("emtpy"))
+                Err(AnyError::msg("empty"))
               } else {
                 Ok(SysDescriptor(x.to_string()))
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1641,9 +1678,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<RunDescriptor>, AnyError> {
     Ok(UnaryPermission::<RunDescriptor> {
       global_state: global_state_from_option(state),
-      granted_list: state.as_ref().map_or_else(
-        || Ok(HashSet::new()),
-        |v| {
+      granted_list: state
+        .as_ref()
+        .map(|v| {
           v.iter()
             .map(|x| {
               if x.is_empty() {
@@ -1653,8 +1690,8 @@ impl Permissions {
               }
             })
             .collect()
-        },
-      )?,
+        })
+        .unwrap_or_else(|| Ok(HashSet::new()))?,
       prompt,
       ..Default::default()
     })
@@ -1792,6 +1829,16 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_write_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(path, display, api_name)
+  }
+
+  #[inline(always)]
   pub fn check_run(
     &mut self,
     cmd: &str,
@@ -1825,20 +1872,18 @@ impl PermissionsContainer {
   }
 }
 
-impl deno_flash::FlashPermissions for PermissionsContainer {
-  #[inline(always)]
-  fn check_net<T: AsRef<str>>(
-    &mut self,
-    host: &(T, Option<u16>),
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().net.check(host, Some(api_name))
-  }
-}
-
 impl deno_node::NodePermissions for PermissionsContainer {
   #[inline(always)]
-  fn check_read(&mut self, path: &Path) -> Result<(), AnyError> {
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check_url(url, Some(api_name))
+  }
+
+  #[inline(always)]
+  fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)
   }
 }
@@ -1915,6 +1960,50 @@ impl deno_websocket::WebSocketPermissions for PermissionsContainer {
   }
 }
 
+impl deno_fs::FsPermissions for PermissionsContainer {
+  fn check_read(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check(path, Some(api_name))
+  }
+
+  fn check_read_blind(
+    &mut self,
+    path: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_blind(path, display, api_name)
+  }
+
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check(path, Some(api_name))
+  }
+
+  fn check_write_blind(
+    &mut self,
+    p: &Path,
+    display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_blind(p, display, api_name)
+  }
+
+  fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check_all(Some(api_name))
+  }
+
+  fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check_all(Some(api_name))
+  }
+}
+
 // NOTE(bartlomieju): for now, NAPI uses `--allow-ffi` flag, but that might
 // change in the future.
 impl deno_napi::NapiPermissions for PermissionsContainer {
@@ -1928,6 +2017,18 @@ impl deno_ffi::FfiPermissions for PermissionsContainer {
   #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
     self.0.lock().ffi.check(path)
+  }
+}
+
+impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().read.check(p, Some(api_name))
+  }
+
+  #[inline(always)]
+  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().write.check(p, Some(api_name))
   }
 }
 
@@ -2518,7 +2619,6 @@ pub fn create_child_permissions(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use deno_core::resolve_url_or_path;
   use deno_core::serde_json::json;
   use prompter::tests::*;
 
@@ -2822,27 +2922,31 @@ mod tests {
 
     let mut fixtures = vec![
       (
-        resolve_url_or_path("http://localhost:4545/mod.ts").unwrap(),
+        ModuleSpecifier::parse("http://localhost:4545/mod.ts").unwrap(),
         true,
       ),
       (
-        resolve_url_or_path("http://deno.land/x/mod.ts").unwrap(),
+        ModuleSpecifier::parse("http://deno.land/x/mod.ts").unwrap(),
         false,
       ),
       (
-        resolve_url_or_path("data:text/plain,Hello%2C%20Deno!").unwrap(),
+        ModuleSpecifier::parse("data:text/plain,Hello%2C%20Deno!").unwrap(),
         true,
       ),
     ];
 
     if cfg!(target_os = "windows") {
       fixtures
-        .push((resolve_url_or_path("file:///C:/a/mod.ts").unwrap(), true));
-      fixtures
-        .push((resolve_url_or_path("file:///C:/b/mod.ts").unwrap(), false));
+        .push((ModuleSpecifier::parse("file:///C:/a/mod.ts").unwrap(), true));
+      fixtures.push((
+        ModuleSpecifier::parse("file:///C:/b/mod.ts").unwrap(),
+        false,
+      ));
     } else {
-      fixtures.push((resolve_url_or_path("file:///a/mod.ts").unwrap(), true));
-      fixtures.push((resolve_url_or_path("file:///b/mod.ts").unwrap(), false));
+      fixtures
+        .push((ModuleSpecifier::parse("file:///a/mod.ts").unwrap(), true));
+      fixtures
+        .push((ModuleSpecifier::parse("file:///b/mod.ts").unwrap(), false));
     }
 
     for (specifier, expected) in fixtures {
@@ -2866,7 +2970,7 @@ mod tests {
 
     for url in test_cases {
       assert!(perms
-        .check_specifier(&resolve_url_or_path(url).unwrap())
+        .check_specifier(&ModuleSpecifier::parse(url).unwrap())
         .is_err());
     }
   }

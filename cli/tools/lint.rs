@@ -2,21 +2,19 @@
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
-//!
-//! At the moment it is only consumed using CLI but in
-//! the future it can be easily extended to provide
-//! the same functions as ops available in JS runtime.
-use crate::args::CliOptions;
 use crate::args::FilesConfig;
+use crate::args::Flags;
+use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::LintReporterKind;
 use crate::args::LintRulesConfig;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
 use crate::util::path::is_supported_ext;
+use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::generic_error;
@@ -35,9 +33,8 @@ use serde::Serialize;
 use std::fs;
 use std::io::stdin;
 use std::io::Read;
+use std::path::Path;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -53,131 +50,69 @@ fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
   }
 }
 
-pub async fn lint(
-  cli_options: CliOptions,
-  lint_options: LintOptions,
-) -> Result<(), AnyError> {
-  // Try to get lint rules. If none were set use recommended rules.
-  let lint_rules = get_configured_rules(lint_options.rules);
-
-  if lint_rules.is_empty() {
-    bail!("No rules have been configured")
-  }
-
-  let files = lint_options.files;
-  let reporter_kind = lint_options.reporter_kind;
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let files_changed = changed.is_some();
-    let result = collect_lint_files(&files).map(|files| {
-      if let Some(paths) = changed {
-        files
-          .iter()
-          .any(|path| paths.contains(path))
-          .then_some(files)
-          .unwrap_or_else(|| [].to_vec())
-      } else {
-        files
-      }
-    });
-
-    let paths_to_watch = files.include.clone();
-
-    async move {
-      if files_changed && matches!(result, Ok(ref files) if files.is_empty()) {
-        ResolutionResult::Ignore
-      } else {
-        ResolutionResult::Restart {
-          paths_to_watch,
-          result,
-        }
-      }
-    }
-  };
-
-  let has_error = Arc::new(AtomicBool::new(false));
-  let deno_dir = cli_options.resolve_deno_dir()?;
-  let operation = |paths: Vec<PathBuf>| async {
-    let incremental_cache = Arc::new(IncrementalCache::new(
-      &deno_dir.lint_incremental_cache_db_file_path(),
-      // use a hash of the rule names in order to bust the cache
-      &{
-        // ensure this is stable by sorting it
-        let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
-        names.sort_unstable();
-        names
-      },
-      &paths,
-    ));
-    let target_files_len = paths.len();
-    let reporter_lock =
-      Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
-
-    run_parallelized(paths, {
-      let has_error = has_error.clone();
-      let lint_rules = lint_rules.clone();
-      let reporter_lock = reporter_lock.clone();
-      let incremental_cache = incremental_cache.clone();
-      move |file_path| {
-        let file_text = fs::read_to_string(&file_path)?;
-
-        // don't bother rechecking this file if it didn't have any diagnostics before
-        if incremental_cache.is_file_same(&file_path, &file_text) {
-          return Ok(());
-        }
-
-        let r = lint_file(&file_path, file_text, lint_rules);
-        if let Ok((file_diagnostics, file_text)) = &r {
-          if file_diagnostics.is_empty() {
-            // update the incremental cache if there were no diagnostics
-            incremental_cache.update_file(&file_path, file_text)
-          }
-        }
-
-        handle_lint_result(
-          &file_path.to_string_lossy(),
-          r,
-          reporter_lock.clone(),
-          has_error,
-        );
-
-        Ok(())
-      }
-    })
-    .await?;
-    incremental_cache.wait_completion().await;
-    reporter_lock.lock().unwrap().close(target_files_len);
-
-    Ok(())
-  };
-  if cli_options.watch_paths().is_some() {
-    if lint_options.is_stdin {
+pub async fn lint(flags: Flags, lint_flags: LintFlags) -> Result<(), AnyError> {
+  if let Some(watch_flags) = &lint_flags.watch {
+    if lint_flags.is_stdin() {
       return Err(generic_error(
         "Lint watch on standard input is not supported.",
       ));
     }
     file_watcher::watch_func(
-      resolver,
-      operation,
+      flags,
       file_watcher::PrintConfig {
         job_name: "Lint".to_string(),
-        clear_screen: !cli_options.no_clear_screen(),
+        clear_screen: !watch_flags.no_clear_screen,
+      },
+      move |flags, sender, changed_paths| {
+        let lint_flags = lint_flags.clone();
+        Ok(async move {
+          let factory = CliFactory::from_flags(flags).await?;
+          let cli_options = factory.cli_options();
+          let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+          let files =
+            collect_lint_files(&lint_options.files).and_then(|files| {
+              if files.is_empty() {
+                Err(generic_error("No target files found."))
+              } else {
+                Ok(files)
+              }
+            })?;
+          _ = sender.send(files.clone());
+
+          let lint_paths = if let Some(paths) = changed_paths {
+            // lint all files on any changed (https://github.com/denoland/deno/issues/12446)
+            files
+              .iter()
+              .any(|path| paths.contains(path))
+              .then_some(files)
+              .unwrap_or_else(|| [].to_vec())
+          } else {
+            files
+          };
+
+          lint_files(factory, lint_options, lint_paths).await?;
+          Ok(())
+        })
       },
     )
     .await?;
   } else {
-    if lint_options.is_stdin {
+    let factory = CliFactory::from_flags(flags).await?;
+    let cli_options = factory.cli_options();
+    let is_stdin = lint_flags.is_stdin();
+    let lint_options = cli_options.resolve_lint_options(lint_flags)?;
+    let files = &lint_options.files;
+    let success = if is_stdin {
+      let reporter_kind = lint_options.reporter_kind;
       let reporter_lock = Arc::new(Mutex::new(create_reporter(reporter_kind)));
+      let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
       let r = lint_stdin(lint_rules);
-      handle_lint_result(
-        STDIN_FILE_NAME,
-        r,
-        reporter_lock.clone(),
-        has_error.clone(),
-      );
+      let success =
+        handle_lint_result(STDIN_FILE_NAME, r, reporter_lock.clone());
       reporter_lock.lock().unwrap().close(1);
+      success
     } else {
-      let target_files = collect_lint_files(&files).and_then(|files| {
+      let target_files = collect_lint_files(files).and_then(|files| {
         if files.is_empty() {
           Err(generic_error("No target files found."))
         } else {
@@ -185,15 +120,78 @@ pub async fn lint(
         }
       })?;
       debug!("Found {} files", target_files.len());
-      operation(target_files).await?;
+      lint_files(factory, lint_options, target_files).await?
     };
-    let has_error = has_error.load(Ordering::Relaxed);
-    if has_error {
+    if !success {
       std::process::exit(1);
     }
   }
 
   Ok(())
+}
+
+async fn lint_files(
+  factory: CliFactory,
+  lint_options: LintOptions,
+  paths: Vec<PathBuf>,
+) -> Result<bool, AnyError> {
+  let caches = factory.caches()?;
+  let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
+  let incremental_cache = Arc::new(IncrementalCache::new(
+    caches.lint_incremental_cache_db(),
+    // use a hash of the rule names in order to bust the cache
+    &{
+      // ensure this is stable by sorting it
+      let mut names = lint_rules.iter().map(|r| r.code()).collect::<Vec<_>>();
+      names.sort_unstable();
+      names
+    },
+    &paths,
+  ));
+  let target_files_len = paths.len();
+  let reporter_kind = lint_options.reporter_kind;
+  let reporter_lock =
+    Arc::new(Mutex::new(create_reporter(reporter_kind.clone())));
+  let has_error = Arc::new(AtomicFlag::default());
+
+  run_parallelized(paths, {
+    let has_error = has_error.clone();
+    let lint_rules = lint_rules.clone();
+    let reporter_lock = reporter_lock.clone();
+    let incremental_cache = incremental_cache.clone();
+    move |file_path| {
+      let file_text = fs::read_to_string(&file_path)?;
+
+      // don't bother rechecking this file if it didn't have any diagnostics before
+      if incremental_cache.is_file_same(&file_path, &file_text) {
+        return Ok(());
+      }
+
+      let r = lint_file(&file_path, file_text, lint_rules);
+      if let Ok((file_diagnostics, file_text)) = &r {
+        if file_diagnostics.is_empty() {
+          // update the incremental cache if there were no diagnostics
+          incremental_cache.update_file(&file_path, file_text)
+        }
+      }
+
+      let success = handle_lint_result(
+        &file_path.to_string_lossy(),
+        r,
+        reporter_lock.clone(),
+      );
+      if !success {
+        has_error.raise();
+      }
+
+      Ok(())
+    }
+  })
+  .await?;
+  incremental_cache.wait_completion().await;
+  reporter_lock.lock().unwrap().close(target_files_len);
+
+  Ok(!has_error.is_raised())
 }
 
 fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
@@ -234,7 +232,7 @@ pub fn print_rules_list(json: bool) {
 
 pub fn create_linter(
   media_type: MediaType,
-  rules: Vec<Arc<dyn LintRule>>,
+  rules: Vec<&'static dyn LintRule>,
 ) -> Linter {
   LinterBuilder::default()
     .ignore_file_directive("deno-lint-ignore-file")
@@ -245,12 +243,12 @@ pub fn create_linter(
 }
 
 fn lint_file(
-  file_path: &PathBuf,
+  file_path: &Path,
   source_code: String,
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
-  let media_type = MediaType::from(file_path);
+  let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 
@@ -263,7 +261,7 @@ fn lint_file(
 /// Treats input as TypeScript.
 /// Compatible with `--json` flag.
 fn lint_stdin(
-  lint_rules: Vec<Arc<dyn LintRule>>,
+  lint_rules: Vec<&'static dyn LintRule>,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
@@ -282,21 +280,20 @@ fn handle_lint_result(
   file_path: &str,
   result: Result<(Vec<LintDiagnostic>, String), AnyError>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
-  has_error: Arc<AtomicBool>,
-) {
+) -> bool {
   let mut reporter = reporter_lock.lock().unwrap();
 
   match result {
     Ok((mut file_diagnostics, source)) => {
       sort_diagnostics(&mut file_diagnostics);
       for d in file_diagnostics.iter() {
-        has_error.store(true, Ordering::Relaxed);
         reporter.visit_diagnostic(d, source.split('\n').collect());
       }
+      file_diagnostics.is_empty()
     }
     Err(err) => {
-      has_error.store(true, Ordering::Relaxed);
       reporter.visit_error(file_path, &err);
+      false
     }
   }
 }
@@ -530,7 +527,19 @@ fn sort_diagnostics(diagnostics: &mut [LintDiagnostic]) {
   });
 }
 
-pub fn get_configured_rules(rules: LintRulesConfig) -> Vec<Arc<dyn LintRule>> {
+fn get_config_rules_err_empty(
+  rules: LintRulesConfig,
+) -> Result<Vec<&'static dyn LintRule>, AnyError> {
+  let lint_rules = get_configured_rules(rules);
+  if lint_rules.is_empty() {
+    bail!("No rules have been configured")
+  }
+  Ok(lint_rules)
+}
+
+pub fn get_configured_rules(
+  rules: LintRulesConfig,
+) -> Vec<&'static dyn LintRule> {
   if rules.tags.is_none() && rules.include.is_none() && rules.exclude.is_none()
   {
     rules::get_recommended_rules()

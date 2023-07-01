@@ -1,19 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // The following are all the process APIs that don't depend on the stream module
 // They have to be split this way to prevent a circular dependency
 
-import { build } from "internal:runtime/js/01_build.js";
-import { nextTick as _nextTick } from "internal:deno_node/polyfills/_next_tick.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
-import * as fs from "internal:runtime/js/30_fs.js";
+const core = globalThis.Deno.core;
+import { nextTick as _nextTick } from "ext:deno_node/_next_tick.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
+import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
-  if (build.arch == "x86_64") {
+  if (core.build.arch == "x86_64") {
     return "x64";
-  } else if (build.arch == "aarch64") {
+  } else if (core.build.arch == "aarch64") {
     return "arm64";
   } else {
     throw Error("unreachable");

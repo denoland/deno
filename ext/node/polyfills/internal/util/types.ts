@@ -21,11 +21,14 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import * as bindingTypes from "internal:deno_node/polyfills/internal_binding/types.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import * as bindingTypes from "ext:deno_node/internal_binding/types.ts";
 export {
   isCryptoKey,
   isKeyObject,
-} from "internal:deno_node/polyfills/internal/crypto/_keys.ts";
+} from "ext:deno_node/internal/crypto/_keys.ts";
 
 // https://tc39.es/ecma262/#sec-get-%typedarray%.prototype-@@tostringtag
 const _getTypedArrayToStringTag = Object.getOwnPropertyDescriptor(
@@ -79,7 +82,7 @@ export function isInt32Array(value: unknown): value is Int32Array {
   return _getTypedArrayToStringTag.call(value) === "Int32Array";
 }
 
-export function isTypedArray(value: unknown): value is
+export type TypedArray =
   | BigInt64Array
   | BigUint64Array
   | Float32Array
@@ -90,7 +93,9 @@ export function isTypedArray(value: unknown): value is
   | Uint8Array
   | Uint8ClampedArray
   | Uint16Array
-  | Uint32Array {
+  | Uint32Array;
+
+export function isTypedArray(value: unknown): value is TypedArray {
   return _getTypedArrayToStringTag.call(value) !== undefined;
 }
 

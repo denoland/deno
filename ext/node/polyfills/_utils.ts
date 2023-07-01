@@ -1,11 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import {
-  TextDecoder,
-  TextEncoder,
-} from "internal:deno_web/08_text_encoding.js";
-import { errorMap } from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { errorMap } from "ext:deno_node/internal_binding/uv.ts";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
 
 export type BinaryEncodings = "binary";
 

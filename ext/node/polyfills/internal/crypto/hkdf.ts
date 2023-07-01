@@ -1,41 +1,47 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   validateFunction,
   validateInteger,
   validateString,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/validators.mjs";
 import {
+  ERR_CRYPTO_INVALID_DIGEST,
   ERR_INVALID_ARG_TYPE,
   ERR_OUT_OF_RANGE,
   hideStackFrames,
-} from "internal:deno_node/polyfills/internal/errors.ts";
+} from "ext:deno_node/internal/errors.ts";
 import {
   toBuf,
   validateByteSource,
-} from "internal:deno_node/polyfills/internal/crypto/util.ts";
+} from "ext:deno_node/internal/crypto/util.ts";
 import {
   createSecretKey,
   isKeyObject,
   KeyObject,
-} from "internal:deno_node/polyfills/internal/crypto/keys.ts";
-import type { BinaryLike } from "internal:deno_node/polyfills/internal/crypto/types.ts";
-import { kMaxLength } from "internal:deno_node/polyfills/internal/buffer.mjs";
+} from "ext:deno_node/internal/crypto/keys.ts";
+import type { BinaryLike } from "ext:deno_node/internal/crypto/types.ts";
+import { kMaxLength } from "ext:deno_node/internal/buffer.mjs";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
-} from "internal:deno_node/polyfills/internal/util/types.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+} from "ext:deno_node/internal/util/types.ts";
+
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 const validateParameters = hideStackFrames((hash, key, salt, info, length) => {
-  key = prepareKey(key);
-  salt = toBuf(salt);
-  info = toBuf(info);
-
   validateString(hash, "digest");
+  key = new Uint8Array(prepareKey(key));
   validateByteSource(salt, "salt");
   validateByteSource(info, "info");
+
+  salt = new Uint8Array(toBuf(salt));
+  info = new Uint8Array(toBuf(info));
 
   validateInteger(length, "length", 0, kMaxLength);
 
@@ -91,7 +97,7 @@ export function hkdf(
   salt: BinaryLike,
   info: BinaryLike,
   length: number,
-  callback: (err: Error | null, derivedKey: ArrayBuffer) => void,
+  callback: (err: Error | null, derivedKey: ArrayBuffer | undefined) => void,
 ) {
   ({ hash, key, salt, info, length } = validateParameters(
     hash,
@@ -103,7 +109,9 @@ export function hkdf(
 
   validateFunction(callback, "callback");
 
-  notImplemented("crypto.hkdf");
+  core.opAsync("op_node_hkdf_async", hash, key, salt, info, length)
+    .then((okm) => callback(null, okm.buffer))
+    .catch((err) => callback(new ERR_CRYPTO_INVALID_DIGEST(err), undefined));
 }
 
 export function hkdfSync(
@@ -121,7 +129,14 @@ export function hkdfSync(
     length,
   ));
 
-  notImplemented("crypto.hkdfSync");
+  const okm = new Uint8Array(length);
+  try {
+    ops.op_node_hkdf(hash, key, salt, info, okm);
+  } catch (e) {
+    throw new ERR_CRYPTO_INVALID_DIGEST(e);
+  }
+
+  return okm.buffer;
 }
 
 export default {

@@ -1,0 +1,53 @@
+#[allow(non_camel_case_types)]
+pub struct op_string_return {
+    _unconstructable: ::std::marker::PhantomData<()>,
+}
+impl deno_core::_ops::Op for op_string_return {
+    const NAME: &'static str = stringify!(op_string_return);
+    const DECL: deno_core::_ops::OpDecl = deno_core::_ops::OpDecl {
+        name: stringify!(op_string_return),
+        v8_fn_ptr: Self::v8_fn_ptr as _,
+        enabled: true,
+        fast_fn: None,
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: 0usize as u8,
+    };
+}
+impl op_string_return {
+    pub const fn name() -> &'static str {
+        stringify!(op_string_return)
+    }
+    pub const fn decl() -> deno_core::_ops::OpDecl {
+        deno_core::_ops::OpDecl {
+            name: stringify!(op_string_return),
+            v8_fn_ptr: Self::v8_fn_ptr as _,
+            enabled: true,
+            fast_fn: None,
+            is_async: false,
+            is_unstable: false,
+            is_v8: false,
+            arg_count: 0usize as u8,
+        }
+    }
+    extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
+        let scope = &mut unsafe { deno_core::v8::CallbackScope::new(&*info) };
+        let mut rv = deno_core::v8::ReturnValue::from_function_callback_info(unsafe {
+            &*info
+        });
+        let result = Self::call();
+        if let Some(result) = result {
+            if result.is_empty() {
+                rv.set_empty_string();
+            } else {
+                let temp = deno_core::v8::String::new(scope, &result).unwrap();
+                rv.set(temp.into());
+            }
+        } else {
+            rv.set_null();
+        }
+    }
+    #[inline(always)]
+    pub fn call() -> Option<String> {}
+}

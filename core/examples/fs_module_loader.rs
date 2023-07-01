@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use anyhow::Context;
 use deno_core::anyhow::Error;
 use deno_core::FsModuleLoader;
 use deno_core::JsRuntime;
@@ -24,7 +25,10 @@ fn main() -> Result<(), Error> {
     .enable_all()
     .build()?;
 
-  let main_module = deno_core::resolve_path(main_url)?;
+  let main_module = deno_core::resolve_path(
+    main_url,
+    &std::env::current_dir().context("Unable to get CWD")?,
+  )?;
 
   let future = async move {
     let mod_id = js_runtime.load_main_module(&main_module, None).await?;

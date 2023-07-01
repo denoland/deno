@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // This file is vendored from std/fmt/colors.ts
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // TODO(kt3k): Initialize this at the start of runtime
 // based on Deno.noColor
 const noColor = false;

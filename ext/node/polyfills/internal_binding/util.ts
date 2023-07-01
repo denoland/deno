@@ -25,7 +25,10 @@
 // - https://github.com/nodejs/node/blob/master/src/util.cc
 // - https://github.com/nodejs/node/blob/master/src/util.h
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { notImplemented } from "ext:deno_node/_utils.ts";
 
 export function guessHandleType(_fd: number): string {
   notImplemented("util.guessHandleType");

@@ -304,7 +304,7 @@ fn handle_dep_specifier(
       referrer,
       mappings,
     )
-  } else {
+  } else if specifier.scheme() == "file" {
     handle_local_dep_specifier(
       text,
       unresolved_specifier,
@@ -326,15 +326,16 @@ fn handle_remote_dep_specifier(
 ) {
   if is_remote_specifier_text(text) {
     let base_specifier = mappings.base_specifier(specifier);
-    if !text.starts_with(base_specifier.as_str()) {
-      panic!("Expected {text} to start with {base_specifier}");
-    }
-
-    let sub_path = &text[base_specifier.as_str().len()..];
-    let relative_text =
-      mappings.relative_specifier_text(base_specifier, specifier);
-    let expected_sub_path = relative_text.trim_start_matches("./");
-    if expected_sub_path != sub_path {
+    if text.starts_with(base_specifier.as_str()) {
+      let sub_path = &text[base_specifier.as_str().len()..];
+      let relative_text =
+        mappings.relative_specifier_text(base_specifier, specifier);
+      let expected_sub_path = relative_text.trim_start_matches("./");
+      if expected_sub_path != sub_path {
+        import_map.imports.add(text.to_string(), specifier);
+      }
+    } else {
+      // it's probably a redirect. Add it explicitly to the import map
       import_map.imports.add(text.to_string(), specifier);
     }
   } else {

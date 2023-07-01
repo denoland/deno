@@ -24,11 +24,14 @@
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
 
-import { unreachable } from "internal:deno_node/polyfills/_util/asserts.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import {
   AsyncWrap,
   providerType,
-} from "internal:deno_node/polyfills/internal_binding/async_wrap.ts";
+} from "ext:deno_node/internal_binding/async_wrap.ts";
 
 export class HandleWrap extends AsyncWrap {
   constructor(provider: providerType) {

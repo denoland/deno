@@ -75,13 +75,23 @@ export async function runSingleTest(
   _options: ManifestTestOptions,
   reporter: (result: TestCaseResult) => void,
   inspectBrk: boolean,
+  timeouts: { long: number; default: number },
 ): Promise<TestResult> {
+  const timeout = _options.timeout === "long"
+    ? timeouts.long
+    : timeouts.default;
+  const filename = url.pathname.substring(
+    url.pathname.lastIndexOf("/") + 1,
+    url.pathname.indexOf("."),
+  );
+  const { title } = Object.fromEntries(_options.script_metadata || []);
   const bundle = await generateBundle(url);
   const tempFile = await Deno.makeTempFile({
     prefix: "wpt-bundle-",
     suffix: ".js",
   });
 
+  let interval;
   try {
     await Deno.writeTextFile(tempFile, bundle);
 
@@ -107,6 +117,7 @@ export async function runSingleTest(
       "[]",
     );
 
+    const start = performance.now();
     const proc = new Deno.Command(denoBinary(), {
       args,
       env: {
@@ -124,17 +135,25 @@ export async function runSingleTest(
     const lines = proc.stderr.pipeThrough(new TextDecoderStream()).pipeThrough(
       new TextLineStream(),
     );
+    interval = setInterval(() => {
+      const passedTime = performance.now() - start;
+      if (passedTime > timeout) {
+        proc.kill("SIGINT");
+      }
+    }, 1000);
     for await (const line of lines) {
       if (line.startsWith("{")) {
         const data = JSON.parse(line);
         const result = { ...data, passed: data.status == 0 };
+        if (/^Untitled( \d+)?$/.test(result.name)) {
+          result.name = `${title || filename}${result.name.slice(8)}`;
+        }
         cases.push(result);
         reporter(result);
       } else if (line.startsWith("#$#$#{")) {
         harnessStatus = JSON.parse(line.slice(5));
       } else {
         stderr += line + "\n";
-        console.error(line);
       }
     }
 
@@ -149,6 +168,7 @@ export async function runSingleTest(
       stderr,
     };
   } finally {
+    clearInterval(interval);
     await Deno.remove(tempFile);
   }
 }
@@ -159,8 +179,14 @@ async function generateBundle(location: URL): Promise<string> {
   const doc = new DOMParser().parseFromString(body, "text/html");
   assert(doc, "document should have been parsed");
   const scripts = doc.getElementsByTagName("script");
+  const title = doc.getElementsByTagName("title")[0]?.childNodes[0].nodeValue;
   const scriptContents = [];
   let inlineScriptCount = 0;
+  if (title) {
+    const url = new URL(`#${inlineScriptCount}`, location);
+    inlineScriptCount++;
+    scriptContents.push([url.href, `globalThis.META_TITLE="${title}"`]);
+  }
   for (const script of scripts) {
     const src = script.getAttribute("src");
     if (src === "/resources/testharnessreport.js") {

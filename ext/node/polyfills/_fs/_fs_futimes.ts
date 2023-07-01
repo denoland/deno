@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import type { CallbackWithError } from "internal:deno_node/polyfills/_fs/_fs_common.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 
 function getValidTime(
   time: number | string | Date,

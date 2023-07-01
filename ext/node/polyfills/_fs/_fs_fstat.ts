@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   BigIntStats,
   CFISBIS,
@@ -6,7 +10,7 @@ import {
   statCallbackBigInt,
   statOptions,
   Stats,
-} from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
+} from "ext:deno_node/_fs/_fs_stat.ts";
 
 export function fstat(fd: number, callback: statCallback): void;
 export function fstat(

@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
@@ -13,18 +17,18 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "internal:deno_node/polyfills/internal/util/inspect.mjs";
-import { codes } from "internal:deno_node/polyfills/internal/error_codes.ts";
+import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
   errorMap,
   mapSysErrnoToUvErrno,
-} from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import { os as osConstants } from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import { hideStackFrames } from "internal:deno_node/polyfills/internal/hide_stack_frames.ts";
-import { getSystemErrorName } from "internal:deno_node/polyfills/_utils.ts";
+} from "ext:deno_node/internal_binding/uv.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import { os as osConstants } from "ext:deno_node/internal_binding/constants.ts";
+import { hideStackFrames } from "ext:deno_node/internal/hide_stack_frames.ts";
+import { getSystemErrorName } from "ext:deno_node/_utils.ts";
 
 export { errorMap };
 
@@ -832,6 +836,15 @@ export class ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY extends NodeError {
     super(
       "ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY",
       "Public key is not valid for specified curve",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_DH_GROUP",
+      "Unknown DH group",
     );
   }
 }
@@ -2065,7 +2078,7 @@ export class ERR_UNKNOWN_CREDENTIAL extends NodeError {
 }
 export class ERR_UNKNOWN_ENCODING extends NodeTypeError {
   constructor(x: string) {
-    super("ERR_UNKNOWN_ENCODING", `Unknown encoding: ${x}`);
+    super("ERR_UNKNOWN_ENCODING", format("Unknown encoding: %s", x));
   }
 }
 export class ERR_UNKNOWN_FILE_EXTENSION extends NodeTypeError {

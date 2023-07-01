@@ -20,19 +20,18 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { validateIntegerRange } from "internal:deno_node/polyfills/_utils.ts";
-import process from "internal:deno_node/polyfills/process.ts";
-import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import { os } from "internal:deno_node/polyfills/internal_binding/constants.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { validateIntegerRange } from "ext:deno_node/_utils.ts";
+import process from "ext:deno_node/process.ts";
+import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { os } from "ext:deno_node/internal_binding/constants.ts";
+import { osUptime } from "ext:runtime/30_os.js";
 export const constants = os;
 
 const SEE_GITHUB_ISSUE = "See https://github.com/denoland/deno_std/issues/1436";
-
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoOsUptime = Deno[Deno.internal]?.nodeUnstable?.osUptime ||
-  Deno.osUptime;
 
 interface CPUTimes {
   /** The number of milliseconds the CPU has spent in user mode */
@@ -176,6 +175,7 @@ export function homedir(): string | null {
     case "linux":
     case "darwin":
     case "freebsd":
+    case "openbsd":
       return Deno.env.get("HOME") || null;
     default:
       throw Error("unreachable");
@@ -303,6 +303,8 @@ export function type(): string {
       return "Darwin";
     case "freebsd":
       return "FreeBSD";
+    case "openbsd":
+      return "OpenBSD";
     default:
       throw Error("unreachable");
   }
@@ -310,7 +312,7 @@ export function type(): string {
 
 /** Returns the Operating System uptime in number of seconds. */
 export function uptime(): number {
-  return DenoOsUptime();
+  return osUptime();
 }
 
 /** Not yet implemented */

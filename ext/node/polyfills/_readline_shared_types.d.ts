@@ -7,7 +7,7 @@
 import type {
   ReadableStream,
   WritableStream,
-} from "internal:deno_node/polyfills/_global.d.ts";
+} from "ext:deno_node/_global.d.ts";
 
 export type Completer = (line: string) => CompleterResult;
 export type AsyncCompleter = (

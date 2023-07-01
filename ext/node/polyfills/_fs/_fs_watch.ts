@@ -1,14 +1,18 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { basename } from "internal:deno_node/polyfills/path.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { notImplemented } from "internal:deno_node/polyfills/_utils.ts";
-import { promisify } from "internal:deno_node/polyfills/util.ts";
-import { getValidatedPath } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { validateFunction } from "internal:deno_node/polyfills/internal/validators.mjs";
-import { stat, Stats } from "internal:deno_node/polyfills/_fs/_fs_stat.ts";
-import { Stats as StatsClass } from "internal:deno_node/polyfills/internal/fs/utils.mjs";
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import { delay } from "internal:deno_node/polyfills/_util/async.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { basename } from "ext:deno_node/path.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { notImplemented } from "ext:deno_node/_utils.ts";
+import { promisify } from "ext:deno_node/util.ts";
+import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
+import { validateFunction } from "ext:deno_node/internal/validators.mjs";
+import { stat, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { Stats as StatsClass } from "ext:deno_node/internal/fs/utils.mjs";
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { delay } from "ext:deno_node/_util/async.ts";
 
 const statPromisified = promisify(stat);
 const statAsync = async (filename: string): Promise<Stats | null> => {

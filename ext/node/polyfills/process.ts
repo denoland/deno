@@ -1,22 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 const internals = globalThis.__bootstrap.internals;
-import { core } from "internal:deno_node/polyfills/_core.ts";
-import {
-  notImplemented,
-  warnNotImplemented,
-} from "internal:deno_node/polyfills/_utils.ts";
-import { EventEmitter } from "internal:deno_node/polyfills/events.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+const { core } = globalThis.__bootstrap;
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
+import { EventEmitter } from "ext:deno_node/events.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_UNKNOWN_SIGNAL,
   errnoException,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { getOptionValue } from "internal:deno_node/polyfills/internal/options.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { fromFileUrl, join } from "internal:deno_node/polyfills/path.ts";
+} from "ext:deno_node/internal/errors.ts";
+import { getOptionValue } from "ext:deno_node/internal/options.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { join } from "ext:deno_node/path.ts";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,
   chdir,
@@ -25,21 +26,21 @@ import {
   nextTick as _nextTick,
   version,
   versions,
-} from "internal:deno_node/polyfills/_process/process.ts";
-import { _exiting } from "internal:deno_node/polyfills/_process/exiting.ts";
+} from "ext:deno_node/_process/process.ts";
+import { _exiting } from "ext:deno_node/_process/exiting.ts";
 export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
-} from "internal:deno_node/polyfills/_process/streams.mjs";
-import { stdio } from "internal:deno_node/polyfills/_process/stdio.mjs";
+} from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
   processTicksAndRejections,
   runNextTicks,
-} from "internal:deno_node/polyfills/_next_tick.ts";
-import { isWindows } from "internal:deno_node/polyfills/_util/os.ts";
-import * as files from "internal:runtime/js/40_files.js";
+} from "ext:deno_node/_next_tick.ts";
+import { isWindows } from "ext:deno_node/_util/os.ts";
+import * as io from "ext:deno_io/12_io.js";
+import { Command } from "ext:runtime/40_process.js";
 
 // TODO(kt3k): This should be set at start up time
 export let arch = "";
@@ -59,15 +60,11 @@ let stdin = null as any;
 let stdout = null as any;
 
 export { stderr, stdin, stdout };
-import { getBinding } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import * as constants from "internal:deno_node/polyfills/internal_binding/constants.ts";
-import * as uv from "internal:deno_node/polyfills/internal_binding/uv.ts";
-import type { BindingName } from "internal:deno_node/polyfills/internal_binding/mod.ts";
-import { buildAllowedFlags } from "internal:deno_node/polyfills/internal/process/per_thread.mjs";
-
-// @ts-ignore Deno[Deno.internal] is used on purpose here
-const DenoCommand = Deno[Deno.internal]?.nodeUnstable?.Command ||
-  Deno.Command;
+import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
+import * as constants from "ext:deno_node/internal_binding/constants.ts";
+import * as uv from "ext:deno_node/internal_binding/uv.ts";
+import type { BindingName } from "ext:deno_node/internal_binding/mod.ts";
+import { buildAllowedFlags } from "ext:deno_node/internal/process/per_thread.mjs";
 
 const notImplementedEvents = [
   "disconnect",
@@ -78,28 +75,6 @@ const notImplementedEvents = [
 ];
 
 export const argv: string[] = [];
-
-// Overwrites the 1st item with getter.
-// TODO(bartlomieju): added "configurable: true" to make this work for binary
-// commands, but that is probably a wrong solution
-// TODO(bartlomieju): move the configuration for all "argv" to
-// "internals.__bootstrapNodeProcess"
-Object.defineProperty(argv, "0", {
-  get: () => {
-    return Deno.execPath();
-  },
-  configurable: true,
-});
-// Overwrites the 2st item with getter.
-Object.defineProperty(argv, "1", {
-  get: () => {
-    if (Deno.mainModule.startsWith("file:")) {
-      return fromFileUrl(Deno.mainModule);
-    } else {
-      return join(Deno.cwd(), "$deno$node.js");
-    }
-  },
-});
 
 /** https://nodejs.org/api/process.html#process_process_exit_code */
 export const exit = (code?: number | string) => {
@@ -120,7 +95,7 @@ export const exit = (code?: number | string) => {
     process.emit("exit", process.exitCode || 0);
   }
 
-  Deno.exit(process.exitCode || 0);
+  process.reallyExit(process.exitCode || 0);
 };
 
 function addReadOnlyProcessAlias(
@@ -276,11 +251,11 @@ function _kill(pid: number, sig: number): number {
   if (sig === 0) {
     let status;
     if (Deno.build.os === "windows") {
-      status = (new DenoCommand("powershell.exe", {
+      status = (new Command("powershell.exe", {
         args: ["Get-Process", "-pid", pid],
       })).outputSync();
     } else {
-      status = (new DenoCommand("kill", {
+      status = (new Command("kill", {
         args: ["-0", pid],
       })).outputSync();
     }
@@ -360,6 +335,17 @@ class Process extends EventEmitter {
     super();
   }
 
+  /** https://nodejs.org/api/process.html#processrelease */
+  get release() {
+    return {
+      name: "node",
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+    };
+  }
+
   /** https://nodejs.org/api/process.html#process_process_arch */
   get arch() {
     if (!arch) {
@@ -397,6 +383,13 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
+
+  // Undocumented Node API that is used by `signal-exit` which in turn
+  // is used by `node-tap`. It was marked for removal a couple of years
+  // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+  reallyExit = (code: number) => {
+    return Deno.exit(code || 0);
+  };
 
   _exiting = _exiting;
 
@@ -693,9 +686,35 @@ export const removeAllListeners = process.removeAllListeners;
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
+  argv0: string | undefined,
   args: string[],
   denoVersions: Record<string, string>,
 ) {
+  // Overwrites the 1st item with getter.
+  if (typeof argv0 === "string") {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return argv0;
+      },
+    });
+  } else {
+    Object.defineProperty(argv, "0", {
+      get: () => {
+        return Deno.execPath();
+      },
+    });
+  }
+
+  // Overwrites the 2st item with getter.
+  Object.defineProperty(argv, "1", {
+    get: () => {
+      if (Deno.mainModule.startsWith("file:")) {
+        return pathFromURL(new URL(Deno.mainModule));
+      } else {
+        return join(Deno.cwd(), "$deno$node.js");
+      }
+    },
+  });
   for (let i = 0; i < args.length; i++) {
     argv[i + 2] = args[i];
   }
@@ -708,9 +727,9 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
-  // We should use a specialized API in 99_main.js instead
-  globalThis.addEventListener("unhandledrejection", (event) => {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  internals.nodeProcessUnhandledRejectionCallback = (event) => {
     if (process.listenerCount("unhandledRejection") === 0) {
       // The Node.js default behavior is to raise an uncaught exception if
       // an unhandled rejection occurs and there are no unhandledRejection
@@ -726,7 +745,7 @@ internals.__bootstrapNodeProcess = function (
 
     event.preventDefault();
     process.emit("unhandledRejection", event.reason, event.promise);
-  });
+  };
 
   globalThis.addEventListener("error", (event) => {
     if (process.listenerCount("uncaughtException") > 0) {
@@ -752,17 +771,17 @@ internals.__bootstrapNodeProcess = function (
   });
 
   // Initializes stdin
-  stdin = stdio.stdin = process.stdin = initStdin();
+  stdin = process.stdin = initStdin();
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stdio.stderr = process.stderr = createWritableStdioStream(
-    files.stderr,
+  stderr = process.stderr = createWritableStdioStream(
+    io.stderr,
     "stderr",
   );
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdio.stdout = process.stdout = createWritableStdioStream(
-    files.stdout,
+  stdout = process.stdout = createWritableStdioStream(
+    io.stdout,
     "stdout",
   );
 

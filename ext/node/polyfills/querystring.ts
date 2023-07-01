@@ -1,9 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Buffer } from "internal:deno_node/polyfills/buffer.ts";
-import {
-  encodeStr,
-  hexTable,
-} from "internal:deno_node/polyfills/internal/querystring.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "ext:deno_node/buffer.ts";
+import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
 
 /**
  * Alias of querystring.parse()

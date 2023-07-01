@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import Dirent from "internal:deno_node/polyfills/_fs/_fs_dirent.ts";
-import { assert } from "internal:deno_node/polyfills/_util/asserts.ts";
-import { ERR_MISSING_ARGS } from "internal:deno_node/polyfills/internal/errors.ts";
-import { TextDecoder } from "internal:deno_web/08_text_encoding.js";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
+import { assert } from "ext:deno_node/_util/asserts.ts";
+import { ERR_MISSING_ARGS } from "ext:deno_node/internal/errors.ts";
+import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
 
 export default class Dir {
   #dirPath: string | Uint8Array;

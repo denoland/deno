@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { Encodings } from "internal:deno_node/polyfills/internal_binding/_node.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Encodings } from "ext:deno_node/internal_binding/_node.ts";
 
 export function indexOfNeedle(
   source: Uint8Array,

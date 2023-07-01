@@ -2,14 +2,14 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-import { AbortError, ERR_STREAM_PREMATURE_CLOSE } from "internal:deno_node/polyfills/internal/errors.ts";
-import { once } from "internal:deno_node/polyfills/internal/util.mjs";
+import { AbortError, ERR_STREAM_PREMATURE_CLOSE } from "ext:deno_node/internal/errors.ts";
+import { once } from "ext:deno_node/internal/util.mjs";
 import {
   validateAbortSignal,
   validateFunction,
   validateObject,
-} from "internal:deno_node/polyfills/internal/validators.mjs";
-import * as process from "internal:deno_node/polyfills/_process/process.ts";
+} from "ext:deno_node/internal/validators.mjs";
+import * as process from "ext:deno_node/_process/process.ts";
 
 function isRequest(stream) {
   return stream.setHeader && typeof stream.abort === "function";

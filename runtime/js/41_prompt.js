@@ -1,8 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
-import { isatty } from "internal:runtime/js/40_tty.js";
-import { stdin } from "internal:runtime/js/40_files.js";
+import { isatty } from "ext:runtime/40_tty.js";
+import { stdin } from "ext:deno_io/12_io.js";
 const { ArrayPrototypePush, StringPrototypeCharCodeAt, Uint8Array } =
   primordials;
 const LF = StringPrototypeCharCodeAt("\n", 0);
@@ -37,11 +37,14 @@ function prompt(message = "Prompt", defaultValue) {
     return null;
   }
 
-  core.print(`${message} `, false);
-
   if (defaultValue) {
-    core.print(`[${defaultValue}] `, false);
+    message += ` [${defaultValue}]`;
   }
+
+  message += " ";
+
+  // output in one shot to make the tests more reliable
+  core.print(message, false);
 
   return readLineFromStdinSync() || defaultValue;
 }

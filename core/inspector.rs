@@ -11,7 +11,6 @@ use crate::futures::channel::mpsc::UnboundedSender;
 use crate::futures::channel::oneshot;
 use crate::futures::future::select;
 use crate::futures::future::Either;
-use crate::futures::future::Future;
 use crate::futures::prelude::*;
 use crate::futures::stream::SelectAll;
 use crate::futures::stream::StreamExt;
@@ -73,7 +72,7 @@ enum PollState {
 /// After creating this structure it's possible to connect multiple sessions
 /// to the inspector, in case of Deno it's either: a "websocket session" that
 /// provides integration with Chrome Devtools, or an "in-memory session" that
-/// is used for REPL or converage collection.
+/// is used for REPL or coverage collection.
 pub struct JsRuntimeInspector {
   v8_inspector_client: v8::inspector::V8InspectorClientBase,
   v8_inspector: Rc<RefCell<v8::UniquePtr<v8::inspector::V8Inspector>>>,
@@ -82,6 +81,7 @@ pub struct JsRuntimeInspector {
   flags: RefCell<InspectorFlags>,
   waker: Arc<InspectorWaker>,
   deregister_tx: Option<oneshot::Sender<()>>,
+  is_dispatching_message: RefCell<bool>,
 }
 
 impl Drop for JsRuntimeInspector {
@@ -141,30 +141,16 @@ impl v8::inspector::V8InspectorClientImpl for JsRuntimeInspector {
   }
 }
 
-/// Polling `JsRuntimeInspector` allows inspector to accept new incoming
-/// connections and "pump" messages in different sessions.
-///
-/// It should be polled on tick of event loop, ie. in `JsRuntime::poll_event_loop`
-/// function.
-impl Future for JsRuntimeInspector {
-  type Output = ();
-  fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<()> {
-    self.poll_sessions(Some(cx)).unwrap()
-  }
-}
-
 impl JsRuntimeInspector {
   /// Currently Deno supports only a single context in `JsRuntime`
-  /// and thus it's id is provided as an associated contant.
+  /// and thus it's id is provided as an associated constant.
   const CONTEXT_GROUP_ID: i32 = 1;
 
   pub fn new(
-    isolate: &mut v8::OwnedIsolate,
-    context: v8::Global<v8::Context>,
+    scope: &mut v8::HandleScope,
+    context: v8::Local<v8::Context>,
     is_main: bool,
   ) -> Rc<RefCell<Self>> {
-    let scope = &mut v8::HandleScope::new(isolate);
-
     let (new_session_tx, new_session_rx) =
       mpsc::unbounded::<InspectorSessionProxy>();
 
@@ -182,6 +168,7 @@ impl JsRuntimeInspector {
       flags: Default::default(),
       waker,
       deregister_tx: None,
+      is_dispatching_message: Default::default(),
     }));
     let mut self_ = self__.borrow_mut();
     self_.v8_inspector = Rc::new(RefCell::new(
@@ -193,7 +180,6 @@ impl JsRuntimeInspector {
     ));
 
     // Tell the inspector about the global context.
-    let context = v8::Local::new(scope, context);
     let context_name = v8::inspector::StringView::from(&b"global context"[..]);
     // NOTE(bartlomieju): this is what Node.js does and it turns out some
     // debuggers (like VSCode) rely on this information to disconnect after
@@ -224,6 +210,10 @@ impl JsRuntimeInspector {
     self__
   }
 
+  pub fn is_dispatching_message(&self) -> bool {
+    *self.is_dispatching_message.borrow()
+  }
+
   pub fn context_destroyed(
     &mut self,
     scope: &mut HandleScope,
@@ -238,6 +228,35 @@ impl JsRuntimeInspector {
       .context_destroyed(context);
   }
 
+  pub fn exception_thrown(
+    &self,
+    scope: &mut HandleScope,
+    exception: v8::Local<'_, v8::Value>,
+    in_promise: bool,
+  ) {
+    let context = scope.get_current_context();
+    let message = v8::Exception::create_message(scope, exception);
+    let stack_trace = message.get_stack_trace(scope).unwrap();
+    let mut v8_inspector_ref = self.v8_inspector.borrow_mut();
+    let v8_inspector = v8_inspector_ref.as_mut().unwrap();
+    let stack_trace = v8_inspector.create_stack_trace(stack_trace);
+    v8_inspector.exception_thrown(
+      context,
+      if in_promise {
+        v8::inspector::StringView::from("Uncaught (in promise)".as_bytes())
+      } else {
+        v8::inspector::StringView::from("Uncaught".as_bytes())
+      },
+      exception,
+      v8::inspector::StringView::from("".as_bytes()),
+      v8::inspector::StringView::from("".as_bytes()),
+      0,
+      0,
+      stack_trace,
+      0,
+    );
+  }
+
   pub fn has_active_sessions(&self) -> bool {
     self.sessions.borrow().has_active_sessions()
   }
@@ -246,12 +265,12 @@ impl JsRuntimeInspector {
     self.sessions.borrow().has_blocking_sessions()
   }
 
-  fn poll_sessions(
+  pub fn poll_sessions(
     &self,
     mut invoker_cx: Option<&mut Context>,
   ) -> Result<Poll<()>, BorrowMutError> {
     // The futures this function uses do not have re-entrant poll() functions.
-    // However it is can happpen that poll_sessions() gets re-entered, e.g.
+    // However it is can happen that poll_sessions() gets re-entered, e.g.
     // when an interrupt request is honored while the inspector future is polled
     // by the task executor. We let the caller know by returning some error.
     let mut sessions = self.sessions.try_borrow_mut()?;
@@ -304,7 +323,9 @@ impl JsRuntimeInspector {
         match sessions.established.poll_next_unpin(cx) {
           Poll::Ready(Some(session_stream_item)) => {
             let (v8_session_ptr, msg) = session_stream_item;
+            *self.is_dispatching_message.borrow_mut() = true;
             InspectorSession::dispatch_message(v8_session_ptr, msg);
+            *self.is_dispatching_message.borrow_mut() = false;
             continue;
           }
           Poll::Ready(None) => break,

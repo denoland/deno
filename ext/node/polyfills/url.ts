@@ -20,6 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_VALUE,
@@ -27,8 +30,8 @@ import {
   ERR_INVALID_FILE_URL_PATH,
   ERR_INVALID_URL,
   ERR_INVALID_URL_SCHEME,
-} from "internal:deno_node/polyfills/internal/errors.ts";
-import { validateString } from "internal:deno_node/polyfills/internal/validators.mjs";
+} from "ext:deno_node/internal/errors.ts";
+import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   CHAR_0,
   CHAR_9,
@@ -65,20 +68,17 @@ import {
   CHAR_UPPERCASE_Z,
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
-} from "internal:deno_node/polyfills/path/_constants.ts";
-import * as path from "internal:deno_node/polyfills/path.ts";
-import { toASCII, toUnicode } from "internal:deno_node/polyfills/punycode.ts";
-import { isWindows, osType } from "internal:deno_node/polyfills/_util/os.ts";
-import {
-  encodeStr,
-  hexTable,
-} from "internal:deno_node/polyfills/internal/querystring.ts";
-import querystring from "internal:deno_node/polyfills/querystring.ts";
+} from "ext:deno_node/path/_constants.ts";
+import * as path from "ext:deno_node/path.ts";
+import { toASCII, toUnicode } from "ext:deno_node/punycode.ts";
+import { isWindows, osType } from "ext:deno_node/_util/os.ts";
+import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
+import querystring from "ext:deno_node/querystring.ts";
 import type {
   ParsedUrlQuery,
   ParsedUrlQueryInput,
-} from "internal:deno_node/polyfills/querystring.ts";
-import { URL, URLSearchParams } from "internal:deno_url/00_url.js";
+} from "ext:deno_node/querystring.ts";
+import { URL, URLSearchParams } from "ext:deno_url/00_url.js";
 
 const forwardSlashRegEx = /\//g;
 const percentRegEx = /%/g;
@@ -942,14 +942,11 @@ export function format(
       ["Object", "string"],
       urlObject,
     );
-  } else if (!(urlObject instanceof Url)) {
-    if (urlObject instanceof URL) {
-      return formatWhatwg(urlObject, options);
-    }
-    return Url.prototype.format.call(urlObject);
+  } else if (urlObject instanceof URL) {
+    return formatWhatwg(urlObject, options);
   }
 
-  return (urlObject as Url).format();
+  return Url.prototype.format.call(urlObject);
 }
 
 /**
@@ -1005,10 +1002,9 @@ function formatWhatwg(
       }
       ret += "@";
     }
-    // TODO(wafuwfu13): Support unicode option
-    // ret += options.unicode ?
-    //   domainToUnicode(urlObject.host) : urlObject.host;
-    ret += urlObject.host;
+    ret += options.unicode
+      ? domainToUnicode(urlObject.hostname)
+      : urlObject.hostname;
     if (urlObject.port) {
       ret += `:${urlObject.port}`;
     }
