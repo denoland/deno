@@ -191,6 +191,7 @@ macro_rules! extension {
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
+    $(, esm_with_specifiers = [ $( dir $dir_esm2:literal , )? $( ($esm_specifier:literal, $esm_file:literal) ),* $(,)? ] )?
     $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
@@ -219,6 +220,9 @@ macro_rules! extension {
       fn with_js(ext: &mut $crate::ExtensionBuilder) {
         $( ext.esm(
           $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
+        ); )?
+        $( ext.esm(
+          $crate::include_js_files_with_specifiers!( $name $( dir $dir_esm2 , )? $( ( $esm_specifier, $esm_file) , )* )
         ); )?
         $(
           ext.esm(vec![ExtensionFileSource {
@@ -660,6 +664,36 @@ macro_rules! include_js_files {
         specifier: concat!("ext:", stringify!($name), "/", $file),
         code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
           std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($file)
+        ),
+      },)+
+    ]
+  };
+}
+
+#[cfg(not(feature = "include_js_files_for_snapshotting"))]
+#[macro_export]
+macro_rules! include_js_files_with_specifiers {
+  ($name:ident dir $dir:literal, $( ( $specifier:literal , $file:literal ),)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $specifier,
+        code: $crate::ExtensionFileSourceCode::IncludedInBinary(
+          include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/", $dir, "/", $file))
+        ),
+      },)+
+    ]
+  };
+}
+
+#[cfg(feature = "include_js_files_for_snapshotting")]
+#[macro_export]
+macro_rules! include_js_files_with_specifiers {
+  ($name:ident dir $dir:literal, $( ( $specifier:literal , $file:literal ),)+) => {
+    vec![
+      $($crate::ExtensionFileSource {
+        specifier: $specifier,
+        code: $crate::ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
+          std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join($dir).join($file)
         ),
       },)+
     ]
