@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import {
   intoCallbackAPIWithIntercept,

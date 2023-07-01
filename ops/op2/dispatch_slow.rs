@@ -5,15 +5,36 @@ use super::signature::NumericArg;
 use super::signature::ParsedSignature;
 use super::signature::RetVal;
 use super::signature::Special;
+use super::MacroConfig;
 use super::V8MappingError;
 use proc_macro2::TokenStream;
 use quote::quote;
 
-pub fn generate_dispatch_slow(
+pub(crate) fn generate_dispatch_slow(
+  config: &MacroConfig,
   generator_state: &mut GeneratorState,
   signature: &ParsedSignature,
 ) -> Result<TokenStream, V8MappingError> {
   let mut output = TokenStream::new();
+
+  // Fast ops require the slow op to check op_ctx for the last error
+  if config.fast && matches!(signature.ret_val, RetVal::Result(_)) {
+    generator_state.needs_opctx = true;
+    let throw_exception = throw_exception(generator_state)?;
+    // If the fast op returned an error, we must throw it rather than doing work.
+    output.extend(quote!{
+      // FASTCALL FALLBACK: This is where we pick up the errors for the slow-call error pickup
+      // path. There is no code running between this and the other FASTCALL FALLBACK comment,
+      // except some V8 code required to perform the fallback process. This is why the below call is safe.
+
+      // SAFETY: We guarantee that OpCtx has no mutable references once ops are live and being called,
+      // allowing us to perform this one little bit of mutable magic.
+      if let Some(err) = unsafe { opctx.unsafely_take_last_error_for_ops_only() } {
+        #throw_exception
+      }
+    });
+  }
+
   for (index, arg) in signature.args.iter().enumerate() {
     output.extend(extract_arg(generator_state, index)?);
     output.extend(from_arg(generator_state, index, arg)?);
@@ -23,6 +44,12 @@ pub fn generate_dispatch_slow(
 
   let with_scope = if generator_state.needs_scope {
     with_scope(generator_state)
+  } else {
+    quote!()
+  };
+
+  let with_opctx = if generator_state.needs_opctx {
+    with_opctx(generator_state)
   } else {
     quote!()
   };
@@ -47,10 +74,11 @@ pub fn generate_dispatch_slow(
   } = &generator_state;
 
   Ok(quote! {
-    pub extern "C" fn #slow_function(#info: *const #deno_core::v8::FunctionCallbackInfo) {
+    extern "C" fn #slow_function(#info: *const #deno_core::v8::FunctionCallbackInfo) {
     #with_scope
     #with_retval
     #with_args
+    #with_opctx
 
     #output
   }})
@@ -94,9 +122,11 @@ fn with_opctx(generator_state: &mut GeneratorState) -> TokenStream {
     deno_core,
     opctx,
     fn_args,
+    needs_args,
     ..
-  } = &generator_state;
+  } = generator_state;
 
+  *needs_args = true;
   quote!(let #opctx = unsafe {
     &*(#deno_core::v8::Local::<#deno_core::v8::External>::cast(#fn_args.data()).value()
         as *const #deno_core::_ops::OpCtx)
@@ -246,21 +276,36 @@ pub fn return_value_infallible(
   Ok(res)
 }
 
-pub fn return_value_result(
+fn return_value_result(
   generator_state: &mut GeneratorState,
   ret_type: &Arg,
 ) -> Result<TokenStream, V8MappingError> {
   let infallible = return_value_infallible(generator_state, ret_type)?;
+  let exception = throw_exception(generator_state)?;
+
+  let GeneratorState { result, .. } = &generator_state;
+
+  let tokens = quote!(
+    match #result {
+      Ok(#result) => {
+        #infallible
+      }
+      Err(err) => {
+        #exception
+      }
+    };
+  );
+  Ok(tokens)
+}
+
+/// Generates code to throw an exception, adding required additional dependencies as needed.
+fn throw_exception(
+  generator_state: &mut GeneratorState,
+) -> Result<TokenStream, V8MappingError> {
   let maybe_scope = if generator_state.needs_scope {
     quote!()
   } else {
     with_scope(generator_state)
-  };
-
-  let maybe_args = if generator_state.needs_args {
-    quote!()
-  } else {
-    with_fn_args(generator_state)
   };
 
   let maybe_opctx = if generator_state.needs_opctx {
@@ -269,33 +314,30 @@ pub fn return_value_result(
     with_opctx(generator_state)
   };
 
+  let maybe_args = if generator_state.needs_args {
+    quote!()
+  } else {
+    with_fn_args(generator_state)
+  };
+
   let GeneratorState {
     deno_core,
-    result,
     scope,
     opctx,
     ..
   } = &generator_state;
 
-  let tokens = quote!(
-    match #result {
-      Ok(#result) => {
-        #infallible
-      }
-      Err(err) => {
-        #maybe_scope
-        #maybe_args
-        #maybe_opctx
-        let opstate = ::std::cell::RefCell::borrow(&*#opctx.state);
-        let exception = #deno_core::error::to_v8_error(
-          #scope,
-          opstate.get_error_class_fn,
-          &err,
-        );
-        scope.throw_exception(exception);
-        return;
-      }
-    };
-  );
-  Ok(tokens)
+  Ok(quote! {
+    #maybe_scope
+    #maybe_args
+    #maybe_opctx
+    let opstate = ::std::cell::RefCell::borrow(&*#opctx.state);
+    let exception = #deno_core::error::to_v8_error(
+      #scope,
+      opstate.get_error_class_fn,
+      &err,
+    );
+    scope.throw_exception(exception);
+    return;
+  })
 }

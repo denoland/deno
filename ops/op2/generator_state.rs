@@ -21,6 +21,8 @@ pub struct GeneratorState {
   pub fn_args: Ident,
   /// The `OpCtx` used for various information required for some ops.
   pub opctx: Ident,
+  /// The `FastApiCallbackOptions` used in fast calls for fallback returns.
+  pub fast_api_callback_options: Ident,
   /// The `v8::ReturnValue` used in the slow function
   pub retval: Ident,
   /// The "slow" function (ie: the one that isn't a fastcall)
@@ -33,4 +35,6 @@ pub struct GeneratorState {
   pub needs_scope: bool,
   pub needs_opstate: bool,
   pub needs_opctx: bool,
+  pub needs_fast_opctx: bool,
+  pub needs_fast_api_callback_options: bool,
 }

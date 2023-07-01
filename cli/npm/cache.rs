@@ -463,7 +463,7 @@ impl NpmCache {
 }
 
 pub fn mixed_case_package_name_encode(name: &str) -> String {
-  // use base32 encoding because it's reversable and the character set
+  // use base32 encoding because it's reversible and the character set
   // only includes the characters within 0-9 and A-Z so it can be lower cased
   base32::encode(
     base32::Alphabet::RFC4648 { padding: false },

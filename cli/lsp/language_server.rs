@@ -1374,7 +1374,7 @@ impl Inner {
     }
 
     self.recreate_npm_services_if_necessary().await;
-    self.assets.intitialize(self.snapshot()).await;
+    self.assets.initialize(self.snapshot()).await;
 
     self.performance.measure(mark);
     Ok(InitializeResult {

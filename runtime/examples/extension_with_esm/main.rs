@@ -13,7 +13,7 @@ use deno_runtime::worker::WorkerOptions;
 deno_core::extension!(
   hello_runtime,
   esm_entry_point = "ext:hello_runtime/bootstrap.js",
-  esm = ["bootstrap.js"]
+  esm = [dir "examples/extension_with_esm", "bootstrap.js"]
 );
 
 #[tokio::main]
@@ -26,7 +26,7 @@ async fn main() -> Result<(), AnyError> {
     PermissionsContainer::allow_all(),
     WorkerOptions {
       module_loader: Rc::new(FsModuleLoader),
-      extensions: vec![hello_runtime::init_ext()],
+      extensions: vec![hello_runtime::init_ops_and_esm()],
       ..Default::default()
     },
   );

@@ -8,6 +8,7 @@ use quote::quote;
 use quote::ToTokens;
 use std::iter::zip;
 use syn2::parse2;
+use syn2::parse_str;
 use syn2::FnArg;
 use syn2::ItemFn;
 use syn2::Path;
@@ -50,7 +51,7 @@ pub enum V8MappingError {
 }
 
 #[derive(Default)]
-struct MacroConfig {
+pub(crate) struct MacroConfig {
   pub core: bool,
   pub fast: bool,
 }
@@ -104,6 +105,7 @@ fn generate_op2(
   let call = Ident::new("call", Span::call_site());
   let mut op_fn = func.clone();
   op_fn.attrs.clear();
+  op_fn.sig.generics.params.clear();
   op_fn.sig.ident = call.clone();
 
   // Clear inert attributes
@@ -133,8 +135,10 @@ fn generate_op2(
   let scope = Ident::new("scope", Span::call_site());
   let info = Ident::new("info", Span::call_site());
   let opctx = Ident::new("opctx", Span::call_site());
-  let slow_function = Ident::new("slow_function", Span::call_site());
-  let fast_function = Ident::new("fast_function", Span::call_site());
+  let slow_function = Ident::new("v8_fn_ptr", Span::call_site());
+  let fast_function = Ident::new("v8_fn_ptr_fast", Span::call_site());
+  let fast_api_callback_options =
+    Ident::new("fast_api_callback_options", Span::call_site());
 
   let deno_core = if config.core {
     syn2::parse_str::<Path>("crate")
@@ -151,6 +155,7 @@ fn generate_op2(
     scope,
     info,
     opctx,
+    fast_api_callback_options,
     deno_core,
     result,
     retval,
@@ -161,10 +166,14 @@ fn generate_op2(
     needs_scope: false,
     needs_opctx: false,
     needs_opstate: false,
+    needs_fast_opctx: false,
+    needs_fast_api_callback_options: false,
   };
 
   let name = func.sig.ident;
-  let slow_fn = generate_dispatch_slow(&mut generator_state, &signature)?;
+
+  let slow_fn =
+    generate_dispatch_slow(&config, &mut generator_state, &signature)?;
   let (fast_definition, fast_fn) =
     match generate_dispatch_fast(&mut generator_state, &signature)? {
       Some((fast_definition, fast_fn)) => {
@@ -189,13 +198,39 @@ fn generate_op2(
 
   let arg_count: usize = generator_state.args.len();
   let vis = func.vis;
+  let generic = signature
+    .generic_bounds
+    .keys()
+    .map(|s| format_ident!("{s}"))
+    .collect::<Vec<_>>();
+  let bound = signature
+    .generic_bounds
+    .values()
+    .map(|p| parse_str::<Path>(p).expect("Failed to reparse path"))
+    .collect::<Vec<_>>();
 
   Ok(quote! {
     #[allow(non_camel_case_types)]
-    #vis struct #name {
+    #vis struct #name <#(#generic),*> {
+      // We need to mark these type parameters as used, so we use a PhantomData
+      _unconstructable: ::std::marker::PhantomData<(#(#generic),*)>
     }
 
-    impl #name {
+    impl <#(#generic : #bound),*> #deno_core::_ops::Op for #name <#(#generic),*> {
+      const NAME: &'static str = stringify!(#name);
+      const DECL: #deno_core::_ops::OpDecl = #deno_core::_ops::OpDecl {
+        name: stringify!(#name),
+        v8_fn_ptr: Self::#slow_function as _,
+        enabled: true,
+        fast_fn: #fast_definition,
+        is_async: false,
+        is_unstable: false,
+        is_v8: false,
+        arg_count: #arg_count as u8,
+      };
+    }
+
+    impl <#(#generic : #bound),*> #name <#(#generic),*> {
       pub const fn name() -> &'static str {
         stringify!(#name)
       }
@@ -213,8 +248,8 @@ fn generate_op2(
         }
       }
 
-      #slow_fn
       #fast_fn
+      #slow_fn
 
       #[inline(always)]
       #op_fn
