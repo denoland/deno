@@ -52,7 +52,9 @@ impl op_add {
         arg0: u32,
         arg1: u32,
     ) -> u32 {
-        let result = Self::call(arg0 as _, arg1 as _);
+        let arg0 = arg0 as _;
+        let arg1 = arg1 as _;
+        let result = Self::call(arg0, arg1);
         result
     }
     extern "C" fn v8_fn_ptr(info: *const deno_core::v8::FunctionCallbackInfo) {
