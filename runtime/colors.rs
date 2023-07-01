@@ -27,7 +27,7 @@ static NO_COLOR: Lazy<bool> =
 
 static IS_TTY: Lazy<bool> = Lazy::new(|| atty::is(atty::Stream::Stdout));
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TTYColorLevel {
   None,
   Basic,
@@ -35,38 +35,46 @@ pub enum TTYColorLevel {
   TrueColor,
 }
 
-static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(detect_color_support);
-
-fn detect_color_support() -> TTYColorLevel {
+static SUPPORT_LEVEL: Lazy<TTYColorLevel> = Lazy::new(|| {
   if *NO_COLOR {
     return TTYColorLevel::None;
   }
 
+  fn get_os_env_var(var_name: &str) -> Option<String> {
+    let var = std::env::var_os(var_name);
+
+    var.and_then(|s| {
+      let maybe_str = s.to_str();
+      maybe_str.map(|s| s.to_string())
+    })
+  }
+
+  detect_color_support(get_os_env_var)
+});
+
+fn detect_color_support(
+  get_env_var: impl Fn(&str) -> Option<String>,
+) -> TTYColorLevel {
   // Windows supports 24bit True Colors since Windows 10 #14931,
   // see https://devblogs.microsoft.com/commandline/24-bit-color-in-the-windows-console/
   if cfg!(target_os = "windows") {
-    println!("DETECT WINDOWS");
     return TTYColorLevel::TrueColor;
   }
 
-  if let Some(color_term) = std::env::var_os("COLORTERM") {
+  if let Some(color_term) = get_env_var("COLORTERM") {
     if color_term == "truecolor" || color_term == "24bit" {
-      println!("DETECT colorterm");
       return TTYColorLevel::TrueColor;
     }
   }
 
-  if let Some(term) = std::env::var_os("TERM") {
-    if let Some(term_value) = term.to_str() {
-      if term_value.ends_with("256") || term_value.ends_with("256color") {
-        return TTYColorLevel::Ansi256;
-      }
+  if let Some(term) = get_env_var("TERM") {
+    if term.ends_with("256") || term.ends_with("256color") {
+      return TTYColorLevel::Ansi256;
     }
 
     // CI systems commonly set TERM=dumb although they support
     // full colors. They usually do their own mapping.
-    if std::env::var_os("CI").is_some() {
-      println!("DETECT CI");
+    if get_env_var("CI").is_some() {
       return TTYColorLevel::TrueColor;
     }
 
@@ -214,124 +222,67 @@ pub fn white_bold_on_red<S: AsRef<str>>(s: S) -> impl fmt::Display {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use std::env;
-  use std::ffi::OsString;
-
-  fn reset_env_var(name: &str, value: Option<OsString>) {
-    match value {
-      Some(s) => env::set_var(name, s),
-      None => env::remove_var(name),
-    }
-  }
+  use std::collections::HashMap;
 
   #[cfg(not(windows))]
   #[test]
   fn supports_true_color() {
-    let ci = env::var_os("CI");
-    let color_term = env::var_os("COLORTERM");
-    let term = env::var_os("TERM");
+    let vars = HashMap::from([("COLORTERM", "truecolor")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::TrueColor
+    );
 
-    // Clean env
-    env::remove_var("CI");
-    env::remove_var("TERM");
-
-    // Test true color
-    env::set_var("COLORTERM", "truecolor");
-    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
-
-    env::set_var("COLORTERM", "24bit");
-    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
-
-    // Reset
-    reset_env_var("COLOR_TERM", color_term);
-    reset_env_var("TERM", term);
-    reset_env_var("CI", ci);
+    let vars = HashMap::from([("COLORTERM", "24bit")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::TrueColor
+    );
   }
 
   #[cfg(not(windows))]
   #[test]
   fn supports_ansi_256() {
-    let ci = env::var_os("CI");
-    let color_term = env::var_os("COLORTERM");
-    let term = env::var_os("TERM");
+    let vars = HashMap::from([("TERM", "xterm-256")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::Ansi256
+    );
 
-    // Reset env
-    env::remove_var("COLORTERM");
-    env::remove_var("CI");
-
-    println!("got {:?}", detect_color_support());
-    env::set_var("TERM", "xterm-256");
-    assert!(matches!(detect_color_support(), TTYColorLevel::Ansi256));
-
-    env::set_var("TERM", "xterm-256color");
-    assert!(matches!(detect_color_support(), TTYColorLevel::Ansi256));
-
-    // Reset env
-    reset_env_var("COLOR_TERM", color_term);
-    reset_env_var("TERM", term);
-    reset_env_var("CI", ci);
+    let vars = HashMap::from([("TERM", "xterm-256color")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::Ansi256
+    );
   }
 
   #[cfg(not(windows))]
   #[test]
   fn supports_ci_color() {
-    let ci = env::var_os("CI");
-    let color_term = env::var_os("COLORTERM");
-    let term = env::var_os("TERM");
-
-    // Reset env
-    env::remove_var("COLORTERM");
-    env::set_var("CI", "1");
-    env::set_var("TERM", "dumb");
-
-    assert!(matches!(detect_color_support(), TTYColorLevel::TrueColor));
-
-    // Reset env
-    reset_env_var("COLOR_TERM", color_term);
-    reset_env_var("TERM", term);
-    reset_env_var("CI", ci);
+    let vars = HashMap::from([("CI", "1"), ("TERM", "dumb")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::TrueColor
+    );
   }
 
   #[cfg(not(windows))]
   #[test]
   fn supports_basic_ansi() {
-    let ci = env::var_os("CI");
-    let color_term = env::var_os("COLORTERM");
-    let term = env::var_os("TERM");
-
-    // Reset env
-    env::remove_var("COLORTERM");
-    env::remove_var("CI");
-    env::set_var("TERM", "xterm");
-
-    println!("got {:?}", detect_color_support());
-    assert!(matches!(detect_color_support(), TTYColorLevel::Basic));
-
-    // Reset env
-    reset_env_var("COLOR_TERM", color_term);
-    reset_env_var("TERM", term);
-    reset_env_var("CI", ci);
+    let vars = HashMap::from([("TERM", "xterm")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::Basic
+    );
   }
 
   #[cfg(not(windows))]
   #[test]
   fn supports_none() {
-    let ci = env::var_os("CI");
-    let color_term = env::var_os("COLORTERM");
-    let term = env::var_os("TERM");
-
-    // Reset env
-    env::remove_var("COLORTERM");
-    env::remove_var("CI");
-    env::set_var("TERM", "dumb");
-
-    println!("got {:?}", detect_color_support());
-
-    assert!(matches!(detect_color_support(), TTYColorLevel::None));
-
-    // Reset env
-    reset_env_var("COLOR_TERM", color_term);
-    reset_env_var("TERM", term);
-    reset_env_var("CI", ci);
+    let vars = HashMap::from([("TERM", "dumb")]);
+    assert_eq!(
+      detect_color_support(|name| vars.get(name).map(|s| s.to_string())),
+      TTYColorLevel::None
+    );
   }
 }
