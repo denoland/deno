@@ -484,14 +484,14 @@ impl WebWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
-    // Clear extension modules from the module map, except preserve `ext:deno_node`
-    // modules as `node:` specifiers.
-    let rename_modules = Some(
-      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|p| (p.ext_specifier, p.specifier))
-        .collect(),
-    );
+    // // Clear extension modules from the module map, except preserve `ext:deno_node`
+    // // modules as `node:` specifiers.
+    // let rename_modules = Some(
+    //   deno_node::SUPPORTED_BUILTIN_NODE_MODULES
+    //     .iter()
+    //     .map(|p| (p.ext_specifier, p.specifier))
+    //     .collect(),
+    // );
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -502,7 +502,7 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
-      rename_modules,
+      rename_modules: Some(vec![]),
       ..Default::default()
     });
 

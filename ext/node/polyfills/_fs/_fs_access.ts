@@ -13,7 +13,7 @@ import {
   getValidatedPath,
   getValidMode,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import type { Buffer } from "ext:deno_node/buffer.ts";
+import type { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function access(

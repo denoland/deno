@@ -17,6 +17,7 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
+  use deno_core::ExtensionFileSourceCode;
   use deno_core::ModuleCode;
   use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
@@ -24,16 +25,31 @@ mod startup_snapshot {
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
   ) -> Result<ModuleCode, AnyError> {
-    let media_type = MediaType::from_path(Path::new(&file_source.specifier));
+    let media_type = if file_source.specifier.starts_with("node:") {
+      match &file_source.code {
+        ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
+          if path.extension().unwrap() == "ts" {
+            MediaType::TypeScript
+          } else {
+            MediaType::JavaScript
+          }
+        }
+        _ => MediaType::JavaScript,
+      }
+    } else {
+      MediaType::from_path(Path::new(&file_source.specifier))
+    };
 
     let should_transpile = match media_type {
       MediaType::JavaScript => false,
       MediaType::Mjs => false,
       MediaType::TypeScript => true,
-      _ => panic!(
-        "Unsupported media type for snapshotting {media_type:?} for file {}",
-        file_source.specifier
-      ),
+      _ => {
+        panic!(
+          "Unsupported media type for snapshotting {media_type:?} for file {}",
+          file_source.specifier
+        )
+      }
     };
     let code = file_source.load()?;
 
@@ -284,7 +300,6 @@ mod startup_snapshot {
     runtime_main,
     deps = [runtime],
     customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      eprintln!("I am here!!!");
       ext.esm_entry_point("ext:runtime/90_deno_ns.js");
     }
   );
