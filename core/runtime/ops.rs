@@ -14,7 +14,6 @@ use std::mem::MaybeUninit;
 use std::option::Option;
 use std::task::Context;
 use std::task::Poll;
-use v8::WriteOptions;
 
 #[inline]
 pub fn queue_fast_async_op<R: serde::Serialize + 'static>(
