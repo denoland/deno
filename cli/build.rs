@@ -339,7 +339,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_console::deno_console::init_ops(),
     deno_url::deno_url::init_ops(),
     deno_web::deno_web::init_ops::<PermissionsContainer>(
-      deno_web::BlobStore::default(),
+      Default::default(),
       Default::default(),
     ),
     deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
