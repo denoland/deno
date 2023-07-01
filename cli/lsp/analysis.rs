@@ -202,7 +202,7 @@ impl<'a> TsResponseImportMapper<'a> {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<String> {
-    let module_path = specifier.to_file_path().ok()?;
+    let specifier_path = specifier.to_file_path().ok()?;
     let root_folder = self
       .npm_resolver
       .resolve_package_folder_from_specifier(specifier)
@@ -213,13 +213,22 @@ impl<'a> TsResponseImportMapper<'a> {
       PackageJson::load_from_string(package_json_path, package_json_text)
         .ok()?;
 
-    if let Some(exports) = &package_json.exports {
-      if let Some(result) = try_reverse_map_package_json_exports(
-        &root_folder,
-        &module_path,
-        exports,
-      ) {
-        return Some(result);
+    let mut search_paths = vec![specifier_path.clone()];
+    // TypeScript will provide a .js extension for quick fixes, so do
+    // a search for the .d.ts file instead
+    if specifier_path.extension().and_then(|e| e.to_str()) == Some("js") {
+      search_paths.insert(0, specifier_path.with_extension("d.ts"));
+    }
+
+    for search_path in search_paths {
+      if let Some(exports) = &package_json.exports {
+        if let Some(result) = try_reverse_map_package_json_exports(
+          &root_folder,
+          &search_path,
+          exports,
+        ) {
+          return Some(result);
+        }
       }
     }
 
