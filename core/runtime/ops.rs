@@ -7,8 +7,10 @@ use futures::future::Either;
 use futures::future::Future;
 use futures::future::FutureExt;
 use futures::task::noop_waker_ref;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::ready;
+use std::mem::MaybeUninit;
 use std::option::Option;
 use std::task::Context;
 use std::task::Poll;
@@ -197,6 +199,104 @@ pub fn to_i64(number: &v8::Value) -> i32 {
   0
 }
 
+/// Expands `inbuf` to `outbuf`, assuming that `outbuf` has at least 2x `input_length`.
+#[inline(always)]
+unsafe fn latin1_to_utf8(
+  input_length: usize,
+  inbuf: *const u8,
+  outbuf: *mut u8,
+) -> usize {
+  let mut output = 0;
+  let mut input = 0;
+  while input < input_length {
+    let char = *(inbuf.add(input));
+    if char < 0x80 {
+      *(outbuf.add(output)) = char;
+      output += 1;
+    } else {
+      // Top two bits
+      *(outbuf.add(output)) = (char >> 6) | 0b1100_0000;
+      // Bottom six bits
+      *(outbuf.add(output + 1)) = (char & 0b0011_1111) | 0b1000_0000;
+      output += 2;
+    }
+    input += 1;
+  }
+  output
+}
+
+/// Converts a [`v8::fast_api::FastApiOneByteString`] to either an owned string, or a borrowed string, depending on whether it fits into the
+/// provided buffer.
+pub fn to_str_ptr<'a, const N: usize>(
+  string: &mut v8::fast_api::FastApiOneByteString,
+  buffer: &'a mut [MaybeUninit<u8>; N],
+) -> Cow<'a, str> {
+  let input_buf = string.as_bytes();
+  let input_len = input_buf.len();
+  let output_len = buffer.len();
+
+  // We know that this string is full of either one or two-byte UTF-8 chars, so if it's < 1/2 of N we
+  // can skip the ASCII check and just start copying.
+  if input_len < N / 2 {
+    debug_assert!(output_len >= input_len * 2);
+    let buffer = buffer.as_mut_ptr() as *mut u8;
+
+    let written =
+      // SAFETY: We checked that buffer is at least 2x the size of input_buf
+      unsafe { latin1_to_utf8(input_buf.len(), input_buf.as_ptr(), buffer) };
+
+    debug_assert!(written <= output_len);
+
+    let slice = std::ptr::slice_from_raw_parts(buffer, written);
+    // SAFETY: We know it's valid UTF-8, so make a string
+    Cow::Borrowed(unsafe { std::str::from_utf8_unchecked(&*slice) })
+  } else {
+    // TODO(mmastrac): We could be smarter here about not allocating
+    Cow::Owned(to_string_ptr(string))
+  }
+}
+
+/// Converts a [`v8::fast_api::FastApiOneByteString`] to an owned string. May over-allocate to avoid
+/// re-allocation.
+pub fn to_string_ptr(
+  string: &mut v8::fast_api::FastApiOneByteString,
+) -> String {
+  let input_buf = string.as_bytes();
+  let capacity = input_buf.len() * 2;
+
+  // SAFETY: We're allocating a buffer of 2x the input size, writing valid UTF-8, then turning that into a string
+  unsafe {
+    // Create an uninitialized buffer of `capacity` bytes. We need to be careful here to avoid
+    // accidentally creating a slice of u8 which would be invalid.
+    let layout = std::alloc::Layout::from_size_align(capacity, 1).unwrap();
+    let out = std::alloc::alloc(layout);
+
+    let written = latin1_to_utf8(input_buf.len(), input_buf.as_ptr(), out);
+
+    debug_assert!(written <= capacity);
+    // We know it's valid UTF-8, so make a string
+    String::from_raw_parts(out, written, capacity)
+  }
+}
+
+/// Converts a [`v8::String`] to either an owned string, or a borrowed string, depending on whether it fits into the
+/// provided buffer.
+#[inline(always)]
+pub fn to_str<'a, const N: usize>(
+  scope: &mut v8::Isolate,
+  string: &v8::Value,
+  buffer: &'a mut [MaybeUninit<u8>; N],
+) -> Cow<'a, str> {
+  if !string.is_string() {
+    return Cow::Borrowed("");
+  }
+
+  // SAFETY: We checked is_string above
+  let string: &v8::String = unsafe { std::mem::transmute(string) };
+
+  string.to_rust_cow_lossy(scope, buffer)
+}
+
 #[cfg(test)]
 mod tests {
   use crate::error::generic_error;
@@ -206,6 +306,7 @@ mod tests {
   use crate::JsRuntime;
   use crate::RuntimeOptions;
   use deno_ops::op2;
+  use std::borrow::Cow;
   use std::cell::Cell;
 
   crate::extension!(
@@ -219,6 +320,13 @@ mod tests {
       op_test_result_void_err,
       op_test_result_primitive_ok,
       op_test_result_primitive_err,
+      op_test_string_owned,
+      op_test_string_ref,
+      op_test_string_cow,
+      op_test_string_roundtrip_char,
+      op_test_string_return,
+      op_test_string_option_return,
+      op_test_string_roundtrip,
       op_test_generics<String>,
     ]
   );
@@ -229,18 +337,11 @@ mod tests {
 
   #[op2(core, fast)]
   pub fn op_test_fail() {
-    FAIL.with(|b| {
-      println!("fail");
-      b.set(true)
-    })
+    FAIL.with(|b| b.set(true))
   }
 
   /// Run a test for a single op.
-  fn run_test2(
-    repeat: usize,
-    op: &'static str,
-    test: &'static str,
-  ) -> Result<(), AnyError> {
+  fn run_test2(repeat: usize, op: &str, test: &str) -> Result<(), AnyError> {
     let mut runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![testing::init_ops_and_esm()],
       ..Default::default()
@@ -278,7 +379,7 @@ mod tests {
       ),
     )?;
     if FAIL.with(|b| b.get()) {
-      Err(generic_error("test failed"))
+      Err(generic_error(format!("{op} test failed ({test})")))
     } else {
       Ok(())
     }
@@ -402,6 +503,127 @@ mod tests {
       10000,
       "op_test_result_primitive_ok",
       "op_test_result_primitive_ok()",
+    )?;
+    Ok(())
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_string_owned(#[string] s: String) -> u32 {
+    s.len() as _
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_string_ref(#[string] s: &str) -> u32 {
+    s.len() as _
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_string_cow(#[string] s: Cow<str>) -> u32 {
+    s.len() as _
+  }
+
+  #[op2(core, fast)]
+  pub fn op_test_string_roundtrip_char(#[string] s: Cow<str>) -> u32 {
+    s.chars().next().unwrap() as u32
+  }
+
+  #[tokio::test]
+  pub async fn test_op_strings() -> Result<(), Box<dyn std::error::Error>> {
+    for op in [
+      "op_test_string_owned",
+      "op_test_string_cow",
+      "op_test_string_ref",
+    ] {
+      for (len, str) in [
+        // ASCII
+        (3, "'abc'"),
+        // Latin-1 (one byte but two UTF-8 chars)
+        (2, "'\\u00a0'"),
+        // ASCII
+        (10000, "'a'.repeat(10000)"),
+        // Latin-1
+        (20000, "'\\u00a0'.repeat(10000)"),
+        // 4-byte UTF-8 emoji (1F995 = 🦕)
+        (40000, "'\\u{1F995}'.repeat(10000)"),
+      ] {
+        let test = format!("assert({op}({str}) == {len})");
+        run_test2(10000, op, &test)?;
+      }
+    }
+
+    // Ensure that we're correctly encoding UTF-8
+    run_test2(
+      10000,
+      "op_test_string_roundtrip_char",
+      "assert(op_test_string_roundtrip_char('\\u00a0') == 0xa0)",
+    )?;
+    run_test2(
+      10000,
+      "op_test_string_roundtrip_char",
+      "assert(op_test_string_roundtrip_char('\\u00ff') == 0xff)",
+    )?;
+    run_test2(
+      10000,
+      "op_test_string_roundtrip_char",
+      "assert(op_test_string_roundtrip_char('\\u0080') == 0x80)",
+    )?;
+    run_test2(
+      10000,
+      "op_test_string_roundtrip_char",
+      "assert(op_test_string_roundtrip_char('\\u0100') == 0x100)",
+    )?;
+    Ok(())
+  }
+
+  #[op2(core)]
+  #[string]
+  pub fn op_test_string_return(
+    #[string] a: Cow<str>,
+    #[string] b: Cow<str>,
+  ) -> String {
+    (a + b).to_string()
+  }
+
+  #[op2(core)]
+  #[string]
+  pub fn op_test_string_option_return(
+    #[string] a: Cow<str>,
+    #[string] b: Cow<str>,
+  ) -> Option<String> {
+    if a == "none" {
+      return None;
+    }
+    Some((a + b).to_string())
+  }
+
+  #[op2(core)]
+  #[string]
+  pub fn op_test_string_roundtrip(#[string] s: String) -> String {
+    s
+  }
+
+  #[tokio::test]
+  pub async fn test_op_string_returns() -> Result<(), Box<dyn std::error::Error>>
+  {
+    run_test2(
+      1,
+      "op_test_string_return",
+      "assert(op_test_string_return('a', 'b') == 'ab')",
+    )?;
+    run_test2(
+      1,
+      "op_test_string_option_return",
+      "assert(op_test_string_option_return('a', 'b') == 'ab')",
+    )?;
+    run_test2(
+      1,
+      "op_test_string_option_return",
+      "assert(op_test_string_option_return('none', 'b') == null)",
+    )?;
+    run_test2(
+      1,
+      "op_test_string_roundtrip",
+      "assert(op_test_string_roundtrip('\\u0080\\u00a0\\u00ff') == '\\u0080\\u00a0\\u00ff')",
     )?;
     Ok(())
   }

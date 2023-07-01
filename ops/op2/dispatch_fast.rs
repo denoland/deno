@@ -4,10 +4,13 @@ use super::signature::Arg;
 use super::signature::NumericArg;
 use super::signature::ParsedSignature;
 use super::signature::RetVal;
+use super::signature::Special;
 use super::V8MappingError;
+use proc_macro2::Ident;
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use quote::quote;
+use std::iter::zip;
 
 #[allow(unused)]
 #[derive(Debug, Default, PartialEq, Clone)]
@@ -49,10 +52,12 @@ impl V8FastCallType {
       V8FastCallType::CallbackOptions => {
         quote!(*mut #deno_core::v8::fast_api::FastApiCallbackOptions)
       }
+      V8FastCallType::SeqOneByteString => {
+        quote!(*mut #deno_core::v8::fast_api::FastApiOneByteString)
+      }
       V8FastCallType::Uint8Array
       | V8FastCallType::Uint32Array
-      | V8FastCallType::Float64Array
-      | V8FastCallType::SeqOneByteString => unreachable!(),
+      | V8FastCallType::Float64Array => unreachable!(),
     }
   }
 
@@ -190,7 +195,10 @@ pub fn generate_dispatch_fast(
     .map(|rv| rv.quote_rust_type(deno_core))
     .collect::<Vec<_>>();
 
-  let call_args = names.clone();
+  let call_idents = names.clone();
+  let call_args = zip(names.iter(), signature.args.iter())
+    .map(|(name, arg)| map_v8_fastcall_arg_to_arg(deno_core, name, arg))
+    .collect::<Vec<_>>();
 
   let with_fast_api_callback_options = if *needs_fast_api_callback_options {
     types.push(V8FastCallType::CallbackOptions.quote_rust_type(deno_core));
@@ -219,13 +227,40 @@ pub fn generate_dispatch_fast(
     ) -> #output_type {
       #with_fast_api_callback_options
       #with_opctx
-      let #result = Self::call(#(#call_args as _),*);
+      #(#call_args)*
+      let #result = Self::call(#(#call_idents),*);
       #handle_error
       #result
     }
   );
 
   Ok(Some((fast_definition, fast_fn)))
+}
+
+fn map_v8_fastcall_arg_to_arg(
+  deno_core: &TokenStream,
+  arg_ident: &Ident,
+  arg: &Arg,
+) -> TokenStream {
+  let arg_temp = format_ident!("{}_temp", arg_ident);
+  match arg {
+    Arg::Special(Special::RefStr) => {
+      quote! {
+        let mut #arg_temp: [::std::mem::MaybeUninit<u8>; 1024] = [::std::mem::MaybeUninit::uninit(); 1024];
+        let #arg_ident = &#deno_core::_ops::to_str_ptr(unsafe { &mut *#arg_ident }, &mut #arg_temp);
+      }
+    }
+    Arg::Special(Special::String) => {
+      quote!(let #arg_ident = #deno_core::_ops::to_string_ptr(unsafe { &mut *#arg_ident });)
+    }
+    Arg::Special(Special::CowStr) => {
+      quote! {
+        let mut #arg_temp: [::std::mem::MaybeUninit<u8>; 1024] = [::std::mem::MaybeUninit::uninit(); 1024];
+        let #arg_ident = #deno_core::_ops::to_str_ptr(unsafe { &mut *#arg_ident }, &mut #arg_temp);
+      }
+    }
+    _ => quote!(let #arg_ident = #arg_ident as _;),
+  }
 }
 
 fn map_arg_to_v8_fastcall_type(
@@ -247,6 +282,13 @@ fn map_arg_to_v8_fastcall_type(
     Arg::Numeric(NumericArg::i64) | Arg::Numeric(NumericArg::isize) => {
       V8FastCallType::I64
     }
+    // Ref strings that are one byte internally may be passed as a SeqOneByteString,
+    // which gives us a FastApiOneByteString.
+    Arg::Special(Special::RefStr) => V8FastCallType::SeqOneByteString,
+    // Owned strings can be fast, but we'll have to copy them.
+    Arg::Special(Special::String) => V8FastCallType::SeqOneByteString,
+    // Cow strings can be fast, but may require copying
+    Arg::Special(Special::CowStr) => V8FastCallType::SeqOneByteString,
     _ => return Err(V8MappingError::NoMapping("a fast argument", arg.clone())),
   };
   Ok(Some(rv))
@@ -271,6 +313,8 @@ fn map_retval_to_v8_fastcall_type(
     Arg::Numeric(NumericArg::i64) | Arg::Numeric(NumericArg::isize) => {
       V8FastCallType::I64
     }
+    // We don't return special return types
+    Arg::Option(_) => return Ok(None),
     Arg::Special(_) => return Ok(None),
     _ => {
       return Err(V8MappingError::NoMapping(

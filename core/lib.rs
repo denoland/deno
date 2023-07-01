@@ -144,6 +144,9 @@ pub mod _ops {
   pub use super::runtime::ops::queue_async_op;
   pub use super::runtime::ops::queue_fast_async_op;
   pub use super::runtime::ops::to_i32;
+  pub use super::runtime::ops::to_str;
+  pub use super::runtime::ops::to_str_ptr;
+  pub use super::runtime::ops::to_string_ptr;
   pub use super::runtime::ops::to_u32;
   pub use super::runtime::V8_WRAPPER_OBJECT_INDEX;
   pub use super::runtime::V8_WRAPPER_TYPE_INDEX;

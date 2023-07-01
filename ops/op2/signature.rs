@@ -106,6 +106,7 @@ pub enum Special {
   HandleScope,
   OpState,
   String,
+  CowStr,
   RefStr,
   FastApiCallbackOptions,
 }
@@ -427,6 +428,17 @@ fn parse_type_path(attrs: Attributes, tp: &TypePath) -> Result<Arg, ArgError> {
       ( $( std :: str  :: )? String ) => {
         if attrs.primary == Some(AttributeModifier::String) {
           Ok(Arg::Special(Special::String))
+        } else {
+          Err(ArgError::MissingStringAttribute)
+        }
+      }
+      ( $( std :: str  :: )? str ) => {
+        // We should not hit this path with a #[string] argument
+        Err(ArgError::MissingStringAttribute)
+      }
+      ( $( std :: borrow :: )? Cow < str > ) => {
+        if attrs.primary == Some(AttributeModifier::String) {
+          Ok(Arg::Special(Special::CowStr))
         } else {
           Err(ArgError::MissingStringAttribute)
         }
