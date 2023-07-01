@@ -98,12 +98,7 @@ export function isArgumentsObject(value: unknown): value is IArguments {
 }
 
 export function isArrayBuffer(value: unknown): value is ArrayBuffer {
-  try {
-    _getArrayBufferByteLength.call(value);
-    return true;
-  } catch {
-    return false;
-  }
+  return value instanceof ArrayBuffer;
 }
 
 export function isAsyncFunction(
@@ -280,18 +275,7 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value: unknown,
 ): value is SharedArrayBuffer {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  )!.get!;
-
-  try {
-    _getSharedArrayBufferByteLength.call(value);
-    return true;
-  } catch {
-    return false;
-  }
+  value instanceof SharedArrayBuffer;
 }
 
 // deno-lint-ignore ban-types
