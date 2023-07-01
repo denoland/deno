@@ -390,7 +390,7 @@ mod internal {
       let turn = self.turn.get();
       if id < turn {
         // We already made a borrow count reservation for this waiter but the
-        // borrow will never be picked up and removesequently, never dropped.
+        // borrow will never be picked up and consequently, never dropped.
         // Therefore, call the borrow drop handler here.
         self.drop_borrow::<M>();
       } else {

@@ -1828,7 +1828,7 @@ impl Iterator for PreloadDocumentFinder {
   }
 }
 
-/// Removes any directorys that are a descendant of another directory in the collection.
+/// Removes any directories that are a descendant of another directory in the collection.
 fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
   if dirs.is_empty() {
     return dirs;

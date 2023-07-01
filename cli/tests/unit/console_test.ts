@@ -3,7 +3,7 @@
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
 
-// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// TODO(ry) These tests currently strip all the ANSI colors out. We don't have a
 // good way to control whether we produce color output or not since
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
@@ -1069,7 +1069,7 @@ Deno.test(function consoleTestWithCustomInspectorError() {
     () => stringify(a),
     Error,
     "BOOM",
-    "Inpsect should fail and maintain a clear CTX_STACK",
+    "Inspect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1152,9 +1152,12 @@ Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#18d"), [16, 128, 208]);
-  assertEquals(parseCssColor("#18D"), [16, 128, 208]);
+  assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);
+  assertEquals(parseCssColor("#fa0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#FA0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#18d"), [17, 136, 221]);
+  assertEquals(parseCssColor("#18D"), [17, 136, 221]);
+  assertEquals(parseCssColor("#1188DD"), [17, 136, 221]);
   assertEquals(parseCssColor("rgb(100, 200, 50)"), [100, 200, 50]);
   assertEquals(parseCssColor("rgb(+100.3, -200, .5)"), [100, 0, 1]);
   assertEquals(parseCssColor("hsl(75, 60%, 40%)"), [133, 163, 41]);
@@ -1779,7 +1782,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
 });
 
 // console.log(Invalid Date) test
-Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);

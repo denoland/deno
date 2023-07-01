@@ -25,9 +25,7 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
@@ -273,13 +271,6 @@ impl NpmResolver for CliNpmResolver {
     req: &NpmPackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
-  }
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    self.resolution.resolve_nv_ref_from_pkg_req_ref(req_ref)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {

@@ -32,11 +32,11 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::Canceled;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use deno_tls::rustls::RootCertStore;
 use deno_tls::Proxy;
 use deno_tls::RootCertStoreProvider;
@@ -232,7 +232,7 @@ pub fn op_fetch<FP>(
   client_rid: Option<u32>,
   has_body: bool,
   body_length: Option<u64>,
-  data: Option<ZeroCopyBuf>,
+  data: Option<JsBuffer>,
 ) -> Result<FetchReturn, AnyError>
 where
   FP: FetchPermissions + 'static,

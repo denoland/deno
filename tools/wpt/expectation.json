@@ -6945,18 +6945,6 @@
     "Create-extensions-empty.any.worker.html": true,
     "Create-extensions-empty.any.worker.html?wpt_flags=h2": false,
     "Create-extensions-empty.any.worker.html?wss": true,
-    "Create-invalid-urls.any.html": true,
-    "Create-invalid-urls.any.html?wpt_flags=h2": true,
-    "Create-invalid-urls.any.html?wss": true,
-    "Create-invalid-urls.any.worker.html": true,
-    "Create-invalid-urls.any.worker.html?wpt_flags=h2": true,
-    "Create-invalid-urls.any.worker.html?wss": true,
-    "Create-non-absolute-url.any.html": false,
-    "Create-non-absolute-url.any.html?wpt_flags=h2": true,
-    "Create-non-absolute-url.any.html?wss": true,
-    "Create-non-absolute-url.any.worker.html": false,
-    "Create-non-absolute-url.any.worker.html?wpt_flags=h2": true,
-    "Create-non-absolute-url.any.worker.html?wss": true,
     "Create-nonAscii-protocol-string.any.html": true,
     "Create-nonAscii-protocol-string.any.html?wpt_flags=h2": true,
     "Create-nonAscii-protocol-string.any.html?wss": true,
@@ -7030,12 +7018,6 @@
     "Create-valid-url.any.worker.html": true,
     "Create-valid-url.any.worker.html?wpt_flags=h2": false,
     "Create-valid-url.any.worker.html?wss": true,
-    "Create-wrong-scheme.any.html": true,
-    "Create-wrong-scheme.any.html?wpt_flags=h2": true,
-    "Create-wrong-scheme.any.html?wss": true,
-    "Create-wrong-scheme.any.worker.html": true,
-    "Create-wrong-scheme.any.worker.html?wpt_flags=h2": true,
-    "Create-wrong-scheme.any.worker.html?wss": true,
     "Send-0byte-data.any.html": true,
     "Send-0byte-data.any.html?wpt_flags=h2": false,
     "Send-0byte-data.any.html?wss": true,
@@ -7217,12 +7199,12 @@
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": false,
         "constructor.any.worker.html?wss": true,
-        "abort.any.html?wpt_flags=h2": [
-          "abort after connect should do nothing"
-        ],
-        "abort.any.worker.html?wpt_flags=h2": [
-          "abort after connect should do nothing"
-        ],
+        "abort.any.html?wpt_flags=h2": {
+          "ignore": true
+        },
+        "abort.any.worker.html?wpt_flags=h2": {
+          "ignore": true
+        },
         "backpressure-receive.any.worker.html?wpt_flags=h2": false
       }
     },

@@ -73,7 +73,7 @@ fn base_url(url: &Url) -> String {
 }
 
 #[derive(Debug)]
-enum CompletorType {
+enum CompletionType {
   Literal(String),
   Key {
     key: Key,
@@ -84,25 +84,25 @@ enum CompletorType {
 
 /// Determine if a completion at a given offset is a string literal or a key/
 /// variable.
-fn get_completor_type(
+fn get_completion_type(
   offset: usize,
   tokens: &[Token],
   match_result: &MatchResult,
-) -> Option<CompletorType> {
+) -> Option<CompletionType> {
   let mut len = 0_usize;
   for (index, token) in tokens.iter().enumerate() {
     match token {
       Token::String(s) => {
         len += s.chars().count();
         if offset < len {
-          return Some(CompletorType::Literal(s.clone()));
+          return Some(CompletionType::Literal(s.clone()));
         }
       }
       Token::Key(k) => {
         if let Some(prefix) = &k.prefix {
           len += prefix.chars().count();
           if offset < len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: Some(prefix.clone()),
               index,
@@ -119,7 +119,7 @@ fn get_completor_type(
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: None,
               index,
@@ -129,7 +129,7 @@ fn get_completor_type(
         if let Some(suffix) = &k.suffix {
           len += suffix.chars().count();
           if offset <= len {
-            return Some(CompletorType::Literal(suffix.clone()));
+            return Some(CompletionType::Literal(suffix.clone()));
           }
         }
       }
@@ -687,17 +687,17 @@ impl ModuleRegistry {
                 .ok()?;
               if let Some(match_result) = matcher.matches(path) {
                 did_match = true;
-                let completor_type =
-                  get_completor_type(path_offset, &tokens, &match_result);
-                match completor_type {
-                  Some(CompletorType::Literal(s)) => self.complete_literal(
+                let completion_type =
+                  get_completion_type(path_offset, &tokens, &match_result);
+                match completion_type {
+                  Some(CompletionType::Literal(s)) => self.complete_literal(
                     s,
                     &mut completions,
                     current_specifier,
                     offset,
                     range,
                   ),
-                  Some(CompletorType::Key { key, prefix, index }) => {
+                  Some(CompletionType::Key { key, prefix, index }) => {
                     let maybe_url = registry.get_url_for_key(&key);
                     if let Some(url) = maybe_url {
                       if let Some(items) = self

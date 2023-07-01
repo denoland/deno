@@ -805,10 +805,9 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch/main.ts",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
   http_server: true,
   exit_code: 0,
@@ -856,10 +855,10 @@ itest!(config_file_lock_path {
 });
 
 itest!(lock_flag_overrides_config_file_lock_path {
-     args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
-    output: "run/019_media_types.ts.out",
-    http_server: true,
-  });
+  args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
+  http_server: true,
+});
 
 itest!(lock_v2_check_ok {
   args:
@@ -900,6 +899,25 @@ itest!(lock_only_http_and_https {
   output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
+
+#[test]
+fn lock_no_declaration_files() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let output = context
+    .new_command()
+    .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
+    .run();
+  output.assert_matches_file("lockfile/no_dts/main.cache.out");
+  let lockfile = context.temp_dir().path().join("deno.lock");
+  lockfile.assert_matches_file(
+    context
+      .testdata_path()
+      .join("lockfile/no_dts/deno.lock.out"),
+  );
+}
 
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
@@ -2466,7 +2484,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost() {
-    // Port 4600 is chosen to not colide with those used by
+    // Port 4600 is chosen to not collide with those used by
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,
