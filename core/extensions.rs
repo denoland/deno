@@ -174,7 +174,6 @@ macro_rules! ops {
 ///  * bounds: a comma-separated list of additional type bounds, eg: `bounds = [ P::MyAssociatedType: MyTrait ]`
 ///  * ops: a comma-separated list of [`OpDecl`]s to provide, eg: `ops = [ op_foo, op_bar ]`
 ///  * esm: a comma-separated list of ESM module filenames (see [`include_js_files`]), eg: `esm = [ dir "dir", "my_file.js" ]`
-///  * esm_setup_script: see [`ExtensionBuilder::esm_setup_script`]
 ///  * js: a comma-separated list of JS filenames (see [`include_js_files`]), eg: `js = [ dir "dir", "my_file.js" ]`
 ///  * config: a structure-like definition for configuration parameters which will be required when initializing this extension, eg: `config = { my_param: Option<usize> }`
 ///  * middleware: an [`OpDecl`] middleware function with the signature `fn (OpDecl) -> OpDecl`
@@ -191,7 +190,6 @@ macro_rules! extension {
     $(, ops = [ $( $(#[$m:meta])* $( $op:ident )::+ $( < $( $op_param:ident ),* > )?  ),+ $(,)? ] )?
     $(, esm_entry_point = $esm_entry_point:literal )?
     $(, esm = [ $( dir $dir_esm:literal , )? $( $esm:literal ),* $(,)? ] )?
-    $(, esm_setup_script = $esm_setup_script:expr )?
     $(, js = [ $( dir $dir_js:literal , )? $( $js:literal ),* $(,)? ] )?
     $(, options = { $( $options_id:ident : $options_type:ty ),* $(,)? } )?
     $(, middleware = $middleware_fn:expr )?
@@ -220,12 +218,6 @@ macro_rules! extension {
         $( ext.esm(
           $crate::include_js_files!( $name $( dir $dir_esm , )? $( $esm , )* )
         ); )?
-        $(
-          ext.esm(vec![ExtensionFileSource {
-            specifier: "ext:setup",
-            code: ExtensionFileSourceCode::IncludedInBinary($esm_setup_script),
-          }]);
-        )?
         $(
           ext.esm_entry_point($esm_entry_point);
         )?
@@ -355,8 +347,8 @@ macro_rules! extension {
 #[derive(Default)]
 pub struct Extension {
   pub(crate) name: &'static str,
-  js_files: Option<Vec<ExtensionFileSource>>,
-  esm_files: Option<Vec<ExtensionFileSource>>,
+  js_files: Vec<ExtensionFileSource>,
+  esm_files: Vec<ExtensionFileSource>,
   esm_entry_point: Option<&'static str>,
   ops: Option<Vec<OpDecl>>,
   opstate_fn: Option<Box<OpStateFn>>,
@@ -365,7 +357,6 @@ pub struct Extension {
   initialized: bool,
   enabled: bool,
   deps: Option<&'static [&'static str]>,
-  pub(crate) is_core: bool,
 }
 
 // Note: this used to be a trait, but we "downgraded" it to a single concrete type
@@ -412,12 +403,12 @@ impl Extension {
 
   /// returns JS source code to be loaded into the isolate (either at snapshotting,
   /// or at startup).  as a vector of a tuple of the file name, and the source code.
-  pub fn get_js_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.js_files.as_ref()
+  pub fn get_js_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.js_files
   }
 
-  pub fn get_esm_sources(&self) -> Option<&Vec<ExtensionFileSource>> {
-    self.esm_files.as_ref()
+  pub fn get_esm_sources(&self) -> &Vec<ExtensionFileSource> {
+    &self.esm_files
   }
 
   pub fn get_esm_entry_point(&self) -> Option<&'static str> {
@@ -488,7 +479,6 @@ pub struct ExtensionBuilder {
   event_loop_middleware: Option<Box<OpEventLoopFn>>,
   name: &'static str,
   deps: &'static [&'static str],
-  is_core: bool,
 }
 
 impl ExtensionBuilder {
@@ -538,13 +528,11 @@ impl ExtensionBuilder {
 
   /// Consume the [`ExtensionBuilder`] and return an [`Extension`].
   pub fn take(self) -> Extension {
-    let js_files = Some(self.js);
-    let esm_files = Some(self.esm);
     let ops = Some(self.ops);
     let deps = Some(self.deps);
     Extension {
-      js_files,
-      esm_files,
+      js_files: self.js,
+      esm_files: self.esm,
       esm_entry_point: self.esm_entry_point,
       ops,
       opstate_fn: self.state,
@@ -554,18 +542,15 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
-      is_core: self.is_core,
     }
   }
 
   pub fn build(&mut self) -> Extension {
-    let js_files = Some(std::mem::take(&mut self.js));
-    let esm_files = Some(std::mem::take(&mut self.esm));
     let ops = Some(std::mem::take(&mut self.ops));
     let deps = Some(std::mem::take(&mut self.deps));
     Extension {
-      js_files,
-      esm_files,
+      js_files: std::mem::take(&mut self.js),
+      esm_files: std::mem::take(&mut self.esm),
       esm_entry_point: self.esm_entry_point.take(),
       ops,
       opstate_fn: self.state.take(),
@@ -575,14 +560,7 @@ impl ExtensionBuilder {
       enabled: true,
       name: self.name,
       deps,
-      is_core: self.is_core,
     }
-  }
-
-  #[doc(hidden)]
-  pub(crate) fn deno_core(&mut self) -> &mut Self {
-    self.is_core = true;
-    self
   }
 }
 

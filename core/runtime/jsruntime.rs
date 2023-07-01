@@ -10,6 +10,7 @@ use crate::error::GetErrorClassFn;
 use crate::error::JsError;
 use crate::extensions::OpDecl;
 use crate::extensions::OpEventLoopFn;
+use crate::include_js_files;
 use crate::inspector::JsRuntimeInspector;
 use crate::module_specifier::ModuleSpecifier;
 use crate::modules::AssertedModuleType;
@@ -27,6 +28,7 @@ use crate::runtime::JsRealm;
 use crate::source_map::SourceMapCache;
 use crate::source_map::SourceMapGetter;
 use crate::Extension;
+use crate::ExtensionFileSource;
 use crate::NoopModuleLoader;
 use crate::OpMiddlewareFn;
 use crate::OpResult;
@@ -38,6 +40,7 @@ use anyhow::Error;
 use futures::channel::oneshot;
 use futures::future::poll_fn;
 use futures::stream::StreamExt;
+use once_cell::sync::Lazy;
 use smallvec::SmallVec;
 use std::any::Any;
 use std::cell::RefCell;
@@ -195,6 +198,16 @@ impl InitMode {
     }
   }
 }
+
+pub(crate) static BUILTIN_SOURCES: Lazy<Vec<ExtensionFileSource>> =
+  Lazy::new(|| {
+    include_js_files!(
+      core
+      "00_primordials.js",
+      "01_core.js",
+      "02_error.js",
+    )
+  });
 
 /// A single execution context of JavaScript. Corresponds roughly to the "Web
 /// Worker" concept in the DOM.
@@ -504,7 +517,7 @@ impl JsRuntime {
     maybe_load_callback: Option<ExtModuleLoaderCb>,
   ) -> JsRuntime {
     let init_mode = InitMode::from_options(&options);
-    let (op_state, ops) = Self::create_opstate(&mut options, init_mode);
+    let (op_state, ops) = Self::create_opstate(&mut options);
     let op_state = Rc::new(RefCell::new(op_state));
 
     // Collect event-loop middleware
@@ -840,36 +853,39 @@ impl JsRuntime {
     let mut esm_entrypoints = vec![];
 
     futures::executor::block_on(async {
+      if self.init_mode == InitMode::New {
+        for file_source in &*BUILTIN_SOURCES {
+          realm.execute_script(
+            self.v8_isolate(),
+            file_source.specifier,
+            file_source.load()?,
+          )?;
+        }
+      }
+      self.init_cbs(realm);
+
       for extension in &extensions {
         let maybe_esm_entry_point = extension.get_esm_entry_point();
 
-        if let Some(esm_files) = extension.get_esm_sources() {
-          for file_source in esm_files {
-            self
-              .load_side_module(
-                &ModuleSpecifier::parse(file_source.specifier)?,
-                None,
-              )
-              .await?;
-          }
+        for file_source in extension.get_esm_sources() {
+          self
+            .load_side_module(
+              &ModuleSpecifier::parse(file_source.specifier)?,
+              None,
+            )
+            .await?;
         }
 
         if let Some(entry_point) = maybe_esm_entry_point {
           esm_entrypoints.push(entry_point);
         }
 
-        if let Some(js_files) = extension.get_js_sources() {
-          for file_source in js_files {
-            realm.execute_script(
-              self.v8_isolate(),
-              file_source.specifier,
-              file_source.load()?,
-            )?;
-          }
-        }
-
-        if extension.is_core {
-          self.init_cbs(realm);
+        for file_source in extension.get_js_sources() {
+          realm.execute_script(
+            self.v8_isolate(),
+            file_source.specifier,
+            file_source.load()?,
+          )?;
         }
       }
 
@@ -966,20 +982,11 @@ impl JsRuntime {
   }
 
   /// Initializes ops of provided Extensions
-  fn create_opstate(
-    options: &mut RuntimeOptions,
-    init_mode: InitMode,
-  ) -> (OpState, Vec<OpDecl>) {
+  fn create_opstate(options: &mut RuntimeOptions) -> (OpState, Vec<OpDecl>) {
     // Add built-in extension
-    if init_mode == InitMode::FromSnapshot {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops());
-    } else {
-      options
-        .extensions
-        .insert(0, crate::ops_builtin::core::init_ops_and_esm());
-    }
+    options
+      .extensions
+      .insert(0, crate::ops_builtin::core::init_ops());
 
     let ops = Self::collect_ops(&mut options.extensions);
 
