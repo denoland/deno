@@ -776,10 +776,6 @@ function partitionTests(tests: TestToRun[]): TestToRun[][] {
     }
     // Paths looks like: /fetch/corb/img-html-correctly-labeled.sub-ref.html
     const key = test.path.split("/")[1];
-    if (key === "WebCryptoAPI") { // run all WebCryptoAPI tests in parallel so they go faster
-      testsByKey[test.path] = [test];
-      continue;
-    }
     if (!(key in testsByKey)) {
       testsByKey[key] = [];
     }
