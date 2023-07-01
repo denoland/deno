@@ -243,7 +243,7 @@ impl<'a> TsResponseImportMapper<'a> {
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<String> {
-    if let Ok(specifier) = ModuleSpecifier::parse(specifier) {
+    if let Ok(specifier) = referrer.join(specifier) {
       if let Some(specifier) = self.check_specifier(&specifier) {
         return Some(specifier);
       }
