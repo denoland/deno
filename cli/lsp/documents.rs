@@ -13,6 +13,7 @@ use crate::cache::CachedUrlMetadata;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
@@ -728,8 +729,12 @@ impl FileSystemDocuments {
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let fs_version = get_document_path(cache, specifier)
-      .and_then(|path| calculate_fs_version(&path));
+    let fs_version = if specifier.scheme() == "data" {
+      Some("1".to_string())
+    } else {
+      get_document_path(cache, specifier)
+        .and_then(|path| calculate_fs_version(&path))
+    };
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
       // attempt to update the file on the file system
@@ -747,10 +752,10 @@ impl FileSystemDocuments {
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, specifier)?;
-    let fs_version = calculate_fs_version(&path)?;
-    let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
+      let path = get_document_path(cache, specifier)?;
+      let fs_version = calculate_fs_version(&path)?;
+      let bytes = fs::read(path).ok()?;
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
@@ -761,7 +766,19 @@ impl FileSystemDocuments {
         SourceTextInfo::from_string(content),
         resolver,
       )
+    } else if specifier.scheme() == "data" {
+      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      Document::new(
+        specifier.clone(),
+        "1".to_string(),
+        None,
+        SourceTextInfo::from_string(source),
+        resolver,
+      )
     } else {
+      let path = get_document_path(cache, specifier)?;
+      let fs_version = calculate_fs_version(&path)?;
+      let bytes = fs::read(path).ok()?;
       let cache_filename = cache.get_cache_filename(specifier)?;
       let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
@@ -787,7 +804,7 @@ fn get_document_path(
   specifier: &ModuleSpecifier,
 ) -> Option<PathBuf> {
   match specifier.scheme() {
-    "npm" | "node" => None,
+    "npm" | "node" | "data" | "blob" => None,
     "file" => specifier_to_file_path(specifier).ok(),
     _ => cache.get_cache_filename(specifier),
   }
@@ -968,6 +985,9 @@ impl Documents {
     let specifier = self.specifier_resolver.resolve(specifier);
     if let Some(specifier) = specifier {
       if self.open_docs.contains_key(&specifier) {
+        return true;
+      }
+      if specifier.scheme() == "data" {
         return true;
       }
       if let Some(path) = get_document_path(&self.cache, &specifier) {

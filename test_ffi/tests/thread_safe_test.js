@@ -71,6 +71,8 @@ dylib.symbols.call_stored_function();
 
 // Unref both main and worker thread callbacks and terminate the worker: Note, the stored function pointer in lib is now dangling.
 
+dylib.symbols.store_function(null);
+
 mainThreadCallback.unref();
 await sendWorkerMessage("unref");
 worker.terminate();
@@ -90,6 +92,9 @@ cleanupCallback.ref();
 
 function cleanup() {
   cleanupCallback.unref();
+  dylib.symbols.store_function(null);
+  mainThreadCallback.close();
+  cleanupCallback.close();
   console.log("Isolate should now exit");
 }
 

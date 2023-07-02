@@ -242,8 +242,8 @@ class WebSocketStream {
               },
             });
             const pull = async (controller) => {
+              // Remember that this pull method may be re-entered before it has completed
               const kind = await op_ws_next_event(this[_rid]);
-
               switch (kind) {
                 case 0:
                   /* string */
@@ -266,17 +266,18 @@ class WebSocketStream {
                   core.tryClose(this[_rid]);
                   break;
                 }
-                case 4: {
+                case 1005: {
                   /* closed */
-                  this[_closed].resolve(undefined);
+                  this[_closed].resolve({ code: 1005, reason: "" });
                   core.tryClose(this[_rid]);
                   break;
                 }
                 default: {
                   /* close */
+                  const reason = op_ws_get_error(this[_rid]);
                   this[_closed].resolve({
                     code: kind,
-                    reason: op_ws_get_error(this[_rid]),
+                    reason,
                   });
                   core.tryClose(this[_rid]);
                   break;
@@ -294,7 +295,8 @@ class WebSocketStream {
                   return pull(controller);
                 }
 
-                this[_closed].resolve(op_ws_get_error(this[_rid]));
+                const error = op_ws_get_error(this[_rid]);
+                this[_closed].reject(new Error(error));
                 core.tryClose(this[_rid]);
               }
             };
