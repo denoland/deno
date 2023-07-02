@@ -1,9 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { Module } from "node:module";
+import { createRequire, Module } from "node:module";
 import {
   assert,
   assertEquals,
+  assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import process from "node:process";
 import * as path from "node:path";
@@ -57,4 +58,19 @@ Deno.test("[node/module _nodeModulePaths] prevents duplicate root /node_modules"
     actual.includes(path.join(root, "node_modules")),
     "Missing root 'node_modules' directory",
   );
+});
+
+Deno.test("Built-in Node modules have `node:` prefix", () => {
+  let thrown = false;
+  try {
+    // @ts-ignore We want to explicitly test wrong call signature
+    createRequire();
+  } catch (e) {
+    thrown = true;
+    const stackLines = e.stack.split("\n");
+    // Assert that built-in node modules have `node:<mod_name>` specifiers.
+    assert(stackLines.some((line: string) => line.includes("(node:module:")));
+  }
+
+  assert(thrown);
 });
