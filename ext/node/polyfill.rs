@@ -7,8 +7,24 @@ pub fn is_builtin_node_module(module_name: &str) -> bool {
     .any(|m| *m == module_name)
 }
 
+macro_rules! generate_builtin_node_module_lists {
+  ($( $module_name:literal ,)+) => {
+    pub static SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
+      $(
+        $module_name,
+      )+
+    ];
+
+    pub static SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX: &[&str] = &[
+      $(
+        concat!("node:", $module_name),
+      )+
+    ];
+  };
+}
+
 // NOTE(bartlomieju): keep this list in sync with `ext/node/polyfills/01_require.js`
-pub static SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
+generate_builtin_node_module_lists! {
   "assert",
   "assert/strict",
   "async_hooks",
@@ -57,4 +73,4 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[&str] = &[
   "vm",
   "worker_threads",
   "zlib",
-];
+}
