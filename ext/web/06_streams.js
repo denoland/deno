@@ -4781,72 +4781,8 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-// Ref: https://tc39.es/ecma262/#sec-createasyncfromsynciterator
-function createAsyncFromSyncIterator(syncIterator) {
-  return {
-    next(value) {
-      try {
-        // deno-lint-ignore prefer-primordials
-        const res = syncIterator.next(value);
-        const done = res.done;
-        return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
-          value: v,
-          done,
-        }));
-      } catch (e) {
-        return PromiseReject(e);
-      }
-    },
-    return(value) {
-      try {
-        const ret = syncIterator.return;
-        if (ret === undefined) {
-          return PromiseResolve({
-            value,
-            done: true,
-          });
-        } else {
-          const res = ret(value);
-          if (typeof res !== "object") {
-            return PromiseReject(
-              new TypeError("Return reult is not an object"),
-            );
-          } else {
-            const done = res.done;
-            return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
-              value: v,
-              done,
-            }));
-          }
-        }
-      } catch (e) {
-        return PromiseReject(e);
-      }
-    },
-    throw(value) {
-      try {
-        const ret = syncIterator.throw;
-        if (ret === undefined) {
-          return PromiseReject(value);
-        } else {
-          const res = ret(value);
-          if (typeof res !== "object") {
-            return PromiseReject(
-              new TypeError("Return reult is not an object"),
-            );
-          } else {
-            const done = res.done;
-            return PromisePrototypeThen(PromiseResolve(res.value), (v) => ({
-              value: v,
-              done,
-            }));
-          }
-        }
-      } catch (e) {
-        return PromiseReject(e);
-      }
-    },
-  };
+async function* createAsyncFromSyncIterator(syncIterator) {
+  yield* syncIterator;
 }
 
 // Ref: https://tc39.es/ecma262/#sec-getiterator
