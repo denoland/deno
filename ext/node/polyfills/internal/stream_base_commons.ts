@@ -35,7 +35,7 @@ import {
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { setUnrefTimeout } from "node:timers";
+import { clearTimeout, setUnrefTimeout } from "node:timers";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { Buffer } from "node:buffer";
