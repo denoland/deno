@@ -464,6 +464,7 @@ async fn fmt_watch_without_args_test() {
   check_alive_then_kill(child);
 }
 
+#[ignore = "https://github.com/denoland/deno/issues/19629"]
 #[tokio::test]
 async fn fmt_check_all_files_on_each_change_test() {
   let t = TempDir::new();
