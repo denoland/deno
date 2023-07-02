@@ -14,7 +14,8 @@ use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
+use deno_npm::resolution::NpmResolutionSnapshotPendingResolver;
+use deno_npm::resolution::NpmResolutionSnapshotPendingResolverOptions;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
@@ -24,9 +25,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
@@ -61,15 +60,7 @@ impl NpmResolution {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let snapshot =
-      NpmResolutionSnapshot::new(NpmResolutionSnapshotCreateOptions {
-        api: api.clone(),
-        snapshot: initial_snapshot.unwrap_or_default(),
-        // WARNING: When bumping this version, check if anything needs to be
-        // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-        types_node_version_req: Some(
-          VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
-        ),
-      });
+      NpmResolutionSnapshot::new(initial_snapshot.unwrap_or_default());
     Self::new(api, snapshot, maybe_lockfile)
   }
 
@@ -154,17 +145,6 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
-    Ok(NpmPackageNvReference {
-      nv: node_id.nv,
-      sub_path: req_ref.sub_path.clone(),
-    })
-  }
-
   pub fn resolve_package_cache_folder_id_from_id(
     &self,
     id: &NpmPackageId,
@@ -233,7 +213,12 @@ impl NpmResolution {
   ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
     let mut snapshot = self.snapshot.write();
-    let nv = snapshot.resolve_package_req_as_pending(pkg_req, package_info)?;
+    let pending_resolver = get_npm_pending_resolver(&self.api);
+    let nv = pending_resolver.resolve_package_req_as_pending(
+      &mut snapshot,
+      pkg_req,
+      package_info,
+    )?;
     Ok(nv)
   }
 
@@ -300,7 +285,10 @@ async fn add_package_reqs_to_snapshot(
     return Ok(snapshot);
   }
 
-  let result = snapshot.resolve_pending(package_reqs).await;
+  let pending_resolver = get_npm_pending_resolver(api);
+  let result = pending_resolver
+    .resolve_pending(snapshot, package_reqs)
+    .await;
   api.clear_memory_cache();
   let snapshot = match result {
     Ok(snapshot) => snapshot,
@@ -310,7 +298,9 @@ async fn add_package_reqs_to_snapshot(
 
       // try again
       let snapshot = get_new_snapshot();
-      let result = snapshot.resolve_pending(package_reqs).await;
+      let result = pending_resolver
+        .resolve_pending(snapshot, package_reqs)
+        .await;
       api.clear_memory_cache();
       // now surface the result after clearing the cache
       result?
@@ -325,6 +315,21 @@ async fn add_package_reqs_to_snapshot(
   } else {
     Ok(snapshot)
   }
+}
+
+fn get_npm_pending_resolver(
+  api: &CliNpmRegistryApi,
+) -> NpmResolutionSnapshotPendingResolver<CliNpmRegistryApi> {
+  NpmResolutionSnapshotPendingResolver::new(
+    NpmResolutionSnapshotPendingResolverOptions {
+      api,
+      // WARNING: When bumping this version, check if anything needs to be
+      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
+      types_node_version_req: Some(
+        VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
+      ),
+    },
+  )
 }
 
 fn populate_lockfile_from_snapshot(

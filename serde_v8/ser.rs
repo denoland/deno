@@ -19,9 +19,8 @@ use crate::BigInt;
 use crate::ByteString;
 use crate::DetachedBuffer;
 use crate::ExternalPointer;
-use crate::StringOrBuffer;
+use crate::ToJsBuffer;
 use crate::U16String;
-use crate::ZeroCopyBuf;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -274,12 +273,11 @@ impl<'a, 'b, 'c, T: MagicType + ToV8> ser::SerializeStruct
 pub enum StructSerializers<'a, 'b, 'c> {
   ExternalPointer(MagicalSerializer<'a, 'b, 'c, magic::ExternalPointer>),
   Magic(MagicalSerializer<'a, 'b, 'c, magic::Value<'a>>),
-  ZeroCopyBuf(MagicalSerializer<'a, 'b, 'c, ZeroCopyBuf>),
+  RustToV8Buf(MagicalSerializer<'a, 'b, 'c, ToJsBuffer>),
   MagicAnyValue(MagicalSerializer<'a, 'b, 'c, AnyValue>),
   MagicDetached(MagicalSerializer<'a, 'b, 'c, DetachedBuffer>),
   MagicByteString(MagicalSerializer<'a, 'b, 'c, ByteString>),
   MagicU16String(MagicalSerializer<'a, 'b, 'c, U16String>),
-  MagicStringOrBuffer(MagicalSerializer<'a, 'b, 'c, StringOrBuffer>),
   MagicBigInt(MagicalSerializer<'a, 'b, 'c, BigInt>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
@@ -296,14 +294,11 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     match self {
       StructSerializers::ExternalPointer(s) => s.serialize_field(key, value),
       StructSerializers::Magic(s) => s.serialize_field(key, value),
-      StructSerializers::ZeroCopyBuf(s) => s.serialize_field(key, value),
+      StructSerializers::RustToV8Buf(s) => s.serialize_field(key, value),
       StructSerializers::MagicAnyValue(s) => s.serialize_field(key, value),
       StructSerializers::MagicDetached(s) => s.serialize_field(key, value),
       StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::MagicU16String(s) => s.serialize_field(key, value),
-      StructSerializers::MagicStringOrBuffer(s) => {
-        s.serialize_field(key, value)
-      }
       StructSerializers::MagicBigInt(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
@@ -313,12 +308,11 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     match self {
       StructSerializers::ExternalPointer(s) => s.end(),
       StructSerializers::Magic(s) => s.end(),
-      StructSerializers::ZeroCopyBuf(s) => s.end(),
+      StructSerializers::RustToV8Buf(s) => s.end(),
       StructSerializers::MagicAnyValue(s) => s.end(),
       StructSerializers::MagicDetached(s) => s.end(),
       StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::MagicU16String(s) => s.end(),
-      StructSerializers::MagicStringOrBuffer(s) => s.end(),
       StructSerializers::MagicBigInt(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
@@ -588,9 +582,9 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
         let m = MagicalSerializer::<U16String>::new(self.scope);
         Ok(StructSerializers::MagicU16String(m))
       }
-      ZeroCopyBuf::MAGIC_NAME => {
-        let m = MagicalSerializer::<ZeroCopyBuf>::new(self.scope);
-        Ok(StructSerializers::ZeroCopyBuf(m))
+      ToJsBuffer::MAGIC_NAME => {
+        let m = MagicalSerializer::<ToJsBuffer>::new(self.scope);
+        Ok(StructSerializers::RustToV8Buf(m))
       }
       AnyValue::MAGIC_NAME => {
         let m = MagicalSerializer::<AnyValue>::new(self.scope);
@@ -599,10 +593,6 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       DetachedBuffer::MAGIC_NAME => {
         let m = MagicalSerializer::<DetachedBuffer>::new(self.scope);
         Ok(StructSerializers::MagicDetached(m))
-      }
-      StringOrBuffer::MAGIC_NAME => {
-        let m = MagicalSerializer::<StringOrBuffer>::new(self.scope);
-        Ok(StructSerializers::MagicStringOrBuffer(m))
       }
       BigInt::MAGIC_NAME => {
         let m = MagicalSerializer::<BigInt>::new(self.scope);

@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 
 const core = globalThis.__bootstrap.core;
@@ -271,6 +274,7 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  setKeepAlive() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */

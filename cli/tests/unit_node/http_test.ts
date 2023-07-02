@@ -288,7 +288,7 @@ Deno.test("[node/http] non-string buffer response", {
 });
 
 // TODO(kt3k): Enable this test
-// Currently ImcomingMessage constructor has incompatible signature.
+// Currently IncomingMessage constructor has incompatible signature.
 /*
 Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
   const message = new http.IncomingMessage(
@@ -349,6 +349,9 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestHeaders.get("content-length"), "11");
     assertEquals(requestHeaders.has("transfer-encoding"), false);
     assertEquals(requestBody, "hello world");
+  });
+  req.on("socket", (socket) => {
+    socket.setKeepAlive();
   });
   req.write("hello ");
   req.write("world");

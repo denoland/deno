@@ -115,7 +115,7 @@ async function copyTests() {
   for await (const entry of walk(VENDORED_NODE_TEST, { skip: ignoreList })) {
     const fragments = entry.path.split(sep);
     // suite is the directory name after test/. For example, if the file is
-    // "node_comapt/node/test/fixtures/policy/main.mjs"
+    // "node_compat/node/test/fixtures/policy/main.mjs"
     // then suite is "fixtures/policy"
     const suite = fragments.slice(fragments.indexOf("node_compat") + 3, -1)
       .join("/");

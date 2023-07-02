@@ -14,9 +14,10 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -1077,7 +1078,7 @@ fn op_fs_write_file_sync<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1104,7 +1105,7 @@ async fn op_fs_write_file_async<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
   cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError>
 where
@@ -1144,7 +1145,7 @@ where
 fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -1164,7 +1165,7 @@ async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
 {
