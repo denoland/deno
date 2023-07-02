@@ -5,8 +5,8 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Buffer } from "ext:deno_node/buffer.ts";
-import { Transform } from "ext:deno_node/stream.ts";
+import { Buffer } from "node:buffer";
+import { Transform } from "node:stream";
 import {
   forgivingBase64Encode as encodeToBase64,
   forgivingBase64UrlEncode as encodeToBase64Url,

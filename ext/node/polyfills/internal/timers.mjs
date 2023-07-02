@@ -14,7 +14,7 @@ const {
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { validateFunction, validateNumber } from "ext:deno_node/internal/validators.mjs";
 import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "ext:deno_node/process.ts";
+import { emitWarning } from "node:process";
 import {
   setTimeout as setTimeout_,
   clearTimeout as clearTimeout_,

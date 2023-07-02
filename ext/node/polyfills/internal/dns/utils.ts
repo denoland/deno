@@ -24,7 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
-import { emitWarning } from "ext:deno_node/process.ts";
+import { emitWarning } from "node:process";
 import {
   AI_ADDRCONFIG,
   AI_ALL,

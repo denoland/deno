@@ -4,13 +4,13 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import * as net from "ext:deno_node/net.ts";
-import EventEmitter from "ext:deno_node/events.ts";
+import * as net from "node:net";
+import EventEmitter from "node:events";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 let debug = debuglog("http", (fn) => {
   debug = fn;
 });
-import { AsyncResource } from "ext:deno_node/async_hooks.ts";
+import { AsyncResource } from "node:async_hooks";
 import { symbols } from "ext:deno_node/internal/async_hooks.ts";
 // deno-lint-ignore camelcase
 const { async_id_symbol } = symbols;
