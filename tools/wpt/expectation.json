@@ -4874,8 +4874,6 @@
         ]
       },
       "idlharness.any.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -4907,8 +4905,6 @@
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ],
       "idlharness.any.worker.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
