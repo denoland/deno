@@ -16,6 +16,7 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::NpmResolutionSnapshotPendingResolver;
 use deno_npm::resolution::NpmResolutionSnapshotPendingResolverOptions;
+use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
@@ -145,7 +146,7 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn resolve_package_cache_folder_id_from_id(
+  pub fn resolve_pkg_cache_folder_id_from_pkg_id(
     &self,
     id: &NpmPackageId,
   ) -> Option<NpmPackageCacheFolderId> {
@@ -154,6 +155,17 @@ impl NpmResolution {
       .read()
       .package_from_id(id)
       .map(|p| p.get_package_cache_folder_id())
+  }
+
+  pub fn resolve_pkg_id_from_pkg_cache_folder_id(
+    &self,
+    id: &NpmPackageCacheFolderId,
+  ) -> Result<NpmPackageId, PackageCacheFolderIdNotFoundError> {
+    self
+      .snapshot
+      .read()
+      .resolve_pkg_from_pkg_cache_folder_id(id)
+      .map(|pkg| pkg.id.clone())
   }
 
   pub fn resolve_package_from_package(
@@ -178,6 +190,21 @@ impl NpmResolution {
       .read()
       .resolve_pkg_from_pkg_req(req)
       .map(|pkg| pkg.id.clone())
+  }
+
+  pub fn resolve_pkg_reqs_from_pkg_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Vec<NpmPackageReq> {
+    let snapshot = self.snapshot.read();
+    let mut pkg_reqs = snapshot
+      .package_reqs()
+      .iter()
+      .filter(|(_, nv)| *nv == &id.nv)
+      .map(|(req, _)| req.clone())
+      .collect::<Vec<_>>();
+    pkg_reqs.sort(); // be deterministic
+    pkg_reqs
   }
 
   pub fn resolve_pkg_id_from_deno_module(

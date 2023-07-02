@@ -298,7 +298,7 @@ mod startup_snapshot {
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
       deno_web::deno_web::init_ops_and_esm::<Permissions>(
-        deno_web::BlobStore::default(),
+        Default::default(),
         Default::default(),
       ),
       deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(

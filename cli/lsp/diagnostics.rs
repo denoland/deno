@@ -721,10 +721,6 @@ pub enum DenoDiagnostic {
   NoAssertType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
-  /// A blob module was not found in the cache.
-  NoCacheBlob,
-  /// A data module was not found in the cache.
-  NoCacheData(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
   NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
   /// A local module was not found on the local file system.
@@ -749,8 +745,6 @@ impl DenoDiagnostic {
       Self::InvalidAssertType(_) => "invalid-assert-type",
       Self::NoAssertType => "no-assert-type",
       Self::NoCache(_) => "no-cache",
-      Self::NoCacheBlob => "no-cache-blob",
-      Self::NoCacheData(_) => "no-cache-data",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
       Self::Redirect { .. } => "redirect",
@@ -828,7 +822,7 @@ impl DenoDiagnostic {
           }),
           ..Default::default()
         },
-        "no-cache" | "no-cache-data" | "no-cache-npm" => {
+        "no-cache" | "no-cache-npm" => {
           let data = diagnostic
             .data
             .clone()
@@ -920,7 +914,6 @@ impl DenoDiagnostic {
         "import-map-remap"
           | "no-cache"
           | "no-cache-npm"
-          | "no-cache-data"
           | "no-assert-type"
           | "redirect"
           | "import-node-prefix-missing"
@@ -939,8 +932,6 @@ impl DenoDiagnostic {
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{specifier}\"."), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheBlob => (lsp::DiagnosticSeverity::ERROR, "Uncached blob URL.".to_string(), None),
-      Self::NoCacheData(specifier) => (lsp::DiagnosticSeverity::ERROR, "Uncached data URL.".to_string(), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{specifier}\".\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
@@ -1043,8 +1034,6 @@ fn diagnose_resolution(
         // about that.
         let deno_diagnostic = match specifier.scheme() {
           "file" => DenoDiagnostic::NoLocal(specifier.clone()),
-          "data" => DenoDiagnostic::NoCacheData(specifier.clone()),
-          "blob" => DenoDiagnostic::NoCacheBlob,
           _ => DenoDiagnostic::NoCache(specifier.clone()),
         };
         diagnostics.push(deno_diagnostic);

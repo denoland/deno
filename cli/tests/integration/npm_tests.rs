@@ -103,13 +103,13 @@ itest!(conditional_exports {
 });
 
 itest!(conditional_exports_node_modules_dir {
-    args:
-      "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
-    output: "npm/conditional_exports/main_node_modules.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    temp_cwd: true,
-  });
+  args:
+    "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
+  output: "npm/conditional_exports/main_node_modules.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+});
 
 itest!(dual_cjs_esm {
   args: "run -A --quiet npm/dual_cjs_esm/main.ts",
@@ -2021,3 +2021,10 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   assert!(node_modules_dir.join("@denotest").exists());
 }
+
+itest!(reserved_word_exports {
+  args: "run npm/reserved_word_exports/main.ts",
+  output: "npm/reserved_word_exports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
