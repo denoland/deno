@@ -4782,6 +4782,7 @@ function initializeCountSizeFunction(globalObject) {
 }
 
 async function* createAsyncFromSyncIterator(syncIterator) {
+  // deno-lint-ignore prefer-primordials
   yield* syncIterator;
 }
 
