@@ -57,6 +57,7 @@ util::unit_test_factory!(
     crypto_hash_test = crypto / crypto_hash_test,
     crypto_key_test = crypto / crypto_key_test,
     crypto_sign_test = crypto / crypto_sign_test,
+    callbackify_test = _util / _util_callbackify_test,
     fs_test,
     http_test,
     http2_test,

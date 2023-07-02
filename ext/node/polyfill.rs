@@ -143,6 +143,10 @@ pub static SUPPORTED_BUILTIN_NODE_MODULES: &[NodeModulePolyfill] = &[
     ext_specifier: "ext:deno_node/querystring.ts",
   },
   NodeModulePolyfill {
+    specifier: "node:_util/_util_callbackify",
+    ext_specifier: "ext:deno_node/_util/_util_callbackify.ts",
+  },
+  NodeModulePolyfill {
     specifier: "node:readline",
     ext_specifier: "ext:deno_node/readline.ts",
   },
