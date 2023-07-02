@@ -20,7 +20,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
@@ -1054,7 +1053,7 @@ impl Inner {
       cache_setting,
       true,
       self.http_client.clone(),
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());

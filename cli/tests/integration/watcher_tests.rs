@@ -1255,6 +1255,47 @@ async fn test_watch_unload_handler_error_on_drop() {
   check_alive_then_kill(child);
 }
 
+#[tokio::test]
+async fn run_watch_blob_urls_reset() {
+  let _g = util::http_server();
+  let t = TempDir::new();
+  let file_to_watch = t.path().join("file_to_watch.js");
+  let file_content = r#"
+    const prevUrl = localStorage.getItem("url");
+    if (prevUrl == null) {
+      console.log("first run, storing blob url");
+      const url = URL.createObjectURL(
+        new Blob(["export {}"], { type: "application/javascript" }),
+      );
+      await import(url); // this shouldn't insert into the fs module cache
+      localStorage.setItem("url", url);
+    } else {
+      await import(prevUrl)
+        .then(() => console.log("importing old blob url incorrectly works"))
+        .catch(() => console.log("importing old blob url correctly failed"));
+    }
+    "#;
+  file_to_watch.write(file_content);
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--watch")
+    .arg(&file_to_watch)
+    .env("NO_COLOR", "1")
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let (mut stdout_lines, mut stderr_lines) = child_lines(&mut child);
+  wait_contains("first run, storing blob url", &mut stdout_lines).await;
+  wait_contains("finished", &mut stderr_lines).await;
+  file_to_watch.write(file_content);
+  wait_contains("importing old blob url correctly failed", &mut stdout_lines)
+    .await;
+  wait_contains("finished", &mut stderr_lines).await;
+  check_alive_then_kill(child);
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn test_watch_sigint() {

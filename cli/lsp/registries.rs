@@ -29,7 +29,6 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
@@ -439,7 +438,7 @@ impl ModuleRegistry {
       CacheSetting::RespectHeaders,
       true,
       http_client,
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
