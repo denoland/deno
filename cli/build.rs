@@ -38,10 +38,7 @@ mod ts {
   fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
 
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|p| *p)
-      .collect::<Vec<&str>>();
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
     let build_libs = state.borrow::<Vec<&str>>();
     json!({
       "buildSpecifier": build_specifier,

@@ -888,14 +888,10 @@ impl ModuleMap {
   /// Clear the module map, meant to be used after initializing extensions.
   /// Optionally pass a list of exceptions `(old_name, new_name)` representing
   /// specifiers which will be renamed and preserved in the module map.
-  pub fn clear_module_map(
-    &mut self,
-    exceptions: impl Iterator<Item = (&'static str, &'static str)>,
-  ) {
+  pub fn clear_module_map(&mut self, exceptions: &'static [&'static str]) {
     let handles = exceptions
-      .map(|(old_name, new_name)| {
-        (self.get_handle_by_name(old_name).unwrap(), new_name)
-      })
+      .iter()
+      .map(|mod_name| (self.get_handle_by_name(mod_name).unwrap(), mod_name))
       .collect::<Vec<_>>();
     self.clear();
     for (handle, new_name) in handles {

@@ -31,7 +31,6 @@ mod resolution;
 pub use package_json::PackageJson;
 pub use path::PathClean;
 pub use polyfill::is_builtin_node_module;
-pub use polyfill::NodeModulePolyfill;
 pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
 pub use resolution::NodeModuleKind;
 pub use resolution::NodeResolution;

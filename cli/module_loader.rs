@@ -232,7 +232,7 @@ impl PreparedModuleLoader {
     maybe_referrer: Option<&ModuleSpecifier>,
   ) -> Result<ModuleCodeSource, AnyError> {
     if specifier.scheme() == "node" {
-      unreachable!("Trying to load {}", specifier); // Node built-in modules should be handled internally.
+      unreachable!(); // Node built-in modules should be handled internally.
     }
 
     let graph = self.graph_container.graph();

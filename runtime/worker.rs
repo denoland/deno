@@ -34,6 +34,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
@@ -313,58 +314,9 @@ impl MainWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
-    // Clear extension modules from the module map, except preserve `ext:deno_node`
-    // modules as `node:` specifiers.
-    let rename_modules = Some(vec![
-      ("node:assert", "node:assert"),
-      ("node:assert/strict", "node:assert/strict"),
-      ("node:async_hooks", "node:async_hooks"),
-      ("node:buffer", "node:buffer"),
-      ("node:child_process", "node:child_process"),
-      ("node:cluster", "node:cluster"),
-      ("node:console", "node:console"),
-      ("node:constants", "node:constants"),
-      ("node:crypto", "node:crypto"),
-      ("node:dgram", "node:dgram"),
-      ("node:diagnostics_channel", "node:diagnostics_channel"),
-      ("node:dns", "node:dns"),
-      ("node:dns/promises", "node:dns/promises"),
-      ("node:domain", "node:domain"),
-      ("node:events", "node:events"),
-      ("node:fs", "node:fs"),
-      ("node:fs/promises", "node:fs/promises"),
-      ("node:http", "node:http"),
-      ("node:http2", "node:http2"),
-      ("node:https", "node:https"),
-      ("node:module", "node:module"),
-      ("node:net", "node:net"),
-      ("node:os", "node:os"),
-      ("node:path", "node:path"),
-      ("node:path/posix", "node:path/posix"),
-      ("node:path/win32", "node:path/win32"),
-      ("node:perf_hooks", "node:perf_hooks"),
-      ("node:process", "node:process"),
-      ("node:punycode", "node:punycode"),
-      ("node:querystring", "node:querystring"),
-      ("node:readline", "node:readline"),
-      ("node:stream", "node:stream"),
-      ("node:stream/consumers", "node:stream/consumers"),
-      ("node:stream/promises", "node:stream/promises"),
-      ("node:stream/web", "node:stream/web"),
-      ("node:string_decoder", "node:string_decoder"),
-      ("node:sys", "node:sys"),
-      ("node:timers", "node:timers"),
-      ("node:timers/promises", "node:timers/promises"),
-      ("node:tls", "node:tls"),
-      ("node:tty", "node:tty"),
-      ("node:url", "node:url"),
-      ("node:util", "node:util"),
-      ("node:util/types", "node:util/types"),
-      ("node:v8", "node:v8"),
-      ("node:vm", "node:vm"),
-      ("node:worker_threads", "node:worker_threads"),
-      ("node:zlib", "node:zlib"),
-    ]);
+    // Clear extension modules from the module map, except preserve `node:*`
+    // modules.
+    let preserve_snapshotted_modules = Some(SUPPORTED_BUILTIN_NODE_MODULES);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -375,7 +327,7 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
-      rename_modules,
+      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
