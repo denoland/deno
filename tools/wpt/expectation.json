@@ -2496,7 +2496,9 @@
       "owning-type-message-port.any.html": false,
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
-      "owning-type.any.worker.html": false
+      "owning-type.any.worker.html": false,
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
