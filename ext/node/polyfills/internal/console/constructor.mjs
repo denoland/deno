@@ -28,7 +28,7 @@ const previewEntries = (iter, isKeyValue) => {
     return [...iter];
   }
 };
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
 import { formatWithOptions, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import {

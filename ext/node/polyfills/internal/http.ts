@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { setUnrefTimeout } from "ext:deno_node/timers.ts";
+import { setUnrefTimeout } from "node:timers";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 let utcCache: string | undefined;

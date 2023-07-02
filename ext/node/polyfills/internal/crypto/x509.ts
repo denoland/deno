@@ -5,7 +5,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { KeyObject } from "ext:deno_node/internal/crypto/keys.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";

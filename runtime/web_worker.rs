@@ -38,6 +38,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
 use deno_web::BlobStore;
@@ -484,14 +485,10 @@ impl WebWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
-    // Clear extension modules from the module map, except preserve `ext:deno_node`
+    // Clear extension modules from the module map, except preserve `node:*`
     // modules as `node:` specifiers.
-    let rename_modules = Some(
-      deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-        .iter()
-        .map(|p| (p.ext_specifier, p.specifier))
-        .collect(),
-    );
+    let preserve_snapshotted_modules =
+      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
@@ -502,7 +499,7 @@ impl WebWorker {
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
       inspector: options.maybe_inspector_server.is_some(),
-      rename_modules,
+      preserve_snapshotted_modules,
       ..Default::default()
     });
 
