@@ -44,11 +44,15 @@ To grant permissions, set them before the script argument. For example:
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
-  super::upgrade::check_for_upgrades(
-    http_client.clone(),
-    deno_dir.upgrade_check_file_path(),
-  )
-  .await;
+  if Some(())
+    == super::upgrade::check_for_upgrades(
+      http_client.clone(),
+      deno_dir.upgrade_check_file_path(),
+    )
+    .await
+  {
+    return Ok(0);
+  }
 
   let main_module = cli_options.resolve_main_module()?;
 

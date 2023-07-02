@@ -188,9 +188,9 @@ fn print_release_notes(current_version: &str, new_version: &str) {
 pub async fn check_for_upgrades(
   http_client: Arc<HttpClient>,
   cache_file_path: PathBuf,
-) {
+) -> Option<()> {
   if env::var("DENO_NO_UPDATE_CHECK").is_ok() {
-    return;
+    return None;
   }
 
   let env = RealUpdateCheckerEnvironment::new(http_client, cache_file_path);
@@ -210,12 +210,9 @@ pub async fn check_for_upgrades(
 
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    let auto_upgrade_env = match env::var("DENO_AUTO_UPGRADE") {
-      Ok(env_var) => env_var,
-      Err(_) => String::from(""),
-    };
+    let auto_upgrade_env = env::var("DENO_AUTO_UPGRADE").is_ok();
     if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
-      if auto_upgrade_env != "1" {
+      if !auto_upgrade_env {
         if version::is_canary() {
           eprint!(
             "{} ",
@@ -237,21 +234,10 @@ pub async fn check_for_upgrades(
             colors::italic_gray("Run `deno upgrade` to install it.")
           );
         }
-
-        if !auto_upgrade_env.is_empty() {
-          eprintln!(
-            "{} ",
-            colors::yellow(
-              "Auto-upgrade value is set incorrectly, skipping for now."
-            )
-          );
-          eprintln!(
-            "{} ",
-            colors::yellow("To use it, set `DENO_AUTO_UPGRADE=1`")
-          );
-          return;
-        }
-
+        eprintln!(
+          "{} ",
+          colors::cyan("Use `DENO_AUTO_UPGRADE=true` to enable auto upgrades")
+        );
         update_checker.store_prompted();
       } else {
         if version::is_canary() {
@@ -293,15 +279,17 @@ pub async fn check_for_upgrades(
 
         match upgrade_result {
           Ok(_) => {
-            eprintln!("{}", colors::green("Auto-upgrade successful!"));
+            eprintln!("{}", colors::green("Auto-upgrade successful! Exiting, please re-run Deno command to use latest version "));
+            return Some(());
           }
           Err(_) => {
             eprintln!("{}", colors::red("Auto-upgrade failed, skipping..."));
           }
-        };
+        }
       }
     }
   }
+  None
 }
 
 async fn fetch_and_store_latest_version<
