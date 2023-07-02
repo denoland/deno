@@ -17,7 +17,6 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
-  use deno_core::ExtensionFileSourceCode;
   use deno_core::ModuleCode;
   use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
@@ -25,17 +24,9 @@ mod startup_snapshot {
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
   ) -> Result<ModuleCode, AnyError> {
+    // Always transpile `node:` built-in modules, since they might be TypeScript.
     let media_type = if file_source.specifier.starts_with("node:") {
-      match &file_source.code {
-        ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) => {
-          if path.extension().unwrap() == "ts" {
-            MediaType::TypeScript
-          } else {
-            MediaType::JavaScript
-          }
-        }
-        _ => MediaType::JavaScript,
-      }
+      MediaType::TypeScript
     } else {
       MediaType::from_path(Path::new(&file_source.specifier))
     };
