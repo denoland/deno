@@ -214,7 +214,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c704e2f6ee1a98223f5a7629a6ef0f3decb3b552ed282889dc957edff98ce1e6"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -356,15 +356,6 @@ name = "base64ct"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c3c1a368f70d6cf7302d78f8f7093da241fb8e8807c05cc9e51a125895a6d5b"
-
-[[package]]
-name = "basic-toml"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c0de75129aa8d0cceaf750b89013f0e08804d6ec61416da787b35ad0d7cddf1"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "bencher"
@@ -606,12 +597,6 @@ name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
-
-[[package]]
-name = "cooked-waker"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "147be55d677052dabc6b22252d5dd0fd4c29c8c27aa4f2fbef0f94aa003b406f"
 
 [[package]]
 name = "core-foundation"
@@ -973,12 +958,12 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.191.0"
+version = "0.193.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d7eeb863655f377ffe22d5a90f01d1b57b4d4ad0acbfeec266d5d3faf4cd1cf"
 dependencies = [
  "anyhow",
  "bytes",
- "cooked-waker",
- "deno_ast",
  "deno_ops",
  "futures",
  "indexmap",
@@ -1346,14 +1331,14 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.69.0"
+version = "0.71.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dd95626e113f292ce758f216bb12e50c9c58e886195bcd85231e715c73d6470"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
  "once_cell",
- "pmutil 0.5.3",
- "pretty_assertions",
- "prettyplease",
+ "pmutil",
  "proc-macro-crate",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
@@ -1362,9 +1347,7 @@ dependencies = [
  "strum_macros",
  "syn 1.0.109",
  "syn 2.0.18",
- "testing_macros",
  "thiserror",
- "trybuild",
  "v8",
 ]
 
@@ -2114,7 +2097,7 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d449976075322384507443937df2f1d5577afbf4282f12a5a66ef29fa3e6307"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "swc_macros_common",
  "syn 1.0.109",
@@ -2682,7 +2665,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7d079e129b77477a49c5c4f1cfe9ce6c2c909ef52520693e8e811a714c7b20"
 dependencies = [
  "Inflector",
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "syn 1.0.109",
@@ -3644,17 +3627,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pmutil"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52a40bc70c2c58040d2d8b167ba9a5ff59fc9dab7ad44771cfde3dcfde7a09c6"
-dependencies = [
- "proc-macro2 1.0.60",
- "quote 1.0.28",
- "syn 2.0.18",
-]
-
-[[package]]
 name = "polyval"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3688,16 +3660,6 @@ dependencies = [
  "diff",
  "output_vt100",
  "yansi",
-]
-
-[[package]]
-name = "prettyplease"
-version = "0.1.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c8646e95016a7a6c4adea95bafa8a16baab64b583356217f2c85db4a39d9a86"
-dependencies = [
- "proc-macro2 1.0.60",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -4404,15 +4366,15 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.102.0"
+version = "0.104.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2481189a5019f43a6b68620193578623701323754409555c36588c81ee2487de"
 dependencies = [
- "bencher",
  "bytes",
  "derive_more",
  "num-bigint",
  "serde",
  "serde_bytes",
- "serde_json",
  "smallvec",
  "thiserror",
  "v8",
@@ -4648,7 +4610,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0090512bdfee4b56d82480d66c0fd8a6f53f0fe0f97e075e949b252acdd482e0"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -4780,7 +4742,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7dadb9998d4f5fc36ef558ed5a092579441579ee8c6fcce84a5228cca9df4004"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -4829,7 +4791,7 @@ version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf4ee0caee1018808d94ecd09490cb7affd3d504b19aa11c49238f5fc4b54901"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -4925,7 +4887,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "984d5ac69b681fc5438f9abf82b0fda34fe04e119bc75f8213b7e01128c7c9a2"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -5056,7 +5018,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c20468634668c2bbab581947bb8c75c97158d5a6959f4ba33df20983b20b4f6"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "syn 1.0.109",
@@ -5093,7 +5055,7 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e582c3e3c2269238524923781df5be49e011dbe29cf7683a2215d600a562ea6"
 dependencies = [
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "syn 1.0.109",
@@ -5116,7 +5078,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cfc226380ba54a5feed2c12f3ccd33f1ae8e959160290e5d2d9b4e918b6472a"
 dependencies = [
  "Inflector",
- "pmutil 0.5.3",
+ "pmutil",
  "proc-macro2 1.0.60",
  "quote 1.0.28",
  "swc_macros_common",
@@ -5253,23 +5215,6 @@ dependencies = [
  "tokio-rustls",
  "url",
  "winapi",
-]
-
-[[package]]
-name = "testing_macros"
-version = "0.2.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1f390ac254ba29b41d9d044e327e626756952a56a20be6add636c77a2645cef"
-dependencies = [
- "anyhow",
- "glob",
- "once_cell",
- "pmutil 0.6.1",
- "proc-macro2 1.0.60",
- "quote 1.0.28",
- "regex",
- "relative-path",
- "syn 2.0.18",
 ]
 
 [[package]]
@@ -5660,21 +5605,6 @@ name = "try-lock"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
-
-[[package]]
-name = "trybuild"
-version = "1.0.80"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "501dbdbb99861e4ab6b60eb6a7493956a9defb644fd034bc4a5ef27c693c8a3a"
-dependencies = [
- "basic-toml",
- "glob",
- "once_cell",
- "serde",
- "serde_derive",
- "serde_json",
- "termcolor",
-]
 
 [[package]]
 name = "twox-hash"

@@ -38,6 +38,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
+use super::analysis::TsResponseImportMapper;
 use super::cache;
 use super::capabilities;
 use super::client::Client;
@@ -2029,7 +2030,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.documents,
+          &self.get_ts_response_import_mapper(),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
@@ -2079,6 +2080,14 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
+    TsResponseImportMapper::new(
+      &self.documents,
+      &self.npm.resolution,
+      &self.npm.resolver,
+    )
   }
 
   async fn code_lens(

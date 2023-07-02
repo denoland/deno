@@ -4041,25 +4041,9 @@
         "headers-record.any.worker.html": true,
         "headers-structure.any.worker.html": true,
         "header-setcookie.any.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ],
         "header-setcookie.any.worker.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ]
       },
@@ -4890,8 +4874,6 @@
         ]
       },
       "idlharness.any.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -4923,8 +4905,6 @@
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ],
       "idlharness.any.worker.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
