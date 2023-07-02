@@ -4,7 +4,6 @@ import { createRequire, Module } from "node:module";
 import {
   assert,
   assertEquals,
-  assertThrows,
 } from "../../../test_util/std/testing/asserts.ts";
 import process from "node:process";
 import * as path from "node:path";
