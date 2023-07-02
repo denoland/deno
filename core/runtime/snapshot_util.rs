@@ -4,9 +4,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::runtime::jsruntime::BUILTIN_SOURCES;
 use crate::runtime::RuntimeSnapshotOptions;
 use crate::ExtModuleLoaderCb;
 use crate::Extension;
+use crate::ExtensionFileSourceCode;
 use crate::JsRuntimeForSnapshot;
 use crate::RuntimeOptions;
 use crate::Snapshot;
@@ -52,14 +54,19 @@ pub fn create_snapshot(
   mark = Instant::now();
 
   let mut files_loaded_during_snapshot = vec![];
+  for source in &*BUILTIN_SOURCES {
+    if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
+      &source.code
+    {
+      files_loaded_during_snapshot.push(path.clone());
+    }
+  }
   for source in js_runtime
     .extensions()
     .iter()
     .flat_map(|e| vec![e.get_esm_sources(), e.get_js_sources()])
     .flatten()
-    .flatten()
   {
-    use crate::ExtensionFileSourceCode;
     if let ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(path) =
       &source.code
     {
