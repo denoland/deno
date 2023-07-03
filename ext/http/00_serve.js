@@ -434,7 +434,10 @@ async function asyncResponse(responseBodies, req, status, stream) {
       //
       // To avoid this, we're going to swallow errors here and allow the code later in the
       // file to re-throw them in a way that doesn't appear to be an uncaught promise rejection.
-      timeoutPromise = core.writeAll(responseRid, value1).catch(() => null);
+      timeoutPromise = PromisePrototypeCatch(
+        core.writeAll(responseRid, value1),
+        () => null,
+      );
     }, 250);
     const { value: value2, done: done2 } = await reader.read();
 
