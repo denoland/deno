@@ -202,7 +202,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{export}\"]"),
+          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -460,7 +460,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
+      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
+      escape_for_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -518,6 +519,9 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
+fn escape_for_double_quote_string(text: &str) -> String {
+  text.replace('\\', "\\\\").replace('"', "\\\"")
+}
 #[cfg(test)]
 mod tests {
   use super::*;

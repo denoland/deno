@@ -22,6 +22,8 @@ use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
+use deno_semver::npm::NpmPackageReq;
+use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::cmp::Ordering;
@@ -157,6 +159,7 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 /// Rewrites imports in quick fixes and code changes to be Deno specific.
 pub struct TsResponseImportMapper<'a> {
   documents: &'a Documents,
+  maybe_import_map: Option<&'a ImportMap>,
   npm_resolution: &'a NpmResolution,
   npm_resolver: &'a CliNpmResolver,
 }
@@ -164,37 +167,81 @@ pub struct TsResponseImportMapper<'a> {
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
     documents: &'a Documents,
+    maybe_import_map: Option<&'a ImportMap>,
     npm_resolution: &'a NpmResolution,
     npm_resolver: &'a CliNpmResolver,
   ) -> Self {
     Self {
       documents,
+      maybe_import_map,
       npm_resolution,
       npm_resolver,
     }
   }
 
-  pub fn check_specifier(&self, specifier: &ModuleSpecifier) -> Option<String> {
+  pub fn check_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
+    fn concat_npm_specifier(
+      prefix: &str,
+      pkg_req: &NpmPackageReq,
+      sub_path: Option<&str>,
+    ) -> String {
+      let result = format!("{}{}", prefix, pkg_req);
+      match sub_path {
+        Some(path) => format!("{}/{}", result, path),
+        None => result,
+      }
+    }
+
     if self.npm_resolver.in_npm_package(specifier) {
       if let Ok(pkg_id) = self
         .npm_resolver
         .resolve_package_id_from_specifier(specifier)
       {
-        // todo(dsherret): once supporting an import map, we should prioritize which
-        // pkg requirement we use, based on what's specified in the import map
-        if let Some(pkg_req) = self
-          .npm_resolution
-          .resolve_pkg_reqs_from_pkg_id(&pkg_id)
-          .first()
-        {
-          let result = format!("npm:{}", pkg_req);
-          return Some(match self.resolve_package_path(specifier) {
-            Some(path) => format!("{}/{}", result, path),
-            None => result,
-          });
+        let pkg_reqs =
+          self.npm_resolution.resolve_pkg_reqs_from_pkg_id(&pkg_id);
+        // check if any pkg reqs match what is found in an import map
+        if !pkg_reqs.is_empty() {
+          let sub_path = self.resolve_package_path(specifier);
+          if let Some(import_map) = self.maybe_import_map {
+            for pkg_req in &pkg_reqs {
+              let paths = vec![
+                concat_npm_specifier("npm:", pkg_req, sub_path.as_deref()),
+                concat_npm_specifier("npm:/", pkg_req, sub_path.as_deref()),
+              ];
+              for path in paths {
+                if let Some(mapped_path) = ModuleSpecifier::parse(&path)
+                  .ok()
+                  .and_then(|s| import_map.lookup(&s, referrer))
+                {
+                  return Some(mapped_path);
+                }
+              }
+            }
+          }
+
+          // if not found in the import map, return the first pkg req
+          if let Some(pkg_req) = pkg_reqs.first() {
+            return Some(concat_npm_specifier(
+              "npm:",
+              pkg_req,
+              sub_path.as_deref(),
+            ));
+          }
         }
       }
     }
+
+    // check if the import map has this specifier
+    if let Some(import_map) = self.maybe_import_map {
+      if let Some(result) = import_map.lookup(specifier, referrer) {
+        return Some(result);
+      }
+    }
+
     None
   }
 
@@ -238,13 +285,13 @@ impl<'a> TsResponseImportMapper<'a> {
   /// Iterate over the supported extensions, concatenating the extension on the
   /// specifier, returning the first specifier that is resolve-able, otherwise
   /// None if none match.
-  pub fn check_specifier_with_referrer(
+  pub fn check_unresolved_specifier(
     &self,
     specifier: &str,
     referrer: &ModuleSpecifier,
   ) -> Option<String> {
     if let Ok(specifier) = referrer.join(specifier) {
-      if let Some(specifier) = self.check_specifier(&specifier) {
+      if let Some(specifier) = self.check_specifier(&specifier, referrer) {
         return Some(specifier);
       }
     }
@@ -338,7 +385,7 @@ pub fn fix_ts_import_changes(
           if let Some(captures) = IMPORT_SPECIFIER_RE.captures(line) {
             let specifier = captures.get(1).unwrap().as_str();
             if let Some(new_specifier) =
-              import_mapper.check_specifier_with_referrer(specifier, referrer)
+              import_mapper.check_unresolved_specifier(specifier, referrer)
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -387,7 +434,7 @@ fn fix_ts_import_action(
         .ok_or_else(|| anyhow!("Missing capture."))?
         .as_str();
       if let Some(new_specifier) =
-        import_mapper.check_specifier_with_referrer(specifier, referrer)
+        import_mapper.check_unresolved_specifier(specifier, referrer)
       {
         let description = action.description.replace(specifier, &new_specifier);
         let changes = action
