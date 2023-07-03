@@ -598,11 +598,13 @@ pub fn op_ws_loop(
                 // No message was received, socket closed while we waited.
                 // Report closed status to JavaScript.
                 if resource.closed.get() {
-                  return MessageKind::ClosedDefault as u16;
+                  cb.call(MessageKind::ClosedDefault as u16, None);
+                  return;
                 }
 
                 resource.set_error(Some(err.to_string()));
-                return MessageKind::Error as u16;
+                cb.call(MessageKind::Error as u16, None);
+                return;
               }
             };
 
@@ -646,7 +648,9 @@ pub fn op_ws_loop(
           }
         };
 
-        cb.call(res, data);
+        if cb.call(res, data) {
+          break;
+        }
       }
     })
   });
@@ -830,7 +834,7 @@ mod event {
     }
 
     // SAFETY: Must be called from the same thread as the isolate.
-    pub unsafe fn call(&self, value: u16, mut data: Option<Vec<u8>>) {
+    pub unsafe fn call(&self, value: u16, mut data: Option<Vec<u8>>) -> bool {
       let js_cb = &mut *self.js_cb;
       let isolate = &mut *self.isolate;
       let context = {
@@ -845,9 +849,11 @@ mod event {
       if let Some(buf) = data.take() {
         let bs = v8::ArrayBuffer::new_backing_store_from_vec(buf).make_shared();
         let value = v8::ArrayBuffer::with_backing_store(scope, &bs);
-        let _ = js_cb.call(scope, recv, &[kind.into(), value.into()]);
+        let res = js_cb.call(scope, recv, &[kind.into(), value.into()]);
+        res.map(|v| v.is_true()).unwrap_or(false)
       } else {
-        let _ = js_cb.call(scope, recv, &[kind.into()]);
+        let res = js_cb.call(scope, recv, &[kind.into()]);
+        res.map(|v| v.is_true()).unwrap_or(false)
       }
     }
   }
