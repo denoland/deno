@@ -25,7 +25,7 @@ declare interface URLSearchParams {
    * searchParams.delete('name');
    * ```
    */
-  delete(name: string): void;
+  delete(name: string, value?: string): void;
 
   /** Returns all the values associated with a given search parameter
    * as an array.
@@ -51,7 +51,7 @@ declare interface URLSearchParams {
    * searchParams.has('name');
    * ```
    */
-  has(name: string): boolean;
+  has(name: string, value?: string): boolean;
 
   /** Sets the value associated with a given search parameter to the
    * given value. If there were several matching values, this method

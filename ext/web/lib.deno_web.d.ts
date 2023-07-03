@@ -805,6 +805,9 @@ declare var ReadableStream: {
     underlyingSource?: UnderlyingSource<R>,
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
+  from<R>(
+    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>>,
+  ): ReadableStream<R>;
 };
 
 /** @category Streams API */

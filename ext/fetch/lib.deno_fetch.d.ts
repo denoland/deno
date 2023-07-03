@@ -104,6 +104,10 @@ declare interface Headers extends DomIterable<string, string> {
    * the header if it does not already exist.
    */
   set(name: string, value: string): void;
+  /** Returns an array containing the values of all `Set-Cookie` headers
+   * associated with a response.
+   */
+  getSetCookie(): string[];
 }
 
 /** This Fetch API interface allows you to perform various actions on HTTP
