@@ -322,7 +322,11 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+    if (ArrayBufferIsView(data)) {
+      op_ws_send_binary(this[_rid], data);
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      op_ws_send_binary(this[_rid], new Uint8Array(data));
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
@@ -332,10 +336,6 @@ class WebSocket extends EventTarget {
             new DataView(ab),
           ),
       );
-    } else if (ArrayBufferIsView(data)) {
-      op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      op_ws_send_binary(this[_rid], data);
     } else {
       const string = String(data);
       op_ws_send_text(
@@ -411,10 +411,9 @@ class WebSocket extends EventTarget {
 
   async [_eventLoop]() {
     const rid = this[_rid];
-    while (this[_readyState] !== CLOSED) {
-      const kind = await op_ws_next_event(rid);
-
-      switch (kind) {
+	op_ws_next_event(rid, (kind, buffer) => {
+    if (this[_readyState] !== CLOSED) {
+switch (kind) {
         case 0: {
           /* string */
           this[_serverHandleIdleTimeout]();
@@ -429,7 +428,6 @@ class WebSocket extends EventTarget {
           /* binary */
           this[_serverHandleIdleTimeout]();
           // deno-lint-ignore prefer-primordials
-          const buffer = op_ws_get_buffer(rid).buffer;
           let data;
           if (this.binaryType === "blob") {
             data = new Blob([buffer]);
@@ -474,7 +472,7 @@ class WebSocket extends EventTarget {
 
           if (prevState === OPEN) {
             try {
-              await op_ws_close(
+               op_ws_close(
                 rid,
                 code,
                 reason,
@@ -494,7 +492,9 @@ class WebSocket extends EventTarget {
           break;
         }
       }
-    }
+          }
+      });
+
   }
 
   [_serverHandleIdleTimeout]() {
