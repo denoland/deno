@@ -584,8 +584,8 @@ pub fn op_ws_loop(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
 
+  // SAFETY: Future runs on the main thread.
   tokio::task::spawn(unsafe {
-    // SAFETY: Future runs on the main thread.
     MaskFutureAsSend::new(async move {
       loop {
         let mut data = None;
@@ -831,16 +831,15 @@ mod event {
 
     // SAFETY: Must be called from the same thread as the isolate.
     pub unsafe fn call(&self, value: u16, mut data: Option<Vec<u8>>) {
-      let js_cb = unsafe { &mut *self.js_cb };
-      let isolate = unsafe { &mut *self.isolate };
-      let context = unsafe {
+      let js_cb = &mut *self.js_cb;
+      let isolate = &mut *self.isolate;
+      let context = {
         std::mem::transmute::<*mut v8::Context, v8::Local<v8::Context>>(
           self.context,
         )
       };
 
       let recv = v8::undefined(isolate).into();
-      // let scope = &mut unsafe { v8::CallbackScope::new(context) };
       let scope = &mut v8::HandleScope::with_context(isolate, context);
       let kind = v8::Integer::new_from_unsigned(scope, value.into());
       if let Some(buf) = data.take() {
@@ -852,8 +851,4 @@ mod event {
       }
     }
   }
-
-  // SAFETY: JsCb is Send + Sync to bypass restrictions in tokio::spawn.
-  unsafe impl Send for JsCb {}
-  unsafe impl Sync for JsCb {}
 }

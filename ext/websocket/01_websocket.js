@@ -326,6 +326,7 @@ class WebSocket extends EventTarget {
     if (ArrayBufferIsView(data)) {
       op_ws_send_binary(this[_rid], data);
     } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      // deno-lint-ignore prefer-primordials
       op_ws_send_binary(this[_rid], new Uint8Array(data));
     } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
@@ -428,7 +429,6 @@ class WebSocket extends EventTarget {
           case 1: {
             /* binary */
             this[_serverHandleIdleTimeout]();
-            // deno-lint-ignore prefer-primordials
             let data;
             if (this.binaryType === "blob") {
               data = new Blob([buffer]);
