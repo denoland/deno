@@ -2493,6 +2493,53 @@ mod tests {
         ..Permissions::new_hrtime(false, false)
       },
     };
+    let perms3 = Permissions {
+      read: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_read(
+          &None,
+          &Some(vec![PathBuf::from("/foo")]),
+          false,
+        )
+        .unwrap()
+      },
+      write: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_write(
+          &None,
+          &Some(vec![PathBuf::from("/foo")]),
+          false,
+        )
+        .unwrap()
+      },
+      ffi: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_ffi(&None, &Some(vec![PathBuf::from("/foo")]), false)
+          .unwrap()
+      },
+
+      net: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_net(&None, &Some(svec!["127.0.0.1:8000"]), false)
+          .unwrap()
+      },
+      env: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_env(&None, &Some(svec!["HOME"]), false).unwrap()
+      },
+      sys: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_sys(&None, &Some(svec!["hostname"]), false).unwrap()
+      },
+      run: UnaryPermission {
+        granted_global: false,
+        ..Permissions::new_run(&None, &Some(svec!["deno"]), false).unwrap()
+      },
+      hrtime: UnitPermission {
+        state: PermissionState::Prompt,
+        ..Permissions::new_hrtime(false, true)
+      },
+    };
     #[rustfmt::skip]
     {
       assert_eq!(perms1.read.query(None), PermissionState::Granted);
@@ -2500,34 +2547,52 @@ mod tests {
       assert_eq!(perms2.read.query(None), PermissionState::Prompt);
       assert_eq!(perms2.read.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.read.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms3.read.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.read.query(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms3.read.query(Some(Path::new("/foo/bar"))), PermissionState::Denied);
       assert_eq!(perms1.write.query(None), PermissionState::Granted);
       assert_eq!(perms1.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(None), PermissionState::Prompt);
       assert_eq!(perms2.write.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.write.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms3.write.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.write.query(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms3.write.query(Some(Path::new("/foo/bar"))), PermissionState::Denied);
       assert_eq!(perms1.ffi.query(None), PermissionState::Granted);
       assert_eq!(perms1.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(None), PermissionState::Prompt);
       assert_eq!(perms2.ffi.query(Some(Path::new("/foo"))), PermissionState::Granted);
       assert_eq!(perms2.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Granted);
+      assert_eq!(perms3.ffi.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.ffi.query(Some(Path::new("/foo"))), PermissionState::Denied);
+      assert_eq!(perms3.ffi.query(Some(Path::new("/foo/bar"))), PermissionState::Denied);
       assert_eq!(perms1.net.query::<&str>(None), PermissionState::Granted);
       assert_eq!(perms1.net.query(Some(&("127.0.0.1", None))), PermissionState::Granted);
       assert_eq!(perms2.net.query::<&str>(None), PermissionState::Prompt);
       assert_eq!(perms2.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Granted);
+      assert_eq!(perms3.net.query::<&str>(None), PermissionState::Prompt);
+      assert_eq!(perms3.net.query(Some(&("127.0.0.1", Some(8000)))), PermissionState::Denied);
       assert_eq!(perms1.env.query(None), PermissionState::Granted);
       assert_eq!(perms1.env.query(Some("HOME")), PermissionState::Granted);
       assert_eq!(perms2.env.query(None), PermissionState::Prompt);
       assert_eq!(perms2.env.query(Some("HOME")), PermissionState::Granted);
+      assert_eq!(perms3.env.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.env.query(Some("HOME")), PermissionState::Denied);
       assert_eq!(perms1.sys.query(None), PermissionState::Granted);
       assert_eq!(perms1.sys.query(Some("HOME")), PermissionState::Granted);
-      assert_eq!(perms2.env.query(None), PermissionState::Prompt);
+      assert_eq!(perms2.sys.query(None), PermissionState::Prompt);
       assert_eq!(perms2.sys.query(Some("hostname")), PermissionState::Granted);
+      assert_eq!(perms3.sys.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.sys.query(Some("hostname")), PermissionState::Denied);
       assert_eq!(perms1.run.query(None), PermissionState::Granted);
       assert_eq!(perms1.run.query(Some("deno")), PermissionState::Granted);
       assert_eq!(perms2.run.query(None), PermissionState::Prompt);
       assert_eq!(perms2.run.query(Some("deno")), PermissionState::Granted);
+      assert_eq!(perms3.run.query(None), PermissionState::Prompt);
+      assert_eq!(perms3.run.query(Some("deno")), PermissionState::Denied);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
+      // assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
     };
   }
 
