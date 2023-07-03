@@ -53,6 +53,7 @@ const {
   op_ws_send_binary,
   op_ws_send_text,
   op_ws_next_event,
+  op_ws_loop,
   op_ws_get_buffer,
   op_ws_get_buffer_as_string,
   op_ws_get_error,
@@ -411,90 +412,89 @@ class WebSocket extends EventTarget {
 
   async [_eventLoop]() {
     const rid = this[_rid];
-	op_ws_next_event(rid, (kind, buffer) => {
-    if (this[_readyState] !== CLOSED) {
-switch (kind) {
-        case 0: {
-          /* string */
-          this[_serverHandleIdleTimeout]();
-          const event = new MessageEvent("message", {
-            data: op_ws_get_buffer_as_string(rid),
-            origin: this[_url],
-          });
-          dispatch(this, event);
-          break;
-        }
-        case 1: {
-          /* binary */
-          this[_serverHandleIdleTimeout]();
-          // deno-lint-ignore prefer-primordials
-          let data;
-          if (this.binaryType === "blob") {
-            data = new Blob([buffer]);
-          } else {
-            data = buffer;
+    op_ws_loop(rid, (kind, buffer) => {
+      if (this[_readyState] !== CLOSED) {
+        switch (kind) {
+          case 0: {
+            /* string */
+            this[_serverHandleIdleTimeout]();
+            const event = new MessageEvent("message", {
+              data: op_ws_get_buffer_as_string(rid),
+              origin: this[_url],
+            });
+            dispatch(this, event);
+            break;
           }
-
-          const event = new MessageEvent("message", {
-            data,
-            origin: this[_url],
-            [_skipInternalInit]: true,
-          });
-          dispatch(this, event);
-          break;
-        }
-        case 2: {
-          /* pong */
-          this[_serverHandleIdleTimeout]();
-          break;
-        }
-        case 3: {
-          /* error */
-          this[_readyState] = CLOSED;
-
-          const errorEv = new ErrorEvent("error", {
-            message: op_ws_get_error(rid),
-          });
-          this.dispatchEvent(errorEv);
-
-          const closeEv = new CloseEvent("close");
-          this.dispatchEvent(closeEv);
-          core.tryClose(rid);
-          break;
-        }
-        default: {
-          /* close */
-          const code = kind;
-          const reason = code == 1005 ? "" : op_ws_get_error(rid);
-          const prevState = this[_readyState];
-          this[_readyState] = CLOSED;
-          clearTimeout(this[_idleTimeoutTimeout]);
-
-          if (prevState === OPEN) {
-            try {
-               op_ws_close(
-                rid,
-                code,
-                reason,
-              );
-            } catch {
-              // ignore failures
+          case 1: {
+            /* binary */
+            this[_serverHandleIdleTimeout]();
+            // deno-lint-ignore prefer-primordials
+            let data;
+            if (this.binaryType === "blob") {
+              data = new Blob([buffer]);
+            } else {
+              data = buffer;
             }
-          }
 
-          const event = new CloseEvent("close", {
-            wasClean: true,
-            code: code,
-            reason,
-          });
-          this.dispatchEvent(event);
-          core.tryClose(rid);
-          break;
+            const event = new MessageEvent("message", {
+              data,
+              origin: this[_url],
+              [_skipInternalInit]: true,
+            });
+            dispatch(this, event);
+            break;
+          }
+          case 2: {
+            /* pong */
+            this[_serverHandleIdleTimeout]();
+            break;
+          }
+          case 3: {
+            /* error */
+            this[_readyState] = CLOSED;
+
+            const errorEv = new ErrorEvent("error", {
+              message: op_ws_get_error(rid),
+            });
+            this.dispatchEvent(errorEv);
+
+            const closeEv = new CloseEvent("close");
+            this.dispatchEvent(closeEv);
+            core.tryClose(rid);
+            break;
+          }
+          default: {
+            /* close */
+            const code = kind;
+            const reason = code == 1005 ? "" : op_ws_get_error(rid);
+            const prevState = this[_readyState];
+            this[_readyState] = CLOSED;
+            clearTimeout(this[_idleTimeoutTimeout]);
+
+            if (prevState === OPEN) {
+              try {
+                op_ws_close(
+                  rid,
+                  code,
+                  reason,
+                );
+              } catch {
+                // ignore failures
+              }
+            }
+
+            const event = new CloseEvent("close", {
+              wasClean: true,
+              code: code,
+              reason,
+            });
+            this.dispatchEvent(event);
+            core.tryClose(rid);
+            break;
+          }
         }
       }
-          }
-      });
-
+    });
   }
 
   [_serverHandleIdleTimeout]() {

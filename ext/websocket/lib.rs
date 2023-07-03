@@ -5,7 +5,10 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::serde_v8;
+use deno_core::task::MaskFutureAsSend;
 use deno_core::url;
+use deno_core::v8;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -566,40 +569,111 @@ pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
   resource.errored.set(false);
   resource.error.take().unwrap_or_default()
 }
-use deno_core::{v8, serde_v8};
 
-use deno_core::task::MaskFutureAsSend;
 #[op(v8)]
-pub fn op_ws_next_event(
-    scope: &mut v8::HandleScope,
+pub fn op_ws_loop(
+  scope: &mut v8::HandleScope,
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   callback: serde_v8::Value,
 ) -> Result<(), AnyError> {
   let cb = event::JsCb::new(scope, callback);
 
+  let resource = state
+    .borrow_mut()
+    .resource_table
+    .get::<ServerWebSocket>(rid)?;
+
+  tokio::task::spawn(unsafe {
+    // SAFETY: Future runs on the main thread.
+    MaskFutureAsSend::new(async move {
+      loop {
+        let mut data = None;
+        let res = {
+          loop {
+            let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
+            let val = match ws.read_frame().await {
+              Ok(val) => val,
+              Err(err) => {
+                // No message was received, socket closed while we waited.
+                // Report closed status to JavaScript.
+                if resource.closed.get() {
+                  return MessageKind::ClosedDefault as u16;
+                }
+
+                resource.set_error(Some(err.to_string()));
+                return MessageKind::Error as u16;
+              }
+            };
+
+            break match val.opcode {
+              OpCode::Text => match String::from_utf8(val.payload) {
+                Ok(s) => {
+                  resource.string.set(Some(s));
+                  MessageKind::Text as u16
+                }
+                Err(_) => {
+                  resource.set_error(Some("Invalid string data".into()));
+                  MessageKind::Error as u16
+                }
+              },
+              OpCode::Binary => {
+                // resource.buffer.set(Some(val.payload));
+                data = Some(val.payload);
+                MessageKind::Binary as u16
+              }
+              OpCode::Close => {
+                // Close reason is returned through error
+                if val.payload.len() < 2 {
+                  resource.set_error(None);
+                  MessageKind::ClosedDefault as u16
+                } else {
+                  let close_code = CloseCode::from(u16::from_be_bytes([
+                    val.payload[0],
+                    val.payload[1],
+                  ]));
+                  let reason =
+                    String::from_utf8(val.payload[2..].to_vec()).ok();
+                  resource.set_error(reason);
+                  close_code.into()
+                }
+              }
+              OpCode::Pong => MessageKind::Pong as u16,
+              OpCode::Continuation | OpCode::Ping => {
+                continue;
+              }
+            };
+          }
+        };
+
+        cb.call(res, data);
+      }
+    })
+  });
+
+  Ok(())
+}
+
+#[op(fast)]
+pub async fn op_ws_next_event(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+) -> u16 {
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid) else {
     // op_ws_get_error will correctly handle a bad resource
-    // return MessageKind::Error as u16;
-    todo!();
+    return MessageKind::Error as u16;
   };
 
   // If there's a pending error, this always returns error
   if resource.errored.get() {
-    // return MessageKind::Error as u16;
-    todo!();
+    return MessageKind::Error as u16;
   }
 
-  tokio::task::spawn(unsafe { MaskFutureAsSend::new(async move {
-    loop {
-        let mut data = None;
-        let res = {
-  loop {
-
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
+  loop {
     let val = match ws.read_frame().await {
       Ok(val) => val,
       Err(err) => {
@@ -626,8 +700,7 @@ pub fn op_ws_next_event(
         }
       },
       OpCode::Binary => {
-        // resource.buffer.set(Some(val.payload));
-        data = Some(val.payload);
+        resource.buffer.set(Some(val.payload));
         MessageKind::Binary as u16
       }
       OpCode::Close => {
@@ -650,16 +723,7 @@ pub fn op_ws_next_event(
         continue;
       }
     };
-
-        }
-
-    };
-
-      unsafe { cb.call(res, data) };
-    }
-  }) });
-
-  Ok(())
+  }
 }
 
 deno_core::extension!(deno_websocket,
@@ -670,6 +734,7 @@ deno_core::extension!(deno_websocket,
     op_ws_create<P>,
     op_ws_close,
     op_ws_next_event,
+    op_ws_loop,
     op_ws_get_buffer,
     op_ws_get_buffer_as_string,
     op_ws_get_error,
