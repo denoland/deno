@@ -23,15 +23,18 @@ function createHttpClient(options) {
     ops.op_fetch_custom_client(
       options,
     ),
+    options,
   );
 }
 
 class HttpClient {
   /**
    * @param {number} rid
+   * @param {any} options
    */
-  constructor(rid) {
+  constructor(rid, options) {
     this.rid = rid;
+    this.options = options;
   }
   close() {
     core.close(this.rid);

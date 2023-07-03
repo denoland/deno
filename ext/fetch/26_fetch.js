@@ -69,12 +69,22 @@ const requestBodyReaders = new SafeWeakMap();
  * @param {Uint8Array | null} body
  * @returns {{ requestRid: number, requestBodyRid: number | null }}
  */
-function opFetch(method, url, headers, clientRid, hasBody, bodyLength, body) {
+function opFetch(
+  method,
+  url,
+  headers,
+  clientRid,
+  hasBody,
+  allowHost,
+  bodyLength,
+  body,
+) {
   return ops.op_fetch(
     method,
     url,
     headers,
     clientRid,
+    allowHost,
     hasBody,
     bodyLength,
     body,
@@ -183,7 +193,8 @@ async function mainFetch(req, recursive, terminator) {
     req.method,
     req.currentUrl(),
     req.headerList,
-    req.clientRid,
+    req.client.rid,
+    req.client.options.allowHost,
     reqBody !== null,
     req.body?.length,
     ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, reqBody) ? reqBody : null,

@@ -230,6 +230,7 @@ pub fn op_fetch<FP>(
   url: String,
   headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
+  allow_host: bool,
   has_body: bool,
   body_length: Option<u64>,
   data: Option<JsBuffer>,
@@ -334,7 +335,7 @@ where
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
 
-        if !matches!(name, HOST | CONTENT_LENGTH) {
+        if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           header_map.append(name, v);
         }
       }

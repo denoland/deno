@@ -77,7 +77,7 @@ function processUrlList(urlList, urlListProcessed) {
  * @property {number} redirectCount
  * @property {(() => string)[]} urlList
  * @property {string[]} urlListProcessed
- * @property {number | null} clientRid NOTE: non standard extension for `Deno.HttpClient`.
+ * @property {HttpClient | null} client NOTE: non standard extension for `Deno.HttpClient`.
  * @property {Blob | null} blobUrlEntry
  */
 
@@ -125,7 +125,7 @@ function newInnerRequest(method, url, headerList, body, maybeBlob) {
     redirectCount: 0,
     urlList: [typeof url === "string" ? () => url : url],
     urlListProcessed: [],
-    clientRid: null,
+    client: null,
     blobUrlEntry,
     url() {
       if (this.urlListProcessed[0] === undefined) {
@@ -176,7 +176,7 @@ function cloneInnerRequest(request, skipBody = false) {
     redirectCount: request.redirectCount,
     urlList: request.urlList,
     urlListProcessed: request.urlListProcessed,
-    clientRid: request.clientRid,
+    client: request.client,
     blobUrlEntry: request.blobUrlEntry,
     url() {
       if (this.urlListProcessed[0] === undefined) {
@@ -348,7 +348,7 @@ class Request {
           "Argument 2",
         );
       }
-      request.clientRid = init.client?.rid ?? null;
+      request.client = init.client ?? null;
     }
 
     // 27.

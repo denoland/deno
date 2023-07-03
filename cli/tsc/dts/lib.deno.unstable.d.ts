@@ -837,6 +837,11 @@ declare namespace Deno {
      * @default {true}
      */
     http2?: boolean;
+    /** Whether setting the host header is allowed or not.
+     *
+     * @default {false}
+     */
+    allowHost?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
