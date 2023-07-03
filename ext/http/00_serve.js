@@ -613,7 +613,7 @@ function serve(arg1, arg2) {
   };
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
-    port: options.port ?? (wantsHttps ? 9000 : 8000),
+    port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
   };
 
