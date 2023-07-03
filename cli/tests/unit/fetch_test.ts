@@ -1579,6 +1579,7 @@ Deno.test(
       headers: {
         "host": "example.com",
       },
+      client,
     });
     assert(res.ok);
     assertEquals(res.headers.get("host"), "example.com");
