@@ -400,7 +400,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   }
 
   fn is_no_prompt(&self, desc: &Option<T>) -> bool {
-    Self::list_contains(desc, self.no_prompt_global, &self.no_prompt_list)
+    match desc.as_ref() {
+      Some(desc) => self.no_prompt_list.iter().any(|v| desc.stronger_than(v)),
+      None => self.no_prompt_global || !self.no_prompt_list.is_empty(),
+    }
   }
 
   fn is_partial_denied(&self, desc: &Option<T>) -> bool {
@@ -509,6 +512,10 @@ impl Descriptor for NetDescriptor {
 
   fn name(&self) -> Cow<str> {
     Cow::from(format!("{}", self))
+  }
+
+  fn stronger_than(&self, other: &Self) -> bool {
+    self.0 == other.0 && (self.1 == None || self.1 == other.1)
   }
 }
 
