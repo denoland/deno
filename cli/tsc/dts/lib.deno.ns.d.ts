@@ -261,6 +261,29 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotSupported extends Error {}
+    /**
+     * Raised when too many symbolic links were encountered when resolving the
+     * filename.
+     *
+     * @category Errors */
+    export class FilesystemLoop extends Error {}
+    /**
+     * Raised when trying to open, create or write to a directory.
+     *
+     * @category Errors */
+    export class IsADirectory extends Error {}
+    /**
+     * Raised when performing a socket operation but the remote host is
+     * not reachable.
+     *
+     * @category Errors */
+    export class NetworkUnreachable extends Error {}
+    /**
+     * Raised when trying to perform an operation on a path that is not a
+     * directory, when directory is required.
+     *
+     * @category Errors */
+    export class NotADirectory extends Error {}
   }
 
   /** The current process ID of this instance of the Deno CLI.
