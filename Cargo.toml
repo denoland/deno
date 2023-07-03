@@ -326,3 +326,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.base64-simd]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { version = "0.194.0", path = "../deno_core/core" }
