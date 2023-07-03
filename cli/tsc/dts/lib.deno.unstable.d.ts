@@ -2268,10 +2268,19 @@ declare interface WebSocketCloseInfo {
  * @tags allow-net
  * @category Web Sockets
  */
-declare class WebSocketStream {
-  constructor(url: string, options?: WebSocketStreamOptions);
+declare interface WebSocketStream {
   url: string;
   connection: Promise<WebSocketConnection>;
   closed: Promise<WebSocketCloseInfo>;
   close(closeInfo?: WebSocketCloseInfo): void;
 }
+
+/** **UNSTABLE**: New API, yet to be vetted.
+ *
+ * @tags allow-net
+ * @category Web Sockets
+ */
+declare var WebSocketStream: {
+  readonly prototype: WebSocketStream;
+  new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
+};
