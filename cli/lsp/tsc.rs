@@ -2532,7 +2532,9 @@ fn update_import_statement(
       if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
       {
         if let Some(new_module_specifier) = maybe_import_mapper
-          .and_then(|m| m.check_specifier(&import_specifier))
+          .and_then(|m| {
+            m.check_specifier(&import_specifier, &item_data.specifier)
+          })
           .or_else(|| {
             relative_specifier(&item_data.specifier, &import_specifier)
           })

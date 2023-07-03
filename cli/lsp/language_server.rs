@@ -2085,6 +2085,7 @@ impl Inner {
   pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
       &self.documents,
+      self.maybe_import_map.as_deref(),
       &self.npm.resolution,
       &self.npm.resolver,
     )
