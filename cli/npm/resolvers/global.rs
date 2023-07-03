@@ -82,7 +82,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
     let folder_id = self
       .resolution
-      .resolve_package_cache_folder_id_from_id(id)
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)
       .unwrap();
     Ok(
       self
@@ -129,6 +129,15 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .cache
         .package_folder_for_id(&pkg_folder_id, &self.registry_url),
     )
+  }
+
+  fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageCacheFolderId, AnyError> {
+    self
+      .cache
+      .resolve_package_folder_id_from_specifier(specifier, &self.registry_url)
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {

@@ -7,7 +7,7 @@ const requireImpl = internals.requireImpl;
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
 import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
-import "ext:deno_node/01_require.js";
+import "node:module";
 
 let initialized = false;
 

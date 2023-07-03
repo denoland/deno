@@ -35,7 +35,7 @@ import promises from "ext:deno_node/readline/promises.ts";
 import { validateAbortSignal } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { AbortError } from "ext:deno_node/internal/errors.ts";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 
 import {
   Interface as _Interface,

@@ -25,13 +25,13 @@
 
 import { charLengthAt, CSI, emitKeys } from "ext:deno_node/internal/readline/utils.mjs";
 import { kSawKeyPress } from "ext:deno_node/internal/readline/symbols.mjs";
-import { clearTimeout, setTimeout } from "ext:deno_node/timers.ts";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const {
   kEscape,
 } = CSI;
 
-import { StringDecoder } from "ext:deno_node/string_decoder.ts";
+import { StringDecoder } from "node:string_decoder";
 
 const KEYPRESS_DECODER = Symbol("keypress-decoder");
 const ESCAPE_DECODER = Symbol("escape-decoder");

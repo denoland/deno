@@ -36,7 +36,7 @@ import {
   getStringWidth,
   stripVTControlCharacters,
 } from "ext:deno_node/internal/util/inspect.mjs";
-import EventEmitter from "ext:deno_node/events.ts";
+import EventEmitter from "node:events";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 import {
   charLengthAt,
@@ -46,9 +46,9 @@ import {
 } from "ext:deno_node/internal/readline/utils.mjs";
 import { clearScreenDown, cursorTo, moveCursor } from "ext:deno_node/internal/readline/callbacks.mjs";
 import { Readable } from "ext:deno_node/_stream.mjs";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 
-import { StringDecoder } from "ext:deno_node/string_decoder.ts";
+import { StringDecoder } from "node:string_decoder";
 import {
   kAddHistory,
   kDecoder,

@@ -1152,9 +1152,12 @@ Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#18d"), [16, 128, 208]);
-  assertEquals(parseCssColor("#18D"), [16, 128, 208]);
+  assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);
+  assertEquals(parseCssColor("#fa0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#FA0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#18d"), [17, 136, 221]);
+  assertEquals(parseCssColor("#18D"), [17, 136, 221]);
+  assertEquals(parseCssColor("#1188DD"), [17, 136, 221]);
   assertEquals(parseCssColor("rgb(100, 200, 50)"), [100, 200, 50]);
   assertEquals(parseCssColor("rgb(+100.3, -200, .5)"), [100, 0, 1]);
   assertEquals(parseCssColor("hsl(75, 60%, 40%)"), [133, 163, 41]);

@@ -5,8 +5,8 @@
 
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Transform } from "ext:deno_node/stream.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Transform } from "node:stream";
+import { Buffer } from "node:buffer";
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;

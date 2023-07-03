@@ -13,10 +13,10 @@ import {
   stripVTControlCharacters,
 } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
-import types from "ext:deno_node/util/types.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import types from "node:util/types";
+import { Buffer } from "node:buffer";
 import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 
 export {
