@@ -17,12 +17,13 @@ declare interface URLSearchParams {
    */
   append(name: string, value: string): void;
 
-  /** Deletes the given search parameter and its associated value,
+  /** Deletes search parameters that match a name, and optional value,
    * from the list of all search parameters.
    *
    * ```ts
    * let searchParams = new URLSearchParams([['name', 'value']]);
    * searchParams.delete('name');
+   * searchParams.delete('name', 'value');
    * ```
    */
   delete(name: string, value?: string): void;
@@ -44,11 +45,12 @@ declare interface URLSearchParams {
    */
   get(name: string): string | null;
 
-  /** Returns a Boolean that indicates whether a parameter with the
-   * specified name exists.
+  /** Returns a boolean value indicating if a given parameter,
+   * or parameter and value pair, exists.
    *
    * ```ts
    * searchParams.has('name');
+   * searchParams.has('name', 'value');
    * ```
    */
   has(name: string, value?: string): boolean;
