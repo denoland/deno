@@ -81,6 +81,13 @@ itest!(cjs_this_in_exports {
   exit_code: 1,
 });
 
+itest!(cjs_invalid_name_exports {
+  args: "run --allow-read --quiet npm/cjs-invalid-name-exports/main.ts",
+  output: "npm/cjs-invalid-name-exports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
