@@ -250,6 +250,7 @@ class Kv {
   async listenQueue(
     handler: (message: unknown) => Promise<void> | void,
   ): Promise<void> {
+    const finishMessageOps = new Map<number, Promise<void>>();
     while (!this.#closed) {
       // Wait for the next message.
       let next: { 0: Uint8Array; 1: number };
@@ -282,14 +283,29 @@ class Kv {
         } catch (error) {
           console.error("Exception in queue handler", error);
         } finally {
-          await core.opAsync(
-            "op_kv_finish_dequeued_message",
-            handleId,
-            success,
-          );
+          if (this.#closed) {
+            core.close(handleId);
+          } else {
+            const promise: Promise<void> = core.opAsync(
+              "op_kv_finish_dequeued_message",
+              handleId,
+              success,
+            );
+            finishMessageOps.set(handleId, promise);
+            try {
+              await promise;
+            } finally {
+              finishMessageOps.delete(handleId);
+            }
+          }
         }
       })();
     }
+
+    for (const promise of finishMessageOps.values()) {
+      await promise;
+    }
+    finishMessageOps.clear();
   }
 
   close() {
@@ -641,4 +657,4 @@ class KvListIterator extends AsyncIterator
   }
 }
 
-export { Kv, KvListIterator, KvU64, openKv };
+export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };

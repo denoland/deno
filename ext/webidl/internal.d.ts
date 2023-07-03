@@ -13,24 +13,24 @@ declare module "ext:deno_webidl/00_webidl.js" {
   ): any;
   interface IntConverterOpts {
     /**
-     * Wether to throw if the number is outside of the acceptable values for
+     * Whether to throw if the number is outside of the acceptable values for
      * this type.
      */
     enforceRange?: boolean;
     /**
-     * Wether to clamp this number to the acceptable values for this type.
+     * Whether to clamp this number to the acceptable values for this type.
      */
     clamp?: boolean;
   }
   interface StringConverterOpts {
     /**
-     * Wether to treat `null` value as an empty string.
+     * Whether to treat `null` value as an empty string.
      */
     treatNullAsEmptyString?: boolean;
   }
   interface BufferConverterOpts {
     /**
-     * Wether to allow `SharedArrayBuffer` (not just `ArrayBuffer`).
+     * Whether to allow `SharedArrayBuffer` (not just `ArrayBuffer`).
      */
     allowShared?: boolean;
   }

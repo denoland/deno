@@ -1,20 +1,23 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 const core = globalThis.__bootstrap.core;
 import { getDefaultHighWaterMark } from "ext:deno_node/internal/streams/state.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
-import EE from "ext:deno_node/events.ts";
-import { Stream } from "ext:deno_node/stream.ts";
-import { deprecate } from "ext:deno_node/util.ts";
-import type { Socket } from "ext:deno_node/net.ts";
+import EE from "node:events";
+import { Stream } from "node:stream";
+import { deprecate } from "node:util";
+import type { Socket } from "node:net";
 import {
   kNeedDrain,
   kOutHeaders,
   // utcDate,
 } from "ext:deno_node/internal/http.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,

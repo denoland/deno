@@ -45,13 +45,13 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 deno_doc = "=0.63.1"
 deno_emit = "=0.24.0"
 deno_graph = "=0.49.0"
-deno_lint = { version = "=0.47.0", features = ["docs"] }
+deno_lint = { version = "=0.48.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.12.0"
-eszip = "=0.44.0"
+eszip = "=0.45.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true

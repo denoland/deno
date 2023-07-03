@@ -44,7 +44,6 @@ use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerLogLevel;
@@ -422,7 +421,7 @@ pub async fn run(
     npm_resolver.clone(),
     node_resolver,
     Box::new(StandaloneHasNodeSpecifierChecker),
-    BlobStore::default(),
+    Default::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
     fs,

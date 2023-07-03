@@ -1,8 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   ERR_INVALID_ARG_TYPE,
   hideStackFrames,
@@ -16,35 +19,6 @@ import {
   kHandle,
   kKeyObject,
 } from "ext:deno_node/internal/crypto/constants.ts";
-
-// TODO(kt3k): Generate this list from `digestAlgorithms`
-// of std/crypto/_wasm/mod.ts
-const digestAlgorithms = [
-  "blake2b256",
-  "blake2b384",
-  "blake2b",
-  "blake2s",
-  "blake3",
-  "keccak-224",
-  "keccak-256",
-  "keccak-384",
-  "keccak-512",
-  "sha384",
-  "sha3-224",
-  "sha3-256",
-  "sha3-384",
-  "sha3-512",
-  "shake128",
-  "shake256",
-  "tiger",
-  "rmd160",
-  "sha224",
-  "sha256",
-  "sha512",
-  "md4",
-  "md5",
-  "sha1",
-];
 
 export type EllipticCurve = {
   name: string;
@@ -148,13 +122,6 @@ export const validateByteSource = hideStackFrames((val, name) => {
   );
 });
 
-/**
- * Returns an array of the names of the supported hash algorithms, such as 'sha1'.
- */
-export function getHashes(): readonly string[] {
-  return digestAlgorithms;
-}
-
 const curveNames = ellipticCurves.map((x) => x.name);
 export function getCurves(): readonly string[] {
   return curveNames;
@@ -181,7 +148,6 @@ export { kAesKeyLengths, kHandle, kKeyObject };
 
 export default {
   getDefaultEncoding,
-  getHashes,
   setDefaultEncoding,
   getCiphers,
   getCurves,

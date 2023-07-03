@@ -17,7 +17,7 @@ const {
   WeakMapPrototypeSet,
 } = primordials;
 
-const locationConstructorKey = Symbol("locationConstuctorKey");
+const locationConstructorKey = Symbol("locationConstructorKey");
 
 // The differences between the definitions of `Location` and `WorkerLocation`
 // are because of the `LegacyUnforgeable` attribute only specified upon

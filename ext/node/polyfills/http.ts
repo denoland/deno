@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 
 const core = globalThis.__bootstrap.core;
@@ -10,10 +13,10 @@ import {
   // createConnection,
   ListenOptions,
   Socket,
-} from "ext:deno_node/net.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+} from "node:net";
+import { Buffer } from "node:buffer";
 import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   validateBoolean,
@@ -26,13 +29,13 @@ import {
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
-} from "ext:deno_node/stream.ts";
+} from "node:stream";
 import {
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
 } from "ext:deno_node/_http_outgoing.ts";
-import { ok as assert } from "ext:deno_node/assert.ts";
+import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
@@ -271,6 +274,7 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  setKeepAlive() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */

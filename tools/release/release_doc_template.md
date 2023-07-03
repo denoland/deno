@@ -188,7 +188,7 @@ script generates the symbols based on the latest tags.
   <details>
      <summary>Failure Steps</summary>
 
-  1. Clone `deno/apliland_scripts`.
+  1. Clone `deno/apiland_scripts`.
   2. Execute `deno task release`.
   </details>
 

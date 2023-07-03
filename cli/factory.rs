@@ -144,7 +144,7 @@ struct CliFactoryServices {
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
-  blob_store: Deferred<BlobStore>,
+  blob_store: Deferred<Arc<BlobStore>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
@@ -215,8 +215,8 @@ impl CliFactory {
     })
   }
 
-  pub fn blob_store(&self) -> &BlobStore {
-    self.services.blob_store.get_or_init(BlobStore::default)
+  pub fn blob_store(&self) -> &Arc<BlobStore> {
+    self.services.blob_store.get_or_init(Default::default)
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {

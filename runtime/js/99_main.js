@@ -251,6 +251,10 @@ core.registerErrorClass("BadResource", errors.BadResource);
 core.registerErrorClass("Http", errors.Http);
 core.registerErrorClass("Busy", errors.Busy);
 core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorClass("FilesystemLoop", errors.FilesystemLoop);
+core.registerErrorClass("IsADirectory", errors.IsADirectory);
+core.registerErrorClass("NetworkUnreachable", errors.NetworkUnreachable);
+core.registerErrorClass("NotADirectory", errors.NotADirectory);
 core.registerErrorBuilder(
   "DOMExceptionOperationError",
   function DOMExceptionOperationError(msg) {

@@ -15,11 +15,11 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -109,7 +109,7 @@ async fn op_net_accept_tcp(
 async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  mut buf: JsBuffer,
 ) -> Result<(usize, IpAddr), AnyError> {
   let resource = state
     .borrow_mut()
@@ -130,7 +130,7 @@ async fn op_net_send_udp<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   addr: IpAddr,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1047,7 +1047,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp::call::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp::<TestPermission>::call(conn_state, ip_addr)
         .boxed_local();
     let mut rid = None;
 

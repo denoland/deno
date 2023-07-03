@@ -463,12 +463,12 @@ where
   {
     modules_path
   } else {
-    let orignal = modules_path.clone();
+    let original = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
     if fs.is_dir(Path::new(&mod_dir)) {
       mod_dir
     } else {
-      orignal
+      original
     }
   };
   let pkg = node_resolver.load_package_json(

@@ -818,49 +818,10 @@ fn clap_root() -> Command {
 }
 
 fn bench_subcommand() -> Command {
-  Command::new("bench").defer(|cmd| {
-    runtime_args(cmd, true, false)
-      .arg(check_arg(true))
-      .arg(
-        Arg::new("json")
-          .long("json")
-          .action(ArgAction::SetTrue)
-          .help("UNSTABLE: Output benchmark result in JSON format"),
-      )
-      .arg(
-        Arg::new("ignore")
-          .long("ignore")
-          .num_args(1..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .help("Ignore files")
-          .value_parser(value_parser!(PathBuf)),
-      )
-      .arg(
-        Arg::new("filter")
-          .long("filter")
-          .allow_hyphen_values(true)
-          .help("Run benchmarks with this string or pattern in the bench name"),
-      )
-      .arg(
-        Arg::new("files")
-          .help("List of file names to run")
-          .num_args(..)
-          .value_parser(value_parser!(PathBuf))
-          .action(ArgAction::Append),
-      )
-      .arg(
-        Arg::new("no-run")
-          .long("no-run")
-          .help("Cache bench modules, but don't run benchmarks")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(watch_arg(false))
-      .arg(no_clear_screen_arg())
-      .arg(script_arg().last(true))
-      .about("Run benchmarks")
-      .long_about(
-        "Run benchmarks using Deno's built-in bench tool.
+  Command::new("bench")
+    .about("Run benchmarks")
+    .long_about(
+      "Run benchmarks using Deno's built-in bench tool.
 
 Evaluate the given modules, run all benches declared with 'Deno.bench()'
 and report results to standard output:
@@ -871,54 +832,89 @@ Directory arguments are expanded to all contained files matching the
 glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
 
   deno bench src/",
-      )
-  })
+    )
+    .defer(|cmd| {
+      runtime_args(cmd, true, false)
+        .arg(check_arg(true))
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .action(ArgAction::SetTrue)
+            .help("UNSTABLE: Output benchmark result in JSON format"),
+        )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore files")
+            .value_parser(value_parser!(PathBuf)),
+        )
+        .arg(
+          Arg::new("filter")
+            .long("filter")
+            .allow_hyphen_values(true)
+            .help(
+              "Run benchmarks with this string or pattern in the bench name",
+            ),
+        )
+        .arg(
+          Arg::new("files")
+            .help("List of file names to run")
+            .num_args(..)
+            .value_parser(value_parser!(PathBuf))
+            .action(ArgAction::Append),
+        )
+        .arg(
+          Arg::new("no-run")
+            .long("no-run")
+            .help("Cache bench modules, but don't run benchmarks")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(script_arg().last(true))
+    })
 }
 
 fn bundle_subcommand() -> Command {
-  Command::new("bundle").defer(|cmd| {
-    compile_args(cmd)
-      .hide(true)
-      .arg(check_arg(true))
-      .arg(
-        Arg::new("source_file")
-          .required(true)
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(
-        Arg::new("out_file")
-          .value_parser(value_parser!(PathBuf))
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(watch_arg(false))
-      .arg(no_clear_screen_arg())
-      .arg(executable_ext_arg())
-      .about("Bundle module and dependencies into single file")
-      .long_about(
-        "Output a single JavaScript file with all dependencies.
+  Command::new("bundle")
+    .about("Bundle module and dependencies into single file")
+    .long_about(
+      "Output a single JavaScript file with all dependencies.
 
   deno bundle https://deno.land/std/examples/colors.ts colors.bundle.js
 
 If no output file is given, the output is written to standard output:
 
   deno bundle https://deno.land/std/examples/colors.ts",
-      )
-  })
+    )
+    .defer(|cmd| {
+      compile_args(cmd)
+        .hide(true)
+        .arg(check_arg(true))
+        .arg(
+          Arg::new("source_file")
+            .required(true)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("out_file")
+            .value_parser(value_parser!(PathBuf))
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(executable_ext_arg())
+    })
 }
 
 fn cache_subcommand() -> Command {
-  Command::new("cache").defer(|cmd| {
-    compile_args(cmd)
-      .arg(check_arg(false))
-      .arg(
-        Arg::new("file")
-          .num_args(1..)
-          .required(true)
-          .value_hint(ValueHint::FilePath),
-      )
-      .about("Cache the dependencies")
-      .long_about(
-        "Cache and compile remote dependencies recursively.
+  Command::new("cache")
+    .about("Cache the dependencies")
+    .long_about(
+      "Cache and compile remote dependencies recursively.
 
 Download and compile a module with all of its static dependencies and save
 them in the local cache, without running any code:
@@ -927,12 +923,27 @@ them in the local cache, without running any code:
 
 Future runs of this module will trigger no downloads or compilation unless
 --reload is specified.",
+    )
+    .defer(|cmd| {
+      compile_args(cmd).arg(check_arg(false)).arg(
+        Arg::new("file")
+          .num_args(1..)
+          .required(true)
+          .value_hint(ValueHint::FilePath),
       )
-  })
+    })
 }
 
 fn check_subcommand() -> Command {
   Command::new("check")
+      .about("Type-check the dependencies")
+      .long_about(
+        "Download and type-check without execution.
+
+  deno check https://deno.land/std/http/file_server.ts
+
+Unless --reload is specified, this command will not re-download already cached dependencies.",
+      )
     .defer(|cmd| compile_args_without_check_args(cmd).arg(
       Arg::new("all")
         .long("all")
@@ -955,19 +966,36 @@ fn check_subcommand() -> Command {
           .required(true)
           .value_hint(ValueHint::FilePath),
       )
-      .about("Type-check the dependencies")
-      .long_about(
-        "Download and type-check without execution.
-
-  deno check https://deno.land/std/http/file_server.ts
-
-Unless --reload is specified, this command will not re-download already cached dependencies.",
-      ))
+    )
 }
 
 fn compile_subcommand() -> Command {
-  Command::new("compile").defer(|cmd| {
-    runtime_args(cmd, true, false)
+  Command::new("compile")
+    .about("UNSTABLE: Compile the script into a self contained executable")
+    .long_about(
+      "UNSTABLE: Compiles the given script into a self contained executable.
+
+  deno compile -A https://deno.land/std/http/file_server.ts
+  deno compile --output color_util https://deno.land/std/examples/colors.ts
+
+Any flags passed which affect runtime behavior, such as '--unstable',
+'--allow-*', '--v8-flags', etc. are encoded into the output executable and
+used at runtime as if they were passed to a similar 'deno run' command.
+
+The executable name is inferred by default: Attempt to take the file stem of
+the URL path. The above example would become 'file_server'. If the file stem
+is something generic like 'main', 'mod', 'index' or 'cli', and the path has no
+parent, take the file name of the parent path. Otherwise settle with the
+generic name. If the resulting name has an '@...' suffix, strip it.
+
+Cross-compiling to different target architectures is supported using the
+`--target` flag. On the first invocation with deno will download proper
+binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not
+supported in canary.
+",
+    )
+    .defer(|cmd| {
+      runtime_args(cmd, true, false)
       .arg(script_arg().required(true))
       .arg(check_arg(true))
       .arg(
@@ -1003,57 +1031,32 @@ fn compile_subcommand() -> Command {
           ]),
       )
       .arg(executable_ext_arg())
-      .about("UNSTABLE: Compile the script into a self contained executable")
-      .long_about(
-        "UNSTABLE: Compiles the given script into a self contained executable.
-
-  deno compile -A https://deno.land/std/http/file_server.ts
-  deno compile --output color_util https://deno.land/std/examples/colors.ts
-
-Any flags passed which affect runtime behavior, such as '--unstable',
-'--allow-*', '--v8-flags', etc. are encoded into the output executable and
-used at runtime as if they were passed to a similar 'deno run' command.
-
-The executable name is inferred by default: Attempt to take the file stem of
-the URL path. The above example would become 'file_server'. If the file stem
-is something generic like 'main', 'mod', 'index' or 'cli', and the path has no
-parent, take the file name of the parent path. Otherwise settle with the
-generic name. If the resulting name has an '@...' suffix, strip it.
-
-Cross-compiling to different target architectures is supported using the
-`--target` flag. On the first invocation with deno will download proper
-binary and cache it in $DENO_DIR. The aarch64-apple-darwin target is not
-supported in canary.
-",
-      )
-  })
+    })
 }
 
 fn completions_subcommand() -> Command {
-  Command::new("completions").defer(|cmd| {
-    cmd
-      .disable_help_subcommand(true)
-      .arg(
+  Command::new("completions")
+    .about("Generate shell completions")
+    .long_about(
+      "Output shell completion script to standard output.
+
+  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
+  source /usr/local/etc/bash_completion.d/deno.bash",
+    )
+    .defer(|cmd| {
+      cmd.disable_help_subcommand(true).arg(
         Arg::new("shell")
           .value_parser(["bash", "fish", "powershell", "zsh", "fig"])
           .required(true),
       )
-      .about("Generate shell completions")
-      .long_about(
-        "Output shell completion script to standard output.
-
-  deno completions bash > /usr/local/etc/bash_completion.d/deno.bash
-  source /usr/local/etc/bash_completion.d/deno.bash",
-      )
-  })
+    })
 }
 
 fn coverage_subcommand() -> Command {
-  Command::new("coverage").defer(|cmd| {
-    cmd
-      .about("Print coverage reports")
-      .long_about(
-        "Print coverage reports from coverage profiles.
+  Command::new("coverage")
+    .about("Print coverage reports")
+    .long_about(
+      "Print coverage reports from coverage profiles.
 
 Collect a coverage profile with deno test:
 
@@ -1085,73 +1088,74 @@ Generate html reports from lcov:
 
   genhtml -o html_cov cov.lcov
 ",
-      )
-      .arg(
-        Arg::new("ignore")
-          .long("ignore")
-          .num_args(1..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .help("Ignore coverage files")
-          .value_hint(ValueHint::AnyPath),
-      )
-      .arg(
-        Arg::new("include")
-          .long("include")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .value_name("regex")
-          .require_equals(true)
-          .default_value(r"^file:")
-          .help("Include source files in the report"),
-      )
-      .arg(
-        Arg::new("exclude")
-          .long("exclude")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .value_name("regex")
-          .require_equals(true)
-          .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
-          .help("Exclude source files from the report"),
-      )
-      .arg(
-        Arg::new("lcov")
-          .long("lcov")
-          .help("Output coverage report in lcov format")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("output")
-          .requires("lcov")
-          .long("output")
-          .value_parser(value_parser!(PathBuf))
-          .help("Output file (defaults to stdout) for lcov")
-          .long_help(
-            "Exports the coverage report in lcov format to the given file.
+    )
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore coverage files")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(
+          Arg::new("include")
+            .long("include")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_name("regex")
+            .require_equals(true)
+            .default_value(r"^file:")
+            .help("Include source files in the report"),
+        )
+        .arg(
+          Arg::new("exclude")
+            .long("exclude")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .value_name("regex")
+            .require_equals(true)
+            .default_value(r"test\.(js|mjs|ts|jsx|tsx)$")
+            .help("Exclude source files from the report"),
+        )
+        .arg(
+          Arg::new("lcov")
+            .long("lcov")
+            .help("Output coverage report in lcov format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("output")
+            .requires("lcov")
+            .long("output")
+            .value_parser(value_parser!(PathBuf))
+            .help("Output file (defaults to stdout) for lcov")
+            .long_help(
+              "Exports the coverage report in lcov format to the given file.
     Filename should be passed along with '=' For example '--output=foo.lcov'
     If no --output arg is specified then the report is written to stdout.",
-          )
-          .require_equals(true)
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(
-        Arg::new("files")
-          .num_args(1..)
-          .value_parser(value_parser!(PathBuf))
-          .action(ArgAction::Append)
-          .required(true)
-          .value_hint(ValueHint::AnyPath),
-      )
-  })
+            )
+            .require_equals(true)
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("files")
+            .num_args(1..)
+            .value_parser(value_parser!(PathBuf))
+            .action(ArgAction::Append)
+            .required(true)
+            .value_hint(ValueHint::AnyPath),
+        )
+    })
 }
 
 fn doc_subcommand() -> Command {
-  Command::new("doc").defer(|cmd| {
-    cmd
-      .about("Show documentation for a module")
-      .long_about(
-        "Show documentation for a module.
+  Command::new("doc")
+    .about("Show documentation for a module")
+    .long_about(
+      "Show documentation for a module.
 
 Output documentation to standard output:
 
@@ -1173,46 +1177,47 @@ Show documentation for runtime built-ins:
 
     deno doc
     deno doc --builtin Deno.Listener",
-      )
-      .arg(import_map_arg())
-      .arg(reload_arg())
-      .arg(lock_arg())
-      .arg(no_lock_arg())
-      .arg(no_npm_arg())
-      .arg(no_remote_arg())
-      .arg(
-        Arg::new("json")
-          .long("json")
-          .help("Output documentation in JSON format")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("private")
-          .long("private")
-          .help("Output private documentation")
-          .action(ArgAction::SetTrue),
-      )
-      // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
-      // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
-      // just a possible value of `source_file` so leading hyphens must be
-      // enabled.
-      .allow_hyphen_values(true)
-      .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
-      .arg(
-        Arg::new("filter")
-          .help("Dot separated path to symbol")
-          .required(false)
-          .conflicts_with("json"),
-      )
-  })
+    )
+    .defer(|cmd| {
+      cmd
+        .arg(import_map_arg())
+        .arg(reload_arg())
+        .arg(lock_arg())
+        .arg(no_lock_arg())
+        .arg(no_npm_arg())
+        .arg(no_remote_arg())
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .help("Output documentation in JSON format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("private")
+            .long("private")
+            .help("Output private documentation")
+            .action(ArgAction::SetTrue),
+        )
+        // TODO(nayeemrmn): Make `--builtin` a proper option. Blocked by
+        // https://github.com/clap-rs/clap/issues/1794. Currently `--builtin` is
+        // just a possible value of `source_file` so leading hyphens must be
+        // enabled.
+        .allow_hyphen_values(true)
+        .arg(Arg::new("source_file").value_hint(ValueHint::FilePath))
+        .arg(
+          Arg::new("filter")
+            .help("Dot separated path to symbol")
+            .required(false)
+            .conflicts_with("json"),
+        )
+    })
 }
 
 fn eval_subcommand() -> Command {
-  Command::new("eval").defer(|cmd| {
-    runtime_args(cmd, false, true)
-      .about("Eval script")
-      .long_about(
-        "Evaluate JavaScript from the command line.
+  Command::new("eval")
+    .about("Eval script")
+    .long_about(
+      "Evaluate JavaScript from the command line.
 
   deno eval \"console.log('hello world')\"
 
@@ -1221,43 +1226,44 @@ To evaluate as TypeScript:
   deno eval --ext=ts \"const v: string = 'hello'; console.log(v)\"
 
 This command has implicit access to all permissions (--allow-all).",
-      )
-      .arg(check_arg(false))
-      .arg(
-        // TODO(@satyarohith): remove this argument in 2.0.
-        Arg::new("ts")
-          .conflicts_with("ext")
-          .long("ts")
-          .short('T')
-          .help("deprecated: Treat eval input as TypeScript")
-          .action(ArgAction::SetTrue)
-          .hide(true),
-      )
-      .arg(executable_ext_arg())
-      .arg(
-        Arg::new("print")
-          .long("print")
-          .short('p')
-          .help("print result to stdout")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("code_arg")
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .help("Code arg")
-          .value_name("CODE_ARG")
-          .required(true),
-      )
-  })
+    )
+    .defer(|cmd| {
+      runtime_args(cmd, false, true)
+        .arg(check_arg(false))
+        .arg(
+          // TODO(@satyarohith): remove this argument in 2.0.
+          Arg::new("ts")
+            .conflicts_with("ext")
+            .long("ts")
+            .short('T')
+            .help("deprecated: Treat eval input as TypeScript")
+            .action(ArgAction::SetTrue)
+            .hide(true),
+        )
+        .arg(executable_ext_arg())
+        .arg(
+          Arg::new("print")
+            .long("print")
+            .short('p')
+            .help("print result to stdout")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("code_arg")
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .help("Code arg")
+            .value_name("CODE_ARG")
+            .required(true),
+        )
+    })
 }
 
 fn fmt_subcommand() -> Command {
-  Command::new("fmt").defer(|cmd| {
-    cmd
-      .about("Format source files")
-      .long_about(
-        "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
+  Command::new("fmt")
+    .about("Format source files")
+    .long_about(
+      "Auto-format JavaScript, TypeScript, Markdown, and JSON files.
 
   deno fmt
   deno fmt myfile1.ts myfile2.ts
@@ -1274,112 +1280,116 @@ Ignore formatting code by preceding it with an ignore comment:
 Ignore formatting a file by adding an ignore comment at the top of the file:
 
   // deno-fmt-ignore-file",
-      )
-      .arg(config_arg())
-      .arg(no_config_arg())
-      .arg(
-        Arg::new("check")
-          .long("check")
-          .help("Check if the source files are formatted")
-          .num_args(0),
-      )
-      .arg(
-        Arg::new("ext")
-          .long("ext")
-          .help("Set content type of the supplied file")
-          // prefer using ts for formatting instead of js because ts works in more scenarios
-          .default_value("ts")
-          .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
-      )
-      .arg(
-        Arg::new("ignore")
-          .long("ignore")
-          .value_parser(value_parser!(PathBuf))
-          .num_args(1..)
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .help("Ignore formatting particular source files")
-          .value_hint(ValueHint::AnyPath),
-      )
-      .arg(
-        Arg::new("files")
-          .value_parser(value_parser!(PathBuf))
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .required(false)
-          .value_hint(ValueHint::AnyPath),
-      )
-      .arg(watch_arg(false))
-      .arg(no_clear_screen_arg())
-      .arg(
-        Arg::new("use-tabs")
-          .long("use-tabs")
-          .alias("options-use-tabs")
-          .num_args(0..=1)
-          .value_parser(value_parser!(bool))
-          .default_missing_value("true")
-          .require_equals(true)
-          .help(
-            "Use tabs instead of spaces for indentation. Defaults to false.",
-          ),
-      )
-      .arg(
-        Arg::new("line-width")
-          .long("line-width")
-          .alias("options-line-width")
-          .help("Define maximum line width. Defaults to 80.")
-          .value_parser(value_parser!(NonZeroU32)),
-      )
-      .arg(
-        Arg::new("indent-width")
-          .long("indent-width")
-          .alias("options-indent-width")
-          .help("Define indentation width. Defaults to 2.")
-          .value_parser(value_parser!(NonZeroU8)),
-      )
-      .arg(
-        Arg::new("single-quote")
-          .long("single-quote")
-          .alias("options-single-quote")
-          .num_args(0..=1)
-          .value_parser(value_parser!(bool))
-          .default_missing_value("true")
-          .require_equals(true)
-          .help("Use single quotes. Defaults to false."),
-      )
-      .arg(
-        Arg::new("prose-wrap")
-          .long("prose-wrap")
-          .alias("options-prose-wrap")
-          .value_parser(["always", "never", "preserve"])
-          .help("Define how prose should be wrapped. Defaults to always."),
-      )
-      .arg(
-        Arg::new("no-semicolons")
-          .long("no-semicolons")
-          .alias("options-no-semicolons")
-          .num_args(0..=1)
-          .value_parser(value_parser!(bool))
-          .default_missing_value("true")
-          .require_equals(true)
-          .help("Don't use semicolons except where necessary."),
-      )
-  })
+    )
+    .defer(|cmd| {
+      cmd
+        .arg(config_arg())
+        .arg(no_config_arg())
+        .arg(
+          Arg::new("check")
+            .long("check")
+            .help("Check if the source files are formatted")
+            .num_args(0),
+        )
+        .arg(
+          Arg::new("ext")
+            .long("ext")
+            .help("Set content type of the supplied file")
+            // prefer using ts for formatting instead of js because ts works in more scenarios
+            .default_value("ts")
+            .value_parser(["ts", "tsx", "js", "jsx", "md", "json", "jsonc"]),
+        )
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore formatting particular source files")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(
+          Arg::new("files")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .required(false)
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+        .arg(
+          Arg::new("use-tabs")
+            .long("use-tabs")
+            .alias("options-use-tabs")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help(
+              "Use tabs instead of spaces for indentation. Defaults to false.",
+            ),
+        )
+        .arg(
+          Arg::new("line-width")
+            .long("line-width")
+            .alias("options-line-width")
+            .help("Define maximum line width. Defaults to 80.")
+            .value_parser(value_parser!(NonZeroU32)),
+        )
+        .arg(
+          Arg::new("indent-width")
+            .long("indent-width")
+            .alias("options-indent-width")
+            .help("Define indentation width. Defaults to 2.")
+            .value_parser(value_parser!(NonZeroU8)),
+        )
+        .arg(
+          Arg::new("single-quote")
+            .long("single-quote")
+            .alias("options-single-quote")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help("Use single quotes. Defaults to false."),
+        )
+        .arg(
+          Arg::new("prose-wrap")
+            .long("prose-wrap")
+            .alias("options-prose-wrap")
+            .value_parser(["always", "never", "preserve"])
+            .help("Define how prose should be wrapped. Defaults to always."),
+        )
+        .arg(
+          Arg::new("no-semicolons")
+            .long("no-semicolons")
+            .alias("options-no-semicolons")
+            .num_args(0..=1)
+            .value_parser(value_parser!(bool))
+            .default_missing_value("true")
+            .require_equals(true)
+            .help("Don't use semicolons except where necessary."),
+        )
+    })
 }
 
 fn init_subcommand() -> Command {
-  Command::new("init").defer(|cmd| {
-    cmd.about("Initialize a new project").arg(
-      Arg::new("dir")
-        .required(false)
-        .value_hint(ValueHint::DirPath),
-    )
-  })
+  Command::new("init")
+    .about("Initialize a new project")
+    .defer(|cmd| {
+      cmd.arg(
+        Arg::new("dir")
+          .required(false)
+          .value_hint(ValueHint::DirPath),
+      )
+    })
 }
 
 fn info_subcommand() -> Command {
   Command::new("info")
-    .defer(|cmd| cmd.about("Show info about cache or info related to source file")
+      .about("Show info about cache or info related to source file")
       .long_about(
         "Information about a module or the cache directories.
 
@@ -1400,6 +1410,7 @@ DENO_DIR: Directory containing Deno-managed files.
 Remote modules cache: Subdirectory containing downloaded remote modules.
 TypeScript compiler cache: Subdirectory containing TS compiler output.",
       )
+    .defer(|cmd| cmd
       .arg(Arg::new("file").required(false).value_hint(ValueHint::FilePath))
       .arg(reload_arg().requires("file"))
       .arg(ca_file_arg())
@@ -1427,28 +1438,8 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
 
 fn install_subcommand() -> Command {
   Command::new("install")
-    .defer(|cmd| runtime_args(cmd, true, true).arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
-      .arg(check_arg(true))
-      .arg(
-        Arg::new("name")
-          .long("name")
-          .short('n')
-          .help("Executable file name")
-          .required(false))
-      .arg(
-        Arg::new("root")
-          .long("root")
-          .help("Installation root")
-          .value_parser(value_parser!(PathBuf))
-          .value_hint(ValueHint::DirPath))
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help("Forcefully overwrite existing installation")
-          .action(ArgAction::SetTrue))
-      .about("Install script as an executable")
-      .long_about(
+    .about("Install script as an executable")
+    .long_about(
         "Installs a script as an executable in the installation root's bin directory.
 
   deno install --allow-net --allow-read https://deno.land/std/http/file_server.ts
@@ -1475,18 +1466,32 @@ The installation root is determined, in order of precedence:
   - DENO_INSTALL_ROOT environment variable
   - $HOME/.deno
 
-These must be added to the path manually if required."))
-}
-
-fn uninstall_subcommand() -> Command {
-  Command::new("uninstall")
-    .defer(|cmd| cmd.arg(Arg::new("name").required(true))
+These must be added to the path manually if required.")
+    .defer(|cmd| runtime_args(cmd, true, true).arg(Arg::new("cmd").required(true).num_args(1..).value_hint(ValueHint::FilePath))
+      .arg(check_arg(true))
+      .arg(
+        Arg::new("name")
+          .long("name")
+          .short('n')
+          .help("Executable file name")
+          .required(false))
       .arg(
         Arg::new("root")
           .long("root")
           .help("Installation root")
           .value_parser(value_parser!(PathBuf))
           .value_hint(ValueHint::DirPath))
+      .arg(
+        Arg::new("force")
+          .long("force")
+          .short('f')
+          .help("Forcefully overwrite existing installation")
+          .action(ArgAction::SetTrue))
+      )
+}
+
+fn uninstall_subcommand() -> Command {
+  Command::new("uninstall")
       .about("Uninstall a script previously installed with deno install")
       .long_about(
         "Uninstalls an executable script in the installation root's bin directory.
@@ -1500,7 +1505,15 @@ To change the installation root, use --root:
 The installation root is determined, in order of precedence:
   - --root option
   - DENO_INSTALL_ROOT environment variable
-  - $HOME/.deno"))
+  - $HOME/.deno")
+    .defer(|cmd| cmd.arg(Arg::new("name").required(true))
+      .arg(
+        Arg::new("root")
+          .long("root")
+          .help("Installation root")
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath))
+)
 }
 
 static LSP_HELP: &str = concat!(
@@ -1517,15 +1530,15 @@ https://deno.land/manual@v",
 
 fn lsp_subcommand() -> Command {
   Command::new("lsp")
-    .defer(|cmd| cmd.about("Start the language server").long_about(LSP_HELP))
+    .about("Start the language server")
+    .long_about(LSP_HELP)
 }
 
 fn lint_subcommand() -> Command {
-  Command::new("lint").defer(|cmd| {
-    cmd
-      .about("Lint source files")
-      .long_about(
-        "Lint JavaScript/TypeScript source code.
+  Command::new("lint")
+    .about("Lint source files")
+    .long_about(
+      "Lint JavaScript/TypeScript source code.
 
   deno lint
   deno lint myfile1.ts myfile2.js
@@ -1555,82 +1568,85 @@ Ignore linting a file by adding an ignore comment at the top of the file:
 
   // deno-lint-ignore-file
 ",
-      )
-      .arg(
-        Arg::new("rules")
-          .long("rules")
-          .help("List available rules")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("rules-tags")
-          .long("rules-tags")
-          .require_equals(true)
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .use_value_delimiter(true)
-          .conflicts_with("rules")
-          .help("Use set of rules with a tag"),
-      )
-      .arg(
-        Arg::new("rules-include")
-          .long("rules-include")
-          .require_equals(true)
-          .num_args(1..)
-          .use_value_delimiter(true)
-          .conflicts_with("rules")
-          .help("Include lint rules"),
-      )
-      .arg(
-        Arg::new("rules-exclude")
-          .long("rules-exclude")
-          .require_equals(true)
-          .num_args(1..)
-          .use_value_delimiter(true)
-          .conflicts_with("rules")
-          .help("Exclude lint rules"),
-      )
-      .arg(no_config_arg())
-      .arg(config_arg())
-      .arg(
-        Arg::new("ignore")
-          .long("ignore")
-          .num_args(1..)
-          .value_parser(value_parser!(PathBuf))
-          .use_value_delimiter(true)
-          .require_equals(true)
-          .help("Ignore linting particular source files")
-          .value_hint(ValueHint::AnyPath),
-      )
-      .arg(
-        Arg::new("json")
-          .long("json")
-          .help("Output lint result in JSON format")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("compact")
-          .long("compact")
-          .help("Output lint result in compact format")
-          .action(ArgAction::SetTrue)
-          .conflicts_with("json"),
-      )
-      .arg(
-        Arg::new("files")
-          .value_parser(value_parser!(PathBuf))
-          .num_args(1..)
-          .action(ArgAction::Append)
-          .required(false)
-          .value_hint(ValueHint::AnyPath),
-      )
-      .arg(watch_arg(false))
-      .arg(no_clear_screen_arg())
-  })
+    )
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("rules")
+            .long("rules")
+            .help("List available rules")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("rules-tags")
+            .long("rules-tags")
+            .require_equals(true)
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Use set of rules with a tag"),
+        )
+        .arg(
+          Arg::new("rules-include")
+            .long("rules-include")
+            .require_equals(true)
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Include lint rules"),
+        )
+        .arg(
+          Arg::new("rules-exclude")
+            .long("rules-exclude")
+            .require_equals(true)
+            .num_args(1..)
+            .use_value_delimiter(true)
+            .conflicts_with("rules")
+            .help("Exclude lint rules"),
+        )
+        .arg(no_config_arg())
+        .arg(config_arg())
+        .arg(
+          Arg::new("ignore")
+            .long("ignore")
+            .num_args(1..)
+            .value_parser(value_parser!(PathBuf))
+            .use_value_delimiter(true)
+            .require_equals(true)
+            .help("Ignore linting particular source files")
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(
+          Arg::new("json")
+            .long("json")
+            .help("Output lint result in JSON format")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("compact")
+            .long("compact")
+            .help("Output lint result in compact format")
+            .action(ArgAction::SetTrue)
+            .conflicts_with("json"),
+        )
+        .arg(
+          Arg::new("files")
+            .value_parser(value_parser!(PathBuf))
+            .num_args(1..)
+            .action(ArgAction::Append)
+            .required(false)
+            .value_hint(ValueHint::AnyPath),
+        )
+        .arg(watch_arg(false))
+        .arg(no_clear_screen_arg())
+    })
 }
 
 fn repl_subcommand() -> Command {
   Command::new("repl")
-    .defer(|cmd| runtime_args(cmd, true, true).about("Read Eval Print Loop")
+    .about("Read Eval Print Loop")
+    .defer(|cmd| runtime_args(cmd, true, true)
       .arg(check_arg(false))
       .arg(
         Arg::new("eval-file")
@@ -1693,29 +1709,45 @@ Specifying the filename '-' to read the file from stdin.
 }
 
 fn task_subcommand() -> Command {
-  Command::new("task").defer(|cmd| {
-    cmd
-      .allow_external_subcommands(true)
-      .subcommand_value_name("TASK")
-      .arg(config_arg())
-      .arg(
-        Arg::new("cwd")
-          .long("cwd")
-          .value_name("DIR")
-          .help("Specify the directory to run the task in")
-          .value_hint(ValueHint::DirPath),
-      )
-      .about("Run a task defined in the configuration file")
-      .long_about(
-        "Run a task defined in the configuration file
+  Command::new("task")
+    .about("Run a task defined in the configuration file")
+    .long_about(
+      "Run a task defined in the configuration file
 
   deno task build",
-      )
-  })
+    )
+    .defer(|cmd| {
+      cmd
+        .allow_external_subcommands(true)
+        .subcommand_value_name("TASK")
+        .arg(config_arg())
+        .arg(
+          Arg::new("cwd")
+            .long("cwd")
+            .value_name("DIR")
+            .help("Specify the directory to run the task in")
+            .value_hint(ValueHint::DirPath),
+        )
+    })
 }
 
 fn test_subcommand() -> Command {
-  Command::new("test").defer(|cmd| runtime_args(cmd, true, true)
+  Command::new("test")
+    .about("Run tests")
+    .long_about(
+      "Run tests using Deno's built-in test runner.
+
+Evaluate the given modules, run all tests declared with 'Deno.test()' and
+report results to standard output:
+
+  deno test src/fetch_test.ts src/signal_test.ts
+
+Directory arguments are expanded to all contained files matching the glob
+{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}:
+
+  deno test src/",
+    )
+  .defer(|cmd| runtime_args(cmd, true, true)
     .arg(check_arg(true))
     .arg(
       Arg::new("ignore")
@@ -1817,42 +1849,26 @@ fn test_subcommand() -> Command {
     )
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
-    .about("Run tests")
-    .long_about(
-      "Run tests using Deno's built-in test runner.
-
-Evaluate the given modules, run all tests declared with 'Deno.test()' and
-report results to standard output:
-
-  deno test src/fetch_test.ts src/signal_test.ts
-
-Directory arguments are expanded to all contained files matching the glob
-{*_,*.,}test.{js,mjs,ts,mts,jsx,tsx}:
-
-  deno test src/",
-    ))
+  )
 }
 
 fn types_subcommand() -> Command {
-  Command::new("types").defer(|cmd| {
-    cmd
-      .about("Print runtime TypeScript declarations")
-      .long_about(
-        "Print runtime TypeScript declarations.
+  Command::new("types")
+    .about("Print runtime TypeScript declarations")
+    .long_about(
+      "Print runtime TypeScript declarations.
 
   deno types > lib.deno.d.ts
 
 The declaration file could be saved and used for typing information.",
-      )
-  })
+    )
 }
 
 fn upgrade_subcommand() -> Command {
-  Command::new("upgrade").defer(|cmd| {
-    cmd
-      .about("Upgrade deno executable to given version")
-      .long_about(
-        "Upgrade deno executable to the given version.
+  Command::new("upgrade")
+    .about("Upgrade deno executable to given version")
+    .long_about(
+      "Upgrade deno executable to the given version.
 Defaults to latest.
 
 The version is downloaded from
@@ -1863,45 +1879,47 @@ If you want to not replace the current Deno executable but instead download an
 update to a different location, use the --output flag
 
   deno upgrade --output $HOME/my_deno",
-      )
-      .arg(
-        Arg::new("version")
-          .long("version")
-          .help("The version to upgrade to"),
-      )
-      .arg(
-        Arg::new("output")
-          .long("output")
-          .help("The path to output the updated version to")
-          .value_parser(value_parser!(PathBuf))
-          .value_hint(ValueHint::FilePath),
-      )
-      .arg(
-        Arg::new("dry-run")
-          .long("dry-run")
-          .help("Perform all checks without replacing old exe")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("force")
-          .long("force")
-          .short('f')
-          .help("Replace current exe even if not out-of-date")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(
-        Arg::new("canary")
-          .long("canary")
-          .help("Upgrade to canary builds")
-          .action(ArgAction::SetTrue),
-      )
-      .arg(ca_file_arg())
-  })
+    )
+    .defer(|cmd| {
+      cmd
+        .arg(
+          Arg::new("version")
+            .long("version")
+            .help("The version to upgrade to"),
+        )
+        .arg(
+          Arg::new("output")
+            .long("output")
+            .help("The path to output the updated version to")
+            .value_parser(value_parser!(PathBuf))
+            .value_hint(ValueHint::FilePath),
+        )
+        .arg(
+          Arg::new("dry-run")
+            .long("dry-run")
+            .help("Perform all checks without replacing old exe")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("force")
+            .long("force")
+            .short('f')
+            .help("Replace current exe even if not out-of-date")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
+          Arg::new("canary")
+            .long("canary")
+            .help("Upgrade to canary builds")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(ca_file_arg())
+    })
 }
 
 fn vendor_subcommand() -> Command {
   Command::new("vendor")
-    .defer(|cmd| cmd.about("Vendor remote modules into a local directory")
+      .about("Vendor remote modules into a local directory")
       .long_about(
         "Vendor remote modules into a local directory.
 
@@ -1916,6 +1934,7 @@ Remote modules and multiple modules may also be specified:
 
   deno vendor main.ts test.deps.ts https://deno.land/std/path/mod.ts",
       )
+    .defer(|cmd| cmd
       .arg(
         Arg::new("specifiers")
           .num_args(1..)

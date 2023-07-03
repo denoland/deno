@@ -46,7 +46,7 @@ Deno.test({
   },
 });
 
-function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
+function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
   Deno.test({
     name,
     // https://github.com/denoland/deno/issues/18363
@@ -58,7 +58,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
       try {
         await fn(db);
       } finally {
-        await db.close();
+        db.close();
       }
     },
   });
@@ -443,7 +443,7 @@ dbTest("atomic mutation type=sum wrap around", async (db) => {
 
 dbTest("atomic mutation type=sum wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "sum" })
@@ -456,7 +456,7 @@ dbTest("atomic mutation type=sum wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=sum wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -497,7 +497,7 @@ dbTest("atomic mutation type=min no exists", async (db) => {
 
 dbTest("atomic mutation type=min wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "min" })
@@ -510,7 +510,7 @@ dbTest("atomic mutation type=min wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=min wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -551,7 +551,7 @@ dbTest("atomic mutation type=max no exists", async (db) => {
 
 dbTest("atomic mutation type=max wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "max" })
@@ -564,7 +564,7 @@ dbTest("atomic mutation type=max wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=max wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -1168,7 +1168,7 @@ dbTest("operation size limit", async (db) => {
   const res2 = await collect(db.list({ prefix: ["a"] }, { batchSize: 1000 }));
   assertEquals(res2.length, 0);
 
-  assertRejects(
+  await assertRejects(
     async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 1001 })),
     TypeError,
     "too many entries (max 1000)",
@@ -1662,7 +1662,7 @@ Deno.test({
       await db.enqueue("msg2");
       await promise;
 
-      // Close the database and wait for the listerner to finish.
+      // Close the database and wait for the listener to finish.
       db.close();
       await listener;
 
@@ -1697,10 +1697,7 @@ Deno.test({
 
 Deno.test({
   name: "queue persistence with delay messages",
-  ignore: true, // flaky
   async fn() {
-    const dispatchedPre = Deno.metrics().opsDispatchedAsync;
-    const completedPre = Deno.metrics().opsCompletedAsync;
     const filename = await Deno.makeTempFile({ prefix: "queue_db" });
     try {
       await Deno.remove(filename);
@@ -1721,7 +1718,7 @@ Deno.test({
       await db.enqueue("msg1", { delay: 10000 });
       await db.enqueue("msg2", { delay: 10000 });
 
-      // Close the database and wait for the listerner to finish.
+      // Close the database and wait for the listener to finish.
       db.close();
       await listener;
 
@@ -1745,14 +1742,6 @@ Deno.test({
       db.close();
       await listener;
     } finally {
-      // Wait until callbacks are drained before deleting the db.
-      let dispatched = Deno.metrics().opsDispatchedAsync - dispatchedPre;
-      let completed = Deno.metrics().opsCompletedAsync - completedPre;
-      while (dispatched !== completed) {
-        dispatched = Deno.metrics().opsDispatchedAsync - dispatchedPre;
-        completed = Deno.metrics().opsCompletedAsync - completedPre;
-        await sleep(100);
-      }
       try {
         await Deno.remove(filename);
       } catch {
@@ -1760,4 +1749,10 @@ Deno.test({
       }
     }
   },
+});
+
+dbTest("atomic operation is exposed", (db) => {
+  assert(Deno.AtomicOperation);
+  const ao = db.atomic();
+  assert(ao instanceof Deno.AtomicOperation);
 });

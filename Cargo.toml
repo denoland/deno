@@ -6,10 +6,7 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
-  "core",
-  "ops",
   "runtime",
-  "serde_v8",
   "test_ffi",
   "test_napi",
   "test_util",
@@ -41,19 +38,20 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.73.0", default-features = false }
+v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = { version = "0.191.0", path = "./core" }
-deno_ops = { version = "0.69.0", path = "./ops" }
-serde_v8 = { version = "0.102.0", path = "./serde_v8" }
+deno_core = { version = "0.194.0" }
+deno_ops = { version = "0.71.0" }
+serde_v8 = { version = "0.104.0" }
+
 deno_runtime = { version = "0.117.0", path = "./runtime" }
 napi_sym = { version = "0.39.0", path = "./cli/napi/sym" }
 deno_bench_util = { version = "0.103.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.14.1"
 deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
-deno_npm = "0.8.1"
+deno_npm = "0.9.1"
 deno_semver = "0.2.2"
 
 # exts
@@ -83,6 +81,7 @@ async-trait = "0.1.51"
 atty = "=0.2.14"
 base64 = "=0.13.1"
 bencher = "0.1"
+brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
@@ -155,6 +154,9 @@ hkdf = "0.12.3"
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "1", features = ["full", "extra-traits"] }
+syn2 = { package = "syn", version = "=2.0.18", features = ["full", "extra-traits"] }
+# Temporary fork while we wait for a more modern version to be published
+deno-proc-macro-rules = "0.3.2"
 
 # unix
 nix = "=0.24.2"

@@ -38,10 +38,7 @@ mod ts {
   fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
 
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|p| p.module_name())
-      .collect::<Vec<&str>>();
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
     let build_libs = state.borrow::<Vec<&str>>();
     json!({
       "buildSpecifier": build_specifier,
@@ -339,7 +336,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_console::deno_console::init_ops(),
     deno_url::deno_url::init_ops(),
     deno_web::deno_web::init_ops::<PermissionsContainer>(
-      deno_web::BlobStore::default(),
+      Default::default(),
       Default::default(),
     ),
     deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(Default::default()),
