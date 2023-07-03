@@ -230,7 +230,6 @@ pub fn op_fetch<FP>(
   url: String,
   headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
-  allow_host: bool,
   has_body: bool,
   body_length: Option<u64>,
   data: Option<JsBuffer>,
@@ -238,11 +237,11 @@ pub fn op_fetch<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  let client = if let Some(rid) = client_rid {
+  let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
-    r.client.clone()
+    (r.client.clone(), r.allow_host)
   } else {
-    get_or_create_client_from_state(state)?
+    (get_or_create_client_from_state(state)?, false)
   };
 
   let method = Method::from_bytes(&method)?;
@@ -762,6 +761,7 @@ impl Resource for FetchResponseResource {
 
 pub struct HttpClientResource {
   pub client: Client,
+  pub allow_host: bool,
 }
 
 impl Resource for HttpClientResource {
@@ -771,8 +771,8 @@ impl Resource for HttpClientResource {
 }
 
 impl HttpClientResource {
-  fn new(client: Client) -> Self {
-    Self { client }
+  fn new(client: Client, allow_host: bool) -> Self {
+    Self { client, allow_host }
   }
 }
 
@@ -796,6 +796,7 @@ pub struct CreateHttpClientArgs {
   http1: bool,
   #[serde(default = "default_true")]
   http2: bool,
+  allow_host: bool,
 }
 
 fn default_true() -> bool {
@@ -861,7 +862,7 @@ where
     },
   )?;
 
-  let rid = state.resource_table.add(HttpClientResource::new(client));
+  let rid = state.resource_table.add(HttpClientResource::new(client, args.allow_host));
   Ok(rid)
 }
 
