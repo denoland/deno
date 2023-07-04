@@ -576,7 +576,7 @@ pub fn op_ws_loop(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   callback: serde_v8::Value,
-) -> Result<(), AnyError> {
+) -> Result<impl Future<Output = Result<(), AnyError>>, AnyError> {
   let cb = event::JsCb::new(scope, callback);
 
   let resource = state
@@ -585,8 +585,8 @@ pub fn op_ws_loop(
     .get::<ServerWebSocket>(rid)?;
 
   // SAFETY: Future runs on the main thread.
-  tokio::task::spawn(unsafe {
-    MaskFutureAsSend::new(async move {
+  unsafe {
+    Ok(async move {
       loop {
         let mut data = None;
         let res = {
@@ -599,12 +599,12 @@ pub fn op_ws_loop(
                 // Report closed status to JavaScript.
                 if resource.closed.get() {
                   cb.call(MessageKind::ClosedDefault as u16, None);
-                  return;
+                  return Ok(());
                 }
 
                 resource.set_error(Some(err.to_string()));
                 cb.call(MessageKind::Error as u16, None);
-                return;
+                return Ok(());
               }
             };
 
@@ -620,7 +620,6 @@ pub fn op_ws_loop(
                 }
               },
               OpCode::Binary => {
-                // resource.buffer.set(Some(val.payload));
                 data = Some(val.payload);
                 MessageKind::Binary as u16
               }
@@ -636,7 +635,18 @@ pub fn op_ws_loop(
                   ]));
                   let reason =
                     String::from_utf8(val.payload[2..].to_vec()).ok();
-                  resource.set_error(reason);
+
+                  resource.set_error(reason.clone());
+                  let frame = reason
+                    .map(|reason| {
+                      Frame::close(close_code.into(), reason.as_bytes())
+                    })
+                    .unwrap_or_else(|| Frame::close_raw(vec![]));
+
+                  resource.closed.set(true);
+                  let lock = resource.reserve_lock();
+                  let _ = resource.write_frame(lock, frame).await;
+
                   close_code.into()
                 }
               }
@@ -649,13 +659,11 @@ pub fn op_ws_loop(
         };
 
         if cb.call(res, data) {
-          break;
+          break Ok(());
         }
       }
     })
-  });
-
-  Ok(())
+  }
 }
 
 #[op(fast)]
@@ -844,7 +852,8 @@ mod event {
       };
 
       let recv = v8::undefined(isolate).into();
-      let scope = &mut v8::HandleScope::with_context(isolate, context);
+      // let scope = &mut v8::HandleScope::with_context(isolate, context);
+      let scope = &mut v8::CallbackScope::new(context);
       let kind = v8::Integer::new_from_unsigned(scope, value.into());
       if let Some(buf) = data.take() {
         let bs = v8::ArrayBuffer::new_backing_store_from_vec(buf).make_shared();

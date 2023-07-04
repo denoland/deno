@@ -385,7 +385,6 @@ class WebSocket extends EventTarget {
       this[_readyState] = CLOSING;
     } else if (this[_readyState] === OPEN) {
       this[_readyState] = CLOSING;
-
       PromisePrototypeCatch(
         op_ws_close(
           this[_rid],
@@ -409,9 +408,9 @@ class WebSocket extends EventTarget {
     }
   }
 
-  [_eventLoop]() {
+  async [_eventLoop]() {
     const rid = this[_rid];
-    op_ws_loop(rid, (kind, buffer) => {
+    await op_ws_loop(rid, (kind, buffer) => {
       if (this[_readyState] !== CLOSED) {
         switch (kind) {
           case 0: {
@@ -465,21 +464,10 @@ class WebSocket extends EventTarget {
             /* close */
             const code = kind;
             const reason = code == 1005 ? "" : op_ws_get_error(rid);
+
             const prevState = this[_readyState];
             this[_readyState] = CLOSED;
             clearTimeout(this[_idleTimeoutTimeout]);
-
-            if (prevState === OPEN) {
-              try {
-                op_ws_close(
-                  rid,
-                  code,
-                  reason,
-                );
-              } catch {
-                // ignore failures
-              }
-            }
 
             const event = new CloseEvent("close", {
               wasClean: true,
@@ -488,7 +476,8 @@ class WebSocket extends EventTarget {
             });
             this.dispatchEvent(event);
             core.tryClose(rid);
-            break;
+
+            return false;
           }
         }
       }
