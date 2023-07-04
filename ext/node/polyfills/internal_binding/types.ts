@@ -22,6 +22,7 @@
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 // https://tc39.es/ecma262/#sec-object.prototype.tostring
 const _toString = Object.prototype.toString;
@@ -86,7 +87,7 @@ function isObjectLike(
 export function isAnyArrayBuffer(
   value: unknown,
 ): value is ArrayBuffer | SharedArrayBuffer {
-  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+  return op_is_any_arraybuffer(value);
 }
 
 export function isArgumentsObject(value: unknown): value is IArguments {
@@ -98,7 +99,12 @@ export function isArgumentsObject(value: unknown): value is IArguments {
 }
 
 export function isArrayBuffer(value: unknown): value is ArrayBuffer {
-  return value instanceof ArrayBuffer;
+  try {
+    _getArrayBufferByteLength.call(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isAsyncFunction(
@@ -275,7 +281,18 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value: unknown,
 ): value is SharedArrayBuffer {
-  value instanceof SharedArrayBuffer;
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= Object.getOwnPropertyDescriptor(
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  )!.get!;
+
+  try {
+    _getSharedArrayBufferByteLength.call(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // deno-lint-ignore ban-types
