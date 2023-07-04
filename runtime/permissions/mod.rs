@@ -1019,9 +1019,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<ReadDescriptor>, AnyError> {
     Ok(UnaryPermission::<ReadDescriptor> {
       granted_global: global_from_option(allow_list),
-      granted_list: resolve_read_list(allow_list)?,
+      granted_list: parse_path_list(allow_list, ReadDescriptor)?,
       denied_global: global_from_option(deny_list),
-      denied_list: resolve_read_list(deny_list)?,
+      denied_list: parse_path_list(deny_list, ReadDescriptor)?,
       prompt,
       ..Default::default()
     })
@@ -1034,9 +1034,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<WriteDescriptor>, AnyError> {
     Ok(UnaryPermission {
       granted_global: global_from_option(allow_list),
-      granted_list: resolve_write_list(allow_list)?,
+      granted_list: parse_path_list(allow_list, WriteDescriptor)?,
       denied_global: global_from_option(deny_list),
-      denied_list: resolve_write_list(deny_list)?,
+      denied_list: parse_path_list(deny_list, WriteDescriptor)?,
       prompt,
       ..Default::default()
     })
@@ -1109,9 +1109,9 @@ impl Permissions {
   ) -> Result<UnaryPermission<FfiDescriptor>, AnyError> {
     Ok(UnaryPermission::<FfiDescriptor> {
       granted_global: global_from_option(allow_list),
-      granted_list: resolve_ffi_list(allow_list)?,
+      granted_list: parse_path_list(allow_list, FfiDescriptor)?,
       denied_global: global_from_option(deny_list),
-      denied_list: resolve_ffi_list(deny_list)?,
+      denied_list: parse_path_list(deny_list, FfiDescriptor)?,
       prompt,
       ..Default::default()
     })
@@ -1504,52 +1504,17 @@ fn parse_env_list(
   }
 }
 
-fn resolve_read_list(
+fn parse_path_list<T: Descriptor + Hash>(
   list: &Option<Vec<PathBuf>>,
-) -> Result<HashSet<ReadDescriptor>, AnyError> {
+  f: fn(PathBuf) -> T,
+) -> Result<HashSet<T>, AnyError> {
   if let Some(v) = list {
     v.iter()
       .map(|raw_path| {
         if raw_path.as_os_str().is_empty() {
           Err(AnyError::msg("Empty path is not allowed"))
         } else {
-          resolve_from_cwd(Path::new(&raw_path)).map(ReadDescriptor)
-        }
-      })
-      .collect()
-  } else {
-    Ok(HashSet::new())
-  }
-}
-
-fn resolve_write_list(
-  list: &Option<Vec<PathBuf>>,
-) -> Result<HashSet<WriteDescriptor>, AnyError> {
-  if let Some(v) = list {
-    v.iter()
-      .map(|raw_path| {
-        if raw_path.as_os_str().is_empty() {
-          Err(AnyError::msg("Empty path is not allowed"))
-        } else {
-          resolve_from_cwd(Path::new(&raw_path)).map(WriteDescriptor)
-        }
-      })
-      .collect()
-  } else {
-    Ok(HashSet::new())
-  }
-}
-
-fn resolve_ffi_list(
-  list: &Option<Vec<PathBuf>>,
-) -> Result<HashSet<FfiDescriptor>, AnyError> {
-  if let Some(v) = list {
-    v.iter()
-      .map(|raw_path| {
-        if raw_path.as_os_str().is_empty() {
-          Err(AnyError::msg("Empty path is not allowed"))
-        } else {
-          resolve_from_cwd(Path::new(&raw_path)).map(FfiDescriptor)
+          resolve_from_cwd(Path::new(&raw_path)).map(f)
         }
       })
       .collect()
@@ -1970,9 +1935,10 @@ pub fn create_child_permissions(
     }
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.ffi.granted_list = resolve_ffi_list(&Some(
-        granted_list.iter().map(PathBuf::from).collect(),
-      ))?;
+      worker_perms.ffi.granted_list = parse_path_list(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        FfiDescriptor,
+      )?;
       if !worker_perms
         .ffi
         .granted_list
@@ -2000,9 +1966,10 @@ pub fn create_child_permissions(
     }
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.read.granted_list = resolve_read_list(&Some(
-        granted_list.iter().map(PathBuf::from).collect(),
-      ))?;
+      worker_perms.read.granted_list = parse_path_list(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        ReadDescriptor,
+      )?;
       if !worker_perms
         .read
         .granted_list
@@ -2058,9 +2025,10 @@ pub fn create_child_permissions(
     }
     ChildUnaryPermissionArg::NotGranted => {}
     ChildUnaryPermissionArg::GrantedList(granted_list) => {
-      worker_perms.write.granted_list = resolve_write_list(&Some(
-        granted_list.iter().map(PathBuf::from).collect(),
-      ))?;
+      worker_perms.write.granted_list = parse_path_list(
+        &Some(granted_list.iter().map(PathBuf::from).collect()),
+        WriteDescriptor,
+      )?;
       if !worker_perms
         .write
         .granted_list
