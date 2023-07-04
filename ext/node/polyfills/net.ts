@@ -24,14 +24,14 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import {
   isIP,
   isIPv4,
   isIPv6,
   normalizedArgsSymbol,
 } from "ext:deno_node/internal/net.ts";
-import { Duplex } from "ext:deno_node/stream.ts";
+import { Duplex } from "node:stream";
 import {
   asyncIdSymbol,
   defaultTriggerAsyncIdScope,
@@ -74,7 +74,7 @@ import {
   DTRACE_NET_SERVER_CONNECTION,
   DTRACE_NET_STREAM_END,
 } from "ext:deno_node/internal/dtrace.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type { LookupOneOptions } from "ext:deno_node/internal/dns/utils.ts";
 import {
   validateAbortSignal,
@@ -97,14 +97,14 @@ import {
 import { ShutdownWrap } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
-import { ADDRCONFIG, lookup as dnsLookup } from "ext:deno_node/dns.ts";
+import { ADDRCONFIG, lookup as dnsLookup } from "node:dns";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type { Abortable } from "ext:deno_node/_events.d.ts";
-import { channel } from "ext:deno_node/diagnostics_channel.ts";
+import { channel } from "node:diagnostics_channel";
 
 let debug = debuglog("net", (fn) => {
   debug = fn;

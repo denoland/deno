@@ -38,10 +38,7 @@ mod ts {
   fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
 
-    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|p| p.module_name())
-      .collect::<Vec<&str>>();
+    let node_built_in_module_names = SUPPORTED_BUILTIN_NODE_MODULES.to_vec();
     let build_libs = state.borrow::<Vec<&str>>();
     json!({
       "buildSpecifier": build_specifier,
@@ -471,7 +468,7 @@ fn main() {
   );
 
   let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.0.4"); // bump this assertion when it changes
+  debug_assert_eq!(ts_version, "5.1.6"); // bump this assertion when it changes
   println!("cargo:rustc-env=TS_VERSION={}", ts_version);
   println!("cargo:rerun-if-env-changed=TS_VERSION");
 

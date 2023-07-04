@@ -8,7 +8,7 @@ import {
   AssertionErrorConstructorOptions,
 } from "ext:deno_node/assertion_error.ts";
 import * as asserts from "ext:deno_node/_util/std_asserts.ts";
-import { inspect } from "ext:deno_node/util.ts";
+import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_INVALID_ARG_TYPE,
