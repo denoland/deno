@@ -169,19 +169,31 @@ class URLSearchParams {
 
   /**
    * @param {string} name
+   * @param {string} [value]
    */
-  delete(name) {
+  delete(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'append' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
     const list = this[_list];
     let i = 0;
-    while (i < list.length) {
-      if (list[i][0] === name) {
-        ArrayPrototypeSplice(list, i, 1);
-      } else {
-        i++;
+    if (value === undefined) {
+      while (i < list.length) {
+        if (list[i][0] === name) {
+          ArrayPrototypeSplice(list, i, 1);
+        } else {
+          i++;
+        }
+      }
+    } else {
+      value = webidl.converters.USVString(value, prefix, "Argument 2");
+      while (i < list.length) {
+        if (list[i][0] === name && list[i][1] === value) {
+          ArrayPrototypeSplice(list, i, 1);
+        } else {
+          i++;
+        }
       }
     }
     this.#updateUrlSearch();
@@ -228,13 +240,21 @@ class URLSearchParams {
 
   /**
    * @param {string} name
+   * @param {string} [value]
    * @return {boolean}
    */
-  has(name) {
+  has(name, value = undefined) {
     webidl.assertBranded(this, URLSearchParamsPrototype);
     const prefix = "Failed to execute 'has' on 'URLSearchParams'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters.USVString(name, prefix, "Argument 1");
+    if (value !== undefined) {
+      value = webidl.converters.USVString(value, prefix, "Argument 2");
+      return ArrayPrototypeSome(
+        this[_list],
+        (entry) => entry[0] === name && entry[1] === value,
+      );
+    }
     return ArrayPrototypeSome(this[_list], (entry) => entry[0] === name);
   }
 
@@ -731,14 +751,14 @@ class URL {
   get username() {
     webidl.assertBranded(this, URLPrototype);
     // https://github.com/servo/rust-url/blob/1d307ae51a28fecc630ecec03380788bfb03a643/url/src/lib.rs#L881
-    const schemeSeperatorLen = 3; /* :// */
+    const schemeSeparatorLen = 3; /* :// */
     if (
       this.#hasAuthority() &&
-      this.#usernameEnd > this.#schemeEnd + schemeSeperatorLen
+      this.#usernameEnd > this.#schemeEnd + schemeSeparatorLen
     ) {
       return StringPrototypeSlice(
         this.#serialization,
-        this.#schemeEnd + schemeSeperatorLen,
+        this.#schemeEnd + schemeSeparatorLen,
         this.#usernameEnd,
       );
     } else {

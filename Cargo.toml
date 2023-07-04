@@ -6,10 +6,7 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
-  "core",
-  "ops",
   "runtime",
-  "serde_v8",
   "test_ffi",
   "test_napi",
   "test_util",
@@ -41,19 +38,20 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.73.0", default-features = false }
+v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = { version = "0.191.0", path = "./core" }
-deno_ops = { version = "0.69.0", path = "./ops" }
-serde_v8 = { version = "0.102.0", path = "./serde_v8" }
+deno_core = { version = "0.194.0" }
+deno_ops = { version = "0.71.0" }
+serde_v8 = { version = "0.104.0" }
+
 deno_runtime = { version = "0.117.0", path = "./runtime" }
 napi_sym = { version = "0.39.0", path = "./cli/napi/sym" }
 deno_bench_util = { version = "0.103.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.14.1"
 deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
-deno_npm = "0.8.1"
+deno_npm = "0.9.1"
 deno_semver = "0.2.2"
 
 # exts
@@ -132,8 +130,6 @@ signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
-strum = { version = "0.24", features = ["derive"] }
-strum_macros = "0.24"
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"

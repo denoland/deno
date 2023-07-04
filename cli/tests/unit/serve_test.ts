@@ -2153,16 +2153,16 @@ const compressionTestCases = [
   //   out: { "Content-Type": "text/plain" },
   //   expect: null,
   // },
-  { name: "Uncompressible", length: 1024, in: {}, out: {}, expect: null },
+  { name: "Incompressible", length: 1024, in: {}, out: {}, expect: null },
   {
-    name: "UncompressibleAcceptGzip",
+    name: "IncompressibleAcceptGzip",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: {},
     expect: null,
   },
   {
-    name: "UncompressibleType",
+    name: "IncompressibleType",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/fake" },
@@ -2190,21 +2190,21 @@ const compressionTestCases = [
     expect: "br",
   },
   {
-    name: "UncompressibleRange",
+    name: "IncompressibleRange",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Content-Range": "1" },
     expect: null,
   },
   {
-    name: "UncompressibleCE",
+    name: "IncompressibleCE",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Content-Encoding": "random" },
     expect: null,
   },
   {
-    name: "UncompressibleCC",
+    name: "IncompressibleCC",
     length: 1024,
     in: { "Accept-Encoding": "gzip" },
     out: { "Content-Type": "text/plain", "Cache-Control": "no-transform" },
@@ -3077,16 +3077,16 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k"]),
+      await curlRequest(["https://localhost:8000/path", "-k"]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:9000/path",
+        "https://localhost:8000/path",
         "-k",
         "--http2",
         "--http2-prior-knowledge",

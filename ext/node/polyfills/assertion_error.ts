@@ -21,7 +21,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { inspect } from "ext:deno_node/util.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { inspect } from "node:util";
 import { stripColor as removeColors } from "ext:deno_node/_util/std_fmt_colors.ts";
 import * as io from "ext:deno_io/12_io.js";
 

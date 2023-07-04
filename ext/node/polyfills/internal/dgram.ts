@@ -20,7 +20,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { lookup as defaultLookup } from "ext:deno_node/dns.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { lookup as defaultLookup } from "node:dns";
 import {
   isInt32,
   validateFunction,

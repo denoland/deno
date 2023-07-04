@@ -8,7 +8,7 @@ edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
-description = "IO promitives for Deno extensions"
+description = "IO primitives for Deno extensions"
 
 [lib]
 path = "lib.rs"

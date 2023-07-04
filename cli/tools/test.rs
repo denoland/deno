@@ -936,7 +936,7 @@ pub async fn test_specifier(
     .create_custom_worker(
       specifier.clone(),
       PermissionsContainer::new(permissions),
-      vec![ops::testing::deno_test::init_ext(sender.clone())],
+      vec![ops::testing::deno_test::init_ops(sender.clone())],
       Stdio {
         stdin: StdioPipe::Inherit,
         stdout,
@@ -1138,7 +1138,6 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
         source: file_source.into(),

@@ -123,7 +123,7 @@ class MessagePort extends EventTarget {
     }
     const { transfer } = options;
     if (ArrayPrototypeIncludes(transfer, this)) {
-      throw new DOMException("Can not tranfer self", "DataCloneError");
+      throw new DOMException("Can not transfer self", "DataCloneError");
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;

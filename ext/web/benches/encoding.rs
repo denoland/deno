@@ -8,7 +8,6 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::OpState;
-use deno_web::BlobStore;
 
 #[derive(Clone)]
 struct Permissions;
@@ -24,10 +23,13 @@ impl deno_web::TimersPermission for Permissions {
 
 fn setup() -> Vec<Extension> {
   vec![
-    deno_webidl::deno_webidl::init_ext(),
-    deno_url::deno_url::init_ext(),
-    deno_console::deno_console::init_ext(),
-    deno_web::deno_web::init_ext::<Permissions>(BlobStore::default(), None),
+    deno_webidl::deno_webidl::init_ops_and_esm(),
+    deno_url::deno_url::init_ops_and_esm(),
+    deno_console::deno_console::init_ops_and_esm(),
+    deno_web::deno_web::init_ops_and_esm::<Permissions>(
+      Default::default(),
+      None,
+    ),
     Extension::builder("bench_setup")
       .esm(vec![ExtensionFileSource {
         specifier: "ext:bench_setup/setup",
