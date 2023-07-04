@@ -1494,7 +1494,6 @@ async fn test_watch_serve() {
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--watch")
-    .arg("--unstable")
     .arg("--allow-net")
     .arg("-L")
     .arg("debug")
