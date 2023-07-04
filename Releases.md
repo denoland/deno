@@ -6,6 +6,42 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.35.0 / 2023.07.04
+
+- feat: add more Deno.errors classes (#19514)
+- feat: ReadableStream.from (#19446)
+- feat: stabilize 'alpnProtocols' setting (#19704)
+- feat: Stabilize Deno.serve() API (#19141)
+- feat: upgrade to TypeScript 5.1.6 (#19695)
+- feat(ext/fetch): add Headers#getSetCookie (#13542)
+- feat(ext/url): URLSearchParams two-argument delete() and has() (#19654)
+- feat(lock): skip saving declaration files in the lockfile (#19447)
+- feat(lsp): basic support of auto-imports for npm specifiers (#19675)
+- feat(lsp): support import maps in quick fix and auto-imports (#19692)
+- fix: add `exactOptionalPropertyTypes` for configuration file JSON schema
+  (#19647)
+- fix: bump default @types/node version range to 18.16.19 (#19706)
+- fix(cli): don't store blob and data urls in the module cache (#18581)
+- fix(cli): Fix the bug where the command description is not displayed. (#19604)
+- fix(cli/napi): `napi_get_buffer_info` accepts `ArrayBufferView` … (#19551)
+- fix(cli/napi): property with getter/setter always failed (#19562)
+- fix(console): correct the parseCssColor algorithm (#19645)
+- fix(dts): make globals available on globalThis (#19438)
+- fix(ext/crypto): Fix WebCrypto API's deriveKey (#19545)
+- fix(ext/fs): fix boolean checks in JS parser (#19586)
+- fix(ext/http): Catch errors in eager stream timeout to avoid uncaught promise
+  rejections (#19691)
+- fix(ext/kv): expose Deno.AtomicOperation (#19674)
+- fix(ext/node): Define performance.timeOrigin as getter property (#19714)
+- fix(ext/node): ignore cancelled timer when node timer refresh (#19637)
+- fix(ext/node): support brotli APIs (#19223)
+- fix(ext/websocket): Ensure that errors are available after async response
+  returns (#19642)
+- fix(node/http): add setKeepAlive to FakeSocket (#19659)
+- fix(npm): escape export identifier in double quoted string (#19694)
+- fix(npm): handle more reserved words as cjs exports (#19672)
+- fix(npm): support siblings that are peer dependencies of each other (#19657)
+
 ### 1.34.3 / 2023.06.15
 
 - feat(UNSTABLE) kv queue implementation (#19459)
