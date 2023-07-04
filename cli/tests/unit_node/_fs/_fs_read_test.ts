@@ -160,15 +160,23 @@ Deno.test({
 Deno.test({
   name: "[std/node/fs] Read fs.read(fd, cb) signature",
   async fn() {
+    const promise = deferred();
     const file = Deno.makeTempFileSync();
     Deno.writeTextFileSync(file, "hi deno");
     const fd = openSync(file, "r+");
-    await read(fd, (err, bytesRead, data) => {
-      assertEquals(err, null);
-      assertStrictEquals(bytesRead, 7);
-      assertStrictEquals(data?.byteLength, 16384);
+    read(fd, (err, bytesRead, data) => {
+      try {
+        assertEquals(err, null);
+        assertStrictEquals(bytesRead, 7);
+        assertStrictEquals(data?.byteLength, 16384);
+      } catch (e) {
+        promise.reject(e);
+        return;
+      }
+      promise.resolve();
     });
     closeSync(fd);
+    await promise;
   },
 });
 
