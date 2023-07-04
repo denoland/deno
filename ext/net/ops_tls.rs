@@ -841,7 +841,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -940,7 +939,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
