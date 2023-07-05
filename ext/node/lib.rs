@@ -9,7 +9,9 @@ use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -138,8 +140,8 @@ fn op_node_build_os() -> String {
 }
 
 #[op(fast)]
-fn op_is_any_arraybuffer(value: v8::Local<v8::Value>) -> bool {
-  value.is_array_buffer() || value.is_shared_array_buffer()
+fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
+  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
 }
 
 deno_core::extension!(deno_node,

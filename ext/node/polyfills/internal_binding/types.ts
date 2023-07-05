@@ -87,7 +87,7 @@ function isObjectLike(
 export function isAnyArrayBuffer(
   value: unknown,
 ): value is ArrayBuffer | SharedArrayBuffer {
-  return op_is_any_arraybuffer(value);
+  return ops.op_is_any_arraybuffer(value);
 }
 
 export function isArgumentsObject(value: unknown): value is IArguments {
