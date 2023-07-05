@@ -1,6 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { fileURLToPath } from "ext:deno_node/url.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { fileURLToPath } from "node:url";
+import { Buffer } from "node:buffer";
 
 const searchParams = Symbol("query");
 

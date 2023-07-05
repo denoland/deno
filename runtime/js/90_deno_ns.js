@@ -129,6 +129,7 @@ const denoNs = {
   PermissionStatus: permissions.PermissionStatus,
   // TODO(bartlomieju): why is this not in one of extensions?
   serveHttp: httpRuntime.serveHttp,
+  serve: http.serve,
   resolveDns: net.resolveDns,
   upgradeWebSocket: http.upgradeWebSocket,
   utime: fs.utime,
@@ -171,8 +172,8 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
-  serve: http.serve,
   openKv: kv.openKv,
+  AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,

@@ -468,6 +468,7 @@ class WebSocket extends EventTarget {
         default: {
           /* close */
           const code = kind;
+          const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
           clearTimeout(this[_idleTimeoutTimeout]);
@@ -477,7 +478,7 @@ class WebSocket extends EventTarget {
               await op_ws_close(
                 rid,
                 code,
-                op_ws_get_error(rid),
+                reason,
               );
             } catch {
               // ignore failures
@@ -487,7 +488,7 @@ class WebSocket extends EventTarget {
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,
-            reason: op_ws_get_error(rid),
+            reason,
           });
           this.dispatchEvent(event);
           core.tryClose(rid);

@@ -1,7 +1,11 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { EventEmitter } from "ext:deno_node/events.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
-import { promises, read, write } from "ext:deno_node/fs.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { EventEmitter } from "node:events";
+import { Buffer } from "node:buffer";
+import { promises, read, write } from "node:fs";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -86,13 +90,13 @@ export class FileHandle extends EventEmitter {
   ): Promise<WriteResult>;
   write(
     bufferOrStr: Buffer | string,
-    offsetOrPotition: number,
+    offsetOrPosition: number,
     lengthOrEncoding: number | string,
     position?: number,
   ): Promise<WriteResult> {
     if (bufferOrStr instanceof Buffer) {
       const buffer = bufferOrStr;
-      const offset = offsetOrPotition;
+      const offset = offsetOrPosition;
       const length = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {
@@ -110,7 +114,7 @@ export class FileHandle extends EventEmitter {
       });
     } else {
       const str = bufferOrStr;
-      const position = offsetOrPotition;
+      const position = offsetOrPosition;
       const encoding = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {

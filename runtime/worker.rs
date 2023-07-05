@@ -34,6 +34,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
@@ -56,16 +57,6 @@ impl ExitCode {
   pub fn set(&mut self, code: i32) {
     self.0.store(code, Relaxed);
   }
-}
-
-/// Clear extension modules from the module map, except preserve `ext:deno_node`
-/// modules as `node:` specifiers.
-pub fn init_runtime_module_map(js_runtime: &mut JsRuntime) {
-  js_runtime.clear_module_map(
-    deno_node::SUPPORTED_BUILTIN_NODE_MODULES
-      .iter()
-      .map(|p| (p.ext_specifier, p.specifier)),
-  );
 }
 
 /// This worker is created and used by almost all
@@ -133,7 +124,7 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_store: BlobStore,
+  pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -323,6 +314,11 @@ impl MainWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
+    // Clear extension modules from the module map, except preserve `node:*`
+    // modules.
+    let preserve_snapshotted_modules =
+      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
@@ -332,11 +328,11 @@ impl MainWorker {
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
     });
-    init_runtime_module_map(&mut js_runtime);
 
     if let Some(server) = options.maybe_inspector_server.clone() {
       server.register_inspector(

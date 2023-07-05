@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { Socket } from "ext:deno_node/net.ts";
+import { Socket } from "node:net";
 
 // Returns true when the given numeric fd is associated with a TTY and false otherwise.
 function isatty(fd: number) {

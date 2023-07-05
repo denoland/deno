@@ -1,6 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { setUnrefTimeout, Timeout } from "ext:deno_node/internal/timers.mjs";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  MapPrototypeGet,
+  MapPrototypeDelete,
+} = primordials;
+
+import {
+  activeTimers,
+  setUnrefTimeout,
+  Timeout,
+} from "ext:deno_node/internal/timers.mjs";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 export { setUnrefTimeout } from "ext:deno_node/internal/timers.mjs";
@@ -29,7 +42,13 @@ export function clearTimeout(timeout?: Timeout | number) {
   if (timeout == null) {
     return;
   }
-  clearTimeout_(+timeout);
+  const id = +timeout;
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    timeout._destroyed = true;
+    MapPrototypeDelete(activeTimers, id);
+  }
+  clearTimeout_(id);
 }
 export function setInterval(
   callback: (...args: unknown[]) => void,
@@ -43,7 +62,13 @@ export function clearInterval(timeout?: Timeout | number | string) {
   if (timeout == null) {
     return;
   }
-  clearInterval_(+timeout);
+  const id = +timeout;
+  const timer = MapPrototypeGet(activeTimers, id);
+  if (timer) {
+    timeout._destroyed = true;
+    MapPrototypeDelete(activeTimers, id);
+  }
+  clearInterval_(id);
 }
 // TODO(bartlomieju): implement the 'NodeJS.Immediate' versions of the timers.
 // https://github.com/DefinitelyTyped/DefinitelyTyped/blob/1163ead296d84e7a3c80d71e7c81ecbd1a130e9a/types/node/v12/globals.d.ts#L1120-L1131

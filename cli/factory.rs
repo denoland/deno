@@ -17,6 +17,7 @@ use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::file_fetcher::FileFetcher;
+use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
 use crate::http_util::HttpClient;
@@ -39,8 +40,6 @@ use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::watcher::FileWatcher;
-use crate::watcher::FileWatcherReporter;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
 use crate::worker::HasNodeSpecifierChecker;
@@ -145,10 +144,9 @@ struct CliFactoryServices {
   maybe_import_map: Deferred<Option<Arc<ImportMap>>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
-  blob_store: Deferred<BlobStore>,
+  blob_store: Deferred<Arc<BlobStore>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   resolver: Deferred<Arc<CliGraphResolver>>,
-  file_watcher: Deferred<Arc<FileWatcher>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   module_graph_builder: Deferred<Arc<ModuleGraphBuilder>>,
   module_load_preparer: Deferred<Arc<ModuleLoadPreparer>>,
@@ -217,8 +215,8 @@ impl CliFactory {
     })
   }
 
-  pub fn blob_store(&self) -> &BlobStore {
-    self.services.blob_store.get_or_init(BlobStore::default)
+  pub fn blob_store(&self) -> &Arc<BlobStore> {
+    self.services.blob_store.get_or_init(Default::default)
   }
 
   pub fn root_cert_store_provider(&self) -> &Arc<dyn RootCertStoreProvider> {
@@ -412,20 +410,6 @@ impl CliFactory {
       .await
   }
 
-  pub fn file_watcher(&self) -> Result<&Arc<FileWatcher>, AnyError> {
-    self.services.file_watcher.get_or_try_init(|| {
-      let watcher = FileWatcher::new(
-        self.options.clone(),
-        self.cjs_resolutions().clone(),
-        self.graph_container().clone(),
-        self.maybe_file_watcher_reporter().clone(),
-        self.parsed_source_cache()?.clone(),
-      );
-      watcher.init_watcher();
-      Ok(Arc::new(watcher))
-    })
-  }
-
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
     let maybe_sender = self.maybe_sender.borrow_mut().take();
     self
@@ -531,6 +515,7 @@ impl CliFactory {
           self.npm_resolver().await?.clone(),
           self.parsed_source_cache()?.clone(),
           self.maybe_lockfile().clone(),
+          self.maybe_file_watcher_reporter().clone(),
           self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
           self.type_checker().await?.clone(),
@@ -598,57 +583,6 @@ impl CliFactory {
       self.options.npm_system_info(),
       self.package_json_deps_provider(),
     ))
-  }
-
-  /// Gets a function that can be used to create a CliMainWorkerFactory
-  /// for a file watcher.
-  pub async fn create_cli_main_worker_factory_func(
-    &self,
-  ) -> Result<Arc<dyn Fn() -> CliMainWorkerFactory>, AnyError> {
-    let emitter = self.emitter()?.clone();
-    let graph_container = self.graph_container().clone();
-    let module_load_preparer = self.module_load_preparer().await?.clone();
-    let parsed_source_cache = self.parsed_source_cache()?.clone();
-    let resolver = self.resolver().await?.clone();
-    let blob_store = self.blob_store().clone();
-    let cjs_resolutions = self.cjs_resolutions().clone();
-    let node_code_translator = self.node_code_translator().await?.clone();
-    let options = self.cli_options().clone();
-    let main_worker_options = self.create_cli_main_worker_options()?;
-    let fs = self.fs().clone();
-    let root_cert_store_provider = self.root_cert_store_provider().clone();
-    let node_resolver = self.node_resolver().await?.clone();
-    let npm_resolver = self.npm_resolver().await?.clone();
-    let maybe_inspector_server = self.maybe_inspector_server().clone();
-    let maybe_lockfile = self.maybe_lockfile().clone();
-    Ok(Arc::new(move || {
-      CliMainWorkerFactory::new(
-        StorageKeyResolver::from_options(&options),
-        npm_resolver.clone(),
-        node_resolver.clone(),
-        Box::new(CliHasNodeSpecifierChecker(graph_container.clone())),
-        blob_store.clone(),
-        Box::new(CliModuleLoaderFactory::new(
-          &options,
-          emitter.clone(),
-          graph_container.clone(),
-          module_load_preparer.clone(),
-          parsed_source_cache.clone(),
-          resolver.clone(),
-          NpmModuleLoader::new(
-            cjs_resolutions.clone(),
-            node_code_translator.clone(),
-            fs.clone(),
-            node_resolver.clone(),
-          ),
-        )),
-        root_cert_store_provider.clone(),
-        fs.clone(),
-        maybe_inspector_server.clone(),
-        maybe_lockfile.clone(),
-        main_worker_options.clone(),
-      )
-    }))
   }
 
   pub async fn create_cli_main_worker_factory(

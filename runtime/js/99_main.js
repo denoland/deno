@@ -251,6 +251,10 @@ core.registerErrorClass("BadResource", errors.BadResource);
 core.registerErrorClass("Http", errors.Http);
 core.registerErrorClass("Busy", errors.Busy);
 core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorClass("FilesystemLoop", errors.FilesystemLoop);
+core.registerErrorClass("IsADirectory", errors.IsADirectory);
+core.registerErrorClass("NetworkUnreachable", errors.NetworkUnreachable);
+core.registerErrorClass("NotADirectory", errors.NotADirectory);
 core.registerErrorBuilder(
   "DOMExceptionOperationError",
   function DOMExceptionOperationError(msg) {
@@ -351,6 +355,12 @@ function promiseRejectCallback(type, promise, reason) {
 }
 
 function promiseRejectMacrotaskCallback() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
+  if (pendingRejections.length === 0) {
+    return undefined;
+  }
+
   while (pendingRejections.length > 0) {
     const promise = ArrayPrototypeShift(pendingRejections);
     const hasPendingException = ops.op_has_pending_promise_rejection(

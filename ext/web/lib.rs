@@ -18,8 +18,8 @@ use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToJsBuffer;
 use deno_core::U16String;
-use deno_core::ZeroCopyBuf;
 
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -29,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -110,7 +111,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
   ],
   options = {
-    blob_store: BlobStore,
+    blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
   },
   state = |state, options| {
@@ -123,7 +124,7 @@ deno_core::extension!(deno_web,
 );
 
 #[op]
-fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
+fn op_base64_decode(input: String) -> Result<ToJsBuffer, AnyError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);

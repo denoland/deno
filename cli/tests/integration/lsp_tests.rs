@@ -1325,7 +1325,7 @@ fn lsp_hover_change_mbc() {
             "end": {
               "line": 1,
               // the LSP uses utf16 encoded characters indexes, so
-              // after the deno emoiji is character index 15
+              // after the deno emoji is character index 15
               "character": 15
             }
           },
@@ -2088,7 +2088,7 @@ fn lsp_document_symbol() {
         "uri": "file:///a/file.ts",
         "languageId": "typescript",
         "version": 1,
-        "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(newVavlue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
+        "text": "interface IFoo {\n  foo(): boolean;\n}\n\nclass Bar implements IFoo {\n  constructor(public x: number) { }\n  foo() { return true; }\n  /** @deprecated */\n  baz() { return false; }\n  get value(): number { return 0; }\n  set value(_newValue: number) { return; }\n  static staticBar = new Bar(0);\n  private static getStaticBar() { return Bar.staticBar; }\n}\n\nenum Values { value1, value2 }\n\nvar bar: IFoo = new Bar(3);"
       }
     }),
   );
@@ -3114,7 +3114,7 @@ fn lsp_code_lens_test_disabled() {
           "text": "const { test } = Deno;\nconst { test: test2 } = Deno;\nconst test3 = Deno.test;\n\nDeno.test(\"test a\", () => {});\nDeno.test({\n  name: \"test b\",\n  fn() {},\n});\ntest({\n  name: \"test c\",\n  fn() {},\n});\ntest(\"test d\", () => {});\ntest2({\n  name: \"test e\",\n  fn() {},\n});\ntest2(\"test f\", () => {});\ntest3({\n  name: \"test g\",\n  fn() {},\n});\ntest3(\"test h\", () => {});\n"
         }
       }),
-      // diable test code lens
+      // disable test code lens
       json!([{
         "enable": true,
         "codeLens": {
@@ -4788,7 +4788,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6812|file:///a/b",
+          "exportMapKey": "foo|6802|file:///a/b",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -4820,6 +4820,636 @@ fn lsp_completions_auto_import() {
         }
       ]
     })
+  );
+}
+
+#[test]
+fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import {getClient} from 'npm:@denotest/types-exports-subpaths@1/client';import chalk from 'npm:chalk@5.0';\n\n",
+      }
+    }),
+  );
+  client.write_request(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "npm:@denotest/types-exports-subpaths@1/client",
+        }, {
+          "uri": "npm:chalk@5.0",
+        }
+      ]
+    }),
+  );
+
+  // try auto-import with path
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/a.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "getClie",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/a.ts",
+    (0, 7),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "getClient")
+    .unwrap();
+
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "getClient",
+      "kind": 3,
+      "detail": "function getClient(): 5",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { getClient } from \"npm:@denotest/types-exports-subpaths@1/client\";\n\n"
+        }
+      ]
+    })
+  );
+
+  // try quick fix with path
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/b.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "getClient",
+    }
+  }));
+  let diagnostics = diagnostics
+    .messages_with_file_and_source("file:///a/b.ts", "deno-ts")
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"npm:@denotest/types-exports-subpaths@1/client\"",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 9 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'getClient'.",
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+            "textDocument": {
+              "uri": "file:///a/b.ts",
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 }
+              },
+              "newText": "import { getClient } from \"npm:@denotest/types-exports-subpaths@1/client\";\n\n"
+            }]
+        }]
+      }
+    }])
+  );
+
+  // try auto-import without path
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/c.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "chal",
+    }
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/c.ts",
+    (0, 4),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "chalk")
+    .unwrap();
+
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("detail"); // not worth testing these
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "chalk",
+      "kind": 6,
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import chalk from \"npm:chalk@5.0\";\n\n"
+        }
+      ]
+    })
+  );
+
+  // try quick fix without path
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/d.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "chalk",
+    }
+  }));
+  let diagnostics = diagnostics
+    .messages_with_file_and_source("file:///a/d.ts", "deno-ts")
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/d.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 5 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"npm:chalk@5.0\"",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 5 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'chalk'.",
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+            "textDocument": {
+              "uri": "file:///a/d.ts",
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 }
+              },
+              "newText": "import chalk from \"npm:chalk@5.0\";\n\n"
+            }]
+        }]
+      }
+    }])
+  );
+}
+
+#[test]
+fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let import_map = r#"{
+    "imports": {
+      "print_hello": "http://localhost:4545/subdir/print_hello.ts",
+      "chalk": "npm:chalk@~5",
+      "types-exports-subpaths/": "npm:/@denotest/types-exports-subpaths@1/"
+    }
+  }"#;
+  temp_dir.write("import_map.json", import_map);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_import_map("import_map.json");
+  });
+  client.did_open(
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": concat!(
+          "import {getClient} from 'npm:@denotest/types-exports-subpaths@1/client';\n",
+          "import _test1 from 'npm:chalk@^5.0';\n",
+          "import chalk from 'npm:chalk@~5';\n",
+          "import chalk from 'npm:chalk@~5';\n",
+          "import {printHello} from 'print_hello';\n",
+          "\n",
+        ),
+      }
+    }),
+  );
+  client.write_request(
+    "deno/cache",
+    json!({
+      "referrer": {
+        "uri": "file:///a/file.ts",
+      },
+      "uris": [
+        {
+          "uri": "npm:@denotest/types-exports-subpaths@1/client",
+        }, {
+          "uri": "npm:chalk@^5.0",
+        }, {
+          "uri": "npm:chalk@~5",
+        }, {
+          "uri": "http://localhost:4545/subdir/print_hello.ts",
+        }
+      ]
+    }),
+  );
+
+  // try auto-import with path
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/a.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "getClie",
+    }
+  }));
+  let list = client.get_completion_list(
+    "file:///a/a.ts",
+    (0, 7),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "getClient")
+    .unwrap();
+
+  let res = client.write_request("completionItem/resolve", item);
+  assert_eq!(
+    res,
+    json!({
+      "label": "getClient",
+      "kind": 3,
+      "detail": "function getClient(): 5",
+      "documentation": {
+        "kind": "markdown",
+        "value": ""
+      },
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { getClient } from \"types-exports-subpaths/client\";\n\n"
+        }
+      ]
+    })
+  );
+
+  // try quick fix with path
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/b.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "getClient",
+    }
+  }));
+  let diagnostics = diagnostics
+    .messages_with_file_and_source("file:///a/b.ts", "deno-ts")
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/b.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"types-exports-subpaths/client\"",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 9 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'getClient'.",
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+            "textDocument": {
+              "uri": "file:///a/b.ts",
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 }
+              },
+              "newText": "import { getClient } from \"types-exports-subpaths/client\";\n\n"
+            }]
+        }]
+      }
+    }])
+  );
+
+  // try auto-import without path
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/c.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "chal",
+    }
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/c.ts",
+    (0, 4),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "chalk")
+    .unwrap();
+
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("detail"); // not worth testing these
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "chalk",
+      "kind": 6,
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import chalk from \"chalk\";\n\n"
+        }
+      ]
+    })
+  );
+
+  // try quick fix without path
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/d.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "chalk",
+    }
+  }));
+  let diagnostics = diagnostics
+    .messages_with_file_and_source("file:///a/d.ts", "deno-ts")
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/d.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 5 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"chalk\"",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 5 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'chalk'.",
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+            "textDocument": {
+              "uri": "file:///a/d.ts",
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 }
+              },
+              "newText": "import chalk from \"chalk\";\n\n"
+            }]
+        }]
+      }
+    }])
+  );
+
+  // try auto-import with http import map
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/e.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "printH",
+    }
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/e.ts",
+    (0, 6),
+    json!({ "triggerKind": 1 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "printHello")
+    .unwrap();
+
+  let mut res = client.write_request("completionItem/resolve", item);
+  let obj = res.as_object_mut().unwrap();
+  obj.remove("detail"); // not worth testing these
+  obj.remove("documentation");
+  assert_eq!(
+    res,
+    json!({
+      "label": "printHello",
+      "kind": 3,
+      "sortText": "￿16",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 0 }
+          },
+          "newText": "import { printHello } from \"print_hello\";\n\n"
+        }
+      ]
+    })
+  );
+
+  // try quick fix with http import
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/f.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "printHello",
+    }
+  }));
+  let diagnostics = diagnostics
+    .messages_with_file_and_source("file:///a/f.ts", "deno-ts")
+    .diagnostics;
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!(json!({
+      "textDocument": {
+        "uri": "file:///a/f.ts"
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 10 }
+      },
+      "context": {
+        "diagnostics": diagnostics,
+        "only": ["quickfix"]
+      }
+    })),
+  );
+  assert_eq!(
+    res,
+    json!([{
+      "title": "Add import from \"print_hello\"",
+      "kind": "quickfix",
+      "diagnostics": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 0, "character": 10 }
+          },
+          "severity": 1,
+          "code": 2304,
+          "source": "deno-ts",
+          "message": "Cannot find name 'printHello'.",
+        }
+      ],
+      "edit": {
+        "documentChanges": [{
+            "textDocument": {
+              "uri": "file:///a/f.ts",
+              "version": 1,
+            },
+            "edits": [{
+              "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 0, "character": 0 }
+              },
+              "newText": "import { printHello } from \"print_hello\";\n\n"
+            }]
+        }]
+      }
+    }])
   );
 }
 
@@ -5612,7 +6242,7 @@ fn lsp_cache_location() {
         "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n// @deno-types=\"http://127.0.0.1:4545/type_definitions/foo.d.ts\"\nimport * as b from \"http://127.0.0.1:4545/type_definitions/foo.js\";\nimport * as c from \"http://127.0.0.1:4545/subdir/type_reference.js\";\nimport * as d from \"http://127.0.0.1:4545/subdir/mod1.ts\";\nimport * as e from \"data:application/typescript;base64,ZXhwb3J0IGNvbnN0IGEgPSAiYSI7CgpleHBvcnQgZW51bSBBIHsKICBBLAogIEIsCiAgQywKfQo=\";\nimport * as f from \"./file_01.ts\";\nimport * as g from \"http://localhost:4545/x/a/mod.ts\";\n\nconsole.log(a, b, c, d, e, f, g);\n"
       }
     }));
-  assert_eq!(diagnostics.all().len(), 7);
+  assert_eq!(diagnostics.all().len(), 6);
   client.write_request(
     "deno/cache",
     json!({
@@ -5708,7 +6338,7 @@ fn lsp_tls_cert() {
     }
   }));
   let diagnostics = diagnostics.all();
-  assert_eq!(diagnostics.len(), 7);
+  assert_eq!(diagnostics.len(), 6);
   client.write_request(
     "deno/cache",
     json!({
@@ -7373,7 +8003,7 @@ Deno.test({
     .as_str()
     .unwrap();
   // deno test's output capturing flushes with a zero-width space in order to
-  // synchronize the output pipes. Occassionally this zero width space
+  // synchronize the output pipes. Occasionally this zero width space
   // might end up in the output so strip it from the output comparison here.
   assert_eq!(notification_value.replace('\u{200B}', ""), "test a\r\n");
   assert_eq!(
@@ -7609,25 +8239,9 @@ fn lsp_data_urls_with_jsx_compiler_option() {
     }
   })).all();
 
-  // there will be a diagnostic about not having cached the data url
-  assert_eq!(diagnostics.len(), 1);
-  assert_eq!(
-    diagnostics[0].code,
-    Some(lsp::NumberOrString::String("no-cache-data".to_string()))
-  );
+  assert_eq!(diagnostics.len(), 0);
 
-  // so cache it
-  client.write_request(
-    "deno/cache",
-    json!({
-      "referrer": {
-        "uri": uri,
-      },
-      "uris": [],
-    }),
-  );
-
-  let res = client.write_request(
+  let res: Value = client.write_request(
     "textDocument/references",
     json!({
       "textDocument": {

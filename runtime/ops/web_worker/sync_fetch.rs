@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::type_error;
@@ -46,12 +48,12 @@ pub fn op_worker_sync_fetch(
   // URLs when none of the script URLs use the blob scheme.
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
-    .try_borrow::<BlobStore>()
+    .try_borrow::<Arc<BlobStore>>()
     .ok_or_else(|| type_error("Blob URLs are not supported in this context."))?
     .clone();
 
   // TODO(andreubotella): make the below thread into a resource that can be
-  // re-used. This would allow parallel fecthing of multiple scripts.
+  // re-used. This would allow parallel fetching of multiple scripts.
 
   let thread = std::thread::spawn(move || {
     let runtime = tokio::runtime::Builder::new_current_thread()

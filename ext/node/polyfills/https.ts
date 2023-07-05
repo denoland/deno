@@ -1,22 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
   ClientRequest,
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
-} from "ext:deno_node/http.ts";
+} from "node:http";
 import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
-import {
-  type ServerHandler,
-  ServerImpl as HttpServer,
-} from "ext:deno_node/http.ts";
+import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
 import { validateObject } from "ext:deno_node/internal/validators.mjs";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 
 export class Server extends HttpServer {
   constructor(opts, requestListener?: ServerHandler) {

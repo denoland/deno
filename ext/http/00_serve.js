@@ -427,7 +427,17 @@ async function asyncResponse(responseBodies, req, status, stream) {
       responseRid = op_http_set_response_body_stream(req);
       SetPrototypeAdd(responseBodies, responseRid);
       op_http_set_promise_complete(req, status);
-      timeoutPromise = core.writeAll(responseRid, value1);
+      // TODO(mmastrac): if this promise fails before we get to the await below, it crashes
+      // the process with an error:
+      //
+      // 'Uncaught (in promise) BadResource: failed to write'.
+      //
+      // To avoid this, we're going to swallow errors here and allow the code later in the
+      // file to re-throw them in a way that doesn't appear to be an uncaught promise rejection.
+      timeoutPromise = PromisePrototypeCatch(
+        core.writeAll(responseRid, value1),
+        () => null,
+      );
     }, 250);
     const { value: value2, done: done2 } = await reader.read();
 
@@ -613,7 +623,7 @@ function serve(arg1, arg2) {
   };
   const listenOpts = {
     hostname: options.hostname ?? "0.0.0.0",
-    port: options.port ?? (wantsHttps ? 9000 : 8000),
+    port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
   };
 
@@ -635,16 +645,17 @@ function serve(arg1, arg2) {
   }
 
   const onListen = (scheme) => {
+    // If the hostname is "0.0.0.0", we display "localhost" in console
+    // because browsers in Windows don't resolve "0.0.0.0".
+    // See the discussion in https://github.com/denoland/deno_std/issues/1165
+    const hostname = listenOpts.hostname == "0.0.0.0"
+      ? "localhost"
+      : listenOpts.hostname;
     const port = listenOpts.port;
+
     if (options.onListen) {
-      options.onListen({ port });
+      options.onListen({ hostname, port });
     } else {
-      // If the hostname is "0.0.0.0", we display "localhost" in console
-      // because browsers in Windows don't resolve "0.0.0.0".
-      // See the discussion in https://github.com/denoland/deno_std/issues/1165
-      const hostname = listenOpts.hostname == "0.0.0.0"
-        ? "localhost"
-        : listenOpts.hostname;
       console.log(`Listening on ${scheme}${hostname}:${port}/`);
     }
   };

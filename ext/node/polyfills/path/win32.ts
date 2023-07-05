@@ -10,7 +10,6 @@ export const {
   dirname,
   extname,
   format,
-  fromFileUrl,
   isAbsolute,
   join,
   normalize,
@@ -18,7 +17,6 @@ export const {
   relative,
   resolve,
   sep,
-  toFileUrl,
   toNamespacedPath,
 } = path.win32;
 

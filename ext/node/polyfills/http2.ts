@@ -1,13 +1,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
-import { Server, Socket, TCP } from "ext:deno_node/net.ts";
+import { EventEmitter } from "node:events";
+import { Buffer } from "node:buffer";
+import { Server, Socket, TCP } from "node:net";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
 import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
-import { FileHandle } from "ext:deno_node/fs/promises.ts";
+import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
