@@ -205,35 +205,6 @@ fn typecheck_declarations_unstable() {
 }
 
 #[test]
-fn typecheck_core() {
-  let context = TestContext::default();
-  let deno_dir = context.deno_dir();
-  let test_file = deno_dir.path().join("test_deno_core_types.ts");
-  std::fs::write(
-    &test_file,
-    format!(
-      "import \"{}\";",
-      deno_core::resolve_path(
-        util::root_path()
-          .join("core/lib.deno_core.d.ts")
-          .to_str()
-          .unwrap(),
-        &std::env::current_dir().unwrap()
-      )
-      .unwrap()
-    ),
-  )
-  .unwrap();
-
-  let args = vec!["run".to_string(), test_file.to_string_lossy().into_owned()];
-  let output = context.new_command().args_vec(args).split_output().run();
-
-  println!("stdout: {}", output.stdout());
-  println!("stderr: {}", output.stderr());
-  output.assert_exit_code(0);
-}
-
-#[test]
 fn ts_no_recheck_on_redirect() {
   let test_context = TestContext::default();
   let check_command = test_context.new_command().args_vec([

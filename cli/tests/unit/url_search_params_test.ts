@@ -23,7 +23,7 @@ Deno.test(function urlSearchParamsWithQuotes() {
   assertEquals(searchParams, "str=%27hello+world%27");
 });
 
-Deno.test(function urlSearchParamsWithBraket() {
+Deno.test(function urlSearchParamsWithBracket() {
   const init = [
     ["str", "(hello world)"],
   ];
@@ -328,10 +328,10 @@ Deno.test(
 // If a class extends URLSearchParams, override one method should not change another's behavior.
 Deno.test(
   function urlSearchParamsOverridingAppendNotChangeConstructorAndSet() {
-    let overridedAppendCalled = 0;
+    let overriddenAppendCalled = 0;
     class CustomSearchParams extends URLSearchParams {
       append(name: string, value: string) {
-        ++overridedAppendCalled;
+        ++overriddenAppendCalled;
         super.append(name, value);
       }
     }
@@ -339,7 +339,7 @@ Deno.test(
     new CustomSearchParams([["foo", "bar"]]);
     new CustomSearchParams(new CustomSearchParams({ foo: "bar" }));
     new CustomSearchParams().set("foo", "bar");
-    assertEquals(overridedAppendCalled, 0);
+    assertEquals(overriddenAppendCalled, 0);
   },
 );
 

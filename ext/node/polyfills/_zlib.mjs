@@ -4,11 +4,11 @@
 
 // deno-lint-ignore-file
 
-import { Buffer, kMaxLength } from "ext:deno_node/buffer.ts";
-import { Transform } from "ext:deno_node/stream.ts";
+import { Buffer, kMaxLength } from "node:buffer";
+import { Transform } from "node:stream";
 import * as binding from "ext:deno_node/_zlib_binding.mjs";
-import util from "ext:deno_node/util.ts";
-import { ok as assert } from "ext:deno_node/assert.ts";
+import util from "node:util";
+import { ok as assert } from "node:assert";
 import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 

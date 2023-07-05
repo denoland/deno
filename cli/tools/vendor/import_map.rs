@@ -14,6 +14,7 @@ use import_map::SpecifierMap;
 use indexmap::IndexMap;
 use log::warn;
 
+use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
 
 use super::mappings::Mappings;
@@ -182,6 +183,7 @@ pub fn build_import_map(
   modules: &[&Module],
   mappings: &Mappings,
   original_import_map: Option<&ImportMap>,
+  jsx_import_source: Option<&JsxImportSourceConfig>,
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<String, AnyError> {
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
@@ -191,6 +193,21 @@ pub fn build_import_map(
     builder
       .imports
       .add(base_specifier.to_string(), base_specifier);
+  }
+
+  // add the jsx import source to the destination import map, if mapped in the original import map
+  if let (Some(import_map), Some(jsx_import_source)) =
+    (original_import_map, jsx_import_source)
+  {
+    if let Some(default_specifier) = &jsx_import_source.default_specifier {
+      let specifier_text =
+        format!("{}/{}", default_specifier, jsx_import_source.module);
+      if let Ok(resolved_url) =
+        import_map.resolve(&specifier_text, import_map.base_url())
+      {
+        builder.imports.add(specifier_text, &resolved_url);
+      }
+    }
   }
 
   Ok(builder.into_import_map(original_import_map).to_json())
@@ -304,7 +321,7 @@ fn handle_dep_specifier(
       referrer,
       mappings,
     )
-  } else {
+  } else if specifier.scheme() == "file" {
     handle_local_dep_specifier(
       text,
       unresolved_specifier,

@@ -18,6 +18,8 @@ pub struct TsFn {
   pub context: *mut c_void,
   pub thread_counter: usize,
   pub ref_counter: Arc<AtomicUsize>,
+  finalizer: Option<napi_finalize>,
+  finalizer_data: *mut c_void,
   sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
   tsfn_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
 }
@@ -25,38 +27,46 @@ pub struct TsFn {
 impl Drop for TsFn {
   fn drop(&mut self) {
     let env = unsafe { self.env.as_mut().unwrap() };
-    env.remove_threadsafe_function_ref_counter(self.id)
+    env.remove_threadsafe_function_ref_counter(self.id);
+    if let Some(finalizer) = self.finalizer {
+      unsafe {
+        (finalizer)(self.env as _, self.finalizer_data, ptr::null_mut());
+      }
+    }
   }
 }
 
 impl TsFn {
-  pub fn acquire(&mut self) -> Result {
+  pub fn acquire(&mut self) -> napi_status {
     self.thread_counter += 1;
-    Ok(())
+    napi_ok
   }
 
-  pub fn release(mut self) -> Result {
+  pub fn release(mut self) -> napi_status {
     self.thread_counter -= 1;
     if self.thread_counter == 0 {
-      self
+      if self
         .tsfn_sender
         .unbounded_send(ThreadSafeFunctionStatus::Dead)
-        .map_err(|_| Error::GenericFailure)?;
+        .is_err()
+      {
+        return napi_generic_failure;
+      }
       drop(self);
     } else {
       forget(self);
     }
-    Ok(())
+    napi_ok
   }
 
-  pub fn ref_(&mut self) -> Result {
+  pub fn ref_(&mut self) -> napi_status {
     self
       .ref_counter
       .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    Ok(())
+    napi_ok
   }
 
-  pub fn unref(&mut self) -> Result {
+  pub fn unref(&mut self) -> napi_status {
     let _ = self.ref_counter.fetch_update(
       std::sync::atomic::Ordering::SeqCst,
       std::sync::atomic::Ordering::SeqCst,
@@ -69,7 +79,7 @@ impl TsFn {
       },
     );
 
-    Ok(())
+    napi_ok
   }
 
   pub fn call(&self, data: *mut c_void, is_blocking: bool) {
@@ -126,23 +136,27 @@ fn napi_create_threadsafe_function(
   _async_resource_name: napi_value,
   _max_queue_size: usize,
   initial_thread_count: usize,
-  _thread_finialize_data: *mut c_void,
-  _thread_finalize_cb: napi_finalize,
+  thread_finalize_data: *mut c_void,
+  thread_finalize_cb: Option<napi_finalize>,
   context: *mut c_void,
   maybe_call_js_cb: Option<napi_threadsafe_function_call_js>,
   result: *mut napi_threadsafe_function,
-) -> Result {
-  let env_ref = env.as_mut().ok_or(Error::GenericFailure)?;
+) -> napi_status {
+  let Some(env_ref) = env.as_mut() else {
+    return napi_generic_failure;
+  };
   if initial_thread_count == 0 {
-    return Err(Error::InvalidArg);
+    return napi_invalid_arg;
   }
-  let maybe_func = func
-    .map(|value| {
-      let func = v8::Local::<v8::Function>::try_from(value)
-        .map_err(|_| Error::FunctionExpected)?;
-      Ok(v8::Global::new(&mut env_ref.scope(), func))
-    })
-    .transpose()?;
+
+  let mut maybe_func = None;
+
+  if let Some(value) = *func {
+    let Ok(func) = v8::Local::<v8::Function>::try_from(value) else {
+      return napi_function_expected;
+    };
+    maybe_func = Some(v8::Global::new(&mut env_ref.scope(), func));
+  }
 
   let id = TS_FN_ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
@@ -153,42 +167,44 @@ fn napi_create_threadsafe_function(
     context,
     thread_counter: initial_thread_count,
     sender: env_ref.async_work_sender.clone(),
+    finalizer: thread_finalize_cb,
+    finalizer_data: thread_finalize_data,
     tsfn_sender: env_ref.threadsafe_function_sender.clone(),
     ref_counter: Arc::new(AtomicUsize::new(1)),
     env,
   };
+
   env_ref
     .add_threadsafe_function_ref_counter(tsfn.id, tsfn.ref_counter.clone());
 
-  env_ref
+  if env_ref
     .threadsafe_function_sender
     .unbounded_send(ThreadSafeFunctionStatus::Alive)
-    .map_err(|_| Error::GenericFailure)?;
+    .is_err()
+  {
+    return napi_generic_failure;
+  }
   *result = transmute::<Box<TsFn>, _>(Box::new(tsfn));
 
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
 fn napi_acquire_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,
-) -> Result {
+) -> napi_status {
   let tsfn: &mut TsFn = &mut *(tsfn as *mut TsFn);
-  tsfn.acquire()?;
-
-  Ok(())
+  tsfn.acquire()
 }
 
 #[napi_sym::napi_sym]
 fn napi_unref_threadsafe_function(
   _env: &mut Env,
   tsfn: napi_threadsafe_function,
-) -> Result {
+) -> napi_status {
   let tsfn: &mut TsFn = &mut *(tsfn as *mut TsFn);
-  tsfn.unref()?;
-
-  Ok(())
+  tsfn.unref()
 }
 
 /// Maybe called from any thread.
@@ -196,10 +212,10 @@ fn napi_unref_threadsafe_function(
 pub fn napi_get_threadsafe_function_context(
   func: napi_threadsafe_function,
   result: *mut *const c_void,
-) -> Result {
+) -> napi_status {
   let tsfn: &TsFn = &*(func as *const TsFn);
   *result = tsfn.context;
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
@@ -207,29 +223,26 @@ fn napi_call_threadsafe_function(
   func: napi_threadsafe_function,
   data: *mut c_void,
   is_blocking: napi_threadsafe_function_call_mode,
-) -> Result {
+) -> napi_status {
   let tsfn: &TsFn = &*(func as *const TsFn);
   tsfn.call(data, is_blocking != 0);
-  Ok(())
+  napi_ok
 }
 
 #[napi_sym::napi_sym]
 fn napi_ref_threadsafe_function(
   _env: &mut Env,
   func: napi_threadsafe_function,
-) -> Result {
+) -> napi_status {
   let tsfn: &mut TsFn = &mut *(func as *mut TsFn);
-  tsfn.ref_()?;
-  Ok(())
+  tsfn.ref_()
 }
 
 #[napi_sym::napi_sym]
 fn napi_release_threadsafe_function(
   tsfn: napi_threadsafe_function,
   _mode: napi_threadsafe_function_release_mode,
-) -> Result {
+) -> napi_status {
   let tsfn: Box<TsFn> = Box::from_raw(tsfn as *mut TsFn);
-  tsfn.release()?;
-
-  Ok(())
+  tsfn.release()
 }

@@ -109,7 +109,6 @@ impl Drop for CacheDB {
 }
 
 impl CacheDB {
-  #[cfg(test)]
   pub fn in_memory(
     config: &'static CacheDBConfiguration,
     version: &'static str,
@@ -262,7 +261,9 @@ impl CacheDB {
     };
 
     // Failed, try deleting it
-    log::warn!(
+    let is_tty = atty::is(atty::Stream::Stderr);
+    log::log!(
+      if is_tty { log::Level::Warn } else { log::Level::Trace },
       "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
       path.to_string_lossy()
     );
@@ -276,7 +277,12 @@ impl CacheDB {
 
     match self.config.on_failure {
       CacheFailure::InMemory => {
-        log::error!(
+        log::log!(
+          if is_tty {
+            log::Level::Error
+          } else {
+            log::Level::Trace
+          },
           "Failed to open cache file '{}', opening in-memory cache.",
           path.to_string_lossy()
         );
@@ -285,7 +291,12 @@ impl CacheDB {
         ))
       }
       CacheFailure::Blackhole => {
-        log::error!(
+        log::log!(
+          if is_tty {
+            log::Level::Error
+          } else {
+            log::Level::Trace
+          },
           "Failed to open cache file '{}', performance may be degraded.",
           path.to_string_lossy()
         );

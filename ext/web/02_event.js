@@ -516,7 +516,7 @@ function isShadowRoot(nodeImpl) {
   );
 }
 
-function isSlotable(
+function isSlottable(
   nodeImpl,
 ) {
   return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
@@ -586,7 +586,7 @@ function dispatch(
     }
 
     let slotInClosedTree = false;
-    let slotable = isSlotable(targetImpl) && getAssignedSlot(targetImpl)
+    let slottable = isSlottable(targetImpl) && getAssignedSlot(targetImpl)
       ? targetImpl
       : null;
     let parent = getParent(targetImpl);
@@ -594,8 +594,8 @@ function dispatch(
     // Populate event path
     // https://dom.spec.whatwg.org/#event-path
     while (parent !== null) {
-      if (slotable !== null) {
-        slotable = null;
+      if (slottable !== null) {
+        slottable = null;
 
         const parentRoot = getRoot(parent);
         if (
@@ -737,13 +737,14 @@ function innerInvokeEventListeners(
   }
 
   let handlers = targetListeners[type];
+  const handlersLength = handlers.length;
 
   // Copy event listeners before iterating since the list can be modified during the iteration.
-  if (handlers.length > 1) {
+  if (handlersLength > 1) {
     handlers = ArrayPrototypeSlice(targetListeners[type]);
   }
 
-  for (let i = 0; i < handlers.length; i++) {
+  for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
     let capture, once, passive;

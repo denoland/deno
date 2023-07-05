@@ -7,7 +7,7 @@ const requireImpl = internals.requireImpl;
 const primordials = globalThis.__bootstrap.primordials;
 const { ObjectDefineProperty } = primordials;
 import { nodeGlobals, nodeGlobalThis } from "ext:deno_node/00_globals.js";
-import "ext:deno_node/01_require.js";
+import "node:module";
 
 let initialized = false;
 
@@ -46,6 +46,7 @@ function initialize(
   // FIXME(bartlomieju): not nice to depend on `Deno` namespace here
   // but it's the only way to get `args` and `version` and this point.
   internals.__bootstrapNodeProcess(argv0, Deno.args, Deno.version);
+  internals.__initWorkerThreads();
   // `Deno[Deno.internal].requireImpl` will be unreachable after this line.
   delete internals.requireImpl;
 }

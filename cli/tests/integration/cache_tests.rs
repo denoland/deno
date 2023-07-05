@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util::env_vars_for_npm_tests;
+use test_util::TestContext;
 use test_util::TestContextBuilder;
 
 itest!(_036_import_map_fetch {
@@ -60,13 +61,11 @@ fn relative_home_dir() {
   use test_util as util;
   use test_util::TempDir;
 
-  let deno_dir = TempDir::new_in(&util::testdata_path());
-  let path = deno_dir.path().strip_prefix(util::testdata_path()).unwrap();
-
+  let deno_dir = TempDir::new();
   let mut deno_cmd = util::deno_cmd();
   let output = deno_cmd
     .current_dir(util::testdata_path())
-    .env("XDG_CACHE_HOME", path)
+    .env("XDG_CACHE_HOME", deno_dir.path())
     .env_remove("HOME")
     .env_remove("DENO_DIR")
     .arg("cache")
@@ -180,4 +179,13 @@ fn cache_put_overwrite() {
   let output = run_command.run();
   output.assert_matches_text("res1\n");
   output.assert_exit_code(0);
+}
+
+#[test]
+fn loads_type_graph() {
+  let output = TestContext::default()
+    .new_command()
+    .args("cache --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
 }

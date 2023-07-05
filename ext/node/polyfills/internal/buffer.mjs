@@ -2,6 +2,9 @@
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 // Copyright Feross Aboukhadijeh, and other contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
@@ -860,31 +863,7 @@ function _hexSlice(buf, start, end) {
 }
 
 Buffer.prototype.slice = function slice(start, end) {
-  const len = this.length;
-  start = ~~start;
-  end = end === void 0 ? len : ~~end;
-  if (start < 0) {
-    start += len;
-    if (start < 0) {
-      start = 0;
-    }
-  } else if (start > len) {
-    start = len;
-  }
-  if (end < 0) {
-    end += len;
-    if (end < 0) {
-      end = 0;
-    }
-  } else if (end > len) {
-    end = len;
-  }
-  if (end < start) {
-    end = start;
-  }
-  const newBuf = this.subarray(start, end);
-  Object.setPrototypeOf(newBuf, Buffer.prototype);
-  return newBuf;
+  return this.subarray(start, end);
 };
 
 Buffer.prototype.readUintLE = Buffer.prototype.readUIntLE = function readUIntLE(

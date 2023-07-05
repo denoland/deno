@@ -48,26 +48,26 @@ import _streamPassthrough from "ext:deno_node/internal/streams/passthrough.mjs";
 import _streamReadable from "ext:deno_node/internal/streams/readable.mjs";
 import _streamTransform from "ext:deno_node/internal/streams/transform.mjs";
 import _streamWritable from "ext:deno_node/internal/streams/writable.mjs";
-import assert from "ext:deno_node/assert.ts";
-import assertStrict from "ext:deno_node/assert/strict.ts";
-import asyncHooks from "ext:deno_node/async_hooks.ts";
-import buffer from "ext:deno_node/buffer.ts";
-import childProcess from "ext:deno_node/child_process.ts";
-import cluster from "ext:deno_node/cluster.ts";
-import console from "ext:deno_node/console.ts";
-import constants from "ext:deno_node/constants.ts";
-import crypto from "ext:deno_node/crypto.ts";
-import dgram from "ext:deno_node/dgram.ts";
-import diagnosticsChannel from "ext:deno_node/diagnostics_channel.ts";
-import dns from "ext:deno_node/dns.ts";
-import dnsPromises from "ext:deno_node/dns/promises.ts";
-import domain from "ext:deno_node/domain.ts";
-import events from "ext:deno_node/events.ts";
-import fs from "ext:deno_node/fs.ts";
-import fsPromises from "ext:deno_node/fs/promises.ts";
-import http from "ext:deno_node/http.ts";
-import http2 from "ext:deno_node/http2.ts";
-import https from "ext:deno_node/https.ts";
+import assert from "node:assert";
+import assertStrict from "node:assert/strict";
+import asyncHooks from "node:async_hooks";
+import buffer from "node:buffer";
+import childProcess from "node:child_process";
+import cluster from "node:cluster";
+import console from "node:console";
+import constants from "node:constants";
+import crypto from "node:crypto";
+import dgram from "node:dgram";
+import diagnosticsChannel from "node:diagnostics_channel";
+import dns from "node:dns";
+import dnsPromises from "node:dns/promises";
+import domain from "node:domain";
+import events from "node:events";
+import fs from "node:fs";
+import fsPromises from "node:fs/promises";
+import http from "node:http";
+import http2 from "node:http2";
+import https from "node:https";
 import inspector from "ext:deno_node/inspector.ts";
 import internalCp from "ext:deno_node/internal/child_process.ts";
 import internalCryptoCertificate from "ext:deno_node/internal/crypto/certificate.ts";
@@ -98,36 +98,36 @@ import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
 import internalTimers from "ext:deno_node/internal/timers.mjs";
 import internalUtil from "ext:deno_node/internal/util.mjs";
 import internalUtilInspect from "ext:deno_node/internal/util/inspect.mjs";
-import net from "ext:deno_node/net.ts";
-import os from "ext:deno_node/os.ts";
-import pathPosix from "ext:deno_node/path/posix.ts";
-import pathWin32 from "ext:deno_node/path/win32.ts";
-import path from "ext:deno_node/path.ts";
-import perfHooks from "ext:deno_node/perf_hooks.ts";
-import punycode from "ext:deno_node/punycode.ts";
-import process from "ext:deno_node/process.ts";
-import querystring from "ext:deno_node/querystring.ts";
-import readline from "ext:deno_node/readline.ts";
+import net from "node:net";
+import os from "node:os";
+import pathPosix from "node:path/posix";
+import pathWin32 from "node:path/win32";
+import path from "node:path";
+import perfHooks from "node:perf_hooks";
+import punycode from "node:punycode";
+import process from "node:process";
+import querystring from "node:querystring";
+import readline from "node:readline";
 import readlinePromises from "ext:deno_node/readline/promises.ts";
 import repl from "ext:deno_node/repl.ts";
-import stream from "ext:deno_node/stream.ts";
-import streamConsumers from "ext:deno_node/stream/consumers.mjs";
-import streamPromises from "ext:deno_node/stream/promises.mjs";
-import streamWeb from "ext:deno_node/stream/web.ts";
-import stringDecoder from "ext:deno_node/string_decoder.ts";
-import sys from "ext:deno_node/sys.ts";
-import timers from "ext:deno_node/timers.ts";
-import timersPromises from "ext:deno_node/timers/promises.ts";
-import tls from "ext:deno_node/tls.ts";
-import tty from "ext:deno_node/tty.ts";
-import url from "ext:deno_node/url.ts";
-import utilTypes from "ext:deno_node/util/types.ts";
-import util from "ext:deno_node/util.ts";
-import v8 from "ext:deno_node/v8.ts";
-import vm from "ext:deno_node/vm.ts";
-import workerThreads from "ext:deno_node/worker_threads.ts";
+import stream from "node:stream";
+import streamConsumers from "node:stream/consumers";
+import streamPromises from "node:stream/promises";
+import streamWeb from "node:stream/web";
+import stringDecoder from "node:string_decoder";
+import sys from "node:sys";
+import timers from "node:timers";
+import timersPromises from "node:timers/promises";
+import tls from "node:tls";
+import tty from "node:tty";
+import url from "node:url";
+import utilTypes from "node:util/types";
+import util from "node:util";
+import v8 from "node:v8";
+import vm from "node:vm";
+import workerThreads from "node:worker_threads";
 import wasi from "ext:deno_node/wasi.ts";
-import zlib from "ext:deno_node/zlib.ts";
+import zlib from "node:zlib";
 
 const nativeModuleExports = ObjectCreate(null);
 const builtinModules = [];
@@ -607,6 +607,11 @@ Module._findPath = function (request, paths, isMain, parentPath) {
   return false;
 };
 
+/**
+ * Get a list of potential module directories
+ * @param {string} fromPath The directory name of the module
+ * @returns {string[]} List of module directories
+ */
 Module._nodeModulePaths = function (fromPath) {
   return ops.op_require_node_module_paths(fromPath);
 };
@@ -869,7 +874,7 @@ Module.prototype.load = function (filename) {
     pathDirname(this.filename),
   );
   const extension = findLongestRegisteredExtension(filename);
-  // allow .mjs to be overriden
+  // allow .mjs to be overridden
   if (
     StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
   ) {

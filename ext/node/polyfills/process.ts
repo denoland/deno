@@ -1,10 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -13,7 +16,8 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { fromFileUrl, join } from "ext:deno_node/path.ts";
+import { join } from "node:path";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,
   chdir,
@@ -91,7 +95,7 @@ export const exit = (code?: number | string) => {
     process.emit("exit", process.exitCode || 0);
   }
 
-  Deno.exit(process.exitCode || 0);
+  process.reallyExit(process.exitCode || 0);
 };
 
 function addReadOnlyProcessAlias(
@@ -379,6 +383,13 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_exit_code */
   exit = exit;
+
+  // Undocumented Node API that is used by `signal-exit` which in turn
+  // is used by `node-tap`. It was marked for removal a couple of years
+  // ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+  reallyExit = (code: number) => {
+    return Deno.exit(code || 0);
+  };
 
   _exiting = _exiting;
 
@@ -698,7 +709,7 @@ internals.__bootstrapNodeProcess = function (
   Object.defineProperty(argv, "1", {
     get: () => {
       if (Deno.mainModule.startsWith("file:")) {
-        return fromFileUrl(Deno.mainModule);
+        return pathFromURL(new URL(Deno.mainModule));
       } else {
         return join(Deno.cwd(), "$deno$node.js");
       }
@@ -716,9 +727,9 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // TODO(bartlomieju): this is buggy, see https://github.com/denoland/deno/issues/16928
-  // We should use a specialized API in 99_main.js instead
-  globalThis.addEventListener("unhandledrejection", (event) => {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  internals.nodeProcessUnhandledRejectionCallback = (event) => {
     if (process.listenerCount("unhandledRejection") === 0) {
       // The Node.js default behavior is to raise an uncaught exception if
       // an unhandled rejection occurs and there are no unhandledRejection
@@ -734,7 +745,7 @@ internals.__bootstrapNodeProcess = function (
 
     event.preventDefault();
     process.emit("unhandledRejection", event.reason, event.promise);
-  });
+  };
 
   globalThis.addEventListener("error", (event) => {
     if (process.listenerCount("uncaughtException") > 0) {

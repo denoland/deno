@@ -1,22 +1,58 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { urlToHttpOptions } from "ext:deno_node/internal/url.ts";
 import {
   ClientRequest,
   IncomingMessageForClient as IncomingMessage,
   type RequestOptions,
-} from "ext:deno_node/http.ts";
+} from "node:http";
 import { Agent as HttpAgent } from "ext:deno_node/_http_agent.mjs";
+import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { type ServerHandler, ServerImpl as HttpServer } from "node:http";
+import { validateObject } from "ext:deno_node/internal/validators.mjs";
+import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
+import { Buffer } from "node:buffer";
 
-export class Server {
-  constructor() {
-    notImplemented("https.Server.prototype.constructor");
+export class Server extends HttpServer {
+  constructor(opts, requestListener?: ServerHandler) {
+    if (typeof opts === "function") {
+      requestListener = opts;
+      opts = kEmptyObject;
+    } else if (opts == null) {
+      opts = kEmptyObject;
+    } else {
+      validateObject(opts, "options");
+    }
+
+    if (opts.cert && Array.isArray(opts.cert)) {
+      notImplemented("https.Server.opts.cert array type");
+    }
+
+    if (opts.key && Array.isArray(opts.key)) {
+      notImplemented("https.Server.opts.key array type");
+    }
+
+    super(opts, requestListener);
+  }
+
+  _additionalServeOptions() {
+    return {
+      cert: this._opts.cert instanceof Buffer
+        ? this._opts.cert.toString()
+        : this._opts.cert,
+      key: this._opts.key instanceof Buffer
+        ? this._opts.key.toString()
+        : this._opts.key,
+    };
   }
 }
-export function createServer() {
-  notImplemented("https.createServer");
+export function createServer(opts, requestListener?: ServerHandler) {
+  return new Server(opts, requestListener);
 }
 
 interface HttpsRequestOptions extends RequestOptions {
@@ -80,7 +116,7 @@ class HttpsClientRequest extends ClientRequest {
       return undefined;
     }
     if (caCerts !== undefined) {
-      return Deno.createHttpClient({ caCerts });
+      return createHttpClient({ caCerts, http2: false });
     }
     // const status = await Deno.permissions.query({
     //   name: "env",
@@ -97,13 +133,8 @@ class HttpsClientRequest extends ClientRequest {
     }
     const caCert = Deno.readTextFileSync(certFilename);
     caCerts = [caCert];
-    return Deno.createHttpClient({ caCerts });
+    return createHttpClient({ caCerts, http2: false });
   }
-
-  /*override _createSocket(): Socket {
-    // deno-lint-ignore no-explicit-any
-    return { authorized: true } as any;
-  }*/
 }
 
 /** Makes a request to an https server. */
