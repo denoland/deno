@@ -28,7 +28,7 @@ use std::path::PathBuf;
 pub type MaybeImportsResult =
   Result<Vec<deno_graph::ReferrerImports>, AnyError>;
 
-#[derive(Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
