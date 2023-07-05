@@ -322,7 +322,12 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+    if (ArrayBufferIsView(data)) {
+      op_ws_send_binary(this[_rid], data);
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      // deno-lint-ignore prefer-primordials
+      op_ws_send_binary(this[_rid], new Uint8Array(data));
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
@@ -332,10 +337,6 @@ class WebSocket extends EventTarget {
             new DataView(ab),
           ),
       );
-    } else if (ArrayBufferIsView(data)) {
-      op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      op_ws_send_binary(this[_rid], data);
     } else {
       const string = String(data);
       op_ws_send_text(
