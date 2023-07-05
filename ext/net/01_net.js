@@ -11,13 +11,16 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayPrototypeFilter,
+  ArrayPrototypeForEach,
+  ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
   SymbolFor,
-  TypedArrayPrototypeSubarray,
   TypeError,
+  TypedArrayPrototypeSubarray,
   Uint8Array,
 } = primordials;
 
@@ -97,15 +100,16 @@ class Conn {
     const promise = core.read(this.rid, buffer);
     const promiseId = promise[promiseIdSymbol];
     if (this.#unref) core.unrefOp(promiseId);
-    this.#pendingReadPromiseIds.push(promiseId);
+    ArrayPrototypePush(this.#pendingReadPromiseIds, promiseId);
     let nread;
     try {
       nread = await promise;
     } catch (e) {
       throw e;
     } finally {
-      this.#pendingReadPromiseIds = this.#pendingReadPromiseIds.filter((id) =>
-        id !== promiseId
+      this.#pendingReadPromiseIds = ArrayPrototypeFilter(
+        this.#pendingReadPromiseIds,
+        (id) => id !== promiseId,
       );
     }
     return nread === 0 ? null : nread;
@@ -141,7 +145,7 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableRef(this.#readable);
     }
-    this.#pendingReadPromiseIds.forEach((id) => core.refOp(id));
+    ArrayPrototypeForEach(this.#pendingReadPromiseIds, (id) => core.refOp(id));
   }
 
   unref() {
@@ -149,7 +153,10 @@ class Conn {
     if (this.#readable) {
       readableStreamForRidUnrefableUnref(this.#readable);
     }
-    this.#pendingReadPromiseIds.forEach((id) => core.unrefOp(id));
+    ArrayPrototypeForEach(
+      this.#pendingReadPromiseIds,
+      (id) => core.unrefOp(id),
+    );
   }
 }
 

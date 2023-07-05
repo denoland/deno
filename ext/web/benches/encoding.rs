@@ -8,7 +8,6 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::OpState;
-use deno_web::BlobStore;
 
 #[derive(Clone)]
 struct Permissions;
@@ -28,7 +27,7 @@ fn setup() -> Vec<Extension> {
     deno_url::deno_url::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_web::deno_web::init_ops_and_esm::<Permissions>(
-      BlobStore::default(),
+      Default::default(),
       None,
     ),
     Extension::builder("bench_setup")
@@ -45,6 +44,7 @@ fn setup() -> Vec<Extension> {
       .state(|state| {
         state.put(Permissions {});
       })
+      .esm_entry_point("ext:bench_setup/setup")
       .build(),
   ]
 }

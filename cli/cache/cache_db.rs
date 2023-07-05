@@ -3,6 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
+use deno_core::task::spawn_blocking;
 use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
@@ -95,7 +96,7 @@ impl Drop for CacheDB {
       // Hand off SQLite connection to another thread to do the surprisingly expensive cleanup
       let inner = inner.into_inner().into_inner();
       if let Some(conn) = inner {
-        tokio::task::spawn_blocking(move || {
+        spawn_blocking(move || {
           drop(conn);
           log::trace!(
             "Cleaned up SQLite connection at {}",
@@ -108,7 +109,6 @@ impl Drop for CacheDB {
 }
 
 impl CacheDB {
-  #[cfg(test)]
   pub fn in_memory(
     config: &'static CacheDBConfiguration,
     version: &'static str,
@@ -168,7 +168,7 @@ impl CacheDB {
   fn spawn_eager_init_thread(&self) {
     let clone = self.clone();
     debug_assert!(tokio::runtime::Handle::try_current().is_ok());
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let lock = clone.conn.lock();
       clone.initialize(&lock);
     });
@@ -261,7 +261,9 @@ impl CacheDB {
     };
 
     // Failed, try deleting it
-    log::warn!(
+    let is_tty = atty::is(atty::Stream::Stderr);
+    log::log!(
+      if is_tty { log::Level::Warn } else { log::Level::Trace },
       "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
       path.to_string_lossy()
     );
@@ -275,7 +277,12 @@ impl CacheDB {
 
     match self.config.on_failure {
       CacheFailure::InMemory => {
-        log::error!(
+        log::log!(
+          if is_tty {
+            log::Level::Error
+          } else {
+            log::Level::Trace
+          },
           "Failed to open cache file '{}', opening in-memory cache.",
           path.to_string_lossy()
         );
@@ -284,7 +291,12 @@ impl CacheDB {
         ))
       }
       CacheFailure::Blackhole => {
-        log::error!(
+        log::log!(
+          if is_tty {
+            log::Level::Error
+          } else {
+            log::Level::Trace
+          },
           "Failed to open cache file '{}', performance may be degraded.",
           path.to_string_lossy()
         );

@@ -3,22 +3,21 @@
 mod interface;
 mod ops;
 mod std_fs;
+pub mod sync;
 
-pub use crate::interface::File;
 pub use crate::interface::FileSystem;
+pub use crate::interface::FileSystemRc;
 pub use crate::interface::FsDirEntry;
-pub use crate::interface::FsError;
 pub use crate::interface::FsFileType;
-pub use crate::interface::FsResult;
-pub use crate::interface::FsStat;
 pub use crate::interface::OpenOptions;
-use crate::ops::*;
+pub use crate::std_fs::RealFs;
+pub use crate::sync::MaybeSend;
+pub use crate::sync::MaybeSync;
 
-pub use crate::std_fs::StdFs;
+use crate::ops::*;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
-use deno_core::Resource;
 use std::cell::RefCell;
 use std::convert::From;
 use std::path::Path;
@@ -87,78 +86,77 @@ pub(crate) fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
 
 deno_core::extension!(deno_fs,
   deps = [ deno_web ],
-  parameters = [Fs: FileSystem, P: FsPermissions],
-  bounds = [Fs::File: Resource],
+  parameters = [P: FsPermissions],
   ops = [
-    op_cwd<Fs, P>,
-    op_umask<Fs>,
-    op_chdir<Fs, P>,
+    op_fs_cwd<P>,
+    op_fs_umask,
+    op_fs_chdir<P>,
 
-    op_open_sync<Fs, P>,
-    op_open_async<Fs, P>,
-    op_mkdir_sync<Fs, P>,
-    op_mkdir_async<Fs, P>,
-    op_chmod_sync<Fs, P>,
-    op_chmod_async<Fs, P>,
-    op_chown_sync<Fs, P>,
-    op_chown_async<Fs, P>,
-    op_remove_sync<Fs, P>,
-    op_remove_async<Fs, P>,
-    op_copy_file_sync<Fs, P>,
-    op_copy_file_async<Fs, P>,
-    op_stat_sync<Fs, P>,
-    op_stat_async<Fs, P>,
-    op_lstat_sync<Fs, P>,
-    op_lstat_async<Fs, P>,
-    op_realpath_sync<Fs, P>,
-    op_realpath_async<Fs, P>,
-    op_read_dir_sync<Fs, P>,
-    op_read_dir_async<Fs, P>,
-    op_rename_sync<Fs, P>,
-    op_rename_async<Fs, P>,
-    op_link_sync<Fs, P>,
-    op_link_async<Fs, P>,
-    op_symlink_sync<Fs, P>,
-    op_symlink_async<Fs, P>,
-    op_read_link_sync<Fs, P>,
-    op_read_link_async<Fs, P>,
-    op_truncate_sync<Fs, P>,
-    op_truncate_async<Fs, P>,
-    op_utime_sync<Fs, P>,
-    op_utime_async<Fs, P>,
-    op_make_temp_dir_sync<Fs, P>,
-    op_make_temp_dir_async<Fs, P>,
-    op_make_temp_file_sync<Fs, P>,
-    op_make_temp_file_async<Fs, P>,
-    op_write_file_sync<Fs, P>,
-    op_write_file_async<Fs, P>,
-    op_read_file_sync<Fs, P>,
-    op_read_file_async<Fs, P>,
-    op_read_file_text_sync<Fs, P>,
-    op_read_file_text_async<Fs, P>,
+    op_fs_open_sync<P>,
+    op_fs_open_async<P>,
+    op_fs_mkdir_sync<P>,
+    op_fs_mkdir_async<P>,
+    op_fs_chmod_sync<P>,
+    op_fs_chmod_async<P>,
+    op_fs_chown_sync<P>,
+    op_fs_chown_async<P>,
+    op_fs_remove_sync<P>,
+    op_fs_remove_async<P>,
+    op_fs_copy_file_sync<P>,
+    op_fs_copy_file_async<P>,
+    op_fs_stat_sync<P>,
+    op_fs_stat_async<P>,
+    op_fs_lstat_sync<P>,
+    op_fs_lstat_async<P>,
+    op_fs_realpath_sync<P>,
+    op_fs_realpath_async<P>,
+    op_fs_read_dir_sync<P>,
+    op_fs_read_dir_async<P>,
+    op_fs_rename_sync<P>,
+    op_fs_rename_async<P>,
+    op_fs_link_sync<P>,
+    op_fs_link_async<P>,
+    op_fs_symlink_sync<P>,
+    op_fs_symlink_async<P>,
+    op_fs_read_link_sync<P>,
+    op_fs_read_link_async<P>,
+    op_fs_truncate_sync<P>,
+    op_fs_truncate_async<P>,
+    op_fs_utime_sync<P>,
+    op_fs_utime_async<P>,
+    op_fs_make_temp_dir_sync<P>,
+    op_fs_make_temp_dir_async<P>,
+    op_fs_make_temp_file_sync<P>,
+    op_fs_make_temp_file_async<P>,
+    op_fs_write_file_sync<P>,
+    op_fs_write_file_async<P>,
+    op_fs_read_file_sync<P>,
+    op_fs_read_file_async<P>,
+    op_fs_read_file_text_sync<P>,
+    op_fs_read_file_text_async<P>,
 
-    op_seek_sync<Fs>,
-    op_seek_async<Fs>,
-    op_fdatasync_sync<Fs>,
-    op_fdatasync_async<Fs>,
-    op_fsync_sync<Fs>,
-    op_fsync_async<Fs>,
-    op_fstat_sync<Fs>,
-    op_fstat_async<Fs>,
-    op_flock_sync<Fs>,
-    op_flock_async<Fs>,
-    op_funlock_sync<Fs>,
-    op_funlock_async<Fs>,
-    op_ftruncate_sync<Fs>,
-    op_ftruncate_async<Fs>,
-    op_futime_sync<Fs>,
-    op_futime_async<Fs>,
+    op_fs_seek_sync,
+    op_fs_seek_async,
+    op_fs_fdatasync_sync,
+    op_fs_fdatasync_async,
+    op_fs_fsync_sync,
+    op_fs_fsync_async,
+    op_fs_fstat_sync,
+    op_fs_fstat_async,
+    op_fs_flock_sync,
+    op_fs_flock_async,
+    op_fs_funlock_sync,
+    op_fs_funlock_async,
+    op_fs_ftruncate_sync,
+    op_fs_ftruncate_async,
+    op_fs_futime_sync,
+    op_fs_futime_async,
 
   ],
   esm = [ "30_fs.js" ],
   options = {
     unstable: bool,
-    fs: Fs,
+    fs: FileSystemRc,
   },
   state = |state, options| {
     state.put(UnstableChecker { unstable: options.unstable });

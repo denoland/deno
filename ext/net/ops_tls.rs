@@ -26,6 +26,7 @@ use deno_core::futures::task::Waker;
 use deno_core::op;
 
 use deno_core::parking_lot::Mutex;
+use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -61,6 +62,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::io::ErrorKind;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -73,7 +75,6 @@ use tokio::io::AsyncWriteExt;
 use tokio::io::ReadBuf;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
-use tokio::task::spawn_local;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum Flow {
@@ -115,12 +116,26 @@ impl TlsStream {
     Self::new(tcp, Connection::Client(tls))
   }
 
+  pub fn new_client_side_from(
+    tcp: TcpStream,
+    connection: ClientConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Client(connection))
+  }
+
   pub fn new_server_side(
     tcp: TcpStream,
     tls_config: Arc<ServerConfig>,
   ) -> Self {
     let tls = ServerConnection::new(tls_config).unwrap();
     Self::new(tcp, Connection::Server(tls))
+  }
+
+  pub fn new_server_side_from(
+    tcp: TcpStream,
+    connection: ServerConnection,
+  ) -> Self {
+    Self::new(tcp, Connection::Server(connection))
   }
 
   pub fn into_split(self) -> (ReadHalf, WriteHalf) {
@@ -130,6 +145,16 @@ impl TlsStream {
     };
     let wr = WriteHalf { shared };
     (rd, wr)
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn peer_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.peer_addr()
+  }
+
+  /// Convenience method to match [`TcpStream`].
+  pub fn local_addr(&self) -> Result<SocketAddr, io::Error> {
+    self.0.as_ref().unwrap().tcp.local_addr()
   }
 
   /// Tokio-rustls compatibility: returns a reference to the underlying TCP
@@ -199,9 +224,9 @@ impl Drop for TlsStream {
     let use_linger_task = inner.poll_close(&mut cx).is_pending();
 
     if use_linger_task {
-      spawn_local(poll_fn(move |cx| inner.poll_close(cx)));
+      spawn(poll_fn(move |cx| inner.poll_close(cx)));
     } else if cfg!(debug_assertions) {
-      spawn_local(async {}); // Spawn dummy task to detect missing LocalSet.
+      spawn(async {}); // Spawn dummy task to detect missing runtime.
     }
   }
 }
@@ -788,14 +813,10 @@ where
     .try_borrow::<UnsafelyIgnoreCertificateErrors>()
     .and_then(|it| it.0.clone());
 
-  // TODO(@justinmchase): Ideally the certificate store is created once
-  // and not cloned. The store should be wrapped in Arc<T> to reduce
-  // copying memory unnecessarily.
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
 
   let resource_rc = state
     .borrow_mut()
@@ -820,7 +841,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -887,8 +907,7 @@ where
   let root_cert_store = state
     .borrow()
     .borrow::<DefaultTlsOptions>()
-    .root_cert_store
-    .clone();
+    .root_cert_store()?;
   let hostname_dns = ServerName::try_from(&*addr.hostname)
     .map_err(|_| invalid_hostname(&addr.hostname))?;
   let connect_addr = resolve_addr(&addr.hostname, addr.port)
@@ -920,7 +939,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -954,8 +972,8 @@ fn load_private_keys_from_file(
 }
 
 pub struct TlsListenerResource {
-  tcp_listener: AsyncRefCell<TcpListener>,
-  tls_config: Arc<ServerConfig>,
+  pub(crate) tcp_listener: AsyncRefCell<TcpListener>,
+  pub(crate) tls_config: Arc<ServerConfig>,
   cancel_handle: CancelHandle,
 }
 

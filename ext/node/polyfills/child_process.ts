@@ -2,7 +2,10 @@
 
 // This module implements 'child_process' module of Node.JS API.
 // ref: https://nodejs.org/api/child_process.html
-import { core } from "ext:deno_node/_core.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   ChildProcess,
   ChildProcessOptions,
@@ -35,14 +38,16 @@ import {
   ObjectAssign,
   StringPrototypeSlice,
 } from "ext:deno_node/internal/primordials.mjs";
-import { getSystemErrorName, promisify } from "ext:deno_node/util.ts";
+import { getSystemErrorName, promisify } from "node:util";
 import { createDeferredPromise } from "ext:deno_node/internal/util.mjs";
-import process from "ext:deno_node/process.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import process from "node:process";
+import { Buffer } from "node:buffer";
 import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
+
+const { core } = globalThis.__bootstrap;
 
 const MAX_BUFFER = 1024 * 1024;
 

@@ -4,9 +4,6 @@ use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::node;
-use crate::node::node_resolve_npm_reference;
-use crate::node::NodeResolution;
-use crate::npm::NpmPackageResolver;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
 
@@ -34,9 +31,11 @@ use deno_core::Snapshot;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_runtime::deno_node;
+use deno_runtime::deno_node::NodeResolution;
 use deno_runtime::deno_node::NodeResolutionMode;
+use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use lsp_types::Url;
 use once_cell::sync::Lazy;
@@ -118,13 +117,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(
-    deno_cli_tsc,
-    ops_fn = deno_ops,
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
-  );
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -307,7 +300,7 @@ pub struct Request {
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
   pub hash_data: u64,
-  pub maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
+  pub maybe_node_resolver: Option<Arc<NodeResolver>>,
   pub maybe_tsbuildinfo: Option<String>,
   /// A vector of strings that represent the root/entry point modules for the
   /// program.
@@ -331,7 +324,7 @@ struct State {
   graph: Arc<ModuleGraph>,
   maybe_tsbuildinfo: Option<String>,
   maybe_response: Option<RespondArgs>,
-  maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
+  maybe_node_resolver: Option<Arc<NodeResolver>>,
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
@@ -341,7 +334,7 @@ impl State {
   pub fn new(
     graph: Arc<ModuleGraph>,
     hash_data: u64,
-    maybe_npm_resolver: Option<Arc<NpmPackageResolver>>,
+    maybe_node_resolver: Option<Arc<NodeResolver>>,
     maybe_tsbuildinfo: Option<String>,
     root_map: HashMap<String, ModuleSpecifier>,
     remapped_specifiers: HashMap<String, ModuleSpecifier>,
@@ -350,7 +343,7 @@ impl State {
     State {
       hash_data,
       graph,
-      maybe_npm_resolver,
+      maybe_node_resolver,
       maybe_tsbuildinfo,
       maybe_response: None,
       remapped_specifiers,
@@ -483,7 +476,7 @@ fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
         }
       }
     } else if state
-      .maybe_npm_resolver
+      .maybe_node_resolver
       .as_ref()
       .map(|resolver| resolver.in_npm_package(specifier))
       .unwrap_or(false)
@@ -539,7 +532,7 @@ fn op_resolve(
   };
   for specifier in args.specifiers {
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      if crate::node::resolve_builtin_node_module(module_name).is_ok() {
+      if deno_node::is_builtin_node_module(module_name) {
         // return itself for node: specifiers because during type checking
         // we resolve to the ambient modules in the @types/node package
         // rather than deno_std/node
@@ -636,24 +629,26 @@ fn resolve_graph_specifier_types(
       Ok(Some((module.specifier.clone(), module.media_type)))
     }
     Some(Module::Npm(module)) => {
-      if let Some(npm_resolver) = &state.maybe_npm_resolver {
-        resolve_npm_package_reference_types(&module.nv_reference, npm_resolver)
-          .map(Some)
+      if let Some(node_resolver) = &state.maybe_node_resolver {
+        let maybe_resolution = node_resolver.resolve_npm_reference(
+          &module.nv_reference,
+          NodeResolutionMode::Types,
+          &PermissionsContainer::allow_all(),
+        )?;
+        Ok(Some(NodeResolution::into_specifier_and_media_type(
+          maybe_resolution,
+        )))
       } else {
         Ok(None)
       }
     }
     Some(Module::External(module)) => {
       // we currently only use "External" for when the module is in an npm package
-      Ok(state.maybe_npm_resolver.as_ref().map(|npm_resolver| {
+      Ok(state.maybe_node_resolver.as_ref().map(|node_resolver| {
         let specifier =
           node::resolve_specifier_into_node_modules(&module.specifier);
         NodeResolution::into_specifier_and_media_type(
-          node::url_to_node_resolution(
-            specifier,
-            &npm_resolver.as_require_npm_resolver(),
-          )
-          .ok(),
+          node_resolver.url_to_node_resolution(specifier).ok(),
         )
       }))
     }
@@ -666,52 +661,39 @@ fn resolve_non_graph_specifier_types(
   referrer: &ModuleSpecifier,
   state: &State,
 ) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
-  let npm_resolver = match state.maybe_npm_resolver.as_ref() {
-    Some(npm_resolver) => npm_resolver,
+  let node_resolver = match state.maybe_node_resolver.as_ref() {
+    Some(node_resolver) => node_resolver,
     None => return Ok(None), // we only support non-graph types for npm packages
   };
-  if npm_resolver.in_npm_package(referrer) {
+  if node_resolver.in_npm_package(referrer) {
     // we're in an npm package, so use node resolution
     Ok(Some(NodeResolution::into_specifier_and_media_type(
-      node::node_resolve(
-        specifier,
-        referrer,
-        NodeResolutionMode::Types,
-        &npm_resolver.as_require_npm_resolver(),
-        &mut PermissionsContainer::allow_all(),
-      )
-      .ok()
-      .flatten(),
+      node_resolver
+        .resolve(
+          specifier,
+          referrer,
+          NodeResolutionMode::Types,
+          &PermissionsContainer::allow_all(),
+        )
+        .ok()
+        .flatten(),
     )))
   } else if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
     // todo(dsherret): add support for injecting this in the graph so
     // we don't need this special code here.
     // This could occur when resolving npm:@types/node when it is
     // injected and not part of the graph
-    let node_id = npm_resolver.resolve_pkg_id_from_pkg_req(&npm_ref.req)?;
-    let npm_id_ref = NpmPackageNvReference {
-      nv: node_id.nv,
-      sub_path: npm_ref.sub_path,
-    };
-    resolve_npm_package_reference_types(&npm_id_ref, npm_resolver).map(Some)
+    let maybe_resolution = node_resolver.resolve_npm_req_reference(
+      &npm_ref,
+      NodeResolutionMode::Types,
+      &PermissionsContainer::allow_all(),
+    )?;
+    Ok(Some(NodeResolution::into_specifier_and_media_type(
+      maybe_resolution,
+    )))
   } else {
     Ok(None)
   }
-}
-
-pub fn resolve_npm_package_reference_types(
-  npm_ref: &NpmPackageNvReference,
-  npm_resolver: &Arc<NpmPackageResolver>,
-) -> Result<(ModuleSpecifier, MediaType), AnyError> {
-  let maybe_resolution = node_resolve_npm_reference(
-    npm_ref,
-    NodeResolutionMode::Types,
-    npm_resolver,
-    &mut PermissionsContainer::allow_all(),
-  )?;
-  Ok(NodeResolution::into_specifier_and_media_type(
-    maybe_resolution,
-  ))
 }
 
 #[op]
@@ -719,7 +701,7 @@ fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
-      .maybe_npm_resolver
+      .maybe_node_resolver
       .as_ref()
       .map(|r| r.in_npm_package(&specifier))
       .unwrap_or(false),
@@ -783,7 +765,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       state.put(State::new(
         options.request.graph,
         options.request.hash_data,
-        options.request.maybe_npm_resolver,
+        options.request.maybe_node_resolver,
         options.request.maybe_tsbuildinfo,
         options.root_map,
         options.remapped_specifiers,
@@ -791,9 +773,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           .context("Unable to get CWD")
           .unwrap(),
       ));
-    },
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
     },
   );
 
@@ -860,12 +839,13 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
+  use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
-  use std::fs;
+  use test_util::PathRef;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
-    pub fixtures: PathBuf,
+    pub fixtures: PathRef,
   }
 
   impl deno_graph::source::Loader for MockLoader {
@@ -880,15 +860,13 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(source_path)
-        .map(|c| {
-          Some(deno_graph::source::LoadResponse::Module {
-            specifier: specifier.clone(),
-            maybe_headers: None,
-            content: c.into(),
-          })
+      let response = source_path.read_to_string_if_exists().map(|c| {
+        Some(deno_graph::source::LoadResponse::Module {
+          specifier: specifier.clone(),
+          maybe_headers: None,
+          content: c.into(),
         })
-        .map_err(|err| err.into());
+      });
       Box::pin(future::ready(response))
     }
   }
@@ -903,7 +881,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &mut loader, Default::default())
       .await;
@@ -929,7 +907,7 @@ mod tests {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &mut loader, Default::default())
       .await;
@@ -955,7 +933,7 @@ mod tests {
       debug: false,
       graph: Arc::new(graph),
       hash_data,
-      maybe_npm_resolver: None,
+      maybe_node_resolver: None,
       maybe_tsbuildinfo: None,
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,

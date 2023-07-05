@@ -5,15 +5,18 @@ pub mod ops;
 pub mod ops_tls;
 #[cfg(unix)]
 pub mod ops_unix;
+pub mod raw;
 pub mod resolve_addr;
 
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 pub trait NetPermissions {
   fn check_net<T: AsRef<str>>(
@@ -66,7 +69,16 @@ pub fn get_declaration() -> PathBuf {
 
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+}
+
+impl DefaultTlsOptions {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+    Ok(match &self.root_cert_store_provider {
+      Some(provider) => Some(provider.get_or_try_init()?.clone()),
+      None => None,
+    })
+  }
 }
 
 /// `UnsafelyIgnoreCertificateErrors` is a wrapper struct so it can be placed inside `GothamState`;
@@ -86,12 +98,12 @@ deno_core::extension!(deno_net,
     ops::op_node_unstable_net_listen_udp<P>,
     ops::op_net_recv_udp,
     ops::op_net_send_udp<P>,
-    ops::op_net_join_multi_v4_udp<P>,
-    ops::op_net_join_multi_v6_udp<P>,
-    ops::op_net_leave_multi_v4_udp<P>,
-    ops::op_net_leave_multi_v6_udp<P>,
-    ops::op_net_set_multi_loopback_udp<P>,
-    ops::op_net_set_multi_ttl_udp<P>,
+    ops::op_net_join_multi_v4_udp,
+    ops::op_net_join_multi_v6_udp,
+    ops::op_net_leave_multi_v4_udp,
+    ops::op_net_leave_multi_v6_udp,
+    ops::op_net_set_multi_loopback_udp,
+    ops::op_net_set_multi_ttl_udp,
     ops::op_dns_resolve<P>,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
@@ -112,13 +124,13 @@ deno_core::extension!(deno_net,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
   options = {
-    root_cert_store: Option<RootCertStore>,
+    root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unstable: bool,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
   },
   state = |state, options| {
     state.put(DefaultTlsOptions {
-      root_cert_store: options.root_cert_store,
+      root_cert_store_provider: options.root_cert_store_provider,
     });
     state.put(UnstableChecker { unstable: options.unstable });
     state.put(UnsafelyIgnoreCertificateErrors(

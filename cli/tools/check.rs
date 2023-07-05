@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
+use deno_runtime::deno_node::NodeResolver;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -18,10 +19,9 @@ use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::Caches;
-use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
-use crate::npm::NpmPackageResolver;
+use crate::npm::CliNpmResolver;
 use crate::tsc;
 use crate::version;
 
@@ -38,23 +38,23 @@ pub struct CheckOptions {
 }
 
 pub struct TypeChecker {
-  deno_dir: DenoDir,
   caches: Arc<Caches>,
   cli_options: Arc<CliOptions>,
-  npm_resolver: Arc<NpmPackageResolver>,
+  node_resolver: Arc<NodeResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
 }
 
 impl TypeChecker {
   pub fn new(
-    deno_dir: DenoDir,
     caches: Arc<Caches>,
     cli_options: Arc<CliOptions>,
-    npm_resolver: Arc<NpmPackageResolver>,
+    node_resolver: Arc<NodeResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
   ) -> Self {
     Self {
-      deno_dir,
       caches,
       cli_options,
+      node_resolver,
       npm_resolver,
     }
   }
@@ -91,8 +91,7 @@ impl TypeChecker {
     let ts_config = ts_config_result.ts_config;
     let type_check_mode = self.cli_options.type_check_mode();
     let debug = self.cli_options.log_level() == Some(log::Level::Debug);
-    let cache =
-      TypeCheckCache::new(self.caches.type_checking_cache_db(&self.deno_dir));
+    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     let check_js = ts_config.get_check_js();
     let check_hash = match get_check_hash(&graph, type_check_mode, &ts_config) {
       CheckHashResult::NoFiles => return Ok(()),
@@ -133,7 +132,7 @@ impl TypeChecker {
       debug,
       graph: graph.clone(),
       hash_data,
-      maybe_npm_resolver: Some(self.npm_resolver.clone()),
+      maybe_node_resolver: Some(self.node_resolver.clone()),
       maybe_tsbuildinfo,
       root_names,
       check_mode: type_check_mode,
@@ -144,7 +143,7 @@ impl TypeChecker {
         if let Some(file_name) = &d.file_name {
           if !file_name.starts_with("http") {
             if ModuleSpecifier::parse(file_name)
-              .map(|specifier| !self.npm_resolver.in_npm_package(&specifier))
+              .map(|specifier| !self.node_resolver.in_npm_package(&specifier))
               .unwrap_or(true)
             {
               Some(d.clone())

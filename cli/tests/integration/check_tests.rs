@@ -84,6 +84,17 @@ itest!(check_no_error_truncation {
     exit_code: 1,
   });
 
+itest!(check_broadcast_channel_stable {
+  args: "check --quiet check/broadcast_channel.ts",
+  output: "check/broadcast_channel.ts.error.out",
+  exit_code: 1,
+});
+
+itest!(check_broadcast_channel_unstable {
+  args: "check --quiet --unstable check/broadcast_channel.ts",
+  exit_code: 0,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();
@@ -176,35 +187,6 @@ fn typecheck_declarations_unstable() {
       .to_string_lossy()
       .into_owned(),
   ];
-  let output = context.new_command().args_vec(args).split_output().run();
-
-  println!("stdout: {}", output.stdout());
-  println!("stderr: {}", output.stderr());
-  output.assert_exit_code(0);
-}
-
-#[test]
-fn typecheck_core() {
-  let context = TestContext::default();
-  let deno_dir = context.deno_dir();
-  let test_file = deno_dir.path().join("test_deno_core_types.ts");
-  std::fs::write(
-    &test_file,
-    format!(
-      "import \"{}\";",
-      deno_core::resolve_path(
-        util::root_path()
-          .join("core/lib.deno_core.d.ts")
-          .to_str()
-          .unwrap(),
-        &std::env::current_dir().unwrap()
-      )
-      .unwrap()
-    ),
-  )
-  .unwrap();
-
-  let args = vec!["run".to_string(), test_file.to_string_lossy().into_owned()];
   let output = context.new_command().args_vec(args).split_output().run();
 
   println!("stdout: {}", output.stdout());

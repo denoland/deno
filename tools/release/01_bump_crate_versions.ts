@@ -8,6 +8,8 @@ const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
 const originalCliVersion = cliCrate.version;
 
+await bumpCiCacheVersion();
+
 // increment the cli version
 if (Deno.args.some((a) => a === "--patch")) {
   await cliCrate.increment("patch");
@@ -109,4 +111,26 @@ async function updateStdVersion() {
   await compatFilePath.writeText(
     text.replace(versionRe, `std@${newStdVersion}`),
   );
+}
+
+async function bumpCiCacheVersion() {
+  const generateScript = workspace.repo.folderPath.join(
+    ".github/workflows/ci.generate.ts",
+  );
+  const fileText = generateScript.readTextSync();
+  const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
+  const version = fileText.match(cacheVersionRegex)?.[1];
+  if (version == null) {
+    throw new Error("Could not find cache version in text.");
+  }
+  const toVersion = parseInt(version, 10) + 1;
+  $.logStep(`Bumping cache version from ${version} to ${toVersion}...`);
+  const newText = fileText.replace(
+    cacheVersionRegex,
+    `const cacheVersion = ${toVersion};`,
+  );
+  generateScript.writeTextSync(newText);
+
+  // run the script
+  await $`${generateScript}`;
 }

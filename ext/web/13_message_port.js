@@ -110,21 +110,20 @@ class MessagePort extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;
     if (ArrayPrototypeIncludes(transfer, this)) {
-      throw new DOMException("Can not tranfer self", "DataCloneError");
+      throw new DOMException("Can not transfer self", "DataCloneError");
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
@@ -260,7 +259,7 @@ function serializeJsMessageData(data, transferables) {
         );
       }
       j++;
-      transferredArrayBuffers.push(ab);
+      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
   }
 
@@ -330,10 +329,11 @@ webidl.converters.StructuredSerializeOptions = webidl
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
   webidl.requiredArguments(arguments.length, 1, prefix);
-  options = webidl.converters.StructuredSerializeOptions(options, {
+  options = webidl.converters.StructuredSerializeOptions(
+    options,
     prefix,
-    context: "Argument 2",
-  });
+    "Argument 2",
+  );
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }

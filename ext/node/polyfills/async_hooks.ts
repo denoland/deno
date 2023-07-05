@@ -4,8 +4,12 @@
 // This implementation is inspired by "workerd" AsyncLocalStorage implementation:
 // https://github.com/cloudflare/workerd/blob/77fd0ed6ddba184414f0216508fc62b06e716cab/src/workerd/api/node/async-hooks.c++#L9
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { core } from "ext:deno_node/_core.ts";
+
+const { core } = globalThis.__bootstrap;
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");

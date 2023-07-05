@@ -2,22 +2,25 @@
 
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
-use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
+use crate::args::Flags;
+use crate::args::TestFlags;
 use crate::colors;
 use crate::display;
+use crate::factory::CliFactory;
+use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
+use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
+use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::proc_state::ProcState;
 use crate::util::checksum;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_custom_worker;
+use crate::worker::CliMainWorkerFactory;
 
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
@@ -27,11 +30,14 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
+use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -40,7 +46,7 @@ use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -49,7 +55,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -59,11 +64,11 @@ use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -336,10 +341,18 @@ pub struct TestSummary {
 }
 
 #[derive(Debug, Clone)]
-struct TestSpecifierOptions {
+struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
-  filter: TestFilter,
+  log_level: Option<log::Level>,
+  specifier: TestSpecifierOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct TestSpecifierOptions {
+  pub shuffle: Option<u64>,
+  pub filter: TestFilter,
+  pub trace_ops: bool,
 }
 
 impl TestSummary {
@@ -907,30 +920,30 @@ pub fn format_test_error(js_error: &JsError) -> String {
 /// Test a single specifier as documentation containing test programs, an executable test module or
 /// both.
 pub async fn test_specifier(
-  ps: &ProcState,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
-  filter: TestFilter,
+  options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
   let stdout = StdioPipe::File(sender.stdout());
   let stderr = StdioPipe::File(sender.stderr());
-  let mut worker = create_custom_worker(
-    ps,
-    specifier.clone(),
-    PermissionsContainer::new(permissions),
-    vec![ops::testing::deno_test::init_ops(sender.clone())],
-    Stdio {
-      stdin: StdioPipe::Inherit,
-      stdout,
-      stderr,
-    },
-  )
-  .await?;
+  let mut worker = worker_factory
+    .create_custom_worker(
+      specifier.clone(),
+      PermissionsContainer::new(permissions),
+      vec![ops::testing::deno_test::init_ops(sender.clone())],
+      Stdio {
+        stdin: StdioPipe::Inherit,
+        stdout,
+        stderr,
+      },
+    )
+    .await?;
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
@@ -951,7 +964,7 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if ps.options.trace_ops() {
+  if options.trace_ops {
     worker.js_runtime.execute_script_static(
       located_script_name!(),
       "Deno[Deno.internal].core.enableOpCallTracing();",
@@ -971,9 +984,9 @@ pub async fn test_specifier(
   let tests = if used_only { only } else { no_only };
   let mut tests = tests
     .into_iter()
-    .filter(|(d, _)| filter.includes(&d.name))
+    .filter(|(d, _)| options.filter.includes(&d.name))
     .collect::<Vec<_>>();
-  if let Some(seed) = ps.options.shuffle_tests() {
+  if let Some(seed) = options.shuffle {
     tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
   sender.send(TestEvent::Plan(TestPlan {
@@ -996,15 +1009,23 @@ pub async fn test_specifier(
       continue;
     }
     sender.send(TestEvent::Wait(desc.id))?;
+
+    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
+    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
+    // `JoinSet` all pending ops are immediately polled and that caused a problem
+    // when some async ops were fired and canceled before running tests (giving
+    // false positives in the ops sanitizer). We should probably rewrite sanitizers
+    // to be done in Rust instead of in JS (40_testing.js).
+    {
+      // Poll event loop once, this will allow all ops that are already resolved,
+      // but haven't responded to settle.
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+    }
+
     let earlier = SystemTime::now();
-    let promise = {
-      let scope = &mut worker.js_runtime.handle_scope();
-      let cb = function.open(scope);
-      let this = v8::undefined(scope).into();
-      let promise = cb.call(scope, this, &[]).unwrap();
-      v8::Global::new(scope, promise)
-    };
-    let result = match worker.js_runtime.resolve_value(promise).await {
+    let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
       Err(error) => {
         if error.is::<JsError>() {
@@ -1031,12 +1052,9 @@ pub async fn test_specifier(
     sender.send(TestEvent::Result(desc.id, result, elapsed as u64))?;
   }
 
-  loop {
-    if !worker.dispatch_beforeunload_event(located_script_name!())? {
-      break;
-    }
-    worker.run_event_loop(false).await?;
-  }
+  // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
+  // event loop to continue beyond what's needed to await results.
+  worker.dispatch_beforeunload_event(located_script_name!())?;
   worker.dispatch_unload_event(located_script_name!())?;
 
   if let Some(coverage_collector) = coverage_collector.as_mut() {
@@ -1120,7 +1138,6 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
         source: file_source.into(),
@@ -1199,13 +1216,13 @@ fn extract_files_from_fenced_blocks(
 }
 
 async fn fetch_inline_files(
-  ps: &ProcState,
+  file_fetcher: &FileFetcher,
   specifiers: Vec<ModuleSpecifier>,
 ) -> Result<Vec<File>, AnyError> {
   let mut files = Vec::new();
   for specifier in specifiers {
     let fetch_permissions = PermissionsContainer::allow_all();
-    let file = ps.file_fetcher.fetch(&specifier, fetch_permissions).await?;
+    let file = file_fetcher.fetch(&specifier, fetch_permissions).await?;
 
     let inline_files = if file.media_type == MediaType::Unknown {
       extract_files_from_fenced_blocks(
@@ -1229,13 +1246,14 @@ async fn fetch_inline_files(
 
 /// Type check a collection of module and document specifiers.
 pub async fn check_specifiers(
-  ps: &ProcState,
-  permissions: Permissions,
+  cli_options: &CliOptions,
+  file_fetcher: &FileFetcher,
+  module_load_preparer: &ModuleLoadPreparer,
   specifiers: Vec<(ModuleSpecifier, TestMode)>,
 ) -> Result<(), AnyError> {
-  let lib = ps.options.ts_type_lib_window();
+  let lib = cli_options.ts_type_lib_window();
   let inline_files = fetch_inline_files(
-    ps,
+    file_fetcher,
     specifiers
       .iter()
       .filter_map(|(specifier, mode)| {
@@ -1256,16 +1274,15 @@ pub async fn check_specifiers(
       .collect();
 
     for file in inline_files {
-      ps.file_fetcher.insert_cached(file);
+      file_fetcher.insert_cached(file);
     }
 
-    ps.module_load_preparer
+    module_load_preparer
       .prepare_module_load(
         specifiers,
         false,
         lib,
         PermissionsContainer::new(Permissions::allow_all()),
-        PermissionsContainer::new(permissions.clone()),
       )
       .await?;
   }
@@ -1281,13 +1298,12 @@ pub async fn check_specifiers(
     })
     .collect();
 
-  ps.module_load_preparer
+  module_load_preparer
     .prepare_module_load(
       module_specifiers,
       false,
       lib,
       PermissionsContainer::allow_all(),
-      PermissionsContainer::new(permissions),
     )
     .await?;
 
@@ -1298,13 +1314,12 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  ps: &ProcState,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
-  options: TestSpecifierOptions,
+  options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
-  let log_level = ps.options.log_level();
-  let specifiers = if let Some(seed) = ps.options.shuffle_tests() {
+  let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut specifiers = specifiers;
     specifiers.sort();
@@ -1319,26 +1334,26 @@ async fn test_specifiers(
   let concurrent_jobs = options.concurrent_jobs;
 
   let sender_ = sender.downgrade();
-  let sigint_handler_handle = tokio::task::spawn(async move {
+  let sigint_handler_handle = spawn(async move {
     signal::ctrl_c().await.unwrap();
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
-    let ps = ps.clone();
+    let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
-    let options = options.clone();
     let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
-    tokio::task::spawn_blocking(move || {
-      run_local(test_specifier(
-        &ps,
+    let specifier_options = options.specifier.clone();
+    spawn_blocking(move || {
+      create_and_run_current_thread(test_specifier(
+        worker_factory,
         permissions,
         specifier,
         sender.clone(),
         fail_fast_tracker,
-        options.filter,
+        specifier_options,
       ))
     })
   });
@@ -1349,11 +1364,11 @@ async fn test_specifiers(
 
   let mut reporter = Box::new(PrettyTestReporter::new(
     concurrent_jobs.get() > 1,
-    log_level != Some(Level::Error),
+    options.log_level != Some(Level::Error),
   ));
 
   let handler = {
-    tokio::task::spawn(async move {
+    spawn(async move {
       let earlier = Instant::now();
       let mut tests = IndexMap::new();
       let mut test_steps = IndexMap::new();
@@ -1518,7 +1533,7 @@ async fn test_specifiers(
 }
 
 /// Checks if the path has a basename and extension Deno supports for tests.
-fn is_supported_test_path(path: &Path) -> bool {
+pub(crate) fn is_supported_test_path(path: &Path) -> bool {
   if let Some(name) = path.file_stem() {
     let basename = name.to_string_lossy();
     (basename.ends_with("_test")
@@ -1604,15 +1619,14 @@ fn collect_specifiers_with_test_mode(
 /// cannot be run, and therefore need to be marked as `TestMode::Documentation`
 /// as well.
 async fn fetch_specifiers_with_test_mode(
-  ps: &ProcState,
+  file_fetcher: &FileFetcher,
   files: &FilesConfig,
   doc: &bool,
 ) -> Result<Vec<(ModuleSpecifier, TestMode)>, AnyError> {
   let mut specifiers_with_mode = collect_specifiers_with_test_mode(files, doc)?;
 
   for (specifier, mode) in &mut specifiers_with_mode {
-    let file = ps
-      .file_fetcher
+    let file = file_fetcher
       .fetch(specifier, PermissionsContainer::allow_all())
       .await?;
 
@@ -1627,18 +1641,23 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let test_options = cli_options.resolve_test_options(test_flags)?;
+  let file_fetcher = factory.file_fetcher()?;
+  let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
   let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
+    Permissions::from_options(&cli_options.permissions_options())?;
+  let log_level = cli_options.log_level();
 
   let specifiers_with_mode = fetch_specifiers_with_test_mode(
-    &ps,
+    file_fetcher,
     &test_options.files,
     &test_options.doc,
   )
@@ -1648,15 +1667,23 @@ pub async fn run_tests(
     return Err(generic_error("No test modules found"));
   }
 
-  check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-    .await?;
+  check_specifiers(
+    cli_options,
+    file_fetcher,
+    module_load_preparer,
+    specifiers_with_mode.clone(),
+  )
+  .await?;
 
   if test_options.no_run {
     return Ok(());
   }
 
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
+
   test_specifiers(
-    &ps,
+    worker_factory,
     &permissions,
     specifiers_with_mode
       .into_iter()
@@ -1665,10 +1692,15 @@ pub async fn run_tests(
         _ => Some(s),
       })
       .collect(),
-    TestSpecifierOptions {
+    TestSpecifiersOptions {
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
-      filter: TestFilter::from_flag(&test_options.filter),
+      log_level,
+      specifier: TestSpecifierOptions {
+        filter: TestFilter::from_flag(&test_options.filter),
+        shuffle: test_options.shuffle,
+        trace_ops: test_options.trace_ops,
+      },
     },
   )
   .await?;
@@ -1677,184 +1709,14 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::from_cli_options(Arc::new(cli_options)).await?;
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&ps.options.permissions_options())?;
-  let no_check = ps.options.type_check_mode() == TypeCheckMode::None;
-
-  let ps = RefCell::new(ps);
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = test_options.files.include.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
-    let files_changed = changed.is_some();
-    let test_options = &test_options;
-    let ps = ps.borrow().clone();
-
-    async move {
-      let test_modules = if test_options.doc {
-        collect_specifiers(&test_options.files, is_supported_test_ext)
-      } else {
-        collect_specifiers(&test_options.files, is_supported_test_path)
-      }?;
-
-      let mut paths_to_watch = paths_to_watch_clone;
-      let mut modules_to_reload = if files_changed {
-        Vec::new()
-      } else {
-        test_modules.clone()
-      };
-      let graph = ps
-        .module_graph_builder
-        .create_graph(test_modules.clone())
-        .await?;
-      graph_valid_with_cli_options(&graph, &test_modules, &ps.options)?;
-
-      // TODO(@kitsonk) - This should be totally derivable from the graph.
-      for specifier in test_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // This test module and all it's dependencies
-        let mut modules = HashSet::new();
-        modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
-
-        paths_to_watch.extend(
-          modules
-            .iter()
-            .filter_map(|specifier| specifier.to_file_path().ok()),
-        );
-
-        if let Some(changed) = &changed {
-          for path in changed
-            .iter()
-            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
-          {
-            if modules.contains(&path) {
-              modules_to_reload.push(specifier);
-              break;
-            }
-          }
-        }
-      }
-
-      Ok((paths_to_watch, modules_to_reload))
-    }
-    .map(move |result| {
-      if files_changed
-        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        match result {
-          Ok((paths_to_watch, modules_to_reload)) => {
-            ResolutionResult::Restart {
-              paths_to_watch,
-              result: Ok(modules_to_reload),
-            }
-          }
-          Err(e) => ResolutionResult::Restart {
-            paths_to_watch,
-            result: Err(e),
-          },
-        }
-      }
-    })
-  };
-
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let permissions = &permissions;
-    let test_options = &test_options;
-    ps.borrow_mut().reset_for_file_watcher();
-    let ps = ps.borrow().clone();
-
-    async move {
-      let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &ps,
-        &test_options.files,
-        &test_options.doc,
-      )
-      .await?
-      .into_iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
-      .collect::<Vec<(ModuleSpecifier, TestMode)>>();
-
-      check_specifiers(&ps, permissions.clone(), specifiers_with_mode.clone())
-        .await?;
-
-      if test_options.no_run {
-        return Ok(());
-      }
-
-      test_specifiers(
-        &ps,
-        permissions,
-        specifiers_with_mode
-          .into_iter()
-          .filter_map(|(s, m)| match m {
-            TestMode::Documentation => None,
-            _ => Some(s),
-          })
-          .collect(),
-        TestSpecifierOptions {
-          concurrent_jobs: test_options.concurrent_jobs,
-          fail_fast: test_options.fail_fast,
-          filter: TestFilter::from_flag(&test_options.filter),
-        },
-      )
-      .await?;
-
-      Ok(())
-    }
-  };
-
   // On top of the sigint handlers which are added and unbound for each test
   // run, a process-scoped basic exit handler is required due to a tokio
   // limitation where it doesn't unbind its own handler for the entire process
   // once a user adds one.
-  tokio::task::spawn(async move {
+  spawn(async move {
     loop {
       signal::ctrl_c().await.unwrap();
       if !HAS_TEST_RUN_SIGINT_HANDLER.load(Ordering::Relaxed) {
@@ -1863,13 +1725,118 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !ps.borrow().options.no_clear_screen();
   file_watcher::watch_func(
-    resolver,
-    operation,
+    flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen,
+      clear_screen: !test_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
+    },
+    move |flags, sender, changed_paths| {
+      let test_flags = test_flags.clone();
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let test_options = cli_options.resolve_test_options(test_flags)?;
+
+        let _ = sender.send(cli_options.watch_paths());
+        let _ = sender.send(test_options.files.include.clone());
+
+        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let log_level = cli_options.log_level();
+        let cli_options = cli_options.clone();
+        let module_graph_builder = factory.module_graph_builder().await?;
+        let file_fetcher = factory.file_fetcher()?;
+        let test_modules = if test_options.doc {
+          collect_specifiers(&test_options.files, is_supported_test_ext)
+        } else {
+          collect_specifiers(&test_options.files, is_supported_test_path)
+        }?;
+        let permissions =
+          Permissions::from_options(&cli_options.permissions_options())?;
+
+        let graph = module_graph_builder
+          .create_graph(graph_kind, test_modules.clone())
+          .await?;
+        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+
+        let test_modules_to_reload = if let Some(changed_paths) = changed_paths
+        {
+          let changed_specifiers = changed_paths
+            .into_iter()
+            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+            .collect::<HashSet<_>>();
+          let mut result = Vec::new();
+          for test_module_specifier in test_modules {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &test_module_specifier,
+              &changed_specifiers,
+            ) {
+              result.push(test_module_specifier.clone());
+            }
+          }
+          result
+        } else {
+          test_modules.clone()
+        };
+
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let module_load_preparer = factory.module_load_preparer().await?;
+        let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          file_fetcher,
+          &test_options.files,
+          &test_options.doc,
+        )
+        .await?
+        .into_iter()
+        .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
+        .collect::<Vec<(ModuleSpecifier, TestMode)>>();
+
+        check_specifiers(
+          &cli_options,
+          file_fetcher,
+          module_load_preparer,
+          specifiers_with_mode.clone(),
+        )
+        .await?;
+
+        if test_options.no_run {
+          return Ok(());
+        }
+
+        test_specifiers(
+          worker_factory,
+          &permissions,
+          specifiers_with_mode
+            .into_iter()
+            .filter_map(|(s, m)| match m {
+              TestMode::Documentation => None,
+              _ => Some(s),
+            })
+            .collect(),
+          TestSpecifiersOptions {
+            concurrent_jobs: test_options.concurrent_jobs,
+            fail_fast: test_options.fail_fast,
+            log_level,
+            specifier: TestSpecifierOptions {
+              filter: TestFilter::from_flag(&test_options.filter),
+              shuffle: test_options.shuffle,
+              trace_ops: test_options.trace_ops,
+            },
+          },
+        )
+        .await?;
+
+        Ok(())
+      })
     },
   )
   .await?;
@@ -2037,7 +2004,7 @@ fn start_output_redirect_thread(
   sender: UnboundedSender<TestEvent>,
   flush_state: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 ) {
-  tokio::task::spawn_blocking(move || loop {
+  spawn_blocking(move || loop {
     let mut buffer = [0; 512];
     let size = match pipe_reader.read(&mut buffer) {
       Ok(0) | Err(_) => break,

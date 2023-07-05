@@ -6,8 +6,8 @@ use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
+use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
-use crate::proc_state::ProcState;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 use deno_core::anyhow::Context;
@@ -133,7 +133,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   let mut url = url.clone();
 
   if url.path() == "/" {
-    let client = HttpClient::new(None, None).unwrap();
+    let client = HttpClient::new(None, None);
     if let Ok(res) = client.get_redirected_response(url.clone()).await {
       url = res.url().clone();
     }
@@ -233,9 +233,10 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  ProcState::from_flags(flags.clone())
+  CliFactory::from_flags(flags.clone())
     .await?
-    .module_load_preparer
+    .module_load_preparer()
+    .await?
     .load_and_type_check_files(&[install_flags.module_url.clone()])
     .await?;
 
@@ -1021,9 +1022,7 @@ mod tests {
 
     let result = create_install_shim(
       Flags {
-        config_flag: ConfigFlag::Path(
-          config_file_path.to_string_lossy().to_string(),
-        ),
+        config_flag: ConfigFlag::Path(config_file_path.to_string()),
         ..Flags::default()
       },
       InstallFlags {
@@ -1136,7 +1135,7 @@ mod tests {
 
     let result = create_install_shim(
       Flags {
-        import_map_path: Some(import_map_path.to_string_lossy().to_string()),
+        import_map_path: Some(import_map_path.to_string()),
         ..Flags::default()
       },
       InstallFlags {
