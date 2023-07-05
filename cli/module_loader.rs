@@ -764,6 +764,9 @@ impl NpmModuleLoader {
         &code,
         permissions,
       )?
+    } else if specifier.as_str().ends_with(".json") {
+      // keep json as is
+      code
     } else {
       // only inject node globals for esm
       self

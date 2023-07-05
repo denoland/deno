@@ -2035,3 +2035,17 @@ itest!(reserved_word_exports {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+itest!(import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(dynamic_import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});

@@ -423,7 +423,7 @@ impl NodeResolver {
     url: ModuleSpecifier,
   ) -> Result<NodeResolution, AnyError> {
     let url_str = url.as_str().to_lowercase();
-    if url_str.starts_with("http") {
+    if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
       let package_config =
