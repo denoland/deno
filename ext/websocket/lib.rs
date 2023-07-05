@@ -406,11 +406,7 @@ pub fn ws_create_server_stream(
 }
 
 #[op(fast)]
-pub fn op_ws_send_binary(
-  state: &mut OpState,
-  rid: ResourceId,
-  data: ZeroCopyBuf,
-) {
+pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
