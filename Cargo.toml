@@ -102,7 +102,7 @@ httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
-log = "=0.4.17"
+log = "=0.4.19"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 notify = "=5.0.0"
