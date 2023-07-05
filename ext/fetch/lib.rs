@@ -862,7 +862,9 @@ where
     },
   )?;
 
-  let rid = state.resource_table.add(HttpClientResource::new(client, args.allow_host));
+  let rid = state
+    .resource_table
+    .add(HttpClientResource::new(client, args.allow_host));
   Ok(rid)
 }
 
