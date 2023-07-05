@@ -279,7 +279,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = new Uint8Array(SUGGESTED_SIZE);
+    let buf = BUF;
 
     let nread: number | null;
     try {
@@ -375,3 +375,5 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
+
+const BUF = new Uint8Array(SUGGESTED_SIZE);

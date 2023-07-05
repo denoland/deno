@@ -9,7 +9,10 @@ use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
 use deno_core::serde_json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
+#[allow(unused_imports)]
+use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -130,6 +133,11 @@ fn op_node_build_os() -> String {
     .to_string()
 }
 
+#[op(fast)]
+fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
+  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
+}
+
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
@@ -224,6 +232,7 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
     op_node_build_os,
+    op_is_any_arraybuffer,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
