@@ -11,6 +11,7 @@ use deno_core::op;
 use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
+#[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
