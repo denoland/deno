@@ -517,7 +517,7 @@ impl Descriptor for NetDescriptor {
   }
 
   fn stronger_than(&self, other: &Self) -> bool {
-    self.0 == other.0 && (self.1 == None || self.1 == other.1)
+    self.0 == other.0 && (self.1.is_none() || self.1 == other.1)
   }
 }
 
