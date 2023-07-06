@@ -2589,7 +2589,7 @@ mod tests {
       assert_eq!(perms4.run.query(Some("deno")), PermissionState::Denied);
       assert_eq!(perms4.run.query(Some("node")), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
-      assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
+      assert_eq!(perms2.hrtime.query(), PermissionState::Denied);
       assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
       assert_eq!(perms4.hrtime.query(), PermissionState::Denied);
     };
