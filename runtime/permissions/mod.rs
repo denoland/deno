@@ -1465,10 +1465,8 @@ fn unit_permission_from_flag_bools(
       PermissionState::Denied
     } else if allow_flag {
       PermissionState::Granted
-    } else if prompt {
-      PermissionState::Prompt
     } else {
-      PermissionState::Denied
+      PermissionState::Prompt
     },
     prompt,
   }
@@ -2589,7 +2587,7 @@ mod tests {
       assert_eq!(perms4.run.query(Some("deno")), PermissionState::Denied);
       assert_eq!(perms4.run.query(Some("node")), PermissionState::Granted);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
-      assert_eq!(perms2.hrtime.query(), PermissionState::Denied);
+      assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
       assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
       assert_eq!(perms4.hrtime.query(), PermissionState::Denied);
     };
@@ -2675,7 +2673,7 @@ mod tests {
       sys: Permissions::new_sys(&Some(svec!["hostname"]), &None, false)
         .unwrap(),
       run: Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap(),
-      hrtime: Permissions::new_hrtime(false, false),
+      hrtime: Permissions::new_hrtime(false, true),
     };
     #[rustfmt::skip]
     {
