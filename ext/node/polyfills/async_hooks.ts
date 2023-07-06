@@ -303,7 +303,7 @@ export class AsyncLocalStorage {
   }
 
   // deno-lint-ignore no-explicit-any
-  getStore() {
+  getStore(): any {
     const currentFrame = AsyncContextFrame.current();
     return currentFrame.get(this.#key);
   }
