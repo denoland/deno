@@ -243,8 +243,8 @@ pub struct UnaryPermission<T: Descriptor + Hash> {
   pub granted_list: HashSet<T>,
   pub denied_global: bool,
   pub denied_list: HashSet<T>,
-  pub no_prompt_global: bool,
-  pub no_prompt_list: HashSet<T>,
+  pub no_to_prompt_global: bool,
+  pub no_to_prompt_list: HashSet<T>,
   pub prompt: bool,
 }
 
@@ -255,8 +255,8 @@ impl<T: Descriptor + Hash> Default for UnaryPermission<T> {
       granted_list: Default::default(),
       denied_global: Default::default(),
       denied_list: Default::default(),
-      no_prompt_global: Default::default(),
-      no_prompt_list: Default::default(),
+      no_to_prompt_global: Default::default(),
+      no_to_prompt_list: Default::default(),
       prompt: Default::default(),
     }
   }
@@ -401,8 +401,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 
   fn is_no_prompt(&self, desc: &Option<T>) -> bool {
     match desc.as_ref() {
-      Some(desc) => self.no_prompt_list.iter().any(|v| desc.stronger_than(v)),
-      None => self.no_prompt_global || !self.no_prompt_list.is_empty(),
+      Some(desc) => {
+        self.no_to_prompt_list.iter().any(|v| desc.stronger_than(v))
+      }
+      None => self.no_to_prompt_global || !self.no_to_prompt_list.is_empty(),
     }
   }
 
@@ -431,8 +433,8 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   fn insert_no_prompt(&mut self, desc: Option<T>) {
     Self::list_insert(
       desc,
-      &mut self.no_prompt_global,
-      &mut self.no_prompt_list,
+      &mut self.no_to_prompt_global,
+      &mut self.no_to_prompt_list,
     );
   }
 
@@ -1848,8 +1850,8 @@ pub fn create_child_permissions(
   }
   worker_perms.env.denied_global = main_perms.env.denied_global;
   worker_perms.env.denied_list = main_perms.env.denied_list.clone();
-  worker_perms.env.no_prompt_global = main_perms.env.no_prompt_global;
-  worker_perms.env.no_prompt_list = main_perms.env.no_prompt_list.clone();
+  worker_perms.env.no_to_prompt_global = main_perms.env.no_to_prompt_global;
+  worker_perms.env.no_to_prompt_list = main_perms.env.no_to_prompt_list.clone();
   worker_perms.env.prompt = main_perms.env.prompt;
   match child_permissions_arg.sys {
     ChildUnaryPermissionArg::Inherit => {
@@ -1876,8 +1878,8 @@ pub fn create_child_permissions(
   }
   worker_perms.sys.denied_global = main_perms.sys.denied_global;
   worker_perms.sys.denied_list = main_perms.sys.denied_list.clone();
-  worker_perms.sys.no_prompt_global = main_perms.sys.no_prompt_global;
-  worker_perms.sys.no_prompt_list = main_perms.sys.no_prompt_list.clone();
+  worker_perms.sys.no_to_prompt_global = main_perms.sys.no_to_prompt_global;
+  worker_perms.sys.no_to_prompt_list = main_perms.sys.no_to_prompt_list.clone();
   worker_perms.sys.prompt = main_perms.sys.prompt;
   match child_permissions_arg.hrtime {
     ChildUnitPermissionArg::Inherit => {
@@ -1920,8 +1922,8 @@ pub fn create_child_permissions(
   }
   worker_perms.net.granted_global = main_perms.net.granted_global;
   worker_perms.net.denied_list = main_perms.net.denied_list.clone();
-  worker_perms.net.no_prompt_global = main_perms.net.no_prompt_global;
-  worker_perms.net.no_prompt_list = main_perms.net.no_prompt_list.clone();
+  worker_perms.net.no_to_prompt_global = main_perms.net.no_to_prompt_global;
+  worker_perms.net.no_to_prompt_list = main_perms.net.no_to_prompt_list.clone();
   worker_perms.net.prompt = main_perms.net.prompt;
   match child_permissions_arg.ffi {
     ChildUnaryPermissionArg::Inherit => {
@@ -1951,8 +1953,8 @@ pub fn create_child_permissions(
   }
   worker_perms.ffi.denied_global = main_perms.env.denied_global;
   worker_perms.ffi.denied_list = main_perms.ffi.denied_list.clone();
-  worker_perms.ffi.no_prompt_global = main_perms.ffi.no_prompt_global;
-  worker_perms.ffi.no_prompt_list = main_perms.ffi.no_prompt_list.clone();
+  worker_perms.ffi.no_to_prompt_global = main_perms.ffi.no_to_prompt_global;
+  worker_perms.ffi.no_to_prompt_list = main_perms.ffi.no_to_prompt_list.clone();
   worker_perms.ffi.prompt = main_perms.ffi.prompt;
   match child_permissions_arg.read {
     ChildUnaryPermissionArg::Inherit => {
@@ -1982,8 +1984,9 @@ pub fn create_child_permissions(
   }
   worker_perms.read.denied_global = main_perms.read.denied_global;
   worker_perms.read.denied_list = main_perms.read.denied_list.clone();
-  worker_perms.read.no_prompt_global = main_perms.read.no_prompt_global;
-  worker_perms.read.no_prompt_list = main_perms.read.no_prompt_list.clone();
+  worker_perms.read.no_to_prompt_global = main_perms.read.no_to_prompt_global;
+  worker_perms.read.no_to_prompt_list =
+    main_perms.read.no_to_prompt_list.clone();
   worker_perms.read.prompt = main_perms.read.prompt;
   match child_permissions_arg.run {
     ChildUnaryPermissionArg::Inherit => {
@@ -2010,8 +2013,8 @@ pub fn create_child_permissions(
   }
   worker_perms.run.denied_global = main_perms.run.denied_global;
   worker_perms.run.denied_list = main_perms.run.denied_list.clone();
-  worker_perms.run.no_prompt_global = main_perms.run.no_prompt_global;
-  worker_perms.run.no_prompt_list = main_perms.run.no_prompt_list.clone();
+  worker_perms.run.no_to_prompt_global = main_perms.run.no_to_prompt_global;
+  worker_perms.run.no_to_prompt_list = main_perms.run.no_to_prompt_list.clone();
   worker_perms.run.prompt = main_perms.run.prompt;
   match child_permissions_arg.write {
     ChildUnaryPermissionArg::Inherit => {
@@ -2041,8 +2044,9 @@ pub fn create_child_permissions(
   }
   worker_perms.write.denied_global = main_perms.write.denied_global;
   worker_perms.write.denied_list = main_perms.write.denied_list.clone();
-  worker_perms.write.no_prompt_global = main_perms.write.no_prompt_global;
-  worker_perms.write.no_prompt_list = main_perms.write.no_prompt_list.clone();
+  worker_perms.write.no_to_prompt_global = main_perms.write.no_to_prompt_global;
+  worker_perms.write.no_to_prompt_list =
+    main_perms.write.no_to_prompt_list.clone();
   worker_perms.write.prompt = main_perms.write.prompt;
   Ok(worker_perms)
 }
