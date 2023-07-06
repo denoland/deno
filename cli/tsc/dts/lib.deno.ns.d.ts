@@ -4356,7 +4356,6 @@ declare namespace Deno {
   /** The current status of the permission:
    *
    * - `"granted"` - the permission has been granted.
-   * - `"granted-partial"` - the permission has been partially granted.
    * - `"denied"` - the permission has been explicitly denied.
    * - `"prompt"` - the permission has not explicitly granted nor denied.
    *
@@ -4364,9 +4363,14 @@ declare namespace Deno {
    */
   export type PermissionState =
     | "granted"
-    | "granted-partial"
     | "denied"
     | "prompt";
+
+  /** Indicates whether the permission has been partially granted. This may only be true if the {@linkcode PermissionState} is "granted".
+   *
+   * @category Permissions
+   */
+  export type PermissionPartial = boolean;
 
   /** The permission descriptor for the `allow-run` and `deny-run` permissions, which controls
    * access to what sub-processes can be executed by Deno. The option `command`
@@ -4523,6 +4527,7 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     onchange: ((this: PermissionStatus, ev: Event) => any) | null;
     readonly state: PermissionState;
+    readonly partial: PermissionPartial;
     addEventListener<K extends keyof PermissionStatusEventMap>(
       type: K,
       listener: (

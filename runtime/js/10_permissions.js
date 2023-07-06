@@ -29,6 +29,7 @@ const illegalConstructorKey = Symbol("illegalConstructorKey");
 /**
  * @typedef StatusCacheValue
  * @property {PermissionState} state
+ * @property {PermissionPartial} partial
  * @property {PermissionStatus} status
  */
 
@@ -69,27 +70,32 @@ function opRequest(desc) {
 }
 
 class PermissionStatus extends EventTarget {
-  /** @type {{ state: Deno.PermissionState }} */
-  #state;
+  /** @type {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} */
+  #status;
 
   /** @type {((this: PermissionStatus, event: Event) => any) | null} */
   onchange = null;
 
   /** @returns {Deno.PermissionState} */
   get state() {
-    return this.#state.state;
+    return this.#status.state;
+  }
+
+  /** @returns {Deno.PermissionPartial} */
+  get partial() {
+    return this.#status.partial;
   }
 
   /**
-   * @param {{ state: Deno.PermissionState }} state
+   * @param {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} status
    * @param {unknown} key
    */
-  constructor(state = null, key = null) {
+  constructor(status = null, key = null) {
     if (key != illegalConstructorKey) {
       throw new TypeError("Illegal constructor.");
     }
     super();
-    this.#state = state;
+    this.#status = status;
   }
 
   /**
@@ -106,9 +112,9 @@ class PermissionStatus extends EventTarget {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect) {
-    return `${this.constructor.name} ${
-      inspect({ state: this.state, onchange: this.onchange })
-    }`;
+    const object = { state: this.state, onchange: this.onchange };
+    if (this.partial) object.partial = this.partial;
+    return `${this.constructor.name} ${inspect(object)}`;
   }
 }
 
@@ -117,10 +123,10 @@ const statusCache = new SafeMap();
 
 /**
  * @param {Deno.PermissionDescriptor} desc
- * @param {Deno.PermissionState} state
+ * @param {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} status
  * @returns {PermissionStatus}
  */
-function cache(desc, state) {
+function cache(desc, status) {
   let { name: key } = desc;
   if (
     (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
@@ -139,18 +145,22 @@ function cache(desc, state) {
     key += "$";
   }
   if (MapPrototypeHas(statusCache, key)) {
-    const status = MapPrototypeGet(statusCache, key);
-    if (status.state !== state) {
-      status.state = state;
-      status.status.dispatchEvent(new Event("change", { cancelable: false }));
+    const cachedStatus = MapPrototypeGet(statusCache, key);
+    if (
+      cachedStatus.state !== status.state ||
+      cachedStatus.partial !== status.partial
+    ) {
+      cachedStatus.state = status.state;
+      cachedStatus.partial = status.partial;
+      cachedStatus.status.dispatchEvent(
+        new Event("change", { cancelable: false }),
+      );
     }
-    return status.status;
+    return cachedStatus;
   }
-  /** @type {{ state: Deno.PermissionState; status?: PermissionStatus }} */
-  const status = { state };
-  status.status = new PermissionStatus(status, illegalConstructorKey);
+  status = new PermissionStatus(status, illegalConstructorKey);
   MapPrototypeSet(statusCache, key, status);
-  return status.status;
+  return status;
 }
 
 /**
@@ -200,8 +210,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opQuery(desc);
-    return cache(desc, state);
+    const status = opQuery(desc);
+    return cache(desc, status);
   }
 
   revoke(desc) {
@@ -221,8 +231,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opRevoke(desc);
-    return cache(desc, state);
+    const status = opRevoke(desc);
+    return cache(desc, status);
   }
 
   request(desc) {
@@ -242,8 +252,8 @@ class Permissions {
 
     formDescriptor(desc);
 
-    const state = opRequest(desc);
-    return cache(desc, state);
+    const status = opRequest(desc);
+    return cache(desc, status);
   }
 }
 
