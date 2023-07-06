@@ -10,6 +10,7 @@
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");
@@ -29,10 +30,6 @@ let rootAsyncFrame: AsyncContextFrame | undefined = undefined;
 let promiseHooksSet = false;
 
 const asyncContext = Symbol("asyncContext");
-function isRejected(promise: Promise<unknown>) {
-  const [state] = core.getPromiseDetails(promise);
-  return state == 2;
-}
 
 function setPromiseHooks() {
   if (promiseHooksSet) {
@@ -57,15 +54,15 @@ function setPromiseHooks() {
   };
   const after = (promise: Promise<unknown>) => {
     popAsyncFrame();
-    if (!isRejected(promise)) {
+    if (!ops.op_node_is_promise_rejected(promise)) {
       // @ts-ignore promise async context
-      delete promise[asyncContext];
+      promise[asyncContext] = undefined;
     }
   };
   const resolve = (promise: Promise<unknown>) => {
     const currentFrame = AsyncContextFrame.current();
     if (
-      !currentFrame.isRoot() && isRejected(promise) &&
+      !currentFrame.isRoot() && ops.op_node_is_promise_rejected(promise) &&
       AsyncContextFrame.tryGetContext(promise) == null
     ) {
       AsyncContextFrame.attachContext(promise);
@@ -306,7 +303,7 @@ export class AsyncLocalStorage {
   }
 
   // deno-lint-ignore no-explicit-any
-  getStore(): any {
+  getStore() {
     const currentFrame = AsyncContextFrame.current();
     return currentFrame.get(this.#key);
   }

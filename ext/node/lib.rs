@@ -138,6 +138,15 @@ fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
   value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
 }
 
+#[op(fast)]
+fn op_node_is_promise_rejected(value: serde_v8::Value) -> bool {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(promise.v8_value) else {
+    return false;
+  };
+
+  promise.state() == v8::PromiseState::Rejected
+}
+
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
   parameters = [P: NodePermissions],
@@ -233,6 +242,7 @@ deno_core::extension!(deno_node,
     ops::http::op_node_http_request<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
+    op_node_is_promise_rejected,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P>,
     ops::require::op_require_proxy_path,
