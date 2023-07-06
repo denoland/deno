@@ -959,6 +959,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.194.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#5669776b9103bf4c49c9aed093927b894ce2899f"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1330,6 +1331,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.72.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#5669776b9103bf4c49c9aed093927b894ce2899f"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -4363,6 +4365,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.105.0"
+source = "git+https://github.com/denoland/deno_core.git?branch=main#5669776b9103bf4c49c9aed093927b894ce2899f"
 dependencies = [
  "bytes",
  "derive_more",

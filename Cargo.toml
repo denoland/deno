@@ -328,4 +328,4 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_core = { version = "0.194.0", path = "../deno_core/core" }
+deno_core = { git = "https://github.com/denoland/deno_core.git", branch = "main" }
