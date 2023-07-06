@@ -40,12 +40,14 @@ function setPromiseHooks() {
   const init = (promise: Promise<unknown>) => {
     const currentFrame = AsyncContextFrame.current();
     if (!currentFrame.isRoot()) {
-      assert(AsyncContextFrame.tryGetContext(promise) == null);
+      if (typeof promise[asyncContext] !== "undefined") {
+        throw new Error("Promise already has async context");
+      }
       AsyncContextFrame.attachContext(promise);
     }
   };
   const before = (promise: Promise<unknown>) => {
-    const maybeFrame = AsyncContextFrame.tryGetContext(promise);
+    const maybeFrame = promise[asyncContext];
     if (maybeFrame) {
       pushAsyncFrame(maybeFrame);
     } else {
@@ -63,7 +65,7 @@ function setPromiseHooks() {
     const currentFrame = AsyncContextFrame.current();
     if (
       !currentFrame.isRoot() && ops.op_node_is_promise_rejected(promise) &&
-      AsyncContextFrame.tryGetContext(promise) == null
+      typeof promise[asyncContext] === "undefined"
     ) {
       AsyncContextFrame.attachContext(promise);
     }
@@ -114,7 +116,6 @@ class AsyncContextFrame {
   }
 
   static attachContext(promise: Promise<unknown>) {
-    assert(!(asyncContext in promise));
     // @ts-ignore promise async context
     promise[asyncContext] = AsyncContextFrame.current();
   }
