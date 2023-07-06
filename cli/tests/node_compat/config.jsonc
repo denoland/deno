@@ -84,7 +84,6 @@
       "test-net-write-arguments.js",
       "test-os.js",
       "test-path-resolve.js",
-      "test-path.js",
       "test-querystring.js",
       "test-readline-interface.js",
       "test-stdin-from-file-spawn.js",

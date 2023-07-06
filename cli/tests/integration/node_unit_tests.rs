@@ -68,6 +68,7 @@ util::unit_test_factory!(
     module_test,
     net_test,
     os_test,
+    path_test,
     perf_hooks_test,
     process_test,
     querystring_test,
