@@ -2426,98 +2426,58 @@ mod tests {
     set_prompter(Box::new(TestPrompter));
     let perms1 = Permissions::allow_all();
     let perms2 = Permissions {
-      read: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_read(
-          &Some(vec![PathBuf::from("/foo")]),
-          &None,
-          false,
-        )
-        .unwrap()
-      },
-      write: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_write(
-          &Some(vec![PathBuf::from("/foo")]),
-          &None,
-          false,
-        )
-        .unwrap()
-      },
-      ffi: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_ffi(&Some(vec![PathBuf::from("/foo")]), &None, false)
-          .unwrap()
-      },
-
-      net: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), &None, false)
-          .unwrap()
-      },
-      env: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap()
-      },
-      sys: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_sys(&Some(svec!["hostname"]), &None, false).unwrap()
-      },
-      run: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap()
-      },
-      hrtime: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Permissions::new_hrtime(false, false)
-      },
+      read: Permissions::new_read(
+        &Some(vec![PathBuf::from("/foo")]),
+        &None,
+        false,
+      )
+      .unwrap(),
+      write: Permissions::new_write(
+        &Some(vec![PathBuf::from("/foo")]),
+        &None,
+        false,
+      )
+      .unwrap(),
+      ffi: Permissions::new_ffi(
+        &Some(vec![PathBuf::from("/foo")]),
+        &None,
+        false,
+      )
+      .unwrap(),
+      net: Permissions::new_net(&Some(svec!["127.0.0.1:8000"]), &None, false)
+        .unwrap(),
+      env: Permissions::new_env(&Some(svec!["HOME"]), &None, false).unwrap(),
+      sys: Permissions::new_sys(&Some(svec!["hostname"]), &None, false)
+        .unwrap(),
+      run: Permissions::new_run(&Some(svec!["deno"]), &None, false).unwrap(),
+      hrtime: Permissions::new_hrtime(false, false),
     };
     let perms3 = Permissions {
-      read: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_read(
-          &None,
-          &Some(vec![PathBuf::from("/foo")]),
-          false,
-        )
-        .unwrap()
-      },
-      write: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_write(
-          &None,
-          &Some(vec![PathBuf::from("/foo")]),
-          false,
-        )
-        .unwrap()
-      },
-      ffi: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_ffi(&None, &Some(vec![PathBuf::from("/foo")]), false)
-          .unwrap()
-      },
-
-      net: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_net(&None, &Some(svec!["127.0.0.1:8000"]), false)
-          .unwrap()
-      },
-      env: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_env(&None, &Some(svec!["HOME"]), false).unwrap()
-      },
-      sys: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_sys(&None, &Some(svec!["hostname"]), false).unwrap()
-      },
-      run: UnaryPermission {
-        granted_global: false,
-        ..Permissions::new_run(&None, &Some(svec!["deno"]), false).unwrap()
-      },
-      hrtime: UnitPermission {
-        state: PermissionState::Prompt,
-        ..Permissions::new_hrtime(false, true)
-      },
+      read: Permissions::new_read(
+        &None,
+        &Some(vec![PathBuf::from("/foo")]),
+        false,
+      )
+      .unwrap(),
+      write: Permissions::new_write(
+        &None,
+        &Some(vec![PathBuf::from("/foo")]),
+        false,
+      )
+      .unwrap(),
+      ffi: Permissions::new_ffi(
+        &None,
+        &Some(vec![PathBuf::from("/foo")]),
+        false,
+      )
+      .unwrap(),
+      net: Permissions::new_net(&None, &Some(svec!["127.0.0.1:8000"]), false)
+        .unwrap(),
+      env: Permissions::new_env(&None, &Some(svec!["HOME"]), false).unwrap(),
+      sys: Permissions::new_sys(&None, &Some(svec!["hostname"]), false)
+        .unwrap(),
+      run: Permissions::new_run(&None, &Some(svec!["deno"]), false).unwrap(),
+      hrtime: Permissions::new_hrtime(false, true),
     };
     #[rustfmt::skip]
     {
@@ -2571,7 +2531,7 @@ mod tests {
       assert_eq!(perms3.run.query(Some("deno")), PermissionState::Denied);
       assert_eq!(perms1.hrtime.query(), PermissionState::Granted);
       assert_eq!(perms2.hrtime.query(), PermissionState::Prompt);
-      // assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
+      assert_eq!(perms3.hrtime.query(), PermissionState::Denied);
     };
   }
 
