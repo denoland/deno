@@ -11,7 +11,7 @@ import {
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
 import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
-import { emitWarning } from "ext:deno_node/process.ts";
+import { emitWarning } from "node:process";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { Event as WebEvent, EventTarget as WebEventTarget } from "ext:deno_web/02_event.js";
 
@@ -20,12 +20,12 @@ import {
   kEmptyObject,
   kEnumerableProperty,
 } from "ext:deno_node/internal/util.mjs";
-import { inspect } from "ext:deno_node/util.ts";
+import { inspect } from "node:util";
 
 const kIsEventTarget = Symbol.for("nodejs.event_target");
 const kIsNodeEventTarget = Symbol("kIsNodeEventTarget");
 
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 const {
   kMaxEventTargetListeners,
   kMaxEventTargetListenersWarned,

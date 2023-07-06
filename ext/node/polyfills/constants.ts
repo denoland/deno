@@ -2,8 +2,8 @@
 
 // Based on: https://github.com/nodejs/node/blob/0646eda/lib/constants.js
 
-import { constants as fsConstants } from "ext:deno_node/fs.ts";
-import { constants as osConstants } from "ext:deno_node/os.ts";
+import { constants as fsConstants } from "node:fs";
+import { constants as osConstants } from "node:os";
 
 export default {
   ...fsConstants,

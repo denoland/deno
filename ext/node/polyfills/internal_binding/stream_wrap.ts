@@ -31,7 +31,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
@@ -279,7 +279,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = new Uint8Array(SUGGESTED_SIZE);
+    let buf = BUF;
 
     let nread: number | null;
     try {
@@ -375,3 +375,5 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
+
+const BUF = new Uint8Array(SUGGESTED_SIZE);
