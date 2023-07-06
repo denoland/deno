@@ -1057,7 +1057,6 @@ where
     .with_single_cert(cert_chain, key_der)
     .expect("invalid key or certificate");
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable(state, "Deno.listenTls#alpn_protocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
