@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 40;
+const cacheVersion = 43;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -27,19 +27,21 @@ const Runners = (() => {
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
+// Note that you may need to add more version to the `apt-get remove` line below if you change this
+const llvmVersion = 16;
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
+  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
 # Remove older clang before we install
-sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
-# Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+# Install clang-XXX, lld-XXX, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -78,8 +80,8 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -90,8 +92,8 @@ RUSTFLAGS<<__1
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -99,9 +101,23 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-15
+CC=clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
+};
+
+// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
+// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
+const reconfigureWindowsStorage = {
+  name: "Reconfigure Windows Storage",
+  if: [
+    "startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-xl')",
+  ],
+  shell: "pwsh",
+  run: `
+New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
+`.trim(),
 };
 
 const cloneRepoStep = [{
@@ -368,6 +384,7 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
+        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
         submoduleStep("./third_party"),
@@ -682,7 +699,7 @@ const ci = {
         {
           name: "Test debug (fast)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
             "!startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
           run: [
@@ -690,6 +707,17 @@ const ci = {
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
             "cargo test --locked --test '*'",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test examples debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // Only regression tests here for now.
+            // Regression test for https://github.com/denoland/deno/pull/19615.
+            "cargo run -p deno_runtime --example extension_with_esm",
+            "cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },

@@ -64,7 +64,7 @@ impl Emitter {
   }
 
   /// Gets a cached emit if the source matches the hash found in the cache.
-  pub fn maybed_cached_emit(
+  pub fn maybe_cached_emit(
     &self,
     specifier: &ModuleSpecifier,
     source: &str,

@@ -81,7 +81,6 @@ pub async fn run_from_stdin(flags: Flags) -> Result<i32, AnyError> {
   std::io::stdin().read_to_end(&mut source)?;
   // Create a dummy source file.
   let source_file = File {
-    local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::TypeScript,
     source: String::from_utf8(source)?.into(),
@@ -163,7 +162,6 @@ pub async fn eval_command(
   .into_bytes();
 
   let file = File {
-    local: main_module.clone().to_file_path().unwrap(),
     maybe_types: None,
     media_type: MediaType::Unknown,
     source: String::from_utf8(source_code)?.into(),

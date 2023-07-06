@@ -1,12 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   validateFunction,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "ext:deno_node/internal/streams/writable.mjs";
 import type {

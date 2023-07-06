@@ -591,10 +591,8 @@ pub async fn op_ws_next_event(
       Ok(val) => val,
       Err(err) => {
         // No message was received, socket closed while we waited.
-        // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+        // Report closed status to JavaScript.
         if resource.closed.get() {
-          let _ = state.borrow_mut().resource_table.close(rid);
-          resource.set_error(None);
           return MessageKind::ClosedDefault as u16;
         }
 

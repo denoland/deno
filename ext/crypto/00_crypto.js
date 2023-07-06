@@ -2666,7 +2666,7 @@ function importKeyAES(
           TypedArrayPrototypeGetByteLength(keyData) * 8,
         )
       ) {
-        throw new DOMException("Invalid key length", "Datarror");
+        throw new DOMException("Invalid key length", "DataError");
       }
 
       break;

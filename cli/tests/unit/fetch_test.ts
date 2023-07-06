@@ -1270,9 +1270,9 @@ Deno.test(
         }, 1000);
       },
     });
-    const nonExistantHostname = "http://localhost:47582";
+    const nonExistentHostname = "http://localhost:47582";
     await assertRejects(async () => {
-      await fetch(nonExistantHostname, { body, method: "POST" });
+      await fetch(nonExistentHostname, { body, method: "POST" });
     }, TypeError);
     await done;
   },

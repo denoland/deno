@@ -2,6 +2,9 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import type {
   FormatInputPathObject,
   ParsedPath,
@@ -17,7 +20,6 @@ import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import {
   _format,
   assertPath,
-  encodeWhitespace,
   isPathSeparator,
   isWindowsDeviceRoot,
   normalizeString,
@@ -951,34 +953,6 @@ export function parse(path: string): ParsedPath {
   return ret;
 }
 
-/**
- * Converts a path string to a file URL.
- *
- * ```ts
- *      toFileUrl("\\home\\foo"); // new URL("file:///home/foo")
- *      toFileUrl("C:\\Users\\foo"); // new URL("file:///C:/Users/foo")
- *      toFileUrl("\\\\127.0.0.1\\home\\foo"); // new URL("file://127.0.0.1/home/foo")
- * ```
- * @param path to convert to file URL
- */
-export function toFileUrl(path: string): URL {
-  if (!isAbsolute(path)) {
-    throw new TypeError("Must be an absolute path.");
-  }
-  const [, hostname, pathname] = path.match(
-    /^(?:[/\\]{2}([^/\\]+)(?=[/\\](?:[^/\\]|$)))?(.*)/,
-  )!;
-  const url = new URL("file:///");
-  url.pathname = encodeWhitespace(pathname.replace(/%/g, "%25"));
-  if (hostname != null && hostname != "localhost") {
-    url.hostname = hostname;
-    if (!url.hostname) {
-      throw new TypeError("Invalid hostname.");
-    }
-  }
-  return url;
-}
-
 export default {
   basename,
   delimiter,
@@ -992,6 +966,5 @@ export default {
   relative,
   resolve,
   sep,
-  toFileUrl,
   toNamespacedPath,
 };

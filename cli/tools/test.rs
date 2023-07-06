@@ -1138,7 +1138,6 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
         source: file_source.into(),
