@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::CachedUrlMetadata;
 use crate::cache::HttpCache;
 
 use deno_core::parking_lot::Mutex;
@@ -95,9 +94,9 @@ impl CacheMetadata {
     ) {
       return None;
     }
-    let cache_filename = self.cache.get_cache_filepath(specifier).ok()?;
-    let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
+    let specifier_metadata = self.cache.read_metadata(specifier).ok()?;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
+    let cache_filename = self.cache.get_cache_filepath(specifier).ok()?;
     let version = calculate_fs_version(&cache_filename);
     let mut metadata_map = self.metadata.lock();
     let metadata = Metadata { values, version };

@@ -81,27 +81,6 @@ pub struct CachedUrlMetadata {
   pub now: SystemTime,
 }
 
-impl CachedUrlMetadata {
-  pub fn write(&self, cache_filename: &Path) -> Result<(), AnyError> {
-    let metadata_filename = Self::filename(cache_filename);
-    let json = serde_json::to_string_pretty(self)?;
-    util::fs::atomic_write_file(&metadata_filename, json, CACHE_PERM)?;
-    Ok(())
-  }
-
-  pub fn read(cache_filename: &Path) -> Result<Self, AnyError> {
-    let metadata_filename = Self::filename(cache_filename);
-    let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: Self = serde_json::from_str(&metadata)?;
-    Ok(metadata)
-  }
-
-  /// Ex: $DENO_DIR/deps/https/deno.land/c885b7dcf1d6936e33a9cc3a2d74ec79bab5d733d3701c85a029b7f7ec9fbed4.metadata.json
-  pub fn filename(cache_filename: &Path) -> PathBuf {
-    cache_filename.with_extension("metadata.json")
-  }
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct HttpCache {
   pub location: PathBuf,
@@ -140,6 +119,44 @@ impl HttpCache {
     )
   }
 
+  pub fn read_metadata(
+    &self,
+    url: &Url,
+  ) -> Result<CachedUrlMetadata, AnyError> {
+    let filepath = self.get_cache_filepath(url)?;
+    self.read_metadata_from_path(&filepath)
+  }
+
+  fn read_metadata_from_path(
+    &self,
+    path: &Path,
+  ) -> Result<CachedUrlMetadata, AnyError> {
+    let metadata_filename = path.with_extension("metadata.json");
+    let metadata = fs::read_to_string(metadata_filename)?;
+    Ok(serde_json::from_str(&metadata)?)
+  }
+
+  #[cfg(test)]
+  pub fn write_metadata(
+    &self,
+    url: &Url,
+    meta_data: &CachedUrlMetadata,
+  ) -> Result<(), AnyError> {
+    let cache_path = self.get_cache_filepath(url)?;
+    self.write_metadata_at_path(&cache_path, meta_data)
+  }
+
+  fn write_metadata_at_path(
+    &self,
+    path: &Path,
+    meta_data: &CachedUrlMetadata,
+  ) -> Result<(), AnyError> {
+    let cache_path = path.with_extension("metadata.json");
+    let json = serde_json::to_string_pretty(meta_data)?;
+    util::fs::atomic_write_file(&cache_path, json, CACHE_PERM)?;
+    Ok(())
+  }
+
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
@@ -147,11 +164,9 @@ impl HttpCache {
     &self,
     url: &Url,
   ) -> Result<(File, HeadersMap, SystemTime), AnyError> {
-    let cache_filename = self.get_cache_filepath(url)?;
-    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
-    let file = File::open(cache_filename)?;
-    let metadata = fs::read_to_string(metadata_filename)?;
-    let metadata: CachedUrlMetadata = serde_json::from_str(&metadata)?;
+    let cache_filepath = self.get_cache_filepath(url)?;
+    let file = File::open(&cache_filepath)?;
+    let metadata = self.read_metadata_from_path(&cache_filepath)?;
     Ok((file, metadata.headers, metadata.now))
   }
 
@@ -175,7 +190,7 @@ impl HttpCache {
       url: url.to_string(),
       headers: headers_map,
     };
-    metadata.write(&cache_filepath)?;
+    self.write_metadata_at_path(&cache_filepath, &metadata)?;
 
     Ok(())
   }

@@ -656,7 +656,6 @@ async fn fetch_once<'a>(
 
 #[cfg(test)]
 mod tests {
-  use crate::cache::CachedUrlMetadata;
   use crate::http_util::HttpClient;
   use crate::version;
 
@@ -1075,16 +1074,16 @@ mod tests {
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
 
-    let cache_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
-    let mut metadata = CachedUrlMetadata::read(&cache_filename).unwrap();
+    let mut metadata =
+      file_fetcher.http_cache.read_metadata(&specifier).unwrap();
     metadata.headers = HashMap::new();
     metadata
       .headers
       .insert("content-type".to_string(), "text/javascript".to_string());
-    metadata.write(&cache_filename).unwrap();
+    file_fetcher
+      .http_cache
+      .write_metadata(&specifier, &metadata)
+      .unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1105,7 +1104,10 @@ mod tests {
     metadata
       .headers
       .insert("content-type".to_string(), "application/json".to_string());
-    metadata.write(&cache_filename).unwrap();
+    file_fetcher_02
+      .http_cache
+      .write_metadata(&specifier, &metadata)
+      .unwrap();
 
     let result = file_fetcher_02
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1156,17 +1158,17 @@ mod tests {
     );
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
-    let cache_filename = file_fetcher_01
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
 
     let result = file_fetcher_01
       .fetch(&specifier, PermissionsContainer::allow_all())
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
+    let cache_filename = file_fetcher_01
+      .http_cache
+      .get_cache_filepath(&specifier)
+      .unwrap();
+    let metadata_filename = cache_filename.with_extension("metadata.json");
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1184,7 +1186,7 @@ mod tests {
       .await;
     assert!(result.is_ok());
 
-    let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
+    let metadata_filename = cache_filename.with_extension("metadata.json");
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
@@ -1335,7 +1337,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      CachedUrlMetadata::filename(&redirected_cache_filename);
+      redirected_cache_filename.with_extension("metadata.json");
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
@@ -1354,7 +1356,7 @@ mod tests {
     assert!(result.is_ok());
 
     let metadata_filename =
-      CachedUrlMetadata::filename(&redirected_cache_filename);
+      redirected_cache_filename.with_extension("metadata.json");
     let metadata_file = fs::File::open(metadata_filename).unwrap();
     let metadata_file_metadata = metadata_file.metadata().unwrap();
     let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
