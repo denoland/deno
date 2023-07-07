@@ -90,14 +90,14 @@ function processUrlList(urlList, urlListProcessed) {
  * @param {number} httpVersion
  * @returns {InnerRequest}
  */
-  function newInnerRequest(
-    method,
-    url,
-    headerList,
-    body,
-    maybeBlob,
-    httpVersion,
-  ) {
+function newInnerRequest(
+  method,
+  url,
+  headerList,
+  body,
+  maybeBlob,
+  httpVersion,
+) {
   let blobUrlEntry = null;
   if (
     maybeBlob &&
