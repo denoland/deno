@@ -37,7 +37,6 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::future::Future;
-use std::io::Read;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -246,24 +245,19 @@ impl FileFetcher {
       return Err(custom_error("Http", "Too many redirects."));
     }
 
-    let (mut source_file, headers, _) = match self.http_cache.get(specifier) {
-      Err(err) => {
-        if let Some(err) = err.downcast_ref::<std::io::Error>() {
-          if err.kind() == std::io::ErrorKind::NotFound {
-            return Ok(None);
-          }
-        }
-        return Err(err);
-      }
-      Ok(cache) => cache,
+    let cache_item = self.http_cache.get(specifier)?;
+    let Some(metadata) = cache_item.read_metadata()? else {
+      return Ok(None);
     };
+    let headers = metadata.headers;
     if let Some(redirect_to) = headers.get("location") {
       let redirect =
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
       return self.fetch_cached(&redirect, redirect_limit - 1);
     }
-    let mut bytes = Vec::new();
-    source_file.read_to_end(&mut bytes)?;
+    let Some(bytes) = cache_item.read_to_bytes()? else {
+      return Ok(None);
+    };
     let file = self.build_remote_file(specifier, bytes, &headers)?;
 
     Ok(Some(file))
@@ -379,10 +373,12 @@ impl FileFetcher {
       );
     }
 
-    let maybe_etag = match self.http_cache.get(specifier) {
-      Ok((_, headers, _)) => headers.get("etag").cloned(),
-      _ => None,
-    };
+    let maybe_etag = self
+      .http_cache
+      .get(specifier)
+      .ok()
+      .and_then(|item| item.read_metadata().ok()?)
+      .and_then(|metadata| metadata.headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
     let client = self.http_client.clone();
@@ -437,13 +433,18 @@ impl FileFetcher {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
-        if let Ok((_, headers, cache_time)) = self.http_cache.get(specifier) {
-          let cache_semantics =
-            CacheSemantics::new(headers, cache_time, SystemTime::now());
-          cache_semantics.should_use()
-        } else {
-          false
-        }
+        let Ok(item) = self.http_cache.get(specifier) else {
+          return false;
+        };
+        let Ok(Some(metadata)) = item.read_metadata() else {
+          return false;
+        };
+        let cache_semantics = CacheSemantics::new(
+          metadata.headers,
+          metadata.time,
+          SystemTime::now(),
+        );
+        cache_semantics.should_use()
       }
       CacheSetting::ReloadSome(list) => {
         let mut url = specifier.clone();
@@ -515,6 +516,15 @@ impl FileFetcher {
     }
   }
 
+  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
+  // detail of the cache.
+  //
+  // todo(dsheret): remove once implementing
+  //  * https://github.com/denoland/deno/issues/17707
+  //  * https://github.com/denoland/deno/issues/17703
+  #[deprecated(
+    note = "There should not be a way to do this because the file may not be cached at a local path in the future."
+  )]
   pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
@@ -523,6 +533,7 @@ impl FileFetcher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
+      #[allow(deprecated)]
       self.http_cache.get_cache_filepath(specifier).ok()
     }
   }
@@ -724,9 +735,11 @@ mod tests {
     let result: Result<File, AnyError> = file_fetcher
       .fetch_remote(specifier, PermissionsContainer::allow_all(), 1, None)
       .await;
-    assert!(result.is_ok());
-    let (_, headers, _) = file_fetcher.http_cache.get(specifier).unwrap();
-    (result.unwrap(), headers)
+    let cache_item = file_fetcher.http_cache.get(specifier).unwrap();
+    (
+      result.unwrap(),
+      cache_item.read_metadata().unwrap().unwrap().headers,
+    )
   }
 
   async fn test_fetch_remote_encoded(
@@ -1074,8 +1087,13 @@ mod tests {
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
 
-    let mut metadata =
-      file_fetcher.http_cache.read_metadata(&specifier).unwrap();
+    let mut metadata = file_fetcher
+      .http_cache
+      .get(&specifier)
+      .unwrap()
+      .read_metadata()
+      .unwrap()
+      .unwrap();
     metadata.headers = HashMap::new();
     metadata
       .headers
@@ -1098,7 +1116,14 @@ mod tests {
     // the value above.
     assert_eq!(file.media_type, MediaType::JavaScript);
 
-    let (_, headers, _) = file_fetcher_02.http_cache.get(&specifier).unwrap();
+    let headers = file_fetcher_02
+      .http_cache
+      .get(&specifier)
+      .unwrap()
+      .read_metadata()
+      .unwrap()
+      .unwrap()
+      .headers;
     assert_eq!(headers.get("content-type").unwrap(), "text/javascript");
     metadata.headers = HashMap::new();
     metadata
@@ -1148,50 +1173,68 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
-    let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(location.clone()),
-      CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
     let specifier =
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
 
-    let result = file_fetcher_01
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
+    let file_modified_01 = {
+      let file_fetcher = FileFetcher::new(
+        HttpCache::new(location.clone()),
+        CacheSetting::Use,
+        true,
+        Arc::new(HttpClient::new(None, None)),
+        Default::default(),
+        None,
+      );
 
-    let cache_filename = file_fetcher_01
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
-    let metadata_filename = cache_filename.with_extension("metadata.json");
-    let metadata_file = fs::File::open(metadata_filename).unwrap();
-    let metadata_file_metadata = metadata_file.metadata().unwrap();
-    let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
+      let result = file_fetcher
+        .fetch(&specifier, PermissionsContainer::allow_all())
+        .await;
+      assert!(result.is_ok());
+      (
+        file_fetcher
+          .http_cache
+          .get_modified_time(&specifier)
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .get(&specifier)
+          .unwrap()
+          .read_metadata()
+          .unwrap()
+          .unwrap(),
+      )
+    };
 
-    let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(location),
-      CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
-    let result = file_fetcher_02
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
+    let file_modified_02 = {
+      let file_fetcher = FileFetcher::new(
+        HttpCache::new(location),
+        CacheSetting::Use,
+        true,
+        Arc::new(HttpClient::new(None, None)),
+        Default::default(),
+        None,
+      );
+      let result = file_fetcher
+        .fetch(&specifier, PermissionsContainer::allow_all())
+        .await;
+      assert!(result.is_ok());
 
-    let metadata_filename = cache_filename.with_extension("metadata.json");
-    let metadata_file = fs::File::open(metadata_filename).unwrap();
-    let metadata_file_metadata = metadata_file.metadata().unwrap();
-    let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
+      (
+        file_fetcher
+          .http_cache
+          .get_modified_time(&specifier)
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .get(&specifier)
+          .unwrap()
+          .read_metadata()
+          .unwrap()
+          .unwrap(),
+      )
+    };
 
-    assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
+    assert_eq!(file_modified_01, file_modified_02);
   }
 
   #[tokio::test]
@@ -1201,17 +1244,9 @@ mod tests {
     let specifier =
       resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
         .unwrap();
-    let cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
     let redirected_specifier =
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
         .unwrap();
-    let redirected_cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&redirected_specifier)
-      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1220,24 +1255,40 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_specifier);
 
-    assert_eq!(
-      fs::read_to_string(cached_filename).unwrap(),
-      "",
-      "redirected files should have empty cached contents"
-    );
-    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
-    assert_eq!(
-      headers.get("location").unwrap(),
-      "http://localhost:4545/subdir/redirects/redirect1.js"
-    );
+    {
+      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "",
+        "redirected files should have empty cached contents"
+      );
+      assert_eq!(
+        cache_item
+          .read_metadata()
+          .unwrap()
+          .unwrap()
+          .headers
+          .get("location")
+          .unwrap(),
+        "http://localhost:4545/subdir/redirects/redirect1.js"
+      );
+    }
 
-    assert_eq!(
-      fs::read_to_string(redirected_cached_filename).unwrap(),
-      "export const redirect = 1;\n"
-    );
-    let (_, headers, _) =
-      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-    assert!(headers.get("location").is_none());
+    {
+      let cache_item =
+        file_fetcher.http_cache.get(&redirected_specifier).unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "export const redirect = 1;\n"
+      );
+      assert!(cache_item
+        .read_metadata()
+        .unwrap()
+        .unwrap()
+        .headers
+        .get("location")
+        .is_none());
+    }
   }
 
   #[tokio::test]
@@ -1247,24 +1298,12 @@ mod tests {
     let specifier =
       resolve_url("http://localhost:4548/subdir/redirects/redirect1.js")
         .unwrap();
-    let cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
     let redirected_01_specifier =
       resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
         .unwrap();
-    let redirected_01_cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&redirected_01_specifier)
-      .unwrap();
     let redirected_02_specifier =
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
         .unwrap();
-    let redirected_02_cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&redirected_02_specifier)
-      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1273,40 +1312,64 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_02_specifier);
 
-    assert_eq!(
-      fs::read_to_string(cached_filename).unwrap(),
-      "",
-      "redirected files should have empty cached contents"
-    );
-    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
-    assert_eq!(
-      headers.get("location").unwrap(),
-      "http://localhost:4546/subdir/redirects/redirect1.js"
-    );
+    {
+      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "",
+        "redirected files should have empty cached contents"
+      );
+      assert_eq!(
+        cache_item
+          .read_metadata()
+          .unwrap()
+          .unwrap()
+          .headers
+          .get("location")
+          .unwrap(),
+        "http://localhost:4546/subdir/redirects/redirect1.js"
+      );
+    }
 
-    assert_eq!(
-      fs::read_to_string(redirected_01_cached_filename).unwrap(),
-      "",
-      "redirected files should have empty cached contents"
-    );
-    let (_, headers, _) = file_fetcher
-      .http_cache
-      .get(&redirected_01_specifier)
-      .unwrap();
-    assert_eq!(
-      headers.get("location").unwrap(),
-      "http://localhost:4545/subdir/redirects/redirect1.js"
-    );
+    {
+      let cache_item = file_fetcher
+        .http_cache
+        .get(&redirected_01_specifier)
+        .unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "",
+        "redirected files should have empty cached contents"
+      );
+      assert_eq!(
+        cache_item
+          .read_metadata()
+          .unwrap()
+          .unwrap()
+          .headers
+          .get("location")
+          .unwrap(),
+        "http://localhost:4545/subdir/redirects/redirect1.js"
+      );
+    }
 
-    assert_eq!(
-      fs::read_to_string(redirected_02_cached_filename).unwrap(),
-      "export const redirect = 1;\n"
-    );
-    let (_, headers, _) = file_fetcher
-      .http_cache
-      .get(&redirected_02_specifier)
-      .unwrap();
-    assert!(headers.get("location").is_none());
+    {
+      let cache_item = file_fetcher
+        .http_cache
+        .get(&redirected_02_specifier)
+        .unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "export const redirect = 1;\n"
+      );
+      assert!(cache_item
+        .read_metadata()
+        .unwrap()
+        .unwrap()
+        .headers
+        .get("location")
+        .is_none());
+    }
   }
 
   #[tokio::test]
@@ -1314,52 +1377,69 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
-    let file_fetcher_01 = FileFetcher::new(
-      HttpCache::new(location.clone()),
-      CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
     let specifier =
       resolve_url("http://localhost:4548/subdir/mismatch_ext.ts").unwrap();
     let redirected_specifier =
       resolve_url("http://localhost:4546/subdir/mismatch_ext.ts").unwrap();
-    let redirected_cache_filename = file_fetcher_01
-      .http_cache
-      .get_cache_filepath(&redirected_specifier)
-      .unwrap();
 
-    let result = file_fetcher_01
-      .fetch(&specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
+    let metadata_file_modified_01 = {
+      let file_fetcher = FileFetcher::new(
+        HttpCache::new(location.clone()),
+        CacheSetting::Use,
+        true,
+        Arc::new(HttpClient::new(None, None)),
+        Default::default(),
+        None,
+      );
 
-    let metadata_filename =
-      redirected_cache_filename.with_extension("metadata.json");
-    let metadata_file = fs::File::open(metadata_filename).unwrap();
-    let metadata_file_metadata = metadata_file.metadata().unwrap();
-    let metadata_file_modified_01 = metadata_file_metadata.modified().unwrap();
+      let result = file_fetcher
+        .fetch(&specifier, PermissionsContainer::allow_all())
+        .await;
+      assert!(result.is_ok());
 
-    let file_fetcher_02 = FileFetcher::new(
-      HttpCache::new(location),
-      CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
-    let result = file_fetcher_02
-      .fetch(&redirected_specifier, PermissionsContainer::allow_all())
-      .await;
-    assert!(result.is_ok());
+      (
+        file_fetcher
+          .http_cache
+          .get_modified_time(&redirected_specifier)
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .get(&redirected_specifier)
+          .unwrap()
+          .read_metadata()
+          .unwrap()
+          .unwrap(),
+      )
+    };
 
-    let metadata_filename =
-      redirected_cache_filename.with_extension("metadata.json");
-    let metadata_file = fs::File::open(metadata_filename).unwrap();
-    let metadata_file_metadata = metadata_file.metadata().unwrap();
-    let metadata_file_modified_02 = metadata_file_metadata.modified().unwrap();
+    let metadata_file_modified_02 = {
+      let file_fetcher = FileFetcher::new(
+        HttpCache::new(location),
+        CacheSetting::Use,
+        true,
+        Arc::new(HttpClient::new(None, None)),
+        Default::default(),
+        None,
+      );
+      let result = file_fetcher
+        .fetch(&redirected_specifier, PermissionsContainer::allow_all())
+        .await;
+      assert!(result.is_ok());
+
+      (
+        file_fetcher
+          .http_cache
+          .get_modified_time(&redirected_specifier)
+          .unwrap(),
+        file_fetcher
+          .http_cache
+          .get(&redirected_specifier)
+          .unwrap()
+          .read_metadata()
+          .unwrap()
+          .unwrap(),
+      )
+    };
 
     assert_eq!(metadata_file_modified_01, metadata_file_modified_02);
   }
@@ -1397,17 +1477,9 @@ mod tests {
       "http://localhost:4550/REDIRECT/subdir/redirects/redirect1.js",
     )
     .unwrap();
-    let cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&specifier)
-      .unwrap();
     let redirected_specifier =
       resolve_url("http://localhost:4550/subdir/redirects/redirect1.js")
         .unwrap();
-    let redirected_cached_filename = file_fetcher
-      .http_cache
-      .get_cache_filepath(&redirected_specifier)
-      .unwrap();
 
     let result = file_fetcher
       .fetch(&specifier, PermissionsContainer::allow_all())
@@ -1416,24 +1488,40 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_specifier);
 
-    assert_eq!(
-      fs::read_to_string(cached_filename).unwrap(),
-      "",
-      "redirected files should have empty cached contents"
-    );
-    let (_, headers, _) = file_fetcher.http_cache.get(&specifier).unwrap();
-    assert_eq!(
-      headers.get("location").unwrap(),
-      "/subdir/redirects/redirect1.js"
-    );
+    {
+      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "",
+        "redirected files should have empty cached contents"
+      );
+      assert_eq!(
+        cache_item
+          .read_metadata()
+          .unwrap()
+          .unwrap()
+          .headers
+          .get("location")
+          .unwrap(),
+        "/subdir/redirects/redirect1.js"
+      );
+    }
 
-    assert_eq!(
-      fs::read_to_string(redirected_cached_filename).unwrap(),
-      "export const redirect = 1;\n"
-    );
-    let (_, headers, _) =
-      file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-    assert!(headers.get("location").is_none());
+    {
+      let cache_item =
+        file_fetcher.http_cache.get(&redirected_specifier).unwrap();
+      assert_eq!(
+        cache_item.read_to_string().unwrap().unwrap(),
+        "export const redirect = 1;\n"
+      );
+      assert!(cache_item
+        .read_metadata()
+        .unwrap()
+        .unwrap()
+        .headers
+        .get("location")
+        .is_none());
+    }
   }
 
   #[tokio::test]
@@ -1490,8 +1578,8 @@ mod tests {
       .await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert_eq!(get_custom_error_class(&err), Some("NotCached"));
     assert_eq!(err.to_string(), "Specifier not found in cache: \"http://localhost:4545/run/002_hello.ts\", --cached-only is specified.");
+    assert_eq!(get_custom_error_class(&err), Some("NotCached"));
 
     let result = file_fetcher_02
       .fetch(&specifier, PermissionsContainer::allow_all())

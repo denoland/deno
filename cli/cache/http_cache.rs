@@ -12,7 +12,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use std::fs;
-use std::fs::File;
 use std::io;
 use std::path::Path;
 use std::path::PathBuf;
@@ -73,12 +72,43 @@ pub fn url_to_filename(url: &Url) -> Option<PathBuf> {
 }
 
 /// Cached metadata about a url.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedUrlMetadata {
   pub headers: HeadersMap,
   pub url: String,
-  #[serde(default = "SystemTime::now")]
-  pub now: SystemTime,
+  #[serde(default = "SystemTime::now", rename = "now")]
+  pub time: SystemTime,
+}
+
+// DO NOT make the path public. The fact that this is stored in a file
+// is an implementation detail.
+pub struct MaybeHttpCacheItem(PathBuf);
+
+impl MaybeHttpCacheItem {
+  #[cfg(test)]
+  pub fn read_to_string(&self) -> Result<Option<String>, AnyError> {
+    let Some(bytes) = self.read_to_bytes()? else {
+      return Ok(None);
+    };
+    Ok(Some(String::from_utf8(bytes)?))
+  }
+
+  pub fn read_to_bytes(&self) -> Result<Option<Vec<u8>>, AnyError> {
+    match std::fs::read(&self.0) {
+      Ok(s) => Ok(Some(s)),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err.into()),
+    }
+  }
+
+  pub fn read_metadata(&self) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    let metadata_filepath = self.0.with_extension("metadata.json");
+    match fs::read_to_string(metadata_filepath) {
+      Ok(metadata) => Ok(Some(serde_json::from_str(&metadata)?)),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err.into()),
+    }
+  }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -110,7 +140,29 @@ impl HttpCache {
     })
   }
 
+  pub fn get_modified_time(
+    &self,
+    url: &Url,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    let filepath = self.get_cache_filepath_internal(url)?;
+    match fs::metadata(filepath) {
+      Ok(metadata) => Ok(Some(metadata.modified()?)),
+      Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err.into()),
+    }
+  }
+
+  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
+  // detail of the cache.
+  #[deprecated(note = "Do not assume the cache will be stored at a file path.")]
   pub fn get_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
+    self.get_cache_filepath_internal(url)
+  }
+
+  fn get_cache_filepath_internal(
+    &self,
+    url: &Url,
+  ) -> Result<PathBuf, AnyError> {
     Ok(
       self.location.join(
         url_to_filename(url)
@@ -119,30 +171,13 @@ impl HttpCache {
     )
   }
 
-  pub fn read_metadata(
-    &self,
-    url: &Url,
-  ) -> Result<CachedUrlMetadata, AnyError> {
-    let filepath = self.get_cache_filepath(url)?;
-    self.read_metadata_from_path(&filepath)
-  }
-
-  fn read_metadata_from_path(
-    &self,
-    path: &Path,
-  ) -> Result<CachedUrlMetadata, AnyError> {
-    let metadata_filename = path.with_extension("metadata.json");
-    let metadata = fs::read_to_string(metadata_filename)?;
-    Ok(serde_json::from_str(&metadata)?)
-  }
-
   #[cfg(test)]
   pub fn write_metadata(
     &self,
     url: &Url,
     meta_data: &CachedUrlMetadata,
   ) -> Result<(), AnyError> {
-    let cache_path = self.get_cache_filepath(url)?;
+    let cache_path = self.get_cache_filepath_internal(url)?;
     self.write_metadata_at_path(&cache_path, meta_data)
   }
 
@@ -160,14 +195,9 @@ impl HttpCache {
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
-  pub fn get(
-    &self,
-    url: &Url,
-  ) -> Result<(File, HeadersMap, SystemTime), AnyError> {
-    let cache_filepath = self.get_cache_filepath(url)?;
-    let file = File::open(&cache_filepath)?;
-    let metadata = self.read_metadata_from_path(&cache_filepath)?;
-    Ok((file, metadata.headers, metadata.now))
+  pub fn get(&self, url: &Url) -> Result<MaybeHttpCacheItem, AnyError> {
+    let cache_filepath = self.get_cache_filepath_internal(url)?;
+    Ok(MaybeHttpCacheItem(cache_filepath))
   }
 
   pub fn set(
@@ -176,7 +206,7 @@ impl HttpCache {
     headers_map: HeadersMap,
     content: &[u8],
   ) -> Result<(), AnyError> {
-    let cache_filepath = self.get_cache_filepath(url)?;
+    let cache_filepath = self.get_cache_filepath_internal(url)?;
     // Create parent directory
     let parent_filename = cache_filepath
       .parent()
@@ -186,7 +216,7 @@ impl HttpCache {
     util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
 
     let metadata = CachedUrlMetadata {
-      now: SystemTime::now(),
+      time: SystemTime::now(),
       url: url.to_string(),
       headers: headers_map,
     };
@@ -194,13 +224,19 @@ impl HttpCache {
 
     Ok(())
   }
+
+  pub fn contains(&self, url: &Url) -> bool {
+    let Ok(cache_filepath) = self.get_cache_filepath_internal(url) else {
+      return false
+    };
+    cache_filepath.is_file()
+  }
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use std::collections::HashMap;
-  use std::io::Read;
   use test_util::TempDir;
 
   #[test]
@@ -244,11 +280,9 @@ mod tests {
     let r = cache.set(&url, headers, content);
     eprintln!("result {r:?}");
     assert!(r.is_ok());
-    let r = cache.get(&url);
-    assert!(r.is_ok());
-    let (mut file, headers, _) = r.unwrap();
-    let mut content = String::new();
-    file.read_to_string(&mut content).unwrap();
+    let cache_item = cache.get(&url).unwrap();
+    let content = cache_item.read_to_string().unwrap().unwrap();
+    let headers = cache_item.read_metadata().unwrap().unwrap().headers;
     assert_eq!(content, "Hello world");
     assert_eq!(
       headers.get("content-type").unwrap(),
