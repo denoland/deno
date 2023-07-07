@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -35,7 +35,7 @@ self.addEventListener("message", ({ data }) => {
   } else if (data === "call") {
     dylib.symbols.call_stored_function();
   } else if (data === "unref") {
-    callback.unref();
+    callback.close();
   }
   self.postMessage("done");
 });

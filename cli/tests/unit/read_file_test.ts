@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -140,10 +140,47 @@ Deno.test(
   },
 );
 
+// Test that AbortController's cancel handle is cleaned-up correctly, and do not leak resources.
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileWithAbortSignalNotCalled() {
+    const ac = new AbortController();
+    await Deno.readFile("cli/tests/testdata/assets/fixture.json", {
+      signal: ac.signal,
+    });
+  },
+);
+
 Deno.test(
   { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
   async function readFileProcFs() {
     const data = await Deno.readFile("/proc/self/stat");
     assert(data.byteLength > 0);
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileNotFoundErrorCode() {
+    try {
+      await Deno.readFile("definitely-not-found.json");
+    } catch (e) {
+      assertEquals(e.code, "ENOENT");
+    }
+  },
+);
+
+Deno.test(
+  { permissions: { read: true } },
+  async function readFileIsDirectoryErrorCode() {
+    try {
+      await Deno.readFile("cli/tests/testdata/assets/");
+    } catch (e) {
+      if (Deno.build.os === "windows") {
+        assertEquals(e.code, "ENOENT");
+      } else {
+        assertEquals(e.code, "EISDIR");
+      }
+    }
   },
 );

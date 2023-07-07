@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals } from "./test_util.ts";
 
 Deno.test(
@@ -108,7 +108,7 @@ async function checkFirstBlocksSecond(opts: {
 }
 
 function runFlockTestProcess(opts: { exclusive: boolean; sync: boolean }) {
-  const path = "cli/tests/testdata/assets/fixture.json";
+  const path = "cli/tests/testdata/assets/lock_target.txt";
   const scriptText = `
     const { rid } = Deno.openSync("${path}");
 

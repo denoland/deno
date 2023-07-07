@@ -1,4 +1,5 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -79,6 +80,24 @@ Deno.test(
     assertEquals(status.success, true);
     assertEquals(status.code, 0);
     assertEquals(status.signal, null);
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandStdinPiped() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["info"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+
+    assertThrows(() => child.stdin, TypeError, "stdin is not piped");
+    assertThrows(() => child.stdout, TypeError, "stdout is not piped");
+    assertThrows(() => child.stderr, TypeError, "stderr is not piped");
+
+    await child.status;
   },
 );
 
@@ -778,7 +797,7 @@ setInterval(() => {
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
     Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
     // In this subprocess we are spawning another subprocess which has
-    // an infite interval set. Following call would never resolve unless
+    // an infinite interval set. Following call would never resolve unless
     // child process gets unrefed.
     const { success, stdout, stderr } = await new Deno.Command(
       Deno.execPath(),
@@ -832,10 +851,11 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function commandWithPromisePrototypeThenOverride() {
+  async function commandWithPrototypePollution() {
     const originalThen = Promise.prototype.then;
+    const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
-      Promise.prototype.then = () => {
+      Promise.prototype.then = Array.prototype[Symbol.iterator] = () => {
         throw new Error();
       };
       await new Deno.Command(Deno.execPath(), {
@@ -843,6 +863,25 @@ Deno.test(
       }).output();
     } finally {
       Promise.prototype.then = originalThen;
+      Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandKillAfterStatus() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["help"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+    await child.status;
+    assertThrows(
+      () => child.kill(),
+      TypeError,
+      "Child process has already terminated.",
+    );
   },
 );

@@ -1,1 +1,1 @@
-[Function: Client]
+[class Client extends EventEmitter]

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -557,7 +557,7 @@ Deno.test({
   permissions: { run: true, read: true },
   fn: async () => {
     const [statusCode, output] = await execCode(`
-      const timer = setTimeout(() => console.log("1"));
+      const timer = setTimeout(() => console.log("1"), 1);
       Deno.unrefTimer(timer);
     `);
     assertEquals(statusCode, 0);

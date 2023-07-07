@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -161,7 +161,10 @@ Deno.test("websocket error", async () => {
     assert(err instanceof ErrorEvent);
 
     // Error message got changed because we don't use warp in test_util
-    assertEquals(err.message, "UnexpectedEof: tls handshake eof");
+    assertEquals(
+      err.message,
+      "InvalidData: received corrupt message of type InvalidContentType",
+    );
     promise1.resolve();
   };
   await promise1;

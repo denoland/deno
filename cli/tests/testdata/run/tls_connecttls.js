@@ -3,7 +3,7 @@ import {
   assert,
   assertEquals,
 } from "../../../../test_util/std/testing/asserts.ts";
-import { BufReader, BufWriter } from "../../../../test_util/std/io/buffer.ts";
+import { BufReader, BufWriter } from "../../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "./textproto.ts";
 
 const encoder = new TextEncoder();

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 const port = Bun.argv[2] || "4545";
 const { Hono } = require("../testdata/npm/hono/dist/index.js");
 

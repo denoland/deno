@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_runtime::colors;
 
@@ -6,6 +6,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
+use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::error::Error;
@@ -21,40 +22,19 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixListenOptions",
   "connect",
   "createHttpClient",
-  "kill",
   "listen",
   "listenDatagram",
   "dlopen",
-  "ppid",
   "removeSignalListener",
   "shutdown",
   "umask",
-  "spawnChild",
-  "Child",
-  "ChildProcess",
-  "spawn",
-  "spawnSync",
-  "SpawnOptions",
-  "ChildStatus",
-  "SpawnOutput",
-  "command",
-  "Command",
-  "CommandOptions",
-  "CommandStatus",
-  "CommandOutput",
-  "serve",
-  "ServeInit",
-  "ServeTlsInit",
-  "Handler",
 ];
 
-static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-    .unwrap()
-});
+static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> =
+  lazy_regex!(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#);
 
 static MSG_SUGGESTION: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
+  lazy_regex!(r#" Did you mean '([^']+)'\?"#);
 
 /// Potentially convert a "raw" diagnostic message from TSC to something that
 /// provides a more sensible error message given a Deno runtime context.
@@ -146,7 +126,7 @@ impl From<i64> for DiagnosticCategory {
       1 => DiagnosticCategory::Error,
       2 => DiagnosticCategory::Suggestion,
       3 => DiagnosticCategory::Message,
-      _ => panic!("Unknown value: {}", value),
+      _ => panic!("Unknown value: {value}"),
     }
   }
 }
@@ -215,7 +195,7 @@ impl Diagnostic {
     };
 
     if !category.is_empty() {
-      write!(f, "{}[{}]: ", code, category)
+      write!(f, "{code}[{category}]: ")
     } else {
       Ok(())
     }
@@ -298,9 +278,11 @@ impl Diagnostic {
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref() {
-      write!(f, "\n\n")?;
-      for info in related_information {
-        info.fmt_stack(f, 4)?;
+      if !related_information.is_empty() {
+        write!(f, "\n\n")?;
+        for info in related_information {
+          info.fmt_stack(f, 4)?;
+        }
       }
     }
 
@@ -339,9 +321,9 @@ impl Diagnostics {
   /// returns `true` are included.
   pub fn filter<P>(&self, predicate: P) -> Self
   where
-    P: FnMut(&Diagnostic) -> bool,
+    P: FnMut(&Diagnostic) -> Option<Diagnostic>,
   {
-    let diagnostics = self.0.clone().into_iter().filter(predicate).collect();
+    let diagnostics = self.0.iter().filter_map(predicate).collect();
     Self(diagnostics)
   }
 
@@ -376,12 +358,12 @@ impl fmt::Display for Diagnostics {
       if i > 0 {
         write!(f, "\n\n")?;
       }
-      write!(f, "{}", item)?;
+      write!(f, "{item}")?;
       i += 1;
     }
 
     if i > 1 {
-      write!(f, "\n\nFound {} errors.", i)?;
+      write!(f, "\n\nFound {i} errors.")?;
     }
 
     Ok(())

@@ -1,8 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::client::Client;
 use super::config::ConfigSnapshot;
 use super::documents::Documents;
+use super::documents::DocumentsFilter;
 use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
@@ -27,7 +28,7 @@ use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
 static FILE_PROTO_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#"^file:/{2}(?:/[A-Za-z]:)?"#).unwrap());
+  lazy_regex::lazy_regex!(r#"^file:/{2}(?:/[A-Za-z]:)?"#);
 
 const CURRENT_PATH: &str = ".";
 const PARENT_PATH: &str = "..";
@@ -48,7 +49,7 @@ pub struct CompletionItemData {
 async fn check_auto_config_registry(
   url_str: &str,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
 ) {
   // check to see if auto discovery is enabled
@@ -78,14 +79,12 @@ async fn check_auto_config_registry(
           // incompatible.
           // TODO(@kitsonk) clean up protocol when doing v2 of suggestions
           if suggestions {
-            client
-              .send_registry_state_notification(
-                lsp_custom::RegistryStateNotificationParams {
-                  origin,
-                  suggestions,
-                },
-              )
-              .await;
+            client.send_registry_state_notification(
+              lsp_custom::RegistryStateNotificationParams {
+                origin,
+                suggestions,
+              },
+            );
           }
         }
       }
@@ -139,7 +138,7 @@ pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
-  client: Client,
+  client: &Client,
   module_registries: &ModuleRegistry,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
@@ -280,7 +279,7 @@ fn get_import_map_completions(
           if let Ok(resolved) = import_map.resolve(&key, specifier) {
             let resolved = resolved.to_string();
             let workspace_items: Vec<lsp::CompletionItem> = documents
-              .documents(false, true)
+              .documents(DocumentsFilter::AllDiagnosable)
               .into_iter()
               .filter_map(|d| {
                 let specifier_str = d.specifier().to_string();
@@ -324,7 +323,7 @@ fn get_import_map_completions(
             new_text: label.clone(),
           }));
           items.push(lsp::CompletionItem {
-            label: label.clone(),
+            label,
             kind,
             detail: Some("(import map)".to_string()),
             sort_text: Some("1".to_string()),
@@ -368,6 +367,7 @@ fn get_local_completions(
   } else {
     false
   };
+  let cwd = std::env::current_dir().ok()?;
   if current_path.is_dir() {
     let items = std::fs::read_dir(current_path).ok()?;
     Some(
@@ -375,7 +375,7 @@ fn get_local_completions(
         .filter_map(|de| {
           let de = de.ok()?;
           let label = de.path().file_name()?.to_string_lossy().to_string();
-          let entry_specifier = resolve_path(de.path().to_str()?).ok()?;
+          let entry_specifier = resolve_path(de.path().to_str()?, &cwd).ok()?;
           if &entry_specifier == base {
             return None;
           }
@@ -394,7 +394,7 @@ fn get_local_completions(
           let filter_text = if full_text.starts_with(current) {
             Some(full_text)
           } else {
-            Some(format!("{}{}", current, label))
+            Some(format!("{current}{label}"))
           };
           match de.file_type() {
             Ok(file_type) if file_type.is_dir() => Some(lsp::CompletionItem {
@@ -461,7 +461,7 @@ fn get_workspace_completions(
   documents: &Documents,
 ) -> Vec<lsp::CompletionItem> {
   let workspace_specifiers = documents
-    .documents(false, true)
+    .documents(DocumentsFilter::AllDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone())
     .collect();
@@ -519,18 +519,13 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let mut documents = Documents::new(location);
+    let mut documents = Documents::new(location.to_path_buf());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
-      documents.open(
-        specifier.clone(),
-        *version,
-        language_id.clone(),
-        (*source).into(),
-      );
+      documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new(location);
+    let http_cache = HttpCache::new(location.to_path_buf());
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -551,7 +546,7 @@ mod tests {
     sources: &[(&str, &str)],
   ) -> Documents {
     let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, &location)
+    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -587,11 +582,11 @@ mod tests {
     let file_c = dir_a.join("c.ts");
     std::fs::write(&file_c, b"").expect("could not create");
     let file_d = dir_b.join("d.ts");
-    std::fs::write(&file_d, b"").expect("could not create");
+    std::fs::write(file_d, b"").expect("could not create");
     let file_e = dir_a.join("e.txt");
-    std::fs::write(&file_e, b"").expect("could not create");
+    std::fs::write(file_e, b"").expect("could not create");
     let file_f = dir_a.join("f.mjs");
-    std::fs::write(&file_f, b"").expect("could not create");
+    std::fs::write(file_f, b"").expect("could not create");
     let specifier =
       ModuleSpecifier::from_file_path(file_c).expect("could not create");
     let actual = get_local_completions(

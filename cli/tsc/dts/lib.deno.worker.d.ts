@@ -1,20 +1,19 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
 /** @category Web Workers */
-interface WorkerGlobalScopeEventMap {
+declare interface WorkerGlobalScopeEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
 }
 
 /** @category Web Workers */
-declare class WorkerGlobalScope extends EventTarget {
+declare interface WorkerGlobalScope extends EventTarget {
   readonly location: WorkerLocation;
   readonly navigator: WorkerNavigator;
   onerror: ((this: WorkerGlobalScope, ev: ErrorEvent) => any) | null;
@@ -55,10 +54,14 @@ declare class WorkerGlobalScope extends EventTarget {
   caches: CacheStorage;
 }
 
+/** @category Web Workers */
+declare var WorkerGlobalScope: {
+  readonly prototype: WorkerGlobalScope;
+  new (): never;
+};
+
 /** @category Web APIs */
-declare class WorkerNavigator {
-  constructor();
-  readonly gpu: GPU;
+declare interface WorkerNavigator {
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
@@ -66,16 +69,23 @@ declare class WorkerNavigator {
 }
 
 /** @category Web APIs */
+declare var WorkerNavigator: {
+  readonly prototype: WorkerNavigator;
+  new (): never;
+};
+
+/** @category Web APIs */
 declare var navigator: WorkerNavigator;
 
 /** @category Web Workers */
-interface DedicatedWorkerGlobalScopeEventMap extends WorkerGlobalScopeEventMap {
+declare interface DedicatedWorkerGlobalScopeEventMap
+  extends WorkerGlobalScopeEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
 /** @category Web APIs */
-declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
+declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   readonly name: string;
   onmessage:
     | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
@@ -113,6 +123,12 @@ declare class DedicatedWorkerGlobalScope extends WorkerGlobalScope {
     options?: boolean | EventListenerOptions,
   ): void;
 }
+
+/** @category Web APIs */
+declare var DedicatedWorkerGlobalScope: {
+  readonly prototype: DedicatedWorkerGlobalScope;
+  new (): never;
+};
 
 /** @category Web Workers */
 declare var name: string;
@@ -188,8 +204,7 @@ declare function removeEventListener(
  *
  * @category Web APIs
  */
-declare class WorkerLocation {
-  constructor();
+declare interface WorkerLocation {
   readonly hash: string;
   readonly host: string;
   readonly hostname: string;
@@ -201,6 +216,19 @@ declare class WorkerLocation {
   readonly protocol: string;
   readonly search: string;
 }
+
+// TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
+// The types there must first be split into window, worker and global types.
+/** The absolute location of the script executed by the Worker. Such an object
+ * is initialized for each worker and is available via the
+ * WorkerGlobalScope.location property obtained by calling self.location.
+ *
+ * @category Web APIs
+ */
+declare var WorkerLocation: {
+  readonly prototype: WorkerLocation;
+  new (): never;
+};
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.

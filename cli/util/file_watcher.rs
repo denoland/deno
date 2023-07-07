@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::Flags;
 use crate::colors;
 use crate::util::fs::canonicalize_path;
 
@@ -21,6 +22,7 @@ use std::time::Duration;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 
 const CLEAR_SCREEN: &str = "\x1B[2J\x1B[1;1H";
@@ -66,7 +68,7 @@ impl DebouncedReceiver {
   }
 }
 
-async fn error_handler<F>(watch_future: F)
+async fn error_handler<F>(watch_future: F) -> bool
 where
   F: Future<Output = Result<(), AnyError>>,
 {
@@ -74,59 +76,30 @@ where
   if let Err(err) = result {
     let error_string = match err.downcast_ref::<JsError>() {
       Some(e) => format_js_error(e),
-      None => format!("{:?}", err),
+      None => format!("{err:?}"),
     };
     eprintln!(
       "{}: {}",
       colors::red_bold("error"),
       error_string.trim_start_matches("error: ")
     );
-  }
-}
-
-pub enum ResolutionResult<T> {
-  Restart {
-    paths_to_watch: Vec<PathBuf>,
-    result: Result<T, AnyError>,
-  },
-  Ignore,
-}
-
-async fn next_restart<R, T, F>(
-  resolver: &mut R,
-  debounced_receiver: &mut DebouncedReceiver,
-) -> (Vec<PathBuf>, Result<T, AnyError>)
-where
-  R: FnMut(Option<Vec<PathBuf>>) -> F,
-  F: Future<Output = ResolutionResult<T>>,
-{
-  loop {
-    let changed = debounced_receiver.recv().await;
-    match resolver(changed).await {
-      ResolutionResult::Ignore => {
-        log::debug!("File change ignored")
-      }
-      ResolutionResult::Restart {
-        paths_to_watch,
-        result,
-      } => {
-        return (paths_to_watch, result);
-      }
-    }
+    false
+  } else {
+    true
   }
 }
 
 pub struct PrintConfig {
   /// printing watcher status to terminal.
   pub job_name: String,
-  /// determine whether to clear the terminal screen
+  /// determine whether to clear the terminal screen; applicable to TTY environments only.
   pub clear_screen: bool,
 }
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    if clear_screen {
-      eprint!("{}", CLEAR_SCREEN);
+    if clear_screen && atty::is(atty::Stream::Stderr) {
+      eprint!("{CLEAR_SCREEN}");
     }
     info!(
       "{} File change detected! Restarting!",
@@ -135,134 +108,26 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-/// Creates a file watcher, which will call `resolver` with every file change.
-///
-/// - `resolver` is used for resolving file paths to be watched at every restarting
-/// of the watcher, and can also return a value to be passed to `operation`.
-/// It returns a [`ResolutionResult`], which can either instruct the watcher to restart or ignore the change.
-/// This always contains paths to watch;
-///
-/// - `operation` is the actual operation we want to run every time the watcher detects file
-/// changes. For example, in the case where we would like to bundle, then `operation` would
-/// have the logic for it like bundling the code.
-pub async fn watch_func<R, O, T, F1, F2>(
-  mut resolver: R,
-  mut operation: O,
-  print_config: PrintConfig,
-) -> Result<(), AnyError>
-where
-  R: FnMut(Option<Vec<PathBuf>>) -> F1,
-  O: FnMut(T) -> F2,
-  F1: Future<Output = ResolutionResult<T>>,
-  F2: Future<Output = Result<(), AnyError>>,
-{
-  let (sender, mut receiver) = DebouncedReceiver::new_with_sender();
-
-  let PrintConfig {
-    job_name,
-    clear_screen,
-  } = print_config;
-
-  // Store previous data. If module resolution fails at some point, the watcher will try to
-  // continue watching files using these data.
-  let mut paths_to_watch;
-  let mut resolution_result;
-
-  let print_after_restart = create_print_after_restart_fn(clear_screen);
-
-  match resolver(None).await {
-    ResolutionResult::Ignore => {
-      // The only situation where it makes sense to ignore the initial 'change'
-      // is if the command isn't supposed to do anything until something changes,
-      // e.g. a variant of `deno test` which doesn't run the entire test suite to start with,
-      // but instead does nothing until you make a change.
-      //
-      // In that case, this is probably the correct output.
-      info!(
-        "{} Waiting for file changes...",
-        colors::intense_blue("Watcher"),
-      );
-
-      let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-      paths_to_watch = paths;
-      resolution_result = result;
-
-      print_after_restart();
-    }
-    ResolutionResult::Restart {
-      paths_to_watch: paths,
-      result,
-    } => {
-      paths_to_watch = paths;
-      resolution_result = result;
-    }
-  };
-
-  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
-
-  loop {
-    let mut watcher = new_watcher(sender.clone())?;
-    add_paths_to_watcher(&mut watcher, &paths_to_watch);
-
-    match resolution_result {
-      Ok(operation_arg) => {
-        let fut = error_handler(operation(operation_arg));
-        select! {
-          (paths, result) = next_restart(&mut resolver, &mut receiver) => {
-            if result.is_ok() {
-              paths_to_watch = paths;
-            }
-            resolution_result = result;
-
-            print_after_restart();
-            continue;
-          },
-          _ = fut => {},
-        };
-
-        info!(
-          "{} {} finished. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-      Err(error) => {
-        eprintln!("{}: {}", colors::red_bold("error"), error);
-        info!(
-          "{} {} failed. Restarting on file change...",
-          colors::intense_blue("Watcher"),
-          job_name,
-        );
-      }
-    }
-
-    let (paths, result) = next_restart(&mut resolver, &mut receiver).await;
-    if result.is_ok() {
-      paths_to_watch = paths;
-    }
-    resolution_result = result;
-
-    print_after_restart();
-
-    drop(watcher);
-  }
-}
-
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
 /// changes. For example, in the case where we would like to bundle, then `operation` would
 /// have the logic for it like bundling the code.
-pub async fn watch_func2<T: Clone, O, F>(
-  mut paths_to_watch_receiver: UnboundedReceiver<Vec<PathBuf>>,
-  mut operation: O,
-  operation_args: T,
+pub async fn watch_func<O, F>(
+  mut flags: Flags,
   print_config: PrintConfig,
+  mut operation: O,
 ) -> Result<(), AnyError>
 where
-  O: FnMut(T) -> Result<F, AnyError>,
+  O: FnMut(
+    Flags,
+    UnboundedSender<Vec<PathBuf>>,
+    Option<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
   F: Future<Output = Result<(), AnyError>>,
 {
+  let (paths_to_watch_sender, mut paths_to_watch_receiver) =
+    tokio::sync::mpsc::unbounded_channel();
   let (watcher_sender, mut watcher_receiver) =
     DebouncedReceiver::new_with_sender();
 
@@ -295,7 +160,15 @@ where
     }
   }
 
+  let mut changed_paths = None;
   loop {
+    // We may need to give the runtime a tick to settle, as cancellations may need to propagate
+    // to tasks. We choose yielding 10 times to the runtime as a decent heuristic. If watch tests
+    // start to fail, this may need to be increased.
+    for _ in 0..10 {
+      tokio::task::yield_now().await;
+    }
+
     let mut watcher = new_watcher(watcher_sender.clone())?;
     consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
 
@@ -305,22 +178,35 @@ where
         add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
       }
     };
-    let operation_future = error_handler(operation(operation_args.clone())?);
+    let operation_future = error_handler(operation(
+      flags.clone(),
+      paths_to_watch_sender.clone(),
+      changed_paths.take(),
+    )?);
+
+    // don't reload dependencies after the first run
+    flags.reload = false;
 
     select! {
       _ = receiver_future => {},
-      _ = watcher_receiver.recv() => {
+      received_changed_paths = watcher_receiver.recv() => {
         print_after_restart();
+        changed_paths = received_changed_paths;
         continue;
       },
-      _ = operation_future => {
+      success = operation_future => {
+        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
         // TODO(bartlomieju): print exit code here?
         info!(
-          "{} {} finished. Restarting on file change...",
+          "{} {} {}. Restarting on file change...",
           colors::intense_blue("Watcher"),
           job_name,
+          if success {
+            "finished"
+          } else {
+            "failed"
+          }
         );
-        consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
       },
     };
 
@@ -332,8 +218,9 @@ where
     };
     select! {
       _ = receiver_future => {},
-      _ = watcher_receiver.recv() => {
+      received_changed_paths = watcher_receiver.recv() => {
         print_after_restart();
+        changed_paths = received_changed_paths;
         continue;
       },
     };

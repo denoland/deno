@@ -1,7 +1,10 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
@@ -26,13 +29,53 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .map(|e| e.to_lowercase());
 }
 
+/// TypeScript figures out the type of file based on the extension, but we take
+/// other factors into account like the file headers. The hack here is to map the
+/// specifier passed to TypeScript to a new specifier with the file extension.
+pub fn mapped_specifier_for_tsc(
+  specifier: &ModuleSpecifier,
+  media_type: MediaType,
+) -> Option<String> {
+  let ext_media_type = MediaType::from_specifier(specifier);
+  if media_type != ext_media_type {
+    // we can't just add on the extension because typescript considers
+    // all .d.*.ts files as declaration files in TS 5.0+
+    if media_type != MediaType::Dts
+      && media_type == MediaType::TypeScript
+      && specifier
+        .path()
+        .split('/')
+        .last()
+        .map(|last| last.contains(".d."))
+        .unwrap_or(false)
+    {
+      let mut path_parts = specifier
+        .path()
+        .split('/')
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+      let last_part = path_parts.last_mut().unwrap();
+      *last_part = last_part.replace(".d.", "$d$");
+      let mut specifier = specifier.clone();
+      specifier.set_path(&path_parts.join("/"));
+      Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+    } else {
+      Some(format!("{}{}", specifier, media_type.as_ts_extension()))
+    }
+  } else {
+    None
+  }
+}
+
 /// Attempts to convert a specifier to a file path. By default, uses the Url
 /// crate's `to_file_path()` method, but falls back to try and resolve unix-style
 /// paths on Windows.
 pub fn specifier_to_file_path(
   specifier: &ModuleSpecifier,
 ) -> Result<PathBuf, AnyError> {
-  let result = if cfg!(windows) {
+  let result = if specifier.scheme() != "file" {
+    Err(())
+  } else if cfg!(windows) {
     match specifier.to_file_path() {
       Ok(path) => Ok(path),
       Err(()) => {
@@ -62,22 +105,9 @@ pub fn specifier_to_file_path(
   match result {
     Ok(path) => Ok(path),
     Err(()) => Err(uri_error(format!(
-      "Invalid file path.\n  Specifier: {}",
-      specifier
+      "Invalid file path.\n  Specifier: {specifier}"
     ))),
   }
-}
-
-/// Ensures a specifier that will definitely be a directory has a trailing slash.
-pub fn ensure_directory_specifier(
-  mut specifier: ModuleSpecifier,
-) -> ModuleSpecifier {
-  let path = specifier.path();
-  if !path.ends_with('/') {
-    let new_path = format!("{}/", path);
-    specifier.set_path(&new_path);
-  }
-  specifier
 }
 
 /// Gets the parent of this module specifier.
@@ -133,7 +163,7 @@ pub fn relative_specifier(
   Some(if text.starts_with("../") || text.starts_with("./") {
     text
   } else {
-    format!("./{}", text)
+    format!("./{text}")
   })
 }
 
@@ -168,12 +198,12 @@ pub fn path_with_stem_suffix(path: &Path, suffix: &str) -> PathBuf {
             ext
           ))
         } else {
-          path.with_file_name(format!("{}{}.{}", file_stem, suffix, ext))
+          path.with_file_name(format!("{file_stem}{suffix}.{ext}"))
         };
       }
     }
 
-    path.with_file_name(format!("{}{}", file_name, suffix))
+    path.with_file_name(format!("{file_name}{suffix}"))
   } else {
     path.with_file_name(suffix)
   }
@@ -260,21 +290,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_ensure_directory_specifier() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///test/");
-    run_test("file:///test/", "file:///test/");
-    run_test("file:///test/other", "file:///test/other/");
-    run_test("file:///test/other/", "file:///test/other/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        ensure_directory_specifier(ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 
@@ -378,9 +393,7 @@ mod test {
       assert_eq!(
         actual.as_deref(),
         expected,
-        "from: \"{}\" to: \"{}\"",
-        from_str,
-        to_str
+        "from: \"{from_str}\" to: \"{to_str}\""
       );
     }
   }

@@ -1,9 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::hash::Hasher;
-
-use deno_core::error::AnyError;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
 
 /// A very fast insecure hasher that uses the xxHash algorithm.
 #[derive(Default)]
@@ -45,21 +42,4 @@ impl FastInsecureHasher {
   pub fn finish(&self) -> u64 {
     self.0.finish()
   }
-}
-
-/// Runs the common sqlite pragma.
-pub fn run_sqlite_pragma(conn: &Connection) -> Result<(), AnyError> {
-  // Enable write-ahead-logging and tweak some other stuff
-  let initial_pragmas = "
-    -- enable write-ahead-logging mode
-    PRAGMA journal_mode=WAL;
-    PRAGMA synchronous=NORMAL;
-    PRAGMA temp_store=memory;
-    PRAGMA page_size=4096;
-    PRAGMA mmap_size=6000000;
-    PRAGMA optimize;
-  ";
-
-  conn.execute_batch(initial_pragmas)?;
-  Ok(())
 }

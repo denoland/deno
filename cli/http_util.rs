@@ -1,5 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-use crate::auth_tokens::AuthToken;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::util::progress_bar::UpdateGuard;
 use crate::version::get_user_agent;
 
@@ -16,8 +15,10 @@ use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::reqwest;
 use deno_runtime::deno_fetch::reqwest::header::LOCATION;
 use deno_runtime::deno_fetch::reqwest::Response;
-use deno_runtime::deno_tls::rustls::RootCertStore;
+use deno_runtime::deno_fetch::CreateHttpClientOptions;
+use deno_runtime::deno_tls::RootCertStoreProvider;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -54,14 +55,13 @@ pub fn resolve_redirect_from_response(
 ) -> Result<Url, AnyError> {
   debug_assert!(response.status().is_redirection());
   if let Some(location) = response.headers().get(LOCATION) {
-    let location_string = location.to_str().unwrap();
+    let location_string = location.to_str()?;
     log::debug!("Redirecting to {:?}...", &location_string);
     let new_url = resolve_url_from_location(request_url, location_string);
     Ok(new_url)
   } else {
     Err(generic_error(format!(
-      "Redirection from '{}' did not provide location header",
-      request_url
+      "Redirection from '{request_url}' did not provide location header"
     )))
   }
 }
@@ -204,7 +204,8 @@ impl CacheSemantics {
         && self
           .cache_control
           .max_stale
-          .map_or(true, |val| val > self.age() - self.max_age());
+          .map(|val| val > self.age() - self.max_age())
+          .unwrap_or(true);
       if !allows_stale {
         return false;
       }
@@ -218,49 +219,67 @@ impl CacheSemantics {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum FetchOnceResult {
-  Code(Vec<u8>, HeadersMap),
-  NotModified,
-  Redirect(Url, HeadersMap),
+pub struct HttpClient {
+  options: CreateHttpClientOptions,
+  root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
+  cell: once_cell::sync::OnceCell<reqwest::Client>,
 }
 
-#[derive(Debug)]
-pub struct FetchOnceArgs {
-  pub url: Url,
-  pub maybe_accept: Option<String>,
-  pub maybe_etag: Option<String>,
-  pub maybe_auth_token: Option<AuthToken>,
+impl std::fmt::Debug for HttpClient {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("HttpClient")
+      .field("options", &self.options)
+      .finish()
+  }
 }
-
-#[derive(Debug, Clone)]
-pub struct HttpClient(reqwest::Client);
 
 impl HttpClient {
   pub fn new(
-    root_cert_store: Option<RootCertStore>,
+    root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  ) -> Result<Self, AnyError> {
-    Ok(HttpClient::from_client(create_http_client(
-      get_user_agent(),
-      root_cert_store,
-      vec![],
-      None,
-      unsafely_ignore_certificate_errors,
-      None,
-    )?))
+  ) -> Self {
+    Self {
+      options: CreateHttpClientOptions {
+        unsafely_ignore_certificate_errors,
+        ..Default::default()
+      },
+      root_cert_store_provider,
+      cell: Default::default(),
+    }
   }
 
+  #[cfg(test)]
   pub fn from_client(client: reqwest::Client) -> Self {
-    Self(client)
+    let result = Self {
+      options: Default::default(),
+      root_cert_store_provider: Default::default(),
+      cell: Default::default(),
+    };
+    result.cell.set(client).unwrap();
+    result
+  }
+
+  fn client(&self) -> Result<&reqwest::Client, AnyError> {
+    self.cell.get_or_try_init(|| {
+      create_http_client(
+        get_user_agent(),
+        CreateHttpClientOptions {
+          root_cert_store: match &self.root_cert_store_provider {
+            Some(provider) => Some(provider.get_or_try_init()?.clone()),
+            None => None,
+          },
+          ..self.options.clone()
+        },
+      )
+    })
   }
 
   /// Do a GET request without following redirects.
   pub fn get_no_redirect<U: reqwest::IntoUrl>(
     &self,
     url: U,
-  ) -> reqwest::RequestBuilder {
-    self.0.get(url)
+  ) -> Result<reqwest::RequestBuilder, AnyError> {
+    Ok(self.client()?.get(url))
   }
 
   pub async fn download_text<U: reqwest::IntoUrl>(
@@ -306,43 +325,29 @@ impl HttpClient {
         "Bad response: {:?}{}",
         status,
         match maybe_response_text {
-          Some(text) => format!("\n\n{}", text),
+          Some(text) => format!("\n\n{text}"),
           None => String::new(),
         }
       );
     }
 
-    if let Some(progress_guard) = progress_guard {
-      if let Some(total_size) = response.content_length() {
-        progress_guard.set_total_size(total_size);
-        let mut current_size = 0;
-        let mut data = Vec::with_capacity(total_size as usize);
-        let mut stream = response.bytes_stream();
-        while let Some(item) = stream.next().await {
-          let bytes = item?;
-          current_size += bytes.len() as u64;
-          progress_guard.set_position(current_size);
-          data.extend(bytes.into_iter());
-        }
-        return Ok(Some(data));
-      }
-    }
-
-    let bytes = response.bytes().await?;
-    Ok(Some(bytes.into()))
+    get_response_body_with_progress(response, progress_guard)
+      .await
+      .map(Some)
   }
 
-  async fn get_redirected_response<U: reqwest::IntoUrl>(
+  pub async fn get_redirected_response<U: reqwest::IntoUrl>(
     &self,
     url: U,
   ) -> Result<Response, AnyError> {
     let mut url = url.into_url()?;
-    let mut response = self.get_no_redirect(url.clone()).send().await?;
+    let mut response = self.get_no_redirect(url.clone())?.send().await?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
         let new_url = resolve_redirect_from_response(&url, &response)?;
-        let new_response = self.get_no_redirect(new_url.clone()).send().await?;
+        let new_response =
+          self.get_no_redirect(new_url.clone())?.send().await?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -358,6 +363,29 @@ impl HttpClient {
   }
 }
 
+pub async fn get_response_body_with_progress(
+  response: reqwest::Response,
+  progress_guard: Option<&UpdateGuard>,
+) -> Result<Vec<u8>, AnyError> {
+  if let Some(progress_guard) = progress_guard {
+    if let Some(total_size) = response.content_length() {
+      progress_guard.set_total_size(total_size);
+      let mut current_size = 0;
+      let mut data = Vec::with_capacity(total_size as usize);
+      let mut stream = response.bytes_stream();
+      while let Some(item) = stream.next().await {
+        let bytes = item?;
+        current_size += bytes.len() as u64;
+        progress_guard.set_position(current_size);
+        data.extend(bytes.into_iter());
+      }
+      return Ok(data);
+    }
+  }
+  let bytes = response.bytes().await?;
+  Ok(bytes.into())
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -365,7 +393,7 @@ mod test {
   #[tokio::test]
   async fn test_http_client_download_redirect() {
     let _http_server_guard = test_util::http_server();
-    let client = HttpClient::new(None, None).unwrap();
+    let client = HttpClient::new(None, None);
 
     // make a request to the redirect server
     let text = client

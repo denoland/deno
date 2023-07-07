@@ -1,8 +1,11 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use napi_sys::Status::napi_ok;
+use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
+use crate::napi_new_property;
 use napi_sys::ValueType::napi_function;
 use napi_sys::ValueType::napi_object;
+use napi_sys::ValueType::napi_undefined;
 use napi_sys::*;
 use std::ptr;
 
@@ -11,44 +14,48 @@ extern "C" fn test_callback_run(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc, _) = crate::get_callback_info!(env, info, 2);
+  // We want to have argv with size 4, even though the callback will have
+  // only two arguments. We'll assert that the remaining two args are undefined.
+  let (args, argc, _) = napi_get_callback_info!(env, info, 4);
   assert_eq!(argc, 2);
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[0], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
   assert_eq!(ty, napi_function);
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[1], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[1], &mut ty));
   assert_eq!(ty, napi_object);
 
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[2], &mut ty));
+  assert_eq!(ty, napi_undefined);
+
+  let mut ty = -1;
+  assert_napi_ok!(napi_typeof(env, args[3], &mut ty));
+  assert_eq!(ty, napi_undefined);
+
   let mut len = 0;
-  assert!(unsafe { napi_get_array_length(env, args[1], &mut len) } == napi_ok);
+  assert_napi_ok!(napi_get_array_length(env, args[1], &mut len));
 
   let mut argv = Vec::with_capacity(len as usize);
   for index in 0..len {
     let mut value: napi_value = ptr::null_mut();
-    assert!(
-      unsafe { napi_get_element(env, args[1], index, &mut value) } == napi_ok
-    );
+    assert_napi_ok!(napi_get_element(env, args[1], index, &mut value));
     argv.push(value);
   }
   let mut global: napi_value = ptr::null_mut();
-  assert!(unsafe { napi_get_global(env, &mut global) } == napi_ok);
+  assert_napi_ok!(napi_get_global(env, &mut global));
 
   let mut result: napi_value = ptr::null_mut();
-  assert!(
-    unsafe {
-      napi_call_function(
-        env,
-        global,
-        args[0],
-        argv.len(),
-        argv.as_mut_ptr(),
-        &mut result,
-      )
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_call_function(
+    env,
+    global,
+    args[0],
+    argv.len(),
+    argv.as_mut_ptr(),
+    &mut result,
+  ));
 
   result
 }
@@ -57,57 +64,54 @@ extern "C" fn test_callback_run_with_recv(
   env: napi_env,
   info: napi_callback_info,
 ) -> napi_value {
-  let (args, argc, _) = crate::get_callback_info!(env, info, 3);
+  let (args, argc, _) = napi_get_callback_info!(env, info, 3);
   assert_eq!(argc, 3);
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[0], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[0], &mut ty));
   assert_eq!(ty, napi_function);
 
   let mut ty = -1;
-  assert!(unsafe { napi_typeof(env, args[1], &mut ty) } == napi_ok);
+  assert_napi_ok!(napi_typeof(env, args[1], &mut ty));
   assert_eq!(ty, napi_object);
 
   let mut len = 0;
-  assert!(unsafe { napi_get_array_length(env, args[1], &mut len) } == napi_ok);
+  assert_napi_ok!(napi_get_array_length(env, args[1], &mut len));
 
   let mut argv = Vec::with_capacity(len as usize);
   for index in 0..len {
     let mut value: napi_value = ptr::null_mut();
-    assert!(
-      unsafe { napi_get_element(env, args[1], index, &mut value) } == napi_ok
-    );
+    assert_napi_ok!(napi_get_element(env, args[1], index, &mut value));
     argv.push(value);
   }
 
   let mut result: napi_value = ptr::null_mut();
-  assert!(
-    unsafe {
-      napi_call_function(
-        env,
-        args[2], // recv
-        args[0], // cb
-        argv.len(),
-        argv.as_mut_ptr(),
-        &mut result,
-      )
-    } == napi_ok
-  );
+  assert_napi_ok!(napi_call_function(
+    env,
+    args[2], // recv
+    args[0], // cb
+    argv.len(),
+    argv.as_mut_ptr(),
+    &mut result,
+  ));
 
   result
 }
 
 pub fn init(env: napi_env, exports: napi_value) {
   let properties = &[
-    crate::new_property!(env, "test_callback_run\0", test_callback_run),
-    crate::new_property!(
+    napi_new_property!(env, "test_callback_run", test_callback_run),
+    napi_new_property!(
       env,
-      "test_callback_run_with_recv\0",
+      "test_callback_run_with_recv",
       test_callback_run_with_recv
     ),
   ];
 
-  unsafe {
-    napi_define_properties(env, exports, properties.len(), properties.as_ptr())
-  };
+  assert_napi_ok!(napi_define_properties(
+    env,
+    exports,
+    properties.len(),
+    properties.as_ptr()
+  ));
 }

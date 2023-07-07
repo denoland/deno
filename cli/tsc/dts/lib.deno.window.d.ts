@@ -1,22 +1,20 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
 /// <reference lib="deno.shared_globals" />
-/// <reference lib="deno.webgpu" />
 /// <reference lib="deno.webstorage" />
 /// <reference lib="esnext" />
 /// <reference lib="deno.cache" />
 
 /** @category Web APIs */
-interface WindowEventMap {
+declare interface WindowEventMap {
   "error": ErrorEvent;
   "unhandledrejection": PromiseRejectionEvent;
 }
 
 /** @category Web APIs */
-declare class Window extends EventTarget {
-  new(): Window;
+declare interface Window extends EventTarget {
   readonly window: Window & typeof globalThis;
   readonly self: Window & typeof globalThis;
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
@@ -69,9 +67,19 @@ declare class Window extends EventTarget {
 }
 
 /** @category Web APIs */
+declare var Window: {
+  readonly prototype: Window;
+  new (): never;
+};
+
+/** @category Web APIs */
 declare var window: Window & typeof globalThis;
 /** @category Web APIs */
 declare var self: Window & typeof globalThis;
+/** @category Web APIs */
+declare var closed: boolean;
+/** @category Web APIs */
+declare function close(): void;
 /** @category DOM Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 /** @category DOM Events */
@@ -92,14 +100,18 @@ declare var sessionStorage: Storage;
 declare var caches: CacheStorage;
 
 /** @category Web APIs */
-declare class Navigator {
-  constructor();
-  readonly gpu: GPU;
+declare interface Navigator {
   readonly hardwareConcurrency: number;
   readonly userAgent: string;
   readonly language: string;
   readonly languages: string[];
 }
+
+/** @category Web APIs */
+declare var Navigator: {
+  readonly prototype: Navigator;
+  new (): never;
+};
 
 /** @category Web APIs */
 declare var navigator: Navigator;
@@ -201,8 +213,7 @@ declare function removeEventListener(
  *
  * @category Web APIs
  */
-declare class Location {
-  constructor();
+declare interface Location {
   /** Returns a DOMStringList object listing the origins of the ancestor
    * browsing contexts, from the parent browsing context to the top-level
    * browsing context.
@@ -263,6 +274,19 @@ declare class Location {
    * Disabled in Deno. */
   replace(url: string): void;
 }
+
+// TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
+// The types there must first be split into window, worker and global types.
+/** The location (URL) of the object it is linked to. Changes done on it are
+ * reflected on the object it relates to. Accessible via
+ * `globalThis.location`.
+ *
+ * @category Web APIs
+ */
+declare var Location: {
+  readonly prototype: Location;
+  new (): never;
+};
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.

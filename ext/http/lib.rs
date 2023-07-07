@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
@@ -14,14 +14,13 @@ use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::pin_mut;
 use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
-use deno_core::include_js_files;
 use deno_core::op;
+use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -29,13 +28,13 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
-use deno_core::Extension;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
-use deno_core::ZeroCopyBuf;
+use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -62,6 +61,7 @@ use std::io;
 use std::io::Write;
 use std::mem::replace;
 use std::mem::take;
+use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -70,29 +70,63 @@ use std::task::Poll;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::task::spawn_local;
-use tokio_util::io::ReaderStream;
+
+use crate::network_buffered_stream::NetworkBufferedStream;
+use crate::reader_stream::ExternallyAbortableReaderStream;
+use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
+mod http_next;
+mod network_buffered_stream;
+mod reader_stream;
+mod request_body;
+mod request_properties;
+mod response_body;
+mod slab;
+mod websocket_upgrade;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .js(include_js_files!(
-      prefix "deno:ext/http",
-      "01_http.js",
-    ))
-    .ops(vec![
-      op_http_accept::decl(),
-      op_http_write_headers::decl(),
-      op_http_headers::decl(),
-      op_http_write::decl(),
-      op_http_write_resource::decl(),
-      op_http_shutdown::decl(),
-      op_http_websocket_accept_header::decl(),
-      op_http_upgrade_websocket::decl(),
-    ])
-    .build()
-}
+pub use request_properties::DefaultHttpPropertyExtractor;
+pub use request_properties::HttpConnectionProperties;
+pub use request_properties::HttpListenProperties;
+pub use request_properties::HttpPropertyExtractor;
+pub use request_properties::HttpRequestProperties;
+
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  parameters = [ HTTP: HttpPropertyExtractor ],
+  ops = [
+    op_http_accept,
+    op_http_headers,
+    op_http_shutdown,
+    op_http_upgrade_websocket,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_read_request_body,
+    http_next::op_http_serve_on<HTTP>,
+    http_next::op_http_serve<HTTP>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_stream,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
+    http_next::op_http_track,
+    http_next::op_http_upgrade_websocket_next,
+    http_next::op_http_upgrade_raw,
+    http_next::op_raw_write_vectored,
+    http_next::op_http_try_wait,
+    http_next::op_http_wait,
+  ],
+  esm = ["00_serve.js", "01_http.js"],
+);
 
 pub enum HttpSocketAddr {
   IpSocket(std::net::SocketAddr),
@@ -143,8 +177,8 @@ impl HttpConnResource {
 
     // A local task that polls the hyper connection future to completion.
     let task_fut = async move {
-      pin_mut!(shutdown_fut);
-      pin_mut!(conn_fut);
+      let conn_fut = pin!(conn_fut);
+      let shutdown_fut = pin!(shutdown_fut);
       let result = match select(conn_fut, shutdown_fut).await {
         Either::Left((result, _)) => result,
         Either::Right((_, mut conn_fut)) => {
@@ -156,7 +190,7 @@ impl HttpConnResource {
     };
     let (task_fut, closed_fut) = task_fut.remote_handle();
     let closed_fut = closed_fut.shared();
-    spawn_local(task_fut);
+    spawn(task_fut);
 
     Self {
       addr,
@@ -422,14 +456,47 @@ impl Default for HttpRequestReader {
 /// The write half of an HTTP stream.
 enum HttpResponseWriter {
   Headers(oneshot::Sender<Response<Body>>),
-  Body(Pin<Box<dyn tokio::io::AsyncWrite>>),
-  BodyUncompressed(hyper::body::Sender),
+  Body {
+    writer: Pin<Box<dyn tokio::io::AsyncWrite>>,
+    shutdown_handle: ShutdownHandle,
+  },
+  BodyUncompressed(BodyUncompressedSender),
   Closed,
 }
 
 impl Default for HttpResponseWriter {
   fn default() -> Self {
     Self::Closed
+  }
+}
+
+struct BodyUncompressedSender(Option<hyper::body::Sender>);
+
+impl BodyUncompressedSender {
+  fn sender(&mut self) -> &mut hyper::body::Sender {
+    // This is safe because we only ever take the sender out of the option
+    // inside of the shutdown method.
+    self.0.as_mut().unwrap()
+  }
+
+  fn shutdown(mut self) {
+    // take the sender out of self so that when self is dropped at the end of
+    // this block, it doesn't get aborted
+    self.0.take();
+  }
+}
+
+impl From<hyper::body::Sender> for BodyUncompressedSender {
+  fn from(sender: hyper::body::Sender) -> Self {
+    BodyUncompressedSender(Some(sender))
+  }
+}
+
+impl Drop for BodyUncompressedSender {
+  fn drop(&mut self) {
+    if let Some(sender) = self.0.take() {
+      sender.abort();
+    }
   }
 }
 
@@ -516,7 +583,11 @@ fn req_url(
       .to_string(),
     ),
   };
-  let path = req.uri().path_and_query().map_or("/", |p| p.as_str());
+  let path = req
+    .uri()
+    .path_and_query()
+    .map(|p| p.as_str())
+    .unwrap_or("/");
   [scheme, "://", &host, path].concat()
 }
 
@@ -679,14 +750,22 @@ fn http_response(
         Encoding::Gzip => Box::pin(GzipEncoder::new(writer)),
         _ => unreachable!(), // forbidden by accepts_compression
       };
+      let (stream, shutdown_handle) =
+        ExternallyAbortableReaderStream::new(reader);
       Ok((
-        HttpResponseWriter::Body(writer),
-        Body::wrap_stream(ReaderStream::new(reader)),
+        HttpResponseWriter::Body {
+          writer,
+          shutdown_handle,
+        },
+        Body::wrap_stream(stream),
       ))
     }
     None => {
       let (body_tx, body_rx) = Body::channel();
-      Ok((HttpResponseWriter::BodyUncompressed(body_tx), body_rx))
+      Ok((
+        HttpResponseWriter::BodyUncompressed(body_tx.into()),
+        body_rx,
+      ))
     }
   }
 }
@@ -712,7 +791,7 @@ fn ensure_vary_accept_encoding(hmap: &mut hyper::HeaderMap) {
   if let Some(v) = hmap.get_mut(hyper::header::VARY) {
     if let Ok(s) = v.to_str() {
       if !s.to_lowercase().contains("accept-encoding") {
-        *v = format!("Accept-Encoding, {}", s).try_into().unwrap()
+        *v = format!("Accept-Encoding, {s}").try_into().unwrap()
       }
       return;
     }
@@ -779,10 +858,10 @@ async fn op_http_write_resource(
     }
 
     match &mut *wr {
-      HttpResponseWriter::Body(body) => {
-        let mut result = body.write_all(&view).await;
+      HttpResponseWriter::Body { writer, .. } => {
+        let mut result = writer.write_all(&view).await;
         if result.is_ok() {
-          result = body.flush().await;
+          result = writer.flush().await;
         }
         if let Err(err) = result {
           assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
@@ -795,7 +874,7 @@ async fn op_http_write_resource(
       }
       HttpResponseWriter::BodyUncompressed(body) => {
         let bytes = Bytes::from(view);
-        if let Err(err) = body.send_data(bytes).await {
+        if let Err(err) = body.sender().send_data(bytes).await {
           assert!(err.is_closed());
           // Pull up the failure associated with the transport connection instead.
           http_stream.conn.closed().await?;
@@ -813,7 +892,7 @@ async fn op_http_write_resource(
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -824,10 +903,10 @@ async fn op_http_write(
   match &mut *wr {
     HttpResponseWriter::Headers(_) => Err(http_error("no response headers")),
     HttpResponseWriter::Closed => Err(http_error("response already completed")),
-    HttpResponseWriter::Body(body) => {
-      let mut result = body.write_all(&buf).await;
+    HttpResponseWriter::Body { writer, .. } => {
+      let mut result = writer.write_all(&buf).await;
       if result.is_ok() {
-        result = body.flush().await;
+        result = writer.flush().await;
       }
       match result {
         Ok(_) => Ok(()),
@@ -844,7 +923,7 @@ async fn op_http_write(
     }
     HttpResponseWriter::BodyUncompressed(body) => {
       let bytes = Bytes::from(buf);
-      match body.send_data(bytes).await {
+      match body.sender().send_data(bytes).await {
         Ok(_) => Ok(()),
         Err(err) => {
           assert!(err.is_closed());
@@ -873,17 +952,27 @@ async fn op_http_shutdown(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
-  if let HttpResponseWriter::Body(mut body_writer) = wr {
-    match body_writer.shutdown().await {
-      Ok(_) => {}
-      Err(err) => {
-        assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
-        // Don't return "broken pipe", that's an implementation detail.
-        // Pull up the failure associated with the transport connection instead.
-        stream.conn.closed().await?;
+  match wr {
+    HttpResponseWriter::Body {
+      mut writer,
+      shutdown_handle,
+    } => {
+      shutdown_handle.shutdown();
+      match writer.shutdown().await {
+        Ok(_) => {}
+        Err(err) => {
+          assert_eq!(err.kind(), std::io::ErrorKind::BrokenPipe);
+          // Don't return "broken pipe", that's an implementation detail.
+          // Pull up the failure associated with the transport connection instead.
+          stream.conn.closed().await?;
+        }
       }
     }
-  }
+    HttpResponseWriter::BodyUncompressed(body) => {
+      body.shutdown();
+    }
+    _ => {}
+  };
   Ok(())
 }
 
@@ -891,45 +980,10 @@ async fn op_http_shutdown(
 fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   let digest = ring::digest::digest(
     &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
-    format!("{}258EAFA5-E914-47DA-95CA-C5AB0DC85B11", key).as_bytes(),
+    format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes(),
   );
   Ok(base64::encode(digest))
 }
-
-struct UpgradedStream(hyper::upgrade::Upgraded);
-impl tokio::io::AsyncRead for UpgradedStream {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut tokio::io::ReadBuf,
-  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
-  }
-}
-
-impl tokio::io::AsyncWrite for UpgradedStream {
-  fn poll_write(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> std::task::Poll<Result<usize, std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
-  }
-  fn poll_flush(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_flush(cx)
-  }
-  fn poll_shutdown(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
-  }
-}
-
-impl deno_websocket::Upgraded for UpgradedStream {}
 
 #[op]
 async fn op_http_upgrade_websocket(
@@ -949,10 +1003,10 @@ async fn op_http_upgrade_websocket(
     }
   };
 
-  let transport = hyper::upgrade::on(request).await?;
+  let (transport, bytes) =
+    extract_network_stream(hyper::upgrade::on(request).await?);
   let ws_rid =
-    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
-      .await?;
+    ws_create_server_stream(&mut state.borrow_mut(), transport, bytes)?;
   Ok(ws_rid)
 }
 
@@ -966,7 +1020,17 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    deno_core::task::spawn(fut);
+  }
+}
+
+impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::task::spawn(fut);
   }
 }
 
@@ -995,4 +1059,92 @@ fn filter_enotconn(
 /// Create a future that is forever pending.
 fn never() -> Pending<Never> {
   pending()
+}
+
+trait CanDowncastUpgrade: Sized {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self>;
+}
+
+impl CanDowncastUpgrade for hyper1::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper1::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
+    Ok((io, read_buf))
+  }
+}
+
+impl CanDowncastUpgrade for hyper::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
+    Ok((io, read_buf))
+  }
+}
+
+fn maybe_extract_network_stream<
+  T: Into<NetworkStream> + AsyncRead + AsyncWrite + Unpin + 'static,
+  U: CanDowncastUpgrade,
+>(
+  upgraded: U,
+) -> Result<(NetworkStream, Bytes), U> {
+  let upgraded = match upgraded.downcast::<T>() {
+    Ok((stream, bytes)) => return Ok((stream.into(), bytes)),
+    Err(x) => x,
+  };
+
+  match upgraded.downcast::<NetworkBufferedStream<T>>() {
+    Ok((stream, upgraded_bytes)) => {
+      // Both the upgrade and the stream might have unread bytes
+      let (io, stream_bytes) = stream.into_inner();
+      let bytes = match (stream_bytes.is_empty(), upgraded_bytes.is_empty()) {
+        (false, false) => Bytes::default(),
+        (true, false) => upgraded_bytes,
+        (false, true) => stream_bytes,
+        (true, true) => {
+          // The upgraded bytes come first as they have already been read
+          let mut v = upgraded_bytes.to_vec();
+          v.append(&mut stream_bytes.to_vec());
+          Bytes::from(v)
+        }
+      };
+      Ok((io.into(), bytes))
+    }
+    Err(x) => Err(x),
+  }
+}
+
+fn extract_network_stream<U: CanDowncastUpgrade>(
+  upgraded: U,
+) -> (NetworkStream, Bytes) {
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::TcpStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
+      upgraded,
+    ) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  #[cfg(unix)]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+
+  // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
+  drop(upgraded);
+  unreachable!("unexpected stream type");
 }

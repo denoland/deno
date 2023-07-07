@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::io::UnixStreamResource;
 use crate::NetPermissions;
@@ -9,11 +9,11 @@ use deno_core::op;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -27,13 +27,13 @@ pub use tokio::net::UnixStream;
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, AnyError> {
   s.into_string().map_err(|s| {
-    let message = format!("File name or path {:?} is not valid UTF-8", s);
+    let message = format!("File name or path {s:?} is not valid UTF-8");
     custom_error("InvalidData", message)
   })
 }
 
-struct UnixListenerResource {
-  listener: AsyncRefCell<UnixListener>,
+pub(crate) struct UnixListenerResource {
+  pub listener: AsyncRefCell<UnixListener>,
   cancel: CancelHandle,
 }
 
@@ -138,7 +138,7 @@ where
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  mut buf: ZeroCopyBuf,
+  mut buf: JsBuffer,
 ) -> Result<(usize, Option<String>), AnyError> {
   let resource = state
     .borrow()
@@ -160,7 +160,7 @@ async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   path: String,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<usize, AnyError>
 where
   NP: NetPermissions + 'static,

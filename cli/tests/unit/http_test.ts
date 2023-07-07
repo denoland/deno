@@ -1,9 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import {
-  Buffer,
-  BufReader,
-  BufWriter,
-} from "../../../test_util/std/io/buffer.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import { serve, serveTls } from "../../../test_util/std/http/server.ts";
 import {
@@ -17,6 +13,11 @@ import {
   fail,
 } from "./test_util.ts";
 import { join } from "../../../test_util/std/path/mod.ts";
+
+const {
+  buildCaseInsensitiveCommaValueFinder,
+  // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
+} = Deno[Deno.internal];
 
 async function writeRequestAndReadResponse(conn: Deno.Conn): Promise<string> {
   const encoder = new TextEncoder();
@@ -942,7 +943,7 @@ Deno.test(
     file.close();
 
     let httpConn: Deno.HttpConn;
-    const listener = Deno.listen({ port: 4503 });
+    const listener = Deno.listen({ port: 4501 });
     const promise = (async () => {
       const conn = await listener.accept();
       httpConn = Deno.serveHttp(conn);
@@ -951,7 +952,7 @@ Deno.test(
       const f = await Deno.open(tmpFile, { read: true });
       await respondWith(new Response(f.readable, { status: 200 }));
     })();
-    const resp = await fetch("http://127.0.0.1:4503/");
+    const resp = await fetch("http://127.0.0.1:4501/");
     const body = await resp.arrayBuffer();
     assertEquals(body.byteLength, 70 * 1024);
     await promise;
@@ -2084,6 +2085,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2146,6 +2148,7 @@ Deno.test({
         "--header",
         "Accept-Encoding: deflate, gzip",
       ];
+      // deno-lint-ignore no-deprecated-deno-api
       const proc = Deno.run({ cmd, stdout: "piped", stderr: "null" });
       const status = await proc.status();
       assert(status.success);
@@ -2611,6 +2614,186 @@ Deno.test({
     await Promise.all([server(), server2(), client()]);
     httpConn!.close();
     httpConn2!.close();
+  },
+});
+
+Deno.test("case insensitive comma value finder", async (t) => {
+  const cases = /** @type {[string, boolean][]} */ ([
+    ["websocket", true],
+    ["wEbSOcKET", true],
+    [",wEbSOcKET", true],
+    [",wEbSOcKET,", true],
+    [", wEbSOcKET  ,", true],
+    ["test, wEbSOcKET  ,", true],
+    ["test  ,\twEbSOcKET\t\t ,", true],
+    ["test  , wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKET", true],
+    ["test, asdf,web,wEbSOcKETs", false],
+    ["test, asdf,awebsocket,wEbSOcKETs", false],
+  ]);
+
+  const findValue = buildCaseInsensitiveCommaValueFinder("websocket");
+  for (const [input, expected] of cases) {
+    await t.step(input.toString(), () => {
+      const actual = findValue(input);
+      assertEquals(actual, expected);
+    });
+  }
+});
+
+async function httpServerWithErrorBody(
+  listener: Deno.Listener,
+  compression: boolean,
+): Promise<Deno.HttpConn> {
+  const conn = await listener.accept();
+  listener.close();
+  const httpConn = Deno.serveHttp(conn);
+  const e = await httpConn.nextRequest();
+  assert(e);
+  const { respondWith } = e;
+  const originalErr = new Error("boom");
+  const rs = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(new Uint8Array([65]));
+      await delay(1000);
+      controller.error(originalErr);
+    },
+  });
+  const init = compression ? { headers: { "content-type": "text/plain" } } : {};
+  const response = new Response(rs, init);
+  const err = await assertRejects(() => respondWith(response));
+  assert(err === originalErr);
+  return httpConn;
+}
+
+for (const compression of [true, false]) {
+  Deno.test({
+    name: `http server errors stream if response body errors (http/1.1${
+      compression ? " + compression" : ""
+    })`,
+    permissions: { net: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
+
+      const listener = Deno.listen({ hostname, port });
+      const server = httpServerWithErrorBody(listener, compression);
+
+      const conn = await Deno.connect({ hostname, port });
+      const msg = new TextEncoder().encode(
+        `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`,
+      );
+      const nwritten = await conn.write(msg);
+      assertEquals(nwritten, msg.byteLength);
+
+      const buf = new Uint8Array(1024);
+      const nread = await conn.read(buf);
+      assert(nread);
+      const data = new TextDecoder().decode(buf.subarray(0, nread));
+      assert(data.endsWith("1\r\nA\r\n"));
+      const nread2 = await conn.read(buf); // connection should be closed now because the stream errored
+      assertEquals(nread2, null);
+      conn.close();
+
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
+
+  Deno.test({
+    name: `http server errors stream if response body errors (http/1.1 + fetch${
+      compression ? " + compression" : ""
+    })`,
+    permissions: { net: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
+
+      const listener = Deno.listen({ hostname, port });
+      const server = httpServerWithErrorBody(listener, compression);
+
+      const resp = await fetch(`http://${hostname}:${port}/`);
+      assert(resp.body);
+      const reader = resp.body.getReader();
+      const result = await reader.read();
+      assert(!result.done);
+      assertEquals(result.value, new Uint8Array([65]));
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("unexpected EOF"));
+
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
+
+  Deno.test({
+    name: `http server errors stream if response body errors (http/2 + fetch${
+      compression ? " + compression" : ""
+    }))`,
+    permissions: { net: true, read: true },
+    async fn() {
+      const hostname = "localhost";
+      const port = 4501;
+
+      const listener = Deno.listenTls({
+        hostname,
+        port,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+        alpnProtocols: ["h2"],
+      });
+      const server = httpServerWithErrorBody(listener, compression);
+
+      const caCert = Deno.readTextFileSync("cli/tests/testdata/tls/RootCA.pem");
+      const client = Deno.createHttpClient({ caCerts: [caCert] });
+      const resp = await fetch(`https://${hostname}:${port}/`, { client });
+      client.close();
+      assert(resp.body);
+      const reader = resp.body.getReader();
+      const result = await reader.read();
+      assert(!result.done);
+      assertEquals(result.value, new Uint8Array([65]));
+      const err = await assertRejects(() => reader.read());
+      assert(err instanceof TypeError);
+      assert(err.message.includes("unexpected internal error encountered"));
+
+      const httpConn = await server;
+      httpConn.close();
+    },
+  });
+}
+
+Deno.test({
+  name: "request signal is aborted when response errors",
+  permissions: { net: true },
+  async fn() {
+    let httpConn: Deno.HttpConn;
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      httpConn = Deno.serveHttp(conn);
+      const ev = await httpConn.nextRequest();
+      const { request, respondWith } = ev!;
+
+      await delay(300);
+      await assertRejects(() => respondWith(new Response("Hello World")));
+      assert(request.signal.aborted);
+    })();
+
+    const abortController = new AbortController();
+
+    fetch("http://127.0.0.1:4501/", {
+      signal: abortController.signal,
+    }).catch(() => {
+      // ignore
+    });
+
+    await delay(100);
+    abortController.abort();
+    await promise;
+    httpConn!.close();
   },
 });
 

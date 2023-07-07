@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-var
 
@@ -54,18 +54,18 @@ declare interface Cache {
 
 /** @category Cache API */
 declare var Cache: {
-  prototype: Cache;
-  new (name: string): Cache;
+  readonly prototype: Cache;
+  new (): never;
 };
 
 /** @category Cache API */
 declare var CacheStorage: {
-  prototype: CacheStorage;
-  new (): CacheStorage;
+  readonly prototype: CacheStorage;
+  new (): never;
 };
 
 /** @category Cache API */
-interface CacheQueryOptions {
+declare interface CacheQueryOptions {
   ignoreMethod?: boolean;
   ignoreSearch?: boolean;
   ignoreVary?: boolean;

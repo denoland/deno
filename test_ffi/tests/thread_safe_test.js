@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -69,7 +69,9 @@ await sendWorkerMessage("register");
 
 dylib.symbols.call_stored_function();
 
-// Unref both main and worker thread callbacks and terminate the wrorker: Note, the stored function pointer in lib is now dangling.
+// Unref both main and worker thread callbacks and terminate the worker: Note, the stored function pointer in lib is now dangling.
+
+dylib.symbols.store_function(null);
 
 mainThreadCallback.unref();
 await sendWorkerMessage("unref");
@@ -82,7 +84,7 @@ const cleanupCallback = new Deno.UnsafeCallback(
   { parameters: [], result: "void" },
   () => {
     console.log("Callback being called");
-    Promise.resolve().then(() => cleanup());
+    queueMicrotask(() => cleanup());
   },
 );
 
@@ -90,6 +92,9 @@ cleanupCallback.ref();
 
 function cleanup() {
   cleanupCallback.unref();
+  dylib.symbols.store_function(null);
+  mainThreadCallback.close();
+  cleanupCallback.close();
   console.log("Isolate should now exit");
 }
 

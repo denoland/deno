@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::ModuleCode;
 use encoding_rs::*;
 use std::borrow::Cow;
 use std::io::Error;
@@ -39,7 +40,7 @@ pub fn convert_to_utf8<'a>(
       .ok_or_else(|| ErrorKind::InvalidData.into()),
     None => Err(Error::new(
       ErrorKind::InvalidInput,
-      format!("Unsupported charset: {}", charset),
+      format!("Unsupported charset: {charset}"),
     )),
   }
 }
@@ -53,11 +54,12 @@ pub fn strip_bom(text: &str) -> &str {
   }
 }
 
-static SOURCE_MAP_PREFIX: &str =
-  "//# sourceMappingURL=data:application/json;base64,";
+static SOURCE_MAP_PREFIX: &[u8] =
+  b"//# sourceMappingURL=data:application/json;base64,";
 
-pub fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
-  let last_line = code.rsplit(|u| u == '\n').next()?;
+pub fn source_map_from_code(code: &ModuleCode) -> Option<Vec<u8>> {
+  let bytes = code.as_bytes();
+  let last_line = bytes.rsplit(|u| *u == b'\n').next()?;
   if last_line.starts_with(SOURCE_MAP_PREFIX) {
     let input = last_line.split_at(SOURCE_MAP_PREFIX.len()).1;
     let decoded_map = base64::decode(input)
@@ -68,17 +70,18 @@ pub fn source_map_from_code(code: &str) -> Option<Vec<u8>> {
   }
 }
 
-pub fn code_without_source_map(mut code: String) -> String {
-  if let Some(last_line_index) = code.rfind('\n') {
-    if code[last_line_index + 1..].starts_with(SOURCE_MAP_PREFIX) {
-      code.truncate(last_line_index + 1);
-      code
-    } else {
-      code
+/// Truncate the source code before the source map.
+pub fn code_without_source_map(mut code: ModuleCode) -> ModuleCode {
+  let bytes = code.as_bytes();
+  for i in (0..bytes.len()).rev() {
+    if bytes[i] == b'\n' {
+      if bytes[i + 1..].starts_with(SOURCE_MAP_PREFIX) {
+        code.truncate(i + 1);
+      }
+      return code;
     }
-  } else {
-    code
   }
+  code
 }
 
 #[cfg(test)]
@@ -155,8 +158,13 @@ mod tests {
       "\n",
     );
 
-    fn run_test(input: &str, output: &str) {
-      assert_eq!(code_without_source_map(input.to_string()), output);
+    fn run_test(input: &'static str, output: &'static str) {
+      assert_eq!(
+        code_without_source_map(ModuleCode::from_static(input))
+          .as_str()
+          .to_owned(),
+        output
+      );
     }
   }
 }

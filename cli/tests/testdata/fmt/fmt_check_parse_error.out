@@ -1,6 +1,6 @@
-Error checking: [WILDCARD]
-   Line 2, column 7: Expected '{', got '<eof>'
+Error checking: [WILDCARD]parse_error.ts
+  Expected '{', got '<eof>' at [WILDCARD]parse_error.ts:2:7
 
-  class Test
-        ~~~~
+    class Test
+          ~~~~
 error: Found 1 not formatted file in 1 file
