@@ -26,13 +26,6 @@ const {
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
-/**
- * @typedef StatusCacheValue
- * @property {PermissionState} state
- * @property {PermissionPartial} partial
- * @property {PermissionStatus} status
- */
-
 /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
 const permissionNames = [
   "read",
@@ -118,7 +111,7 @@ class PermissionStatus extends EventTarget {
   }
 }
 
-/** @type {Map<string, StatusCacheValue>} */
+/** @type {Map<string, PermissionStatus>} */
 const statusCache = new SafeMap();
 
 /**
@@ -146,17 +139,10 @@ function cache(desc, status) {
   }
   if (MapPrototypeHas(statusCache, key)) {
     const cachedStatus = MapPrototypeGet(statusCache, key);
-    if (
-      cachedStatus.state !== status.state ||
-      cachedStatus.partial !== status.partial
-    ) {
-      cachedStatus.state = status.state;
-      cachedStatus.partial = status.partial;
-      cachedStatus.status.dispatchEvent(
-        new Event("change", { cancelable: false }),
-      );
+    if (cachedStatus.state === status.state) {
+      return cachedStatus;
     }
-    return cachedStatus;
+    cachedStatus.dispatchEvent(new Event("change", { cancelable: false }));
   }
   status = new PermissionStatus(status, illegalConstructorKey);
   MapPrototypeSet(statusCache, key, status);
