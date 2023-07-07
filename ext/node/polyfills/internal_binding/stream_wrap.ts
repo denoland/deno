@@ -40,6 +40,9 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 
+const core = globalThis.Deno.core;
+const { ops } = core;
+
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
 }
@@ -54,7 +57,7 @@ export interface Closer {
 
 type Ref = { ref(): void; unref(): void };
 
-enum StreamBaseStateFields {
+const enum StreamBaseStateFields {
   kReadBytesOrError,
   kArrayBufferOffset,
   kBytesWritten,
@@ -190,11 +193,37 @@ export class LibuvStreamWrap extends HandleWrap {
    * @param allBuffers
    * @return An error status code.
    */
-  writev(
+  async writev(
     req: WriteWrap<LibuvStreamWrap>,
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
+    const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    // Fast case optimization: two chunks, and all buffers.
+    if (chunks.length === 2 && allBuffers && supportsWritev) {
+      // String chunks.
+      if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
+      if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
+
+      const nwritten = await ops.op_raw_write_vectored(
+        this[kStreamBaseField]!.rid,
+        chunks[0],
+        chunks[1],
+      );
+      console.log("nwritten", nwritten);
+
+      try {
+        req.oncomplete(0);
+      } catch {
+        // swallow callback errors.
+      }
+
+      streamBaseState[kBytesWritten] = nwritten;
+      this.bytesWritten += nwritten;
+
+      return 0;
+    }
+
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 

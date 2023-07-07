@@ -32,6 +32,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -1034,6 +1035,17 @@ impl UpgradeStream {
     .try_or_cancel(cancel_handle)
     .await
   }
+
+  async fn write_vectored(
+    self: Rc<Self>,
+    buf1: &[u8],
+    buf2: &[u8],
+  ) -> Result<usize, AnyError> {
+    let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
+    let bufs = &[std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+    let nwritten = wr.write_vectored(bufs).await?;
+    Ok(nwritten)
+  }
 }
 
 impl Resource for UpgradeStream {
@@ -1047,4 +1059,18 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op]
+pub async fn op_raw_write_vectored(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf1: JsBuffer,
+  buf2: JsBuffer,
+) -> Result<usize, AnyError> {
+  let state = state.borrow();
+  let resource: Rc<UpgradeStream> =
+    state.resource_table.get::<UpgradeStream>(rid)?;
+  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
+  Ok(nwritten)
 }
