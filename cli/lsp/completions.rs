@@ -526,7 +526,7 @@ mod tests {
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new_global(location.to_path_buf());
+    let http_cache = HttpCache::new(location.to_path_buf());
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

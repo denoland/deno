@@ -14,7 +14,6 @@ use deno_core::url::Url;
 use std::fs;
 use std::fs::File;
 use std::io;
-use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -132,8 +131,13 @@ impl HttpCache {
     })
   }
 
-  pub fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
-    Some(self.location.join(url_to_filename(url)?))
+  pub fn get_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
+    Ok(
+      self.location.join(
+        url_to_filename(url)
+          .ok_or_else(|| generic_error("Can't convert url to filename."))?,
+      ),
+    )
   }
 
   // TODO(bartlomieju): this method should check headers file
@@ -143,10 +147,7 @@ impl HttpCache {
     &self,
     url: &Url,
   ) -> Result<(File, HeadersMap, SystemTime), AnyError> {
-    let cache_filename = self.location.join(
-      url_to_filename(url)
-        .ok_or_else(|| generic_error("Can't convert url to filename."))?,
-    );
+    let cache_filename = self.get_cache_filepath(url)?;
     let metadata_filename = CachedUrlMetadata::filename(&cache_filename);
     let file = File::open(cache_filename)?;
     let metadata = fs::read_to_string(metadata_filename)?;
@@ -160,30 +161,21 @@ impl HttpCache {
     headers_map: HeadersMap,
     content: &[u8],
   ) -> Result<(), AnyError> {
-    let cache_filename = self.location.join(
-      url_to_filename(url)
-        .ok_or_else(|| generic_error("Can't convert url to filename."))?,
-    );
+    let cache_filepath = self.get_cache_filepath(url)?;
     // Create parent directory
-    let parent_filename = cache_filename
+    let parent_filename = cache_filepath
       .parent()
       .expect("Cache filename should have a parent dir");
     self.ensure_dir_exists(parent_filename)?;
     // Cache content
-    util::fs::atomic_write_file(&cache_filename, content, CACHE_PERM)?;
+    util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
 
     let metadata = CachedUrlMetadata {
       now: SystemTime::now(),
       url: url.to_string(),
       headers: headers_map,
     };
-    metadata.write(&cache_pathname)?;
-
-    if let Some(local_module_cache) = &self.paths.local_module_cache {
-      self.ensure_dir_exists(local_module_cache)?;
-      let cache_pathname = local_module_cache.join(&cache_filename);
-      util::fs::atomic_write_file(&cache_pathname, content, CACHE_PERM)?;
-    }
+    metadata.write(&cache_filepath)?;
 
     Ok(())
   }

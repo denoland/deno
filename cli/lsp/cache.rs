@@ -77,7 +77,8 @@ impl CacheMetadata {
     }
     let version = self
       .cache
-      .get_cache_filename(specifier)
+      .get_cache_filepath(specifier)
+      .ok()
       .and_then(|ref path| calculate_fs_version(path));
     let metadata = self.metadata.lock().get(specifier).cloned();
     if metadata.as_ref().and_then(|m| m.version.clone()) != version {
@@ -94,7 +95,7 @@ impl CacheMetadata {
     ) {
       return None;
     }
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
+    let cache_filename = self.cache.get_cache_filepath(specifier).ok()?;
     let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
     let version = calculate_fs_version(&cache_filename);
