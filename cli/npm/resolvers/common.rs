@@ -1,35 +1,46 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 
+use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::futures::future::BoxFuture;
+use deno_core::task::spawn;
 use deno_core::url::Url;
+use deno_npm::NpmPackageCacheFolderId;
+use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_node::NodePermissions;
+use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::lockfile::Lockfile;
 use crate::npm::cache::should_sync_download;
-use crate::npm::resolution::NpmResolutionSnapshot;
 use crate::npm::NpmCache;
-use crate::npm::NpmPackageId;
-use crate::npm::NpmPackageReq;
-use crate::npm::NpmResolutionPackage;
 
-pub trait InnerNpmPackageResolver: Send + Sync {
-  fn resolve_package_folder_from_deno_module(
+/// Part of the resolution that interacts with the file system.
+#[async_trait]
+pub trait NpmPackageFsResolver: Send + Sync {
+  /// Specifier for the root directory.
+  fn root_dir_url(&self) -> &Url;
+
+  /// The local node_modules folder if it is applicable to the implementation.
+  fn node_modules_path(&self) -> Option<PathBuf>;
+
+  fn package_folder(
     &self,
-    pkg_req: &NpmPackageReq,
+    package_id: &NpmPackageId,
   ) -> Result<PathBuf, AnyError>;
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
     referrer: &ModuleSpecifier,
-    conditions: &[&str],
+    mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_package_folder_from_specifier(
@@ -37,31 +48,87 @@ pub trait InnerNpmPackageResolver: Send + Sync {
     specifier: &ModuleSpecifier,
   ) -> Result<PathBuf, AnyError>;
 
-  fn package_size(&self, package_id: &NpmPackageId) -> Result<u64, AnyError>;
-
-  fn has_packages(&self) -> bool;
-
-  fn add_package_reqs(
+  fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    packages: Vec<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageCacheFolderId, AnyError>;
 
-  fn set_package_reqs(
+  async fn cache_packages(&self) -> Result<(), AnyError>;
+
+  fn ensure_read_permission(
     &self,
-    packages: HashSet<NpmPackageReq>,
-  ) -> BoxFuture<'static, Result<(), AnyError>>;
+    permissions: &dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError>;
+}
 
-  fn ensure_read_permission(&self, path: &Path) -> Result<(), AnyError>;
+#[derive(Debug)]
+pub struct RegistryReadPermissionChecker {
+  fs: Arc<dyn FileSystem>,
+  cache: Mutex<HashMap<PathBuf, PathBuf>>,
+  registry_path: PathBuf,
+}
 
-  fn snapshot(&self) -> NpmResolutionSnapshot;
+impl RegistryReadPermissionChecker {
+  pub fn new(fs: Arc<dyn FileSystem>, registry_path: PathBuf) -> Self {
+    Self {
+      fs,
+      registry_path,
+      cache: Default::default(),
+    }
+  }
 
-  fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError>;
+  pub fn ensure_registry_read_permission(
+    &self,
+    permissions: &dyn NodePermissions,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    // allow reading if it's in the node_modules
+    let is_path_in_node_modules = path.starts_with(&self.registry_path)
+      && path
+        .components()
+        .all(|c| !matches!(c, std::path::Component::ParentDir));
+
+    if is_path_in_node_modules {
+      let mut cache = self.cache.lock().unwrap();
+      let registry_path_canon = match cache.get(&self.registry_path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(&self.registry_path)?;
+          cache.insert(self.registry_path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      let path_canon = match cache.get(path) {
+        Some(canon) => canon.clone(),
+        None => {
+          let canon = self.fs.realpath_sync(path);
+          if let Err(e) = &canon {
+            if e.kind() == ErrorKind::NotFound {
+              return Ok(());
+            }
+          }
+
+          let canon = canon?;
+          cache.insert(path.to_path_buf(), canon.clone());
+          canon
+        }
+      };
+
+      if path_canon.starts_with(registry_path_canon) {
+        return Ok(());
+      }
+    }
+
+    permissions.check_read(path)
+  }
 }
 
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
   mut packages: Vec<NpmResolutionPackage>,
-  cache: &NpmCache,
+  cache: &Arc<NpmCache>,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
   let sync_download = should_sync_download();
@@ -73,16 +140,11 @@ pub async fn cache_packages(
 
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
-    assert_eq!(package.copy_index, 0); // the caller should not provide any of these
     let cache = cache.clone();
     let registry_url = registry_url.clone();
-    let handle = tokio::task::spawn(async move {
+    let handle = spawn(async move {
       cache
-        .ensure_package(
-          (package.id.name.as_str(), &package.id.version),
-          &package.dist,
-          &registry_url,
-        )
+        .ensure_package(&package.id.nv, &package.dist, &registry_url)
         .await
     });
     if sync_download {
@@ -97,36 +159,6 @@ pub async fn cache_packages(
     result??;
   }
   Ok(())
-}
-
-pub fn ensure_registry_read_permission(
-  registry_path: &Path,
-  path: &Path,
-) -> Result<(), AnyError> {
-  // allow reading if it's in the node_modules
-  if path.starts_with(registry_path)
-    && path
-      .components()
-      .all(|c| !matches!(c, std::path::Component::ParentDir))
-  {
-    // todo(dsherret): cache this?
-    if let Ok(registry_path) = std::fs::canonicalize(registry_path) {
-      match std::fs::canonicalize(path) {
-        Ok(path) if path.starts_with(registry_path) => {
-          return Ok(());
-        }
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-          return Ok(());
-        }
-        _ => {} // ignore
-      }
-    }
-  }
-
-  Err(deno_core::error::custom_error(
-    "PermissionDenied",
-    format!("Reading {} is not allowed", path.display()),
-  ))
 }
 
 /// Gets the corresponding @types package for the provided package name.

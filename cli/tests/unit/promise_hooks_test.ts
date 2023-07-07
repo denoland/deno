@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import { assertEquals } from "./test_util.ts";
 
@@ -12,8 +12,8 @@ function monitorPromises(outputArray: string[]) {
     return promiseIds.get(promise);
   }
 
-  // @ts-ignore: Deno.core allowed
-  Deno.core.setPromiseHooks(
+  // @ts-ignore: Deno[Deno.internal].core allowed
+  Deno[Deno.internal].core.setPromiseHooks(
     (promise: Promise<unknown>, parentPromise?: Promise<unknown>) => {
       outputArray.push(
         `init ${identify(promise)}` +

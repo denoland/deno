@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 /// FLAGS
 
 import { parse } from "../../test_util/std/flags/mod.ts";
@@ -13,10 +13,11 @@ export const {
   ["--"]: rest,
   ["auto-config"]: autoConfig,
   ["inspect-brk"]: inspectBrk,
+  ["no-ignore"]: noIgnore,
   binary,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
+  boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
   string: ["json", "wptreport", "binary"],
 });
 
@@ -97,6 +98,7 @@ export function getExpectFailForCase(
   expectation: boolean | string[],
   caseName: string,
 ): boolean {
+  if (noIgnore) return false;
   if (typeof expectation == "boolean") {
     return !expectation;
   }
@@ -118,18 +120,18 @@ export function assert(condition: unknown, message: string): asserts condition {
   }
 }
 
-export function runPy<T extends Omit<Deno.SpawnOptions, "cwd">>(
+export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
   args: string[],
   options: T,
-): Deno.Child<T> {
+): Deno.ChildProcess {
   const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
-  return Deno.spawnChild(cmd, {
+  return new Deno.Command(cmd, {
     args,
     stdout: "inherit",
     stderr: "inherit",
     ...options,
     cwd: join(ROOT_PATH, "./test_util/wpt/"),
-  });
+  }).spawn();
 }
 
 export async function checkPy3Available() {
@@ -148,12 +150,12 @@ export async function checkPy3Available() {
 
 export async function cargoBuild() {
   if (binary) return;
-  const { success } = await Deno.spawn("cargo", {
+  const { success } = await new Deno.Command("cargo", {
     args: ["build", ...(release ? ["--release"] : [])],
     cwd: ROOT_PATH,
     stdout: "inherit",
     stderr: "inherit",
-  });
+  }).output();
   assert(success, "cargo build failed");
 }
 
@@ -174,17 +176,19 @@ export async function generateRunInfo(): Promise<unknown> {
     "windows": "win",
     "darwin": "mac",
     "linux": "linux",
+    "freebsd": "freebsd",
+    "openbsd": "openbsd",
   };
-  const proc = await Deno.spawn("git", {
+  const proc = await new Deno.Command("git", {
     args: ["rev-parse", "HEAD"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
     stderr: "inherit",
-  });
+  }).output();
   const revision = (new TextDecoder().decode(proc.stdout)).trim();
-  const proc2 = await Deno.spawn(denoBinary(), {
+  const proc2 = await new Deno.Command(denoBinary(), {
     args: ["eval", "console.log(JSON.stringify(Deno.version))"],
     cwd: join(ROOT_PATH, "test_util", "wpt"),
-  });
+  }).output();
   const version = JSON.parse(new TextDecoder().decode(proc2.stdout));
   const runInfo = {
     "os": oses[Deno.build.os],

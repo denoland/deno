@@ -16,9 +16,9 @@ const test: { [key: string]: (...args: any[]) => void | Promise<void> } = {
     Deno.listen({ transport: "tcp", port: 4541 });
   },
   async runRequired() {
-    await Deno.spawn(Deno.build.os === "windows" ? "cmd.exe" : "printf", {
+    await new Deno.Command(Deno.build.os === "windows" ? "cmd.exe" : "printf", {
       args: Deno.build.os === "windows" ? ["/c", "echo hello"] : ["hello"],
-    });
+    }).output();
   },
 };
 

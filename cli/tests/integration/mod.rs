@@ -1,13 +1,69 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-
-use test_util as util;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #[macro_export]
 macro_rules! itest(
 ($name:ident {$( $key:ident: $value:expr,)*})  => {
   #[test]
   fn $name() {
-    (test_util::CheckOutputIntegrationTest {
+    let test = test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    };
+    let output = test.output();
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      output.assert_matches_file(test.output);
+    } else {
+      output.assert_matches_text(test.output_str.unwrap_or(""));
+    }
+  }
+}
+);
+
+#[macro_export]
+macro_rules! itest_flaky(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[flaky_test::flaky_test]
+  fn $name() {
+    let test = test_util::CheckOutputIntegrationTest {
+      $(
+        $key: $value,
+       )*
+      .. Default::default()
+    };
+    let output = test.output();
+    output.assert_exit_code(test.exit_code);
+    if !test.output.is_empty() {
+      assert!(test.output_str.is_none());
+      output.assert_matches_file(test.output);
+    } else {
+      output.assert_matches_text(test.output_str.unwrap_or(""));
+    }
+  }
+}
+);
+
+#[macro_export]
+macro_rules! context(
+({$( $key:ident: $value:expr,)*})  => {
+  test_util::TestContext::create(test_util::TestContextOptions {
+    $(
+      $key: $value,
+      )*
+    .. Default::default()
+  })
+}
+);
+
+#[macro_export]
+macro_rules! itest_steps(
+($name:ident {$( $key:ident: $value:expr,)*})  => {
+  #[test]
+  fn $name() {
+    (test_util::CheckOutputIntegrationTestSteps {
       $(
         $key: $value,
        )*
@@ -18,16 +74,13 @@ macro_rules! itest(
 );
 
 #[macro_export]
-macro_rules! itest_flaky(
-($name:ident {$( $key:ident: $value:expr,)*})  => {
-  #[flaky_test::flaky_test]
-  fn $name() {
-    (test_util::CheckOutputIntegrationTest {
-      $(
-        $key: $value,
-       )*
-      .. Default::default()
-    }).run()
+macro_rules! command_step(
+({$( $key:ident: $value:expr,)*})  => {
+  test_util::CheckOutputIntegrationTestCommandStep {
+    $(
+      $key: $value,
+      )*
+    .. Default::default()
   }
 }
 );
@@ -66,16 +119,24 @@ mod init;
 mod inspector;
 #[path = "install_tests.rs"]
 mod install;
+#[path = "js_unit_tests.rs"]
+mod js_unit_tests;
 #[path = "lint_tests.rs"]
 mod lint;
 #[path = "lsp_tests.rs"]
 mod lsp;
+#[path = "node_compat_tests.rs"]
+mod node_compat_tests;
+#[path = "node_unit_tests.rs"]
+mod node_unit_tests;
 #[path = "npm_tests.rs"]
 mod npm;
 #[path = "repl_tests.rs"]
 mod repl;
 #[path = "run_tests.rs"]
 mod run;
+#[path = "shared_library_tests.rs"]
+mod shared_library_tests;
 #[path = "task_tests.rs"]
 mod task;
 #[path = "test_tests.rs"]
@@ -88,39 +149,3 @@ mod vendor;
 mod watcher;
 #[path = "worker_tests.rs"]
 mod worker;
-
-#[test]
-fn js_unit_tests_lint() {
-  let status = util::deno_cmd()
-    .arg("lint")
-    .arg("--unstable")
-    .arg(util::tests_path().join("unit"))
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap();
-  assert!(status.success());
-}
-
-#[test]
-fn js_unit_tests() {
-  let _g = util::http_server();
-
-  // Note that the unit tests are not safe for concurrency and must be run with a concurrency limit
-  // of one because there are some chdir tests in there.
-  // TODO(caspervonb) split these tests into two groups: parallel and serial.
-  let mut deno = util::deno_cmd()
-    .current_dir(util::root_path())
-    .arg("test")
-    .arg("--unstable")
-    .arg("--location=http://js-unit-tests/foo/bar")
-    .arg("--no-prompt")
-    .arg("-A")
-    .arg(util::tests_path().join("unit"))
-    .spawn()
-    .expect("failed to spawn script");
-
-  let status = deno.wait().expect("failed to wait for the child process");
-  assert_eq!(Some(0), status.code());
-  assert!(status.success());
-}

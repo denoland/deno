@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -9,40 +9,34 @@
 /// <reference path="../web/06_streams_types.d.ts" />
 /// <reference path="./lib.deno_fetch.d.ts" />
 /// <reference lib="esnext" />
-"use strict";
 
-((window) => {
-  const core = window.Deno.core;
-  const ops = core.ops;
+const core = globalThis.Deno.core;
+const ops = core.ops;
 
+/**
+ * @param {Deno.CreateHttpClientOptions} options
+ * @returns {HttpClient}
+ */
+function createHttpClient(options) {
+  options.caCerts ??= [];
+  return new HttpClient(
+    ops.op_fetch_custom_client(
+      options,
+    ),
+  );
+}
+
+class HttpClient {
   /**
-   * @param {Deno.CreateHttpClientOptions} options
-   * @returns {HttpClient}
+   * @param {number} rid
    */
-  function createHttpClient(options) {
-    options.caCerts ??= [];
-    return new HttpClient(
-      ops.op_fetch_custom_client(
-        options,
-      ),
-    );
+  constructor(rid) {
+    this.rid = rid;
   }
-
-  class HttpClient {
-    /**
-     * @param {number} rid
-     */
-    constructor(rid) {
-      this.rid = rid;
-    }
-    close() {
-      core.close(this.rid);
-    }
+  close() {
+    core.close(this.rid);
   }
-  const HttpClientPrototype = HttpClient.prototype;
+}
+const HttpClientPrototype = HttpClient.prototype;
 
-  window.__bootstrap.fetch ??= {};
-  window.__bootstrap.fetch.createHttpClient = createHttpClient;
-  window.__bootstrap.fetch.HttpClient = HttpClient;
-  window.__bootstrap.fetch.HttpClientPrototype = HttpClientPrototype;
-})(globalThis);
+export { createHttpClient, HttpClient, HttpClientPrototype };

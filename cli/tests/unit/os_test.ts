@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -24,6 +24,13 @@ Deno.test({ permissions: { env: true } }, function deleteEnv() {
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
+Deno.test({ permissions: { env: true } }, function hasEnv() {
+  Deno.env.set("TEST_VAR", "A");
+  assert(Deno.env.has("TEST_VAR"));
+  Deno.env.delete("TEST_VAR");
+  assert(!Deno.env.has("TEST_VAR"));
 });
 
 Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
@@ -74,10 +81,10 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const { success, stdout } = await Deno.spawn(Deno.execPath(), {
+      const { success, stdout } = await new Deno.Command(Deno.execPath(), {
         args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
-      });
+      }).output();
       assertEquals(success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(new TextDecoder().decode(stdout));
@@ -162,10 +169,10 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
-    });
+    }).output();
 
     const expected = Deno.pid;
     const actual = parseInt(decoder.decode(stdout));
@@ -212,9 +219,9 @@ Deno.test(
   { permissions: { run: [Deno.execPath()], read: true } },
   // See https://github.com/denoland/deno/issues/16527
   async function hostnameWithoutOtherNetworkUsages() {
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "-p", "Deno.hostname()"],
-    });
+    }).output();
     const hostname = new TextDecoder().decode(stdout).trim();
     assert(hostname.length > 0);
   },
@@ -236,6 +243,18 @@ Deno.test(
 Deno.test({ permissions: { sys: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
+  const uptime = Deno.osUptime();
+  assert(typeof uptime === "number");
+  assert(uptime > 0);
+});
+
+Deno.test({ permissions: { sys: false } }, function osUptimePerm() {
+  assertThrows(() => {
+    Deno.osUptime();
   }, Deno.errors.PermissionDenied);
 });
 
@@ -271,4 +290,13 @@ Deno.test({ permissions: { sys: ["gid"] } }, function getGid() {
     assert(typeof gid === "number");
     assert(gid > 0);
   }
+});
+
+Deno.test(function memoryUsage() {
+  const mem = Deno.memoryUsage();
+  assert(typeof mem.rss === "number");
+  assert(typeof mem.heapTotal === "number");
+  assert(typeof mem.heapUsed === "number");
+  assert(typeof mem.external === "number");
+  assert(mem.rss >= mem.heapTotal);
 });

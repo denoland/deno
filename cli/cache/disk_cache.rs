@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::fs_util;
-use crate::http_cache::url_to_filename;
+use super::http_cache::url_to_filename;
+use super::CACHE_PERM;
+use crate::util::fs::atomic_write_file;
 
 use deno_core::url::Host;
 use deno_core::url::Url;
@@ -41,10 +42,18 @@ impl DiskCache {
       return Ok(());
     }
     fs::create_dir_all(path).map_err(|e| {
-      io::Error::new(e.kind(), format!(
-        "Could not create TypeScript compiler cache location: {:?}\nCheck the permission of the directory.",
-        path
-      ))
+      io::Error::new(
+        e.kind(),
+        format!(
+          concat!(
+            "Could not create TypeScript compiler cache location: {}\n",
+            "Check the permission of the directory.\n",
+            "{:#}",
+          ),
+          path.display(),
+          e
+        ),
+      )
     })
   }
 
@@ -60,7 +69,7 @@ impl DiskCache {
         let host_port = match url.port() {
           // Windows doesn't support ":" in filenames, so we represent port using a
           // special string.
-          Some(port) => format!("{}_PORT{}", host, port),
+          Some(port) => format!("{host}_PORT{port}"),
           None => host.to_string(),
         };
         out.push(host_port);
@@ -127,7 +136,7 @@ impl DiskCache {
       None => Some(base.with_extension(extension)),
       Some(ext) => {
         let original_extension = OsStr::to_str(ext).unwrap();
-        let final_extension = format!("{}.{}", original_extension, extension);
+        let final_extension = format!("{original_extension}.{extension}");
         Some(base.with_extension(final_extension))
       }
     }
@@ -135,7 +144,7 @@ impl DiskCache {
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
-    fs::read(&path)
+    fs::read(path)
   }
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
@@ -144,7 +153,7 @@ impl DiskCache {
       Some(parent) => self.ensure_dir_exists(parent),
       None => Ok(()),
     }?;
-    fs_util::atomic_write_file(&path, data, crate::http_cache::CACHE_PERM)
+    atomic_write_file(&path, data, CACHE_PERM)
       .map_err(|e| with_io_context(&e, format!("{:#?}", &path)))
   }
 }
@@ -157,9 +166,8 @@ mod tests {
   #[test]
   fn test_create_cache_if_dir_exits() {
     let cache_location = TempDir::new();
-    let mut cache_path = cache_location.path().to_owned();
-    cache_path.push("foo");
-    let cache = DiskCache::new(&cache_path);
+    let cache_path = cache_location.path().join("foo");
+    let cache = DiskCache::new(cache_path.as_path());
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");
@@ -169,11 +177,11 @@ mod tests {
   #[test]
   fn test_create_cache_if_dir_not_exits() {
     let temp_dir = TempDir::new();
-    let mut cache_location = temp_dir.path().to_owned();
-    assert!(fs::remove_dir(&cache_location).is_ok());
-    cache_location.push("foo");
+    let cache_location = temp_dir.path();
+    cache_location.remove_dir_all();
+    let cache_location = cache_location.join("foo");
     assert!(!cache_location.is_dir());
-    let cache = DiskCache::new(&cache_location);
+    let cache = DiskCache::new(cache_location.as_path());
     cache
       .ensure_dir_exists(&cache.location)
       .expect("Testing expect:");

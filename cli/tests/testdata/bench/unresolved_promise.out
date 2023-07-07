@@ -1,2 +1,5 @@
 Check [WILDCARD]/bench/unresolved_promise.ts
-error: Module evaluation is still pending but there are no pending ops or dynamic imports. This situation is often caused by unresolved promises.
+error: Top-level await promise never resolved
+await new Promise((_resolve, _reject) => {});
+^
+    at <anonymous> ([WILDCARD]bench/unresolved_promise.ts:1:1)

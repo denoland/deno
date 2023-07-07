@@ -1,14 +1,18 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno_http"
-version = "0.72.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.105.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "HTTP server implementation for Deno"
+
+[features]
+"__zombie_http_tracking" = []
+"__http_tracing" = []
 
 [lib]
 path = "lib.rs"
@@ -19,22 +23,34 @@ harness = false
 
 [dependencies]
 async-compression = { version = "0.3.12", features = ["tokio", "brotli", "gzip"] }
-base64 = "0.13.0"
+async-trait.workspace = true
+base64.workspace = true
 brotli = "3.3.4"
-bytes = "1"
-cache_control = "0.2.0"
-deno_core = { version = "0.160.0", path = "../../core" }
-deno_websocket = { version = "0.83.0", path = "../websocket" }
-flate2 = "1.0.23"
+bytes.workspace = true
+cache_control.workspace = true
+deno_core.workspace = true
+deno_net.workspace = true
+deno_websocket.workspace = true
+flate2.workspace = true
 fly-accept-encoding = "0.2.0"
-hyper = { version = "0.14.18", features = ["server", "stream", "http1", "http2", "runtime"] }
+http.workspace = true
+httparse.workspace = true
+hyper = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
+hyper1 = { package = "hyper", features = ["full"], version = "1.0.0-rc.3" }
+memmem.workspace = true
 mime = "0.3.16"
-percent-encoding = "2.2.0"
+once_cell.workspace = true
+percent-encoding.workspace = true
 phf = { version = "0.10", features = ["macros"] }
-ring = "0.16.20"
-serde = { version = "1.0.136", features = ["derive"] }
-tokio = { version = "1.21", features = ["full"] }
-tokio-util = { version = "0.7", features = ["io"] }
+pin-project.workspace = true
+ring.workspace = true
+serde.workspace = true
+slab.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["io"] }
 
 [dev-dependencies]
-bencher = "0.1"
+bencher.workspace = true
+rand.workspace = true

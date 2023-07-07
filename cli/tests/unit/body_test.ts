@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals } from "./test_util.ts";
 
 // just a hack to get a body object
@@ -50,6 +50,59 @@ Deno.test(
     assert(formData.has("field_1"));
     assertEquals(formData.get("field_1")!.toString(), "value_1 \r\n");
     assert(formData.has("field_2"));
+  },
+);
+
+// FormData: non-ASCII names and filenames
+Deno.test(
+  { permissions: { net: true } },
+  async function bodyMultipartFormDataNonAsciiNames() {
+    const boundary = "----01230123";
+    const payload = [
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="文字"`,
+      "",
+      "文字",
+      `--${boundary}`,
+      `Content-Disposition: form-data; name="file"; filename="文字"`,
+      "Content-Type: application/octet-stream",
+      "",
+      "",
+      `--${boundary}--`,
+    ].join("\r\n");
+
+    const body = buildBody(
+      new TextEncoder().encode(payload),
+      new Headers({
+        "Content-Type": `multipart/form-data; boundary=${boundary}`,
+      }),
+    );
+
+    const formData = await body.formData();
+    assert(formData.has("文字"));
+    assertEquals(formData.get("文字"), "文字");
+    assert(formData.has("file"));
+    assert(formData.get("file") instanceof File);
+    assertEquals((formData.get("file") as File).name, "文字");
+  },
+);
+
+// FormData: non-ASCII names and filenames roundtrip
+Deno.test(
+  { permissions: { net: true } },
+  async function bodyMultipartFormDataNonAsciiRoundtrip() {
+    const inFormData = new FormData();
+    inFormData.append("文字", "文字");
+    inFormData.append("file", new File([], "文字"));
+
+    const body = buildBody(inFormData);
+
+    const formData = await body.formData();
+    assert(formData.has("文字"));
+    assertEquals(formData.get("文字"), "文字");
+    assert(formData.has("file"));
+    assert(formData.get("file") instanceof File);
+    assertEquals((formData.get("file") as File).name, "文字");
   },
 );
 

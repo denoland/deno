@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import {
   assert,
   assertEquals,
@@ -1341,13 +1343,13 @@ Deno.test(async function testImportExportEcDsaJwk() {
     assert(equalJwk(publicJWK, expPublicKeyJWK as JWK));
 
     const signatureECDSA = await subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
+      { name: "ECDSA", hash: `SHA-${keyData.size}` },
       privateKeyECDSA,
       new Uint8Array([1, 2, 3, 4]),
     );
 
     const verifyECDSA = await subtle.verify(
-      { name: "ECDSA", hash: "SHA-256" },
+      { name: "ECDSA", hash: `SHA-${keyData.size}` },
       publicKeyECDSA,
       signatureECDSA,
       new Uint8Array([1, 2, 3, 4]),
@@ -1419,6 +1421,7 @@ const ecTestKeys = [
   {
     size: 256,
     namedCurve: "P-256",
+    signatureLength: 64,
     // deno-fmt-ignore
     raw: new Uint8Array([
       4, 210, 16, 176, 166, 249, 217, 240, 18, 134, 128, 88, 180, 63, 164, 244,
@@ -1452,6 +1455,7 @@ const ecTestKeys = [
   {
     size: 384,
     namedCurve: "P-384",
+    signatureLength: 96,
     // deno-fmt-ignore
     raw: new Uint8Array([
       4, 118, 64, 176, 165, 100, 177, 112, 49, 254, 58, 53, 158, 63, 73, 200,
@@ -1496,7 +1500,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   assert(subtle);
 
   for (
-    const { namedCurve, raw, spki, pkcs8 } of ecTestKeys
+    const { namedCurve, raw, spki, pkcs8, signatureLength } of ecTestKeys
   ) {
     const rawPublicKeyECDSA = await subtle.importKey(
       "raw",
@@ -1558,28 +1562,50 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     assertEquals(expPublicKeyJWK.crv, namedCurve);
 
     for (
-      const hash of [/*"SHA-1", */ "SHA-256", "SHA-384" /*"SHA-512"*/]
+      const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]
     ) {
       if (
-        (hash == "SHA-256" && namedCurve != "P-256") ||
-        (hash == "SHA-384" && namedCurve != "P-384")
+        (hash == "SHA-256" && namedCurve == "P-256") ||
+        (hash == "SHA-384" && namedCurve == "P-384")
       ) {
-        continue;
+        const signatureECDSA = await subtle.sign(
+          { name: "ECDSA", hash },
+          privateKeyECDSA,
+          new Uint8Array([1, 2, 3, 4]),
+        );
+
+        const verifyECDSA = await subtle.verify(
+          { name: "ECDSA", hash },
+          publicKeyECDSA,
+          signatureECDSA,
+          new Uint8Array([1, 2, 3, 4]),
+        );
+        assert(verifyECDSA);
+      } else {
+        await assertRejects(
+          async () => {
+            await subtle.sign(
+              { name: "ECDSA", hash },
+              privateKeyECDSA,
+              new Uint8Array([1, 2, 3, 4]),
+            );
+          },
+          DOMException,
+          "Not implemented",
+        );
+        await assertRejects(
+          async () => {
+            await subtle.verify(
+              { name: "ECDSA", hash },
+              publicKeyECDSA,
+              new Uint8Array(signatureLength),
+              new Uint8Array([1, 2, 3, 4]),
+            );
+          },
+          DOMException,
+          "Not implemented",
+        );
       }
-
-      const signatureECDSA = await subtle.sign(
-        { name: "ECDSA", hash },
-        privateKeyECDSA,
-        new Uint8Array([1, 2, 3, 4]),
-      );
-
-      const verifyECDSA = await subtle.verify(
-        { name: "ECDSA", hash },
-        publicKeyECDSA,
-        signatureECDSA,
-        new Uint8Array([1, 2, 3, 4]),
-      );
-      assert(verifyECDSA);
     }
   }
 });

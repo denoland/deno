@@ -1,16 +1,16 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertRejects, assertThrows } from "./test_util.ts";
 
 // chown on Windows is noop for now, so ignore its testing on Windows
 
 async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
   // get the user ID and group ID of the current process
-  const uidProc = await Deno.spawn("id", {
+  const uidProc = await new Deno.Command("id", {
     args: ["-u"],
-  });
-  const gidProc = await Deno.spawn("id", {
+  }).output();
+  const gidProc = await new Deno.Command("id", {
     args: ["-g"],
-  });
+  }).output();
 
   assertEquals(uidProc.code, 0);
   assertEquals(gidProc.code, 0);
@@ -105,7 +105,7 @@ Deno.test(
   },
   async function chownSyncSucceed() {
     // TODO(bartlomieju): when a file's owner is actually being changed,
-    // chown only succeeds if run under priviledged user (root)
+    // chown only succeeds if run under privileged user (root)
     // The test script has no such privilege, so need to find a better way to test this case
     const { uid, gid } = await getUidAndGid();
 
@@ -114,7 +114,7 @@ Deno.test(
     Deno.writeTextFileSync(filePath, "Hello");
 
     // the test script creates this file with the same uid and gid,
-    // here chown is a noop so it succeeds under non-priviledged user
+    // here chown is a noop so it succeeds under non-privileged user
     Deno.chownSync(filePath, uid, gid);
 
     Deno.removeSync(dirPath, { recursive: true });
@@ -182,7 +182,7 @@ Deno.test(
     await Deno.writeFile(fileUrl, fileData);
 
     // the test script creates this file with the same uid and gid,
-    // here chown is a noop so it succeeds under non-priviledged user
+    // here chown is a noop so it succeeds under non-privileged user
     await Deno.chown(fileUrl, uid, gid);
 
     Deno.removeSync(dirPath, { recursive: true });

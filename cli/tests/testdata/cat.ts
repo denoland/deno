@@ -1,4 +1,4 @@
-import { copy } from "../../../test_util/std/io/util.ts";
+import { copy } from "../../../test_util/std/streams/copy.ts";
 async function main() {
   for (let i = 1; i < Deno.args.length; i++) {
     const filename = Deno.args[i];

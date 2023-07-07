@@ -1,6 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use test_util as util;
 use test_util::assert_contains;
 use test_util::assert_ends_with;
@@ -465,4 +464,19 @@ itest!(check_local_by_default_type_error {
   output: "bundle/check_local_by_default/type_error.out",
   http_server: true,
   exit_code: 1,
+});
+
+itest!(ts_without_extension {
+  args: "bundle --ext ts file_extensions/ts_without_extension",
+  output: "bundle/file_extensions/ts_without_extension.out",
+});
+
+itest!(js_without_extension {
+  args: "bundle --ext js file_extensions/js_without_extension",
+  output: "bundle/file_extensions/js_without_extension.out",
+});
+
+itest!(bundle_shebang_file {
+  args: "bundle subdir/shebang_file.js",
+  output: "bundle/shebang_file.bundle.out",
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
@@ -48,6 +48,7 @@ pub fn loadavg() -> LoadAvg {
 pub fn os_release() -> String {
   #[cfg(target_os = "linux")]
   {
+    #[allow(clippy::disallowed_methods)]
     match std::fs::read_to_string("/proc/sys/kernel/osrelease") {
       Ok(mut s) => {
         s.pop(); // pop '\n'
@@ -274,6 +275,8 @@ pub fn mem_info() -> Option<MemInfo> {
   unsafe {
     use std::mem;
     use winapi::shared::minwindef;
+    use winapi::um::psapi::GetPerformanceInfo;
+    use winapi::um::psapi::PERFORMANCE_INFORMATION;
     use winapi::um::sysinfoapi;
 
     let mut mem_status =
@@ -290,13 +293,102 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.free = stat.ullAvailPhys / 1024;
       mem_info.cached = 0;
       mem_info.buffers = 0;
-      mem_info.swap_total = (stat.ullTotalPageFile - stat.ullTotalPhys) / 1024;
-      mem_info.swap_free = (stat.ullAvailPageFile - stat.ullAvailPhys) / 1024;
-      if mem_info.swap_free > mem_info.swap_total {
-        mem_info.swap_free = mem_info.swap_total;
+
+      // `stat.ullTotalPageFile` is reliable only from GetPerformanceInfo()
+      //
+      // See https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
+      // and https://github.com/GuillaumeGomez/sysinfo/issues/534
+
+      let mut perf_info = mem::MaybeUninit::<PERFORMANCE_INFORMATION>::uninit();
+      let result = GetPerformanceInfo(
+        perf_info.as_mut_ptr(),
+        mem::size_of::<PERFORMANCE_INFORMATION>() as minwindef::DWORD,
+      );
+      if result == minwindef::TRUE {
+        let perf_info = perf_info.assume_init();
+        let swap_total = perf_info.PageSize
+          * perf_info
+            .CommitLimit
+            .saturating_sub(perf_info.PhysicalTotal);
+        let swap_free = perf_info.PageSize
+          * perf_info
+            .CommitLimit
+            .saturating_sub(perf_info.PhysicalTotal)
+            .saturating_sub(perf_info.PhysicalAvailable);
+        mem_info.swap_total = (swap_total / 1000) as u64;
+        mem_info.swap_free = (swap_free / 1000) as u64;
       }
     }
   }
 
   Some(mem_info)
+}
+
+pub fn os_uptime() -> u64 {
+  let uptime: u64;
+
+  #[cfg(target_os = "linux")]
+  {
+    let mut info = std::mem::MaybeUninit::uninit();
+    // SAFETY: `info` is a valid pointer to a `libc::sysinfo` struct.
+    let res = unsafe { libc::sysinfo(info.as_mut_ptr()) };
+    uptime = if res == 0 {
+      // SAFETY: `sysinfo` initializes the struct.
+      let info = unsafe { info.assume_init() };
+      info.uptime as u64
+    } else {
+      0
+    }
+  }
+
+  #[cfg(any(
+    target_vendor = "apple",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
+  {
+    use std::mem;
+    use std::time::Duration;
+    use std::time::SystemTime;
+    let mut request = [libc::CTL_KERN, libc::KERN_BOOTTIME];
+    // SAFETY: `boottime` is only accessed if sysctl() succeeds
+    // and agrees with the `size` set by sysctl().
+    let mut boottime: libc::timeval = unsafe { mem::zeroed() };
+    let mut size: libc::size_t = mem::size_of_val(&boottime) as libc::size_t;
+    // SAFETY: `sysctl` is thread-safe.
+    let res = unsafe {
+      libc::sysctl(
+        &mut request[0],
+        2,
+        &mut boottime as *mut libc::timeval as *mut libc::c_void,
+        &mut size,
+        std::ptr::null_mut(),
+        0,
+      )
+    };
+    uptime = if res == 0 {
+      SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| {
+          (d - Duration::new(
+            boottime.tv_sec as u64,
+            boottime.tv_usec as u32 * 1000,
+          ))
+          .as_secs()
+        })
+        .unwrap_or_default()
+    } else {
+      0
+    }
+  }
+
+  #[cfg(target_family = "windows")]
+  // SAFETY: windows API usage
+  unsafe {
+    // Windows is the only one that returns `uptime` in millisecond precision,
+    // so we need to get the seconds out of it to be in sync with other envs.
+    uptime = winapi::um::sysinfoapi::GetTickCount64() / 1000;
+  }
+
+  uptime
 }

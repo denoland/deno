@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // https://github.com/denoland/deno/issues/11416
 // Test for a race condition between a worker's `close()` and the main thread's

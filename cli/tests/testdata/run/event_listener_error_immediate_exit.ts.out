@@ -1,5 +1,4 @@
 1
-queueMicrotask
 error: Uncaught Error: bar
   throw new Error("bar");
         ^

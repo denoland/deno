@@ -1,7 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -9,14 +10,15 @@ use hyper::header::HeaderValue;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
+use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use lazy_static::lazy_static;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
-use os_pipe::pipe;
+use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
+use pty::Pty;
 use regex::Regex;
 use rustls::Certificate;
 use rustls::PrivateKey;
@@ -25,12 +27,12 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::env;
 use std::io;
-use std::io::Read;
 use std::io::Write;
 use std::mem::replace;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::Child;
@@ -43,21 +45,28 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::task::Context;
 use std::task::Poll;
+use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
+mod builders;
+pub mod factory;
+mod fs;
 pub mod lsp;
 mod npm;
 pub mod pty;
-mod temp_dir;
 
-pub use temp_dir::TempDir;
+pub use builders::TestCommandBuilder;
+pub use builders::TestCommandOutput;
+pub use builders::TestContext;
+pub use builders::TestContextBuilder;
+pub use fs::PathRef;
+pub use fs::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -73,51 +82,65 @@ const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
-const H1_ONLY_PORT: u16 = 5546;
-const H2_ONLY_PORT: u16 = 5547;
+const H1_ONLY_TLS_PORT: u16 = 5546;
+const H2_ONLY_TLS_PORT: u16 = 5547;
+const H1_ONLY_PORT: u16 = 5548;
+const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_PING_PORT: u16 = 4245;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
 pub const PERMISSION_DENIED_PATTERN: &str = "PermissionDenied";
 
-lazy_static! {
-  // STRIP_ANSI_RE and strip_ansi_codes are lifted from the "console" crate.
-  // Copyright 2017 Armin Ronacher <armin.ronacher@active-4.com>. MIT License.
-  static ref STRIP_ANSI_RE: Regex = Regex::new(
-          r"[\x1b\x9b][\[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-PRZcf-nqry=><]"
-  ).unwrap();
+static GUARD: Lazy<Mutex<HttpServerCount>> =
+  Lazy::new(|| Mutex::new(HttpServerCount::default()));
 
-  static ref GUARD: Mutex<HttpServerCount> = Mutex::new(HttpServerCount::default());
+pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
+  vec![
+    ("NPM_CONFIG_REGISTRY".to_string(), npm_registry_url()),
+    ("NO_COLOR".to_string(), "1".to_string()),
+  ]
 }
 
-pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-    .parent()
-    .unwrap()
-    .to_path_buf()
+pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
+  let mut env_vars = env_vars_for_npm_tests_no_sync_download();
+  env_vars.push((
+    // make downloads deterministic
+    "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
+    "1".to_string(),
+  ));
+  env_vars
 }
 
-pub fn prebuilt_path() -> PathBuf {
+pub fn root_path() -> PathRef {
+  PathRef::new(
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+      .parent()
+      .unwrap(),
+  )
+}
+
+pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }
 
-pub fn tests_path() -> PathBuf {
+pub fn tests_path() -> PathRef {
   root_path().join("cli").join("tests")
 }
 
-pub fn testdata_path() -> PathBuf {
+pub fn testdata_path() -> PathRef {
   tests_path().join("testdata")
 }
 
-pub fn third_party_path() -> PathBuf {
+pub fn third_party_path() -> PathRef {
   root_path().join("third_party")
 }
 
-pub fn napi_tests_path() -> PathBuf {
+pub fn napi_tests_path() -> PathRef {
   root_path().join("test_napi")
 }
 
@@ -126,7 +149,7 @@ pub fn npm_registry_url() -> String {
   "http://localhost:4545/npm/registry/".to_string()
 }
 
-pub fn std_path() -> PathBuf {
+pub fn std_path() -> PathRef {
   root_path().join("test_util").join("std")
 }
 
@@ -134,22 +157,22 @@ pub fn std_file_url() -> String {
   Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
-pub fn target_dir() -> PathBuf {
+pub fn target_dir() -> PathRef {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  target_dir.into()
+  PathRef::new(target_dir)
 }
 
-pub fn deno_exe_path() -> PathBuf {
+pub fn deno_exe_path() -> PathRef {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
-  let mut p = target_dir().join("deno");
+  let mut p = target_dir().join("deno").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
-  p
+  PathRef::new(p)
 }
 
-pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
+pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
   prebuilt_path().join(platform_dir_name()).join(exe)
@@ -168,7 +191,7 @@ pub fn platform_dir_name() -> &'static str {
 }
 
 pub fn test_server_path() -> PathBuf {
-  let mut p = target_dir().join("test_server");
+  let mut p = target_dir().join("test_server").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -196,7 +219,7 @@ async fn hyper_hello(port: u16) {
 
   let server = Server::bind(&addr).serve(hello_svc);
   if let Err(e) = server.await {
-    eprintln!("server error: {}", e);
+    eprintln!("server error: {e}");
   }
 }
 
@@ -214,7 +237,7 @@ fn redirect_resp(url: String) -> Response<Body> {
 async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", PORT, p);
+  let url = format!("http://localhost:{PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -222,7 +245,7 @@ async fn redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", REDIRECT_PORT, p);
+  let url = format!("http://localhost:{REDIRECT_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -230,7 +253,7 @@ async fn double_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}{}", INF_REDIRECTS_PORT, p);
+  let url = format!("http://localhost:{INF_REDIRECTS_PORT}{p}");
 
   Ok(redirect_resp(url))
 }
@@ -238,7 +261,7 @@ async fn inf_redirects(req: Request<Body>) -> hyper::Result<Response<Body>> {
 async fn another_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
   let p = req.uri().path();
   assert_eq!(&p[0..1], "/");
-  let url = format!("http://localhost:{}/subdir{}", PORT, p);
+  let url = format!("http://localhost:{PORT}/subdir{p}");
 
   Ok(redirect_resp(url))
 }
@@ -249,10 +272,10 @@ async fn auth_redirect(req: Request<Body>) -> hyper::Result<Response<Body>> {
     .get("authorization")
     .map(|v| v.to_str().unwrap())
   {
-    if auth.to_lowercase() == format!("bearer {}", TEST_AUTH_TOKEN) {
+    if auth.to_lowercase() == format!("bearer {TEST_AUTH_TOKEN}") {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -271,11 +294,11 @@ async fn basic_auth_redirect(
     .map(|v| v.to_str().unwrap())
   {
     let credentials =
-      format!("{}:{}", TEST_BASIC_AUTH_USERNAME, TEST_BASIC_AUTH_PASSWORD);
+      format!("{TEST_BASIC_AUTH_USERNAME}:{TEST_BASIC_AUTH_PASSWORD}");
     if auth == format!("Basic {}", base64::encode(credentials)) {
       let p = req.uri().path();
       assert_eq!(&p[0..1], "/");
-      let url = format!("http://localhost:{}{}", PORT, p);
+      let url = format!("http://localhost:{PORT}{p}");
       return Ok(redirect_resp(url));
     }
   }
@@ -285,51 +308,137 @@ async fn basic_auth_redirect(
   Ok(resp)
 }
 
+async fn echo_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  loop {
+    let frame = ws.read_frame().await.unwrap();
+    match frame.opcode {
+      fastwebsockets::OpCode::Close => break,
+      fastwebsockets::OpCode::Text | fastwebsockets::OpCode::Binary => {
+        ws.write_frame(frame).await.unwrap();
+      }
+      _ => {}
+    }
+  }
+
+  Ok(())
+}
+
+type WsHandler =
+  fn(
+    fastwebsockets::WebSocket<Upgraded>,
+  ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
+
+fn spawn_ws_server<S>(stream: S, handler: WsHandler)
+where
+  S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
+    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
+      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
+
+    tokio::spawn(async move {
+      let ws = upgrade_fut
+        .await
+        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
+        .unwrap();
+
+      if let Err(e) = handler(ws).await {
+        eprintln!("Error in websocket connection: {}", e);
+      }
+    });
+
+    Ok::<_, anyhow::Error>(response)
+  });
+
+  tokio::spawn(async move {
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
+
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
+}
+
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
-    tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
-
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(ws_stream) = ws_stream {
-        let (tx, rx) = ws_stream.split();
-        rx.forward(tx)
-          .map(|result| {
-            if let Err(e) = result {
-              println!("websocket server error: {:?}", e);
-            }
-          })
-          .await;
-      }
-    });
+    spawn_ws_server(stream, |ws| Box::pin(echo_websocket_handler(ws)));
   }
+}
+
+async fn ping_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  use fastwebsockets::Frame;
+  use fastwebsockets::OpCode;
+
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  for i in 0..9 {
+    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+      .await
+      .unwrap();
+
+    let frame = ws.read_frame().await.unwrap();
+    assert_eq!(frame.opcode, OpCode::Pong);
+    assert!(frame.payload.is_empty());
+
+    ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
+      .await
+      .unwrap();
+
+    let frame = ws.read_frame().await.unwrap();
+    assert_eq!(frame.opcode, OpCode::Text);
+    assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
+  }
+
+  ws.write_frame(fastwebsockets::Frame::close(1000, b""))
+    .await
+    .unwrap();
+
+  Ok(())
+}
+
+async fn run_ws_ping_server(addr: &SocketAddr) {
+  let listener = TcpListener::bind(addr).await.unwrap();
+  println!("ready: ws"); // Eye catcher for HttpServerCount
+  while let Ok((stream, _addr)) = listener.accept().await {
+    spawn_ws_server(stream, |ws| Box::pin(ping_websocket_handler(ws)));
+  }
+}
+
+async fn close_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .await
+    .unwrap();
+
+  Ok(())
 }
 
 async fn run_ws_close_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
-    tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
-
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(mut ws_stream) = ws_stream {
-        ws_stream.close(None).await.unwrap();
-      }
-    });
+    spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
   }
 }
 
+#[derive(Default)]
 enum SupportedHttpVersions {
+  #[default]
   All,
   Http1Only,
   Http2Only,
-}
-impl Default for SupportedHttpVersions {
-  fn default() -> SupportedHttpVersions {
-    SupportedHttpVersions::All
-  }
 }
 
 async fn get_tls_config(
@@ -384,11 +493,11 @@ async fn get_tls_config(
 
       let mut config = rustls::ServerConfig::builder()
         .with_safe_defaults()
-        .with_client_cert_verifier(
+        .with_client_cert_verifier(Arc::new(
           rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
             root_cert_store,
           ),
-        )
+        ))
         .with_single_cert(certs, PrivateKey(key))
         .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();
@@ -427,21 +536,12 @@ async fn run_wss_server(addr: &SocketAddr) {
     tokio::spawn(async move {
       match acceptor.accept(stream).await {
         Ok(tls_stream) => {
-          let ws_stream_fut = accept_async(tls_stream);
-          let ws_stream = ws_stream_fut.await;
-          if let Ok(ws_stream) = ws_stream {
-            let (tx, rx) = ws_stream.split();
-            rx.forward(tx)
-              .map(|result| {
-                if let Err(e) = result {
-                  println!("Websocket server error: {:?}", e);
-                }
-              })
-              .await;
-          }
+          spawn_ws_server(tls_stream, |ws| {
+            Box::pin(echo_websocket_handler(ws))
+          });
         }
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -472,12 +572,12 @@ async fn run_tls_client_auth_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_CLIENT_AUTH_PORT);
+  let host_and_port = &format!("localhost:{TLS_CLIENT_AUTH_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -507,7 +607,7 @@ async fn run_tls_client_auth_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -536,12 +636,12 @@ async fn run_tls_server() {
     .boxed()
   };
 
-  let host_and_port = &format!("localhost:{}", TLS_PORT);
+  let host_and_port = &format!("localhost:{TLS_PORT}");
 
   let listeners = tokio::net::lookup_host(host_and_port)
     .await
     .expect(host_and_port)
-    .inspect(|address| println!("{} -> {}", host_and_port, address))
+    .inspect(|address| println!("{host_and_port} -> {address}"))
     .map(tokio::net::TcpListener::bind)
     .collect::<futures::stream::FuturesUnordered<_>>()
     .collect::<Vec<_>>()
@@ -564,7 +664,7 @@ async fn run_tls_server() {
         }
 
         Err(e) => {
-          eprintln!("TLS accept error: {:?}", e);
+          eprintln!("TLS accept error: {e:?}");
         }
       }
     });
@@ -576,9 +676,31 @@ async fn absolute_redirect(
 ) -> hyper::Result<Response<Body>> {
   let path = req.uri().path();
 
+  if path == "/" {
+    // We have to manually extract query params here,
+    // as `req.uri()` returns `PathAndQuery` only,
+    // and we cannot use `Url::parse(req.uri()).query_pairs()`,
+    // as it requires url to have a proper base.
+    let query_params: HashMap<_, _> = req
+      .uri()
+      .query()
+      .unwrap_or_default()
+      .split('&')
+      .filter_map(|s| {
+        s.split_once('=').map(|t| (t.0.to_owned(), t.1.to_owned()))
+      })
+      .collect();
+
+    if let Some(url) = query_params.get("redirect_to") {
+      println!("URL: {url:?}");
+      let redirect = redirect_resp(url.to_owned());
+      return Ok(redirect);
+    }
+  }
+
   if path.starts_with("/REDIRECT") {
     let url = &req.uri().path()[9..];
-    println!("URL: {:?}", url);
+    println!("URL: {url:?}");
     let redirect = redirect_resp(url.to_string());
     return Ok(redirect);
   }
@@ -590,8 +712,7 @@ async fn absolute_redirect(
     }
   }
 
-  let mut file_path = testdata_path();
-  file_path.push(&req.uri().path()[1..]);
+  let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
     let mut not_found_resp = Response::new(Body::empty());
     *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
@@ -607,7 +728,10 @@ async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
-    (&hyper::Method::POST, "/echo_server") => {
+    (
+      &hyper::Method::POST | &hyper::Method::PATCH | &hyper::Method::PUT,
+      "/echo_server",
+    ) => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(body);
 
@@ -615,16 +739,7 @@ async fn main_server(
         *response.status_mut() =
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
-      if let Some(content_type) = parts.headers.get("content-type") {
-        response
-          .headers_mut()
-          .insert("content-type", content_type.clone());
-      }
-      if let Some(user_agent) = parts.headers.get("user-agent") {
-        response
-          .headers_mut()
-          .insert("user-agent", user_agent.clone());
-      }
+      response.headers_mut().extend(parts.headers);
       Ok(response)
     }
     (&hyper::Method::POST, "/echo_multipart_file") => {
@@ -953,6 +1068,17 @@ async fn main_server(
       );
       Ok(res)
     }
+    (_, "/dynamic_module.ts") => {
+      let mut res = Response::new(Body::from(format!(
+        r#"export const time = {};"#,
+        std::time::SystemTime::now().elapsed().unwrap().as_nanos()
+      )));
+      res.headers_mut().insert(
+        "Content-type",
+        HeaderValue::from_static("application/typescript"),
+      );
+      Ok(res)
+    }
     (_, "/echo_accept") => {
       let accept = req.headers().get("accept").map(|v| v.to_str().unwrap());
       let res = Response::new(Body::from(
@@ -960,8 +1086,13 @@ async fn main_server(
       ));
       Ok(res)
     }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res = Response::new(Body::from(query.unwrap_or_default()));
+      Ok(res)
+    }
     _ => {
-      let mut file_path = testdata_path();
+      let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
@@ -980,7 +1111,7 @@ async fn main_server(
           Err(err) => {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           }
         }
       } else if req.uri().path().starts_with("/npm/registry/") {
@@ -998,7 +1129,7 @@ async fn main_server(
           {
             return Response::builder()
               .status(StatusCode::INTERNAL_SERVER_ERROR)
-              .body(format!("{:#}", err).into());
+              .body(format!("{err:#}").into());
           };
 
           // serve the file
@@ -1007,6 +1138,19 @@ async fn main_server(
             return Ok(file_resp);
           }
         }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
+        let file_path = std_path().join(suffix);
+        if let Ok(file) = tokio::fs::read(&file_path).await {
+          let file_resp = custom_headers(req.uri().path(), file);
+          return Ok(file_resp);
+        }
+      } else if let Some(suffix) = req.uri().path().strip_prefix("/sleep/") {
+        let duration = suffix.parse::<u64>().unwrap();
+        tokio::time::sleep(Duration::from_millis(duration)).await;
+        return Response::builder()
+          .status(StatusCode::OK)
+          .header("content-type", "application/typescript")
+          .body(Body::empty());
       }
 
       Response::builder()
@@ -1066,12 +1210,9 @@ async fn download_npm_registry_file(
   };
   let url = if is_tarball {
     let file_name = file_path.file_name().unwrap().to_string_lossy();
-    format!(
-      "https://registry.npmjs.org/{}/-/{}",
-      package_name, file_name
-    )
+    format!("https://registry.npmjs.org/{package_name}/-/{file_name}")
   } else {
-    format!("https://registry.npmjs.org/{}", package_name)
+    format!("https://registry.npmjs.org/{package_name}")
   };
   let client = reqwest::Client::new();
   let response = client.get(url).send().await?;
@@ -1082,8 +1223,8 @@ async fn download_npm_registry_file(
     String::from_utf8(bytes.to_vec())
       .unwrap()
       .replace(
-        &format!("https://registry.npmjs.org/{}/-/", package_name),
-        &format!("http://localhost:4545/npm/registry/{}/", package_name),
+        &format!("https://registry.npmjs.org/{package_name}/-/"),
+        &format!("http://localhost:4545/npm/registry/{package_name}/"),
       )
       .into_bytes()
   };
@@ -1124,7 +1265,7 @@ async fn wrap_redirect_server() {
   let redirect_addr = SocketAddr::from(([127, 0, 0, 1], REDIRECT_PORT));
   let redirect_server = Server::bind(&redirect_addr).serve(redirect_svc);
   if let Err(e) = redirect_server.await {
-    eprintln!("Redirect error: {:?}", e);
+    eprintln!("Redirect error: {e:?}");
   }
 }
 
@@ -1137,7 +1278,7 @@ async fn wrap_double_redirect_server() {
   let double_redirects_server =
     Server::bind(&double_redirects_addr).serve(double_redirects_svc);
   if let Err(e) = double_redirects_server.await {
-    eprintln!("Double redirect error: {:?}", e);
+    eprintln!("Double redirect error: {e:?}");
   }
 }
 
@@ -1150,7 +1291,7 @@ async fn wrap_inf_redirect_server() {
   let inf_redirects_server =
     Server::bind(&inf_redirects_addr).serve(inf_redirects_svc);
   if let Err(e) = inf_redirects_server.await {
-    eprintln!("Inf redirect error: {:?}", e);
+    eprintln!("Inf redirect error: {e:?}");
   }
 }
 
@@ -1163,7 +1304,7 @@ async fn wrap_another_redirect_server() {
   let another_redirect_server =
     Server::bind(&another_redirect_addr).serve(another_redirect_svc);
   if let Err(e) = another_redirect_server.await {
-    eprintln!("Another redirect error: {:?}", e);
+    eprintln!("Another redirect error: {e:?}");
   }
 }
 
@@ -1176,7 +1317,7 @@ async fn wrap_auth_redirect_server() {
   let auth_redirect_server =
     Server::bind(&auth_redirect_addr).serve(auth_redirect_svc);
   if let Err(e) = auth_redirect_server.await {
-    eprintln!("Auth redirect error: {:?}", e);
+    eprintln!("Auth redirect error: {e:?}");
   }
 }
 
@@ -1189,7 +1330,7 @@ async fn wrap_basic_auth_redirect_server() {
   let basic_auth_redirect_server =
     Server::bind(&basic_auth_redirect_addr).serve(basic_auth_redirect_svc);
   if let Err(e) = basic_auth_redirect_server.await {
-    eprintln!("Basic auth redirect error: {:?}", e);
+    eprintln!("Basic auth redirect error: {e:?}");
   }
 }
 
@@ -1202,7 +1343,7 @@ async fn wrap_abs_redirect_server() {
   let abs_redirect_server =
     Server::bind(&abs_redirect_addr).serve(abs_redirect_svc);
   if let Err(e) = abs_redirect_server.await {
-    eprintln!("Absolute redirect error: {:?}", e);
+    eprintln!("Absolute redirect error: {e:?}");
   }
 }
 
@@ -1212,7 +1353,7 @@ async fn wrap_main_server() {
   let main_server_addr = SocketAddr::from(([127, 0, 0, 1], PORT));
   let main_server = Server::bind(&main_server_addr).serve(main_server_svc);
   if let Err(e) = main_server.await {
-    eprintln!("HTTP server error: {:?}", e);
+    eprintln!("HTTP server error: {e:?}");
   }
 }
 
@@ -1231,7 +1372,7 @@ async fn wrap_main_https_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1256,8 +1397,9 @@ async fn wrap_main_https_server() {
   }
 }
 
-async fn wrap_https_h1_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+async fn wrap_https_h1_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H1_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1275,7 +1417,7 @@ async fn wrap_https_h1_only_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1301,8 +1443,9 @@ async fn wrap_https_h1_only_server() {
   }
 }
 
-async fn wrap_https_h2_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+async fn wrap_https_h2_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1320,7 +1463,7 @@ async fn wrap_https_h2_only_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1346,6 +1489,28 @@ async fn wrap_https_h2_only_server() {
   }
 }
 
+async fn wrap_https_h1_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http1_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
+}
+
+async fn wrap_https_h2_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http2_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
+}
+
 async fn wrap_client_auth_https_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
@@ -1360,9 +1525,9 @@ async fn wrap_client_auth_https_server() {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
       .expect("Cannot bind TCP");
-    println!("ready: https_client_auth on :{:?}", HTTPS_CLIENT_AUTH_PORT); // Eye catcher for HttpServerCount
+    println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1379,7 +1544,7 @@ async fn wrap_client_auth_https_server() {
             }
 
             Err(e) => {
-              eprintln!("https-client-auth accept error: {:?}", e);
+              eprintln!("https-client-auth accept error: {e:?}");
               yield Err(e);
             }
           }
@@ -1422,6 +1587,8 @@ pub async fn run_all_servers() {
 
   let ws_addr = SocketAddr::from(([127, 0, 0, 1], WS_PORT));
   let ws_server_fut = run_ws_server(&ws_addr);
+  let ws_ping_addr = SocketAddr::from(([127, 0, 0, 1], WS_PING_PORT));
+  let ws_ping_server_fut = run_ws_ping_server(&ws_ping_addr);
   let wss_addr = SocketAddr::from(([127, 0, 0, 1], WSS_PORT));
   let wss_server_fut = run_wss_server(&wss_addr);
   let ws_close_addr = SocketAddr::from(([127, 0, 0, 1], WS_CLOSE_PORT));
@@ -1432,6 +1599,8 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
+  let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
+  let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
 
@@ -1439,6 +1608,7 @@ pub async fn run_all_servers() {
     futures::join!(
       redirect_server_fut,
       ws_server_fut,
+      ws_ping_server_fut,
       wss_server_fut,
       tls_server_fut,
       tls_client_auth_server_fut,
@@ -1452,6 +1622,8 @@ pub async fn run_all_servers() {
       main_server_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
+      h1_only_server_tls_fut,
+      h2_only_server_tls_fut,
       h1_only_server_fut,
       h2_only_server_fut
     )
@@ -1509,7 +1681,7 @@ fn custom_headers(p: &str, body: Vec<u8>) -> Response<Body> {
     response.headers_mut().insert(
       "Content-Type",
       HeaderValue::from_str(
-        &format!("application/typescript;charset={}", charset)[..],
+        &format!("application/typescript;charset={charset}")[..],
       )
       .unwrap(),
     );
@@ -1581,7 +1753,8 @@ impl HttpServerCount {
         .spawn()
         .expect("failed to execute test_server");
       let stdout = test_server.stdout.as_mut().unwrap();
-      use std::io::{BufRead, BufReader};
+      use std::io::BufRead;
+      use std::io::BufReader;
       let lines = BufReader::new(stdout).lines();
 
       // Wait for all the servers to report being ready.
@@ -1613,9 +1786,9 @@ impl HttpServerCount {
           let _ = test_server.wait();
         }
         Ok(Some(status)) => {
-          panic!("test_server exited unexpectedly {}", status)
+          panic!("test_server exited unexpectedly {status}")
         }
-        Err(e) => panic!("test_server error: {}", e),
+        Err(e) => panic!("test_server error: {e}"),
       }
     }
   }
@@ -1659,7 +1832,7 @@ pub fn http_server() -> HttpServerGuard {
 
 /// Helper function to strip ansi codes.
 pub fn strip_ansi_codes(s: &str) -> std::borrow::Cow<str> {
-  STRIP_ANSI_RE.replace_all(s, "")
+  console_static_text::ansi::strip_ansi_codes(s)
 }
 
 pub fn run(
@@ -1725,8 +1898,8 @@ pub fn run_collect(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1787,8 +1960,8 @@ pub fn run_and_collect_output_with_args(
   let stdout = String::from_utf8(stdout).unwrap();
   let stderr = String::from_utf8(stderr).unwrap();
   if expect_success != status.success() {
-    eprintln!("stdout: <<<{}>>>", stdout);
-    eprintln!("stderr: <<<{}>>>", stderr);
+    eprintln!("stdout: <<<{stdout}>>>");
+    eprintln!("stderr: <<<{stderr}>>>");
     panic!("Unexpected exit code: {:?}", status.code());
   }
   (stdout, stderr)
@@ -1798,22 +1971,117 @@ pub fn new_deno_dir() -> TempDir {
   TempDir::new()
 }
 
+/// Because we need to keep the [`TempDir`] alive for the entire run of this command,
+/// we have to effectively reproduce the entire builder-pattern object for [`Command`].
 pub struct DenoCmd {
-  // keep the deno dir directory alive for the duration of the command
   _deno_dir: TempDir,
   cmd: Command,
 }
 
-impl Deref for DenoCmd {
-  type Target = Command;
-  fn deref(&self) -> &Command {
-    &self.cmd
+impl DenoCmd {
+  pub fn args<I, S>(&mut self, args: I) -> &mut Self
+  where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.args(args);
+    self
+  }
+
+  pub fn arg<S>(&mut self, arg: S) -> &mut Self
+  where
+    S: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.arg(arg);
+    self
+  }
+
+  pub fn envs<I, K, V>(&mut self, vars: I) -> &mut Self
+  where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.envs(vars);
+    self
+  }
+
+  pub fn env<K, V>(&mut self, key: K, val: V) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+    V: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env(key, val);
+    self
+  }
+
+  pub fn env_remove<K>(&mut self, key: K) -> &mut Self
+  where
+    K: AsRef<std::ffi::OsStr>,
+  {
+    self.cmd.env_remove(key);
+    self
+  }
+
+  pub fn stdin<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdin(cfg);
+    self
+  }
+
+  pub fn stdout<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stdout(cfg);
+    self
+  }
+
+  pub fn stderr<T: Into<Stdio>>(&mut self, cfg: T) -> &mut Self {
+    self.cmd.stderr(cfg);
+    self
+  }
+
+  pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut Self {
+    self.cmd.current_dir(dir);
+    self
+  }
+
+  pub fn output(&mut self) -> Result<std::process::Output, std::io::Error> {
+    self.cmd.output()
+  }
+
+  pub fn status(&mut self) -> Result<std::process::ExitStatus, std::io::Error> {
+    self.cmd.status()
+  }
+
+  pub fn spawn(&mut self) -> Result<DenoChild, std::io::Error> {
+    Ok(DenoChild {
+      _deno_dir: self._deno_dir.clone(),
+      child: self.cmd.spawn()?,
+    })
   }
 }
 
-impl DerefMut for DenoCmd {
-  fn deref_mut(&mut self) -> &mut Command {
-    &mut self.cmd
+/// We need to keep the [`TempDir`] around until the child has finished executing, so
+/// this acts as a RAII guard.
+pub struct DenoChild {
+  _deno_dir: TempDir,
+  child: Child,
+}
+
+impl Deref for DenoChild {
+  type Target = Child;
+  fn deref(&self) -> &Child {
+    &self.child
+  }
+}
+
+impl DerefMut for DenoChild {
+  fn deref_mut(&mut self) -> &mut Child {
+    &mut self.child
+  }
+}
+
+impl DenoChild {
+  pub fn wait_with_output(self) -> Result<Output, std::io::Error> {
+    self.child.wait_with_output()
   }
 }
 
@@ -1853,11 +2121,10 @@ pub fn run_powershell_script_file(
   let output = command.output().expect("failed to spawn script");
   let stdout = String::from_utf8(output.stdout).unwrap();
   let stderr = String::from_utf8(output.stderr).unwrap();
-  println!("{}", stdout);
+  println!("{stdout}");
   if !output.status.success() {
     panic!(
-      "{} executed with failing error code\n{}{}",
-      script_file_path, stdout, stderr
+      "{script_file_path} executed with failing error code\n{stdout}{stderr}"
     );
   }
 
@@ -1876,124 +2143,51 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub envs: Vec<(String, String)>,
   pub env_clear: bool,
   pub temp_cwd: bool,
+  /// Copies the files at the specified directory in the "testdata" directory
+  /// to the temp folder and runs the test from there. This is useful when
+  /// the test creates files in the testdata directory (ex. a node_modules folder)
+  pub copy_temp_dir: Option<&'a str>,
+  /// Relative to "testdata" directory
+  pub cwd: Option<&'a str>,
 }
 
 impl<'a> CheckOutputIntegrationTest<'a> {
-  pub fn run(&self) {
-    let args = if self.args_vec.is_empty() {
-      std::borrow::Cow::Owned(self.args.split_whitespace().collect::<Vec<_>>())
-    } else {
-      assert!(
-        self.args.is_empty(),
-        "Do not provide args when providing args_vec."
-      );
-      std::borrow::Cow::Borrowed(&self.args_vec)
-    };
-    let testdata_dir = testdata_path();
-    let args = args
-      .iter()
-      .map(|arg| arg.replace("$TESTDATA", &testdata_dir.to_string_lossy()))
-      .collect::<Vec<_>>();
-    let deno_exe = deno_exe_path();
-    println!("deno_exe path {}", deno_exe.display());
+  pub fn output(&self) -> TestCommandOutput {
+    let mut context_builder = TestContextBuilder::default();
+    if self.temp_cwd {
+      context_builder = context_builder.use_temp_cwd();
+    }
+    if let Some(dir) = &self.copy_temp_dir {
+      context_builder = context_builder.use_copy_temp_dir(dir);
+    }
+    if self.http_server {
+      context_builder = context_builder.use_http_server();
+    }
 
-    let _http_server_guard = if self.http_server {
-      Some(http_server())
-    } else {
-      None
-    };
+    let context = context_builder.build();
 
-    let (mut reader, writer) = pipe().unwrap();
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let mut command = deno_cmd_with_deno_dir(&deno_dir);
-    let cwd = if self.temp_cwd {
-      deno_dir.path()
-    } else {
-      testdata_dir.as_path()
-    };
-    println!("deno_exe args {}", args.join(" "));
-    println!("deno_exe cwd {:?}", &testdata_dir);
-    command.args(args.iter());
+    let mut command_builder = context.new_command();
+
+    if !self.args.is_empty() {
+      command_builder = command_builder.args(self.args);
+    }
+    if !self.args_vec.is_empty() {
+      command_builder = command_builder.args_vec(self.args_vec.clone());
+    }
+    if let Some(input) = &self.input {
+      command_builder = command_builder.stdin(input);
+    }
+    for (key, value) in &self.envs {
+      command_builder = command_builder.env(key, value);
+    }
     if self.env_clear {
-      command.env_clear();
+      command_builder = command_builder.env_clear();
     }
-    command.envs(self.envs.clone());
-    command.current_dir(cwd);
-    command.stdin(Stdio::piped());
-    let writer_clone = writer.try_clone().unwrap();
-    command.stderr(writer_clone);
-    command.stdout(writer);
-
-    let mut process = command.spawn().expect("failed to execute process");
-
-    if let Some(input) = self.input {
-      let mut p_stdin = process.stdin.take().unwrap();
-      write!(p_stdin, "{}", input).unwrap();
+    if let Some(cwd) = &self.cwd {
+      command_builder = command_builder.cwd(cwd);
     }
 
-    // Very important when using pipes: This parent process is still
-    // holding its copies of the write ends, and we have to close them
-    // before we read, otherwise the read end will never report EOF. The
-    // Command object owns the writers now, and dropping it closes them.
-    drop(command);
-
-    let mut actual = String::new();
-    reader.read_to_string(&mut actual).unwrap();
-
-    let status = process.wait().expect("failed to finish process");
-
-    if let Some(exit_code) = status.code() {
-      if self.exit_code != exit_code {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!(
-          "bad exit code, expected: {:?}, actual: {:?}",
-          self.exit_code, exit_code
-        );
-      }
-    } else {
-      #[cfg(unix)]
-      {
-        use std::os::unix::process::ExitStatusExt;
-        let signal = status.signal().unwrap();
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!(
-          "process terminated by signal, expected exit code: {:?}, actual signal: {:?}",
-          self.exit_code, signal
-        );
-      }
-      #[cfg(not(unix))]
-      {
-        println!("OUTPUT\n{}\nOUTPUT", actual);
-        panic!("process terminated without status code on non unix platform, expected exit code: {:?}", self.exit_code);
-      }
-    }
-
-    actual = strip_ansi_codes(&actual).to_string();
-
-    // deno test's output capturing flushes with a zero-width space in order to
-    // synchronize the output pipes. Occassionally this zero width space
-    // might end up in the output so strip it from the output comparison here.
-    if args.first().map(|s| s.as_str()) == Some("test") {
-      actual = actual.replace('\u{200B}', "");
-    }
-
-    let expected = if let Some(s) = self.output_str {
-      s.to_owned()
-    } else if self.output.is_empty() {
-      String::new()
-    } else {
-      let output_path = testdata_dir.join(self.output);
-      println!("output path {}", output_path.display());
-      std::fs::read_to_string(output_path).expect("cannot read output")
-    };
-
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected)
-    } else if !wildcard_match(&expected, &actual) {
-      println!("OUTPUT\n{}\nOUTPUT", actual);
-      println!("EXPECTED\n{}\nEXPECTED", expected);
-      panic!("pattern match failed");
-    }
+    command_builder.run()
   }
 }
 
@@ -2050,100 +2244,9 @@ pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
   t.1.is_empty()
 }
 
-pub enum PtyData {
-  Input(&'static str),
-  Output(&'static str),
-}
-
-pub fn test_pty2(args: &str, data: Vec<PtyData>) {
-  use std::io::BufRead;
-
-  with_pty(&args.split_whitespace().collect::<Vec<_>>(), |console| {
-    let mut buf_reader = std::io::BufReader::new(console);
-    for d in data.iter() {
-      match d {
-        PtyData::Input(s) => {
-          println!("INPUT {}", s.escape_debug());
-          buf_reader.get_mut().write_text(s);
-
-          // Because of tty echo, we should be able to read the same string back.
-          assert!(s.ends_with('\n'));
-          let mut echo = String::new();
-          buf_reader.read_line(&mut echo).unwrap();
-          println!("ECHO: {}", echo.escape_debug());
-
-          // Windows may also echo the previous line, so only check the end
-          assert_ends_with!(normalize_text(&echo), normalize_text(s));
-        }
-        PtyData::Output(s) => {
-          let mut line = String::new();
-          if s.ends_with('\n') {
-            buf_reader.read_line(&mut line).unwrap();
-          } else {
-            // assumes the buffer won't have overlapping virtual terminal sequences
-            while normalize_text(&line).len() < normalize_text(s).len() {
-              let mut buf = [0; 64 * 1024];
-              let bytes_read = buf_reader.read(&mut buf).unwrap();
-              assert!(bytes_read > 0);
-              let buf_str = std::str::from_utf8(&buf)
-                .unwrap()
-                .trim_end_matches(char::from(0));
-              line += buf_str;
-            }
-          }
-          println!("OUTPUT {}", line.escape_debug());
-          assert_eq!(normalize_text(&line), normalize_text(s));
-        }
-      }
-    }
-  });
-
-  // This normalization function is not comprehensive
-  // and may need to updated as new scenarios emerge.
-  fn normalize_text(text: &str) -> String {
-    lazy_static! {
-      static ref MOVE_CURSOR_RIGHT_ONE_RE: Regex =
-        Regex::new(r"\x1b\[1C").unwrap();
-      static ref FOUND_SEQUENCES_RE: Regex =
-        Regex::new(r"(\x1b\]0;[^\x07]*\x07)*(\x08)*(\x1b\[\d+X)*").unwrap();
-      static ref CARRIAGE_RETURN_RE: Regex =
-        Regex::new(r"[^\n]*\r([^\n])").unwrap();
-    }
-
-    // any "move cursor right" sequences should just be a space
-    let text = MOVE_CURSOR_RIGHT_ONE_RE.replace_all(text, " ");
-    // replace additional virtual terminal sequences that strip ansi codes doesn't catch
-    let text = FOUND_SEQUENCES_RE.replace_all(&text, "");
-    // strip any ansi codes, which also strips more terminal sequences
-    let text = strip_ansi_codes(&text);
-    // get rid of any text that is overwritten with only a carriage return
-    let text = CARRIAGE_RETURN_RE.replace_all(&text, "$1");
-    // finally, trim surrounding whitespace
-    text.trim().to_string()
-  }
-}
-
-pub fn with_pty(deno_args: &[&str], mut action: impl FnMut(Box<dyn pty::Pty>)) {
-  if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
-    eprintln!("Ignoring non-tty environment.");
-    return;
-  }
-
-  let deno_dir = new_deno_dir();
-  let mut env_vars = std::collections::HashMap::new();
-  env_vars.insert("NO_COLOR".to_string(), "1".to_string());
-  env_vars.insert(
-    "DENO_DIR".to_string(),
-    deno_dir.path().to_string_lossy().to_string(),
-  );
-  let pty = pty::create_pty(
-    &deno_exe_path().to_string_lossy().to_string(),
-    deno_args,
-    testdata_path(),
-    Some(env_vars),
-  );
-
-  action(pty);
+pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
+  let context = TestContextBuilder::default().use_temp_cwd().build();
+  context.new_command().args_vec(deno_args).with_pty(action);
 }
 
 pub struct WrkOutput {
@@ -2152,12 +2255,10 @@ pub struct WrkOutput {
 }
 
 pub fn parse_wrk_output(output: &str) -> WrkOutput {
-  lazy_static! {
-    static ref REQUESTS_RX: Regex =
-      Regex::new(r"Requests/sec:\s+(\d+)").unwrap();
-    static ref LATENCY_RX: Regex =
-      Regex::new(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))").unwrap();
-  }
+  static REQUESTS_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"Requests/sec:\s+(\d+)");
+  static LATENCY_RX: Lazy<Regex> =
+    lazy_regex::lazy_regex!(r"\s+99%(?:\s+(\d+.\d+)([a-z]+))");
 
   let mut requests = None;
   let mut latency = None;
@@ -2247,14 +2348,21 @@ pub fn parse_strace_output(output: &str) -> HashMap<String, StraceOutput> {
   }
 
   let total_fields = total_line.split_whitespace().collect::<Vec<_>>();
+
+  let mut usecs_call_offset = 0;
   summary.insert(
     "total".to_string(),
     StraceOutput {
       percent_time: str::parse::<f64>(total_fields[0]).unwrap(),
       seconds: str::parse::<f64>(total_fields[1]).unwrap(),
-      usecs_per_call: None,
-      calls: str::parse::<u64>(total_fields[2]).unwrap(),
-      errors: str::parse::<u64>(total_fields[3]).unwrap(),
+      usecs_per_call: if total_fields.len() > 5 {
+        usecs_call_offset = 1;
+        Some(str::parse::<u64>(total_fields[2]).unwrap())
+      } else {
+        None
+      },
+      calls: str::parse::<u64>(total_fields[2 + usecs_call_offset]).unwrap(),
+      errors: str::parse::<u64>(total_fields[3 + usecs_call_offset]).unwrap(),
     },
   );
 
@@ -2327,6 +2435,7 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 704);
     assert_eq!(strace.get("total").unwrap().errors, 5);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
   }
 
   #[test]
@@ -2342,6 +2451,23 @@ mod tests {
     // summary line
     assert_eq!(strace.get("total").unwrap().calls, 821);
     assert_eq!(strace.get("total").unwrap().errors, 107);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, None);
+  }
+
+  #[test]
+  fn strace_parse_3() {
+    const TEXT: &str = include_str!("./testdata/strace_summary3.out");
+    let strace = parse_strace_output(TEXT);
+
+    // first syscall line
+    let futex = strace.get("mprotect").unwrap();
+    assert_eq!(futex.calls, 90);
+    assert_eq!(futex.errors, 0);
+
+    // summary line
+    assert_eq!(strace.get("total").unwrap().calls, 543);
+    assert_eq!(strace.get("total").unwrap().errors, 36);
+    assert_eq!(strace.get("total").unwrap().usecs_per_call, Some(6));
   }
 
   #[test]
@@ -2402,14 +2528,13 @@ foo:
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
       let head = match leading_text {
-        Some(v) => format!("{}\n", v),
+        Some(v) => format!("{v}\n"),
         None => "".to_string(),
       };
       format!(
-        "{}foo:
-quuz {} corge
-grault",
-        head, input
+        "{head}foo:
+quuz {input} corge
+grault"
       )
     }
 
