@@ -22,18 +22,12 @@ const UNSTABLE_DENO_PROPS: &[&str] = &[
   "UnixListenOptions",
   "connect",
   "createHttpClient",
-  "kill",
   "listen",
   "listenDatagram",
   "dlopen",
   "removeSignalListener",
   "shutdown",
   "umask",
-  "serve",
-  "ServeInit",
-  "ServeTlsInit",
-  "Handler",
-  "osUptime",
 ];
 
 static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> =

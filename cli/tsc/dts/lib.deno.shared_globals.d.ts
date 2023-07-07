@@ -410,7 +410,7 @@ declare function clearInterval(id?: number): void;
 declare function clearTimeout(id?: number): void;
 
 /** @category Scheduling */
-interface VoidFunction {
+declare interface VoidFunction {
   (): void;
 }
 
@@ -442,7 +442,7 @@ declare function queueMicrotask(func: VoidFunction): void;
 declare function dispatchEvent(event: Event): boolean;
 
 /** @category DOM APIs */
-interface DOMStringList {
+declare interface DOMStringList {
   /** Returns the number of strings in strings. */
   readonly length: number;
   /** Returns true if strings contains string, and false otherwise. */
@@ -453,13 +453,13 @@ interface DOMStringList {
 }
 
 /** @category Typed Arrays */
-type BufferSource = ArrayBufferView | ArrayBuffer;
+declare type BufferSource = ArrayBufferView | ArrayBuffer;
 
 /** @category Console and Debugging */
 declare var console: Console;
 
 /** @category DOM Events */
-interface ErrorEventInit extends EventInit {
+declare interface ErrorEventInit extends EventInit {
   message?: string;
   filename?: string;
   lineno?: number;
@@ -468,54 +468,63 @@ interface ErrorEventInit extends EventInit {
 }
 
 /** @category DOM Events */
-declare class ErrorEvent extends Event {
+declare interface ErrorEvent extends Event {
   readonly message: string;
   readonly filename: string;
   readonly lineno: number;
   readonly colno: number;
   readonly error: any;
-  constructor(type: string, eventInitDict?: ErrorEventInit);
 }
 
+/** @category DOM Events */
+declare var ErrorEvent: {
+  readonly prototype: ErrorEvent;
+  new (type: string, eventInitDict?: ErrorEventInit): ErrorEvent;
+};
+
 /** @category Observability */
-interface PromiseRejectionEventInit extends EventInit {
+declare interface PromiseRejectionEventInit extends EventInit {
   promise: Promise<any>;
   reason?: any;
 }
 
 /** @category Observability */
-declare class PromiseRejectionEvent extends Event {
+declare interface PromiseRejectionEvent extends Event {
   readonly promise: Promise<any>;
   readonly reason: any;
-  constructor(type: string, eventInitDict?: PromiseRejectionEventInit);
 }
 
+/** @category Observability */
+declare var PromiseRejectionEvent: {
+  readonly prototype: PromiseRejectionEvent;
+  new (
+    type: string,
+    eventInitDict?: PromiseRejectionEventInit,
+  ): PromiseRejectionEvent;
+};
+
 /** @category Web Workers */
-interface AbstractWorkerEventMap {
+declare interface AbstractWorkerEventMap {
   "error": ErrorEvent;
 }
 
 /** @category Web Workers */
-interface WorkerEventMap extends AbstractWorkerEventMap {
+declare interface WorkerEventMap extends AbstractWorkerEventMap {
   "message": MessageEvent;
   "messageerror": MessageEvent;
 }
 
 /** @category Web Workers */
-interface WorkerOptions {
+declare interface WorkerOptions {
   type?: "classic" | "module";
   name?: string;
 }
 
 /** @category Web Workers */
-declare class Worker extends EventTarget {
+declare interface Worker extends EventTarget {
   onerror?: (e: ErrorEvent) => void;
   onmessage?: (e: MessageEvent) => void;
   onmessageerror?: (e: MessageEvent) => void;
-  constructor(
-    specifier: string | URL,
-    options?: WorkerOptions,
-  );
   postMessage(message: any, transfer: Transferable[]): void;
   postMessage(message: any, options?: StructuredSerializeOptions): void;
   addEventListener<K extends keyof WorkerEventMap>(
@@ -541,14 +550,19 @@ declare class Worker extends EventTarget {
   terminate(): void;
 }
 
+/** @category Web Workers */
+declare var Worker: {
+  readonly prototype: Worker;
+  new (specifier: string | URL, options?: WorkerOptions): Worker;
+};
+
 /** @category Performance */
 declare type PerformanceEntryList = PerformanceEntry[];
 
 /** @category Performance */
-declare class Performance extends EventTarget {
+declare interface Performance extends EventTarget {
   /** Returns a timestamp representing the start of the performance measurement. */
   readonly timeOrigin: number;
-  constructor();
 
   /** Removes the stored timestamp with the associated name. */
   clearMarks(markName?: string): void;
@@ -595,6 +609,12 @@ declare class Performance extends EventTarget {
 }
 
 /** @category Performance */
+declare var Performance: {
+  readonly prototype: Performance;
+  new (): never;
+};
+
+/** @category Performance */
 declare var performance: Performance;
 
 /** @category Performance */
@@ -628,12 +648,36 @@ declare interface PerformanceMeasureOptions {
  *
  * @category Performance
  */
-declare class PerformanceEntry {
+declare interface PerformanceEntry {
   readonly duration: number;
   readonly entryType: string;
   readonly name: string;
   readonly startTime: number;
   toJSON(): any;
+}
+
+/** Encapsulates a single performance metric that is part of the performance
+ * timeline. A performance entry can be directly created by making a performance
+ * mark or measure (for example by calling the `.mark()` method) at an explicit
+ * point in an application.
+ *
+ * @category Performance
+ */
+declare var PerformanceEntry: {
+  readonly prototype: PerformanceEntry;
+  new (): never;
+};
+
+/** `PerformanceMark` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"mark"`. Entries of this type are created by calling
+ * `performance.mark()` to add a named `DOMHighResTimeStamp` (the mark) to the
+ * performance timeline.
+ *
+ * @category Performance
+ */
+declare interface PerformanceMark extends PerformanceEntry {
+  readonly detail: any;
+  readonly entryType: "mark";
 }
 
 /** `PerformanceMark` is an abstract interface for `PerformanceEntry` objects
@@ -643,10 +687,21 @@ declare class PerformanceEntry {
  *
  * @category Performance
  */
-declare class PerformanceMark extends PerformanceEntry {
+declare var PerformanceMark: {
+  readonly prototype: PerformanceMark;
+  new (name: string, options?: PerformanceMarkOptions): PerformanceMark;
+};
+
+/** `PerformanceMeasure` is an abstract interface for `PerformanceEntry` objects
+ * with an entryType of `"measure"`. Entries of this type are created by calling
+ * `performance.measure()` to add a named `DOMHighResTimeStamp` (the measure)
+ * between two marks to the performance timeline.
+ *
+ * @category Performance
+ */
+declare interface PerformanceMeasure extends PerformanceEntry {
   readonly detail: any;
-  readonly entryType: "mark";
-  constructor(name: string, options?: PerformanceMarkOptions);
+  readonly entryType: "measure";
 }
 
 /** `PerformanceMeasure` is an abstract interface for `PerformanceEntry` objects
@@ -656,10 +711,10 @@ declare class PerformanceMark extends PerformanceEntry {
  *
  * @category Performance
  */
-declare class PerformanceMeasure extends PerformanceEntry {
-  readonly detail: any;
-  readonly entryType: "measure";
-}
+declare var PerformanceMeasure: {
+  readonly prototype: PerformanceMeasure;
+  new (): never;
+};
 
 /** @category DOM Events */
 declare interface CustomEventInit<T = any> extends EventInit {
@@ -667,15 +722,20 @@ declare interface CustomEventInit<T = any> extends EventInit {
 }
 
 /** @category DOM Events */
-declare class CustomEvent<T = any> extends Event {
-  constructor(typeArg: string, eventInitDict?: CustomEventInit<T>);
+declare interface CustomEvent<T = any> extends Event {
   /** Returns any custom data event was created with. Typically used for
    * synthetic events. */
   readonly detail: T;
 }
 
+/** @category DOM Events */
+declare var CustomEvent: {
+  readonly prototype: CustomEvent;
+  new <T>(typeArg: string, eventInitDict?: CustomEventInit<T>): CustomEvent<T>;
+};
+
 /** @category DOM APIs */
-interface ErrorConstructor {
+declare interface ErrorConstructor {
   /** See https://v8.dev/docs/stack-trace-api#stack-trace-collection-for-custom-exceptions. */
   captureStackTrace(error: Object, constructor?: Function): void;
   // TODO(nayeemrmn): Support `Error.prepareStackTrace()`. We currently use this

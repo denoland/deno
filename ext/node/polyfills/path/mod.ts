@@ -35,7 +35,6 @@ export const {
   relative,
   resolve,
   sep,
-  toFileUrl,
   toNamespacedPath,
 } = path;
 export default path;

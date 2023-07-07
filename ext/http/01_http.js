@@ -301,7 +301,7 @@ function createRespondWith(
           if (respBody.locked) {
             throw new TypeError("ReadableStream is locked.");
           }
-          reader = respBody.getReader(); // Aquire JS lock.
+          reader = respBody.getReader(); // Acquire JS lock.
           try {
             await core.opAsync(
               "op_http_write_resource",

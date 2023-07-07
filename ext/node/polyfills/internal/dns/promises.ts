@@ -20,6 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   validateBoolean,
   validateNumber,
@@ -56,7 +59,7 @@ import {
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "ext:deno_node/punycode.ts";
+import { toASCII } from "node:punycode";
 
 function onlookup(
   this: GetAddrInfoReqWrap,

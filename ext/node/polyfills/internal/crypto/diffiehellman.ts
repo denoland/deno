@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import {
   isAnyArrayBuffer,
@@ -15,7 +18,7 @@ import {
   validateInt32,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   EllipticCurve,
   ellipticCurves,
@@ -189,7 +192,7 @@ export class DiffieHellman {
     const generator = this.#checkGenerator();
     const [privateKey, publicKey] = ops.op_node_dh_generate2(
       this.#prime,
-      this.#primeLength,
+      this.#primeLength ?? 0,
       generator,
     );
 

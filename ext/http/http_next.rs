@@ -20,6 +20,7 @@ use cache_control::CacheControl;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
 use deno_core::task::spawn;
@@ -31,6 +32,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -96,10 +98,10 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
 /// MUST be followed by a SETTINGS frame (Section 6.5), which MAY be empty.
 const HTTP2_PREFIX: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
 
-/// ALPN negotation for "h2"
+/// ALPN negotiation for "h2"
 const TLS_ALPN_HTTP_2: &[u8] = b"h2";
 
-/// ALPN negotation for "http/1.1"
+/// ALPN negotiation for "http/1.1"
 const TLS_ALPN_HTTP_11: &[u8] = b"http/1.1";
 
 /// Name a trait for streams we can serve HTTP over.
@@ -208,8 +210,8 @@ pub async fn op_http_upgrade_websocket_next(
   ws_create_server_stream(&mut state.borrow_mut(), stream, bytes)
 }
 
-#[op(fast)]
-pub fn op_http_set_promise_complete(slab_id: SlabId, status: u16) {
+#[op2(fast)]
+pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
   // The Javascript code will never provide a status that is invalid here (see 23_response.js)
   *http.response().status_mut() = StatusCode::from_u16(status).unwrap();
@@ -1033,6 +1035,34 @@ impl UpgradeStream {
     .try_or_cancel(cancel_handle)
     .await
   }
+
+  async fn write_vectored(
+    self: Rc<Self>,
+    buf1: &[u8],
+    buf2: &[u8],
+  ) -> Result<usize, AnyError> {
+    let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
+
+    let total = buf1.len() + buf2.len();
+    let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+    let mut nwritten = wr.write_vectored(&bufs).await?;
+    if nwritten == total {
+      return Ok(nwritten);
+    }
+
+    // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
+    while nwritten <= buf1.len() {
+      bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
+      nwritten += wr.write_vectored(&bufs).await?;
+    }
+
+    // First buffer out of the way.
+    if nwritten < total && nwritten > buf1.len() {
+      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+    }
+
+    Ok(total)
+  }
 }
 
 impl Resource for UpgradeStream {
@@ -1046,4 +1076,17 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op]
+pub async fn op_raw_write_vectored(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf1: JsBuffer,
+  buf2: JsBuffer,
+) -> Result<usize, AnyError> {
+  let resource: Rc<UpgradeStream> =
+    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
+  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
+  Ok(nwritten)
 }

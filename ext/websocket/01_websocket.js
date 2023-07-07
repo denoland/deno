@@ -322,7 +322,12 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+    if (ArrayBufferIsView(data)) {
+      op_ws_send_binary(this[_rid], data);
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      // deno-lint-ignore prefer-primordials
+      op_ws_send_binary(this[_rid], new Uint8Array(data));
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
@@ -332,10 +337,6 @@ class WebSocket extends EventTarget {
             new DataView(ab),
           ),
       );
-    } else if (ArrayBufferIsView(data)) {
-      op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      op_ws_send_binary(this[_rid], data);
     } else {
       const string = String(data);
       op_ws_send_text(
@@ -467,6 +468,7 @@ class WebSocket extends EventTarget {
         default: {
           /* close */
           const code = kind;
+          const reason = code == 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
           clearTimeout(this[_idleTimeoutTimeout]);
@@ -476,7 +478,7 @@ class WebSocket extends EventTarget {
               await op_ws_close(
                 rid,
                 code,
-                op_ws_get_error(rid),
+                reason,
               );
             } catch {
               // ignore failures
@@ -486,7 +488,7 @@ class WebSocket extends EventTarget {
           const event = new CloseEvent("close", {
             wasClean: true,
             code: code,
-            reason: op_ws_get_error(rid),
+            reason,
           });
           this.dispatchEvent(event);
           core.tryClose(rid);
