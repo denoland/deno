@@ -464,7 +464,7 @@ function h1WsUpgrade(request) {
     ["connection", "Upgrade"],
     ["sec-websocket-accept", accept],
   ];
-  return r:
+  return r;
 }
 
 function upgradeWebSocket(request, options = {}) {
