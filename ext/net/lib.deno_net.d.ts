@@ -37,6 +37,17 @@ declare namespace Deno {
     readonly rid: number;
 
     [Symbol.asyncIterator](): AsyncIterableIterator<Conn>;
+
+    /**
+     * Make the listener block the event loop from finishing.
+     *
+     * Note: the listener blocks the event loop from finishing by default.
+     * This method is only meaningful after `.unref()` is called.
+     */
+    ref(): void;
+
+    /** Make the listener not block the event loop from finishing. */
+    unref(): void;
   }
 
   /** Specialized listener that accepts TLS connections.
@@ -150,6 +161,12 @@ declare namespace Deno {
     keyFile?: string;
 
     transport?: "tcp";
+
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Listen announces on the local transport address over TLS (transport layer
@@ -232,6 +249,11 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
+    /** Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -265,6 +287,11 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Start TLS handshake from an existing connection using an optional list of

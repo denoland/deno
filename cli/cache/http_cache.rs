@@ -11,7 +11,6 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use log::error;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -35,14 +34,14 @@ fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
     "http" | "https" => {
       let host = url.host_str().unwrap();
       let host_port = match url.port() {
-        Some(port) => format!("{}_PORT{}", host, port),
+        Some(port) => format!("{host}_PORT{port}"),
         None => host.to_string(),
       };
       out.push(host_port);
     }
     "data" | "blob" => (),
     scheme => {
-      error!("Don't know how to create cache name for scheme: {}", scheme);
+      log::debug!("Don't know how to create cache name for scheme: {}", scheme);
       return None;
     }
   };
@@ -112,11 +111,9 @@ impl HttpCache {
   /// Returns a new instance.
   ///
   /// `location` must be an absolute path.
-  pub fn new(location: &Path) -> Self {
+  pub fn new(location: PathBuf) -> Self {
     assert!(location.is_absolute());
-    Self {
-      location: location.to_owned(),
-    }
+    Self { location }
   }
 
   /// Ensures the location of the cache.
@@ -128,8 +125,7 @@ impl HttpCache {
       io::Error::new(
         e.kind(),
         format!(
-          "Could not create remote modules cache location: {:?}\nCheck the permission of the directory.",
-          path
+          "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
         ),
       )
     })
@@ -194,8 +190,7 @@ mod tests {
   #[test]
   fn test_create_cache() {
     let dir = TempDir::new();
-    let mut cache_path = dir.path().to_owned();
-    cache_path.push("foobar");
+    let cache_path = dir.path().join("foobar");
     // HttpCache should be created lazily on first use:
     // when zipping up a local project with no external dependencies
     // "$DENO_DIR/deps" is empty. When unzipping such project
@@ -205,7 +200,7 @@ mod tests {
     // doesn't make sense to return error in such specific scenarios.
     // For more details check issue:
     // https://github.com/denoland/deno/issues/5688
-    let cache = HttpCache::new(&cache_path);
+    let cache = HttpCache::new(cache_path.to_path_buf());
     assert!(!cache.location.exists());
     cache
       .set(
@@ -221,7 +216,7 @@ mod tests {
   #[test]
   fn test_get_set() {
     let dir = TempDir::new();
-    let cache = HttpCache::new(dir.path());
+    let cache = HttpCache::new(dir.path().to_path_buf());
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(
@@ -231,7 +226,7 @@ mod tests {
     headers.insert("etag".to_string(), "as5625rqdsfb".to_string());
     let content = b"Hello world";
     let r = cache.set(&url, headers, content);
-    eprintln!("result {:?}", r);
+    eprintln!("result {r:?}");
     assert!(r.is_ok());
     let r = cache.get(&url);
     assert!(r.is_ok());

@@ -7,20 +7,18 @@ use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url;
-use deno_core::Extension;
 use deno_core::OpState;
 use serde::Deserialize;
 use std::path::Path;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_permissions")
-    .ops(vec![
-      op_query_permission::decl(),
-      op_revoke_permission::decl(),
-      op_request_permission::decl(),
-    ])
-    .build()
-}
+deno_core::extension!(
+  deno_permissions,
+  ops = [
+    op_query_permission,
+    op_revoke_permission,
+    op_request_permission,
+  ],
+);
 
 #[derive(Deserialize)]
 pub struct PermissionArgs {
@@ -59,7 +57,7 @@ pub fn op_query_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -93,7 +91,7 @@ pub fn op_revoke_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -127,7 +125,7 @@ pub fn op_request_permission(
     n => {
       return Err(custom_error(
         "ReferenceError",
-        format!("No such permission name: {}", n),
+        format!("No such permission name: {n}"),
       ))
     }
   };
@@ -135,7 +133,7 @@ pub fn op_request_permission(
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {
-  let url = url::Url::parse(&format!("http://{}/", host_str))
+  let url = url::Url::parse(&format!("http://{host_str}/"))
     .map_err(|_| uri_error("Invalid host"))?;
   if url.path() != "/" {
     return Err(uri_error("Invalid host"));

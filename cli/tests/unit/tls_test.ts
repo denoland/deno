@@ -9,8 +9,8 @@ import {
   Deferred,
   deferred,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "../../../test_util/std/io/buffer.ts";
-import { readAll } from "../../../test_util/std/streams/conversion.ts";
+import { BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
+import { readAll } from "../../../test_util/std/streams/read_all.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 
 const encoder = new TextEncoder();
@@ -1081,7 +1081,8 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true, net: true } },
+  // Ignored because gmail appears to reject us on CI sometimes
+  { ignore: true, permissions: { read: true, net: true } },
   async function startTls() {
     const hostname = "smtp.gmail.com";
     const port = 587;
@@ -1337,7 +1338,7 @@ Deno.test(
           await assertRejects(
             () => conn.handshake(),
             Deno.errors.InvalidData,
-            "BadCertificate",
+            "received fatal alert",
           );
         }
         conn.close();
@@ -1368,7 +1369,7 @@ Deno.test(
       await assertRejects(
         () => tlsConn.handshake(),
         Deno.errors.InvalidData,
-        "CertNotValidForName",
+        "NotValidForName",
       );
       tlsConn.close();
     }

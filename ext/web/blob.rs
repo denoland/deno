@@ -1,28 +1,32 @@
-use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::op;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
-use deno_core::ZeroCopyBuf;
-use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::op;
+use deno_core::parking_lot::Mutex;
+use deno_core::url::Url;
+use deno_core::JsBuffer;
+use deno_core::OpState;
+use deno_core::ToJsBuffer;
+use serde::Deserialize;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::Location;
 
 pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct BlobStore {
-  parts: Arc<Mutex<PartMap>>,
-  object_urls: Arc<Mutex<HashMap<Url, Arc<Blob>>>>,
+  parts: Mutex<PartMap>,
+  object_urls: Mutex<HashMap<Url, Arc<Blob>>>,
 }
 
 impl BlobStore {
@@ -64,7 +68,7 @@ impl BlobStore {
       "null".to_string()
     };
     let id = Uuid::new_v4();
-    let url = Url::parse(&format!("blob:{}/{}", origin, id)).unwrap();
+    let url = Url::parse(&format!("blob:{origin}/{id}")).unwrap();
 
     let mut blob_store = self.object_urls.lock();
     blob_store.insert(url.clone(), Arc::new(blob));
@@ -75,6 +79,11 @@ impl BlobStore {
   pub fn remove_object_url(&self, url: &Url) {
     let mut blob_store = self.object_urls.lock();
     blob_store.remove(url);
+  }
+
+  pub fn clear(&self) {
+    self.parts.lock().clear();
+    self.object_urls.lock().clear();
   }
 }
 
@@ -157,11 +166,8 @@ impl BlobPart for SlicedBlobPart {
 }
 
 #[op]
-pub fn op_blob_create_part(
-  state: &mut deno_core::OpState,
-  data: ZeroCopyBuf,
-) -> Uuid {
-  let blob_store = state.borrow::<BlobStore>();
+pub fn op_blob_create_part(state: &mut OpState, data: JsBuffer) -> Uuid {
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
 }
@@ -175,11 +181,11 @@ pub struct SliceOptions {
 
 #[op]
 pub fn op_blob_slice_part(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   id: Uuid,
   options: SliceOptions,
 ) -> Result<Uuid, AnyError> {
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
     .get_part(&id)
     .ok_or_else(|| type_error("Blob part not found"))?;
@@ -201,33 +207,33 @@ pub fn op_blob_slice_part(
 
 #[op]
 pub async fn op_blob_read_part(
-  state: Rc<RefCell<deno_core::OpState>>,
+  state: Rc<RefCell<OpState>>,
   id: Uuid,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let part = {
     let state = state.borrow();
-    let blob_store = state.borrow::<BlobStore>();
+    let blob_store = state.borrow::<Arc<BlobStore>>();
     blob_store.get_part(&id)
   }
   .ok_or_else(|| type_error("Blob part not found"))?;
   let buf = part.read().await?;
-  Ok(ZeroCopyBuf::from(buf.to_vec()))
+  Ok(ToJsBuffer::from(buf.to_vec()))
 }
 
 #[op]
-pub fn op_blob_remove_part(state: &mut deno_core::OpState, id: Uuid) {
-  let blob_store = state.borrow::<BlobStore>();
+pub fn op_blob_remove_part(state: &mut OpState, id: Uuid) {
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_part(&id);
 }
 
 #[op]
 pub fn op_blob_create_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   media_type: String,
   part_ids: Vec<Uuid>,
 ) -> Result<String, AnyError> {
   let mut parts = Vec::with_capacity(part_ids.len());
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   for part_id in part_ids {
     let part = blob_store
       .get_part(&part_id)
@@ -238,7 +244,7 @@ pub fn op_blob_create_object_url(
   let blob = Blob { media_type, parts };
 
   let maybe_location = state.try_borrow::<Location>();
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
 
   let url = blob_store
     .insert_object_url(blob, maybe_location.map(|location| location.0.clone()));
@@ -249,10 +255,10 @@ pub fn op_blob_create_object_url(
 #[op]
 pub fn op_blob_revoke_object_url(
   state: &mut deno_core::OpState,
-  url: String,
+  url: &str,
 ) -> Result<(), AnyError> {
-  let url = Url::parse(&url)?;
-  let blob_store = state.borrow::<BlobStore>();
+  let url = Url::parse(url)?;
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_object_url(&url);
   Ok(())
 }
@@ -271,7 +277,7 @@ pub struct ReturnBlobPart {
 
 #[op]
 pub fn op_blob_from_object_url(
-  state: &mut deno_core::OpState,
+  state: &mut OpState,
   url: String,
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;
@@ -279,7 +285,7 @@ pub fn op_blob_from_object_url(
     return Ok(None);
   }
 
-  let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
+  let blob_store = state.try_borrow::<Arc<BlobStore>>().ok_or_else(|| {
     type_error("Blob URLs are not supported in this context.")
   })?;
   if let Some(blob) = blob_store.get_object_url(url) {

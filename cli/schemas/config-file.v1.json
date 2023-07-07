@@ -34,6 +34,12 @@
           "default": false,
           "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
         },
+        "exactOptionalPropertyTypes": {
+          "description": "Differentiate between undefined and not present when type checking",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+        },
         "experimentalDecorators": {
           "description": "Enable experimental support for TC39 stage 2 draft decorators.",
           "type": "boolean",
@@ -198,26 +204,69 @@
       }
     },
     "importMap": {
-      "description": "The location of an import map to be used when resolving modules. If an import map is explicitly specified, it will override this value.",
+      "description": "The location of an import map to be used when resolving modules. If an import map is specified as an `--importmap` flag or using \"imports\" and \"scopes\" properties, they will override this value.",
       "type": "string"
+    },
+    "imports": {
+      "description": "A map of specifiers to their remapped specifiers.",
+      "type": "object",
+      "additionalProperties": {
+        "description": "The key is the specifier or partial specifier to match, with a value that represents the target specifier.",
+        "type": "string"
+      }
+    },
+    "scopes": {
+      "default": {},
+      "description": "Define a scope which remaps a specifier in only a specified scope",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": {
+        "description": "A definition of a scoped remapping.",
+        "type": "object",
+        "additionalProperties": {
+          "description": "The key is the specifier or partial specifier to match within the referring scope, with a value that represents the target specifier.",
+          "type": "string"
+        }
+      }
+    },
+    "exclude": {
+      "type": "array",
+      "description": "List of files, directories or globs that will be ignored by all other configurations. Requires Deno 1.34 or later.",
+      "items": {
+        "type": "string"
+      }
     },
     "lint": {
       "description": "Configuration for linter",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be linted.",
+              "description": "List of files, directories or globs that will be linted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be linted.",
+              "description": "List of files, directories or globs that will not be linted.",
               "items": {
                 "type": "string"
               }
@@ -271,24 +320,72 @@
       "description": "Configuration for formatter",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be formatted.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be formatted.",
+              "description": "List of files, directories or globs that will be formatted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be formatted.",
+              "description": "List of files, directories or globs that will not be formatted.",
               "items": {
                 "type": "string"
               }
             }
           }
+        },
+        "useTabs": {
+          "description": "Whether to use tabs (true) or spaces (false) for indentation.",
+          "type": "boolean",
+          "default": false
+        },
+        "lineWidth": {
+          "description": "The width of a line the printer will try to stay under. Note that the printer may exceed this width in certain cases.",
+          "type": "number",
+          "default": 80
+        },
+        "indentWidth": {
+          "description": "The number of characters for an indent.",
+          "type": "number",
+          "default": 2
+        },
+        "singleQuote": {
+          "type": "boolean",
+          "description": "Whether to use single quote (true) or double quote (false) for quotation.",
+          "default": false
+        },
+        "proseWrap": {
+          "description": "Define how prose should be wrapped in Markdown files.",
+          "default": "always",
+          "enum": [
+            "always",
+            "never",
+            "preserve"
+          ]
+        },
+        "semiColons": {
+          "description": "Whether to prefer using semicolons.",
+          "type": "boolean",
+          "default": true
         },
         "options": {
           "type": "object",
@@ -321,10 +418,19 @@
                 "never",
                 "preserve"
               ]
+            },
+            "semiColons": {
+              "description": "Whether to prefer using semicolons.",
+              "type": "boolean",
+              "default": true
             }
           }
         }
       }
+    },
+    "nodeModulesDir": {
+      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag. Requires Deno 1.34 or later.",
+      "type": "boolean"
     },
     "tasks": {
       "description": "Configuration for deno task",
@@ -341,19 +447,33 @@
       "description": "Configuration for deno test",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be searched for tests.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for tests.",
+              "description": "List of files, directories or globs that will be searched for tests.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for tests.",
+              "description": "List of files, directories or globs that will not be searched for tests.",
               "items": {
                 "type": "string"
               }
@@ -366,19 +486,33 @@
       "description": "Configuration for deno bench",
       "type": "object",
       "properties": {
+        "include": {
+          "type": "array",
+          "description": "List of files, directories or globs that will be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "description": "List of files, directories or globs that will not be searched for benchmarks.",
+          "items": {
+            "type": "string"
+          }
+        },
         "files": {
           "type": "object",
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for benchmarks.",
+              "description": "List of files, directories or globs that will be searched for benchmarks.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for benchmarks.",
+              "description": "List of files, directories or globs that will not be searched for benchmarks.",
               "items": {
                 "type": "string"
               }

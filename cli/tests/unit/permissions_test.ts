@@ -13,9 +13,22 @@ Deno.test(async function permissionInvalidName() {
   }, TypeError);
 });
 
+Deno.test(function permissionInvalidNameSync() {
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    Deno.permissions.querySync({ name: "foo" as any });
+  }, TypeError);
+});
+
 Deno.test(async function permissionNetInvalidHost() {
   await assertRejects(async () => {
     await Deno.permissions.query({ name: "net", host: ":" });
+  }, URIError);
+});
+
+Deno.test(function permissionNetInvalidHostSync() {
+  assertThrows(() => {
+    Deno.permissions.querySync({ name: "net", host: ":" });
   }, URIError);
 });
 
@@ -30,10 +43,27 @@ Deno.test(async function permissionSysValidKind() {
   await Deno.permissions.query({ name: "sys", kind: "gid" });
 });
 
+Deno.test(function permissionSysValidKindSync() {
+  Deno.permissions.querySync({ name: "sys", kind: "loadavg" });
+  Deno.permissions.querySync({ name: "sys", kind: "osRelease" });
+  Deno.permissions.querySync({ name: "sys", kind: "networkInterfaces" });
+  Deno.permissions.querySync({ name: "sys", kind: "systemMemoryInfo" });
+  Deno.permissions.querySync({ name: "sys", kind: "hostname" });
+  Deno.permissions.querySync({ name: "sys", kind: "uid" });
+  Deno.permissions.querySync({ name: "sys", kind: "gid" });
+});
+
 Deno.test(async function permissionSysInvalidKind() {
   await assertRejects(async () => {
     // deno-lint-ignore no-explicit-any
     await Deno.permissions.query({ name: "sys", kind: "abc" as any });
+  }, TypeError);
+});
+
+Deno.test(function permissionSysInvalidKindSync() {
+  assertThrows(() => {
+    // deno-lint-ignore no-explicit-any
+    Deno.permissions.querySync({ name: "sys", kind: "abc" as any });
   }, TypeError);
 });
 
@@ -49,12 +79,36 @@ Deno.test(async function permissionQueryReturnsEventTarget() {
   assert(status === (await Deno.permissions.query({ name: "hrtime" })));
 });
 
+Deno.test(function permissionQueryReturnsEventTargetSync() {
+  const status = Deno.permissions.querySync({ name: "hrtime" });
+  assert(["granted", "denied", "prompt"].includes(status.state));
+  let called = false;
+  status.addEventListener("change", () => {
+    called = true;
+  });
+  status.dispatchEvent(new Event("change"));
+  assert(called);
+  assert(status === Deno.permissions.querySync({ name: "hrtime" }));
+});
+
 Deno.test(async function permissionQueryForReadReturnsSameStatus() {
   const status1 = await Deno.permissions.query({
     name: "read",
     path: ".",
   });
   const status2 = await Deno.permissions.query({
+    name: "read",
+    path: ".",
+  });
+  assert(status1 === status2);
+});
+
+Deno.test(function permissionQueryForReadReturnsSameStatusSync() {
+  const status1 = Deno.permissions.querySync({
+    name: "read",
+    path: ".",
+  });
+  const status2 = Deno.permissions.querySync({
     name: "read",
     path: ".",
   });
@@ -85,6 +139,21 @@ Deno.test(async function permissionURL() {
   await Deno.permissions.query({ name: "run", command: path });
 });
 
+Deno.test(function permissionURLSync() {
+  Deno.permissions.querySync({
+    name: "read",
+    path: new URL(".", import.meta.url),
+  });
+  Deno.permissions.querySync({
+    name: "write",
+    path: new URL(".", import.meta.url),
+  });
+  Deno.permissions.querySync({
+    name: "run",
+    command: new URL(".", import.meta.url),
+  });
+});
+
 Deno.test(async function permissionDescriptorValidation() {
   for (const value of [undefined, null, {}]) {
     for (const method of ["query", "request", "revoke"]) {
@@ -100,10 +169,32 @@ Deno.test(async function permissionDescriptorValidation() {
   }
 });
 
+Deno.test(function permissionDescriptorValidationSync() {
+  for (const value of [undefined, null, {}]) {
+    for (const method of ["querySync", "revokeSync", "requestSync"]) {
+      assertThrows(
+        () => {
+          // deno-lint-ignore no-explicit-any
+          (Deno.permissions as any)[method](value as any);
+        },
+        TypeError,
+        '"undefined" is not a valid permission name',
+      );
+    }
+  }
+});
+
 // Regression test for https://github.com/denoland/deno/issues/15894.
 Deno.test(async function permissionStatusObjectsNotEqual() {
   assert(
     await Deno.permissions.query({ name: "env", variable: "A" }) !=
       await Deno.permissions.query({ name: "env", variable: "B" }),
+  );
+});
+
+Deno.test(function permissionStatusObjectsNotEqualSync() {
+  assert(
+    Deno.permissions.querySync({ name: "env", variable: "A" }) !=
+      Deno.permissions.querySync({ name: "env", variable: "B" }),
   );
 });

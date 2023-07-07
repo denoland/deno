@@ -6,17 +6,15 @@ use super::lsp_custom;
 
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
+use crate::factory::CliFactory;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
 use crate::lsp::logging::lsp_log;
-use crate::ops;
-use crate::proc_state;
 use crate::tools::test;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestEventSender;
 use crate::util::checksum;
-use crate::worker::create_main_worker_for_test_or_bench;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -26,12 +24,11 @@ use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
+use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
-use deno_runtime::ops::io::Stdio;
-use deno_runtime::ops::io::StdioPipe;
 use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -147,38 +144,6 @@ impl LspTestFilter {
   }
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn test_specifier(
-  ps: proc_state::ProcState,
-  permissions: Permissions,
-  specifier: ModuleSpecifier,
-  mode: test::TestMode,
-  sender: TestEventSender,
-  fail_fast_tracker: FailFastTracker,
-  token: CancellationToken,
-  filter: test::TestFilter,
-) -> Result<(), AnyError> {
-  if !token.is_cancelled() {
-    let stdout = StdioPipe::File(sender.stdout());
-    let stderr = StdioPipe::File(sender.stderr());
-    let mut worker = create_main_worker_for_test_or_bench(
-      &ps,
-      specifier.clone(),
-      PermissionsContainer::new(permissions),
-      vec![ops::testing::init(sender, fail_fast_tracker, filter)],
-      Stdio {
-        stdin: StdioPipe::Inherit,
-        stdout,
-        stderr,
-      },
-    )
-    .await?;
-    worker.run_lsp_test_specifier(mode).await?;
-  }
-
-  Ok(())
-}
-
 #[derive(Debug, Clone)]
 pub struct TestRun {
   id: u32,
@@ -255,15 +220,16 @@ impl TestRun {
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = flags_from_vec(args.into_iter().map(String::from).collect())?;
-    let ps = proc_state::ProcState::build(flags).await?;
+    let factory = CliFactory::from_flags(flags).await?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.
     let permissions =
-      Permissions::from_options(&ps.options.permissions_options())?;
+      Permissions::from_options(&factory.cli_options().permissions_options())?;
     test::check_specifiers(
-      &ps,
-      permissions.clone(),
+      factory.cli_options(),
+      factory.file_fetcher()?,
+      factory.module_load_preparer().await?,
       self
         .queue
         .iter()
@@ -272,18 +238,19 @@ impl TestRun {
     )
     .await?;
 
-    let (concurrent_jobs, fail_fast) =
-      if let DenoSubcommand::Test(test_flags) = ps.options.sub_command() {
-        (
-          test_flags
-            .concurrent_jobs
-            .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
-            .into(),
-          test_flags.fail_fast,
-        )
-      } else {
-        unreachable!("Should always be Test subcommand.");
-      };
+    let (concurrent_jobs, fail_fast) = if let DenoSubcommand::Test(test_flags) =
+      factory.cli_options().sub_command()
+    {
+      (
+        test_flags
+          .concurrent_jobs
+          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+          .into(),
+        test_flags.fail_fast,
+      )
+    } else {
+      unreachable!("Should always be Test subcommand.");
+    };
 
     let (sender, mut receiver) = mpsc::unbounded_channel::<test::TestEvent>();
     let sender = TestEventSender::new(sender);
@@ -295,11 +262,12 @@ impl TestRun {
     let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
       Arc::new(RwLock::new(IndexMap::new()));
     let mut test_steps = IndexMap::new();
+    let worker_factory =
+      Arc::new(factory.create_cli_main_worker_factory().await?);
 
-    let tests_ = tests.clone();
     let join_handles = queue.into_iter().map(move |specifier| {
       let specifier = specifier.clone();
-      let ps = ps.clone();
+      let worker_factory = worker_factory.clone();
       let permissions = permissions.clone();
       let mut sender = sender.clone();
       let fail_fast_tracker = fail_fast_tracker.clone();
@@ -317,38 +285,34 @@ impl TestRun {
           .unwrap_or_default(),
       };
       let token = self.token.clone();
-      let tests = tests_.clone();
 
-      tokio::task::spawn_blocking(move || {
+      spawn_blocking(move || {
         if fail_fast_tracker.should_stop() {
           return Ok(());
         }
         let origin = specifier.to_string();
-        let file_result = run_local(test_specifier(
-          ps,
-          permissions,
-          specifier,
-          test::TestMode::Executable,
-          sender.clone(),
-          fail_fast_tracker,
-          token,
-          filter,
-        ));
+        let file_result = if token.is_cancelled() {
+          Ok(())
+        } else {
+          create_and_run_current_thread(test::test_specifier(
+            worker_factory,
+            permissions,
+            specifier,
+            sender.clone(),
+            fail_fast_tracker,
+            test::TestSpecifierOptions {
+              filter,
+              shuffle: None,
+              trace_ops: false,
+            },
+          ))
+        };
         if let Err(error) = file_result {
           if error.is::<JsError>() {
             sender.send(test::TestEvent::UncaughtError(
-              origin.clone(),
+              origin,
               Box::new(error.downcast::<JsError>().unwrap()),
             ))?;
-            for desc in tests.read().values() {
-              if desc.origin == origin {
-                sender.send(test::TestEvent::Result(
-                  desc.id,
-                  test::TestResult::Cancelled,
-                  0,
-                ))?
-              }
-            }
           } else {
             return Err(error);
           }
@@ -369,7 +333,7 @@ impl TestRun {
     ));
 
     let handler = {
-      tokio::task::spawn(async move {
+      spawn(async move {
         let earlier = Instant::now();
         let mut summary = test::TestSummary::new();
         let mut used_only = false;
@@ -435,9 +399,6 @@ impl TestRun {
                 test::TestStepResult::Failed(_) => {
                   summary.failed_steps += 1;
                 }
-                test::TestStepResult::Pending(_) => {
-                  summary.pending_steps += 1;
-                }
               }
               reporter.report_step_result(
                 test_steps.get(&id).unwrap(),
@@ -445,6 +406,7 @@ impl TestRun {
                 duration,
               );
             }
+            test::TestEvent::Sigint => {}
           }
         }
 
@@ -487,6 +449,7 @@ impl TestRun {
         .iter()
         .map(|s| s.as_str()),
     );
+    args.push("--trace-ops");
     if self.workspace_settings.unstable && !args.contains(&"--unstable") {
       args.push("--unstable");
     }
@@ -712,11 +675,10 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestResult::Failed(js_error) => {
-        let err_string = test::format_test_error(js_error);
+      test::TestResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages: as_test_messages(err_string, false),
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
         })
       }
@@ -826,22 +788,11 @@ impl LspTestReporter {
           test: desc.into(),
         })
       }
-      test::TestStepResult::Failed(js_error) => {
-        let messages = if let Some(js_error) = js_error {
-          let err_string = test::format_test_error(js_error);
-          as_test_messages(err_string, false)
-        } else {
-          vec![]
-        };
+      test::TestStepResult::Failed(failure) => {
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
           test: desc.into(),
-          messages,
+          messages: as_test_messages(failure.to_string(), false),
           duration: Some(elapsed as u32),
-        })
-      }
-      test::TestStepResult::Pending(_) => {
-        self.progress(lsp_custom::TestRunProgressMessage::Enqueued {
-          test: desc.into(),
         })
       }
     }

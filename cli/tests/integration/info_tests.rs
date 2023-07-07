@@ -2,6 +2,7 @@
 
 use test_util as util;
 use test_util::TempDir;
+use util::env_vars_for_npm_tests_no_sync_download;
 
 #[test]
 fn info_with_compiled_source() {
@@ -93,6 +94,21 @@ itest!(info_missing_module {
   output: "info/info_missing_module.out",
 });
 
+itest!(info_lock {
+  args: "info main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(info_no_lock {
+  args: "info --no-lock main.ts",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/info.nolock.out",
+});
+
 itest!(info_recursive_modules {
   args: "info --quiet info/info_recursive_imports_test.ts",
   output: "info/info_recursive_imports_test.out",
@@ -126,4 +142,14 @@ itest!(types_header_direct {
 itest!(with_config_override {
   args: "info info/with_config/test.ts --config info/with_config/deno-override.json --import-map info/with_config/import_map.json",
   output: "info/with_config/with_config.out",
+});
+
+itest!(package_json_basic {
+  args: "info --quiet main.ts",
+  output: "package_json/basic/main.info.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
 });

@@ -8,7 +8,7 @@ function assertEquals(a, b) {
 
 const registry = new FinalizationRegistry((value) => {
   assertEquals(value, "called!");
-  Deno.core.print("FinalizationRegistry called!\n");
+  Deno[Deno.internal].core.print("FinalizationRegistry called!\n");
 });
 
 (function () {
