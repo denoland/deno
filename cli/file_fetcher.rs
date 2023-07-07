@@ -523,13 +523,13 @@ impl FileFetcher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      self.http_cache.get_cache_filename(specifier)
+      self.http_cache.get_cache_filepath(specifier).ok()
     }
   }
 
   /// Get the location of the current HTTP cache associated with the fetcher.
   pub fn get_http_cache_location(&self) -> &PathBuf {
-    self.http_cache.global_cache_dir_path()
+    &self.http_cache.location
   }
 
   /// A synchronous way to retrieve a source file, where if the file has already
@@ -1077,7 +1077,7 @@ mod tests {
 
     let cache_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&specifier)
+      .get_cache_filepath(&specifier)
       .unwrap();
     let mut metadata = CachedUrlMetadata::read(&cache_filename).unwrap();
     metadata.headers = HashMap::new();
@@ -1158,7 +1158,7 @@ mod tests {
       resolve_url("http://localhost:4545/subdir/mismatch_ext.ts").unwrap();
     let cache_filename = file_fetcher_01
       .http_cache
-      .get_cache_filename(&specifier)
+      .get_cache_filepath(&specifier)
       .unwrap();
 
     let result = file_fetcher_01
@@ -1201,14 +1201,14 @@ mod tests {
         .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&specifier)
+      .get_cache_filepath(&specifier)
       .unwrap();
     let redirected_specifier =
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
         .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&redirected_specifier)
+      .get_cache_filepath(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher
@@ -1247,21 +1247,21 @@ mod tests {
         .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&specifier)
+      .get_cache_filepath(&specifier)
       .unwrap();
     let redirected_01_specifier =
       resolve_url("http://localhost:4546/subdir/redirects/redirect1.js")
         .unwrap();
     let redirected_01_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&redirected_01_specifier)
+      .get_cache_filepath(&redirected_01_specifier)
       .unwrap();
     let redirected_02_specifier =
       resolve_url("http://localhost:4545/subdir/redirects/redirect1.js")
         .unwrap();
     let redirected_02_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&redirected_02_specifier)
+      .get_cache_filepath(&redirected_02_specifier)
       .unwrap();
 
     let result = file_fetcher
@@ -1326,7 +1326,7 @@ mod tests {
       resolve_url("http://localhost:4546/subdir/mismatch_ext.ts").unwrap();
     let redirected_cache_filename = file_fetcher_01
       .http_cache
-      .get_cache_filename(&redirected_specifier)
+      .get_cache_filepath(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher_01
@@ -1397,14 +1397,14 @@ mod tests {
     .unwrap();
     let cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&specifier)
+      .get_cache_filepath(&specifier)
       .unwrap();
     let redirected_specifier =
       resolve_url("http://localhost:4550/subdir/redirects/redirect1.js")
         .unwrap();
     let redirected_cached_filename = file_fetcher
       .http_cache
-      .get_cache_filename(&redirected_specifier)
+      .get_cache_filepath(&redirected_specifier)
       .unwrap();
 
     let result = file_fetcher
