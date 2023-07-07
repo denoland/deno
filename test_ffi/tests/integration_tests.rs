@@ -97,12 +97,8 @@ fn basic() {
     -9007199254740992n\n\
     579.9119873046875\n\
     579.912\n\
-    After sleep_blocking\n\
-    true\n\
     Before\n\
-    true\n\
     After\n\
-    true\n\
     logCallback\n\
     1 -1 2 -2 3 -3 4 -4 0.5 -0.5 1 2 3 4 5 6 7 8\n\
     u8: 8\n\
@@ -119,23 +115,12 @@ fn basic() {
     78\n\
     STORED_FUNCTION cleared\n\
     STORED_FUNCTION_2 cleared\n\
-    Thread safe call counter: 0\n\
     logCallback\n\
-    Thread safe call counter: 1\n\
     u8: 8\n\
-    Static u32: 42\n\
-    Static i64: -1242464576485\n\
-    Static ptr: true\n\
-    Static ptr value: 42\n\
     Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     Rect { x: 20.0, y: 20.0, w: 100.0, h: 200.0 }\n\
     Mixed { u8: 3, f32: 12.515, rect: Rect { x: 10.0, y: 20.0, w: 100.0, h: 200.0 }, usize: 12456789, array: [8, 32] }\n\
-    arrayBuffer.byteLength: 4\n\
-    uint32Array.length: 1\n\
-    uint32Array[0]: 42\n\
-    uint32Array[0] after mutation: 55\n\
-    Static ptr value after mutation: 55\n\
     2264956937\n\
     2264956937\n\
     Correct number of resources\n";
@@ -191,8 +176,10 @@ fn thread_safe_callback() {
   let expected = "\
     Callback on main thread\n\
     Callback on worker thread\n\
+    STORED_FUNCTION cleared\n\
     Calling callback, isolate should stay asleep until callback is called\n\
     Callback being called\n\
+    STORED_FUNCTION cleared\n\
     Isolate should now exit\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");
@@ -237,6 +224,11 @@ fn event_loop_integration() {
     Async\n\
     Timeout\n\
     THREAD SAFE\n\
+    Sync\n\
+    Async\n\
+    STORED_FUNCTION called\n\
+    Timeout\n\
+    RETRY THREAD SAFE\n\
     Sync\n\
     Async\n\
     STORED_FUNCTION called\n\

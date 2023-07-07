@@ -245,6 +245,20 @@ Deno.test(function eventTargetDispatchShouldSetTargetInListener() {
   assertEquals(called, true);
 });
 
+Deno.test(function eventTargetDispatchShouldFireCurrentListenersOnly() {
+  const target = new EventTarget();
+  const event = new Event("foo");
+  let callCount = 0;
+  target.addEventListener("foo", () => {
+    ++callCount;
+    target.addEventListener("foo", () => {
+      ++callCount;
+    });
+  });
+  target.dispatchEvent(event);
+  assertEquals(callCount, 1);
+});
+
 Deno.test(function eventTargetAddEventListenerGlobalAbort() {
   return new Promise((resolve) => {
     const c = new AbortController();

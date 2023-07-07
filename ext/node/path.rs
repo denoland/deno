@@ -3,7 +3,7 @@
 use std::path::Component;
 use std::path::PathBuf;
 
-/// Extenion to path_clean::PathClean
+/// Extension to path_clean::PathClean
 pub trait PathClean<T> {
   fn clean(&self) -> T;
 }
@@ -22,8 +22,8 @@ impl PathClean<PathBuf> for PathBuf {
             // skip
           }
           Component::ParentDir => {
-            let poped_component = components.pop();
-            if !matches!(poped_component, Some(Component::Normal(_))) {
+            let maybe_last_component = components.pop();
+            if !matches!(maybe_last_component, Some(Component::Normal(_))) {
               panic!("Error normalizing: {}", path.display());
             }
           }

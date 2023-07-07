@@ -3,30 +3,33 @@
 // Most of the tests for this are in deno_task_shell.
 // These tests are intended to only test integration.
 
+use test_util::env_vars_for_npm_tests;
+use test_util::TestContext;
+
 itest!(task_no_args {
-  args: "task -q --config task/deno.json",
-  output: "task/task_no_args.out",
+  args: "task -q --config task/deno_json/deno.json",
+  output: "task/deno_json/task_no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
 });
 
 itest!(task_cwd {
-  args: "task -q --config task/deno.json --cwd .. echo_cwd",
-  output: "task/task_cwd.out",
+  args: "task -q --config task/deno_json/deno.json --cwd .. echo_cwd",
+  output: "task/deno_json/task_cwd.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 0,
 });
 
 itest!(task_init_cwd {
-  args: "task -q --config task/deno.json --cwd .. echo_init_cwd",
-  output: "task/task_init_cwd.out",
+  args: "task -q --config task/deno_json/deno.json --cwd .. echo_init_cwd",
+  output: "task/deno_json/task_init_cwd.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 0,
 });
 
 itest!(task_init_cwd_already_set {
-  args: "task -q --config task/deno.json echo_init_cwd",
-  output: "task/task_init_cwd_already_set.out",
+  args: "task -q --config task/deno_json/deno.json echo_init_cwd",
+  output: "task/deno_json/task_init_cwd_already_set.out",
   envs: vec![
     ("NO_COLOR".to_string(), "1".to_string()),
     ("INIT_CWD".to_string(), "HELLO".to_string())
@@ -35,15 +38,15 @@ itest!(task_init_cwd_already_set {
 });
 
 itest!(task_cwd_resolves_config_from_specified_dir {
-  args: "task -q --cwd task",
-  output: "task/task_no_args.out",
+  args: "task -q --cwd task/deno_json",
+  output: "task/deno_json/task_no_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
 });
 
 itest!(task_non_existent {
-  args: "task --config task/deno.json non_existent",
-  output: "task/task_non_existent.out",
+  args: "task --config task/deno_json/deno.json non_existent",
+  output: "task/deno_json/task_non_existent.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 1,
 });
@@ -51,27 +54,30 @@ itest!(task_non_existent {
 #[test]
 fn task_emoji() {
   // this bug only appears when using a pty/tty
-  let args = "task --config task/deno.json echo_emoji";
-  use test_util::PtyData::*;
-  test_util::test_pty2(args, vec![Output("Task echo_emoji echo 🔥\r\n🔥")]);
+  TestContext::default()
+    .new_command()
+    .args_vec(["task", "--config", "task/deno_json/deno.json", "echo_emoji"])
+    .with_pty(|mut console| {
+      console.expect("Task echo_emoji echo 🔥\r\n🔥");
+    });
 }
 
 itest!(task_boolean_logic {
-  args: "task -q --config task/deno.json boolean_logic",
-  output: "task/task_boolean_logic.out",
+  args: "task -q --config task/deno_json/deno.json boolean_logic",
+  output: "task/deno_json/task_boolean_logic.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
 itest!(task_exit_code_5 {
-  args: "task --config task/deno.json exit_code_5",
-  output: "task/task_exit_code_5.out",
+  args: "task --config task/deno_json/deno.json exit_code_5",
+  output: "task/deno_json/task_exit_code_5.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   exit_code: 5,
 });
 
 itest!(task_additional_args {
-  args: "task -q --config task/deno.json echo 2",
-  output: "task/task_additional_args.out",
+  args: "task -q --config task/deno_json/deno.json echo 2",
+  output: "task/deno_json/task_additional_args.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
@@ -80,11 +86,11 @@ itest!(task_additional_args_no_shell_expansion {
     "task",
     "-q",
     "--config",
-    "task/deno.json",
+    "task/deno_json/deno.json",
     "echo",
     "$(echo 5)"
   ],
-  output: "task/task_additional_args_no_shell_expansion.out",
+  output: "task/deno_json/task_additional_args_no_shell_expansion.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
@@ -93,11 +99,11 @@ itest!(task_additional_args_nested_strings {
     "task",
     "-q",
     "--config",
-    "task/deno.json",
+    "task/deno_json/deno.json",
     "echo",
     "string \"quoted string\""
   ],
-  output: "task/task_additional_args_nested_strings.out",
+  output: "task/deno_json/task_additional_args_nested_strings.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
@@ -106,25 +112,178 @@ itest!(task_additional_args_no_logic {
     "task",
     "-q",
     "--config",
-    "task/deno.json",
+    "task/deno_json/deno.json",
     "echo",
     "||",
     "echo",
     "5"
   ],
-  output: "task/task_additional_args_no_logic.out",
+  output: "task/deno_json/task_additional_args_no_logic.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });
 
 itest!(task_deno_exe_no_env {
-  args_vec: vec!["task", "-q", "--config", "task/deno.json", "deno_echo"],
-  output: "task/task_deno_exe_no_env.out",
+  args_vec: vec![
+    "task",
+    "-q",
+    "--config",
+    "task/deno_json/deno.json",
+    "deno_echo"
+  ],
+  output: "task/deno_json/task_deno_exe_no_env.out",
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
   env_clear: true,
 });
 
 itest!(task_piped_stdin {
-  args_vec: vec!["task", "-q", "--config", "task/deno.json", "piped"],
-  output: "task/task_piped_stdin.out",
+  args_vec: vec![
+    "task",
+    "-q",
+    "--config",
+    "task/deno_json/deno.json",
+    "piped"
+  ],
+  output: "task/deno_json/task_piped_stdin.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_package_json_no_arg {
+  args: "task",
+  cwd: Some("task/package_json/"),
+  output: "task/package_json/no_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(task_package_json_echo {
+  args: "task --quiet echo",
+  cwd: Some("task/package_json/"),
+  output: "task/package_json/echo.out",
+  // use a temp dir because the node_modules folder will be created
+  copy_temp_dir: Some("task/package_json/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_package_json_npm_bin {
+  args: "task bin extra",
+  cwd: Some("task/package_json/"),
+  output: "task/package_json/bin.out",
+  copy_temp_dir: Some("task/package_json/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_no_arg {
+  args: "task",
+  cwd: Some("task/both/"),
+  output: "task/both/no_args.out",
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+  exit_code: 1,
+});
+
+itest!(task_both_deno_json_selected {
+  args: "task other",
+  cwd: Some("task/both/"),
+  output: "task/both/deno_selected.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_package_json_selected {
+  args: "task bin asdf",
+  cwd: Some("task/both/"),
+  output: "task/both/package_json_selected.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_both_prefers_deno {
+  args: "task output some text",
+  cwd: Some("task/both/"),
+  output: "task/both/prefers_deno.out",
+  copy_temp_dir: Some("task/both/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 0,
+  http_server: true,
+});
+
+itest!(task_npx_non_existent {
+  args: "task non-existent",
+  cwd: Some("task/npx/"),
+  output: "task/npx/non_existent.out",
+  copy_temp_dir: Some("task/npx/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(task_npx_on_own {
+  args: "task on-own",
+  cwd: Some("task/npx/"),
+  output: "task/npx/on_own.out",
+  copy_temp_dir: Some("task/npx/"),
+  envs: env_vars_for_npm_tests(),
+  exit_code: 1,
+  http_server: true,
+});
+
+itest!(task_pre_post {
+  args: "task test",
+  cwd: Some("task/package_json_pre_post/"),
+  output: "task/package_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre {
+  args: "task test",
+  cwd: Some("task/package_json_pre/"),
+  output: "task/package_json_pre/bin.out",
+  copy_temp_dir: Some("task/package_json_pre/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post {
+  args: "task test",
+  cwd: Some("task/package_json_post/"),
+  output: "task/package_json_post/bin.out",
+  copy_temp_dir: Some("task/package_json_post/"),
+  exit_code: 0,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_post_only {
+  args: "task test",
+  cwd: Some("task/package_json_post_only/"),
+  output: "task/package_json_post_only/bin.out",
+  copy_temp_dir: Some("task/package_json_post_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_pre_only {
+  args: "task test",
+  cwd: Some("task/package_json_pre_only/"),
+  output: "task/package_json_pre_only/bin.out",
+  copy_temp_dir: Some("task/package_json_pre_only/"),
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_string(), "1".to_string())],
+});
+
+itest!(task_deno_no_pre_post {
+  args: "task test",
+  cwd: Some("task/deno_json_pre_post/"),
+  output: "task/deno_json_pre_post/bin.out",
+  copy_temp_dir: Some("task/deno_json_pre_post/"),
+  exit_code: 0,
   envs: vec![("NO_COLOR".to_string(), "1".to_string())],
 });

@@ -1,26 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
+use test_util::assert_contains;
+use test_util::TestContextBuilder;
 
-#[test]
-fn ignore_unexplicit_files() {
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .env("NO_COLOR", "1")
-    .arg("lint")
-    .arg("--unstable")
-    .arg("--ignore=./")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr),
-    "error: No target files found.\n"
-  );
-}
+itest!(ignore_unexplicit_files {
+  args: "lint --unstable --ignore=./",
+  output_str: Some("error: No target files found.\n"),
+  exit_code: 1,
+});
 
 itest!(all {
   args: "lint lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts",
@@ -130,3 +117,95 @@ itest!(lint_with_malformed_config2 {
   output: "lint/with_malformed_config2.out",
   exit_code: 1,
 });
+
+#[test]
+fn lint_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("lint").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("lint --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\bar.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\bar.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+    assert_contains!(output, "glob/pages/[id].ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/bar.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/nested/foo/bar.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
+  assert_contains!(output, "Found 9 problems");
+  assert_contains!(output, "Checked 9 files");
+}
+
+#[test]
+fn lint_with_glob_config_and_flags() {
+  let context = TestContextBuilder::new().cwd("lint").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("lint --config deno.glob.json --ignore=glob/nested/**/bar.ts")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\nested\fizz\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\pages\[id].ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\bazz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\bazz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\foo\fizz.ts:1:10"#);
+    assert_contains!(output, r#"glob\nested\fizz\foo.ts:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/nested/fizz/fizz.ts:1:10");
+    assert_contains!(output, "glob/pages/[id].ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/bazz.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/nested/foo/bazz.ts:1:10");
+    assert_contains!(output, "glob/nested/foo/fizz.ts:1:10");
+    assert_contains!(output, "glob/nested/fizz/foo.ts:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
+  assert_contains!(output, "Found 9 problems");
+  assert_contains!(output, "Checked 9 files");
+
+  let cmd_output = context
+    .new_command()
+    .args("lint --config deno.glob.json glob/data/test1.?s")
+    .run();
+
+  cmd_output.assert_exit_code(1);
+
+  let output = cmd_output.combined_output();
+  if cfg!(windows) {
+    assert_contains!(output, r#"glob\data\test1.js:1:10"#);
+    assert_contains!(output, r#"glob\data\test1.ts:1:10"#);
+  } else {
+    assert_contains!(output, "glob/data/test1.js:1:10");
+    assert_contains!(output, "glob/data/test1.ts:1:10");
+  }
+  assert_contains!(output, "Found 2 problems");
+  assert_contains!(output, "Checked 2 files");
+}

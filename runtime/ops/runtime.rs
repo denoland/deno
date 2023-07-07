@@ -1,39 +1,37 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::permissions::PermissionsContainer;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 
-pub fn init(main_module: ModuleSpecifier) -> Extension {
-  Extension::builder("deno_runtime")
-    .ops(vec![op_main_module::decl()])
-    .state(move |state| {
-      state.put::<ModuleSpecifier>(main_module.clone());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(
+  deno_runtime,
+  ops = [op_main_module, op_ppid],
+  options = { main_module: ModuleSpecifier },
+  state = |state, options| {
+    state.put::<ModuleSpecifier>(options.main_module);
+  },
+);
 
 #[op]
 fn op_main_module(state: &mut OpState) -> Result<String, AnyError> {
-  let main = state.borrow::<ModuleSpecifier>().to_string();
-  let main_url = deno_core::resolve_url_or_path(&main)?;
+  let main_url = state.borrow::<ModuleSpecifier>();
+  let main_path = main_url.to_string();
   if main_url.scheme() == "file" {
-    let main_path = std::env::current_dir()
-      .context("Failed to get current working directory")?
-      .join(main_url.to_string());
+    let main_path = main_url.to_file_path().unwrap();
     state
       .borrow_mut::<PermissionsContainer>()
       .check_read_blind(&main_path, "main_module", "Deno.mainModule")?;
   }
-  Ok(main)
+  Ok(main_path)
 }
 
-pub fn ppid() -> i64 {
+/// This is an op instead of being done at initialization time because
+/// it's expensive to retrieve the ppid on Windows.
+#[op]
+pub fn op_ppid() -> i64 {
   #[cfg(windows)]
   {
     // Adopted from rustup:

@@ -2,16 +2,21 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-const internals = globalThis.__bootstrap.internals;
 const primordials = globalThis.__bootstrap.primordials;
 const {
+  ArrayBufferIsView,
+  ArrayBufferPrototypeGetByteLength,
   ArrayPrototypeMap,
   ArrayPrototypeJoin,
+  DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
+  TypedArrayPrototypeGetBuffer,
+  TypedArrayPrototypeGetByteLength,
+  TypedArrayPrototypeGetSymbolToStringTag,
   TypeError,
   Uint8Array,
   Int32Array,
@@ -25,11 +30,32 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SafeWeakMap,
+  SymbolFor,
 } = primordials;
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+
+/**
+ * @param {BufferSource} source
+ * @returns {number}
+ */
+function getBufferSourceByteLength(source) {
+  if (ArrayBufferIsView(source)) {
+    if (TypedArrayPrototypeGetSymbolToStringTag(source) !== undefined) {
+      // TypedArray
+      return TypedArrayPrototypeGetByteLength(source);
+    } else {
+      // DataView
+      return DataViewPrototypeGetByteLength(source);
+    }
+  }
+  return ArrayBufferPrototypeGetByteLength(source);
+}
+const promiseIdSymbol = SymbolFor("Deno.core.internalPromiseId");
 
 const U32_BUFFER = new Uint32Array(2);
-const U64_BUFFER = new BigUint64Array(U32_BUFFER.buffer);
-const I64_BUFFER = new BigInt64Array(U32_BUFFER.buffer);
+const U64_BUFFER = new BigUint64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
+const I64_BUFFER = new BigInt64Array(TypedArrayPrototypeGetBuffer(U32_BUFFER));
 class UnsafePointerView {
   pointer;
 
@@ -118,6 +144,13 @@ class UnsafePointerView {
     );
   }
 
+  getPointer(offset = 0) {
+    return ops.op_ffi_read_ptr(
+      this.pointer,
+      offset,
+    );
+  }
+
   getCString(offset = 0) {
     return ops.op_ffi_cstr_read(
       this.pointer,
@@ -153,7 +186,7 @@ class UnsafePointerView {
       this.pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 
@@ -162,19 +195,48 @@ class UnsafePointerView {
       pointer,
       offset,
       destination,
-      destination.byteLength,
+      getBufferSourceByteLength(destination),
     );
   }
 }
 
 const OUT_BUFFER = new Uint32Array(2);
-const OUT_BUFFER_64 = new BigInt64Array(OUT_BUFFER.buffer);
+const OUT_BUFFER_64 = new BigInt64Array(
+  TypedArrayPrototypeGetBuffer(OUT_BUFFER),
+);
+const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
+  static create(value) {
+    return ops.op_ffi_ptr_create(value);
+  }
+
+  static equals(a, b) {
+    if (a === null || b === null) {
+      return a === b;
+    }
+    return ops.op_ffi_ptr_equals(a, b);
+  }
+
   static of(value) {
     if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
       return value.pointer;
     }
-    ops.op_ffi_ptr_of(value, OUT_BUFFER);
+    const pointer = ops.op_ffi_ptr_of(value);
+    if (pointer) {
+      POINTER_TO_BUFFER_WEAK_MAP.set(pointer, value);
+    }
+    return pointer;
+  }
+
+  static offset(value, offset) {
+    return ops.op_ffi_ptr_offset(value, offset);
+  }
+
+  static value(value) {
+    if (ObjectPrototypeIsPrototypeOf(UnsafeCallbackPrototype, value)) {
+      value = value.pointer;
+    }
+    ops.op_ffi_ptr_value(value, OUT_BUFFER);
     const result = OUT_BUFFER[0] + 2 ** 32 * OUT_BUFFER[1];
     if (NumberIsSafeInteger(result)) {
       return result;
@@ -240,8 +302,7 @@ class UnsafeFnPointer {
 }
 
 function isReturnedAsBigInt(type) {
-  return type === "buffer" || type === "pointer" || type === "function" ||
-    type === "u64" || type === "i64" ||
+  return type === "u64" || type === "i64" ||
     type === "usize" || type === "isize";
 }
 
@@ -276,8 +337,9 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
       size += fieldSize;
     }
     size = MathCeil(size / alignment) * alignment;
-    cache.set(type, size);
-    return [size, alignment];
+    const result = [size, alignment];
+    cache.set(type, result);
+    return result;
   }
 
   switch (type) {
@@ -332,12 +394,23 @@ class UnsafeCallback {
     this.callback = callback;
   }
 
+  static threadSafe(definition, callback) {
+    const unsafeCallback = new UnsafeCallback(definition, callback);
+    unsafeCallback.ref();
+    return unsafeCallback;
+  }
+
   ref() {
     if (this.#refcount++ === 0) {
-      this.#refpromise = core.opAsync(
-        "op_ffi_unsafe_callback_ref",
-        this.#rid,
-      );
+      if (this.#refpromise) {
+        // Re-refing
+        core.refOp(this.#refpromise[promiseIdSymbol]);
+      } else {
+        this.#refpromise = core.opAsync(
+          "op_ffi_unsafe_callback_ref",
+          this.#rid,
+        );
+      }
     }
     return this.#refcount;
   }
@@ -346,14 +419,14 @@ class UnsafeCallback {
     // Only decrement refcount if it is positive, and only
     // unref the callback if refcount reaches zero.
     if (this.#refcount > 0 && --this.#refcount === 0) {
-      ops.op_ffi_unsafe_callback_unref(this.#rid);
+      core.unrefOp(this.#refpromise[promiseIdSymbol]);
     }
     return this.#refcount;
   }
 
   close() {
     this.#refcount = 0;
-    core.close(this.#rid);
+    ops.op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -366,7 +439,13 @@ class DynamicLibrary {
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
-      if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+      if (!ObjectHasOwn(symbols, symbol)) {
+        continue;
+      }
+
+      // Symbol was marked as optional, and not found.
+      // In that case, we set its value to null in Rust-side.
+      if (symbols[symbol] === null) {
         continue;
       }
 
@@ -383,6 +462,7 @@ class DynamicLibrary {
           this.#rid,
           name,
           type,
+          symbols[symbol].optional,
         );
         ObjectDefineProperty(
           this.symbols,
@@ -443,8 +523,8 @@ class DynamicLibrary {
         const call = this.symbols[symbol];
         const parameters = symbols[symbol].parameters;
         const vi = new Int32Array(2);
-        const vui = new Uint32Array(vi.buffer);
-        const b = new BigInt64Array(vi.buffer);
+        const vui = new Uint32Array(TypedArrayPrototypeGetBuffer(vi));
+        const b = new BigInt64Array(TypedArrayPrototypeGetBuffer(vi));
 
         const params = ArrayPrototypeJoin(
           ArrayPrototypeMap(parameters, (_, index) => `p${index}`),
@@ -494,9 +574,6 @@ class DynamicLibrary {
 }
 
 function dlopen(path, symbols) {
-  // TODO(@crowlKats): remove me
-  // URL support is progressively enhanced by util in `runtime/js`.
-  const pathFromURL = internals.pathFromURL ?? ((p) => p);
   return new DynamicLibrary(pathFromURL(path), symbols);
 }
 

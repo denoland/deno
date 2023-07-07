@@ -10,9 +10,14 @@ const user = Deno.env.get("WPT_FYI_USER");
 const password = Deno.env.get("WPT_FYI_PW");
 
 const fromRawFile = Deno.args.includes("--from-raw-file");
+const dailyRun = Deno.args.includes("--daily-run");
 
 const form = new FormData();
-form.set("labels", "master,actions");
+if (dailyRun) {
+  form.set("labels", "master,actions");
+} else {
+  form.set("labels", "actions");
+}
 
 if (fromRawFile) {
   const file = Deno.args[0];

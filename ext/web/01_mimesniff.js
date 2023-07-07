@@ -9,11 +9,12 @@
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIncludes,
-  Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   RegExpPrototypeTest,
+  RegExpPrototypeExec,
+  SafeMap,
   SafeMapIterator,
   StringPrototypeReplaceAll,
   StringPrototypeToLowerCase,
@@ -26,7 +27,7 @@ import {
   HTTP_WHITESPACE,
   HTTP_WHITESPACE_PREFIX_RE,
   HTTP_WHITESPACE_SUFFIX_RE,
-} from "internal:deno_web/00_infra.js";
+} from "ext:deno_web/00_infra.js";
 
 /**
  * @typedef MimeType
@@ -92,7 +93,7 @@ function parseMimeType(input) {
     type: StringPrototypeToLowerCase(type),
     subtype: StringPrototypeToLowerCase(subtype),
     /** @type {Map<string, string>} */
-    parameters: new Map(),
+    parameters: new SafeMap(),
   };
 
   // 11.
@@ -197,7 +198,7 @@ function serializeMimeType(mimeType) {
   for (const param of new SafeMapIterator(mimeType.parameters)) {
     serialization += `;${param[0]}=`;
     let value = param[1];
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, value)) {
+    if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, value) === null) {
       value = StringPrototypeReplaceAll(value, "\\", "\\\\");
       value = StringPrototypeReplaceAll(value, '"', '\\"');
       value = `"${value}"`;

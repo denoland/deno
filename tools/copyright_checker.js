@@ -29,6 +29,8 @@ export async function checkCopyright() {
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
     ":!:cli/tools/init/templates/**",
+    ":!:cli/tests/unit_node/testdata/**",
+    ":!:cli/tests/node_compat/test/**",
 
     // rust
     "*.rs",
@@ -38,38 +40,57 @@ export async function checkCopyright() {
     "*Cargo.toml",
   ]);
 
-  let totalCount = 0;
+  const errors = [];
   const sourceFilesSet = new Set(sourceFiles);
+  const ERROR_MSG = "Copyright header is missing: ";
+
+  // Acceptable content before the copyright line
+  const ACCEPTABLE_LINES =
+    /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
+  const COPYRIGHT_LINE =
+    "Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.";
+  const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
+  const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 
   for (const file of sourceFilesSet) {
-    const ERROR_MSG = "Copyright header is missing: ";
-
     const fileText = await readFirstPartOfFile(file);
     if (file.endsWith("Cargo.toml")) {
       if (
-        !fileText.startsWith(
-          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-        )
+        !fileText.startsWith(TOML_COPYRIGHT_LINE)
       ) {
-        console.log(ERROR_MSG + file);
-        totalCount += 1;
+        errors.push(ERROR_MSG + file);
       }
       continue;
     }
 
-    // use .includes(...) because the first line might be a shebang
     if (
-      !fileText.includes(
-        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-      )
+      !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
-      console.log(ERROR_MSG + file);
-      totalCount += 1;
+      let trimmedText = fileText;
+      // Attempt to trim accceptable lines
+      while (
+        ACCEPTABLE_LINES.test(trimmedText) &&
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        trimmedText = trimmedText.split("\n").slice(1).join("\n");
+      }
+      if (
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        errors.push(
+          `${ERROR_MSG}${file} (incorrect line is '${
+            trimmedText.split("\n", 1)
+          }')`,
+        );
+      }
     }
   }
 
-  if (totalCount > 0) {
-    throw new Error(`Copyright checker had ${totalCount} errors.`);
+  if (errors.length > 0) {
+    // show all the errors at the same time to prevent overlap with
+    // other running scripts that may be outputting
+    console.error(errors.join("\n"));
+    throw new Error(`Copyright checker had ${errors.length} errors.`);
   }
 }
 

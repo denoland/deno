@@ -13,7 +13,6 @@ use deno_core::ResourceId;
 
 use deno_core::op;
 
-use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -29,11 +28,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init() -> Extension {
-  Extension::builder("deno_fs_events")
-    .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
-    .build()
-}
+deno_core::extension!(
+  deno_fs_events,
+  ops = [op_fs_events_open, op_fs_events_poll],
+);
 
 struct FsEventsResource {
   #[allow(unused)]

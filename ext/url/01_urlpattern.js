@@ -9,15 +9,16 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import * as webidl from "internal:deno_webidl/00_webidl.js";
+import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
-  ObjectKeys,
+  ArrayPrototypePop,
   ObjectFromEntries,
-  RegExp,
+  ObjectKeys,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
+  SafeRegExp,
   Symbol,
   SymbolFor,
   TypeError,
@@ -55,16 +56,10 @@ class URLPattern {
   constructor(input, baseURL = undefined) {
     this[webidl.brand] = webidl.brand;
     const prefix = "Failed to construct 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const components = ops.op_urlpattern_parse(input, baseURL);
@@ -73,7 +68,7 @@ class URLPattern {
     for (let i = 0; i < keys.length; ++i) {
       const key = keys[i];
       try {
-        components[key].regexp = new RegExp(
+        components[key].regexp = new SafeRegExp(
           components[key].regexpString,
           "u",
         );
@@ -133,16 +128,10 @@ class URLPattern {
   test(input, baseURL = undefined) {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'test' on 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const res = ops.op_urlpattern_process_match_input(
@@ -174,16 +163,10 @@ class URLPattern {
   exec(input, baseURL = undefined) {
     webidl.assertBranded(this, URLPatternPrototype);
     const prefix = "Failed to execute 'exec' on 'URLPattern'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters.URLPatternInput(input, {
-      prefix,
-      context: "Argument 1",
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters.URLPatternInput(input, prefix, "Argument 1");
     if (baseURL !== undefined) {
-      baseURL = webidl.converters.USVString(baseURL, {
-        prefix,
-        context: "Argument 2",
-      });
+      baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
     const res = ops.op_urlpattern_process_match_input(
@@ -196,7 +179,7 @@ class URLPattern {
 
     const { 0: values, 1: inputs } = res;
     if (inputs[1] === null) {
-      inputs.pop();
+      ArrayPrototypePop(inputs);
     }
 
     /** @type {URLPatternResult} */
@@ -258,12 +241,12 @@ webidl.converters.URLPatternInit = webidl
     { key: "baseURL", converter: webidl.converters.USVString },
   ]);
 
-webidl.converters["URLPatternInput"] = (V, opts) => {
+webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
   // Union for (URLPatternInit or USVString)
   if (typeof V == "object") {
-    return webidl.converters.URLPatternInit(V, opts);
+    return webidl.converters.URLPatternInit(V, prefix, context, opts);
   }
-  return webidl.converters.USVString(V, opts);
+  return webidl.converters.USVString(V, prefix, context, opts);
 };
 
 export { URLPattern };

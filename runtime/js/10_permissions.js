@@ -2,15 +2,14 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
-import { Event, EventTarget } from "internal:deno_web/02_event.js";
-import { pathFromURL } from "internal:runtime/js/06_util.js";
+import { pathFromURL } from "ext:deno_web/00_infra.js";
+import { Event, EventTarget } from "ext:deno_web/02_event.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
   ArrayPrototypeIncludes,
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
-  Map,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
@@ -19,6 +18,7 @@ const {
   PromiseReject,
   ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   Symbol,
   SymbolFor,
   TypeError,
@@ -113,7 +113,7 @@ class PermissionStatus extends EventTarget {
 }
 
 /** @type {Map<string, StatusCacheValue>} */
-const statusCache = new Map();
+const statusCache = new SafeMap();
 
 /**
  * @param {Deno.PermissionDescriptor} desc

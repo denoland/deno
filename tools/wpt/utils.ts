@@ -13,10 +13,11 @@ export const {
   ["--"]: rest,
   ["auto-config"]: autoConfig,
   ["inspect-brk"]: inspectBrk,
+  ["no-ignore"]: noIgnore,
   binary,
 } = parse(Deno.args, {
   "--": true,
-  boolean: ["quiet", "release", "no-interactive", "inspect-brk"],
+  boolean: ["quiet", "release", "no-interactive", "inspect-brk", "no-ignore"],
   string: ["json", "wptreport", "binary"],
 });
 
@@ -97,6 +98,7 @@ export function getExpectFailForCase(
   expectation: boolean | string[],
   caseName: string,
 ): boolean {
+  if (noIgnore) return false;
   if (typeof expectation == "boolean") {
     return !expectation;
   }
@@ -174,6 +176,8 @@ export async function generateRunInfo(): Promise<unknown> {
     "windows": "win",
     "darwin": "mac",
     "linux": "linux",
+    "freebsd": "freebsd",
+    "openbsd": "openbsd",
   };
   const proc = await new Deno.Command("git", {
     args: ["rev-parse", "HEAD"],

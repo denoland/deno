@@ -3,13 +3,16 @@
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 
-use super::RequireNpmResolver;
+use super::NpmResolver;
+
 use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Map;
 use deno_core::serde_json::Value;
+use deno_core::ModuleSpecifier;
+use indexmap::IndexMap;
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -33,6 +36,9 @@ pub struct PackageJson {
   pub path: PathBuf,
   pub typ: String,
   pub types: Option<String>,
+  pub dependencies: Option<HashMap<String, String>>,
+  pub dev_dependencies: Option<HashMap<String, String>>,
+  pub scripts: Option<IndexMap<String, String>>,
 }
 
 impl PackageJson {
@@ -49,19 +55,24 @@ impl PackageJson {
       path,
       typ: "none".to_string(),
       types: None,
+      dependencies: None,
+      dev_dependencies: None,
+      scripts: None,
     }
   }
 
   pub fn load(
-    resolver: &dyn RequireNpmResolver,
-    permissions: &mut dyn NodePermissions,
+    fs: &dyn deno_fs::FileSystem,
+    resolver: &dyn NpmResolver,
+    permissions: &dyn NodePermissions,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     resolver.ensure_read_permission(permissions, &path)?;
-    Self::load_skip_read_permission(path)
+    Self::load_skip_read_permission(fs, path)
   }
 
   pub fn load_skip_read_permission(
+    fs: &dyn deno_fs::FileSystem,
     path: PathBuf,
   ) -> Result<PackageJson, AnyError> {
     assert!(path.is_absolute());
@@ -70,7 +81,7 @@ impl PackageJson {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match std::fs::read_to_string(&path) {
+    let source = match fs.read_to_string(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
         return Ok(PackageJson::empty(path));
@@ -78,7 +89,7 @@ impl PackageJson {
       Err(err) => bail!(
         "Error loading package.json at {}. {:#}",
         path.display(),
-        err
+        AnyError::from(err),
       ),
     };
 
@@ -86,6 +97,13 @@ impl PackageJson {
       return Ok(PackageJson::empty(path));
     }
 
+    Self::load_from_string(path, source)
+  }
+
+  pub fn load_from_string(
+    path: PathBuf,
+    source: String,
+  ) -> Result<PackageJson, AnyError> {
     let package_json: Value = serde_json::from_str(&source)
       .map_err(|err| anyhow::anyhow!("malformed package.json {}", err))?;
 
@@ -113,6 +131,29 @@ impl PackageJson {
     let name = name_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let version = version_val.and_then(|s| s.as_str()).map(|s| s.to_string());
     let module = module_val.and_then(|s| s.as_str()).map(|s| s.to_string());
+
+    let dependencies = package_json.get("dependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+    let dev_dependencies = package_json.get("devDependencies").and_then(|d| {
+      if d.is_object() {
+        let deps: HashMap<String, String> =
+          serde_json::from_value(d.to_owned()).unwrap();
+        Some(deps)
+      } else {
+        None
+      }
+    });
+
+    let scripts: Option<IndexMap<String, String>> = package_json
+      .get("scripts")
+      .and_then(|d| serde_json::from_value(d.to_owned()).ok());
 
     // Ignore unknown types for forwards compatibility
     let typ = if let Some(t) = type_val {
@@ -147,6 +188,9 @@ impl PackageJson {
       exports,
       imports,
       bin,
+      dependencies,
+      dev_dependencies,
+      scripts,
     };
 
     CACHE.with(|cache| {
@@ -163,6 +207,10 @@ impl PackageJson {
     } else {
       self.main.as_ref()
     }
+  }
+
+  pub fn specifier(&self) -> ModuleSpecifier {
+    ModuleSpecifier::from_file_path(&self.path).unwrap()
   }
 }
 

@@ -10,12 +10,13 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::args::JsxImportSourceConfig;
 use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
@@ -63,6 +64,7 @@ pub fn build(
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  jsx_import_source: Option<&JsxImportSourceConfig>,
   environment: &impl VendorEnvironment,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
@@ -82,10 +84,9 @@ pub fn build(
   graph_util::graph_valid(
     &graph,
     &graph.roots,
-    deno_graph::WalkOptions {
-      // surface all errors
+    graph_util::GraphValidOptions {
+      is_vendoring: true,
       check_js: true,
-      follow_dynamic: true,
       follow_type_only: true,
     },
   )?;
@@ -94,7 +95,7 @@ pub fn build(
   let all_modules = graph.modules().collect::<Vec<_>>();
   let remote_modules = all_modules
     .iter()
-    .filter(|m| is_remote_specifier(&m.specifier))
+    .filter(|m| is_remote_specifier(m.specifier()))
     .copied()
     .collect::<Vec<_>>();
   let mappings =
@@ -102,21 +103,16 @@ pub fn build(
 
   // write out all the files
   for module in &remote_modules {
-    let source = match &module.maybe_source {
-      Some(source) => source,
-      None => continue,
+    let source = match module {
+      Module::Esm(module) => &module.source,
+      Module::Json(module) => &module.source,
+      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
+    let specifier = module.specifier();
     let local_path = mappings
-      .proxied_path(&module.specifier)
-      .unwrap_or_else(|| mappings.local_path(&module.specifier));
-    if !matches!(module.kind, ModuleKind::Esm | ModuleKind::Asserted) {
-      log::warn!(
-        "Unsupported module kind {:?} for {}",
-        module.kind,
-        module.specifier
-      );
-      continue;
-    }
+      .proxied_path(specifier)
+      .unwrap_or_else(|| mappings.local_path(specifier));
+
     environment.create_dir_all(local_path.parent().unwrap())?;
     environment.write_file(&local_path, source)?;
   }
@@ -124,7 +120,7 @@ pub fn build(
   // write out the proxies
   for (specifier, proxied_module) in mappings.proxied_modules() {
     let proxy_path = mappings.local_path(specifier);
-    let module = graph.get(specifier).unwrap();
+    let module = graph.get(specifier).unwrap().esm().unwrap();
     let text =
       build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
@@ -140,6 +136,7 @@ pub fn build(
       &all_modules,
       &mappings,
       original_import_map,
+      jsx_import_source,
       parsed_source_cache,
     )?;
     environment.write_file(&import_map_path, &import_map_text)?;
@@ -186,7 +183,7 @@ fn validate_original_import_map(
 }
 
 fn build_proxy_module_source(
-  module: &Module,
+  module: &EsmModule,
   proxied_module: &ProxiedModule,
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<String, AnyError> {
@@ -212,13 +209,11 @@ fn build_proxy_module_source(
   writeln!(text, "export * from \"{relative_specifier}\";").unwrap();
 
   // add a default export if one exists in the module
-  if let Some(parsed_source) =
-    parsed_source_cache.get_parsed_source_from_module(module)?
-  {
-    if has_default_export(&parsed_source) {
-      writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
-        .unwrap();
-    }
+  let parsed_source =
+    parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+  if has_default_export(&parsed_source) {
+    writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
+      .unwrap();
   }
 
   Ok(text)
@@ -226,6 +221,7 @@ fn build_proxy_module_source(
 
 #[cfg(test)]
 mod test {
+  use crate::args::JsxImportSourceConfig;
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -382,6 +378,54 @@ mod test {
         ),
         ("/vendor/other/sub2/mod.ts", "export class Mod {}"),
         ("/vendor/other/sub2/other.js", "export class Other {}"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn remote_redirect_entrypoint() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            concat!(
+              "import * as test from 'https://x.nest.land/Yenv@1.0.0/mod.ts';\n",
+              "console.log(test)",
+            ),
+          )
+          .add_redirect("https://x.nest.land/Yenv@1.0.0/mod.ts", "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts")
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+            "export * from './src/mod.ts'",
+          )
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+            "export class Test {}",
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://x.nest.land/Yenv@1.0.0/mod.ts": "./arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+          "https://arweave.net/": "./arweave.net/"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts", "export * from './src/mod.ts'"),
+        (
+          "/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+          "export class Test {}",
+        ),
       ]),
     );
   }
@@ -1108,6 +1152,54 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_jsx_import_source() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.tsx");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.tsx", "const myComponent = <div></div>;");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts",
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/localhost/preact/jsx-runtime.ts",
+        "export function stuff() {}"
+      ),]),
+    );
+  }
+
+  #[tokio::test]
   async fn vendor_file_fails_loading_dynamic_import() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let err = builder
@@ -1125,7 +1217,7 @@ mod test {
       .unwrap();
 
     assert_eq!(
-      err.to_string(),
+      test_util::strip_ansi_codes(&err.to_string()),
       concat!(
         "500 Internal Server Error\n",
         "    at https://localhost/mod.ts:1:14"

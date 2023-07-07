@@ -16,11 +16,15 @@ use deno_core::serde_json;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 
+use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CliResolver;
+use crate::npm::CliNpmRegistryApi;
+use crate::npm::NpmResolution;
+use crate::resolver::CliGraphResolver;
 
 use super::build::VendorEnvironment;
 
@@ -181,6 +185,7 @@ pub struct VendorTestBuilder {
   loader: TestLoader,
   original_import_map: Option<ImportMap>,
   environment: TestVendorEnvironment,
+  jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
 
 impl VendorTestBuilder {
@@ -211,14 +216,23 @@ impl VendorTestBuilder {
     self
   }
 
+  pub fn set_jsx_import_source_config(
+    &mut self,
+    jsx_import_source_config: JsxImportSourceConfig,
+  ) -> &mut Self {
+    self.jsx_import_source_config = Some(jsx_import_source_config);
+    self
+  }
+
   pub async fn build(&mut self) -> Result<VendorOutput, AnyError> {
     let output_dir = make_path("/vendor");
     let roots = self.entry_points.clone();
     let loader = self.loader.clone();
-    let parsed_source_cache = ParsedSourceCache::new(None);
+    let parsed_source_cache = ParsedSourceCache::new_in_memory();
     let analyzer = parsed_source_cache.as_analyzer();
     let graph = build_test_graph(
       roots,
+      self.jsx_import_source_config.clone(),
       self.original_import_map.clone(),
       loader,
       &*analyzer,
@@ -230,6 +244,7 @@ impl VendorTestBuilder {
       &output_dir,
       self.original_import_map.as_ref(),
       None,
+      self.jsx_import_source_config.as_ref(),
       &self.environment,
     )?;
 
@@ -256,13 +271,29 @@ impl VendorTestBuilder {
 
 async fn build_test_graph(
   roots: Vec<ModuleSpecifier>,
+  jsx_import_source_config: Option<JsxImportSourceConfig>,
   original_import_map: Option<ImportMap>,
   mut loader: TestLoader,
   analyzer: &dyn deno_graph::ModuleAnalyzer,
 ) -> ModuleGraph {
-  let resolver =
-    original_import_map.map(|m| CliResolver::with_import_map(Arc::new(m)));
-  let mut graph = ModuleGraph::default();
+  let resolver = original_import_map.map(|original_import_map| {
+    let npm_registry_api = Arc::new(CliNpmRegistryApi::new_uninitialized());
+    let npm_resolution = Arc::new(NpmResolution::from_serialized(
+      npm_registry_api.clone(),
+      None,
+      None,
+    ));
+    CliGraphResolver::new(
+      jsx_import_source_config,
+      Some(Arc::new(original_import_map)),
+      false,
+      npm_registry_api,
+      npm_resolution,
+      Default::default(),
+      Default::default(),
+    )
+  });
+  let mut graph = ModuleGraph::new(GraphKind::All);
   graph
     .build(
       roots,

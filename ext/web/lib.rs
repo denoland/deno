@@ -2,25 +2,24 @@
 
 mod blob;
 mod compression;
+mod hr_timer_lock;
 mod message_port;
 mod timers;
 
 use deno_core::error::range_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::include_js_files;
 use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ByteString;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_core::ToJsBuffer;
 use deno_core::U16String;
-use deno_core::ZeroCopyBuf;
 
 use encoding_rs::CoderResult;
 use encoding_rs::Decoder;
@@ -30,6 +29,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::usize;
 
 use crate::blob::op_blob_create_object_url;
@@ -57,77 +57,74 @@ use crate::timers::op_timer_handle;
 use crate::timers::StartTime;
 pub use crate::timers::TimersPermission;
 
-/// Load and execute the javascript code.
-pub fn init<P: TimersPermission + 'static>(
-  blob_store: BlobStore,
-  maybe_location: Option<Url>,
-) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .dependencies(vec!["deno_webidl", "deno_console", "deno_url"])
-    .esm(include_js_files!(
-      "00_infra.js",
-      "01_dom_exception.js",
-      "01_mimesniff.js",
-      "02_event.js",
-      "02_structured_clone.js",
-      "02_timers.js",
-      "03_abort_signal.js",
-      "04_global_interfaces.js",
-      "05_base64.js",
-      "06_streams.js",
-      "08_text_encoding.js",
-      "09_file.js",
-      "10_filereader.js",
-      "11_blob_url.js",
-      "12_location.js",
-      "13_message_port.js",
-      "14_compression.js",
-      "15_performance.js",
-    ))
-    .ops(vec![
-      op_base64_decode::decl(),
-      op_base64_encode::decl(),
-      op_base64_atob::decl(),
-      op_base64_btoa::decl(),
-      op_encoding_normalize_label::decl(),
-      op_encoding_decode_single::decl(),
-      op_encoding_decode_utf8::decl(),
-      op_encoding_new_decoder::decl(),
-      op_encoding_decode::decl(),
-      op_encoding_encode_into::decl(),
-      op_encode_binary_string::decl(),
-      op_blob_create_part::decl(),
-      op_blob_slice_part::decl(),
-      op_blob_read_part::decl(),
-      op_blob_remove_part::decl(),
-      op_blob_create_object_url::decl(),
-      op_blob_revoke_object_url::decl(),
-      op_blob_from_object_url::decl(),
-      op_message_port_create_entangled::decl(),
-      op_message_port_post_message::decl(),
-      op_message_port_recv_message::decl(),
-      compression::op_compression_new::decl(),
-      compression::op_compression_write::decl(),
-      compression::op_compression_finish::decl(),
-      op_now::decl::<P>(),
-      op_timer_handle::decl(),
-      op_cancel_handle::decl(),
-      op_sleep::decl(),
-      op_transfer_arraybuffer::decl(),
-    ])
-    .state(move |state| {
-      state.put(blob_store.clone());
-      if let Some(location) = maybe_location.clone() {
-        state.put(Location(location));
-      }
-      state.put(StartTime::now());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_web,
+  deps = [ deno_webidl, deno_console, deno_url ],
+  parameters = [P: TimersPermission],
+  ops = [
+    op_base64_decode,
+    op_base64_encode,
+    op_base64_atob,
+    op_base64_btoa,
+    op_encoding_normalize_label,
+    op_encoding_decode_single,
+    op_encoding_decode_utf8,
+    op_encoding_new_decoder,
+    op_encoding_decode,
+    op_encoding_encode_into,
+    op_encode_binary_string,
+    op_blob_create_part,
+    op_blob_slice_part,
+    op_blob_read_part,
+    op_blob_remove_part,
+    op_blob_create_object_url,
+    op_blob_revoke_object_url,
+    op_blob_from_object_url,
+    op_message_port_create_entangled,
+    op_message_port_post_message,
+    op_message_port_recv_message,
+    compression::op_compression_new,
+    compression::op_compression_write,
+    compression::op_compression_finish,
+    op_now<P>,
+    op_timer_handle,
+    op_cancel_handle,
+    op_sleep,
+    op_transfer_arraybuffer,
+  ],
+  esm = [
+    "00_infra.js",
+    "01_dom_exception.js",
+    "01_mimesniff.js",
+    "02_event.js",
+    "02_structured_clone.js",
+    "02_timers.js",
+    "03_abort_signal.js",
+    "04_global_interfaces.js",
+    "05_base64.js",
+    "06_streams.js",
+    "08_text_encoding.js",
+    "09_file.js",
+    "10_filereader.js",
+    "12_location.js",
+    "13_message_port.js",
+    "14_compression.js",
+    "15_performance.js",
+  ],
+  options = {
+    blob_store: Arc<BlobStore>,
+    maybe_location: Option<Url>,
+  },
+  state = |state, options| {
+    state.put(options.blob_store);
+    if let Some(location) = options.maybe_location {
+      state.put(Location(location));
+    }
+    state.put(StartTime::now());
+  }
+);
 
 #[op]
-fn op_base64_decode(input: String) -> Result<ZeroCopyBuf, AnyError> {
+fn op_base64_decode(input: String) -> Result<ToJsBuffer, AnyError> {
   let mut s = input.into_bytes();
   let decoded_len = forgiving_base64_decode_inplace(&mut s)?;
   s.truncate(decoded_len);
@@ -146,7 +143,7 @@ fn op_base64_atob(mut s: ByteString) -> Result<ByteString, AnyError> {
 fn forgiving_base64_decode_inplace(
   input: &mut [u8],
 ) -> Result<usize, AnyError> {
-  let error: _ =
+  let error =
     || DomExceptionInvalidCharacterError::new("Failed to decode base64");
   let decoded =
     base64_simd::forgiving_decode_inplace(input).map_err(|_| error())?;
@@ -269,7 +266,7 @@ fn op_encoding_decode_single(
 #[op]
 fn op_encoding_new_decoder(
   state: &mut OpState,
-  label: String,
+  label: &str,
   fatal: bool,
   ignore_bom: bool,
 ) -> Result<ResourceId, AnyError> {
@@ -351,7 +348,7 @@ impl Resource for TextDecoderResource {
 }
 
 #[op(v8)]
-fn op_encoding_encode_into(
+fn op_encoding_encode_into_fallback(
   scope: &mut v8::HandleScope,
   input: serde_v8::Value,
   buffer: &mut [u8],
@@ -369,6 +366,45 @@ fn op_encoding_encode_into(
   ) as u32;
   out_buf[0] = nchars as u32;
   Ok(())
+}
+
+#[op(fast, slow = op_encoding_encode_into_fallback)]
+fn op_encoding_encode_into(
+  input: Cow<'_, str>,
+  buffer: &mut [u8],
+  out_buf: &mut [u32],
+) {
+  // Since `input` is already UTF-8, we can simply find the last UTF-8 code
+  // point boundary from input that fits in `buffer`, and copy the bytes up to
+  // that point.
+  let boundary = if buffer.len() >= input.len() {
+    input.len()
+  } else {
+    let mut boundary = buffer.len();
+
+    // The maximum length of a UTF-8 code point is 4 bytes.
+    for _ in 0..4 {
+      if input.is_char_boundary(boundary) {
+        break;
+      }
+      debug_assert!(boundary > 0);
+      boundary -= 1;
+    }
+
+    debug_assert!(input.is_char_boundary(boundary));
+    boundary
+  };
+
+  buffer[..boundary].copy_from_slice(input[..boundary].as_bytes());
+
+  // The `read` output parameter is measured in UTF-16 code units.
+  out_buf[0] = match input {
+    // Borrowed Cow strings are zero-copy views into the V8 heap.
+    // Thus, they are guarantee to be SeqOneByteString.
+    Cow::Borrowed(v) => v[..boundary].len() as u32,
+    Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
+  };
+  out_buf[1] = boundary as u32;
 }
 
 #[op(v8)]
