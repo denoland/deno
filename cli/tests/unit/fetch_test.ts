@@ -1918,14 +1918,17 @@ Deno.test(
 
     await assertRejects(
       async () => {
-        await fetch("http://localhost:4545/echo_server", {
+        const controller = new AbortController();
+        const promise = fetch("http://localhost:4545/echo_server", {
           body,
           method: "POST",
-          signal: AbortSignal.timeout(0),
+          signal: controller.signal,
         });
+        controller.abort();
+        await promise;
       },
       DOMException,
-      "Signal timed out.",
+      "The signal has been aborted",
     );
   },
 );
