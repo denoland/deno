@@ -428,8 +428,6 @@ function h2WsUpgrade(request) {
 }
 
 function h1WsUpgrade(request) {
-
-function h1WsUpgrade(request) {
   const inner = toInnerRequest(request);
   const upgrade = request.headers.get("upgrade");
   const upgradeHasWebSocketOption = upgrade !== null &&
