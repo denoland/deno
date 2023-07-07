@@ -1085,9 +1085,8 @@ pub async fn op_raw_write_vectored(
   buf1: JsBuffer,
   buf2: JsBuffer,
 ) -> Result<usize, AnyError> {
-  let state = state.borrow();
   let resource: Rc<UpgradeStream> =
-    state.resource_table.get::<UpgradeStream>(rid)?;
+    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
   let nwritten = resource.write_vectored(&buf1, &buf2).await?;
   Ok(nwritten)
 }
