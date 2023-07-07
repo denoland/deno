@@ -1584,7 +1584,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .num_args(1..)
             .action(ArgAction::Append)
             .use_value_delimiter(true)
-            .conflicts_with("rules")
             .help("Use set of rules with a tag"),
         )
         .arg(
