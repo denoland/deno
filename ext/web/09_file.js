@@ -34,7 +34,6 @@ const {
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype
   SafeFinalizationRegistry,
-  SafeRegExp,
   StringPrototypeCharAt,
   StringPrototypeSlice,
   Symbol,
