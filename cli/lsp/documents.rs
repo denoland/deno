@@ -656,7 +656,7 @@ fn recurse_dependents(
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SpecifierResolver {
   cache: HttpCache,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
@@ -698,7 +698,7 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
+    let cache_filename = self.cache.get_global_cache_filename(specifier)?;
     if redirect_limit > 0 && cache_filename.is_file() {
       let headers = CachedUrlMetadata::read(&cache_filename)
         .ok()
@@ -779,7 +779,7 @@ impl FileSystemDocuments {
       let path = get_document_path(cache, specifier)?;
       let fs_version = calculate_fs_version(&path)?;
       let bytes = fs::read(path).ok()?;
-      let cache_filename = cache.get_cache_filename(specifier)?;
+      let cache_filename = cache.get_global_cache_filename(specifier)?;
       let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
@@ -831,7 +831,7 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
@@ -864,8 +864,7 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: PathBuf) -> Self {
-    let cache = HttpCache::new(location);
+  pub fn new(cache: HttpCache) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -1859,7 +1858,8 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(location.to_path_buf());
+    let cache = HttpCache::new(location.to_path_buf());
+    let documents = Documents::new(cache);
     (documents, location)
   }
 

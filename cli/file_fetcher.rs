@@ -528,8 +528,8 @@ impl FileFetcher {
   }
 
   /// Get the location of the current HTTP cache associated with the fetcher.
-  pub fn get_http_cache_location(&self) -> PathBuf {
-    self.http_cache.location.clone()
+  pub fn get_http_cache_location(&self) -> &PathBuf {
+    self.http_cache.global_cache_dir_path()
   }
 
   /// A synchronous way to retrieve a source file, where if the file has already
@@ -1000,7 +1000,7 @@ mod tests {
   fn test_get_http_cache_location() {
     let (file_fetcher, temp_dir) = setup(CacheSetting::Use, None);
     let expected = temp_dir.path().join("deps").to_path_buf();
-    let actual = file_fetcher.get_http_cache_location();
+    let actual = file_fetcher.get_http_cache_location().to_path_buf();
     assert_eq!(actual, expected);
   }
 

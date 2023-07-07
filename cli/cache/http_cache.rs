@@ -14,6 +14,7 @@ use deno_core::url::Url;
 use std::fs;
 use std::fs::File;
 use std::io;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -176,7 +177,15 @@ impl HttpCache {
       url: url.to_string(),
       headers: headers_map,
     };
-    metadata.write(&cache_filename)
+    metadata.write(&cache_pathname)?;
+
+    if let Some(local_module_cache) = &self.paths.local_module_cache {
+      self.ensure_dir_exists(local_module_cache)?;
+      let cache_pathname = local_module_cache.join(&cache_filename);
+      util::fs::atomic_write_file(&cache_pathname, content, CACHE_PERM)?;
+    }
+
+    Ok(())
   }
 }
 

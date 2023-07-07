@@ -49,7 +49,7 @@ struct Metadata {
   version: Option<String>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct CacheMetadata {
   cache: HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
