@@ -1042,9 +1042,26 @@ impl UpgradeStream {
     buf2: &[u8],
   ) -> Result<usize, AnyError> {
     let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
-    let bufs = &[std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
-    let nwritten = wr.write_vectored(bufs).await?;
-    Ok(nwritten)
+
+    let total = buf1.len() + buf2.len();
+    let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+    let mut nwritten = wr.write_vectored(&bufs).await?;
+    if nwritten == total {
+      return Ok(nwritten);
+    }
+
+    // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
+    while nwritten <= buf1.len() {
+      bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
+      nwritten += wr.write_vectored(&bufs).await?;
+    }
+
+    // First buffer out of the way.
+    if nwritten < total && nwritten > buf1.len() {
+      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+    }
+
+    Ok(total)
   }
 }
 

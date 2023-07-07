@@ -193,7 +193,7 @@ export class LibuvStreamWrap extends HandleWrap {
    * @param allBuffers
    * @return An error status code.
    */
-  async writev(
+  writev(
     req: WriteWrap<LibuvStreamWrap>,
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
@@ -205,21 +205,20 @@ export class LibuvStreamWrap extends HandleWrap {
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
-      const nwritten = await ops.op_raw_write_vectored(
+      ops.op_raw_write_vectored(
         this[kStreamBaseField]!.rid,
         chunks[0],
         chunks[1],
-      );
-      console.log("nwritten", nwritten);
+      ).then((nwritten) => {
+        try {
+          req.oncomplete(0);
+        } catch {
+          // swallow callback errors.
+        }
 
-      try {
-        req.oncomplete(0);
-      } catch {
-        // swallow callback errors.
-      }
-
-      streamBaseState[kBytesWritten] = nwritten;
-      this.bytesWritten += nwritten;
+        streamBaseState[kBytesWritten] = nwritten;
+        this.bytesWritten += nwritten;
+      });
 
       return 0;
     }
