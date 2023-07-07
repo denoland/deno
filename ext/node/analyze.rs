@@ -202,7 +202,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{export}\"]"),
+          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -366,9 +366,16 @@ fn esm_code_from_top_level_decls(
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
   HashSet::from([
+    "abstract",
+    "arguments",
+    "async",
+    "await",
+    "boolean",
     "break",
+    "byte",
     "case",
     "catch",
+    "char",
     "class",
     "const",
     "continue",
@@ -376,41 +383,56 @@ static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
     "default",
     "delete",
     "do",
+    "double",
     "else",
+    "enum",
+    "eval",
     "export",
     "extends",
     "false",
+    "final",
     "finally",
+    "float",
     "for",
     "function",
+    "get",
+    "goto",
     "if",
+    "implements",
     "import",
     "in",
     "instanceof",
+    "int",
+    "interface",
+    "let",
+    "long",
+    "native",
     "new",
     "null",
+    "package",
+    "private",
+    "protected",
+    "public",
     "return",
+    "set",
+    "short",
+    "static",
     "super",
     "switch",
+    "synchronized",
     "this",
     "throw",
+    "throws",
+    "transient",
     "true",
     "try",
     "typeof",
     "var",
     "void",
+    "volatile",
     "while",
     "with",
     "yield",
-    "let",
-    "enum",
-    "implements",
-    "interface",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "static",
   ])
 });
 
@@ -438,7 +460,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{name}\" }};"
+      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
+      escape_for_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -496,6 +519,9 @@ fn not_found(path: &str, referrer: &Path) -> AnyError {
   std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
+fn escape_for_double_quote_string(text: &str) -> String {
+  text.replace('\\', "\\\\").replace('"', "\\\"")
+}
 #[cfg(test)]
 mod tests {
   use super::*;

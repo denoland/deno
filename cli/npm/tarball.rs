@@ -107,8 +107,26 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
         )
       }
     }
-    if entry.header().entry_type() == EntryType::Regular {
-      entry.unpack(&absolute_path)?;
+
+    let entry_type = entry.header().entry_type();
+    match entry_type {
+      EntryType::Regular => {
+        entry.unpack(&absolute_path)?;
+      }
+      EntryType::Symlink | EntryType::Link => {
+        // At the moment, npm doesn't seem to support uploading hardlinks or
+        // symlinks to the npm registry. If ever adding symlink or hardlink
+        // support, we will need to validate that the hardlink and symlink
+        // target are within the package directory.
+        log::warn!(
+          "Ignoring npm tarball entry type {:?} for '{}'",
+          entry_type,
+          absolute_path.display()
+        )
+      }
+      _ => {
+        // ignore
+      }
     }
   }
   Ok(())

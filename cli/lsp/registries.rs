@@ -29,12 +29,11 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
@@ -74,7 +73,7 @@ fn base_url(url: &Url) -> String {
 }
 
 #[derive(Debug)]
-enum CompletorType {
+enum CompletionType {
   Literal(String),
   Key {
     key: Key,
@@ -85,25 +84,25 @@ enum CompletorType {
 
 /// Determine if a completion at a given offset is a string literal or a key/
 /// variable.
-fn get_completor_type(
+fn get_completion_type(
   offset: usize,
   tokens: &[Token],
   match_result: &MatchResult,
-) -> Option<CompletorType> {
+) -> Option<CompletionType> {
   let mut len = 0_usize;
   for (index, token) in tokens.iter().enumerate() {
     match token {
       Token::String(s) => {
         len += s.chars().count();
         if offset < len {
-          return Some(CompletorType::Literal(s.clone()));
+          return Some(CompletionType::Literal(s.clone()));
         }
       }
       Token::Key(k) => {
         if let Some(prefix) = &k.prefix {
           len += prefix.chars().count();
           if offset < len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: Some(prefix.clone()),
               index,
@@ -120,7 +119,7 @@ fn get_completor_type(
             .unwrap_or_default();
           len += value.chars().count();
           if offset <= len {
-            return Some(CompletorType::Key {
+            return Some(CompletionType::Key {
               key: k.clone(),
               prefix: None,
               index,
@@ -130,7 +129,7 @@ fn get_completor_type(
         if let Some(suffix) = &k.suffix {
           len += suffix.chars().count();
           if offset <= len {
-            return Some(CompletorType::Literal(suffix.clone()));
+            return Some(CompletionType::Literal(suffix.clone()));
           }
         }
       }
@@ -427,19 +426,19 @@ impl Default for ModuleRegistry {
     let dir = DenoDir::new(None).unwrap();
     let location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    Self::new(&location, http_client)
+    Self::new(location, http_client)
   }
 }
 
 impl ModuleRegistry {
-  pub fn new(location: &Path, http_client: Arc<HttpClient>) -> Self {
+  pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
     let mut file_fetcher = FileFetcher::new(
       http_cache,
       CacheSetting::RespectHeaders,
       true,
       http_client,
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
@@ -688,17 +687,17 @@ impl ModuleRegistry {
                 .ok()?;
               if let Some(match_result) = matcher.matches(path) {
                 did_match = true;
-                let completor_type =
-                  get_completor_type(path_offset, &tokens, &match_result);
-                match completor_type {
-                  Some(CompletorType::Literal(s)) => self.complete_literal(
+                let completion_type =
+                  get_completion_type(path_offset, &tokens, &match_result);
+                match completion_type {
+                  Some(CompletionType::Literal(s)) => self.complete_literal(
                     s,
                     &mut completions,
                     current_specifier,
                     offset,
                     range,
                   ),
-                  Some(CompletorType::Key { key, prefix, index }) => {
+                  Some(CompletionType::Key { key, prefix, index }) => {
                     let maybe_url = registry.get_url_for_key(&key);
                     if let Some(url) = maybe_url {
                       if let Some(items) = self
@@ -1247,9 +1246,9 @@ mod tests {
   async fn test_registry_completions_origin_match() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1308,9 +1307,9 @@ mod tests {
   async fn test_registry_completions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable("http://localhost:4545/")
       .await
@@ -1531,9 +1530,9 @@ mod tests {
   async fn test_registry_completions_key_first() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-key-first.json")
       .await
@@ -1601,9 +1600,9 @@ mod tests {
   async fn test_registry_completions_complex() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let mut module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     module_registry
       .enable_custom("http://localhost:4545/lsp/registries/deno-import-intellisense-complex.json")
       .await
@@ -1652,9 +1651,9 @@ mod tests {
   async fn test_check_origin_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("http://localhost:4545").await;
     assert!(result.is_ok());
   }
@@ -1663,9 +1662,9 @@ mod tests {
   async fn test_check_origin_not_supported() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let location = temp_dir.path().join("registries");
+    let location = temp_dir.path().join("registries").to_path_buf();
     let module_registry =
-      ModuleRegistry::new(&location, Arc::new(HttpClient::new(None, None)));
+      ModuleRegistry::new(location, Arc::new(HttpClient::new(None, None)));
     let result = module_registry.check_origin("https://example.com").await;
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();

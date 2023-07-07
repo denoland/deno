@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-import { setUnrefTimeout } from "ext:deno_node/timers.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { setUnrefTimeout } from "node:timers";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 let utcCache: string | undefined;

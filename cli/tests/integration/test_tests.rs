@@ -3,9 +3,11 @@
 use deno_core::url::Url;
 use test_util as util;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests;
 use util::wildcard_match;
 use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn no_color() {
@@ -508,3 +510,75 @@ itest!(test_no_lock {
   cwd: Some("lockfile/basic"),
   output: "lockfile/basic/test.nolock.out",
 });
+
+#[test]
+fn test_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bar.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bar.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn test_with_glob_config_and_flags() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json --ignore=glob/nested/**/bar.ts")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json glob/data/test1.?s")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn conditionally_loads_type_graph() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("test --reload -L debug --no-check run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}

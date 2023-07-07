@@ -1,7 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file camelcase prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
@@ -37,11 +38,7 @@ const {
   op_node_gen_prime_async,
   op_node_check_prime_bytes_async,
   op_node_check_prime_async,
-} = Deno.core.generateAsyncOpHandler(
-  "op_node_gen_prime_async",
-  "op_node_check_prime_bytes_async",
-  "op_node_check_prime_async",
-);
+} = Deno.core.ensureFastOps();
 
 export type LargeNumberLike =
   | ArrayBufferView

@@ -100,7 +100,7 @@ Deno.test(
       promise.resolve();
     };
 
-    await Promise.all([promise, server]);
+    await Promise.all([promise, server.finished]);
     ws.close();
   },
 );
@@ -145,12 +145,62 @@ Deno.test({
   ws.onclose = () => {
     promise.resolve();
   };
-  await Promise.all([promise, server]);
+  await Promise.all([promise, server.finished]);
+});
+
+// https://github.com/denoland/deno/issues/19483
+Deno.test({
+  sanitizeOps: false,
+  sanitizeResources: false,
+}, async function websocketCloseFlushes() {
+  const promise = deferred();
+
+  const ac = new AbortController();
+  const listeningPromise = deferred();
+
+  const server = Deno.serve({
+    handler: (req) => {
+      const { response, socket } = Deno.upgradeWebSocket(req);
+      socket.onopen = () => socket.send("Hello");
+      socket.onmessage = () => {
+        socket.send("Bye");
+        socket.close();
+      };
+      socket.onclose = () => ac.abort();
+      socket.onerror = () => fail();
+      return response;
+    },
+    signal: ac.signal,
+    onListen: () => listeningPromise.resolve(),
+    hostname: "localhost",
+    port: 4247,
+  });
+
+  await listeningPromise;
+
+  const ws = new WebSocket("ws://localhost:4247/");
+  assertEquals(ws.url, "ws://localhost:4247/");
+  let seenBye = false;
+  ws.onerror = () => fail();
+  ws.onmessage = ({ data }) => {
+    if (data == "Hello") {
+      ws.send("Hello!");
+    } else {
+      assertEquals(data, "Bye");
+      seenBye = true;
+    }
+  };
+  ws.onclose = () => {
+    promise.resolve();
+  };
+  await Promise.all([promise, server.finished]);
+
+  assert(seenBye);
 });
 
 Deno.test(
   { sanitizeOps: false },
-  function websocketConstructorWithPrototypePollusion() {
+  function websocketConstructorWithPrototypePollution() {
     const originalSymbolIterator = Array.prototype[Symbol.iterator];
     try {
       Array.prototype[Symbol.iterator] = () => {

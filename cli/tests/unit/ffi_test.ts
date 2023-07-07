@@ -29,7 +29,7 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
     Deno.dlopen("/usr/lib/libc.so.6", {});
   }, Deno.errors.PermissionDenied);
   const fnptr = new Deno.UnsafeFnPointer(
-    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    // @ts-expect-error: Not NonNullable but null check is after permissions check.
     null,
     {
       parameters: ["u32", "pointer"],
@@ -43,7 +43,7 @@ Deno.test({ permissions: { ffi: false } }, function ffiPermissionDenied() {
     Deno.UnsafePointer.of(new Uint8Array(0));
   }, Deno.errors.PermissionDenied);
   const ptrView = new Deno.UnsafePointerView(
-    // @ts-expect-error: Not NonNullable but null check is after premissions check.
+    // @ts-expect-error: Not NonNullable but null check is after permissions check.
     null,
   );
   assertThrows(() => {

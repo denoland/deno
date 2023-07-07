@@ -93,10 +93,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
         builder
           .append_dir_all("package", &version_folder)
           .with_context(|| {
-            format!(
-              "Error adding tarball for directory: {}",
-              version_folder.display()
-            )
+            format!("Error adding tarball for directory: {}", version_folder)
           })?;
         builder.finish()?;
       }
@@ -128,10 +125,7 @@ fn get_npm_package(package_name: &str) -> Result<Option<CustomNpmPackage>> {
     let package_json_path = version_folder.join("package.json");
     let package_json_text = fs::read_to_string(&package_json_path)
       .with_context(|| {
-        format!(
-          "Error reading package.json at {}",
-          package_json_path.display()
-        )
+        format!("Error reading package.json at {}", package_json_path)
       })?;
     let mut version_info: serde_json::Map<String, serde_json::Value> =
       serde_json::from_str(&package_json_text)?;

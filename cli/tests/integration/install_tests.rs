@@ -11,7 +11,7 @@ use test_util::TempDir;
 fn install_basic() {
   let _guard = util::http_server();
   let temp_dir = TempDir::new();
-  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+  let temp_dir_str = temp_dir.path().to_string();
 
   // ensure a lockfile doesn't get created or updated locally
   temp_dir.write("deno.json", "{}");
@@ -44,7 +44,7 @@ fn install_basic() {
     file_path = file_path.with_extension("cmd");
   }
 
-  let content = fs::read_to_string(&file_path).unwrap();
+  let content = file_path.read_to_string();
   // ensure there's a trailing newline so the shell script can be
   // more versatile.
   assert_eq!(content.chars().last().unwrap(), '\n');
@@ -87,7 +87,7 @@ fn install_basic() {
 fn install_custom_dir_env_var() {
   let _guard = util::http_server();
   let temp_dir = TempDir::new();
-  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+  let temp_dir_str = temp_dir.path().to_string();
 
   let status = util::deno_cmd()
     .current_dir(util::root_path()) // different cwd
@@ -205,7 +205,7 @@ fn installer_test_remote_module_run() {
 fn check_local_by_default() {
   let _guard = util::http_server();
   let temp_dir = TempDir::new();
-  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+  let temp_dir_str = temp_dir.path().to_string();
 
   let status = util::deno_cmd()
     .current_dir(temp_dir.path())
@@ -225,7 +225,7 @@ fn check_local_by_default() {
 fn check_local_by_default2() {
   let _guard = util::http_server();
   let temp_dir = TempDir::new();
-  let temp_dir_str = temp_dir.path().to_string_lossy().to_string();
+  let temp_dir_str = temp_dir.path().to_string();
 
   let status = util::deno_cmd()
     .current_dir(temp_dir.path())

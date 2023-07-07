@@ -27,8 +27,11 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
@@ -36,6 +39,9 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+
+const core = globalThis.Deno.core;
+const { ops } = core;
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -51,7 +57,7 @@ export interface Closer {
 
 type Ref = { ref(): void; unref(): void };
 
-enum StreamBaseStateFields {
+const enum StreamBaseStateFields {
   kReadBytesOrError,
   kArrayBufferOffset,
   kBytesWritten,
@@ -192,6 +198,31 @@ export class LibuvStreamWrap extends HandleWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
+    const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    // Fast case optimization: two chunks, and all buffers.
+    if (chunks.length === 2 && allBuffers && supportsWritev) {
+      // String chunks.
+      if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
+      if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
+
+      ops.op_raw_write_vectored(
+        this[kStreamBaseField]!.rid,
+        chunks[0],
+        chunks[1],
+      ).then((nwritten) => {
+        try {
+          req.oncomplete(0);
+        } catch {
+          // swallow callback errors.
+        }
+
+        streamBaseState[kBytesWritten] = nwritten;
+        this.bytesWritten += nwritten;
+      });
+
+      return 0;
+    }
+
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 
@@ -276,7 +307,7 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = new Uint8Array(SUGGESTED_SIZE);
+    let buf = BUF;
 
     let nread: number | null;
     try {
@@ -372,3 +403,5 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
+
+const BUF = new Uint8Array(SUGGESTED_SIZE);

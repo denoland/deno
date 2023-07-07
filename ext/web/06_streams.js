@@ -62,6 +62,7 @@ const {
   // SharedArrayBufferPrototype,
   Symbol,
   SymbolAsyncIterator,
+  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -1261,6 +1262,7 @@ function readableByteStreamControllerEnqueueClonedChunkToQueue(
       );
     } else {
       // TODO(lucacasonato): add SharedArrayBuffer to primordials
+      // deno-lint-ignore prefer-primordials
       cloneResult = buffer.slice(byteOffset, byteOffset + byteLength);
     }
   } catch (e) {
@@ -4779,6 +4781,30 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
+async function* createAsyncFromSyncIterator(syncIterator) {
+  // deno-lint-ignore prefer-primordials
+  yield* syncIterator;
+}
+
+// Ref: https://tc39.es/ecma262/#sec-getiterator
+function getIterator(obj, async = false) {
+  if (async) {
+    if (obj[SymbolAsyncIterator] === undefined) {
+      if (obj[SymbolIterator] === undefined) {
+        throw new TypeError("No iterator found");
+      }
+      return createAsyncFromSyncIterator(obj[SymbolIterator]());
+    } else {
+      return obj[SymbolAsyncIterator]();
+    }
+  } else {
+    if (obj[SymbolIterator] === undefined) {
+      throw new TypeError("No iterator found");
+    }
+    return obj[SymbolIterator]();
+  }
+}
+
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -4860,6 +4886,43 @@ class ReadableStream {
         sizeAlgorithm,
       );
     }
+  }
+
+  static from(asyncIterable) {
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to call 'ReadableStream.from'",
+    );
+    asyncIterable = webidl.converters.any(asyncIterable);
+
+    const iterator = getIterator(asyncIterable, true);
+
+    const stream = createReadableStream(() => undefined, async () => {
+      // deno-lint-ignore prefer-primordials
+      const res = await iterator.next();
+      if (typeof res !== "object") {
+        throw new TypeError("iterator.next value is not an object");
+      }
+      if (res.done) {
+        readableStreamDefaultControllerClose(stream[_controller]);
+      } else {
+        readableStreamDefaultControllerEnqueue(stream[_controller], res.value);
+      }
+    }, async (reason) => {
+      if (typeof iterator.return === "undefined") {
+        return undefined;
+      } else {
+        // deno-lint-ignore prefer-primordials
+        const res = await iterator.return(reason);
+        if (typeof res !== "object") {
+          throw new TypeError("iterator.return value is not an object");
+        } else {
+          return undefined;
+        }
+      }
+    }, 0);
+    return stream;
   }
 
   /** @returns {boolean} */

@@ -128,16 +128,11 @@ where
   let mut current_path = from.as_path();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
-    if !parent.ends_with("/node_modules") {
+    if !parent.ends_with("node_modules") {
       paths.push(parent.join("node_modules").to_string_lossy().to_string());
-      current_path = parent;
-      maybe_parent = current_path.parent();
     }
-  }
-
-  if !cfg!(windows) {
-    // Append /node_modules to handle root paths.
-    paths.push("/node_modules".to_string());
+    current_path = parent;
+    maybe_parent = current_path.parent();
   }
 
   Ok(paths)
@@ -468,12 +463,12 @@ where
   {
     modules_path
   } else {
-    let orignal = modules_path.clone();
+    let original = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
     if fs.is_dir(Path::new(&mod_dir)) {
       mod_dir
     } else {
-      orignal
+      original
     }
   };
   let pkg = node_resolver.load_package_json(
