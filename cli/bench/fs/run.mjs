@@ -63,4 +63,8 @@ const readFileSync = getFunction("readFileSync");
 writeFileSync("test", new Uint8Array(1024), { truncate: true });
 bench(() => readFileSync("test"));
 
-writeFileSync(new URL(`./${runtime}.json`, import.meta.url), new TextEncoder().encode(JSON.stringify(values, null, 2)), { truncate: true });
+writeFileSync(
+  new URL(`./${runtime}.json`, import.meta.url),
+  new TextEncoder().encode(JSON.stringify(values, null, 2)),
+  { truncate: true },
+);
