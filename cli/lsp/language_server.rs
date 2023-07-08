@@ -184,7 +184,7 @@ struct LspConfigFileInfo {
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -610,11 +610,12 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let documents = Documents::new(location.clone());
     let deps_http_cache = HttpCache::new(location);
+    let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
