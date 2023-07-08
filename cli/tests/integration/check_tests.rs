@@ -48,6 +48,16 @@ itest!(declaration_header_file_with_no_exports {
   output_str: Some(""),
 });
 
+itest!(check_jsximportsource_importmap_config {
+  args: "check --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
+  output_str: Some(""),
+});
+
+itest!(bundle_jsximportsource_importmap_config {
+  args: "bundle --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
+  output: "check/jsximportsource_importmap_config/main.bundle.js",
+});
+
 itest!(check_npm_install_diagnostics {
   args: "check --quiet check/npm_install_diagnostics/main.ts",
   output: "check/npm_install_diagnostics/main.out",

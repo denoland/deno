@@ -91,7 +91,7 @@ class Zlib {
     switch (err) {
       case Z_BUF_ERROR:
         this.#error("unexpected end of file", err);
-        return false;      
+        return false;
       case Z_OK:
       case Z_STREAM_END:
         // normal statuses, not fatal
@@ -141,8 +141,8 @@ class Zlib {
     level,
     memLevel,
     strategy,
-    dictionary, 
-  ) { 
+    dictionary,
+  ) {
     const err = ops.op_zlib_init(
       this.#handle,
       level,
