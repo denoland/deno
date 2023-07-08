@@ -239,4 +239,3 @@ export const initStdin = () => {
 
   return stdin;
 };
-
