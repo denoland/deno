@@ -8,6 +8,12 @@ use deno_core::v8::MapFnTo;
 
 use crate::NodeResolver;
 
+// NOTE(bartlomieju): somehow calling `.map_fn_to()` multiple times on a function
+// returns two different pointers. That shouldn't be the case as `.map_fn_to()`
+// creates a thin wrapper that is a pure function. @piscisaureus suggests it
+// might be a bug in Rust compiler; so for now we just create and store
+// these mapped functions per-thread. We should revisit it in the future and
+// ideally remove altogether.
 thread_local! {
   pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = getter.map_fn_to();
   pub static SETTER_MAP_FN: v8::GenericNamedPropertySetterCallback<'static> = setter.map_fn_to();
