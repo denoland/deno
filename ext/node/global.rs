@@ -8,6 +8,16 @@ use deno_core::v8::MapFnTo;
 
 use crate::NodeResolver;
 
+thread_local! {
+  pub static GETTER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = getter.map_fn_to();
+  pub static SETTER_MAP_FN: v8::GenericNamedPropertySetterCallback<'static> = setter.map_fn_to();
+  pub static QUERY_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = query.map_fn_to();
+  pub static DELETER_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = deleter.map_fn_to();
+  pub static ENUMERATOR_MAP_FN: v8::GenericNamedPropertyEnumeratorCallback<'static> = enumerator.map_fn_to();
+  pub static DEFINER_MAP_FN: v8::GenericNamedPropertyDefinerCallback<'static> = definer.map_fn_to();
+  pub static DESCRIPTOR_MAP_FN: v8::GenericNamedPropertyGetterCallback<'static> = descriptor.map_fn_to();
+}
+
 /// Convert an ASCII string to a UTF-16 byte encoding of the string.
 const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
   let mut out = [0_u16; N];
@@ -90,18 +100,20 @@ pub fn global_template_middleware<'s>(
   assert_eq!(template.internal_field_count(), 0);
   template.set_internal_field_count(4);
 
-  let config = v8::NamedPropertyHandlerConfiguration::new()
-    .flags(
-      v8::PropertyHandlerFlags::NON_MASKING
-        | v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT,
-    )
-    .getter_raw(getter.map_fn_to())
-    .setter_raw(setter.map_fn_to())
-    .query_raw(query.map_fn_to())
-    .deleter_raw(deleter.map_fn_to())
-    .enumerator_raw(enumerator.map_fn_to())
-    .definer_raw(definer.map_fn_to())
-    .descriptor_raw(descriptor.map_fn_to());
+  let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
+    v8::PropertyHandlerFlags::NON_MASKING
+      | v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT,
+  );
+
+  config = GETTER_MAP_FN.with(|getter| config.getter_raw(*getter));
+  config = SETTER_MAP_FN.with(|setter| config.setter_raw(*setter));
+  config = QUERY_MAP_FN.with(|query| config.query_raw(*query));
+  config = DELETER_MAP_FN.with(|deleter| config.deleter_raw(*deleter));
+  config =
+    ENUMERATOR_MAP_FN.with(|enumerator| config.enumerator_raw(*enumerator));
+  config = DEFINER_MAP_FN.with(|definer| config.definer_raw(*definer));
+  config =
+    DESCRIPTOR_MAP_FN.with(|descriptor| config.descriptor_raw(*descriptor));
 
   template.set_named_property_handler(config);
 

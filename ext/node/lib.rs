@@ -16,7 +16,6 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
-use deno_core::v8::MapFnTo;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
@@ -520,29 +519,44 @@ deno_core::extension!(deno_node,
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
   customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.external_references(vec![
-      ExternalReference {
-        named_getter: global::getter.map_fn_to(),
-      },
-      ExternalReference {
-        named_setter: global::setter.map_fn_to(),
-      },
-      ExternalReference {
-        named_getter: global::query.map_fn_to(),
-      },
-      ExternalReference {
-        named_getter: global::deleter.map_fn_to(),
-      },
-      ExternalReference {
-        enumerator: global::enumerator.map_fn_to(),
-      },
-      ExternalReference {
-        named_definer: global::definer.map_fn_to(),
-      },
-      ExternalReference {
-        named_getter: global::descriptor.map_fn_to(),
-      },  
-    ]);
+    let mut external_references = Vec::with_capacity(7);
+
+    global::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    global::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    global::QUERY_MAP_FN.with(|query| {
+      external_references.push(ExternalReference {
+        named_getter: *query,
+      });
+    });
+    global::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    global::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    global::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+    ext.external_references(external_references);
   },
 );
 
