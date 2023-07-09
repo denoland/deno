@@ -519,29 +519,31 @@ deno_core::extension!(deno_node,
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,
-  external_references = [
-    ExternalReference {
-      named_getter: global::getter.map_fn_to(),
-    },
-    ExternalReference {
-      named_setter: global::setter.map_fn_to(),
-    },
-    ExternalReference {
-      named_getter: global::query.map_fn_to(),
-    },
-    ExternalReference {
-      named_getter: global::deleter.map_fn_to(),
-    },
-    ExternalReference {
-      enumerator: global::enumerator.map_fn_to(),
-    },
-    ExternalReference {
-      named_definer: global::definer.map_fn_to(),
-    },
-    ExternalReference {
-      named_getter: global::descriptor.map_fn_to(),
-    },
-  ]
+  customizer = |ext: &mut deno_core::ExtensionBuilder| {
+    ext.external_references(vec![
+      ExternalReference {
+        named_getter: global::getter.map_fn_to(),
+      },
+      ExternalReference {
+        named_setter: global::setter.map_fn_to(),
+      },
+      ExternalReference {
+        named_getter: global::query.map_fn_to(),
+      },
+      ExternalReference {
+        named_getter: global::deleter.map_fn_to(),
+      },
+      ExternalReference {
+        enumerator: global::enumerator.map_fn_to(),
+      },
+      ExternalReference {
+        named_definer: global::definer.map_fn_to(),
+      },
+      ExternalReference {
+        named_getter: global::descriptor.map_fn_to(),
+      },  
+    ]);
+  },
 );
 
 pub fn initialize_runtime(
