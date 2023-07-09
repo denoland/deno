@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::Op;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::task::spawn_blocking;
@@ -89,7 +90,7 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::decl(),
+    "op_print" => op_print::DECL,
     _ => op,
   },
   state = |state, options| {

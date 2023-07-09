@@ -3,6 +3,7 @@
 use super::utils::into_string;
 use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
+use deno_core::Op;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -54,10 +55,7 @@ deno_core::extension!(
   deno_os_worker,
   ops_fn = deno_ops,
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" => deno_core::OpDecl {
-      v8_fn_ptr: deno_core::op_void_sync::v8_fn_ptr as _,
-      ..op
-    },
+    "op_exit" | "op_set_exit_code" => op.with_implementation_from(&deno_core::op_void_sync::DECL),
     _ => op,
   },
 );
