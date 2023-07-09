@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
+use deno_core::v8::MapFnTo;
 
 use crate::NodeResolver;
 
@@ -94,13 +95,13 @@ pub fn global_template_middleware<'s>(
       v8::PropertyHandlerFlags::NON_MASKING
         | v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT,
     )
-    .getter(getter)
-    .setter(setter)
-    .query(query)
-    .deleter(deleter)
-    .enumerator(enumerator)
-    .definer(definer)
-    .descriptor(descriptor);
+    .getter_raw(getter.map_fn_to())
+    .setter_raw(setter.map_fn_to())
+    .query_raw(query.map_fn_to())
+    .deleter_raw(deleter.map_fn_to())
+    .enumerator_raw(enumerator.map_fn_to())
+    .definer_raw(definer.map_fn_to())
+    .descriptor_raw(descriptor.map_fn_to());
 
   template.set_named_property_handler(config);
 
