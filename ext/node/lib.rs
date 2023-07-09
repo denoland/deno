@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-#![allow(clippy::manual_range_contains)]
-
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
