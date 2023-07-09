@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::Op;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::task::spawn_blocking;
@@ -11,6 +10,7 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;

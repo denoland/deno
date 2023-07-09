@@ -3,12 +3,12 @@
 use super::utils::into_string;
 use crate::permissions::PermissionsContainer;
 use crate::worker::ExitCode;
-use deno_core::Op;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -55,7 +55,8 @@ deno_core::extension!(
   deno_os_worker,
   ops_fn = deno_ops,
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" => op.with_implementation_from(&deno_core::op_void_sync::DECL),
+    "op_exit" | "op_set_exit_code" =>
+      op.with_implementation_from(&deno_core::op_void_sync::DECL),
     _ => op,
   },
 );
