@@ -225,7 +225,7 @@ fn is_managed_key(
     return false;
   };
   let len = str.length();
-  
+
   #[allow(clippy::manual_range_contains)]
   if len < SHORTEST_MANAGED_GLOBAL || len > LONGEST_MANAGED_GLOBAL {
     return false;
