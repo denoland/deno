@@ -221,6 +221,7 @@ pub struct TestFlags {
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_ops: bool,
   pub watch: Option<WatchFlags>,
+  pub junit_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1849,6 +1850,16 @@ Directory arguments are expanded to all contained files matching the glob
     )
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
+    .arg(
+      Arg::new("junit")
+        .long("junit")
+        .value_name("PATH")
+        .value_hint(ValueHint::FilePath)
+        .help("Write a JUnit XML test report to PATH (default: junit.xml)")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("junit.xml")
+    )
   )
 }
 
@@ -3035,6 +3046,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Vec::new()
   };
 
+  let junit_path = matches.remove_one::<String>("junit");
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -3047,6 +3060,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     concurrent_jobs,
     trace_ops,
     watch: watch_arg_parse(matches),
+    junit_path,
   });
 }
 
@@ -5885,6 +5899,7 @@ mod tests {
           trace_ops: true,
           coverage_dir: Some("cov".to_string()),
           watch: Default::default(),
+          junit_path: None,
         }),
         unstable: true,
         no_prompt: true,
@@ -5963,6 +5978,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -5995,6 +6011,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6031,6 +6048,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6061,6 +6079,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6092,6 +6111,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6122,6 +6142,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6154,6 +6175,67 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: true,
           }),
+          junit_path: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_junit_default() {
+    let r = flags_from_vec(svec!["deno", "test", "--junit"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          concurrent_jobs: None,
+          trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
+          junit_path: Some("junit.xml".to_string()),
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_junit_with_path() {
+    let r = flags_from_vec(svec!["deno", "test", "--junit=test.xml"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          concurrent_jobs: None,
+          trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
+          junit_path: Some("test.xml".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,

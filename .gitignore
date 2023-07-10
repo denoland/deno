@@ -30,4 +30,4 @@ gclient_config.py_entries
 /ext/websocket/autobahn/reports
 
 # TODO: Remove before merge
-test.xml
+junit.xml

@@ -346,6 +346,7 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
+  junit_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -414,13 +415,18 @@ trait TestReporter {
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
-  Box::new(CompoundTestReporter::new(vec![
-    Box::new(PrettyTestReporter::new(
-      options.concurrent_jobs.get() > 1,
-      options.log_level != Some(Level::Error),
-    )),
-    Box::new(JunitTestReporter::new()),
-  ]))
+  let pretty = Box::new(PrettyTestReporter::new(
+    options.concurrent_jobs.get() > 1,
+    options.log_level != Some(Level::Error),
+  ));
+  if let Some(junit_path) = &options.junit_path {
+    Box::new(CompoundTestReporter::new(vec![
+      pretty,
+      Box::new(JunitTestReporter::new(junit_path.clone())),
+    ]))
+  } else {
+    pretty
+  }
 }
 
 struct CompoundTestReporter {
@@ -1071,13 +1077,15 @@ impl TestReporter for PrettyTestReporter {
 }
 
 struct JunitTestReporter {
+  path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
   cases: IndexMap<usize, quick_junit::TestCase>,
 }
 
 impl JunitTestReporter {
-  fn new() -> Self {
+  fn new(path: String) -> Self {
     Self {
+      path,
       cases: IndexMap::new(),
     }
   }
@@ -1187,15 +1195,16 @@ impl TestReporter for JunitTestReporter {
         });
     }
 
-    let mut report = quick_junit::Report::new("Deno Test");
+    let mut report = quick_junit::Report::new("deno test");
     report.set_time(*elapsed).add_test_suites(
       suites
         .values()
         .cloned()
         .collect::<Vec<quick_junit::TestSuite>>(),
     );
-    let mut file = std::fs::File::create("test.xml").unwrap();
-    let _ = file.write_all(report.to_string().unwrap().as_bytes());
+    if let Ok(mut file) = std::fs::File::create(self.path.clone()) {
+      let _ = file.write_all(report.to_string().unwrap().as_bytes());
+    }
   }
 
   fn report_sigint(
@@ -1998,6 +2007,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
@@ -2128,6 +2138,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
