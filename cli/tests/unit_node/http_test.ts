@@ -706,3 +706,17 @@ Deno.test(
     await promise;
   },
 );
+
+Deno.test(
+  "[node/http] client end with callback",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+
+    const request = https.request("http://localhost:4545/http_version");
+    request.on("error", promise.reject);
+    request.end(promise.resolve);
+
+    await promise;
+  },
+);
