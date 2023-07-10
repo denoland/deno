@@ -36,10 +36,30 @@ use crate::util::checksum;
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  if let Some(specifier) = info_flags.file {
+  if let Some(mut specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
+    let maybe_config_file = factory.cli_options().maybe_config_file();
+
+    if let Some(config_file) = maybe_config_file {
+      let imports_object: HashMap<String, HashMap<String, String>> = match serde_json::from_value(config_file.to_import_map_value()) {
+        Ok(imports_object) => imports_object,
+        Err(_) => HashMap::default(),
+      };
+
+      if let Some(imports_map) = imports_object.get("imports") {
+        for (key, value) in imports_map.iter() {
+          if specifier.starts_with(key) {
+            let mut new_specifier = value.to_owned();
+            new_specifier.push_str(specifier.trim_start_matches(key));
+            specifier = new_specifier;
+            break;
+          }
+        }
+      }
+    }
+
     let specifier = resolve_url_or_path(&specifier, cli_options.initial_cwd())?;
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
