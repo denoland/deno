@@ -409,6 +409,7 @@ trait TestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
+    elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
@@ -520,11 +521,12 @@ impl TestReporter for CompoundTestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
+    elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter.report_sigint(tests_pending, tests, test_steps);
+      reporter.report_sigint(tests_pending, elapsed, tests, test_steps);
     }
   }
 }
@@ -1048,6 +1050,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
+    _elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -1108,6 +1111,41 @@ impl JunitTestReporter {
         description: None,
         reruns: vec![],
       },
+    }
+  }
+
+  fn flush_report(
+    &self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+  ) {
+    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
+    for (id, case) in &self.cases {
+      if let Some(test) = tests.get(id) {
+        suites
+          .entry(test.location.file_name.clone())
+          .and_modify(|s| {
+            s.add_test_case(case.clone());
+          })
+          .or_insert_with(|| {
+            quick_junit::TestSuite::new(test.location.file_name.clone())
+              .add_test_case(case.clone())
+              .to_owned()
+          });
+      }
+    }
+
+    let mut report = quick_junit::Report::new("deno test");
+    report.set_time(*elapsed).add_test_suites(
+      suites
+        .values()
+        .cloned()
+        .collect::<Vec<quick_junit::TestSuite>>(),
+    );
+
+    // How should we handle errors when writing out the report if at all?
+    if let Ok(mut file) = std::fs::File::create(self.path.clone()) {
+      let _ = file.write_all(report.to_string().unwrap().as_bytes());
     }
   }
 }
@@ -1180,41 +1218,22 @@ impl TestReporter for JunitTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
-    for (id, case) in &self.cases {
-      let test = tests.get(id).unwrap();
-      suites
-        .entry(test.location.file_name.clone())
-        .and_modify(|s| {
-          s.add_test_case(case.clone());
-        })
-        .or_insert_with(|| {
-          quick_junit::TestSuite::new(test.location.file_name.clone())
-            .add_test_case(case.clone())
-            .to_owned()
-        });
-    }
-
-    let mut report = quick_junit::Report::new("deno test");
-    report.set_time(*elapsed).add_test_suites(
-      suites
-        .values()
-        .cloned()
-        .collect::<Vec<quick_junit::TestSuite>>(),
-    );
-    if let Ok(mut file) = std::fs::File::create(self.path.clone()) {
-      let _ = file.write_all(report.to_string().unwrap().as_bytes());
-    }
+    self.flush_report(elapsed, tests)
   }
 
   fn report_sigint(
     &mut self,
-    _tests_pending: &HashSet<usize>,
-    _tests: &IndexMap<usize, TestDescription>,
+    tests_pending: &HashSet<usize>,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    // I currently have no clue how to handle this...
-    todo!()
+    for id in tests_pending {
+      if let Some(description) = tests.get(id) {
+        self.report_result(description, &TestResult::Cancelled, 0)
+      }
+    }
+    self.flush_report(elapsed, tests);
   }
 }
 
@@ -1798,11 +1817,13 @@ async fn test_specifiers(
           }
 
           TestEvent::Sigint => {
+            let elapsed = Instant::now().duration_since(earlier);
             reporter.report_sigint(
               &tests_started
                 .difference(&tests_with_result)
                 .copied()
                 .collect(),
+              &elapsed,
               &tests,
               &test_steps,
             );
