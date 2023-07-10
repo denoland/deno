@@ -1339,6 +1339,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
+    this.socket = new FakeSocket();
   }
 
   setHeader(name: string, value: string) {
