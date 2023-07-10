@@ -796,6 +796,7 @@ pub struct CreateHttpClientArgs {
   http1: bool,
   #[serde(default = "default_true")]
   http2: bool,
+  #[serde(default)]
   allow_host: bool,
 }
 
