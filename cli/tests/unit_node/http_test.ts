@@ -713,7 +713,7 @@ Deno.test(
   async () => {
     const promise = deferred();
 
-    const request = https.request("http://localhost:4545/http_version");
+    const request = http.request("http://localhost:4545/http_version");
     request.on("error", promise.reject);
     request.end(promise.resolve);
 
