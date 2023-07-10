@@ -4,7 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 
 const connectionSymbol = Symbol("connectionProperty");

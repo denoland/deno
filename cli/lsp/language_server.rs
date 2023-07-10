@@ -20,7 +20,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
@@ -39,6 +38,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
+use super::analysis::TsResponseImportMapper;
 use super::cache;
 use super::capabilities;
 use super::client::Client;
@@ -184,7 +184,7 @@ struct LspConfigFileInfo {
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -610,11 +610,12 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let documents = Documents::new(location.clone());
     let deps_http_cache = HttpCache::new(location);
+    let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -1053,7 +1054,7 @@ impl Inner {
       cache_setting,
       true,
       self.http_client.clone(),
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
@@ -2030,7 +2031,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.documents,
+          &self.get_ts_response_import_mapper(),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
@@ -2080,6 +2081,15 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
+    TsResponseImportMapper::new(
+      &self.documents,
+      self.maybe_import_map.as_deref(),
+      &self.npm.resolution,
+      &self.npm.resolver,
+    )
   }
 
   async fn code_lens(

@@ -48,6 +48,16 @@ itest!(declaration_header_file_with_no_exports {
   output_str: Some(""),
 });
 
+itest!(check_jsximportsource_importmap_config {
+  args: "check --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
+  output_str: Some(""),
+});
+
+itest!(bundle_jsximportsource_importmap_config {
+  args: "bundle --quiet --config check/jsximportsource_importmap_config/deno.json check/jsximportsource_importmap_config/main.tsx",
+  output: "check/jsximportsource_importmap_config/main.bundle.js",
+});
+
 itest!(check_npm_install_diagnostics {
   args: "check --quiet check/npm_install_diagnostics/main.ts",
   output: "check/npm_install_diagnostics/main.out",
@@ -187,35 +197,6 @@ fn typecheck_declarations_unstable() {
       .to_string_lossy()
       .into_owned(),
   ];
-  let output = context.new_command().args_vec(args).split_output().run();
-
-  println!("stdout: {}", output.stdout());
-  println!("stderr: {}", output.stderr());
-  output.assert_exit_code(0);
-}
-
-#[test]
-fn typecheck_core() {
-  let context = TestContext::default();
-  let deno_dir = context.deno_dir();
-  let test_file = deno_dir.path().join("test_deno_core_types.ts");
-  std::fs::write(
-    &test_file,
-    format!(
-      "import \"{}\";",
-      deno_core::resolve_path(
-        &util::root_path()
-          .join("core")
-          .join("lib.deno_core.d.ts")
-          .to_string(),
-        &std::env::current_dir().unwrap()
-      )
-      .unwrap()
-    ),
-  )
-  .unwrap();
-
-  let args = vec!["run".to_string(), test_file.to_string()];
   let output = context.new_command().args_vec(args).split_output().run();
 
   println!("stdout: {}", output.stdout());

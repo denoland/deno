@@ -16,6 +16,7 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::args::JsxImportSourceConfig;
 use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
@@ -63,6 +64,7 @@ pub fn build(
   output_dir: &Path,
   original_import_map: Option<&ImportMap>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  jsx_import_source: Option<&JsxImportSourceConfig>,
   environment: &impl VendorEnvironment,
 ) -> Result<usize, AnyError> {
   assert!(output_dir.is_absolute());
@@ -134,6 +136,7 @@ pub fn build(
       &all_modules,
       &mappings,
       original_import_map,
+      jsx_import_source,
       parsed_source_cache,
     )?;
     environment.write_file(&import_map_path, &import_map_text)?;
@@ -218,6 +221,7 @@ fn build_proxy_module_source(
 
 #[cfg(test)]
 mod test {
+  use crate::args::JsxImportSourceConfig;
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1144,6 +1148,54 @@ mod test {
     assert_eq!(
       output.files,
       to_file_vec(&[("/vendor/deno.land/std/http/mod.ts", "console.log(5);")]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.tsx");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.tsx", "const myComponent = <div></div>;");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts",
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/localhost/preact/jsx-runtime.ts",
+        "export function stuff() {}"
+      ),]),
     );
   }
 

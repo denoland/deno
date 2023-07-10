@@ -5,7 +5,7 @@
 
 import { Encodings } from "ext:deno_node/_utils.ts";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   CallbackWithError,
   checkEncoding,

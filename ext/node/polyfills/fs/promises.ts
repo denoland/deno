@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { promises as fsPromises } from "ext:deno_node/fs.ts";
+import { promises as fsPromises } from "node:fs";
 
 export const access = fsPromises.access;
 export const copyFile = fsPromises.copyFile;

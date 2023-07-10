@@ -4,14 +4,14 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   clearLine,
   clearScreenDown,
   cursorTo,
   moveCursor,
 } from "ext:deno_node/internal/readline/callbacks.mjs";
-import { Duplex, Readable, Writable } from "ext:deno_node/stream.ts";
+import { Duplex, Readable, Writable } from "node:stream";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { fs as fsConstants } from "ext:deno_node/internal_binding/constants.ts";
 import * as io from "ext:deno_io/12_io.js";
@@ -239,4 +239,3 @@ export const initStdin = () => {
 
   return stdin;
 };
-

@@ -8,7 +8,7 @@ import { asyncIterableToCallback } from "ext:deno_node/_fs/_fs_watch.ts";
 import Dirent from "ext:deno_node/_fs/_fs_dirent.ts";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 function toDirent(val: Deno.DirEntry): Dirent {

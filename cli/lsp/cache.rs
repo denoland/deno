@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::CachedUrlMetadata;
 use crate::cache::HttpCache;
+use crate::util::path::specifier_to_file_path;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;
@@ -12,8 +12,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+pub fn calculate_fs_version(
+  cache: &HttpCache,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  match specifier.scheme() {
+    "npm" | "node" | "data" | "blob" => None,
+    "file" => specifier_to_file_path(specifier)
+      .ok()
+      .and_then(|path| calculate_fs_version_at_path(&path)),
+    _ => calculate_fs_version_in_cache(cache, specifier),
+  }
+}
+
 /// Calculate a version for for a given path.
-pub fn calculate_fs_version(path: &Path) -> Option<String> {
+pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
@@ -23,6 +36,22 @@ pub fn calculate_fs_version(path: &Path) -> Option<String> {
     }
   } else {
     Some("1".to_string())
+  }
+}
+
+fn calculate_fs_version_in_cache(
+  cache: &HttpCache,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  match cache.get_modified_time(specifier) {
+    Ok(Some(modified)) => {
+      match modified.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(n) => Some(n.as_millis().to_string()),
+        Err(_) => Some("1".to_string()),
+      }
+    }
+    Ok(None) => None,
+    Err(_) => Some("1".to_string()),
   }
 }
 
@@ -49,7 +78,7 @@ struct Metadata {
   version: Option<String>,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct CacheMetadata {
   cache: HttpCache,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
@@ -69,13 +98,13 @@ impl CacheMetadata {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<Arc<HashMap<MetadataKey, String>>> {
-    if matches!(specifier.scheme(), "file" | "npm" | "node") {
+    if matches!(
+      specifier.scheme(),
+      "file" | "npm" | "node" | "data" | "blob"
+    ) {
       return None;
     }
-    let version = self
-      .cache
-      .get_cache_filename(specifier)
-      .and_then(|ref path| calculate_fs_version(path));
+    let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let metadata = self.metadata.lock().get(specifier).cloned();
     if metadata.as_ref().and_then(|m| m.version.clone()) != version {
       self.refresh(specifier).map(|m| m.values)
@@ -85,13 +114,16 @@ impl CacheMetadata {
   }
 
   fn refresh(&self, specifier: &ModuleSpecifier) -> Option<Metadata> {
-    if matches!(specifier.scheme(), "file" | "npm" | "node") {
+    if matches!(
+      specifier.scheme(),
+      "file" | "npm" | "node" | "data" | "blob"
+    ) {
       return None;
     }
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
-    let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
+    let specifier_metadata =
+      self.cache.get(specifier).ok()?.read_metadata().ok()??;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
-    let version = calculate_fs_version(&cache_filename);
+    let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let mut metadata_map = self.metadata.lock();
     let metadata = Metadata { values, version };
     metadata_map.insert(specifier.clone(), metadata.clone());

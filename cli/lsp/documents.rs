@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::cache::calculate_fs_version_at_path;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -9,10 +10,10 @@ use crate::args::package_json;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
-use crate::cache::CachedUrlMetadata;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
+use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
 use crate::file_fetcher::SUPPORTED_SCHEMES;
 use crate::lsp::logging::lsp_warn;
@@ -655,7 +656,7 @@ fn recurse_dependents(
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SpecifierResolver {
   cache: HttpCache,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
@@ -697,10 +698,12 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
-    if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = CachedUrlMetadata::read(&cache_filename)
+    if redirect_limit > 0 {
+      let headers = self
+        .cache
+        .get(specifier)
         .ok()
+        .and_then(|i| i.read_metadata().ok()?)
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
         let redirect =
@@ -728,8 +731,11 @@ impl FileSystemDocuments {
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let fs_version = get_document_path(cache, specifier)
-      .and_then(|path| calculate_fs_version(&path));
+    let fs_version = if specifier.scheme() == "data" {
+      Some("1".to_string())
+    } else {
+      calculate_fs_version(cache, specifier)
+    };
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
       // attempt to update the file on the file system
@@ -747,10 +753,10 @@ impl FileSystemDocuments {
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
-    let path = get_document_path(cache, specifier)?;
-    let fs_version = calculate_fs_version(&path)?;
-    let bytes = fs::read(path).ok()?;
     let doc = if specifier.scheme() == "file" {
+      let path = specifier_to_file_path(specifier).ok()?;
+      let fs_version = calculate_fs_version_at_path(&path)?;
+      let bytes = fs::read(path).ok()?;
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
       let content = get_source_from_bytes(bytes, maybe_charset).ok()?;
@@ -761,9 +767,20 @@ impl FileSystemDocuments {
         SourceTextInfo::from_string(content),
         resolver,
       )
+    } else if specifier.scheme() == "data" {
+      let (source, _) = get_source_from_data_url(specifier).ok()?;
+      Document::new(
+        specifier.clone(),
+        "1".to_string(),
+        None,
+        SourceTextInfo::from_string(source),
+        resolver,
+      )
     } else {
-      let cache_filename = cache.get_cache_filename(specifier)?;
-      let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
+      let fs_version = calculate_fs_version(cache, specifier)?;
+      let cache_item = cache.get(specifier).ok()?;
+      let bytes = cache_item.read_to_bytes().ok()??;
+      let specifier_metadata = cache_item.read_metadata().ok()??;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let maybe_headers = Some(specifier_metadata.headers);
@@ -779,17 +796,6 @@ impl FileSystemDocuments {
     self.dirty = true;
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
-  }
-}
-
-fn get_document_path(
-  cache: &HttpCache,
-  specifier: &ModuleSpecifier,
-) -> Option<PathBuf> {
-  match specifier.scheme() {
-    "npm" | "node" => None,
-    "file" => specifier_to_file_path(specifier).ok(),
-    _ => cache.get_cache_filename(specifier),
   }
 }
 
@@ -814,7 +820,7 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: HttpCache,
@@ -847,8 +853,7 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: PathBuf) -> Self {
-    let cache = HttpCache::new(location);
+  pub fn new(cache: HttpCache) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -970,8 +975,16 @@ impl Documents {
       if self.open_docs.contains_key(&specifier) {
         return true;
       }
-      if let Some(path) = get_document_path(&self.cache, &specifier) {
-        return path.is_file();
+      if specifier.scheme() == "data" {
+        return true;
+      }
+      if specifier.scheme() == "file" {
+        return specifier_to_file_path(&specifier)
+          .map(|p| p.is_file())
+          .unwrap_or(false);
+      }
+      if self.cache.contains(&specifier) {
+        return true;
       }
     }
     false
@@ -1839,7 +1852,8 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(location.to_path_buf());
+    let cache = HttpCache::new(location.to_path_buf());
+    let documents = Documents::new(cache);
     (documents, location)
   }
 
