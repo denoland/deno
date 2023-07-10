@@ -133,7 +133,7 @@ struct LspNpmConfigHash(u64);
 impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
     let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(&inner.config.maybe_node_modules_dir_path());
+    hasher.write_hashable(inner.config.maybe_node_modules_dir_path());
     hasher.write_hashable(&inner.maybe_cache_path);
     if let Some(lockfile) = inner.config.maybe_lockfile() {
       hasher.write_hashable(&*lockfile.lock());
@@ -1462,12 +1462,6 @@ impl Inner {
       lockfile: &Lockfile,
       changed_urls: &HashSet<Url>,
     ) -> bool {
-      fn hash_lockfile(lockfile: &Lockfile) -> u64 {
-        let mut hasher = FastInsecureHasher::new();
-        hasher.write_hashable(lockfile);
-        hasher.finish()
-      }
-
       let lockfile_path = lockfile.filename.clone();
       let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile_path) else {
         return false;
@@ -1477,9 +1471,9 @@ impl Inner {
       }
       match Lockfile::new(lockfile_path, false) {
         Ok(new_lockfile) => {
-          let lockfile_hash = hash_lockfile(lockfile);
           // only update if the lockfile has changed
-          lockfile_hash != hash_lockfile(&new_lockfile)
+          FastInsecureHasher::hash(lockfile)
+            != FastInsecureHasher::hash(new_lockfile)
         }
         Err(err) => {
           lsp_warn!("Error loading lockfile: {:#}", err);
