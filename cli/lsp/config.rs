@@ -1,16 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::ConfigFile;
+use crate::lsp::logging::lsp_warn;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_lockfile::Lockfile;
 use lsp::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
@@ -427,6 +433,16 @@ pub struct Settings {
   pub workspace: WorkspaceSettings,
 }
 
+/// Contains the config file and dependent information.
+#[derive(Debug)]
+struct LspConfigFileInfo {
+  pub config_file: ConfigFile,
+  /// An optional deno.lock file, which is resolved relative to the config file.
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  /// The canonicalized node_modules directory, which is found relative to the config file.
+  pub maybe_node_modules_dir: Option<PathBuf>,
+}
+
 #[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
@@ -434,6 +450,9 @@ pub struct Config {
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
   pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  /// An optional configuration file which has been specified in the client
+  /// options along with some data that is computed after the config file is set.
+  maybe_config_file_info: Option<LspConfigFileInfo>,
 }
 
 impl Config {
@@ -445,7 +464,38 @@ impl Config {
       root_uri: None,
       settings: Default::default(),
       workspace_folders: None,
+      maybe_config_file_info: None,
     }
+  }
+
+  pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .and_then(|p| p.maybe_node_modules_dir.as_ref())
+  }
+
+  pub fn maybe_config_file(&self) -> Option<&ConfigFile> {
+    self.maybe_config_file_info.as_ref().map(|c| &c.config_file)
+  }
+
+  pub fn maybe_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .and_then(|c| c.maybe_lockfile.as_ref())
+  }
+
+  pub fn clear_config_file(&mut self) {
+    self.maybe_config_file_info = None;
+  }
+
+  pub fn set_config_file(&mut self, config_file: ConfigFile) {
+    self.maybe_config_file_info = Some(LspConfigFileInfo {
+      maybe_lockfile: resolve_lockfile_from_config(&config_file),
+      maybe_node_modules_dir: resolve_node_modules_dir(&config_file),
+      config_file,
+    });
   }
 
   pub fn workspace_settings(&self) -> &WorkspaceSettings {
@@ -659,6 +709,48 @@ impl Config {
 
     self.settings.specifiers.insert(specifier, settings);
     true
+  }
+}
+
+fn resolve_lockfile_from_config(
+  config_file: &ConfigFile,
+) -> Option<Arc<Mutex<Lockfile>>> {
+  let lockfile_path = match config_file.resolve_lockfile_path() {
+    Ok(Some(value)) => value,
+    Ok(None) => return None,
+    Err(err) => {
+      lsp_warn!("Error resolving lockfile: {:#}", err);
+      return None;
+    }
+  };
+  resolve_lockfile_from_path(lockfile_path)
+}
+
+fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
+  // For the language server, require an explicit opt-in via the
+  // `nodeModulesDir: true` setting in the deno.json file. This is to
+  // reduce the chance of modifying someone's node_modules directory
+  // without them having asked us to do so.
+  if config_file.node_modules_dir() != Some(true) {
+    return None;
+  }
+  if config_file.specifier.scheme() != "file" {
+    return None;
+  }
+  let file_path = config_file.specifier.to_file_path().ok()?;
+  let node_modules_dir = file_path.parent()?.join("node_modules");
+  canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
+}
+
+fn resolve_lockfile_from_path(
+  lockfile_path: PathBuf,
+) -> Option<Arc<Mutex<Lockfile>>> {
+  match Lockfile::new(lockfile_path, false) {
+    Ok(value) => Some(Arc::new(Mutex::new(value))),
+    Err(err) => {
+      lsp_warn!("Error loading lockfile: {:#}", err);
+      None
+    }
   }
 }
 
