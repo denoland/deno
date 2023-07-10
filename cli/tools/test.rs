@@ -337,6 +337,7 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, TestFailure)>,
+  pub step_failures: Vec<(TestStepDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -368,6 +369,7 @@ impl TestSummary {
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
+      step_failures: Vec::new(),
       uncaught_errors: Vec::new(),
     }
   }
@@ -375,6 +377,50 @@ impl TestSummary {
   fn has_failed(&self) -> bool {
     self.failed > 0 || !self.failures.is_empty()
   }
+}
+
+trait TestReporter {
+  fn report_register(&mut self, description: &TestDescription);
+  fn report_plan(&mut self, plan: &TestPlan);
+  fn report_wait(&mut self, description: &TestDescription);
+  fn report_output(&mut self, output: &[u8]);
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  );
+  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
+  fn report_step_register(&mut self, description: &TestStepDescription);
+  fn report_step_wait(&mut self, description: &TestStepDescription);
+  fn report_step_result(
+    &mut self,
+    desc: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+  fn report_summary(
+    &mut self,
+    summary: &TestSummary,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+}
+
+fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
+  Box::new(PrettyTestReporter::new(
+    options.concurrent_jobs.get() > 1,
+    options.log_level != Some(Level::Error),
+  ))
 }
 
 struct PrettyTestReporter {
@@ -511,8 +557,71 @@ impl PrettyTestReporter {
     }
   }
 
-  fn report_register(&mut self, _description: &TestDescription) {}
+  fn format_test_step_ancestry(
+    &self,
+    desc: &TestStepDescription,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> String {
+    let root;
+    let mut ancestor_names = vec![];
+    let mut current_desc = desc;
+    loop {
+      if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
+        ancestor_names.push(&step_desc.name);
+        current_desc = step_desc;
+      } else {
+        root = tests.get(&current_desc.parent_id).unwrap();
+        break;
+      }
+    }
+    ancestor_names.reverse();
+    let mut result = String::new();
+    result.push_str(&root.name);
+    result.push_str(" ... ");
+    for name in ancestor_names {
+      result.push_str(name);
+      result.push_str(" ... ");
+    }
+    result.push_str(&desc.name);
+    result
+  }
 
+  fn format_test_for_summary(&self, desc: &TestDescription) -> String {
+    format!(
+      "{} {}",
+      &desc.name,
+      colors::gray(format!(
+        "=> {}:{}:{}",
+        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        desc.location.line_number,
+        desc.location.column_number
+      ))
+    )
+  }
+
+  fn format_test_step_for_summary(
+    &self,
+    desc: &TestStepDescription,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> String {
+    let long_name = self.format_test_step_ancestry(desc, tests, test_steps);
+    format!(
+      "{} {}",
+      long_name,
+      colors::gray(format!(
+        "=> {}:{}:{}",
+        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        desc.location.line_number,
+        desc.location.column_number
+      ))
+    )
+  }
+}
+
+impl TestReporter for PrettyTestReporter {
+  fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {
     if self.parallel {
       return;
@@ -652,8 +761,17 @@ impl PrettyTestReporter {
     }
   }
 
-  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
+  fn report_summary(
+    &mut self,
+    summary: &TestSummary,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    if !summary.failures.is_empty()
+      || !summary.step_failures.is_empty()
+      || !summary.uncaught_errors.is_empty()
+    {
       #[allow(clippy::type_complexity)] // Type alias doesn't look better here
       let mut failures_by_origin: BTreeMap<
         String,
@@ -666,6 +784,35 @@ impl PrettyTestReporter {
           .or_default();
         failures.push((description, failure));
       }
+
+      let step_failures: Vec<(TestDescription, TestFailure)> = summary
+        .step_failures
+        .iter()
+        .map(|(description, failure)| {
+          (
+            TestDescription {
+              id: description.id,
+              name: self.format_test_step_ancestry(
+                description,
+                tests,
+                test_steps,
+              ),
+              ignore: false,
+              only: false,
+              origin: description.origin.clone(),
+              location: description.location.clone(),
+            },
+            failure.clone(),
+          )
+        })
+        .collect();
+      for (description, failure) in &step_failures {
+        let (failures, _) = failures_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        failures.push((description, failure));
+      }
+
       for (origin, js_error) in &summary.uncaught_errors {
         let (_, uncaught_error) =
           failures_by_origin.entry(origin.clone()).or_default();
@@ -794,68 +941,6 @@ impl PrettyTestReporter {
     }
     println!();
     self.in_new_line = true;
-  }
-
-  fn format_test_step_ancestry(
-    &self,
-    desc: &TestStepDescription,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> String {
-    let root;
-    let mut ancestor_names = vec![];
-    let mut current_desc = desc;
-    loop {
-      if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
-        ancestor_names.push(&step_desc.name);
-        current_desc = step_desc;
-      } else {
-        root = tests.get(&current_desc.parent_id).unwrap();
-        break;
-      }
-    }
-    ancestor_names.reverse();
-    let mut result = String::new();
-    result.push_str(&root.name);
-    result.push_str(" ... ");
-    for name in ancestor_names {
-      result.push_str(name);
-      result.push_str(" ... ");
-    }
-    result.push_str(&desc.name);
-    result
-  }
-
-  fn format_test_for_summary(&self, desc: &TestDescription) -> String {
-    format!(
-      "{} {}",
-      &desc.name,
-      colors::gray(format!(
-        "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
-        desc.location.line_number,
-        desc.location.column_number
-      ))
-    )
-  }
-
-  fn format_test_step_for_summary(
-    &self,
-    desc: &TestStepDescription,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> String {
-    let long_name = self.format_test_step_ancestry(desc, tests, test_steps);
-    format!(
-      "{} {}",
-      long_name,
-      colors::gray(format!(
-        "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
-        desc.location.line_number,
-        desc.location.column_number
-      ))
-    )
   }
 }
 
@@ -1339,6 +1424,7 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
+  let mut reporter = get_test_reporter(&options);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
@@ -1361,11 +1447,6 @@ async fn test_specifiers(
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
-
-  let mut reporter = Box::new(PrettyTestReporter::new(
-    concurrent_jobs.get() > 1,
-    options.log_level != Some(Level::Error),
-  ));
 
   let handler = {
     spawn(async move {
@@ -1458,21 +1539,9 @@ async fn test_specifiers(
                 }
                 TestStepResult::Failed(failure) => {
                   summary.failed_steps += 1;
-                  summary.failures.push((
-                    TestDescription {
-                      id: description.id,
-                      name: reporter.format_test_step_ancestry(
-                        description,
-                        &tests,
-                        &test_steps,
-                      ),
-                      ignore: false,
-                      only: false,
-                      origin: description.origin.clone(),
-                      location: description.location.clone(),
-                    },
-                    failure.clone(),
-                  ))
+                  summary
+                    .step_failures
+                    .push((description.clone(), failure.clone()))
                 }
               }
 
@@ -1504,7 +1573,7 @@ async fn test_specifiers(
       HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
 
       let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary, &elapsed);
+      reporter.report_summary(&summary, &elapsed, &tests, &test_steps);
 
       if used_only {
         return Err(generic_error(
