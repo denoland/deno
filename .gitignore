@@ -29,5 +29,5 @@ gclient_config.py_entries
 
 /ext/websocket/autobahn/reports
 
-# TODO: Remove before merge
+# JUnit files produced by deno test --junit
 junit.xml
