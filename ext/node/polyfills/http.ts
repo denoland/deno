@@ -274,7 +274,15 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  constructor(opts = {}) {
+    super();
+    this.remoteAddress = opts.hostname;
+    this.remotePort = opts.port;
+  }
+
   setKeepAlive() {}
+
+  end() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -1331,6 +1339,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
+    this.socket = new FakeSocket();
   }
 
   setHeader(name: string, value: string) {
@@ -1446,10 +1455,10 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = {
+    this.socket = new FakeSocket({
       remoteAddress: remoteAddr.hostname,
       remotePort: remoteAddr.port,
-    };
+    });
     this.#req = req;
   }
 
