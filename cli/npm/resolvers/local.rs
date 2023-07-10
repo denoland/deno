@@ -780,7 +780,7 @@ mod test {
     assert!(cache.insert_root_symlink("package-b", "package-b@0.2.0"));
     assert!(cache.save());
 
-    let mut cache = SetupCache::load(cache_bin_path.clone());
+    let mut cache = SetupCache::load(cache_bin_path);
     cache.remove_dep("package-a");
     assert!(cache
       .with_dep("package-a")
