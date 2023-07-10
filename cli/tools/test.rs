@@ -337,7 +337,6 @@ pub struct TestSummary {
   pub filtered_out: usize,
   pub measured: usize,
   pub failures: Vec<(TestDescription, TestFailure)>,
-  pub step_failures: Vec<(TestStepDescription, TestFailure)>,
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
@@ -369,7 +368,6 @@ impl TestSummary {
       filtered_out: 0,
       measured: 0,
       failures: Vec::new(),
-      step_failures: Vec::new(),
       uncaught_errors: Vec::new(),
     }
   }
@@ -390,7 +388,7 @@ trait TestReporter {
     result: &TestResult,
     elapsed: u64,
   );
-  fn report_uncaught_error(&mut self, origin: &str, error: &JsError);
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
   fn report_step_register(&mut self, description: &TestStepDescription);
   fn report_step_wait(&mut self, description: &TestStepDescription);
   fn report_step_result(
@@ -403,7 +401,6 @@ trait TestReporter {
   );
   fn report_summary(
     &mut self,
-    summary: &TestSummary,
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
@@ -433,6 +430,7 @@ struct PrettyTestReporter {
   started_tests: bool,
   child_results_buffer:
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
+  summary: TestSummary,
 }
 
 impl PrettyTestReporter {
@@ -446,6 +444,7 @@ impl PrettyTestReporter {
       did_have_user_output: false,
       started_tests: false,
       child_results_buffer: Default::default(),
+      summary: TestSummary::new(),
     }
   }
 
@@ -623,6 +622,8 @@ impl PrettyTestReporter {
 impl TestReporter for PrettyTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
   fn report_plan(&mut self, plan: &TestPlan) {
+    self.summary.total += plan.total;
+    self.summary.filtered_out += plan.filtered_out;
     if self.parallel {
       return;
     }
@@ -671,6 +672,25 @@ impl TestReporter for PrettyTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
+    match &result {
+      TestResult::Ok => {
+        self.summary.passed += 1;
+      }
+      TestResult::Ignored => {
+        self.summary.ignored += 1;
+      }
+      TestResult::Failed(failure) => {
+        self.summary.failed += 1;
+        self
+          .summary
+          .failures
+          .push((description.clone(), failure.clone()));
+      }
+      TestResult::Cancelled => {
+        self.summary.failed += 1;
+      }
+    }
+
     if self.parallel {
       self.force_report_wait(description);
     }
@@ -700,7 +720,13 @@ impl TestReporter for PrettyTestReporter {
     self.scope_test_id = None;
   }
 
-  fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
+    self.summary.failed += 1;
+    self
+      .summary
+      .uncaught_errors
+      .push((origin.to_string(), error));
+
     if !self.in_new_line {
       println!();
     }
@@ -729,6 +755,29 @@ impl TestReporter for PrettyTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
+    match &result {
+      TestStepResult::Ok => {
+        self.summary.passed_steps += 1;
+      }
+      TestStepResult::Ignored => {
+        self.summary.ignored_steps += 1;
+      }
+      TestStepResult::Failed(failure) => {
+        self.summary.failed_steps += 1;
+        self.summary.failures.push((
+          TestDescription {
+            id: desc.id,
+            name: self.format_test_step_ancestry(desc, tests, test_steps),
+            ignore: false,
+            only: false,
+            origin: desc.origin.clone(),
+            location: desc.location.clone(),
+          },
+          failure.clone(),
+        ))
+      }
+    }
+
     if self.parallel {
       self.write_output_end();
       print!(
@@ -763,14 +812,12 @@ impl TestReporter for PrettyTestReporter {
 
   fn report_summary(
     &mut self,
-    summary: &TestSummary,
     elapsed: &Duration,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    if !summary.failures.is_empty()
-      || !summary.step_failures.is_empty()
-      || !summary.uncaught_errors.is_empty()
+    if !self.summary.failures.is_empty()
+      || !self.summary.uncaught_errors.is_empty()
     {
       #[allow(clippy::type_complexity)] // Type alias doesn't look better here
       let mut failures_by_origin: BTreeMap<
@@ -778,42 +825,14 @@ impl TestReporter for PrettyTestReporter {
         (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
       > = BTreeMap::default();
       let mut failure_titles = vec![];
-      for (description, failure) in &summary.failures {
+      for (description, failure) in &self.summary.failures {
         let (failures, _) = failures_by_origin
           .entry(description.origin.clone())
           .or_default();
         failures.push((description, failure));
       }
 
-      let step_failures: Vec<(TestDescription, TestFailure)> = summary
-        .step_failures
-        .iter()
-        .map(|(description, failure)| {
-          (
-            TestDescription {
-              id: description.id,
-              name: self.format_test_step_ancestry(
-                description,
-                tests,
-                test_steps,
-              ),
-              ignore: false,
-              only: false,
-              origin: description.origin.clone(),
-              location: description.location.clone(),
-            },
-            failure.clone(),
-          )
-        })
-        .collect();
-      for (description, failure) in &step_failures {
-        let (failures, _) = failures_by_origin
-          .entry(description.origin.clone())
-          .or_default();
-        failures.push((description, failure));
-      }
-
-      for (origin, js_error) in &summary.uncaught_errors {
+      for (origin, js_error) in &self.summary.uncaught_errors {
         let (_, uncaught_error) =
           failures_by_origin.entry(origin.clone()).or_default();
         let _ = uncaught_error.insert(js_error.as_ref());
@@ -854,7 +873,7 @@ impl TestReporter for PrettyTestReporter {
       }
     }
 
-    let status = if summary.has_failed() {
+    let status = if self.summary.has_failed() {
       colors::red("FAILED").to_string()
     } else {
       colors::green("ok").to_string()
@@ -875,30 +894,34 @@ impl TestReporter for PrettyTestReporter {
     write!(
       summary_result,
       "{} passed{} | {} failed{}",
-      summary.passed,
-      get_steps_text(summary.passed_steps),
-      summary.failed,
-      get_steps_text(summary.failed_steps),
+      self.summary.passed,
+      get_steps_text(self.summary.passed_steps),
+      self.summary.failed,
+      get_steps_text(self.summary.failed_steps),
     )
     .unwrap();
 
-    let ignored_steps = get_steps_text(summary.ignored_steps);
-    if summary.ignored > 0 || !ignored_steps.is_empty() {
+    let ignored_steps = get_steps_text(self.summary.ignored_steps);
+    if self.summary.ignored > 0 || !ignored_steps.is_empty() {
       write!(
         summary_result,
         " | {} ignored{}",
-        summary.ignored, ignored_steps
+        self.summary.ignored, ignored_steps
       )
       .unwrap()
     }
 
-    if summary.measured > 0 {
-      write!(summary_result, " | {} measured", summary.measured,).unwrap();
+    if self.summary.measured > 0 {
+      write!(summary_result, " | {} measured", self.summary.measured,).unwrap();
     }
 
-    if summary.filtered_out > 0 {
-      write!(summary_result, " | {} filtered out", summary.filtered_out)
-        .unwrap()
+    if self.summary.filtered_out > 0 {
+      write!(
+        summary_result,
+        " | {} filtered out",
+        self.summary.filtered_out
+      )
+      .unwrap()
     };
 
     println!(
@@ -1455,8 +1478,8 @@ async fn test_specifiers(
       let mut test_steps = IndexMap::new();
       let mut tests_started = HashSet::new();
       let mut tests_with_result = HashSet::new();
-      let mut summary = TestSummary::new();
       let mut used_only = false;
+      let mut failed = false;
 
       while let Some(event) = receiver.recv().await {
         match event {
@@ -1466,9 +1489,6 @@ async fn test_specifiers(
           }
 
           TestEvent::Plan(plan) => {
-            summary.total += plan.total;
-            summary.filtered_out += plan.filtered_out;
-
             if plan.used_only {
               used_only = true;
             }
@@ -1488,32 +1508,19 @@ async fn test_specifiers(
 
           TestEvent::Result(id, result, elapsed) => {
             if tests_with_result.insert(id) {
-              let description = tests.get(&id).unwrap();
-              match &result {
-                TestResult::Ok => {
-                  summary.passed += 1;
+              match result {
+                TestResult::Failed(_) | TestResult::Cancelled => {
+                  failed = true;
                 }
-                TestResult::Ignored => {
-                  summary.ignored += 1;
-                }
-                TestResult::Failed(failure) => {
-                  summary.failed += 1;
-                  summary
-                    .failures
-                    .push((description.clone(), failure.clone()));
-                }
-                TestResult::Cancelled => {
-                  summary.failed += 1;
-                }
+                _ => (),
               }
-              reporter.report_result(description, &result, elapsed);
+              reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
             }
           }
 
           TestEvent::UncaughtError(origin, error) => {
-            reporter.report_uncaught_error(&origin, &error);
-            summary.failed += 1;
-            summary.uncaught_errors.push((origin.clone(), error));
+            failed = true;
+            reporter.report_uncaught_error(&origin, error);
           }
 
           TestEvent::StepRegister(description) => {
@@ -1529,24 +1536,8 @@ async fn test_specifiers(
 
           TestEvent::StepResult(id, result, duration) => {
             if tests_with_result.insert(id) {
-              let description = test_steps.get(&id).unwrap();
-              match &result {
-                TestStepResult::Ok => {
-                  summary.passed_steps += 1;
-                }
-                TestStepResult::Ignored => {
-                  summary.ignored_steps += 1;
-                }
-                TestStepResult::Failed(failure) => {
-                  summary.failed_steps += 1;
-                  summary
-                    .step_failures
-                    .push((description.clone(), failure.clone()))
-                }
-              }
-
               reporter.report_step_result(
-                description,
+                test_steps.get(&id).unwrap(),
                 &result,
                 duration,
                 &tests,
@@ -1573,7 +1564,7 @@ async fn test_specifiers(
       HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
 
       let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary, &elapsed, &tests, &test_steps);
+      reporter.report_summary(&elapsed, &tests, &test_steps);
 
       if used_only {
         return Err(generic_error(
@@ -1581,7 +1572,7 @@ async fn test_specifiers(
         ));
       }
 
-      if summary.failed > 0 {
+      if failed {
         return Err(generic_error("Test failed"));
       }
 
