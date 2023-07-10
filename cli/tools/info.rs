@@ -43,10 +43,11 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let maybe_config_file = factory.cli_options().maybe_config_file();
 
     if let Some(config_file) = maybe_config_file {
-      let imports_object: HashMap<String, HashMap<String, String>> = match serde_json::from_value(config_file.to_import_map_value()) {
-        Ok(imports_object) => imports_object,
-        Err(_) => HashMap::default(),
-      };
+      let imports_object: HashMap<String, HashMap<String, String>> =
+        match serde_json::from_value(config_file.to_import_map_value()) {
+          Ok(imports_object) => imports_object,
+          Err(_) => HashMap::default(),
+        };
 
       if let Some(imports_map) = imports_object.get("imports") {
         for (key, value) in imports_map.iter() {
