@@ -489,6 +489,25 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
+/// Represents a dependency at `node_modules/.deno/<package_id>/`
+struct SetupCacheDep<'a> {
+  previous: Option<&'a HashMap<String, String>>,
+  current: &'a mut HashMap<String, String>,
+}
+
+impl<'a> SetupCacheDep<'a> {
+  pub fn insert(&mut self, name: &str, target_folder_name: &str) -> bool {
+    self
+      .current
+      .insert(name.to_string(), target_folder_name.to_string());
+    if let Some(previous_target) = self.previous.and_then(|p| p.get(name)) {
+      previous_target != target_folder_name
+    } else {
+      true
+    }
+  }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 struct SetupCacheData {
   root_symlinks: HashMap<String, String>,
@@ -496,7 +515,10 @@ struct SetupCacheData {
   dep_symlinks: HashMap<String, HashMap<String, String>>,
 }
 
-/// It is very slow to try to re-setup the symlinks each time, so this cache will
+/// It is very slow to try to re-setup the symlinks each time, so this will
+/// cache what we've setup on the last run and only update what is necessary.
+/// Obviously this could lead to issues if the cache gets out of date with the
+/// file system, such as if the user manually deletes a symlink.
 struct SetupCache {
   file_path: PathBuf,
   previous: Option<SetupCacheData>,
@@ -528,6 +550,9 @@ impl SetupCache {
     true
   }
 
+  /// Inserts and checks for the existence of a root symlink
+  /// at `node_modules/<package_name>` pointing to
+  /// `node_modules/.deno/<package_id>/`
   pub fn insert_root_symlink(
     &mut self,
     name: &str,
@@ -548,6 +573,9 @@ impl SetupCache {
     }
   }
 
+  /// Inserts and checks for the existence of a symlink at
+  /// `node_modules/.deno/node_modules/<package_name>` pointing to
+  /// `node_modules/.deno/<package_id>/`
   pub fn insert_deno_symlink(
     &mut self,
     name: &str,
@@ -585,24 +613,6 @@ impl SetupCache {
         .dep_symlinks
         .entry(parent_name.to_string())
         .or_default(),
-    }
-  }
-}
-
-struct SetupCacheDep<'a> {
-  previous: Option<&'a HashMap<String, String>>,
-  current: &'a mut HashMap<String, String>,
-}
-
-impl<'a> SetupCacheDep<'a> {
-  pub fn insert(&mut self, name: &str, target_folder_name: &str) -> bool {
-    self
-      .current
-      .insert(name.to_string(), target_folder_name.to_string());
-    if let Some(previous_target) = self.previous.and_then(|p| p.get(name)) {
-      previous_target != target_folder_name
-    } else {
-      true
     }
   }
 }
