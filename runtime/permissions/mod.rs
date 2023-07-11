@@ -828,7 +828,13 @@ impl UnaryPermission<NetDescriptor> {
       .ok_or_else(|| uri_error("Missing host"))?
       .to_string();
     let host = &(&hostname, url.port_or_known_default());
-    self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || None)
+    let display_host = match url.port() {
+      None => hostname.clone(),
+      Some(port) => format!("{hostname}:{port}"),
+    };
+    self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || {
+      Some(display_host.clone())
+    })
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
