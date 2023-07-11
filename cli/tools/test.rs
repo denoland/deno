@@ -381,6 +381,8 @@ impl TestSummary {
 
 #[derive(Error, Debug)]
 enum TestReporterError {
+  #[error("failed to serialize report")]
+  JUnitSerializationFailure(#[from] quick_junit::SerializeError),
   #[error("failed to write JUnit XML file")]
   JUnitIoFailure(#[from] std::io::Error),
   #[error("error in one or more wrapped reporters: {0:?}")]
@@ -435,10 +437,13 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     options.log_level != Some(Level::Error),
   ));
   if let Some(junit_path) = &options.junit_path {
-    Box::new(CompoundTestReporter::new(vec![
-      pretty,
-      Box::new(JunitTestReporter::new(junit_path.clone())),
-    ]))
+    let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
+    // If junit is writing to stdout, only enable the junit reporter
+    if junit_path == "-" {
+      junit
+    } else {
+      Box::new(CompoundTestReporter::new(vec![pretty, junit]))
+    }
   } else {
     pretty
   }
@@ -1270,9 +1275,16 @@ impl TestReporter for JunitTestReporter {
         .cloned()
         .collect::<Vec<quick_junit::TestSuite>>(),
     );
+    let report_str = report.to_string()?;
+    let report_bytes = report_str.as_bytes();
 
-    let mut file = std::fs::File::create(self.path.clone())?;
-    file.write_all(report.to_string().unwrap().as_bytes())?;
+    if self.path == "-" {
+      std::io::stdout().write_all(report_bytes)?;
+    } else {
+      let mut file = std::fs::File::create(self.path.clone())?;
+      file.write_all(report_bytes)?;
+    }
+
     Ok(())
   }
 }

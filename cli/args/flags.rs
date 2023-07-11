@@ -1855,10 +1855,10 @@ Directory arguments are expanded to all contained files matching the glob
         .long("junit")
         .value_name("PATH")
         .value_hint(ValueHint::FilePath)
-        .help("Write a JUnit XML test report to PATH (default: junit.xml)")
+        .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
         .num_args(0..=1)
         .require_equals(true)
-        .default_missing_value("junit.xml")
+        .default_missing_value("-")
     )
   )
 }
@@ -6205,7 +6205,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: Some("junit.xml".to_string()),
+          junit_path: Some("-".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6216,7 +6216,7 @@ mod tests {
 
   #[test]
   fn test_junit_with_path() {
-    let r = flags_from_vec(svec!["deno", "test", "--junit=test.xml"]);
+    let r = flags_from_vec(svec!["deno", "test", "--junit=junit.xml"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6235,7 +6235,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: Some("test.xml".to_string()),
+          junit_path: Some("junit.xml".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
