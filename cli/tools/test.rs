@@ -72,6 +72,7 @@ use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
+use thiserror::Error;
 use tokio::signal;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -378,6 +379,14 @@ impl TestSummary {
   }
 }
 
+#[derive(Error, Debug)]
+enum TestReporterError {
+  #[error("failed to write JUnit XML file")]
+  JUnitIoFailure(#[from] std::io::Error),
+  #[error("error in one or more wrapped reporters: {0:?}")]
+  CompoundReporterError(Vec<Self>),
+}
+
 trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
@@ -409,10 +418,15 @@ trait TestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
-    elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> Result<(), TestReporterError>;
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
@@ -521,12 +535,31 @@ impl TestReporter for CompoundTestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
-    elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     for reporter in &mut self.test_reporters {
-      reporter.report_sigint(tests_pending, elapsed, tests, test_steps);
+      reporter.report_sigint(tests_pending, tests, test_steps);
+    }
+  }
+
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> Result<(), TestReporterError> {
+    let mut errors = vec![];
+    for reporter in &mut self.test_reporters {
+      if let Err(err) = reporter.flush_report(elapsed, tests, test_steps) {
+        errors.push(err)
+      }
+    }
+
+    if errors.is_empty() {
+      Ok(())
+    } else {
+      Err(TestReporterError::CompoundReporterError(errors))
     }
   }
 }
@@ -1050,7 +1083,6 @@ impl TestReporter for PrettyTestReporter {
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
-    _elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -1076,6 +1108,15 @@ impl TestReporter for PrettyTestReporter {
     }
     println!();
     self.in_new_line = true;
+  }
+
+  fn flush_report(
+    &mut self,
+    _elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> Result<(), TestReporterError> {
+    Ok(())
   }
 }
 
@@ -1113,41 +1154,6 @@ impl JunitTestReporter {
       },
     }
   }
-
-  fn flush_report(
-    &self,
-    elapsed: &Duration,
-    tests: &IndexMap<usize, TestDescription>,
-  ) {
-    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
-    for (id, case) in &self.cases {
-      if let Some(test) = tests.get(id) {
-        suites
-          .entry(test.location.file_name.clone())
-          .and_modify(|s| {
-            s.add_test_case(case.clone());
-          })
-          .or_insert_with(|| {
-            quick_junit::TestSuite::new(test.location.file_name.clone())
-              .add_test_case(case.clone())
-              .to_owned()
-          });
-      }
-    }
-
-    let mut report = quick_junit::Report::new("deno test");
-    report.set_time(*elapsed).add_test_suites(
-      suites
-        .values()
-        .cloned()
-        .collect::<Vec<quick_junit::TestSuite>>(),
-    );
-
-    // How should we handle errors when writing out the report if at all?
-    if let Ok(mut file) = std::fs::File::create(self.path.clone()) {
-      let _ = file.write_all(report.to_string().unwrap().as_bytes());
-    }
-  }
 }
 
 impl TestReporter for JunitTestReporter {
@@ -1167,8 +1173,10 @@ impl TestReporter for JunitTestReporter {
 
   fn report_output(&mut self, _output: &[u8]) {
     /*
-     TODO: it would be nice to include stdout/stderr, but we currently have a
-     global stream for both that doesn't keep track of what test produced what.
+     TODO(skycoop): Right now I can't include stdout/stderr in the report because
+     we have a global pair of output streams that don't differentiate between the
+     output of different tests. This is a nice to have feature, so we can come
+     back to it later
     */
   }
 
@@ -1214,17 +1222,15 @@ impl TestReporter for JunitTestReporter {
 
   fn report_summary(
     &mut self,
-    elapsed: &Duration,
-    tests: &IndexMap<usize, TestDescription>,
+    _elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    self.flush_report(elapsed, tests)
   }
 
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
-    elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -1233,7 +1239,41 @@ impl TestReporter for JunitTestReporter {
         self.report_result(description, &TestResult::Cancelled, 0)
       }
     }
-    self.flush_report(elapsed, tests);
+  }
+
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> Result<(), TestReporterError> {
+    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
+    for (id, case) in &self.cases {
+      if let Some(test) = tests.get(id) {
+        suites
+          .entry(test.location.file_name.clone())
+          .and_modify(|s| {
+            s.add_test_case(case.clone());
+          })
+          .or_insert_with(|| {
+            quick_junit::TestSuite::new(test.location.file_name.clone())
+              .add_test_case(case.clone())
+              .to_owned()
+          });
+      }
+    }
+
+    let mut report = quick_junit::Report::new("deno test");
+    report.set_time(*elapsed).add_test_suites(
+      suites
+        .values()
+        .cloned()
+        .collect::<Vec<quick_junit::TestSuite>>(),
+    );
+
+    let mut file = std::fs::File::create(self.path.clone())?;
+    file.write_all(report.to_string().unwrap().as_bytes())?;
+    Ok(())
   }
 }
 
@@ -1823,10 +1863,14 @@ async fn test_specifiers(
                 .difference(&tests_with_result)
                 .copied()
                 .collect(),
-              &elapsed,
               &tests,
               &test_steps,
             );
+            if let Err(err) =
+              reporter.flush_report(&elapsed, &tests, &test_steps)
+            {
+              print!("Test reporter failed to flush: {}", err)
+            }
             std::process::exit(130);
           }
         }
@@ -1837,6 +1881,12 @@ async fn test_specifiers(
 
       let elapsed = Instant::now().duration_since(earlier);
       reporter.report_summary(&elapsed, &tests, &test_steps);
+      if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+        return Err(generic_error(format!(
+          "Test reporter failed to flush: {}",
+          err
+        )));
+      }
 
       if used_only {
         return Err(generic_error(
