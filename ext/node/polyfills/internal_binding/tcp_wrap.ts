@@ -24,6 +24,9 @@
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/tcp_wrap.h
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";

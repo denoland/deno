@@ -42,14 +42,6 @@ pub struct NodeAnalysisCache {
 }
 
 impl NodeAnalysisCache {
-  #[cfg(test)]
-  pub fn new_in_memory() -> Self {
-    Self::new(CacheDB::in_memory(
-      &NODE_ANALYSIS_CACHE_DB,
-      crate::version::deno(),
-    ))
-  }
-
   pub fn new(db: CacheDB) -> Self {
     Self {
       inner: NodeAnalysisCacheInner::new(db),
@@ -57,10 +49,7 @@ impl NodeAnalysisCache {
   }
 
   pub fn compute_source_hash(text: &str) -> String {
-    FastInsecureHasher::new()
-      .write_str(text)
-      .finish()
-      .to_string()
+    FastInsecureHasher::hash(text).to_string()
   }
 
   fn ensure_ok<T: Default>(res: Result<T, AnyError>) -> T {

@@ -1,11 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file ban-types
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file ban-types prefer-primordials
+
 import {
   AssertionError,
   AssertionErrorConstructorOptions,
 } from "ext:deno_node/assertion_error.ts";
 import * as asserts from "ext:deno_node/_util/std_asserts.ts";
-import { inspect } from "ext:deno_node/util.ts";
+import { inspect } from "node:util";
 import {
   ERR_AMBIGUOUS_ARGUMENT,
   ERR_INVALID_ARG_TYPE,

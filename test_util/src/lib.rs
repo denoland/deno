@@ -2,6 +2,7 @@
 // Usage: provide a port as argument to run hyper_hello benchmark server
 // otherwise this starts multiple servers on many ports for test endpoints.
 use anyhow::anyhow;
+use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
@@ -9,6 +10,7 @@ use hyper::header::HeaderValue;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
+use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
@@ -49,21 +51,22 @@ use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls;
 use tokio_rustls::TlsAcceptor;
-use tokio_tungstenite::accept_async;
 use url::Url;
 
 pub mod assertions;
 mod builders;
+pub mod factory;
+mod fs;
 pub mod lsp;
 mod npm;
 pub mod pty;
-mod temp_dir;
 
 pub use builders::TestCommandBuilder;
 pub use builders::TestCommandOutput;
 pub use builders::TestContext;
 pub use builders::TestContextBuilder;
-pub use temp_dir::TempDir;
+pub use fs::PathRef;
+pub use fs::TempDir;
 
 const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
@@ -79,8 +82,10 @@ const TLS_CLIENT_AUTH_PORT: u16 = 4552;
 const BASIC_AUTH_REDIRECT_PORT: u16 = 4554;
 const TLS_PORT: u16 = 4557;
 const HTTPS_PORT: u16 = 5545;
-const H1_ONLY_PORT: u16 = 5546;
-const H2_ONLY_PORT: u16 = 5547;
+const H1_ONLY_TLS_PORT: u16 = 5546;
+const H2_ONLY_TLS_PORT: u16 = 5547;
+const H1_ONLY_PORT: u16 = 5548;
+const H2_ONLY_PORT: u16 = 5549;
 const HTTPS_CLIENT_AUTH_PORT: u16 = 5552;
 const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
@@ -104,37 +109,38 @@ pub fn env_vars_for_npm_tests_no_sync_download() -> Vec<(String, String)> {
 pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   let mut env_vars = env_vars_for_npm_tests_no_sync_download();
   env_vars.push((
-    // make downloads determinstic
+    // make downloads deterministic
     "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD".to_string(),
     "1".to_string(),
   ));
   env_vars
 }
 
-pub fn root_path() -> PathBuf {
-  PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
-    .parent()
-    .unwrap()
-    .to_path_buf()
+pub fn root_path() -> PathRef {
+  PathRef::new(
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR")))
+      .parent()
+      .unwrap(),
+  )
 }
 
-pub fn prebuilt_path() -> PathBuf {
+pub fn prebuilt_path() -> PathRef {
   third_party_path().join("prebuilt")
 }
 
-pub fn tests_path() -> PathBuf {
+pub fn tests_path() -> PathRef {
   root_path().join("cli").join("tests")
 }
 
-pub fn testdata_path() -> PathBuf {
+pub fn testdata_path() -> PathRef {
   tests_path().join("testdata")
 }
 
-pub fn third_party_path() -> PathBuf {
+pub fn third_party_path() -> PathRef {
   root_path().join("third_party")
 }
 
-pub fn napi_tests_path() -> PathBuf {
+pub fn napi_tests_path() -> PathRef {
   root_path().join("test_napi")
 }
 
@@ -143,7 +149,7 @@ pub fn npm_registry_url() -> String {
   "http://localhost:4545/npm/registry/".to_string()
 }
 
-pub fn std_path() -> PathBuf {
+pub fn std_path() -> PathRef {
   root_path().join("test_util").join("std")
 }
 
@@ -151,22 +157,22 @@ pub fn std_file_url() -> String {
   Url::from_directory_path(std_path()).unwrap().to_string()
 }
 
-pub fn target_dir() -> PathBuf {
+pub fn target_dir() -> PathRef {
   let current_exe = std::env::current_exe().unwrap();
   let target_dir = current_exe.parent().unwrap().parent().unwrap();
-  target_dir.into()
+  PathRef::new(target_dir)
 }
 
-pub fn deno_exe_path() -> PathBuf {
+pub fn deno_exe_path() -> PathRef {
   // Something like /Users/rld/src/deno/target/debug/deps/deno
-  let mut p = target_dir().join("deno");
+  let mut p = target_dir().join("deno").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
-  p
+  PathRef::new(p)
 }
 
-pub fn prebuilt_tool_path(tool: &str) -> PathBuf {
+pub fn prebuilt_tool_path(tool: &str) -> PathRef {
   let mut exe = tool.to_string();
   exe.push_str(if cfg!(windows) { ".exe" } else { "" });
   prebuilt_path().join(platform_dir_name()).join(exe)
@@ -185,7 +191,7 @@ pub fn platform_dir_name() -> &'static str {
 }
 
 pub fn test_server_path() -> PathBuf {
-  let mut p = target_dir().join("test_server");
+  let mut p = target_dir().join("test_server").to_path_buf();
   if cfg!(windows) {
     p.set_extension("exe");
   }
@@ -302,69 +308,128 @@ async fn basic_auth_redirect(
   Ok(resp)
 }
 
+async fn echo_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  loop {
+    let frame = ws.read_frame().await.unwrap();
+    match frame.opcode {
+      fastwebsockets::OpCode::Close => break,
+      fastwebsockets::OpCode::Text | fastwebsockets::OpCode::Binary => {
+        ws.write_frame(frame).await.unwrap();
+      }
+      _ => {}
+    }
+  }
+
+  Ok(())
+}
+
+type WsHandler =
+  fn(
+    fastwebsockets::WebSocket<Upgraded>,
+  ) -> Pin<Box<dyn Future<Output = Result<(), anyhow::Error>> + Send>>;
+
+fn spawn_ws_server<S>(stream: S, handler: WsHandler)
+where
+  S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+  let srv_fn = service_fn(move |mut req: Request<Body>| async move {
+    let (response, upgrade_fut) = fastwebsockets::upgrade::upgrade(&mut req)
+      .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))?;
+
+    tokio::spawn(async move {
+      let ws = upgrade_fut
+        .await
+        .map_err(|e| anyhow!("Error upgrading websocket connection: {}", e))
+        .unwrap();
+
+      if let Err(e) = handler(ws).await {
+        eprintln!("Error in websocket connection: {}", e);
+      }
+    });
+
+    Ok::<_, anyhow::Error>(response)
+  });
+
+  tokio::spawn(async move {
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
+
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
+}
+
 async fn run_ws_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
-    tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
-
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(ws_stream) = ws_stream {
-        let (tx, rx) = ws_stream.split();
-        rx.forward(tx)
-          .map(|result| {
-            if let Err(e) = result {
-              println!("websocket server error: {e:?}");
-            }
-          })
-          .await;
-      }
-    });
+    spawn_ws_server(stream, |ws| Box::pin(echo_websocket_handler(ws)));
   }
+}
+
+async fn ping_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  use fastwebsockets::Frame;
+  use fastwebsockets::OpCode;
+
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  for i in 0..9 {
+    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+      .await
+      .unwrap();
+
+    let frame = ws.read_frame().await.unwrap();
+    assert_eq!(frame.opcode, OpCode::Pong);
+    assert!(frame.payload.is_empty());
+
+    ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
+      .await
+      .unwrap();
+
+    let frame = ws.read_frame().await.unwrap();
+    assert_eq!(frame.opcode, OpCode::Text);
+    assert_eq!(frame.payload, format!("hello {}", i).as_bytes());
+  }
+
+  ws.write_frame(fastwebsockets::Frame::close(1000, b""))
+    .await
+    .unwrap();
+
+  Ok(())
 }
 
 async fn run_ws_ping_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   println!("ready: ws"); // Eye catcher for HttpServerCount
   while let Ok((stream, _addr)) = listener.accept().await {
-    tokio::spawn(async move {
-      let ws_stream = accept_async(stream).await;
-      use futures::SinkExt;
-      use tokio_tungstenite::tungstenite::Message;
-      if let Ok(mut ws_stream) = ws_stream {
-        for i in 0..9 {
-          ws_stream.send(Message::Ping(vec![])).await.unwrap();
-
-          let msg = ws_stream.next().await.unwrap().unwrap();
-          assert_eq!(msg, Message::Pong(vec![]));
-
-          ws_stream
-            .send(Message::Text(format!("hello {}", i)))
-            .await
-            .unwrap();
-
-          let msg = ws_stream.next().await.unwrap().unwrap();
-          assert_eq!(msg, Message::Text(format!("hello {}", i)));
-        }
-
-        ws_stream.close(None).await.unwrap();
-      }
-    });
+    spawn_ws_server(stream, |ws| Box::pin(ping_websocket_handler(ws)));
   }
+}
+
+async fn close_websocket_handler(
+  ws: fastwebsockets::WebSocket<Upgraded>,
+) -> Result<(), anyhow::Error> {
+  let mut ws = fastwebsockets::FragmentCollector::new(ws);
+
+  ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .await
+    .unwrap();
+
+  Ok(())
 }
 
 async fn run_ws_close_server(addr: &SocketAddr) {
   let listener = TcpListener::bind(addr).await.unwrap();
   while let Ok((stream, _addr)) = listener.accept().await {
-    tokio::spawn(async move {
-      let ws_stream_fut = accept_async(stream);
-
-      let ws_stream = ws_stream_fut.await;
-      if let Ok(mut ws_stream) = ws_stream {
-        ws_stream.close(None).await.unwrap();
-      }
-    });
+    spawn_ws_server(stream, |ws| Box::pin(close_websocket_handler(ws)));
   }
 }
 
@@ -428,11 +493,11 @@ async fn get_tls_config(
 
       let mut config = rustls::ServerConfig::builder()
         .with_safe_defaults()
-        .with_client_cert_verifier(
+        .with_client_cert_verifier(Arc::new(
           rustls::server::AllowAnyAnonymousOrAuthenticatedClient::new(
             root_cert_store,
           ),
-        )
+        ))
         .with_single_cert(certs, PrivateKey(key))
         .map_err(|e| anyhow!("Error setting cert: {:?}", e))
         .unwrap();
@@ -471,18 +536,9 @@ async fn run_wss_server(addr: &SocketAddr) {
     tokio::spawn(async move {
       match acceptor.accept(stream).await {
         Ok(tls_stream) => {
-          let ws_stream_fut = accept_async(tls_stream);
-          let ws_stream = ws_stream_fut.await;
-          if let Ok(ws_stream) = ws_stream {
-            let (tx, rx) = ws_stream.split();
-            rx.forward(tx)
-              .map(|result| {
-                if let Err(e) = result {
-                  println!("Websocket server error: {e:?}");
-                }
-              })
-              .await;
-          }
+          spawn_ws_server(tls_stream, |ws| {
+            Box::pin(echo_websocket_handler(ws))
+          });
         }
         Err(e) => {
           eprintln!("TLS accept error: {e:?}");
@@ -656,8 +712,7 @@ async fn absolute_redirect(
     }
   }
 
-  let mut file_path = testdata_path();
-  file_path.push(&req.uri().path()[1..]);
+  let file_path = testdata_path().join(&req.uri().path()[1..]);
   if file_path.is_dir() || !file_path.exists() {
     let mut not_found_resp = Response::new(Body::empty());
     *not_found_resp.status_mut() = StatusCode::NOT_FOUND;
@@ -673,7 +728,10 @@ async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
-    (&hyper::Method::POST, "/echo_server") => {
+    (
+      &hyper::Method::POST | &hyper::Method::PATCH | &hyper::Method::PUT,
+      "/echo_server",
+    ) => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(body);
 
@@ -681,16 +739,7 @@ async fn main_server(
         *response.status_mut() =
           StatusCode::from_bytes(status.as_bytes()).unwrap();
       }
-      if let Some(content_type) = parts.headers.get("content-type") {
-        response
-          .headers_mut()
-          .insert("content-type", content_type.clone());
-      }
-      if let Some(user_agent) = parts.headers.get("user-agent") {
-        response
-          .headers_mut()
-          .insert("user-agent", user_agent.clone());
-      }
+      response.headers_mut().extend(parts.headers);
       Ok(response)
     }
     (&hyper::Method::POST, "/echo_multipart_file") => {
@@ -1037,8 +1086,13 @@ async fn main_server(
       ));
       Ok(res)
     }
+    (_, "/search_params") => {
+      let query = req.uri().query().map(|s| s.to_string());
+      let res = Response::new(Body::from(query.unwrap_or_default()));
+      Ok(res)
+    }
     _ => {
-      let mut file_path = testdata_path();
+      let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..]);
       if let Ok(file) = tokio::fs::read(&file_path).await {
         let file_resp = custom_headers(req.uri().path(), file);
@@ -1085,8 +1139,7 @@ async fn main_server(
           }
         }
       } else if let Some(suffix) = req.uri().path().strip_prefix("/deno_std/") {
-        let mut file_path = std_path();
-        file_path.push(suffix);
+        let file_path = std_path().join(suffix);
         if let Ok(file) = tokio::fs::read(&file_path).await {
           let file_resp = custom_headers(req.uri().path(), file);
           return Ok(file_resp);
@@ -1319,7 +1372,7 @@ async fn wrap_main_https_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1344,8 +1397,9 @@ async fn wrap_main_https_server() {
   }
 }
 
-async fn wrap_https_h1_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+async fn wrap_https_h1_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H1_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1363,7 +1417,7 @@ async fn wrap_https_h1_only_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1389,8 +1443,9 @@ async fn wrap_https_h1_only_server() {
   }
 }
 
-async fn wrap_https_h2_only_server() {
-  let main_server_https_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+async fn wrap_https_h2_only_tls_server() {
+  let main_server_https_addr =
+    SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
@@ -1408,7 +1463,7 @@ async fn wrap_https_h2_only_server() {
       .expect("Cannot bind TCP");
     println!("ready: https"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1434,6 +1489,28 @@ async fn wrap_https_h2_only_server() {
   }
 }
 
+async fn wrap_https_h1_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
+
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http1_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
+}
+
+async fn wrap_https_h2_only_server() {
+  let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H2_ONLY_PORT));
+
+  let main_server_http_svc =
+    make_service_fn(|_| async { Ok::<_, Infallible>(service_fn(main_server)) });
+  let main_server_http = Server::bind(&main_server_http_addr)
+    .http2_only(true)
+    .serve(main_server_http_svc);
+  let _ = main_server_http.await;
+}
+
 async fn wrap_client_auth_https_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
@@ -1450,7 +1527,7 @@ async fn wrap_client_auth_https_server() {
       .expect("Cannot bind TCP");
     println!("ready: https_client_auth on :{HTTPS_CLIENT_AUTH_PORT:?}"); // Eye catcher for HttpServerCount
     let tls_acceptor = TlsAcceptor::from(tls_config.clone());
-    // Prepare a long-running future stream to accept and serve cients.
+    // Prepare a long-running future stream to accept and serve clients.
     let incoming_tls_stream = async_stream::stream! {
       loop {
           let (socket, _) = tcp.accept().await?;
@@ -1522,6 +1599,8 @@ pub async fn run_all_servers() {
   let client_auth_server_https_fut = wrap_client_auth_https_server();
   let main_server_fut = wrap_main_server();
   let main_server_https_fut = wrap_main_https_server();
+  let h1_only_server_tls_fut = wrap_https_h1_only_tls_server();
+  let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
 
@@ -1543,6 +1622,8 @@ pub async fn run_all_servers() {
       main_server_fut,
       main_server_https_fut,
       client_auth_server_https_fut,
+      h1_only_server_tls_fut,
+      h2_only_server_tls_fut,
       h1_only_server_fut,
       h2_only_server_fut
     )
@@ -2302,37 +2383,6 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   }
 
   None
-}
-
-/// Copies a directory to another directory.
-///
-/// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), anyhow::Error> {
-  use anyhow::Context;
-
-  std::fs::create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
-
-  for entry in read_dir {
-    let entry = entry?;
-    let file_type = entry.file_type()?;
-    let new_from = from.join(entry.file_name());
-    let new_to = to.join(entry.file_name());
-
-    if file_type.is_dir() {
-      copy_dir_recursive(&new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
-      })?;
-    } else if file_type.is_file() {
-      std::fs::copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
-      })?;
-    }
-  }
-
-  Ok(())
 }
 
 #[cfg(test)]

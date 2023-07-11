@@ -30,11 +30,12 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
-use deno_fs::StdFs;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
@@ -57,6 +58,7 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -84,17 +86,22 @@ pub struct WorkerOptions {
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
+
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
+
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
@@ -117,7 +124,7 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_store: BlobStore,
+  pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -149,6 +156,7 @@ impl Default for WorkerOptions {
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -163,11 +171,12 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
-      root_cert_store: Default::default(),
+      root_cert_store_provider: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
     }
@@ -227,7 +236,7 @@ impl MainWorker {
       deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -238,7 +247,7 @@ impl MainWorker {
       deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
       deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
       deno_webstorage::deno_webstorage::init_ops(
@@ -251,7 +260,7 @@ impl MainWorker {
       ),
       deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
       deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
@@ -263,11 +272,15 @@ impl MainWorker {
         unstable,
       ),
       deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
+      deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(),
       deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<_, PermissionsContainer>(unstable, StdFs),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_fs::deno_fs::init_ops::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops::<PermissionsContainer>(
         options.npm_resolver,
+        options.fs,
       ),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops(main_module.clone()),
@@ -301,14 +314,21 @@ impl MainWorker {
     let startup_snapshot = options.startup_snapshot
       .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
 
+    // Clear extension modules from the module map, except preserve `node:*`
+    // modules.
+    let preserve_snapshotted_modules =
+      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
+
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
       startup_snapshot: Some(startup_snapshot),
+      create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()

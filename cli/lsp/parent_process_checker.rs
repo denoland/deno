@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::task::spawn;
 use tokio::time::sleep;
 use tokio::time::Duration;
 
@@ -7,7 +8,7 @@ use tokio::time::Duration;
 /// provided process id. Once that process no longer exists
 /// it will terminate the current process.
 pub fn start(parent_process_id: u32) {
-  tokio::task::spawn(async move {
+  spawn(async move {
     loop {
       sleep(Duration::from_secs(30)).await;
 

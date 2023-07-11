@@ -23,13 +23,10 @@ pub fn benchmark(
   target_path: &Path,
 ) -> Result<HashMap<String, HttpBenchmarkResult>> {
   let deno_exe = test_util::deno_exe_path();
-  let deno_exe = deno_exe.to_str().unwrap();
+  let deno_exe = deno_exe.to_string();
 
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
-
-  let core_http_json_ops_exe = target_path.join("examples/http_bench_json_ops");
-  let core_http_json_ops_exe = core_http_json_ops_exe.to_str().unwrap();
 
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -82,7 +79,7 @@ pub fn benchmark(
       res.insert(
         file_stem.to_string(),
         run(
-          &[bun_exe.to_str().unwrap(), path, &port.to_string()],
+          &[&bun_exe.to_string(), path, &port.to_string()],
           port,
           None,
           None,
@@ -95,10 +92,11 @@ pub fn benchmark(
         file_stem.to_string(),
         run(
           &[
-            deno_exe,
+            deno_exe.as_str(),
             "run",
             "--allow-all",
             "--unstable",
+            "--enable-testing-features-do-not-use",
             path,
             &server_addr(port),
           ],
@@ -111,12 +109,6 @@ pub fn benchmark(
     }
   }
 
-  // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
-  // which was previously also called "deno_core_http_bench", "deno_core_single"
-  res.insert(
-    "core_http_json_ops".to_string(),
-    core_http_json_ops(core_http_json_ops_exe)?,
-  );
   res.insert("hyper".to_string(), hyper_http(hyper_hello_exe)?);
 
   Ok(res)
@@ -159,8 +151,8 @@ fn run(
   assert!(wrk.is_file());
 
   let addr = format!("http://127.0.0.1:{port}/");
-  let mut wrk_cmd =
-    vec![wrk.to_str().unwrap(), "-d", DURATION, "--latency", &addr];
+  let wrk = wrk.to_string();
+  let mut wrk_cmd = vec![wrk.as_str(), "-d", DURATION, "--latency", &addr];
 
   if let Some(lua_script) = lua_script {
     wrk_cmd.push("-s");
@@ -195,12 +187,6 @@ pub(crate) fn get_port() -> u16 {
 
 fn server_addr(port: u16) -> String {
   format!("0.0.0.0:{port}")
-}
-
-fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
-  // let port = get_port();
-  println!("http_benchmark testing CORE http_bench_json_ops");
-  run(&[exe], 4570, None, None, None)
 }
 
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {

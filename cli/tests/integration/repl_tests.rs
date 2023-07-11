@@ -32,7 +32,13 @@ fn pty_multiline() {
     console.write_line("/\\[/");
     console.expect("/\\[/");
     console.write_line("console.log(\"{test1} abc {test2} def {{test3}}\".match(/{([^{].+?)}/));");
-    console.expect("[ \"{test1}\", \"test1\" ]");
+    console.expect("[");
+    console.expect("  \"{test1}\",");
+    console.expect("  \"test1\",");
+    console.expect("  index: 0,");
+    console.expect("  input: \"{test1} abc {test2} def {{test3}}\",");
+    console.expect("  groups: undefined");
+    console.expect("]");
   });
 }
 
@@ -90,7 +96,7 @@ fn pty_complete_declarations() {
     console.write_line("class MyClass {}");
     console.expect("undefined");
     console.write_line_raw("My\t");
-    console.expect("[Class: MyClass]");
+    console.expect("[class MyClass]");
     console.write_line("let myVar = 2 + 3;");
     console.expect("undefined");
     console.write_line_raw("myV\t");
@@ -310,7 +316,15 @@ fn repl_cwd() {
     .args_vec(["repl", "-A"])
     .with_pty(|mut console| {
       console.write_line("Deno.cwd()");
-      console.expect(temp_dir.path().file_name().unwrap().to_str().unwrap());
+      console.expect(
+        temp_dir
+          .path()
+          .as_path()
+          .file_name()
+          .unwrap()
+          .to_str()
+          .unwrap(),
+      );
     });
 }
 
@@ -349,7 +363,7 @@ fn typescript_decorators() {
       .write_line("function dec(target) { target.prototype.test = () => 2; }");
     console.expect("undefined");
     console.write_line("@dec class Test {}");
-    console.expect("[Class: Test]");
+    console.expect("[class Test]");
     console.write_line("new Test().test()");
     console.expect("2");
   });
@@ -529,10 +543,7 @@ fn missing_deno_dir() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_DIR".to_owned(),
-        deno_dir_path.to_str().unwrap().to_owned(),
-      ),
+      ("DENO_DIR".to_owned(), deno_dir_path.to_string()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
@@ -552,10 +563,7 @@ fn custom_history_path() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_REPL_HISTORY".to_owned(),
-        history_path.to_str().unwrap().to_owned(),
-      ),
+      ("DENO_REPL_HISTORY".to_owned(), history_path.to_string()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
@@ -574,10 +582,7 @@ fn disable_history_file() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_DIR".to_owned(),
-        deno_dir.path().to_str().unwrap().to_owned(),
-      ),
+      ("DENO_DIR".to_owned(), deno_dir.path().to_string()),
       ("DENO_REPL_HISTORY".to_owned(), "".to_owned()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
@@ -739,7 +744,7 @@ fn eval_file_flag_multiple_files() {
   assert_contains!(err, "Download");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
@@ -784,15 +789,62 @@ fn pty_tab_handler() {
 }
 
 #[test]
+fn repl_error() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log(1);");
+    console.expect_all(&["1", "undefined"]);
+    console.write_line(r#"throw new Error("foo");"#);
+    console.expect("Uncaught Error: foo");
+    console.expect("    at <anonymous>");
+    console.write_line("console.log(2);");
+    console.expect("2");
+  });
+}
+
+#[flaky_test::flaky_test]
+fn repl_reject() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line("console.log(1);");
+    console.expect_all(&["1", "undefined"]);
+    console.write_line(r#"Promise.reject(new Error("foo"));"#);
+    console.expect("Promise {");
+    console.expect("  <rejected> Error: foo");
+    console.expect("Uncaught (in promise) Error: foo");
+    console.expect("    at <anonymous>");
+    console.write_line("console.log(2);");
+    console.expect("2");
+    console.write_line(r#"throw "hello";"#);
+    console.expect(r#"Uncaught "hello""#);
+    console.write_line(r#"throw `hello ${"world"}`;"#);
+    console.expect(r#"Uncaught "hello world""#);
+  });
+}
+
+#[flaky_test::flaky_test]
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
     console.expect_all(&["1", "undefined"]);
-    // TODO(nayeemrmn): The REPL should report event errors and rejections.
     console.write_line(r#"reportError(new Error("foo"));"#);
     console.expect("undefined");
+    console.expect("Uncaught Error: foo");
+    console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
     console.expect("2");
+  });
+}
+
+#[flaky_test::flaky_test]
+fn repl_error_undefined() {
+  util::with_pty(&["repl"], |mut console| {
+    console.write_line(r#"throw undefined;"#);
+    console.expect("Uncaught undefined");
+    console.write_line(r#"Promise.reject();"#);
+    console.expect("Promise { <rejected> undefined }");
+    console.expect("Uncaught (in promise) undefined");
+    console.write_line(r#"reportError(undefined);"#);
+    console.expect("undefined");
+    console.expect("Uncaught undefined");
   });
 }
 
@@ -824,10 +876,7 @@ fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
   let temp_dir = TempDir::new();
-  env_vars.push((
-    "DENO_DIR".to_string(),
-    temp_dir.path().to_string_lossy().to_string(),
-  ));
+  env_vars.push(("DENO_DIR".to_string(), temp_dir.path().to_string()));
 
   {
     let (out, err) = util::run_and_collect_output_with_args(
@@ -870,8 +919,8 @@ fn npm_packages() {
       true,
     );
 
-    assert_contains!(out, "Module {");
-    assert_contains!(out, "Chalk: [Class: Chalk],");
+    assert_contains!(out, "[Module: null prototype] {");
+    assert_contains!(out, "Chalk: [class Chalk],");
     assert!(err.is_empty());
   }
 
@@ -923,7 +972,7 @@ fn pty_tab_indexable_props() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()
@@ -965,9 +1014,6 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(
-        console.all_output(),
-        "Skipping document preload for repl.",
-      );
+      assert_contains!(console.all_output(), "Skipping document preload.",);
     });
 }

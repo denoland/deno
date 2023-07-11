@@ -43,9 +43,6 @@ deno_core::extension!(deno_test,
     state.put(options.sender);
     state.put(TestContainer::default());
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[derive(Clone)]
@@ -100,7 +97,9 @@ struct TestInfo<'s> {
   #[serde(rename = "fn")]
   function: serde_v8::Value<'s>,
   name: String,
+  #[serde(default)]
   ignore: bool,
+  #[serde(default)]
   only: bool,
   location: TestLocation,
 }
