@@ -712,11 +712,25 @@ Deno.test(
   { permissions: { net: true } },
   async () => {
     const promise = deferred();
+    let body = "";
 
-    const request = http.request("http://localhost:4545/http_version");
+    const request = http.request(
+      "http://localhost:4545/http_version",
+      (resp) => {
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        resp.on("end", () => {
+          promise.resolve();
+        });
+      },
+    );
     request.on("error", promise.reject);
-    request.end(promise.resolve);
+    request.end();
 
     await promise;
+
+    assertEquals(body, "HTTP/1.1");
   },
 );
