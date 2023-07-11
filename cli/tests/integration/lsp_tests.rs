@@ -3907,7 +3907,7 @@ fn lsp_code_actions_deno_cache() {
         "severity": 1,
         "code": "no-cache",
         "source": "deno",
-        "message": "Uncached or missing remote URL: \"https://deno.land/x/a/mod.ts\".",
+        "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
         "data": { "specifier": "https://deno.land/x/a/mod.ts" }
       }],
       "version": 1
@@ -3997,7 +3997,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"chalk\".",
+        "message": "Uncached or missing npm package: chalk",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -4024,7 +4024,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "no-cache-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: \"chalk\".",
+          "message": "Uncached or missing npm package: chalk",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -4044,7 +4044,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"chalk\".",
+        "message": "Uncached or missing npm package: chalk",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -6125,7 +6125,7 @@ fn lsp_completions_node_specifier() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"@types/node\"."
+        "message": "Uncached or missing npm package: @types/node"
       }
     ])
   );
