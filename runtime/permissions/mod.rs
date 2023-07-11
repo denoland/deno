@@ -1921,7 +1921,7 @@ pub fn create_child_permissions(
       }
     }
   }
-  worker_perms.net.granted_global = main_perms.net.granted_global;
+  worker_perms.net.denied_global = main_perms.net.denied_global;
   worker_perms.net.denied_list = main_perms.net.denied_list.clone();
   worker_perms.net.no_to_prompt_global = main_perms.net.no_to_prompt_global;
   worker_perms.net.no_to_prompt_list = main_perms.net.no_to_prompt_list.clone();
