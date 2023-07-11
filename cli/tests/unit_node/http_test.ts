@@ -707,3 +707,31 @@ Deno.test(
     await promise;
   },
 );
+
+Deno.test(
+  "[node/http] client end with callback",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+    let body = "";
+
+    const request = http.request(
+      "http://localhost:4545/http_version",
+      (resp) => {
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        resp.on("end", () => {
+          promise.resolve();
+        });
+      },
+    );
+    request.on("error", promise.reject);
+    request.end();
+
+    await promise;
+
+    assertEquals(body, "HTTP/1.1");
+  },
+);
