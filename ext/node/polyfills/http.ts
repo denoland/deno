@@ -618,12 +618,12 @@ class ClientRequest extends OutgoingMessage {
               }
 
               core.tryClose(this._bodyWriteRid);
+            }
 
-              try {
-                cb?.();
-              } catch (_) {
-                //
-              }
+            try {
+              cb?.();
+            } catch (_) {
+              //
             }
           })(),
         ]);
