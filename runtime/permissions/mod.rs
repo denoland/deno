@@ -671,7 +671,7 @@ impl UnaryPermission<ReadDescriptor> {
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
       &path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())),
-      || None,
+      || Some(path?.display().to_string()),
     )
   }
 
@@ -735,7 +735,7 @@ impl UnaryPermission<WriteDescriptor> {
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
       &path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())),
-      || None,
+      || Some(path?.display().to_string()),
     )
   }
 
@@ -895,8 +895,9 @@ impl UnaryPermission<RunDescriptor> {
   }
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
-    self
-      .request_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), || None)
+    self.request_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), || {
+      Some(cmd?.to_string())
+    })
   }
 
   pub fn revoke(&mut self, cmd: Option<&str>) -> PermissionState {
@@ -912,7 +913,7 @@ impl UnaryPermission<RunDescriptor> {
       &Some(RunDescriptor::from_str(cmd).unwrap()),
       false,
       api_name,
-      || None,
+      || Some(cmd.to_string()),
     )
   }
 
@@ -932,7 +933,7 @@ impl UnaryPermission<FfiDescriptor> {
   pub fn request(&mut self, path: Option<&Path>) -> PermissionState {
     self.request_desc(
       &path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())),
-      || None,
+      || Some(path?.display().to_string()),
     )
   }
 
