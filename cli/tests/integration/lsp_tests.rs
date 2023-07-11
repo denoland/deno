@@ -1213,6 +1213,137 @@ fn lsp_workspace_enable_paths() {
 }
 
 #[test]
+fn lsp_exclude_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("other");
+  temp_dir.write(
+    "other/shared.ts",
+    // this should not be found in the "find references" since this file is excluded
+    "import { a } from '../worker/shared.ts'; console.log(a);",
+  );
+  temp_dir.create_dir_all("worker");
+  temp_dir.write("worker/shared.ts", "export const a = 1");
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "exclude": ["other"],
+}"#,
+  );
+  let root_specifier = temp_dir.uri();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./other/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "console.log(Date.now());\n",
+        "import { a } from './shared.ts';\n",
+        "a;\n",
+      ),
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./other/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+      ],
+      "range": {
+        "start": { "line": 0, "character": 17, },
+        "end": { "line": 0, "character": 20, }
+      }
+    })
+  );
+
+  // check that the file system documents were auto-discovered
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      },
+      "position": { "line": 2, "character": 0 },
+      "context": {
+        "includeDeclaration": true
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "range": {
+        "start": { "line": 1, "character": 9 },
+        "end": { "line": 1, "character": 10 }
+      }
+    }, {
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "range": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 2, "character": 1 }
+      }
+    }, {
+      "uri": root_specifier.join("./worker/shared.ts").unwrap(),
+      "range": {
+        "start": { "line": 0, "character": 13 },
+        "end": { "line": 0, "character": 14 }
+      }
+    }])
+  );
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_hover_unstable_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
