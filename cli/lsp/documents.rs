@@ -1192,7 +1192,7 @@ impl Documents {
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
-      hasher.write_hashable(&document_preload_limit);
+      hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
         let mut enabled_urls = enabled_urls.to_vec();
@@ -1203,7 +1203,7 @@ impl Documents {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(maybe_jsx_config);
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes

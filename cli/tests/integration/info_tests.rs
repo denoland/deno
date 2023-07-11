@@ -1,38 +1,32 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use test_util as util;
-use test_util::TempDir;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::TestContextBuilder;
 
 #[test]
 fn info_with_compiled_source() {
-  let _g = util::http_server();
+  let context = TestContextBuilder::new().use_http_server().build();
   let module_path = "http://127.0.0.1:4545/run/048_media_types_jsx.ts";
-  let t = TempDir::new();
 
-  let mut deno = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .current_dir(util::testdata_path())
-    .arg("cache")
-    .arg(module_path)
-    .spawn()
-    .unwrap();
-  let status = deno.wait().unwrap();
-  assert!(status.success());
+  let output = context
+    .new_command()
+    .cwd(util::testdata_path())
+    .args_vec(["cache", module_path])
+    .run();
+  output.assert_exit_code(0);
+  output.skip_output_check();
 
-  let output = util::deno_cmd()
-    .env("DENO_DIR", t.path())
-    .env("NO_COLOR", "1")
-    .current_dir(util::testdata_path())
-    .arg("info")
-    .arg(module_path)
-    .output()
-    .unwrap();
+  let output = context
+    .new_command()
+    .cwd(util::testdata_path())
+    .args_vec(["info", module_path])
+    .split_output()
+    .run();
 
-  let str_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   // check the output of the test.ts program.
-  assert!(str_output.contains("emit: "));
-  assert_eq!(output.stderr, b"");
+  assert!(output.stdout().trim().contains("emit: "));
+  assert_eq!(output.stderr(), "");
 }
 
 itest!(multiple_imports {
