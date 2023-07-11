@@ -113,6 +113,7 @@ Deno.test("[node/net] connection event has socket value", async () => {
     });
   });
   server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
     const { port, address } = server.address() as any;
 
     const conn = await Deno.connect({
@@ -122,6 +123,7 @@ Deno.test("[node/net] connection event has socket value", async () => {
     });
 
     for await (const _ of conn.readable) {
+      //
     }
 
     p2.resolve();
