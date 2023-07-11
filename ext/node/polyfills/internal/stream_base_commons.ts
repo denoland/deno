@@ -253,7 +253,9 @@ export function onStreamRead(
       }
     } else {
       const offset = streamBaseState[kArrayBufferOffset];
-      const buf = Buffer.from(arrayBuffer, offset, nread);
+      // Performance note: Pass ArrayBuffer to Buffer#from to avoid
+      // copy.
+      const buf = Buffer.from(arrayBuffer.buffer, offset, nread);
       result = stream.push(buf);
     }
 

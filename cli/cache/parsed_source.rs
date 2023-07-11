@@ -262,7 +262,7 @@ impl deno_graph::ModuleAnalyzer for ParsedSourceCacheModuleAnalyzer {
 }
 
 fn compute_source_hash(bytes: &[u8]) -> String {
-  FastInsecureHasher::new().write(bytes).finish().to_string()
+  FastInsecureHasher::hash(bytes).to_string()
 }
 
 #[cfg(test)]

@@ -931,9 +931,9 @@ impl DenoDiagnostic {
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
-      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: \"{specifier}\"."), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: \"{}\".", pkg_ref.req), Some(json!({ "specifier": specifier }))),
-      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: \"{specifier}\".\n  Please check the file path."), None),
+      Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_ref.req), Some(json!({ "specifier": specifier }))),
+      Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
         lsp::DiagnosticSeverity::ERROR,
@@ -1169,6 +1169,7 @@ async fn generate_deno_diagnostics(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::HttpCache;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::SpecifierSettings;
@@ -1187,7 +1188,8 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location.to_path_buf());
+    let cache = HttpCache::new(location.to_path_buf());
+    let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -1209,7 +1211,12 @@ mod tests {
     StateSnapshot {
       documents,
       maybe_import_map,
-      ..Default::default()
+      assets: Default::default(),
+      cache_metadata: cache::CacheMetadata::new(HttpCache::new(
+        location.to_path_buf(),
+      )),
+      maybe_node_resolver: None,
+      maybe_npm_resolver: None,
     }
   }
 
@@ -1242,7 +1249,7 @@ mod tests {
   async fn test_enabled_then_disabled_specifier() {
     let temp_dir = TempDir::new();
     let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    let (snapshot, _) = setup(
+    let (snapshot, cache_location) = setup(
       &temp_dir,
       &[(
         "file:///a.ts",
@@ -1256,7 +1263,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let ts_server = TsServer::new(Default::default());
+    let cache = HttpCache::new(cache_location);
+    let ts_server = TsServer::new(Default::default(), cache);
 
     // test enabled
     {
@@ -1337,7 +1345,7 @@ let c: number = "a";
   #[tokio::test]
   async fn test_cancelled_ts_diagnostics_request() {
     let temp_dir = TempDir::new();
-    let (snapshot, _) = setup(
+    let (snapshot, cache_location) = setup(
       &temp_dir,
       &[(
         "file:///a.ts",
@@ -1348,7 +1356,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let ts_server = TsServer::new(Default::default());
+    let cache = HttpCache::new(cache_location);
+    let ts_server = TsServer::new(Default::default(), cache);
 
     let config = mock_config();
     let token = CancellationToken::new();
