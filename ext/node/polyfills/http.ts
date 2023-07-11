@@ -283,6 +283,8 @@ class FakeSocket extends EventEmitter {
   setKeepAlive() {}
 
   end() {}
+
+  destroy() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */
