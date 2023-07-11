@@ -27,6 +27,7 @@ use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::task::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
@@ -38,6 +39,7 @@ use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
 use log::error;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use std::thread;
@@ -66,61 +68,132 @@ struct VersionedDiagnostics {
 }
 
 type DiagnosticVec = Vec<DiagnosticRecord>;
-type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
-type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
-#[derive(Clone)]
+#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
+pub enum DiagnosticSource {
+  Deno,
+  Lint,
+  Ts,
+}
+
+impl DiagnosticSource {
+  pub fn as_lsp_source(&self) -> &'static str {
+    match self {
+      Self::Deno => "deno",
+      Self::Lint => "deno-lint",
+      Self::Ts => "deno-ts",
+    }
+  }
+}
+
+type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
+
+#[derive(Debug)]
 struct DiagnosticsPublisher {
   client: Client,
-  all_diagnostics:
-    Arc<Mutex<HashMap<ModuleSpecifier, DiagnosticsByVersionMap>>>,
+  diagnostics_by_specifier:
+    Mutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
   pub fn new(client: Client) -> Self {
     Self {
       client,
-      all_diagnostics: Default::default(),
+      diagnostics_by_specifier: Default::default(),
     }
   }
 
   pub async fn publish(
     &self,
+    source: DiagnosticSource,
     diagnostics: DiagnosticVec,
     token: &CancellationToken,
-  ) {
-    let mut all_diagnostics = self.all_diagnostics.lock().await;
+  ) -> usize {
+    let mut diagnostics_by_specifier =
+      self.diagnostics_by_specifier.lock().await;
+    let mut seen_specifiers = HashSet::with_capacity(diagnostics.len());
+    let mut messages_sent = 0;
+
     for record in diagnostics {
       if token.is_cancelled() {
-        return;
+        return messages_sent;
       }
 
-      // the versions of all the published diagnostics should be the same, but just
-      // in case they're not keep track of that
-      let diagnostics_by_version =
-        all_diagnostics.entry(record.specifier.clone()).or_default();
-      let version_diagnostics = diagnostics_by_version
-        .entry(record.versioned.version)
+      seen_specifiers.insert(record.specifier.clone());
+
+      let diagnostics_by_source = diagnostics_by_specifier
+        .entry(record.specifier.clone())
         .or_default();
-      version_diagnostics.extend(record.versioned.diagnostics);
+      let version = record.versioned.version;
+      let source_diagnostics = diagnostics_by_source.entry(source).or_default();
+      *source_diagnostics = record.versioned;
+
+      // DO NOT filter these by version. We want to display even out
+      // of date diagnostics in order to prevent flickering. The user's
+      // lsp client will eventually catch up.
+      let all_specifier_diagnostics = diagnostics_by_source
+        .values()
+        .flat_map(|d| &d.diagnostics)
+        .cloned()
+        .collect::<Vec<_>>();
 
       self
         .client
         .when_outside_lsp_lock()
         .publish_diagnostics(
           record.specifier,
-          version_diagnostics.clone(),
-          record.versioned.version,
+          all_specifier_diagnostics,
+          version,
         )
         .await;
+      messages_sent += 1;
     }
+
+    // now check all the specifiers to clean up any ones with old diagnostics
+    let mut specifiers_to_remove = Vec::new();
+    for (specifier, diagnostics_by_source) in
+      diagnostics_by_specifier.iter_mut()
+    {
+      if seen_specifiers.contains(specifier) {
+        continue;
+      }
+      if token.is_cancelled() {
+        break;
+      }
+      let maybe_removed_value = diagnostics_by_source.remove(&source);
+      if diagnostics_by_source.is_empty() {
+        specifiers_to_remove.push(specifier.clone());
+        if let Some(removed_value) = maybe_removed_value {
+          // clear out any diagnostics for this specifier
+          self
+            .client
+            .when_outside_lsp_lock()
+            .publish_diagnostics(
+              specifier.clone(),
+              Vec::new(),
+              removed_value.version,
+            )
+            .await;
+          messages_sent += 1;
+        }
+      }
+    }
+
+    // clean up specifiers with no diagnostics
+    for specifier in specifiers_to_remove {
+      diagnostics_by_specifier.remove(&specifier);
+    }
+
+    messages_sent
   }
 
   pub async fn clear(&self) {
-    let mut all_diagnostics = self.all_diagnostics.lock().await;
+    let mut all_diagnostics = self.diagnostics_by_specifier.lock().await;
     all_diagnostics.clear();
   }
 }
+
+type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
 
 #[derive(Clone, Default, Debug)]
 struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
@@ -197,7 +270,13 @@ impl DiagnosticBatchCounter {
 }
 
 #[derive(Debug)]
-struct ChannelMessage {
+enum ChannelMessage {
+  Update(ChannelUpdateMessage),
+  Clear,
+}
+
+#[derive(Debug)]
+struct ChannelUpdateMessage {
   message: DiagnosticServerUpdateMessage,
   batch_index: Option<usize>,
 }
@@ -242,6 +321,9 @@ impl DiagnosticsServer {
 
   pub fn invalidate_all(&self) {
     self.ts_diagnostics.invalidate_all();
+    if let Some(tx) = &self.channel {
+      let _ = tx.send(ChannelMessage::Clear);
+    }
   }
 
   #[allow(unused_must_use)]
@@ -261,14 +343,24 @@ impl DiagnosticsServer {
         let mut ts_handle: Option<JoinHandle<()>> = None;
         let mut lint_handle: Option<JoinHandle<()>> = None;
         let mut deps_handle: Option<JoinHandle<()>> = None;
-        let diagnostics_publisher = DiagnosticsPublisher::new(client.clone());
+        let diagnostics_publisher =
+          Arc::new(DiagnosticsPublisher::new(client.clone()));
 
         loop {
           match rx.recv().await {
             // channel has closed
             None => break,
             Some(message) => {
-              let ChannelMessage {
+              let message = match message {
+                ChannelMessage::Update(message) => message,
+                ChannelMessage::Clear => {
+                  token.cancel();
+                  token = CancellationToken::new();
+                  diagnostics_publisher.clear().await;
+                  continue;
+                }
+              };
+              let ChannelUpdateMessage {
                 message:
                   DiagnosticServerUpdateMessage {
                     snapshot,
@@ -281,7 +373,6 @@ impl DiagnosticsServer {
               // cancel the previous run
               token.cancel();
               token = CancellationToken::new();
-              diagnostics_publisher.clear().await;
 
               let previous_ts_handle = ts_handle.take();
               ts_handle = Some(spawn({
@@ -324,10 +415,12 @@ impl DiagnosticsServer {
                   })
                   .unwrap_or_default();
 
-                  let messages_len = diagnostics.len();
+                  let mut messages_len = 0;
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
-                    diagnostics_publisher.publish(diagnostics, &token).await;
+                    messages_len = diagnostics_publisher
+                      .publish(DiagnosticSource::Ts, diagnostics, &token)
+                      .await;
 
                     if !token.is_cancelled() {
                       performance.measure(mark);
@@ -360,16 +453,18 @@ impl DiagnosticsServer {
                   }
                   let mark =
                     performance.mark("update_diagnostics_deps", None::<()>);
-                  let diagnostics = generate_deno_diagnostics(
-                    &snapshot,
-                    &config,
-                    token.clone(),
-                  )
-                  .await;
+                  let diagnostics = spawn_blocking({
+                    let token = token.clone();
+                    move || generate_deno_diagnostics(&snapshot, &config, token)
+                  })
+                  .await
+                  .unwrap();
 
-                  let messages_len = diagnostics.len();
+                  let mut messages_len = 0;
                   if !token.is_cancelled() {
-                    diagnostics_publisher.publish(diagnostics, &token).await;
+                    messages_len = diagnostics_publisher
+                      .publish(DiagnosticSource::Deno, diagnostics, &token)
+                      .await;
 
                     if !token.is_cancelled() {
                       performance.measure(mark);
@@ -402,17 +497,25 @@ impl DiagnosticsServer {
                   }
                   let mark =
                     performance.mark("update_diagnostics_lint", None::<()>);
-                  let diagnostics = generate_lint_diagnostics(
-                    &snapshot,
-                    &config,
-                    &lint_options,
-                    token.clone(),
-                  )
-                  .await;
+                  let diagnostics = spawn_blocking({
+                    let token = token.clone();
+                    move || {
+                      generate_lint_diagnostics(
+                        &snapshot,
+                        &config,
+                        &lint_options,
+                        token,
+                      )
+                    }
+                  })
+                  .await
+                  .unwrap();
 
-                  let messages_len = diagnostics.len();
+                  let mut messages_len = 0;
                   if !token.is_cancelled() {
-                    diagnostics_publisher.publish(diagnostics, &token).await;
+                    messages_len = diagnostics_publisher
+                      .publish(DiagnosticSource::Lint, diagnostics, &token)
+                      .await;
 
                     if !token.is_cancelled() {
                       performance.measure(mark);
@@ -450,10 +553,10 @@ impl DiagnosticsServer {
     // instead only store the latest message (ex. maybe using a
     // tokio::sync::watch::channel)
     if let Some(tx) = &self.channel {
-      tx.send(ChannelMessage {
+      tx.send(ChannelMessage::Update(ChannelUpdateMessage {
         message,
         batch_index: self.batch_counter.inc(),
-      })
+      }))
       .map_err(|err| err.into())
     } else {
       Err(anyhow!("diagnostics server not started"))
@@ -545,7 +648,7 @@ fn ts_json_to_diagnostics(
           severity: Some((&d.category).into()),
           code: Some(lsp::NumberOrString::Number(d.code as i32)),
           code_description: None,
-          source: Some("deno-ts".to_string()),
+          source: Some(DiagnosticSource::Ts.as_lsp_source().to_string()),
           message: get_diagnostic_message(d),
           related_information: to_lsp_related_information(
             &d.related_information,
@@ -567,7 +670,7 @@ fn ts_json_to_diagnostics(
     .collect()
 }
 
-async fn generate_lint_diagnostics(
+fn generate_lint_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
   lint_options: &LintOptions,
@@ -970,7 +1073,7 @@ impl DenoDiagnostic {
       range: *range,
       severity: Some(severity),
       code: Some(lsp::NumberOrString::String(self.code().to_string())),
-      source: Some("deno".to_string()),
+      source: Some(DiagnosticSource::Deno.as_lsp_source().to_string()),
       message,
       data,
       ..Default::default()
@@ -1152,7 +1255,7 @@ fn diagnose_dependency(
 /// Generate diagnostics that come from Deno module resolution logic (like
 /// dependencies) or other Deno specific diagnostics, like the ability to use
 /// an import map to shorten an URL.
-async fn generate_deno_diagnostics(
+fn generate_deno_diagnostics(
   snapshot: &language_server::StateSnapshot,
   config: &ConfigSnapshot,
   token: CancellationToken,
@@ -1299,8 +1402,7 @@ let c: number = "a";
         &enabled_config,
         &Default::default(),
         Default::default(),
-      )
-      .await;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 6);
       let diagnostics = generate_ts_diagnostics(
         snapshot.clone(),
@@ -1315,8 +1417,7 @@ let c: number = "a";
         &snapshot,
         &enabled_config,
         Default::default(),
-      )
-      .await;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
     }
 
@@ -1337,8 +1438,7 @@ let c: number = "a";
         &disabled_config,
         &Default::default(),
         Default::default(),
-      )
-      .await;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
       let diagnostics = generate_ts_diagnostics(
         snapshot.clone(),
@@ -1353,8 +1453,7 @@ let c: number = "a";
         &snapshot,
         &disabled_config,
         Default::default(),
-      )
-      .await;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
     }
   }
@@ -1416,7 +1515,7 @@ let c: number = "a";
     );
     let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 2);
     for record in actual {
       match record.specifier.as_str() {
@@ -1542,7 +1641,7 @@ let c: number = "a";
     );
     let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
+    let actual = generate_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 1);
     let record = actual.first().unwrap();
     assert_eq!(
