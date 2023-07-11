@@ -353,6 +353,7 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
   });
   req.on("socket", (socket) => {
     socket.setKeepAlive();
+    socket.destroy();
   });
   req.write("hello ");
   req.write("world");
