@@ -54,11 +54,19 @@ pub struct DiagnosticServerUpdateMessage {
   pub lint_options: LintOptions,
 }
 
-pub type DiagnosticRecord =
-  (ModuleSpecifier, Option<i32>, Vec<lsp::Diagnostic>);
-pub type DiagnosticVec = Vec<DiagnosticRecord>;
-type DiagnosticMap =
-  HashMap<ModuleSpecifier, (Option<i32>, Vec<lsp::Diagnostic>)>;
+struct DiagnosticRecord {
+  pub specifier: ModuleSpecifier,
+  pub versioned: VersionedDiagnostics,
+}
+
+#[derive(Clone, Default, Debug)]
+struct VersionedDiagnostics {
+  pub version: Option<i32>,
+  pub diagnostics: Vec<lsp::Diagnostic>,
+}
+
+type DiagnosticVec = Vec<DiagnosticRecord>;
+type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
 type DiagnosticsByVersionMap = HashMap<Option<i32>, Vec<lsp::Diagnostic>>;
 
 #[derive(Clone)]
@@ -82,7 +90,7 @@ impl DiagnosticsPublisher {
     token: &CancellationToken,
   ) {
     let mut all_diagnostics = self.all_diagnostics.lock().await;
-    for (specifier, version, diagnostics) in diagnostics {
+    for record in diagnostics {
       if token.is_cancelled() {
         return;
       }
@@ -90,15 +98,20 @@ impl DiagnosticsPublisher {
       // the versions of all the published diagnostics should be the same, but just
       // in case they're not keep track of that
       let diagnostics_by_version =
-        all_diagnostics.entry(specifier.clone()).or_default();
-      let version_diagnostics =
-        diagnostics_by_version.entry(version).or_default();
-      version_diagnostics.extend(diagnostics);
+        all_diagnostics.entry(record.specifier.clone()).or_default();
+      let version_diagnostics = diagnostics_by_version
+        .entry(record.versioned.version)
+        .or_default();
+      version_diagnostics.extend(record.versioned.diagnostics);
 
       self
         .client
         .when_outside_lsp_lock()
-        .publish_diagnostics(specifier, version_diagnostics.clone(), version)
+        .publish_diagnostics(
+          record.specifier,
+          version_diagnostics.clone(),
+          record.versioned.version,
+        )
         .await;
     }
   }
@@ -119,12 +132,10 @@ impl TsDiagnosticsStore {
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
     let ts_diagnostics = self.0.lock();
-    if let Some((diagnostics_doc_version, diagnostics)) =
-      ts_diagnostics.get(specifier)
-    {
+    if let Some(versioned) = ts_diagnostics.get(specifier) {
       // only get the diagnostics if they're up to date
-      if document_version == *diagnostics_doc_version {
-        return diagnostics.clone();
+      if document_version == versioned.version {
+        return versioned.diagnostics.clone();
       }
     }
     Vec::new()
@@ -145,9 +156,7 @@ impl TsDiagnosticsStore {
     let mut stored_ts_diagnostics = self.0.lock();
     *stored_ts_diagnostics = diagnostics
       .iter()
-      .map(|(specifier, version, diagnostics)| {
-        (specifier.clone(), (*version, diagnostics.clone()))
-      })
+      .map(|record| (record.specifier.clone(), record.versioned.clone()))
       .collect();
   }
 }
@@ -585,16 +594,18 @@ async fn generate_lint_diagnostics(
       }
 
       let version = document.maybe_lsp_version();
-      diagnostics_vec.push((
-        document.specifier().clone(),
-        version,
-        generate_document_lint_diagnostics(
-          config,
-          lint_options,
-          lint_rules.clone(),
-          &document,
-        ),
-      ));
+      diagnostics_vec.push(DiagnosticRecord {
+        specifier: document.specifier().clone(),
+        versioned: VersionedDiagnostics {
+          version,
+          diagnostics: generate_document_lint_diagnostics(
+            config,
+            lint_options,
+            lint_rules.clone(),
+            &document,
+          ),
+        },
+      });
     }
   }
   diagnostics_vec
@@ -668,7 +679,13 @@ async fn generate_ts_diagnostics(
     } else {
       Vec::new()
     };
-    diagnostics_vec.push((specifier, version, ts_diagnostics));
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier,
+      versioned: VersionedDiagnostics {
+        version,
+        diagnostics: ts_diagnostics,
+      },
+    });
   }
   // add an empty diagnostic publish for disabled specifiers in order
   // to clear those diagnostics if they exist
@@ -677,7 +694,13 @@ async fn generate_ts_diagnostics(
       .documents
       .get(&specifier)
       .and_then(|d| d.maybe_lsp_version());
-    diagnostics_vec.push((specifier, version, Vec::new()));
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier,
+      versioned: VersionedDiagnostics {
+        version,
+        diagnostics: Vec::new(),
+      },
+    });
   }
   Ok(diagnostics_vec)
 }
@@ -1156,11 +1179,13 @@ async fn generate_deno_diagnostics(
         );
       }
     }
-    diagnostics_vec.push((
-      specifier.clone(),
-      document.maybe_lsp_version(),
-      diagnostics,
-    ));
+    diagnostics_vec.push(DiagnosticRecord {
+      specifier: specifier.clone(),
+      versioned: VersionedDiagnostics {
+        version: document.maybe_lsp_version(),
+        diagnostics,
+      },
+    });
   }
 
   diagnostics_vec
@@ -1338,8 +1363,12 @@ let c: number = "a";
     diagnostic_vec: DiagnosticVec,
   ) -> Vec<lsp::Diagnostic> {
     assert_eq!(diagnostic_vec.len(), 1);
-    let (_, _, diagnostics) = diagnostic_vec.into_iter().next().unwrap();
-    diagnostics
+    diagnostic_vec
+      .into_iter()
+      .next()
+      .unwrap()
+      .versioned
+      .diagnostics
   }
 
   #[tokio::test]
@@ -1389,13 +1418,13 @@ let c: number = "a";
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
     assert_eq!(actual.len(), 2);
-    for (specifier, _, diagnostics) in actual {
-      match specifier.as_str() {
+    for record in actual {
+      match record.specifier.as_str() {
         "file:///std/testing/asserts.ts" => {
-          assert_eq!(json!(diagnostics), json!([]))
+          assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
         "file:///a/file.ts" => assert_eq!(
-          json!(diagnostics),
+          json!(record.versioned.diagnostics),
           json!([
             {
               "range": {
@@ -1419,7 +1448,7 @@ let c: number = "a";
             }
           ])
         ),
-        _ => unreachable!("unexpected specifier {}", specifier),
+        _ => unreachable!("unexpected specifier {}", record.specifier),
       }
     }
   }
@@ -1515,9 +1544,9 @@ let c: number = "a";
     let token = CancellationToken::new();
     let actual = generate_deno_diagnostics(&snapshot, &config, token).await;
     assert_eq!(actual.len(), 1);
-    let (_, _, diagnostics) = actual.first().unwrap();
+    let record = actual.first().unwrap();
     assert_eq!(
-      json!(diagnostics),
+      json!(record.versioned.diagnostics),
       json!([
         {
           "range": {
