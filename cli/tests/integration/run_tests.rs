@@ -660,7 +660,7 @@ fn permissions_prompt_allow_all() {
       console.expect("✅ Granted all write access.");
       // "net" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests network access to \"foo\".\r\n",
+        "┌ ⚠️  Deno requests net access to \"foo\".\r\n",
         "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-net to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",

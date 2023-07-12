@@ -229,8 +229,7 @@ impl AsRef<str> for EnvVarName {
 }
 
 pub trait Descriptor: Eq + Clone {
-  fn type_name() -> &'static str;
-  fn type_description() -> &'static str;
+  fn flag_name() -> &'static str;
   fn name(&self) -> Cow<str>;
   fn stronger_than(&self, other: &Self) -> bool {
     self == other
@@ -272,10 +271,10 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
   ) -> Result<(), AnyError> {
     let (result, prompted, is_allow_all) =
       self.query_desc(desc, Some(assert_non_partial)).check2(
-        T::type_name(),
+        T::flag_name(),
         api_name,
         || match get_display_name() {
-          Some(display_name) => Some(format!("\"{}\"", display_name)),
+          Some(display_name) => Some(display_name),
           None => desc.as_ref().map(|d| format!("\"{}\"", d.name())),
         },
         self.prompt,
@@ -346,7 +345,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
       return state;
     }
     let mut message = String::with_capacity(40);
-    message.push_str(&format!("{} access", T::type_name()));
+    message.push_str(&format!("{} access", T::flag_name()));
     match get_display_name() {
       Some(display_name) => {
         message.push_str(&format!(" to \"{}\"", display_name))
@@ -358,7 +357,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
     match permission_prompt(
       &message,
-      T::type_name(),
+      T::flag_name(),
       Some("Deno.permissions.request()"),
       true,
     ) {
@@ -456,12 +455,8 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
 pub struct ReadDescriptor(pub PathBuf);
 
 impl Descriptor for ReadDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "read"
-  }
-
-  fn type_description() -> &'static str {
-    "read the file system"
   }
 
   fn name(&self) -> Cow<str> {
@@ -477,12 +472,8 @@ impl Descriptor for ReadDescriptor {
 pub struct WriteDescriptor(pub PathBuf);
 
 impl Descriptor for WriteDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "write"
-  }
-
-  fn type_description() -> &'static str {
-    "write to the file system"
   }
 
   fn name(&self) -> Cow<str> {
@@ -504,12 +495,8 @@ impl NetDescriptor {
 }
 
 impl Descriptor for NetDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "net"
-  }
-
-  fn type_description() -> &'static str {
-    "network access"
   }
 
   fn name(&self) -> Cow<str> {
@@ -551,12 +538,8 @@ impl EnvDescriptor {
 }
 
 impl Descriptor for EnvDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "env"
-  }
-
-  fn type_description() -> &'static str {
-    "environment variables"
   }
 
   fn name(&self) -> Cow<str> {
@@ -577,12 +560,8 @@ pub enum RunDescriptor {
 }
 
 impl Descriptor for RunDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "run"
-  }
-
-  fn type_description() -> &'static str {
-    "run commands"
   }
 
   fn name(&self) -> Cow<str> {
@@ -618,12 +597,8 @@ impl ToString for RunDescriptor {
 pub struct SysDescriptor(pub String);
 
 impl Descriptor for SysDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "sys"
-  }
-
-  fn type_description() -> &'static str {
-    "system information"
   }
 
   fn name(&self) -> Cow<str> {
@@ -643,12 +618,8 @@ pub fn parse_sys_kind(kind: &str) -> Result<&str, AnyError> {
 pub struct FfiDescriptor(pub PathBuf);
 
 impl Descriptor for FfiDescriptor {
-  fn type_name() -> &'static str {
+  fn flag_name() -> &'static str {
     "ffi"
-  }
-
-  fn type_description() -> &'static str {
-    "foreign function interface"
   }
 
   fn name(&self) -> Cow<str> {
@@ -686,9 +657,9 @@ impl UnaryPermission<ReadDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    let desc = ReadDescriptor(resolve_from_cwd(path).unwrap());
+    let desc = ReadDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, api_name, || {
-      Some(path.display().to_string())
+      Some(format!("\"{}\"", path.display()))
     })
   }
 
@@ -701,7 +672,7 @@ impl UnaryPermission<ReadDescriptor> {
       &Some(ReadDescriptor(path.to_path_buf())),
       true,
       api_name,
-      || Some(path.display().to_string()),
+      || Some(format!("\"{}\"", path.display())),
     )
   }
 
@@ -713,7 +684,7 @@ impl UnaryPermission<ReadDescriptor> {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    let desc = ReadDescriptor(resolve_from_cwd(path).unwrap());
+    let desc = ReadDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
     })
@@ -750,9 +721,9 @@ impl UnaryPermission<WriteDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    let desc = WriteDescriptor(resolve_from_cwd(path).unwrap());
+    let desc = WriteDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, api_name, || {
-      Some(path.display().to_string())
+      Some(format!("\"{}\"", path.display()))
     })
   }
 
@@ -765,7 +736,7 @@ impl UnaryPermission<WriteDescriptor> {
       &Some(WriteDescriptor(path.to_path_buf())),
       true,
       api_name,
-      || Some(path.display().to_string()),
+      || Some(format!("\"{}\"", path.display())),
     )
   }
 
@@ -777,7 +748,7 @@ impl UnaryPermission<WriteDescriptor> {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError> {
-    let desc = WriteDescriptor(resolve_from_cwd(path).unwrap());
+    let desc = WriteDescriptor(resolve_from_cwd(path)?);
     self.check_desc(&Some(desc), false, Some(api_name), || {
       Some(format!("<{display}>"))
     })
@@ -833,7 +804,7 @@ impl UnaryPermission<NetDescriptor> {
       Some(port) => format!("{hostname}:{port}"),
     };
     self.check_desc(&Some(NetDescriptor::new(&host)), false, api_name, || {
-      Some(display_host.clone())
+      Some(format!("\"{}\"", display_host))
     })
   }
 
@@ -919,7 +890,7 @@ impl UnaryPermission<RunDescriptor> {
       &Some(RunDescriptor::from_str(cmd).unwrap()),
       false,
       api_name,
-      || Some(cmd.to_string()),
+      || Some(format!("\"{}\"", cmd)),
     )
   }
 
@@ -948,9 +919,12 @@ impl UnaryPermission<FfiDescriptor> {
   }
 
   pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    let desc = FfiDescriptor(resolve_from_cwd(path.unwrap()).unwrap());
-    self.check_desc(&Some(desc), false, None, || {
-      Some(path?.display().to_string())
+    let desc = match path {
+      Some(path) => Some(FfiDescriptor(resolve_from_cwd(path)?)),
+      None => None,
+    };
+    self.check_desc(&desc, false, None, || {
+      Some(format!("\"{}\"", path?.display()))
     })
   }
 
@@ -963,7 +937,7 @@ impl UnaryPermission<FfiDescriptor> {
       &Some(FfiDescriptor(path.to_path_buf())),
       true,
       api_name,
-      || Some(path.display().to_string()),
+      || Some(format!("\"{}\"", path.display())),
     )
   }
 
