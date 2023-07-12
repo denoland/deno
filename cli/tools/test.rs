@@ -25,6 +25,9 @@ use crate::worker::CliMainWorkerFactory;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_core::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context as _;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -72,7 +75,6 @@ use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
-use thiserror::Error;
 use tokio::signal;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -379,16 +381,6 @@ impl TestSummary {
   }
 }
 
-#[derive(Error, Debug)]
-enum TestReporterError {
-  #[error("failed to serialize report")]
-  JUnitSerializationFailure(#[from] quick_junit::SerializeError),
-  #[error("failed to write JUnit XML file")]
-  JUnitIoFailure(#[from] std::io::Error),
-  #[error("error in one or more wrapped reporters: {0:?}")]
-  CompoundReporterError(Vec<Self>),
-}
-
 trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);
   fn report_plan(&mut self, plan: &TestPlan);
@@ -428,7 +420,7 @@ trait TestReporter {
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> Result<(), TestReporterError>;
+  ) -> anyhow::Result<()>;
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
@@ -553,7 +545,7 @@ impl TestReporter for CompoundTestReporter {
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> Result<(), TestReporterError> {
+  ) -> anyhow::Result<()> {
     let mut errors = vec![];
     for reporter in &mut self.test_reporters {
       if let Err(err) = reporter.flush_report(elapsed, tests, test_steps) {
@@ -564,7 +556,15 @@ impl TestReporter for CompoundTestReporter {
     if errors.is_empty() {
       Ok(())
     } else {
-      Err(TestReporterError::CompoundReporterError(errors))
+      bail!(
+        "error in one or more wrapped reporters:\n{}",
+        errors
+          .iter()
+          .enumerate()
+          .fold(String::new(), |acc, (i, err)| {
+            format!("{}Error #{}: {:?}\n", acc, i + 1, err)
+          })
+      )
     }
   }
 }
@@ -1120,7 +1120,7 @@ impl TestReporter for PrettyTestReporter {
     _elapsed: &Duration,
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> Result<(), TestReporterError> {
+  ) -> anyhow::Result<()> {
     Ok(())
   }
 }
@@ -1251,7 +1251,7 @@ impl TestReporter for JunitTestReporter {
     elapsed: &Duration,
     tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> Result<(), TestReporterError> {
+  ) -> anyhow::Result<()> {
     let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
     for (id, case) in &self.cases {
       if let Some(test) = tests.get(id) {
@@ -1275,14 +1275,19 @@ impl TestReporter for JunitTestReporter {
         .cloned()
         .collect::<Vec<quick_junit::TestSuite>>(),
     );
-    let report_str = report.to_string()?;
-    let report_bytes = report_str.as_bytes();
 
     if self.path == "-" {
-      std::io::stdout().write_all(report_bytes)?;
+      report
+        .serialize(std::io::stdout())
+        .with_context(|| "Failed to write JUnit report to stdout")?;
     } else {
-      let mut file = std::fs::File::create(self.path.clone())?;
-      file.write_all(report_bytes)?;
+      let file =
+        std::fs::File::create(self.path.clone()).with_context(|| {
+          format!("Failed to open JUnit report file {}", self.path)
+        })?;
+      report.serialize(file).with_context(|| {
+        format!("Failed to write JUnit report to {}", self.path)
+      })?;
     }
 
     Ok(())
@@ -1881,7 +1886,7 @@ async fn test_specifiers(
             if let Err(err) =
               reporter.flush_report(&elapsed, &tests, &test_steps)
             {
-              print!("Test reporter failed to flush: {}", err)
+              eprint!("Test reporter failed to flush: {}", err)
             }
             std::process::exit(130);
           }
