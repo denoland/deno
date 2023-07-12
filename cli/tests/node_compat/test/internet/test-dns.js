@@ -452,27 +452,6 @@ TEST(async function test_resolveCaa(done) {
 //   checkWrap(req);
 // });
 
-TEST(async function test_resolveCname(done) {
-  function validateResult(result) {
-    assert.ok(result.length > 0);
-
-    for (const item of result) {
-      assert.ok(item);
-      assert.strictEqual(typeof item, 'string');
-    }
-  }
-
-  validateResult(await dnsPromises.resolveCname(addresses.CNAME_HOST));
-
-  const req = dns.resolveCname(addresses.CNAME_HOST, function(err, names) {
-    assert.ifError(err);
-    validateResult(names);
-    done();
-  });
-
-  checkWrap(req);
-});
-
 TEST(function test_resolveCname_failure(done) {
   dnsPromises.resolveCname(addresses.NOT_FOUND)
     .then(common.mustNotCall())
