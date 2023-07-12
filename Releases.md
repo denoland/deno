@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.35.1 / 2023.07.12
+
+- fix(ext/http): Use brotli compression params (#19758)
+- fix(lsp): exclude files in deno.json "exclude" (#19791)
+- fix(lsp): remove quotes and period surrounding specifier in uncached messages
+  (#19794)
+- fix(lsp): stop diagnostics flickering (#19803)
+- fix(node/http): add destroy to FakeSocket (#19796)
+- fix(node/http): allow callback in first argument of end call (#19778)
+- fix(node/http): server use FakeSocket and add end method (#19660)
+- fix(vendor): support import mapped jsxImportSource (#19724)
+- fix: remove unstable check for Deno.listenTls#alpnProtocols (#19732)
+- perf(ext/node): native vectored write for server streams (#19752)
+- perf(ext/node): optimize net streams (#19678)
+- perf(ext/websocket): optimize server websocket js (#19719)
+- perf(node/async_hooks): optimize AsyncLocalStorage (#19729)
+- perf: add setup cache for node_modules folder (#19787)
+
 ### 1.35.0 / 2023.07.04
 
 - feat: add more Deno.errors classes (#19514)
