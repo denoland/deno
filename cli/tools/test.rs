@@ -1209,18 +1209,40 @@ impl TestReporter for JunitTestReporter {
     result: &TestStepResult,
     _elapsed: u64,
     _tests: &IndexMap<usize, TestDescription>,
-    _test_steps: &IndexMap<usize, TestStepDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
     let status = match result {
       TestStepResult::Ok => "passed",
       TestStepResult::Ignored => "skipped",
       TestStepResult::Failed(_) => "failure",
     };
-    // TODO: This currently doesn't work for nested steps, not sure how I'd represent them...
-    if let Some(case) = self.cases.get_mut(&description.parent_id) {
+
+    let root_id: usize;
+    let mut name = String::new();
+    {
+      let mut ancestors = vec![];
+      let mut current_desc = description;
+      loop {
+        if let Some(d) = test_steps.get(&current_desc.parent_id) {
+          ancestors.push(&d.name);
+          current_desc = d;
+        } else {
+          root_id = current_desc.parent_id;
+          break;
+        }
+      }
+      ancestors.reverse();
+      for n in ancestors {
+        name.push_str(n);
+        name.push_str(" ... ");
+      }
+      name.push_str(&description.name);
+    }
+
+    if let Some(case) = self.cases.get_mut(&root_id) {
       case.add_property(quick_junit::Property::new(
         format!("step[{}]", status),
-        description.name.clone(),
+        name,
       ));
     }
   }
