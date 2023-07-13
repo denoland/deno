@@ -353,8 +353,9 @@ fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
 #[cfg(unix)]
 fn fchmod(fd: i32, mode: u32) -> FsResult<()> {
   use nix::sys::stat::fchmod;
+  use nix::sys::stat::mode_t;
   use nix::sys::stat::Mode;
-  let mode: Mode = Mode::from_bits_truncate(mode);
+  let mode: Mode = Mode::from_bits_truncate(mode as mode_t);
   fchmod(fd, mode)?;
   Ok(())
 }
