@@ -68,6 +68,17 @@ impl From<JoinError> for FsError {
   }
 }
 
+use nix::Error;
+impl From<Error> for FsError {
+  fn from(error: Error) -> Self {
+    match error {
+      nix::errno::Errno::EAGAIN => FsError::FileBusy,
+      nix::errno::Errno::EINVAL => FsError::NotSupported,
+      _ => FsError::Io(io::Error::from_raw_os_error(error as i32)),
+    }
+  }
+}
+
 pub type FsResult<T> = Result<T, FsError>;
 
 pub struct FsStat {

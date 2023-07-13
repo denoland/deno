@@ -40,6 +40,8 @@ const denoNs = {
   watchFs: fsEvents.watchFs,
   chmodSync: fs.chmodSync,
   chmod: fs.chmod,
+  fchmodSync: fs.fchmodSync,
+  fchmod: fs.fchmod,
   chown: fs.chown,
   chownSync: fs.chownSync,
   copyFileSync: fs.copyFileSync,

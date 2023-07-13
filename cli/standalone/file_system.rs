@@ -122,6 +122,13 @@ impl FileSystem for DenoCompileFileSystem {
     RealFs.chmod_async(path, mode).await
   }
 
+  fn fchmod_sync(&self, fd: i32, mode: u16) -> FsResult<()> {
+    RealFs.fchmod_sync(fd, mode)
+  }
+  async fn fchmod_async(&self, fd: i32, mode: u16) -> FsResult<()> {
+    RealFs.fchmod_async(fd, mode).await
+  }
+
   fn chown_sync(
     &self,
     path: &Path,

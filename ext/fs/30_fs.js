@@ -46,6 +46,14 @@ async function chmod(path, mode) {
   await op_fs_chmod_async(pathFromURL(path), mode);
 }
 
+function fchmodSync(fd, mode) {
+  ops.op_fs_fchmod_sync(fd, mode);
+}
+
+async function fchmod(fd, mode) {
+  await core.opAsync("op_fs_fchmod_async", fd, mode);
+}
+
 function chownSync(
   path,
   uid,
@@ -855,6 +863,8 @@ export {
   chdir,
   chmod,
   chmodSync,
+  fchmod,
+  fchmodSync,
   chown,
   chownSync,
   copyFile,

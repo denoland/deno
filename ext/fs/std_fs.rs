@@ -119,6 +119,13 @@ impl FileSystem for RealFs {
     spawn_blocking(move || chmod(&path, mode)).await?
   }
 
+  fn fchmod_sync(&self, fd: i32, mode: u16) -> FsResult<()> {
+    fchmod(fd, mode)
+  }
+  async fn fchmod_async(&self, fd: i32, mode: u16) -> FsResult<()> {
+    spawn_blocking(move || fchmod(fd, mode)).await?
+  }
+
   fn chown_sync(
     &self,
     path: &Path,
@@ -340,6 +347,20 @@ fn chmod(path: &Path, mode: u32) -> FsResult<()> {
 fn chmod(path: &Path, _mode: u32) -> FsResult<()> {
   // Still check file/dir exists on Windows
   std::fs::metadata(path)?;
+  Err(FsError::NotSupported)
+}
+
+#[cfg(unix)]
+fn fchmod(fd: i32, mode: u16) -> FsResult<()> {
+  use nix::sys::stat::{fchmod, Mode};
+  let mode: Mode = Mode::from_bits_truncate(mode);
+  fchmod(fd, mode)?;
+  Ok(())
+}
+
+// TODO: implement fchmod for Windows
+#[cfg(not(unix))]
+fn fchmod(fd: i32, mode: u16) -> FsResult<()> {
   Err(FsError::NotSupported)
 }
 

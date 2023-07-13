@@ -218,6 +218,37 @@ where
 }
 
 #[op]
+fn op_fs_fchmod_sync<P>(
+  state: &mut OpState,
+  fd: i32,
+  mode: u16,
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let fs = state.borrow::<FileSystemRc>();
+  fs.fchmod_sync(fd, mode).context("fchmod")?;
+  Ok(())
+}
+
+#[op]
+async fn op_fs_fchmod_async<P>(
+  state: Rc<RefCell<OpState>>,
+  fd: i32,
+  mode: u16,
+) -> Result<(), AnyError>
+where
+  P: FsPermissions + 'static,
+{
+  let fs = {
+    let state = state.borrow_mut();
+    state.borrow::<FileSystemRc>().clone()
+  };
+  fs.fchmod_async(fd, mode).await.context("fchmod")?;
+  Ok(())
+}
+
+#[op]
 fn op_fs_chown_sync<P>(
   state: &mut OpState,
   path: String,

@@ -2861,6 +2861,12 @@ declare namespace Deno {
    */
   export function chmodSync(path: string | URL, mode: number): void;
 
+  /** TODO */
+  export function fchmod(fd: number, mode: number): Promise<void>;
+
+  /** TODO */
+  export function fchmodSync(fd: number, mode: number): void;
+   
   /** Change owner of a regular file or directory.
    *
    * This functionality is not available on Windows.

@@ -67,6 +67,7 @@ const OP_DETAILS = {
   "op_broadcast_recv": ["receive a message from a BroadcastChannel", "closing the BroadcastChannel"],
   "op_broadcast_send": ["send a message to a BroadcastChannel", "closing the BroadcastChannel"],
   "op_chmod_async": ["change the permissions of a file", "awaiting the result of a `Deno.chmod` call"],
+  "op_fchmod_async": ["change the permissions of a file", "awaiting the result of a `Deno.fchmod` call"],
   "op_chown_async": ["change the owner of a file", "awaiting the result of a `Deno.chown` call"],
   "op_copy_file_async": ["copy a file", "awaiting the result of a `Deno.copyFile` call"],
   "op_crypto_decrypt": ["decrypt data", "awaiting the result of a `crypto.subtle.decrypt` call"],
