@@ -2866,7 +2866,7 @@ declare namespace Deno {
 
   /** TODO */
   export function fchmodSync(fd: number, mode: number): void;
-   
+
   /** Change owner of a regular file or directory.
    *
    * This functionality is not available on Windows.
