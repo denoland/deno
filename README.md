@@ -78,9 +78,7 @@ deno run https://deno.land/std/examples/welcome.ts
 Or [setup a simple HTTP server](https://examples.deno.land/http-server):
 
 ```ts
-import { serve } from "https://deno.land/std@0.182.0/http/server.ts";
-
-serve((_req) => new Response("Hello, World!"));
+Deno.serve((_req) => new Response("Hello, World!"));
 ```
 
 [More examples](https://examples.deno.land/).

@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::diagnostics::DenoDiagnostic;
+use super::diagnostics::DiagnosticSource;
 use super::documents::Documents;
 use super::language_server;
 use super::tsc;
@@ -96,7 +97,7 @@ impl Reference {
         severity: Some(lsp::DiagnosticSeverity::WARNING),
         code: Some(lsp::NumberOrString::String(code.to_string())),
         code_description: None,
-        source: Some("deno-lint".to_string()),
+        source: Some(DiagnosticSource::Lint.as_lsp_source().to_string()),
         message: {
           let mut msg = message.to_string();
           if let Some(hint) = hint {
