@@ -68,7 +68,9 @@ impl From<JoinError> for FsError {
   }
 }
 
+#[cfg(unix)]
 use nix::Error;
+#[cfg(unix)]
 impl From<Error> for FsError {
   fn from(error: Error) -> Self {
     match error {
