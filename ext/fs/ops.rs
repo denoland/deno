@@ -221,7 +221,7 @@ where
 fn op_fs_fchmod_sync<P>(
   state: &mut OpState,
   fd: i32,
-  mode: u16,
+  mode: u32,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -235,7 +235,7 @@ where
 async fn op_fs_fchmod_async<P>(
   state: Rc<RefCell<OpState>>,
   fd: i32,
-  mode: u16,
+  mode: u32,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
