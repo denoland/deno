@@ -131,12 +131,9 @@ impl<T: Default> WebSocketUpgrade<T> {
           HEADER_SEARCHER.get_or_init(|| TwoWaySearcher::new(b"\r\n\r\n"));
         let header_searcher2 =
           HEADER_SEARCHER2.get_or_init(|| TwoWaySearcher::new(b"\n\n"));
-        if header_searcher.search_in(&self.buf).is_some() {
-          let (index, response) = parse_response(&self.buf)?;
-          let mut buf = std::mem::take(&mut self.buf);
-          self.state = Complete;
-          Ok(Some((response, buf.split_off(index).freeze())))
-        } else if header_searcher2.search_in(&self.buf).is_some() {
+        if header_searcher.search_in(&self.buf).is_some()
+          || header_searcher2.search_in(&self.buf).is_some()
+        {
           let (index, response) = parse_response(&self.buf)?;
           let mut buf = std::mem::take(&mut self.buf);
           self.state = Complete;
