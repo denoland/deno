@@ -73,6 +73,7 @@ use nix::Error;
 #[cfg(unix)]
 impl From<Error> for FsError {
   fn from(error: Error) -> Self {
+    println!("=== ext/io/fs.rs error === {}", error);
     match error {
       nix::errno::Errno::EAGAIN => FsError::FileBusy,
       nix::errno::Errno::EINVAL => FsError::NotSupported,

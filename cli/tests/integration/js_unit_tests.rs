@@ -19,6 +19,7 @@ util::unit_test_factory!(
     build_test,
     cache_api_test,
     chmod_test,
+    fchmod_test,
     chown_test,
     command_test,
     console_test,
