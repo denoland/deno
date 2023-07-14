@@ -211,6 +211,7 @@ pub struct TaskFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TestFlags {
   pub doc: bool,
+  pub dot_reporter: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
   pub fail_fast: Option<NonZeroUsize>,
@@ -1766,6 +1767,12 @@ Directory arguments are expanded to all contained files matching the glob
         .action(ArgAction::SetTrue),
     )
     .arg(
+      Arg::new("dot-reporter")
+        .long("dot")
+        .help("Use 'dot' test reporter with a concise output format")
+        .action(ArgAction::SetTrue),
+    )
+    .arg(
       Arg::new("trace-ops")
         .long("trace-ops")
         .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
@@ -2976,6 +2983,10 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
+  let dot_reporter = matches.get_flag("dot-reporter");
+  if dot_reporter {
+    flags.log_level = Some(Level::Error);
+  }
   let trace_ops = matches.get_flag("trace-ops");
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
@@ -3038,6 +3049,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
+    dot_reporter,
     coverage_dir: matches.remove_one::<String>("coverage"),
     fail_fast,
     files: FileFlags { include, ignore },
@@ -5873,6 +5885,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: true,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
@@ -5950,6 +5963,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
+          dot_reporter: false,
           doc: false,
           fail_fast: None,
           filter: None,
@@ -5983,6 +5997,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: Some(NonZeroUsize::new(3).unwrap()),
           filter: None,
           allow_none: false,
@@ -6019,6 +6034,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6049,6 +6065,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6078,6 +6095,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6108,6 +6126,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6140,6 +6159,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,

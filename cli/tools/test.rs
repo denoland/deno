@@ -414,6 +414,15 @@ trait TestReporter {
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
+  Box::new(PrettyTestReporter::new(
+    options.concurrent_jobs.get() > 1,
+    options.log_level != Some(Level::Error),
+  ))
+}
+
+fn get_dot_test_reporter(
+  options: &TestSpecifiersOptions,
+) -> Box<dyn TestReporter> {
   Box::new(DotTestReporter::new(
     options.concurrent_jobs.get() > 1,
     options.log_level != Some(Level::Error),
@@ -968,6 +977,8 @@ impl TestReporter for PrettyTestReporter {
 }
 
 struct DotTestReporter {
+  n: usize,
+  width: usize,
   parallel: bool,
   echo_output: bool,
   in_new_line: bool,
@@ -982,7 +993,16 @@ struct DotTestReporter {
 
 impl DotTestReporter {
   fn new(parallel: bool, _echo_output: bool) -> DotTestReporter {
+    let console_width = if let Some(size) = crate::util::console::console_size()
+    {
+      size.cols as usize
+    } else {
+      0
+    };
+    let console_width = (console_width as f32 * 0.8) as usize;
     DotTestReporter {
+      n: 0,
+      width: console_width,
       parallel,
       echo_output: false,
       in_new_line: true,
@@ -1043,8 +1063,8 @@ impl DotTestReporter {
   fn force_report_step_result(
     &mut self,
     description: &TestStepDescription,
-    result: &TestStepResult,
-    elapsed: u64,
+    _result: &TestStepResult,
+    _elapsed: u64,
   ) {
     self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
@@ -1218,7 +1238,7 @@ impl TestReporter for DotTestReporter {
     &mut self,
     description: &TestDescription,
     result: &TestResult,
-    elapsed: u64,
+    _elapsed: u64,
   ) {
     match &result {
       TestResult::Ok => {
@@ -1249,11 +1269,17 @@ impl TestReporter for DotTestReporter {
     }
 
     let status = match result {
-      TestResult::Ok => colors::green(".").to_string(),
-      TestResult::Ignored => colors::yellow("!").to_string(),
+      TestResult::Ok => colors::gray(".").to_string(),
+      TestResult::Ignored => colors::cyan(",").to_string(),
       TestResult::Failed(_failure) => colors::red("!").to_string(),
       TestResult::Cancelled => colors::gray("!").to_string(),
     };
+
+    if self.n != 0 && self.n % self.width == 0 {
+      println!();
+    }
+    self.n += 1;
+
     print!("{}", status);
     // if let TestResult::Failed(failure) = result {
     //   if let Some(inline_summary) = failure.format_inline_summary() {
@@ -1385,6 +1411,8 @@ impl TestReporter for DotTestReporter {
           failures_by_origin.entry(origin.clone()).or_default();
         let _ = uncaught_error.insert(js_error.as_ref());
       }
+
+      println!();
       // note: the trailing whitespace is intentional to get a red background
       println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
       for (origin, (failures, uncaught_error)) in failures_by_origin {
@@ -1422,6 +1450,7 @@ impl TestReporter for DotTestReporter {
     }
 
     let status = if self.summary.has_failed() {
+      println!();
       colors::red("FAILED").to_string()
     } else {
       colors::green("ok").to_string()
@@ -1974,6 +2003,7 @@ async fn test_specifiers(
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
+  dot_reporter: bool,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
@@ -1995,7 +2025,11 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
-  let mut reporter = get_test_reporter(&options);
+  let mut reporter = if dot_reporter {
+    get_dot_test_reporter(&options)
+  } else {
+    get_test_reporter(&options)
+  };
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
@@ -2252,6 +2286,7 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
+  let dot_reporter = test_flags.dot_reporter;
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
@@ -2310,6 +2345,7 @@ pub async fn run_tests(
         trace_ops: test_options.trace_ops,
       },
     },
+    dot_reporter,
   )
   .await?;
 
@@ -2332,6 +2368,7 @@ pub async fn run_tests_with_watch(
       }
     }
   });
+  let dot_reporter = test_flags.dot_reporter;
 
   file_watcher::watch_func(
     flags,
@@ -2440,6 +2477,7 @@ pub async fn run_tests_with_watch(
               trace_ops: test_options.trace_ops,
             },
           },
+          dot_reporter,
         )
         .await?;
 
