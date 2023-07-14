@@ -154,6 +154,7 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
 };
 
+// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
     ops.op_net_listen_udp,
