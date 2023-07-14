@@ -4,9 +4,15 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { normalizeEncoding, slowCases } from "ext:deno_node/internal/normalize_encoding.mjs";
+import {
+  normalizeEncoding,
+  slowCases,
+} from "ext:deno_node/internal/normalize_encoding.mjs";
 export { normalizeEncoding, slowCases };
-import { ObjectCreate, StringPrototypeToUpperCase } from "ext:deno_node/internal/primordials.mjs";
+import {
+  ObjectCreate,
+  StringPrototypeToUpperCase,
+} from "ext:deno_node/internal/primordials.mjs";
 import { ERR_UNKNOWN_SIGNAL } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 

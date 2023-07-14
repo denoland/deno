@@ -4,7 +4,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import Dir from "ext:deno_node/_fs/_fs_dir.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   getOptions,
   getValidatedPath,

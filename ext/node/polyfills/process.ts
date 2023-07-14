@@ -7,7 +7,7 @@
 const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -16,7 +16,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { join } from "ext:deno_node/path.ts";
+import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,

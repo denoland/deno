@@ -5,7 +5,7 @@
 
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
-import { nextTick } from "ext:deno_node/process.ts";
+import { nextTick } from "node:process";
 
 type Subscriber = (message: unknown, name?: string) => void;
 

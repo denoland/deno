@@ -59,7 +59,7 @@ import {
   GetAddrInfoReqWrap,
   QueryReqWrap,
 } from "ext:deno_node/internal_binding/cares_wrap.ts";
-import { toASCII } from "ext:deno_node/punycode.ts";
+import { toASCII } from "node:punycode";
 
 function onlookup(
   this: GetAddrInfoReqWrap,

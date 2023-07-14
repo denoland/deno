@@ -261,6 +261,7 @@ Deno.test("[node/http] non-string buffer response", {
 }, async () => {
   const promise = deferred<void>();
   const server = http.createServer((_, res) => {
+    res.socket!.end();
     gzip(
       Buffer.from("a".repeat(100), "utf8"),
       {},
@@ -349,6 +350,10 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestHeaders.get("content-length"), "11");
     assertEquals(requestHeaders.has("transfer-encoding"), false);
     assertEquals(requestBody, "hello world");
+  });
+  req.on("socket", (socket) => {
+    socket.setKeepAlive();
+    socket.destroy();
   });
   req.write("hello ");
   req.write("world");
@@ -701,5 +706,33 @@ Deno.test(
     });
 
     await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] client end with callback",
+  { permissions: { net: true } },
+  async () => {
+    const promise = deferred();
+    let body = "";
+
+    const request = http.request(
+      "http://localhost:4545/http_version",
+      (resp) => {
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        resp.on("end", () => {
+          promise.resolve();
+        });
+      },
+    );
+    request.on("error", promise.reject);
+    request.end();
+
+    await promise;
+
+    assertEquals(body, "HTTP/1.1");
   },
 );

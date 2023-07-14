@@ -143,6 +143,21 @@ impl CliNpmResolver {
     Ok(path)
   }
 
+  /// Resolves the package nv from the provided specifier.
+  pub fn resolve_package_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<NpmPackageId, AnyError> {
+    let cache_folder_id = self
+      .fs_resolver
+      .resolve_package_cache_folder_id_from_specifier(specifier)?;
+    Ok(
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
+    )
+  }
+
   /// Attempts to get the package size in bytes.
   pub fn package_size(
     &self,

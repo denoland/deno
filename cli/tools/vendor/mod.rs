@@ -57,12 +57,14 @@ pub async fn vendor(
   let npm_package_count = graph.npm_packages.len();
   let try_add_node_modules_dir = npm_package_count > 0
     && cli_options.node_modules_dir_enablement().unwrap_or(true);
+  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config();
   let vendored_count = build::build(
     graph,
     factory.parsed_source_cache()?,
     &output_dir,
     factory.maybe_import_map().await?.as_deref(),
     factory.maybe_lockfile().clone(),
+    jsx_import_source.as_ref(),
     &build::RealVendorEnvironment,
   )?;
 
