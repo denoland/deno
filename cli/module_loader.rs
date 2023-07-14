@@ -757,10 +757,9 @@ impl NpmModuleLoader {
           if let Some(referrer) = &maybe_referrer {
             msg.push_str(" is not supported resolving import from ");
             msg.push_str(referrer.as_str());
-            let entrypoint_name =
-              ["mod.js", "index.js", "index.mjs", "index.cjs", "mod.cjs"]
-                .iter()
-                .find(|e| dir_path.join(e).is_file());
+            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
+              .iter()
+              .find(|e| dir_path.join(e).is_file());
             if let Some(entrypoint_name) = entrypoint_name {
               msg.push_str("\nDid you mean to import ");
               msg.push_str(entrypoint_name);
