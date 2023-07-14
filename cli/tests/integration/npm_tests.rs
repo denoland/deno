@@ -778,6 +778,22 @@ itest!(deno_run_non_existent {
   exit_code: 1,
 });
 
+itest!(directory_import_folder_index_js {
+  args: "run npm/directory_import/folder_index_js.ts",
+  output: "npm/directory_import/folder_index_js.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_no_index {
+  args: "run npm/directory_import/folder_no_index.ts",
+  output: "npm/directory_import/folder_no_index.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(builtin_module_module {
   args: "run --allow-read --quiet npm/builtin_module_module/main.js",
   output: "npm/builtin_module_module/main.out",
