@@ -1,6 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import { consoleSize } from "../../../runtime/js/40_tty.js";
-import { assert, assertEquals } from "./test_util.ts";
 
 Deno.test(
   {
