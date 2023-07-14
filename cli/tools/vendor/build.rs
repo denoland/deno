@@ -1152,7 +1152,7 @@ mod test {
   }
 
   #[tokio::test]
-  async fn existing_import_map_jsx_import_source() {
+  async fn existing_import_map_jsx_import_source_jsx_files() {
     let mut builder = VendorTestBuilder::default();
     builder.add_entry_point("/mod.tsx");
     builder.set_jsx_import_source_config(JsxImportSourceConfig {
@@ -1196,6 +1196,51 @@ mod test {
         "/vendor/localhost/preact/jsx-runtime.ts",
         "export function stuff() {}"
       ),]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source_no_jsx_files() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.ts");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "console.log(1)");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/localhost/mod.ts", "console.log(1)")]),
     );
   }
 

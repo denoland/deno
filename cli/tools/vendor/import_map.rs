@@ -205,7 +205,10 @@ pub fn build_import_map(
       if let Ok(resolved_url) =
         import_map.resolve(&specifier_text, import_map.base_url())
       {
-        builder.imports.add(specifier_text, &resolved_url);
+        // the graph might not have any jsx files
+        if graph.contains(&resolved_url) {
+          builder.imports.add(specifier_text, &resolved_url);
+        }
       }
     }
   }
