@@ -15,7 +15,7 @@ Deno.test(
     Deno.writeFileSync(filename, data, { mode: 0o666 });
 
     const file = await Deno.open(filename);
-    console.log("cli/tests/unit/fchmod_test.ts", file.rid)
+    console.log("cli/tests/unit/fchmod_test.ts", file.rid);
 
     Deno.fchmodSync(file.rid, 0o777);
 
