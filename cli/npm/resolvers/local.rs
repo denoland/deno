@@ -14,6 +14,7 @@ use std::sync::Arc;
 use crate::cache::CACHE_PERM;
 use crate::npm::cache::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
+use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
@@ -112,9 +113,13 @@ impl LocalNpmPackageResolver {
     match self.maybe_resolve_folder_for_specifier(specifier) {
       // Canonicalize the path so it's not pointing to the symlinked directory
       // in `node_modules` directory of the referrer.
-      Some(path) => {
-        Ok(deno_core::strip_unc_prefix(self.fs.realpath_sync(&path)?))
-      }
+      Some(path) => canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
+        self
+          .fs
+          .realpath_sync(path)
+          .map_err(|err| err.into_io_error())
+      })
+      .map_err(|err| err.into()),
       None => bail!("could not find npm package for '{}'", specifier),
     }
   }
