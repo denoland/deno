@@ -195,6 +195,10 @@ impl BenchReporter for JsonReporter {
   fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    if desc.warmup {
+      return;
+    }
+
     let maybe_bench = self.0.benches.iter_mut().find(|bench| {
       bench.origin == desc.origin
         && bench.group == desc.group
