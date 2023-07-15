@@ -95,6 +95,7 @@ pub struct BenchDescription {
   pub group: Option<String>,
   pub ignore: bool,
   pub only: bool,
+  pub warmup: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -326,6 +327,10 @@ impl BenchReporter for ConsoleReporter {
   }
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    if desc.warmup {
+      return;
+    }
+
     let options = self.options.as_ref().unwrap();
 
     match result {
