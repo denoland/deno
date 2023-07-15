@@ -798,6 +798,7 @@ function bench(
   const AsyncFunction = (async () => {}).constructor;
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
   benchDesc.fn = wrapBenchmark(benchDesc);
+  benchDesc.warmup = false;
 
   const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;
