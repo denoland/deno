@@ -1016,19 +1016,6 @@ impl DotTestReporter {
   }
 
   fn force_report_wait(&mut self, description: &TestDescription) {
-    // if !self.in_new_line {
-    //   println!();
-    // }
-    // if self.parallel {
-    //   print!(
-    //     "{}",
-    //     colors::gray(format!(
-    //       "{} => ",
-    //       self.to_relative_path_or_remote_url(&description.origin)
-    //     ))
-    //   );
-    // }
-    // print!("{} ...", description.name);
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
@@ -1050,10 +1037,6 @@ impl DotTestReporter {
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
     self.write_output_end();
-    // if !self.in_new_line {
-    //   println!();
-    // }
-    // print!("{}{} ...", "  ".repeat(description.level), description.name);
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
@@ -1084,25 +1067,6 @@ impl DotTestReporter {
       }
     }
 
-    // let status = match &result {
-    //   TestStepResult::Ok => colors::green("ok").to_string(),
-    //   TestStepResult::Ignored => colors::yellow("ignored").to_string(),
-    //   TestStepResult::Failed(failure) => failure.format_label(),
-    // };
-    // print!(" {}", status);
-    // if let TestStepResult::Failed(failure) = result {
-    //   if let Some(inline_summary) = failure.format_inline_summary() {
-    //     print!(" ({})", inline_summary)
-    //   }
-    // }
-    // eprintln!("here");
-    // if !matches!(result, TestStepResult::Failed(TestFailure::Incomplete)) {
-    //   print!(
-    //     " {}",
-    //     colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    //   );
-    // }
-    // println!();
     self.in_new_line = true;
     if self.parallel {
       self.scope_test_id = None;
@@ -1195,16 +1159,6 @@ impl TestReporter for DotTestReporter {
     if self.parallel {
       return;
     }
-    // let inflection = if plan.total == 1 { "test" } else { "tests" };
-    // println!(
-    //   "{}",
-    //   colors::gray(format!(
-    //     "running {} {} from {}",
-    //     plan.total,
-    //     inflection,
-    //     self.to_relative_path_or_remote_url(&plan.origin)
-    //   ))
-    // );
     self.in_new_line = true;
   }
 
@@ -1220,17 +1174,6 @@ impl TestReporter for DotTestReporter {
       return;
     }
 
-    // if !self.did_have_user_output && self.started_tests {
-    //   self.did_have_user_output = true;
-    //   if !self.in_new_line {
-    //     println!();
-    //   }
-    //   println!("{}", colors::gray("------- output -------"));
-    //   self.in_new_line = true;
-    // }
-
-    // // output everything to stdout in order to prevent
-    // // stdout and stderr racing
     std::io::stdout().write_all(output).unwrap();
   }
 
