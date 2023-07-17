@@ -423,10 +423,20 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
 fn get_dot_test_reporter(
   options: &TestSpecifiersOptions,
 ) -> Box<dyn TestReporter> {
-  Box::new(DotTestReporter::new(
-    options.concurrent_jobs.get() > 1,
-    options.log_level != Some(Level::Error),
-  ))
+  Box::new(DotTestReporter::new(options.concurrent_jobs.get() > 1))
+}
+
+fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
+  let url = Url::parse(path_or_url).unwrap();
+  if url.scheme() == "file" {
+    if let Some(mut r) = cwd.make_relative(&url) {
+      if !r.starts_with("../") {
+        r = format!("./{r}");
+      }
+      return r;
+    }
+  }
+  path_or_url.to_string()
 }
 
 struct PrettyTestReporter {
@@ -466,7 +476,7 @@ impl PrettyTestReporter {
         "{}",
         colors::gray(format!(
           "{} => ",
-          self.to_relative_path_or_remote_url(&description.origin)
+          to_relative_path_or_remote_url(&self.cwd, &description.origin)
         ))
       );
     }
@@ -475,19 +485,6 @@ impl PrettyTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.scope_test_id = Some(description.id);
-  }
-
-  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
-    let url = Url::parse(path_or_url).unwrap();
-    if url.scheme() == "file" {
-      if let Some(mut r) = self.cwd.make_relative(&url) {
-        if !r.starts_with("../") {
-          r = format!("./{r}");
-        }
-        return r;
-      }
-    }
-    path_or_url.to_string()
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
@@ -601,7 +598,7 @@ impl PrettyTestReporter {
       &desc.name,
       colors::gray(format!(
         "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        to_relative_path_or_remote_url(&self.cwd, &desc.location.file_name),
         desc.location.line_number,
         desc.location.column_number
       ))
@@ -620,7 +617,7 @@ impl PrettyTestReporter {
       long_name,
       colors::gray(format!(
         "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        to_relative_path_or_remote_url(&self.cwd, &desc.location.file_name),
         desc.location.line_number,
         desc.location.column_number
       ))
@@ -643,7 +640,7 @@ impl TestReporter for PrettyTestReporter {
         "running {} {} from {}",
         plan.total,
         inflection,
-        self.to_relative_path_or_remote_url(&plan.origin)
+        to_relative_path_or_remote_url(&self.cwd, &plan.origin)
       ))
     );
     self.in_new_line = true;
@@ -741,7 +738,7 @@ impl TestReporter for PrettyTestReporter {
     }
     println!(
       "Uncaught error from {} {}",
-      self.to_relative_path_or_remote_url(origin),
+      to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
     );
     self.in_new_line = true;
@@ -793,7 +790,7 @@ impl TestReporter for PrettyTestReporter {
         "{} {} ...",
         colors::gray(format!(
           "{} =>",
-          self.to_relative_path_or_remote_url(&desc.origin)
+          to_relative_path_or_remote_url(&self.cwd, &desc.origin)
         )),
         self.format_test_step_ancestry(desc, tests, test_steps)
       );
@@ -861,7 +858,7 @@ impl TestReporter for PrettyTestReporter {
         if let Some(js_error) = uncaught_error {
           let failure_title = format!(
             "{} (uncaught error)",
-            self.to_relative_path_or_remote_url(&origin)
+            to_relative_path_or_remote_url(&self.cwd, &origin)
           );
           println!("{}", &failure_title);
           println!(
@@ -992,7 +989,7 @@ struct DotTestReporter {
 }
 
 impl DotTestReporter {
-  fn new(parallel: bool, _echo_output: bool) -> DotTestReporter {
+  fn new(parallel: bool) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -1020,19 +1017,6 @@ impl DotTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.scope_test_id = Some(description.id);
-  }
-
-  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
-    let url = Url::parse(path_or_url).unwrap();
-    if url.scheme() == "file" {
-      if let Some(mut r) = self.cwd.make_relative(&url) {
-        if !r.starts_with("../") {
-          r = format!("./{r}");
-        }
-        return r;
-      }
-    }
-    path_or_url.to_string()
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
@@ -1124,7 +1108,7 @@ impl DotTestReporter {
       &desc.name,
       colors::gray(format!(
         "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        to_relative_path_or_remote_url(&self.cwd, &desc.location.file_name),
         desc.location.line_number,
         desc.location.column_number
       ))
@@ -1143,7 +1127,7 @@ impl DotTestReporter {
       long_name,
       colors::gray(format!(
         "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
+        to_relative_path_or_remote_url(&self.cwd, &desc.location.file_name),
         desc.location.line_number,
         desc.location.column_number
       ))
@@ -1224,15 +1208,6 @@ impl TestReporter for DotTestReporter {
     self.n += 1;
 
     print!("{}", status);
-    // if let TestResult::Failed(failure) = result {
-    //   if let Some(inline_summary) = failure.format_inline_summary() {
-    //     print!(" ({})", inline_summary)
-    //   }
-    // }
-    // println!(
-    //   " {}",
-    //   colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    // );
     self.in_new_line = true;
     self.scope_test_id = None;
   }
@@ -1249,7 +1224,7 @@ impl TestReporter for DotTestReporter {
     }
     println!(
       "Uncaught error from {} {}",
-      self.to_relative_path_or_remote_url(origin),
+      to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
     );
     self.in_new_line = true;
@@ -1301,7 +1276,7 @@ impl TestReporter for DotTestReporter {
         "{} {} ...",
         colors::gray(format!(
           "{} =>",
-          self.to_relative_path_or_remote_url(&desc.origin)
+          to_relative_path_or_remote_url(&self.cwd, &desc.origin)
         )),
         self.format_test_step_ancestry(desc, tests, test_steps)
       );
@@ -1371,7 +1346,7 @@ impl TestReporter for DotTestReporter {
         if let Some(js_error) = uncaught_error {
           let failure_title = format!(
             "{} (uncaught error)",
-            self.to_relative_path_or_remote_url(&origin)
+            to_relative_path_or_remote_url(&self.cwd, &origin)
           );
           println!("{}", &failure_title);
           println!(
