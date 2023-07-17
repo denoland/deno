@@ -977,12 +977,9 @@ struct DotTestReporter {
   n: usize,
   width: usize,
   parallel: bool,
-  echo_output: bool,
   in_new_line: bool,
   scope_test_id: Option<usize>,
   cwd: Url,
-  did_have_user_output: bool,
-  started_tests: bool,
   child_results_buffer:
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
@@ -1001,12 +998,9 @@ impl DotTestReporter {
       n: 0,
       width: console_width,
       parallel,
-      echo_output: false,
       in_new_line: true,
       scope_test_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
-      did_have_user_output: false,
-      started_tests: false,
       child_results_buffer: Default::default(),
       summary: TestSummary::new(),
     }
@@ -1064,13 +1058,7 @@ impl DotTestReporter {
       .remove(&description.id);
   }
 
-  fn write_output_end(&mut self) {
-    if self.did_have_user_output {
-      println!("{}", colors::gray("----- output end -----"));
-      self.in_new_line = true;
-      self.did_have_user_output = false;
-    }
-  }
+  fn write_output_end(&mut self) {}
 
   fn format_test_step_ancestry(
     &self,
@@ -1150,16 +1138,9 @@ impl TestReporter for DotTestReporter {
     if !self.parallel {
       self.force_report_wait(description);
     }
-    self.started_tests = true;
   }
 
-  fn report_output(&mut self, output: &[u8]) {
-    if !self.echo_output {
-      return;
-    }
-
-    std::io::stdout().write_all(output).unwrap();
-  }
+  fn report_output(&mut self, _output: &[u8]) {}
 
   fn report_result(
     &mut self,
@@ -1228,7 +1209,6 @@ impl TestReporter for DotTestReporter {
       colors::red("FAILED")
     );
     self.in_new_line = true;
-    self.did_have_user_output = false;
   }
 
   fn report_step_register(&mut self, _description: &TestStepDescription) {}
