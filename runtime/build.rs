@@ -111,7 +111,7 @@ mod startup_snapshot {
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
-    fn check(
+    fn check_partial(
       &mut self,
       _path: Option<&Path>,
     ) -> Result<(), deno_core::error::AnyError> {

@@ -1424,8 +1424,8 @@ impl deno_napi::NapiPermissions for PermissionsContainer {
 
 impl deno_ffi::FfiPermissions for PermissionsContainer {
   #[inline(always)]
-  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.0.lock().ffi.check(path.unwrap(), None)
+  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    self.0.lock().ffi.check_partial(path)
   }
 }
 
