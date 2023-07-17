@@ -735,10 +735,12 @@ impl UnaryPermission<WriteDescriptor> {
     path: &Path,
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
-    let desc = WriteDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, api_name, || {
-      Some(format!("\"{}\"", path.display()))
-    })
+    self.check_desc(
+      &Some(WriteDescriptor(resolve_from_cwd(path)?)),
+      false,
+      api_name,
+      || Some(format!("\"{}\"", path.display())),
+    )
   }
 
   /// As `check()`, but permission error messages will anonymize the path
