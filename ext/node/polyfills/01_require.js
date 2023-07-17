@@ -879,7 +879,9 @@ Module.prototype.load = function (filename) {
     StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
   ) {
     // TODO: use proper error class
-    throw new Error(requireEsmErrorText(filename));
+    throw new Error(
+      requireEsmErrorText(filename, moduleParentCache.get(this)?.filename),
+    );
   }
 
   Module._extensions[extension](this, filename);
@@ -991,17 +993,10 @@ Module._extensions[".js"] = function (module, filename) {
 
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = ops.op_require_read_closest_package_json(filename);
-    if (pkg && pkg.exists && pkg.typ == "module") {
-      let message = `require() of ES Module ${filename}`;
-
-      if (module.parent) {
-        message += ` from ${module.parent.filename}`;
-      }
-
-      message +=
-        ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
-
-      throw new Error(requireEsmErrorText(filename, module.parent?.filename));
+    if (pkg && pkg.exists && pkg.typ === "module") {
+      throw new Error(
+        requireEsmErrorText(filename, moduleParentCache.get(module)?.filename),
+      );
     }
   }
 
@@ -1009,7 +1004,7 @@ Module._extensions[".js"] = function (module, filename) {
 };
 
 function requireEsmErrorText(filename, parent) {
-  let message = `require() of ES Module ${filename}`;
+  let message = `[ERR_REQUIRE_ESM]: require() of ES Module ${filename}`;
 
   if (parent) {
     message += ` from ${parent}`;
