@@ -148,11 +148,15 @@ function cache(desc, rawStatus) {
     const cachedObj = MapPrototypeGet(statusCache, key);
     if (cachedObj.state !== rawStatus.state) {
       cachedObj.state = rawStatus.state;
-      cachedObj.status.dispatchEvent(new Event("change", { cancelable: false }));
+      cachedObj.status.dispatchEvent(
+        new Event("change", { cancelable: false }),
+      );
     }
     if (cachedObj.partial !== rawStatus.partial) {
       cachedObj.partial = rawStatus.partial;
-      cachedObj.status.dispatchEvent(new Event("change", { cancelable: false }));
+      cachedObj.status.dispatchEvent(
+        new Event("change", { cancelable: false }),
+      );
     }
     return cachedObj.status;
   }
