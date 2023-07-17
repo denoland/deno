@@ -435,10 +435,14 @@ impl NodeResolver {
       }
     } else if url_str.ends_with(".mjs") || url_str.ends_with(".d.mts") {
       Ok(NodeResolution::Esm(url))
-    } else if url_str.ends_with(".ts") {
-      Err(generic_error(format!(
-        "TypeScript files are not supported in npm packages: {url}"
-      )))
+    } else if url_str.ends_with(".ts") || url_str.ends_with(".mts") {
+      if self.in_npm_package(&url) {
+        Err(generic_error(format!(
+          "TypeScript files are not supported in npm packages: {url}"
+        )))
+      } else {
+        Ok(NodeResolution::Esm(url))
+      }
     } else {
       Ok(NodeResolution::CommonJs(url))
     }
