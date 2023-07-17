@@ -287,7 +287,7 @@ fn spawn_child(
   command.kill_on_drop(true);
 
   let mut child = command.spawn().with_context(|| {
-    format!("Failed to spawn: {:?}", command.as_std().get_program(),)
+    format!("Failed to spawn: {}", command.as_std().get_program().to_string_lossy())
   })?;
   let pid = child.id().expect("Process ID should be set.");
 
