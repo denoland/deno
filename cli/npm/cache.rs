@@ -196,19 +196,6 @@ impl NpmCacheDir {
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageCacheFolderId, AnyError> {
-    match self
-      .maybe_resolve_package_folder_id_from_specifier(specifier, registry_url)
-    {
-      Some(id) => Ok(id),
-      None => bail!("could not find npm package for '{}'", specifier),
-    }
-  }
-
-  fn maybe_resolve_package_folder_id_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-    registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
     let registry_root_dir = self
       .root_dir_url
@@ -455,7 +442,7 @@ impl NpmCache {
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageCacheFolderId, AnyError> {
+  ) -> Option<NpmPackageCacheFolderId> {
     self
       .cache_dir
       .resolve_package_folder_id_from_specifier(specifier, registry_url)
