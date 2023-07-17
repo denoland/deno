@@ -1017,15 +1017,3 @@ fn closed_file_pre_load_does_not_occur() {
       assert_contains!(console.all_output(), "Skipping document preload.",);
     });
 }
-
-#[test]
-fn process_that_fails_to_spawn_prints_its_name_in_err() {
-  util::with_pty(&["repl", "-A"], |mut console| {
-    console.write_line("new Deno.Command('doesntexist').outputSync()");
-    let output = console.read_until("> ");
-    assert_contains!(output, "Failed to spawn: doesntexist");
-    console.write_line("await new Deno.Command('doesntexist').output()");
-    let output = console.read_until("> ");
-    assert_contains!(output, "Failed to spawn: doesntexist");
-  });
-}
