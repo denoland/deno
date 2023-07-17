@@ -652,19 +652,7 @@ impl UnaryPermission<ReadDescriptor> {
       .revoke_desc(&path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())))
   }
 
-  #[inline]
   pub fn check(
-    &mut self,
-    path: &Path,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    let desc = ReadDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, api_name, || {
-      Some(format!("\"{}\"", path.display()))
-    })
-  }
-
-  pub fn check_non_partial(
     &mut self,
     path: &Path,
     api_name: Option<&str>,
@@ -675,6 +663,18 @@ impl UnaryPermission<ReadDescriptor> {
       api_name,
       || Some(format!("\"{}\"", path.display())),
     )
+  }
+
+  #[inline]
+  pub fn check_partial(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    let desc = ReadDescriptor(resolve_from_cwd(path)?);
+    self.check_desc(&Some(desc), false, api_name, || {
+      Some(format!("\"{}\"", path.display()))
+    })
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -716,19 +716,7 @@ impl UnaryPermission<WriteDescriptor> {
       .revoke_desc(&path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())))
   }
 
-  #[inline]
   pub fn check(
-    &mut self,
-    path: &Path,
-    api_name: Option<&str>,
-  ) -> Result<(), AnyError> {
-    let desc = WriteDescriptor(resolve_from_cwd(path)?);
-    self.check_desc(&Some(desc), false, api_name, || {
-      Some(format!("\"{}\"", path.display()))
-    })
-  }
-
-  pub fn check_non_partial(
     &mut self,
     path: &Path,
     api_name: Option<&str>,
@@ -739,6 +727,18 @@ impl UnaryPermission<WriteDescriptor> {
       api_name,
       || Some(format!("\"{}\"", path.display())),
     )
+  }
+
+  #[inline]
+  pub fn check_partial(
+    &mut self,
+    path: &Path,
+    api_name: Option<&str>,
+  ) -> Result<(), AnyError> {
+    let desc = WriteDescriptor(resolve_from_cwd(path)?);
+    self.check_desc(&Some(desc), false, api_name, || {
+      Some(format!("\"{}\"", path.display()))
+    })
   }
 
   /// As `check()`, but permission error messages will anonymize the path
@@ -919,17 +919,7 @@ impl UnaryPermission<FfiDescriptor> {
     self.revoke_desc(&path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())))
   }
 
-  pub fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    let desc = match path {
-      Some(path) => Some(FfiDescriptor(resolve_from_cwd(path)?)),
-      None => None,
-    };
-    self.check_desc(&desc, false, None, || {
-      Some(format!("\"{}\"", path?.display()))
-    })
-  }
-
-  pub fn check_non_partial(
+  pub fn check(
     &mut self,
     path: &Path,
     api_name: Option<&str>,
@@ -940,6 +930,16 @@ impl UnaryPermission<FfiDescriptor> {
       api_name,
       || Some(format!("\"{}\"", path.display())),
     )
+  }
+
+  pub fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
+    let desc = match path {
+      Some(path) => Some(FfiDescriptor(resolve_from_cwd(path)?)),
+      None => None,
+    };
+    self.check_desc(&desc, false, None, || {
+      Some(format!("\"{}\"", path?.display()))
+    })
   }
 
   pub fn check_all(&mut self) -> Result<(), AnyError> {
@@ -1216,15 +1216,6 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_read_non_partial(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check_non_partial(path, Some(api_name))
-  }
-
-  #[inline(always)]
   pub fn check_write(
     &mut self,
     path: &Path,
@@ -1388,14 +1379,6 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     self.0.lock().read.check_blind(path, display, api_name)
   }
 
-  fn check_read_non_partial(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().read.check_non_partial(path, Some(api_name))
-  }
-
   fn check_write(
     &mut self,
     path: &Path,
@@ -1413,14 +1396,6 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     self.0.lock().write.check_blind(p, display, api_name)
   }
 
-  fn check_write_non_partial(
-    &mut self,
-    path: &Path,
-    api_name: &str,
-  ) -> Result<(), AnyError> {
-    self.0.lock().write.check_non_partial(path, Some(api_name))
-  }
-
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
     self.0.lock().read.check_all(Some(api_name))
   }
@@ -1435,14 +1410,14 @@ impl deno_fs::FsPermissions for PermissionsContainer {
 impl deno_napi::NapiPermissions for PermissionsContainer {
   #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.0.lock().ffi.check(path)
+    self.0.lock().ffi.check(path.unwrap(), None)
   }
 }
 
 impl deno_ffi::FfiPermissions for PermissionsContainer {
   #[inline(always)]
   fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError> {
-    self.0.lock().ffi.check(path)
+    self.0.lock().ffi.check(path.unwrap(), None)
   }
 }
 
@@ -1955,7 +1930,7 @@ pub fn create_child_permissions(
         .ffi
         .granted_list
         .iter()
-        .all(|desc| main_perms.ffi.check(Some(&desc.0)).is_ok())
+        .all(|desc| main_perms.ffi.check(&desc.0, None).is_ok())
       {
         return Err(escalation_error());
       }
@@ -2104,7 +2079,7 @@ mod tests {
       .is_ok());
     assert!(perms
       .ffi
-      .check(Some(Path::new("/a/specific/dir/name")))
+      .check(Path::new("/a/specific/dir/name"), None)
       .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
@@ -2113,7 +2088,7 @@ mod tests {
       .write
       .check(Path::new("/a/specific/dir"), None)
       .is_ok());
-    assert!(perms.ffi.check(Some(Path::new("/a/specific/dir"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/a/specific/dir"), None).is_ok());
 
     // Inside of /a/specific and /a/specific/dir/name
     assert!(perms
@@ -2126,7 +2101,7 @@ mod tests {
       .is_ok());
     assert!(perms
       .ffi
-      .check(Some(Path::new("/a/specific/dir/name/inner")))
+      .check(Path::new("/a/specific/dir/name/inner"), None)
       .is_ok());
 
     // Inside of /a/specific but outside of /a/specific/dir/name
@@ -2140,18 +2115,18 @@ mod tests {
       .is_ok());
     assert!(perms
       .ffi
-      .check(Some(Path::new("/a/specific/other/dir")))
+      .check(Path::new("/a/specific/other/dir"), None)
       .is_ok());
 
     // Exact match with /b/c
     assert!(perms.read.check(Path::new("/b/c"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c"), None).is_ok());
-    assert!(perms.ffi.check(Some(Path::new("/b/c"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/b/c"), None).is_ok());
 
     // Sub path within /b/c
     assert!(perms.read.check(Path::new("/b/c/sub/path"), None).is_ok());
     assert!(perms.write.check(Path::new("/b/c/sub/path"), None).is_ok());
-    assert!(perms.ffi.check(Some(Path::new("/b/c/sub/path"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/b/c/sub/path"), None).is_ok());
 
     // Sub path within /b/c, needs normalizing
     assert!(perms
@@ -2164,18 +2139,18 @@ mod tests {
       .is_ok());
     assert!(perms
       .ffi
-      .check(Some(Path::new("/b/c/sub/path/../path/.")))
+      .check(Path::new("/b/c/sub/path/../path/."), None)
       .is_ok());
 
     // Inside of /b but outside of /b/c
     assert!(perms.read.check(Path::new("/b/e"), None).is_err());
     assert!(perms.write.check(Path::new("/b/e"), None).is_err());
-    assert!(perms.ffi.check(Some(Path::new("/b/e"))).is_err());
+    assert!(perms.ffi.check(Path::new("/b/e"), None).is_err());
 
     // Inside of /a but outside of /a/specific
     assert!(perms.read.check(Path::new("/a/b"), None).is_err());
     assert!(perms.write.check(Path::new("/a/b"), None).is_err());
-    assert!(perms.ffi.check(Some(Path::new("/a/b"))).is_err());
+    assert!(perms.ffi.check(Path::new("/a/b"), None).is_err());
   }
 
   #[test]
@@ -2739,10 +2714,10 @@ mod tests {
     assert!(perms.write.check(Path::new("/bar"), None).is_err());
 
     prompt_value.set(true);
-    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/foo"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_ok());
-    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_err());
+    assert!(perms.ffi.check(Path::new("/foo"), None).is_ok());
+    assert!(perms.ffi.check(Path::new("/bar"), None).is_err());
 
     prompt_value.set(true);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_ok());
@@ -2807,12 +2782,12 @@ mod tests {
     assert!(perms.write.check(Path::new("/bar"), None).is_ok());
 
     prompt_value.set(false);
-    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
+    assert!(perms.ffi.check(Path::new("/foo"), None).is_err());
     prompt_value.set(true);
-    assert!(perms.ffi.check(Some(Path::new("/foo"))).is_err());
-    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/foo"), None).is_err());
+    assert!(perms.ffi.check(Path::new("/bar"), None).is_ok());
     prompt_value.set(false);
-    assert!(perms.ffi.check(Some(Path::new("/bar"))).is_ok());
+    assert!(perms.ffi.check(Path::new("/bar"), None).is_ok());
 
     prompt_value.set(false);
     assert!(perms.net.check(&("127.0.0.1", Some(8000)), None).is_err());

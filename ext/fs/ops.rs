@@ -297,7 +297,7 @@ where
     if recursive {
       state
         .borrow_mut::<P>()
-        .check_write_non_partial(&path, "Deno.remove()")?;
+        .check_write(&path, "Deno.remove()")?;
     } else {
       state
         .borrow_mut::<P>()
@@ -535,7 +535,7 @@ where
     let mut state = state.borrow_mut();
     state
       .borrow_mut::<P>()
-      .check_read_non_partial(&path, "Deno.readDir()")?;
+      .check_read(&path, "Deno.readDir()")?;
     state.borrow::<FileSystemRc>().clone()
   };
 
