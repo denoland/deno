@@ -763,6 +763,26 @@ itest!(deny_some_permission_args {
   output: "run/deny_some_permission_args.out",
 });
 
+#[test]
+fn permissions_cache() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_cache.ts"])
+    .with_pty(|mut console| {
+      console.expect(concat!(
+        "prompt\r\n",
+        "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
+        "├ Run again with --allow-read to bypass this prompt.\r\n",
+        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+      ));
+      console.write_line_raw("y");
+      console.expect("✅ Granted read access to \"foo\".");
+      console.expect("granted");
+      console.expect("prompt");
+    });
+}
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",

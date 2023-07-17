@@ -38,6 +38,19 @@ pub struct PermissionStatus {
   partial: bool,
 }
 
+impl From<PermissionState> for PermissionStatus {
+  fn from(state: PermissionState) -> Self {
+    PermissionStatus {
+      state: if state == PermissionState::GrantedPartial {
+        PermissionState::Granted.to_string()
+      } else {
+        state.to_string()
+      },
+      partial: state == PermissionState::GrantedPartial,
+    }
+  }
+}
+
 #[op]
 pub fn op_query_permission(
   state: &mut OpState,
@@ -69,14 +82,7 @@ pub fn op_query_permission(
       ))
     }
   };
-  Ok(PermissionStatus {
-    state: if perm == PermissionState::GrantedPartial {
-      PermissionState::Granted.to_string()
-    } else {
-      perm.to_string()
-    },
-    partial: perm == PermissionState::GrantedPartial,
-  })
+  Ok(PermissionStatus::from(perm))
 }
 
 #[op]
@@ -110,14 +116,7 @@ pub fn op_revoke_permission(
       ))
     }
   };
-  Ok(PermissionStatus {
-    state: if perm == PermissionState::GrantedPartial {
-      PermissionState::Granted.to_string()
-    } else {
-      perm.to_string()
-    },
-    partial: perm == PermissionState::GrantedPartial,
-  })
+  Ok(PermissionStatus::from(perm))
 }
 
 #[op]
@@ -151,14 +150,7 @@ pub fn op_request_permission(
       ))
     }
   };
-  Ok(PermissionStatus {
-    state: if perm == PermissionState::GrantedPartial {
-      PermissionState::Granted.to_string()
-    } else {
-      perm.to_string()
-    },
-    partial: perm == PermissionState::GrantedPartial,
-  })
+  Ok(PermissionStatus::from(perm))
 }
 
 fn parse_host(host_str: &str) -> Result<(String, Option<u16>), AnyError> {

@@ -26,6 +26,13 @@ const {
 
 const illegalConstructorKey = Symbol("illegalConstructorKey");
 
+/**
+ * @typedef StatusCacheValue
+ * @property {PermissionState} state
+ * @property {PermissionStatus} status
+ * @property {boolean} partial
+ */
+
 /** @type {ReadonlyArray<"read" | "write" | "net" | "env" | "sys" | "run" | "ffi" | "hrtime">} */
 const permissionNames = [
   "read",
@@ -63,7 +70,7 @@ function opRequest(desc) {
 }
 
 class PermissionStatus extends EventTarget {
-  /** @type {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} */
+  /** @type {{ state: Deno.PermissionState, partial: boolean }} */
   #status;
 
   /** @type {((this: PermissionStatus, event: Event) => any) | null} */
@@ -74,13 +81,13 @@ class PermissionStatus extends EventTarget {
     return this.#status.state;
   }
 
-  /** @returns {Deno.PermissionPartial} */
+  /** @returns {boolean} */
   get partial() {
     return this.#status.partial;
   }
 
   /**
-   * @param {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} status
+   * @param {{ state: Deno.PermissionState, partial: boolean }} status
    * @param {unknown} key
    */
   constructor(status = null, key = null) {
@@ -111,15 +118,15 @@ class PermissionStatus extends EventTarget {
   }
 }
 
-/** @type {Map<string, PermissionStatus>} */
+/** @type {Map<string, StatusCacheValue>} */
 const statusCache = new SafeMap();
 
 /**
  * @param {Deno.PermissionDescriptor} desc
- * @param {{ state: Deno.PermissionState, partial: Deno.PermissionPartial }} status
+ * @param {{ state: Deno.PermissionState, partial: boolean }} rawStatus
  * @returns {PermissionStatus}
  */
-function cache(desc, status) {
+function cache(desc, rawStatus) {
   let { name: key } = desc;
   if (
     (desc.name === "read" || desc.name === "write" || desc.name === "ffi") &&
@@ -138,15 +145,22 @@ function cache(desc, status) {
     key += "$";
   }
   if (MapPrototypeHas(statusCache, key)) {
-    const cachedStatus = MapPrototypeGet(statusCache, key);
-    if (cachedStatus.state === status.state) {
-      return cachedStatus;
+    const cachedObj = MapPrototypeGet(statusCache, key);
+    if (cachedObj.state !== rawStatus.state) {
+      cachedObj.state = rawStatus.state;
+      cachedObj.status.dispatchEvent(new Event("change", { cancelable: false }));
     }
-    cachedStatus.dispatchEvent(new Event("change", { cancelable: false }));
+    if (cachedObj.partial !== rawStatus.partial) {
+      cachedObj.partial = rawStatus.partial;
+      cachedObj.status.dispatchEvent(new Event("change", { cancelable: false }));
+    }
+    return cachedObj.status;
   }
-  status = new PermissionStatus(status, illegalConstructorKey);
-  MapPrototypeSet(statusCache, key, status);
-  return status;
+  /** @type {{ state: Deno.PermissionState, partial: boolean, status?: PermissionStatus }} */
+  const obj = rawStatus;
+  obj.status = new PermissionStatus(obj, illegalConstructorKey);
+  MapPrototypeSet(statusCache, key, obj);
+  return obj.status;
 }
 
 /**
