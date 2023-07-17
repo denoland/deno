@@ -2,6 +2,7 @@
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -285,7 +286,9 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn()?;
+  let mut child = command.spawn().with_context(|| {
+    format!("Failed to spawn: {:?}", command.as_std().get_program(),)
+  })?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
