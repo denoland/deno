@@ -37,7 +37,7 @@ pub trait CjsCodeAnalyzer {
 }
 
 pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
-  cjs_esm_code_analyzer: TCjsCodeAnalyzer,
+  cjs_code_analyzer: TCjsCodeAnalyzer,
   fs: deno_fs::FileSystemRc,
   node_resolver: NodeResolverRc,
   npm_resolver: NpmResolverRc,
@@ -45,13 +45,13 @@ pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
 
 impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn new(
-    cjs_esm_code_analyzer: TCjsCodeAnalyzer,
+    cjs_code_analyzer: TCjsCodeAnalyzer,
     fs: deno_fs::FileSystemRc,
     node_resolver: NodeResolverRc,
     npm_resolver: NpmResolverRc,
   ) -> Self {
     Self {
-      cjs_esm_code_analyzer,
+      cjs_code_analyzer,
       fs,
       node_resolver,
       npm_resolver,
@@ -73,7 +73,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
 
-    let analysis = self.cjs_esm_code_analyzer.analyze_cjs(specifier, source)?;
+    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
@@ -125,7 +125,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         })?;
       {
         let analysis = self
-          .cjs_esm_code_analyzer
+          .cjs_code_analyzer
           .analyze_cjs(&reexport_specifier, &reexport_file_text)?;
 
         for reexport in analysis.reexports {
