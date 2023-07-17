@@ -198,7 +198,7 @@ impl<'a> TsResponseImportMapper<'a> {
     }
 
     if self.npm_resolver.in_npm_package(specifier) {
-      if let Ok(pkg_id) = self
+      if let Ok(Some(pkg_id)) = self
         .npm_resolver
         .resolve_package_id_from_specifier(specifier)
       {
@@ -254,7 +254,8 @@ impl<'a> TsResponseImportMapper<'a> {
     let root_folder = self
       .npm_resolver
       .resolve_package_folder_from_specifier(specifier)
-      .ok()?;
+      .ok()
+      .flatten()?;
     let package_json_path = root_folder.join("package.json");
     let package_json_text = std::fs::read_to_string(&package_json_path).ok()?;
     let package_json =
