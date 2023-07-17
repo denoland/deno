@@ -1,4 +1,2 @@
-error: Uncaught Error: [ERR_REQUIRE_ESM]: require() of ES Module [WILDCARD]esm_mjs.mjs from [WILDCARD]require_mjs.js not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.
-    at Module.load (node:module:[WILDCARD])
+error: Uncaught Error: require() of ES Module [WILDCARD]esm_mjs.mjs from [WILDCARD]require_mjs.js not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.
     [WILDCARD]
-    at Function.Module._load (node:module:[WILDCARD])
