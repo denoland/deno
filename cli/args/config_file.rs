@@ -32,6 +32,16 @@ pub type MaybeImportsResult =
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
+  pub base_url: ModuleSpecifier,
+}
+
+impl JsxImportSourceConfig {
+  pub fn maybe_specifier_text(&self) -> Option<String> {
+    self
+      .default_specifier
+      .as_ref()
+      .map(|default_specifier| format!("{}/{}", default_specifier, self.module))
+  }
 }
 
 /// The transpile options that are significant out of a user provided tsconfig
@@ -1035,6 +1045,7 @@ impl ConfigFile {
     module.map(|module| JsxImportSourceConfig {
       default_specifier: compiler_options.jsx_import_source,
       module,
+      base_url: self.specifier.clone(),
     })
   }
 

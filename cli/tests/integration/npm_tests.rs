@@ -88,6 +88,22 @@ itest!(cjs_invalid_name_exports {
   http_server: true,
 });
 
+itest!(cjs_require_esm_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_error/main.ts",
+  output: "npm/cjs_require_esm_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(cjs_require_esm_mjs_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_mjs_error/main.ts",
+  output: "npm/cjs_require_esm_mjs_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
@@ -281,6 +297,16 @@ itest!(node_modules_deno_node_modules_local {
 itest!(nonexistent_file {
   args: "run -A --quiet npm/nonexistent_file/main.js",
   output: "npm/nonexistent_file/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(nonexistent_file_node_modules_dir {
+  // there was a bug where the message was different when using a node_modules dir
+  args: "run -A --quiet --node-modules-dir npm/nonexistent_file/main.js",
+  output: "npm/nonexistent_file/main.out",
+  copy_temp_dir: Some("npm/nonexistent_file/"),
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
@@ -773,6 +799,22 @@ fn deno_run_bin_lockfile() {
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_index_js {
+  args: "run npm/directory_import/folder_index_js.ts",
+  output: "npm/directory_import/folder_index_js.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_no_index {
+  args: "run npm/directory_import/folder_no_index.ts",
+  output: "npm/directory_import/folder_no_index.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,

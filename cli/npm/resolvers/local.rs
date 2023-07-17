@@ -14,6 +14,7 @@ use std::sync::Arc;
 use crate::cache::CACHE_PERM;
 use crate::npm::cache::mixed_case_package_name_decode;
 use crate::util::fs::atomic_write_file;
+use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::fs::symlink_dir;
 use crate::util::fs::LaxSingleProcessFsFlag;
 use crate::util::progress_bar::ProgressBar;
@@ -108,27 +109,27 @@ impl LocalNpmPackageResolver {
   fn resolve_folder_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    match self.maybe_resolve_folder_for_specifier(specifier) {
-      // Canonicalize the path so it's not pointing to the symlinked directory
-      // in `node_modules` directory of the referrer.
-      Some(path) => {
-        Ok(deno_core::strip_unc_prefix(self.fs.realpath_sync(&path)?))
-      }
-      None => bail!("could not find npm package for '{}'", specifier),
-    }
-  }
-
-  fn maybe_resolve_folder_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<PathBuf> {
-    let relative_url = self.root_node_modules_url.make_relative(specifier)?;
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(relative_url) = self.root_node_modules_url.make_relative(specifier) else {
+      return Ok(None);
+    };
     if relative_url.starts_with("../") {
-      return None;
+      return Ok(None);
     }
     // it's within the directory, so use it
-    specifier.to_file_path().ok()
+    let Some(path) = specifier.to_file_path().ok() else {
+      return Ok(None);
+    };
+    // Canonicalize the path so it's not pointing to the symlinked directory
+    // in `node_modules` directory of the referrer.
+    canonicalize_path_maybe_not_exists_with_fs(&path, |path| {
+      self
+        .fs
+        .realpath_sync(path)
+        .map_err(|err| err.into_io_error())
+    })
+    .map(Some)
+    .map_err(|err| err.into())
   }
 }
 
@@ -167,7 +168,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
-    let local_path = self.resolve_folder_for_specifier(referrer)?;
+    let Some(local_path) = self.resolve_folder_for_specifier(referrer)? else {
+      bail!("could not find npm package for '{}'", referrer);
+    };
     let package_root_path = self.resolve_package_root(&local_path);
     let mut current_folder = package_root_path.as_path();
     loop {
@@ -215,22 +218,23 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let local_path = self.resolve_folder_for_specifier(specifier)?;
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
+      return Ok(None);
+    };
     let package_root_path = self.resolve_package_root(&local_path);
-    Ok(package_root_path)
+    Ok(Some(package_root_path))
   }
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageCacheFolderId, AnyError> {
-    let folder_path = self.resolve_package_folder_from_specifier(specifier)?;
+  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+    let Some(folder_path) = self.resolve_package_folder_from_specifier(specifier)? else {
+      return Ok(None);
+    };
     let folder_name = folder_path.parent().unwrap().to_string_lossy();
-    match get_package_folder_id_from_folder_name(&folder_name) {
-      Some(package_folder_id) => Ok(package_folder_id),
-      None => bail!("could not resolve package from specifier '{}'", specifier),
-    }
+    Ok(get_package_folder_id_from_folder_name(&folder_name))
   }
 
   async fn cache_packages(&self) -> Result<(), AnyError> {
