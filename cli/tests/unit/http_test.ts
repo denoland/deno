@@ -2538,7 +2538,6 @@ Deno.test(
 
 Deno.test({
   name: "http server compresses and flushes each chunk of a streamed resource",
-  ignore: true,
   permissions: { net: true, run: true },
   async fn() {
     const hostname = "localhost";
@@ -2629,8 +2628,8 @@ Deno.test("case insensitive comma value finder", async (t) => {
     ["test  ,\twEbSOcKET\t\t ,", true],
     ["test  , wEbSOcKET", true],
     ["test, asdf,web,wEbSOcKET", true],
-    ["test, asdf,web,wEbSOcKETs", true],
-    ["test, asdf,awebsocket,wEbSOcKETs", true],
+    ["test, asdf,web,wEbSOcKETs", false],
+    ["test, asdf,awebsocket,wEbSOcKETs", false],
   ]);
 
   const findValue = buildCaseInsensitiveCommaValueFinder("websocket");
