@@ -286,6 +286,16 @@ itest!(nonexistent_file {
   exit_code: 1,
 });
 
+itest!(nonexistent_file_node_modules_dir {
+  // there was a bug where the message was different when using a node_modules dir
+  args: "run -A --quiet --node-modules-dir npm/nonexistent_file/main.js",
+  output: "npm/nonexistent_file/main.out",
+  copy_temp_dir: Some("npm/nonexistent_file/"),
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(invalid_package_name {
   args: "run -A --quiet npm/invalid_package_name/main.js",
   output: "npm/invalid_package_name/main.out",
@@ -773,6 +783,22 @@ fn deno_run_bin_lockfile() {
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_index_js {
+  args: "run npm/directory_import/folder_index_js.ts",
+  output: "npm/directory_import/folder_index_js.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_no_index {
+  args: "run npm/directory_import/folder_no_index.ts",
+  output: "npm/directory_import/folder_no_index.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
