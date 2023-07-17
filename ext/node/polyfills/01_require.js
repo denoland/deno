@@ -878,9 +878,9 @@ Module.prototype.load = function (filename) {
   if (
     StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
   ) {
-    // TODO: use proper error class
-    throw new Error(
-      requireEsmErrorText(filename, moduleParentCache.get(this)?.filename),
+    throw createRequireEsmError(
+      filename,
+      moduleParentCache.get(this)?.filename,
     );
   }
 
@@ -923,20 +923,22 @@ Module.wrap = function (script) {
   return `${Module.wrapper[0]}${script}${Module.wrapper[1]}`;
 };
 
+function isEsmSyntaxError(error) {
+  return error instanceof SyntaxError && (
+    StringPrototypeIncludes(
+      error.message,
+      "Cannot use import statement outside a module",
+    ) ||
+    StringPrototypeIncludes(error.message, "Unexpected token 'export'")
+  );
+}
+
 function enrichCJSError(error) {
-  if (error instanceof SyntaxError) {
-    if (
-      StringPrototypeIncludes(
-        error.message,
-        "Cannot use import statement outside a module",
-      ) ||
-      StringPrototypeIncludes(error.message, "Unexpected token 'export'")
-    ) {
-      console.error(
-        'To load an ES module, set "type": "module" in the package.json or use ' +
-          "the .mjs extension.",
-      );
-    }
+  if (isEsmSyntaxError(error)) {
+    console.error(
+      'To load an ES module, set "type": "module" in the package.json or use ' +
+        "the .mjs extension.",
+    );
   }
 }
 
@@ -951,7 +953,14 @@ function wrapSafe(
     if (nodeGlobalThis.process.mainModule === cjsModuleInstance) {
       enrichCJSError(err.thrown);
     }
-    throw err.thrown;
+    if (isEsmSyntaxError(err.thrown)) {
+      throw createRequireEsmError(
+        filename,
+        moduleParentCache.get(cjsModuleInstance)?.filename,
+      );
+    } else {
+      throw err.thrown;
+    }
   }
   return f;
 }
@@ -963,7 +972,6 @@ Module.prototype._compile = function (content, filename) {
   const require = makeRequireFunction(this);
   const exports = this.exports;
   const thisValue = exports;
-  const module = this;
   if (requireDepth === 0) {
     statCache = new SafeMap();
   }
@@ -994,8 +1002,9 @@ Module._extensions[".js"] = function (module, filename) {
   if (StringPrototypeEndsWith(filename, ".js")) {
     const pkg = ops.op_require_read_closest_package_json(filename);
     if (pkg && pkg.exists && pkg.typ === "module") {
-      throw new Error(
-        requireEsmErrorText(filename, moduleParentCache.get(module)?.filename),
+      throw createRequireEsmError(
+        filename,
+        moduleParentCache.get(module)?.filename,
       );
     }
   }
@@ -1003,8 +1012,8 @@ Module._extensions[".js"] = function (module, filename) {
   module._compile(content, filename);
 };
 
-function requireEsmErrorText(filename, parent) {
-  let message = `[ERR_REQUIRE_ESM]: require() of ES Module ${filename}`;
+function createRequireEsmError(filename, parent) {
+  let message = `require() of ES Module ${filename}`;
 
   if (parent) {
     message += ` from ${parent}`;
@@ -1012,7 +1021,9 @@ function requireEsmErrorText(filename, parent) {
 
   message +=
     ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
-  return message;
+  const err = new Error(message);
+  err.code = "ERR_REQUIRE_ESM";
+  return err;
 }
 
 function stripBOM(content) {
