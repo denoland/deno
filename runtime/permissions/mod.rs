@@ -658,7 +658,7 @@ impl UnaryPermission<ReadDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     self.check_desc(
-      &Some(ReadDescriptor(path.to_path_buf())),
+      &Some(ReadDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -722,7 +722,7 @@ impl UnaryPermission<WriteDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     self.check_desc(
-      &Some(WriteDescriptor(path.to_path_buf())),
+      &Some(WriteDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
@@ -925,7 +925,7 @@ impl UnaryPermission<FfiDescriptor> {
     api_name: Option<&str>,
   ) -> Result<(), AnyError> {
     self.check_desc(
-      &Some(FfiDescriptor(path.to_path_buf())),
+      &Some(FfiDescriptor(resolve_from_cwd(path)?)),
       true,
       api_name,
       || Some(format!("\"{}\"", path.display())),
