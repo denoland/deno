@@ -301,7 +301,7 @@ where
     } else {
       state
         .borrow_mut::<P>()
-        .check_write(&path, "Deno.remove()")?;
+        .check_write_partial(&path, "Deno.remove()")?;
     }
 
     state.borrow::<FileSystemRc>().clone()

@@ -1387,6 +1387,14 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     self.0.lock().write.check(path, Some(api_name))
   }
 
+  fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_partial(path, Some(api_name))
+  }
+
   fn check_write_blind(
     &mut self,
     p: &Path,

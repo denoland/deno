@@ -37,6 +37,11 @@ pub trait FsPermissions {
     path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_write_blind(
     &mut self,

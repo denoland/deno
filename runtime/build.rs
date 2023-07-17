@@ -197,6 +197,14 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
+    fn check_write_partial(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
     fn check_write_all(&mut self, _api_name: &str) -> Result<(), AnyError> {
       unreachable!("snapshotting!")
     }
