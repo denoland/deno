@@ -31,12 +31,22 @@ pub trait FsPermissions {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError>;
+  fn check_read_non_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
   fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_write_blind(
     &mut self,
     p: &Path,
     display: &str,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_write_non_partial(
+    &mut self,
+    path: &Path,
     api_name: &str,
   ) -> Result<(), AnyError>;
 

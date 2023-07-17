@@ -189,6 +189,14 @@ mod startup_snapshot {
       unreachable!("snapshotting!")
     }
 
+    fn check_read_non_partial(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
     fn check_write(
       &mut self,
       _path: &Path,
@@ -205,6 +213,14 @@ mod startup_snapshot {
       &mut self,
       _path: &Path,
       _display: &str,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write_non_partial(
+      &mut self,
+      _path: &Path,
       _api_name: &str,
     ) -> Result<(), AnyError> {
       unreachable!("snapshotting!")

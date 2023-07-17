@@ -1216,6 +1216,15 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
+  pub fn check_read_non_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_non_partial(path, Some(api_name))
+  }
+
+  #[inline(always)]
   pub fn check_write(
     &mut self,
     path: &Path,
@@ -1379,6 +1388,14 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     self.0.lock().read.check_blind(path, display, api_name)
   }
 
+  fn check_read_non_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().read.check_non_partial(path, Some(api_name))
+  }
+
   fn check_write(
     &mut self,
     path: &Path,
@@ -1394,6 +1411,14 @@ impl deno_fs::FsPermissions for PermissionsContainer {
     api_name: &str,
   ) -> Result<(), AnyError> {
     self.0.lock().write.check_blind(p, display, api_name)
+  }
+
+  fn check_write_non_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().write.check_non_partial(path, Some(api_name))
   }
 
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError> {
