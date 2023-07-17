@@ -879,7 +879,7 @@ Module.prototype.load = function (filename) {
     StringPrototypeEndsWith(filename, ".mjs") && !Module._extensions[".mjs"]
   ) {
     // TODO: use proper error class
-    throw new Error("require ESM", filename);
+    throw new Error(requireEsmErrorText(filename));
   }
 
   Module._extensions[extension](this, filename);
@@ -990,22 +990,35 @@ Module._extensions[".js"] = function (module, filename) {
   const content = ops.op_require_read_file(filename);
 
   if (StringPrototypeEndsWith(filename, ".js")) {
-    const pkg = ops.op_require_read_package_scope(filename);
+    const pkg = ops.op_require_read_closest_package_json(filename);
     if (pkg && pkg.exists && pkg.typ == "module") {
-      let message = `Trying to import ESM module: ${filename}`;
+      let message = `require() of ES Module ${filename}`;
 
       if (module.parent) {
         message += ` from ${module.parent.filename}`;
       }
 
-      message += ` using require()`;
+      message +=
+        ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
 
-      throw new Error(message);
+      throw new Error(requireEsmErrorText(filename, module.parent?.filename));
     }
   }
 
   module._compile(content, filename);
 };
+
+function requireEsmErrorText(filename, parent) {
+  let message = `require() of ES Module ${filename}`;
+
+  if (parent) {
+    message += ` from ${parent}`;
+  }
+
+  message +=
+    ` not supported. Instead change the require to a dynamic import() which is available in all CommonJS modules.`;
+  return message;
+}
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {
