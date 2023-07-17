@@ -287,7 +287,10 @@ fn spawn_child(
   command.kill_on_drop(true);
 
   let mut child = command.spawn().with_context(|| {
-    format!("Failed to spawn: {}", command.as_std().get_program().to_string_lossy())
+    format!(
+      "Failed to spawn: {}",
+      command.as_std().get_program().to_string_lossy()
+    )
   })?;
   let pid = child.id().expect("Process ID should be set.");
 
@@ -355,8 +358,13 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output =
-    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
+  let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
+  let output = command.output().with_context(|| {
+    format!(
+      "Failed to spawn: {}",
+      command.get_program().to_string_lossy()
+    )
+  })?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
