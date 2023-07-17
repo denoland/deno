@@ -6057,6 +6057,37 @@ mod tests {
   }
 
   #[test]
+  fn test_dot() {
+    let r = flags_from_vec(svec!["deno", "test", "--dot"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          dot_reporter: true,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          concurrent_jobs: None,
+          trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
   fn test_shuffle() {
     let r = flags_from_vec(svec!["deno", "test", "--shuffle=1"]);
     assert_eq!(
