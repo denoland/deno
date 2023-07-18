@@ -204,26 +204,24 @@ class EventSource extends EventTarget {
   }
 
   async [_loop]() {
-    let lastEventIDValue;
+    let lastEventIDValue = "";
     while (this[_readyState] !== CLOSED) {
       const req = newInnerRequest(
         "GET",
         this[_url],
-        lastEventIDValue
-          ? [
-            ["accept", "text/event-stream"],
-          ]
-          : [
-            ["accept", "text/event-stream"],
-            [
-              "last-event-id",
-              StringFromCharCode(
-                ...new SafeStringIterator(
-                  new TextEncoder().encode(lastEventIDValue),
-                ),
-              ),
-            ],
-          ],
+        () => {
+          return lastEventIDValue === ""
+            ? [
+              ["accept", "text/event-stream"],
+            ]
+            : [
+              ["accept", "text/event-stream"],
+              [
+                "last-event-id",
+                lastEventIDValue,
+              ],
+            ]
+        },
         null,
         false,
       );
@@ -233,7 +231,6 @@ class EventSource extends EventTarget {
       const contentType = res.headerList.find((header) =>
         header[0].toLowerCase() === "content-type"
       );
-      console.error(1, res.status, contentType);
       if (res.type === "error") {
         if (res.aborted) {
           this[_readyState] = CLOSED;
@@ -361,7 +358,6 @@ class EventSource extends EventTarget {
           continue;
         }
 
-        console.error("lastEventID is:", JSONStringify(this[_lastEventID]));
         if (this[_lastEventID] !== "") {
           lastEventIDValue = this[_lastEventID];
         }
