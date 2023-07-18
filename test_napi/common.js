@@ -7,6 +7,7 @@ export {
   assertThrows,
 } from "../test_util/std/testing/asserts.ts";
 export { fromFileUrl } from "../test_util/std/path/mod.ts";
+import process from "node:process";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
 export const [libPrefix, libSuffix] = {
@@ -15,13 +16,11 @@ export const [libPrefix, libSuffix] = {
   windows: ["", "dll"],
 }[Deno.build.os];
 
-const ops = Deno[Deno.internal].core.ops;
-
 export function loadTestLibrary() {
   const specifier = `${targetDir}/${libPrefix}test_napi.${libSuffix}`;
 
   // Internal, used in ext/node
-  return ops.op_napi_open(specifier, {
-    Buffer: {},
-  });
+  const module = {};
+  process.dlopen(module, specifier);
+  return module.exports;
 }
