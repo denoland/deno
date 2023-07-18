@@ -50,7 +50,7 @@ function opSanitizerDelay() {
   return new Promise((resolve) => {
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 0);
+    }, 1);
   });
 }
 
@@ -228,7 +228,7 @@ function prettyResourceNames(name) {
       return ["A fetch request", "started", "finished"];
     case "fetchRequestBody":
       return ["A fetch request body", "created", "closed"];
-    case "fetchResponseBody":
+    case "fetchResponse":
       return ["A fetch response body", "created", "consumed"];
     case "httpClient":
       return ["An HTTP client", "created", "closed"];
@@ -295,7 +295,7 @@ function resourceCloseHint(name) {
       return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";
     case "fetchRequestBody":
       return "Terminate the request body `ReadableStream` by closing or erroring it.";
-    case "fetchResponseBody":
+    case "fetchResponse":
       return "Consume or close the response body `ReadableStream`, e.g `await resp.text()` or `await resp.body.cancel()`.";
     case "httpClient":
       return "Close the HTTP client by calling `httpClient.close()`.";
@@ -685,6 +685,8 @@ function test(
   });
 }
 
+let registeredWarmupBench = false;
+
 // Main bench function provided by Deno.
 function bench(
   nameOrFnOrOptions,
@@ -693,6 +695,25 @@ function bench(
 ) {
   if (typeof ops.op_register_bench != "function") {
     return;
+  }
+
+  if (!registeredWarmupBench) {
+    registeredWarmupBench = true;
+    const warmupBenchDesc = {
+      name: "<warmup>",
+      fn: function warmup() {},
+      async: false,
+      ignore: false,
+      baseline: false,
+      only: false,
+      sanitizeExit: true,
+      permissions: null,
+      warmup: true,
+    };
+    warmupBenchDesc.fn = wrapBenchmark(warmupBenchDesc);
+    const { id, origin } = ops.op_register_bench(warmupBenchDesc);
+    warmupBenchDesc.id = id;
+    warmupBenchDesc.origin = origin;
   }
 
   let benchDesc;
@@ -777,6 +798,7 @@ function bench(
   const AsyncFunction = (async () => {}).constructor;
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
   benchDesc.fn = wrapBenchmark(benchDesc);
+  benchDesc.warmup = false;
 
   const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;

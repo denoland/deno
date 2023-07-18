@@ -176,8 +176,10 @@ fn thread_safe_callback() {
   let expected = "\
     Callback on main thread\n\
     Callback on worker thread\n\
+    STORED_FUNCTION cleared\n\
     Calling callback, isolate should stay asleep until callback is called\n\
     Callback being called\n\
+    STORED_FUNCTION cleared\n\
     Isolate should now exit\n";
   assert_eq!(stdout, expected);
   assert_eq!(stderr, "");

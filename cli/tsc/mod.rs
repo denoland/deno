@@ -117,13 +117,7 @@ pub fn get_types_declaration_file_text(unstable: bool) -> String {
 }
 
 fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
-  deno_core::extension!(
-    deno_cli_tsc,
-    ops_fn = deno_ops,
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
-  );
+  deno_core::extension!(deno_cli_tsc, ops_fn = deno_ops);
 
   // the assets are stored within the typescript isolate, so take them out of there
   let mut runtime = JsRuntime::new(RuntimeOptions {
@@ -248,10 +242,11 @@ fn get_maybe_hash(
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
-  let mut hasher = FastInsecureHasher::new();
-  hasher.write_str(source);
-  hasher.write_u64(hash_data);
-  hasher.finish().to_string()
+  FastInsecureHasher::new()
+    .write_str(source)
+    .write_u64(hash_data)
+    .finish()
+    .to_string()
 }
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
@@ -538,7 +533,7 @@ fn op_resolve(
   };
   for specifier in args.specifiers {
     if let Some(module_name) = specifier.strip_prefix("node:") {
-      if deno_node::resolve_builtin_node_module(module_name).is_ok() {
+      if deno_node::is_builtin_node_module(module_name) {
         // return itself for node: specifiers because during type checking
         // we resolve to the ambient modules in the @types/node package
         // rather than deno_std/node
@@ -780,9 +775,6 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
           .unwrap(),
       ));
     },
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.force_op_registration();
-    },
   );
 
   let startup_source = ascii_str!("globalThis.startup({ legacyFlag: false })");
@@ -848,12 +840,13 @@ mod tests {
   use crate::args::TsConfig;
   use deno_core::futures::future;
   use deno_core::OpState;
+  use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
-  use std::fs;
+  use test_util::PathRef;
 
   #[derive(Debug, Default)]
   pub struct MockLoader {
-    pub fixtures: PathBuf,
+    pub fixtures: PathRef,
   }
 
   impl deno_graph::source::Loader for MockLoader {
@@ -868,15 +861,13 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = fs::read_to_string(source_path)
-        .map(|c| {
-          Some(deno_graph::source::LoadResponse::Module {
-            specifier: specifier.clone(),
-            maybe_headers: None,
-            content: c.into(),
-          })
+      let response = source_path.read_to_string_if_exists().map(|c| {
+        Some(deno_graph::source::LoadResponse::Module {
+          specifier: specifier.clone(),
+          maybe_headers: None,
+          content: c.into(),
         })
-        .map_err(|err| err.into());
+      });
       Box::pin(future::ready(response))
     }
   }
@@ -891,7 +882,7 @@ mod tests {
     let hash_data = maybe_hash_data.unwrap_or(0);
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier], &mut loader, Default::default())
       .await;
@@ -917,7 +908,7 @@ mod tests {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let mut loader = MockLoader { fixtures };
-    let mut graph = ModuleGraph::default();
+    let mut graph = ModuleGraph::new(GraphKind::TypesOnly);
     graph
       .build(vec![specifier.clone()], &mut loader, Default::default())
       .await;

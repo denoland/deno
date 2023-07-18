@@ -6,16 +6,17 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url;
+use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::StringOrBuffer;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_net::raw::NetworkStream;
 use deno_tls::create_client_config;
 use deno_tls::RootCertStoreProvider;
@@ -27,6 +28,7 @@ use http::Method;
 use http::Request;
 use http::Uri;
 use hyper::Body;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -50,8 +52,17 @@ use fastwebsockets::Frame;
 use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
-
 mod stream;
+
+static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
+  let enable = std::env::var("DENO_USE_WRITEV").ok();
+
+  if let Some(val) = enable {
+    return !val.is_empty();
+  }
+
+  false
+});
 
 #[derive(Clone)]
 pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
@@ -280,12 +291,8 @@ where
     state.borrow_mut().resource_table.close(cancel_rid).ok();
   }
 
-  let resource = ServerWebSocket {
-    ws: AsyncRefCell::new(FragmentCollector::new(stream)),
-    closed: Rc::new(Cell::new(false)),
-  };
   let mut state = state.borrow_mut();
-  let rid = state.resource_table.add(resource);
+  let rid = state.resource_table.add(ServerWebSocket::new(stream));
 
   let protocol = match response.headers().get("Sec-WebSocket-Protocol") {
     Some(header) => header.to_str().unwrap(),
@@ -310,20 +317,58 @@ pub enum MessageKind {
   Binary = 1,
   Pong = 2,
   Error = 3,
-  Closed = 4,
+  ClosedDefault = 1005,
 }
 
+/// To avoid locks, we keep as much as we can inside of [`Cell`]s.
 pub struct ServerWebSocket {
+  buffered: Cell<usize>,
+  error: Cell<Option<String>>,
+  errored: Cell<bool>,
+  closed: Cell<bool>,
+  buffer: Cell<Option<Vec<u8>>>,
+  string: Cell<Option<String>>,
   ws: AsyncRefCell<FragmentCollector<WebSocketStream>>,
-  closed: Rc<Cell<bool>>,
+  tx_lock: AsyncRefCell<()>,
 }
 
 impl ServerWebSocket {
+  fn new(ws: WebSocket<WebSocketStream>) -> Self {
+    Self {
+      buffered: Cell::new(0),
+      error: Cell::new(None),
+      errored: Cell::new(false),
+      closed: Cell::new(false),
+      buffer: Cell::new(None),
+      string: Cell::new(None),
+      ws: AsyncRefCell::new(FragmentCollector::new(ws)),
+      tx_lock: AsyncRefCell::new(()),
+    }
+  }
+
+  fn set_error(&self, error: Option<String>) {
+    if let Some(error) = error {
+      self.error.set(Some(error));
+      self.errored.set(true);
+    } else {
+      self.error.set(None);
+      self.errored.set(false);
+    }
+  }
+
+  /// Reserve a lock, but don't wait on it. This gets us our place in line.
+  pub fn reserve_lock(self: &Rc<Self>) -> AsyncMutFuture<()> {
+    RcRef::map(self, |r| &r.tx_lock).borrow_mut()
+  }
+
   #[inline]
   pub async fn write_frame(
-    self: Rc<Self>,
+    self: &Rc<Self>,
+    lock: AsyncMutFuture<()>,
     frame: Frame,
   ) -> Result<(), AnyError> {
+    lock.await;
+
     // SAFETY: fastwebsockets only needs a mutable reference to the WebSocket
     // to populate the write buffer. We encounter an await point when writing
     // to the socket after the frame has already been written to the buffer.
@@ -353,36 +398,75 @@ pub fn ws_create_server_stream(
     ),
     Role::Server,
   );
-  ws.set_writev(true);
+  ws.set_writev(*USE_WRITEV);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
 
-  let ws_resource = ServerWebSocket {
-    ws: AsyncRefCell::new(FragmentCollector::new(ws)),
-    closed: Rc::new(Cell::new(false)),
-  };
-
-  let rid = state.resource_table.add(ws_resource);
+  let rid = state.resource_table.add(ServerWebSocket::new(ws));
   Ok(rid)
 }
 
-#[op]
-pub async fn op_ws_send_binary(
+#[op(fast)]
+pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  let data = data.to_vec();
+  let len = data.len();
+  resource.buffered.set(resource.buffered.get() + len);
+  let lock = resource.reserve_lock();
+  deno_core::task::spawn(async move {
+    if let Err(err) = resource
+      .write_frame(lock, Frame::new(true, OpCode::Binary, None, data))
+      .await
+    {
+      resource.set_error(Some(err.to_string()));
+    } else {
+      resource.buffered.set(resource.buffered.get() - len);
+    }
+  });
+}
+
+#[op(fast)]
+pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  let len = data.len();
+  resource.buffered.set(resource.buffered.get() + len);
+  let lock = resource.reserve_lock();
+  deno_core::task::spawn(async move {
+    if let Err(err) = resource
+      .write_frame(
+        lock,
+        Frame::new(true, OpCode::Text, None, data.into_bytes()),
+      )
+      .await
+    {
+      resource.set_error(Some(err.to_string()));
+    } else {
+      resource.buffered.set(resource.buffered.get() - len);
+    }
+  });
+}
+
+/// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
+#[op(fast)]
+pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
+  let data = data.to_vec();
+  let lock = resource.reserve_lock();
   resource
-    .write_frame(Frame::new(true, OpCode::Binary, None, data.to_vec()))
+    .write_frame(lock, Frame::new(true, OpCode::Binary, None, data))
     .await
 }
 
-#[op]
-pub async fn op_ws_send_text(
+/// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
+#[op(fast)]
+pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   data: String,
@@ -391,9 +475,23 @@ pub async fn op_ws_send_text(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
+  let lock = resource.reserve_lock();
   resource
-    .write_frame(Frame::new(true, OpCode::Text, None, data.into_bytes()))
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Text, None, data.into_bytes()),
+    )
     .await
+}
+
+#[op(fast)]
+pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
+  state
+    .resource_table
+    .get::<ServerWebSocket>(rid)
+    .unwrap()
+    .buffered
+    .get() as u32
 }
 
 #[op]
@@ -405,7 +503,8 @@ pub async fn op_ws_send_pong(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
-  resource.write_frame(Frame::pong(vec![])).await
+  let lock = resource.reserve_lock();
+  resource.write_frame(lock, Frame::pong(vec![])).await
 }
 
 #[op]
@@ -417,8 +516,9 @@ pub async fn op_ws_send_ping(
     .borrow_mut()
     .resource_table
     .get::<ServerWebSocket>(rid)?;
+  let lock = resource.reserve_lock();
   resource
-    .write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    .write_frame(lock, Frame::new(true, OpCode::Ping, None, vec![]))
     .await
 }
 
@@ -437,21 +537,53 @@ pub async fn op_ws_close(
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
     .unwrap_or_else(|| Frame::close_raw(vec![]));
 
-  let cell = Rc::clone(&resource.closed);
-  cell.set(true);
-  resource.write_frame(frame).await?;
+  resource.closed.set(true);
+  let lock = resource.reserve_lock();
+  resource.write_frame(lock, frame).await?;
   Ok(())
+}
+
+#[op]
+pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ToJsBuffer {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  resource.buffer.take().unwrap().into()
+}
+
+#[op]
+pub fn op_ws_get_buffer_as_string(
+  state: &mut OpState,
+  rid: ResourceId,
+) -> String {
+  let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
+  resource.string.take().unwrap()
+}
+
+#[op]
+pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
+  let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
+    return "Bad resource".into();
+  };
+  resource.errored.set(false);
+  resource.error.take().unwrap_or_default()
 }
 
 #[op(fast)]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-) -> Result<(u16, StringOrBuffer), AnyError> {
-  let resource = state
+) -> u16 {
+  let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)?;
+    .get::<ServerWebSocket>(rid) else {
+    // op_ws_get_error will correctly handle a bad resource
+    return MessageKind::Error as u16;
+  };
+
+  // If there's a pending error, this always returns error
+  if resource.errored.get() {
+    return MessageKind::Error as u16;
+  }
 
   let mut ws = RcRef::map(&resource, |r| &r.ws).borrow_mut().await;
   loop {
@@ -459,49 +591,51 @@ pub async fn op_ws_next_event(
       Ok(val) => val,
       Err(err) => {
         // No message was received, socket closed while we waited.
-        // Try close the stream, ignoring any errors, and report closed status to JavaScript.
+        // Report closed status to JavaScript.
         if resource.closed.get() {
-          let _ = state.borrow_mut().resource_table.close(rid);
-          return Ok((
-            MessageKind::Closed as u16,
-            StringOrBuffer::Buffer(vec![].into()),
-          ));
+          return MessageKind::ClosedDefault as u16;
         }
 
-        return Ok((
-          MessageKind::Error as u16,
-          StringOrBuffer::String(err.to_string()),
-        ));
+        resource.set_error(Some(err.to_string()));
+        return MessageKind::Error as u16;
       }
     };
 
-    break Ok(match val.opcode {
-      OpCode::Text => (
-        MessageKind::Text as u16,
-        StringOrBuffer::String(String::from_utf8(val.payload).unwrap()),
-      ),
-      OpCode::Binary => (
-        MessageKind::Binary as u16,
-        StringOrBuffer::Buffer(val.payload.into()),
-      ),
-      OpCode::Close => {
-        if val.payload.len() < 2 {
-          return Ok((1005, StringOrBuffer::String("".to_string())));
+    break match val.opcode {
+      OpCode::Text => match String::from_utf8(val.payload) {
+        Ok(s) => {
+          resource.string.set(Some(s));
+          MessageKind::Text as u16
         }
-
-        let close_code =
-          CloseCode::from(u16::from_be_bytes([val.payload[0], val.payload[1]]));
-        let reason = String::from_utf8(val.payload[2..].to_vec()).unwrap();
-        (close_code.into(), StringOrBuffer::String(reason))
+        Err(_) => {
+          resource.set_error(Some("Invalid string data".into()));
+          MessageKind::Error as u16
+        }
+      },
+      OpCode::Binary => {
+        resource.buffer.set(Some(val.payload));
+        MessageKind::Binary as u16
       }
-      OpCode::Pong => (
-        MessageKind::Pong as u16,
-        StringOrBuffer::Buffer(vec![].into()),
-      ),
+      OpCode::Close => {
+        // Close reason is returned through error
+        if val.payload.len() < 2 {
+          resource.set_error(None);
+          MessageKind::ClosedDefault as u16
+        } else {
+          let close_code = CloseCode::from(u16::from_be_bytes([
+            val.payload[0],
+            val.payload[1],
+          ]));
+          let reason = String::from_utf8(val.payload[2..].to_vec()).ok();
+          resource.set_error(reason);
+          close_code.into()
+        }
+      }
+      OpCode::Pong => MessageKind::Pong as u16,
       OpCode::Continuation | OpCode::Ping => {
         continue;
       }
-    });
+    };
   }
 }
 
@@ -513,10 +647,16 @@ deno_core::extension!(deno_websocket,
     op_ws_create<P>,
     op_ws_close,
     op_ws_next_event,
+    op_ws_get_buffer,
+    op_ws_get_buffer_as_string,
+    op_ws_get_error,
     op_ws_send_binary,
     op_ws_send_text,
+    op_ws_send_binary_async,
+    op_ws_send_text_async,
     op_ws_send_ping,
     op_ws_send_pong,
+    op_ws_get_buffered_amount,
   ],
   esm = [ "01_websocket.js", "02_websocketstream.js" ],
   options = {

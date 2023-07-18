@@ -251,6 +251,10 @@ core.registerErrorClass("BadResource", errors.BadResource);
 core.registerErrorClass("Http", errors.Http);
 core.registerErrorClass("Busy", errors.Busy);
 core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorClass("FilesystemLoop", errors.FilesystemLoop);
+core.registerErrorClass("IsADirectory", errors.IsADirectory);
+core.registerErrorClass("NetworkUnreachable", errors.NetworkUnreachable);
+core.registerErrorClass("NotADirectory", errors.NotADirectory);
 core.registerErrorBuilder(
   "DOMExceptionOperationError",
   function DOMExceptionOperationError(msg) {
@@ -299,7 +303,7 @@ function runtimeStart(
   v8Version,
   tsVersion,
   target,
-  debugFlag,
+  logLevel,
   noColor,
   isTty,
   source,
@@ -315,7 +319,7 @@ function runtimeStart(
     tsVersion,
   );
   core.setBuildInfo(target);
-  util.setLogDebug(debugFlag, source);
+  util.setLogLevel(logLevel, source);
   setNoColor(noColor || !isTty);
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = core.prepareStackTrace;
@@ -346,10 +350,17 @@ function promiseRejectCallback(type, promise, reason) {
   }
 
   return !!globalThis_.onunhandledrejection ||
-    event.listenerCount(globalThis_, "unhandledrejection") > 0;
+    event.listenerCount(globalThis_, "unhandledrejection") > 0 ||
+    typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined";
 }
 
 function promiseRejectMacrotaskCallback() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
+  if (pendingRejections.length === 0) {
+    return undefined;
+  }
+
   while (pendingRejections.length > 0) {
     const promise = ArrayPrototypeShift(pendingRejections);
     const hasPendingException = ops.op_has_pending_promise_rejection(
@@ -382,6 +393,15 @@ function promiseRejectMacrotaskCallback() {
     globalThis_.addEventListener("error", errorEventCb);
     globalThis_.dispatchEvent(rejectionEvent);
     globalThis_.removeEventListener("error", errorEventCb);
+
+    // If event was not yet prevented, try handing it off to Node compat layer
+    // (if it was initialized)
+    if (
+      !rejectionEvent.defaultPrevented &&
+      typeof internals.nodeProcessUnhandledRejectionCallback !== "undefined"
+    ) {
+      internals.nodeProcessUnhandledRejectionCallback(rejectionEvent);
+    }
 
     // If event was not prevented (or "unhandledrejection" listeners didn't
     // throw) we will let Rust side handle it.
@@ -418,7 +438,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -485,7 +505,7 @@ function bootstrapMainRuntime(runtimeOptions) {
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
   );
@@ -532,7 +552,7 @@ function bootstrapWorkerRuntime(
   const {
     0: args,
     1: cpuCount,
-    2: debugFlag,
+    2: logLevel,
     3: denoVersion,
     4: locale,
     5: location_,
@@ -600,7 +620,7 @@ function bootstrapWorkerRuntime(
     v8Version,
     tsVersion,
     target,
-    debugFlag,
+    logLevel,
     noColor,
     isTty,
     internalName ?? name,

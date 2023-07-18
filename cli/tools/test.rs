@@ -2,19 +2,20 @@
 
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
-use crate::args::TestOptions;
-use crate::args::TypeCheckMode;
+use crate::args::Flags;
+use crate::args::TestFlags;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
+use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::util::checksum;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
 use crate::util::path::is_supported_ext;
@@ -29,6 +30,7 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
+use deno_core::futures::task::noop_waker;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
@@ -62,11 +64,11 @@ use std::io::Read;
 use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::task::Context;
 use std::time::Duration;
 use std::time::Instant;
 use std::time::SystemTime;
@@ -375,6 +377,49 @@ impl TestSummary {
   }
 }
 
+trait TestReporter {
+  fn report_register(&mut self, description: &TestDescription);
+  fn report_plan(&mut self, plan: &TestPlan);
+  fn report_wait(&mut self, description: &TestDescription);
+  fn report_output(&mut self, output: &[u8]);
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  );
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>);
+  fn report_step_register(&mut self, description: &TestStepDescription);
+  fn report_step_wait(&mut self, description: &TestStepDescription);
+  fn report_step_result(
+    &mut self,
+    desc: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+  fn report_summary(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  );
+}
+
+fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
+  Box::new(PrettyTestReporter::new(
+    options.concurrent_jobs.get() > 1,
+    options.log_level != Some(Level::Error),
+  ))
+}
+
 struct PrettyTestReporter {
   parallel: bool,
   echo_output: bool,
@@ -385,6 +430,7 @@ struct PrettyTestReporter {
   started_tests: bool,
   child_results_buffer:
     HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
+  summary: TestSummary,
 }
 
 impl PrettyTestReporter {
@@ -398,6 +444,7 @@ impl PrettyTestReporter {
       did_have_user_output: false,
       started_tests: false,
       child_results_buffer: Default::default(),
+      summary: TestSummary::new(),
     }
   }
 
@@ -509,291 +556,6 @@ impl PrettyTestReporter {
     }
   }
 
-  fn report_register(&mut self, _description: &TestDescription) {}
-
-  fn report_plan(&mut self, plan: &TestPlan) {
-    if self.parallel {
-      return;
-    }
-    let inflection = if plan.total == 1 { "test" } else { "tests" };
-    println!(
-      "{}",
-      colors::gray(format!(
-        "running {} {} from {}",
-        plan.total,
-        inflection,
-        self.to_relative_path_or_remote_url(&plan.origin)
-      ))
-    );
-    self.in_new_line = true;
-  }
-
-  fn report_wait(&mut self, description: &TestDescription) {
-    if !self.parallel {
-      self.force_report_wait(description);
-    }
-    self.started_tests = true;
-  }
-
-  fn report_output(&mut self, output: &[u8]) {
-    if !self.echo_output {
-      return;
-    }
-
-    if !self.did_have_user_output && self.started_tests {
-      self.did_have_user_output = true;
-      if !self.in_new_line {
-        println!();
-      }
-      println!("{}", colors::gray("------- output -------"));
-      self.in_new_line = true;
-    }
-
-    // output everything to stdout in order to prevent
-    // stdout and stderr racing
-    std::io::stdout().write_all(output).unwrap();
-  }
-
-  fn report_result(
-    &mut self,
-    description: &TestDescription,
-    result: &TestResult,
-    elapsed: u64,
-  ) {
-    if self.parallel {
-      self.force_report_wait(description);
-    }
-
-    self.write_output_end();
-    if self.in_new_line || self.scope_test_id != Some(description.id) {
-      self.force_report_wait(description);
-    }
-
-    let status = match result {
-      TestResult::Ok => colors::green("ok").to_string(),
-      TestResult::Ignored => colors::yellow("ignored").to_string(),
-      TestResult::Failed(failure) => failure.format_label(),
-      TestResult::Cancelled => colors::gray("cancelled").to_string(),
-    };
-    print!(" {}", status);
-    if let TestResult::Failed(failure) = result {
-      if let Some(inline_summary) = failure.format_inline_summary() {
-        print!(" ({})", inline_summary)
-      }
-    }
-    println!(
-      " {}",
-      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
-    );
-    self.in_new_line = true;
-    self.scope_test_id = None;
-  }
-
-  fn report_uncaught_error(&mut self, origin: &str, _error: &JsError) {
-    if !self.in_new_line {
-      println!();
-    }
-    println!(
-      "Uncaught error from {} {}",
-      self.to_relative_path_or_remote_url(origin),
-      colors::red("FAILED")
-    );
-    self.in_new_line = true;
-    self.did_have_user_output = false;
-  }
-
-  fn report_step_register(&mut self, _description: &TestStepDescription) {}
-
-  fn report_step_wait(&mut self, description: &TestStepDescription) {
-    if !self.parallel && self.scope_test_id == Some(description.parent_id) {
-      self.force_report_step_wait(description);
-    }
-  }
-
-  fn report_step_result(
-    &mut self,
-    desc: &TestStepDescription,
-    result: &TestStepResult,
-    elapsed: u64,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) {
-    if self.parallel {
-      self.write_output_end();
-      print!(
-        "{} {} ...",
-        colors::gray(format!(
-          "{} =>",
-          self.to_relative_path_or_remote_url(&desc.origin)
-        )),
-        self.format_test_step_ancestry(desc, tests, test_steps)
-      );
-      self.in_new_line = false;
-      self.scope_test_id = Some(desc.id);
-      self.force_report_step_result(desc, result, elapsed);
-    } else {
-      let sibling_results =
-        self.child_results_buffer.entry(desc.parent_id).or_default();
-      if self.scope_test_id == Some(desc.id)
-        || self.scope_test_id == Some(desc.parent_id)
-      {
-        let sibling_results = std::mem::take(sibling_results);
-        self.force_report_step_result(desc, result, elapsed);
-        // Flush buffered sibling results.
-        for (desc, result, elapsed) in sibling_results.values() {
-          self.force_report_step_result(desc, result, *elapsed);
-        }
-      } else {
-        sibling_results
-          .insert(desc.id, (desc.clone(), result.clone(), elapsed));
-      }
-    }
-  }
-
-  fn report_summary(&mut self, summary: &TestSummary, elapsed: &Duration) {
-    if !summary.failures.is_empty() || !summary.uncaught_errors.is_empty() {
-      #[allow(clippy::type_complexity)] // Type alias doesn't look better here
-      let mut failures_by_origin: BTreeMap<
-        String,
-        (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
-      > = BTreeMap::default();
-      let mut failure_titles = vec![];
-      for (description, failure) in &summary.failures {
-        let (failures, _) = failures_by_origin
-          .entry(description.origin.clone())
-          .or_default();
-        failures.push((description, failure));
-      }
-      for (origin, js_error) in &summary.uncaught_errors {
-        let (_, uncaught_error) =
-          failures_by_origin.entry(origin.clone()).or_default();
-        let _ = uncaught_error.insert(js_error.as_ref());
-      }
-      // note: the trailing whitespace is intentional to get a red background
-      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
-      for (origin, (failures, uncaught_error)) in failures_by_origin {
-        for (description, failure) in failures {
-          if !failure.hide_in_summary() {
-            let failure_title = self.format_test_for_summary(description);
-            println!("{}", &failure_title);
-            println!("{}: {}", colors::red_bold("error"), failure.to_string());
-            println!();
-            failure_titles.push(failure_title);
-          }
-        }
-        if let Some(js_error) = uncaught_error {
-          let failure_title = format!(
-            "{} (uncaught error)",
-            self.to_relative_path_or_remote_url(&origin)
-          );
-          println!("{}", &failure_title);
-          println!(
-            "{}: {}",
-            colors::red_bold("error"),
-            format_test_error(js_error)
-          );
-          println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
-          println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
-          println!();
-          failure_titles.push(failure_title);
-        }
-      }
-      // note: the trailing whitespace is intentional to get a red background
-      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
-      for failure_title in failure_titles {
-        println!("{failure_title}");
-      }
-    }
-
-    let status = if summary.has_failed() {
-      colors::red("FAILED").to_string()
-    } else {
-      colors::green("ok").to_string()
-    };
-
-    let get_steps_text = |count: usize| -> String {
-      if count == 0 {
-        String::new()
-      } else if count == 1 {
-        " (1 step)".to_string()
-      } else {
-        format!(" ({count} steps)")
-      }
-    };
-
-    let mut summary_result = String::new();
-
-    write!(
-      summary_result,
-      "{} passed{} | {} failed{}",
-      summary.passed,
-      get_steps_text(summary.passed_steps),
-      summary.failed,
-      get_steps_text(summary.failed_steps),
-    )
-    .unwrap();
-
-    let ignored_steps = get_steps_text(summary.ignored_steps);
-    if summary.ignored > 0 || !ignored_steps.is_empty() {
-      write!(
-        summary_result,
-        " | {} ignored{}",
-        summary.ignored, ignored_steps
-      )
-      .unwrap()
-    }
-
-    if summary.measured > 0 {
-      write!(summary_result, " | {} measured", summary.measured,).unwrap();
-    }
-
-    if summary.filtered_out > 0 {
-      write!(summary_result, " | {} filtered out", summary.filtered_out)
-        .unwrap()
-    };
-
-    println!(
-      "\n{} | {} {}\n",
-      status,
-      summary_result,
-      colors::gray(format!(
-        "({})",
-        display::human_elapsed(elapsed.as_millis())
-      )),
-    );
-    self.in_new_line = true;
-  }
-
-  fn report_sigint(
-    &mut self,
-    tests_pending: &HashSet<usize>,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) {
-    if tests_pending.is_empty() {
-      return;
-    }
-    let mut formatted_pending = BTreeSet::new();
-    for id in tests_pending {
-      if let Some(desc) = tests.get(id) {
-        formatted_pending.insert(self.format_test_for_summary(desc));
-      }
-      if let Some(desc) = test_steps.get(id) {
-        formatted_pending
-          .insert(self.format_test_step_for_summary(desc, tests, test_steps));
-      }
-    }
-    println!(
-      "\n{} The following tests were pending:\n",
-      colors::intense_blue("SIGINT")
-    );
-    for entry in formatted_pending {
-      println!("{}", entry);
-    }
-    println!();
-    self.in_new_line = true;
-  }
-
   fn format_test_step_ancestry(
     &self,
     desc: &TestStepDescription,
@@ -854,6 +616,354 @@ impl PrettyTestReporter {
         desc.location.column_number
       ))
     )
+  }
+}
+
+impl TestReporter for PrettyTestReporter {
+  fn report_register(&mut self, _description: &TestDescription) {}
+  fn report_plan(&mut self, plan: &TestPlan) {
+    self.summary.total += plan.total;
+    self.summary.filtered_out += plan.filtered_out;
+    if self.parallel {
+      return;
+    }
+    let inflection = if plan.total == 1 { "test" } else { "tests" };
+    println!(
+      "{}",
+      colors::gray(format!(
+        "running {} {} from {}",
+        plan.total,
+        inflection,
+        self.to_relative_path_or_remote_url(&plan.origin)
+      ))
+    );
+    self.in_new_line = true;
+  }
+
+  fn report_wait(&mut self, description: &TestDescription) {
+    if !self.parallel {
+      self.force_report_wait(description);
+    }
+    self.started_tests = true;
+  }
+
+  fn report_output(&mut self, output: &[u8]) {
+    if !self.echo_output {
+      return;
+    }
+
+    if !self.did_have_user_output && self.started_tests {
+      self.did_have_user_output = true;
+      if !self.in_new_line {
+        println!();
+      }
+      println!("{}", colors::gray("------- output -------"));
+      self.in_new_line = true;
+    }
+
+    // output everything to stdout in order to prevent
+    // stdout and stderr racing
+    std::io::stdout().write_all(output).unwrap();
+  }
+
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  ) {
+    match &result {
+      TestResult::Ok => {
+        self.summary.passed += 1;
+      }
+      TestResult::Ignored => {
+        self.summary.ignored += 1;
+      }
+      TestResult::Failed(failure) => {
+        self.summary.failed += 1;
+        self
+          .summary
+          .failures
+          .push((description.clone(), failure.clone()));
+      }
+      TestResult::Cancelled => {
+        self.summary.failed += 1;
+      }
+    }
+
+    if self.parallel {
+      self.force_report_wait(description);
+    }
+
+    self.write_output_end();
+    if self.in_new_line || self.scope_test_id != Some(description.id) {
+      self.force_report_wait(description);
+    }
+
+    let status = match result {
+      TestResult::Ok => colors::green("ok").to_string(),
+      TestResult::Ignored => colors::yellow("ignored").to_string(),
+      TestResult::Failed(failure) => failure.format_label(),
+      TestResult::Cancelled => colors::gray("cancelled").to_string(),
+    };
+    print!(" {}", status);
+    if let TestResult::Failed(failure) = result {
+      if let Some(inline_summary) = failure.format_inline_summary() {
+        print!(" ({})", inline_summary)
+      }
+    }
+    println!(
+      " {}",
+      colors::gray(format!("({})", display::human_elapsed(elapsed.into())))
+    );
+    self.in_new_line = true;
+    self.scope_test_id = None;
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
+    self.summary.failed += 1;
+    self
+      .summary
+      .uncaught_errors
+      .push((origin.to_string(), error));
+
+    if !self.in_new_line {
+      println!();
+    }
+    println!(
+      "Uncaught error from {} {}",
+      self.to_relative_path_or_remote_url(origin),
+      colors::red("FAILED")
+    );
+    self.in_new_line = true;
+    self.did_have_user_output = false;
+  }
+
+  fn report_step_register(&mut self, _description: &TestStepDescription) {}
+
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    if !self.parallel && self.scope_test_id == Some(description.parent_id) {
+      self.force_report_step_wait(description);
+    }
+  }
+
+  fn report_step_result(
+    &mut self,
+    desc: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    match &result {
+      TestStepResult::Ok => {
+        self.summary.passed_steps += 1;
+      }
+      TestStepResult::Ignored => {
+        self.summary.ignored_steps += 1;
+      }
+      TestStepResult::Failed(failure) => {
+        self.summary.failed_steps += 1;
+        self.summary.failures.push((
+          TestDescription {
+            id: desc.id,
+            name: self.format_test_step_ancestry(desc, tests, test_steps),
+            ignore: false,
+            only: false,
+            origin: desc.origin.clone(),
+            location: desc.location.clone(),
+          },
+          failure.clone(),
+        ))
+      }
+    }
+
+    if self.parallel {
+      self.write_output_end();
+      print!(
+        "{} {} ...",
+        colors::gray(format!(
+          "{} =>",
+          self.to_relative_path_or_remote_url(&desc.origin)
+        )),
+        self.format_test_step_ancestry(desc, tests, test_steps)
+      );
+      self.in_new_line = false;
+      self.scope_test_id = Some(desc.id);
+      self.force_report_step_result(desc, result, elapsed);
+    } else {
+      let sibling_results =
+        self.child_results_buffer.entry(desc.parent_id).or_default();
+      if self.scope_test_id == Some(desc.id)
+        || self.scope_test_id == Some(desc.parent_id)
+      {
+        let sibling_results = std::mem::take(sibling_results);
+        self.force_report_step_result(desc, result, elapsed);
+        // Flush buffered sibling results.
+        for (desc, result, elapsed) in sibling_results.values() {
+          self.force_report_step_result(desc, result, *elapsed);
+        }
+      } else {
+        sibling_results
+          .insert(desc.id, (desc.clone(), result.clone(), elapsed));
+      }
+    }
+  }
+
+  fn report_summary(
+    &mut self,
+    elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    if !self.summary.failures.is_empty()
+      || !self.summary.uncaught_errors.is_empty()
+    {
+      #[allow(clippy::type_complexity)] // Type alias doesn't look better here
+      let mut failures_by_origin: BTreeMap<
+        String,
+        (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
+      > = BTreeMap::default();
+      let mut failure_titles = vec![];
+      for (description, failure) in &self.summary.failures {
+        let (failures, _) = failures_by_origin
+          .entry(description.origin.clone())
+          .or_default();
+        failures.push((description, failure));
+      }
+
+      for (origin, js_error) in &self.summary.uncaught_errors {
+        let (_, uncaught_error) =
+          failures_by_origin.entry(origin.clone()).or_default();
+        let _ = uncaught_error.insert(js_error.as_ref());
+      }
+      // note: the trailing whitespace is intentional to get a red background
+      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
+      for (origin, (failures, uncaught_error)) in failures_by_origin {
+        for (description, failure) in failures {
+          if !failure.hide_in_summary() {
+            let failure_title = self.format_test_for_summary(description);
+            println!("{}", &failure_title);
+            println!("{}: {}", colors::red_bold("error"), failure.to_string());
+            println!();
+            failure_titles.push(failure_title);
+          }
+        }
+        if let Some(js_error) = uncaught_error {
+          let failure_title = format!(
+            "{} (uncaught error)",
+            self.to_relative_path_or_remote_url(&origin)
+          );
+          println!("{}", &failure_title);
+          println!(
+            "{}: {}",
+            colors::red_bold("error"),
+            format_test_error(js_error)
+          );
+          println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
+          println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
+          println!();
+          failure_titles.push(failure_title);
+        }
+      }
+      // note: the trailing whitespace is intentional to get a red background
+      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
+      for failure_title in failure_titles {
+        println!("{failure_title}");
+      }
+    }
+
+    let status = if self.summary.has_failed() {
+      colors::red("FAILED").to_string()
+    } else {
+      colors::green("ok").to_string()
+    };
+
+    let get_steps_text = |count: usize| -> String {
+      if count == 0 {
+        String::new()
+      } else if count == 1 {
+        " (1 step)".to_string()
+      } else {
+        format!(" ({count} steps)")
+      }
+    };
+
+    let mut summary_result = String::new();
+
+    write!(
+      summary_result,
+      "{} passed{} | {} failed{}",
+      self.summary.passed,
+      get_steps_text(self.summary.passed_steps),
+      self.summary.failed,
+      get_steps_text(self.summary.failed_steps),
+    )
+    .unwrap();
+
+    let ignored_steps = get_steps_text(self.summary.ignored_steps);
+    if self.summary.ignored > 0 || !ignored_steps.is_empty() {
+      write!(
+        summary_result,
+        " | {} ignored{}",
+        self.summary.ignored, ignored_steps
+      )
+      .unwrap()
+    }
+
+    if self.summary.measured > 0 {
+      write!(summary_result, " | {} measured", self.summary.measured,).unwrap();
+    }
+
+    if self.summary.filtered_out > 0 {
+      write!(
+        summary_result,
+        " | {} filtered out",
+        self.summary.filtered_out
+      )
+      .unwrap()
+    };
+
+    println!(
+      "\n{} | {} {}\n",
+      status,
+      summary_result,
+      colors::gray(format!(
+        "({})",
+        display::human_elapsed(elapsed.as_millis())
+      )),
+    );
+    self.in_new_line = true;
+  }
+
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    if tests_pending.is_empty() {
+      return;
+    }
+    let mut formatted_pending = BTreeSet::new();
+    for id in tests_pending {
+      if let Some(desc) = tests.get(id) {
+        formatted_pending.insert(self.format_test_for_summary(desc));
+      }
+      if let Some(desc) = test_steps.get(id) {
+        formatted_pending
+          .insert(self.format_test_step_for_summary(desc, tests, test_steps));
+      }
+    }
+    println!(
+      "\n{} The following tests were pending:\n",
+      colors::intense_blue("SIGINT")
+    );
+    for entry in formatted_pending {
+      println!("{}", entry);
+    }
+    println!();
+    self.in_new_line = true;
   }
 }
 
@@ -1007,6 +1117,21 @@ pub async fn test_specifier(
       continue;
     }
     sender.send(TestEvent::Wait(desc.id))?;
+
+    // TODO(bartlomieju): this is a nasty (beautiful) hack, that was required
+    // when switching `JsRuntime` from `FuturesUnordered` to `JoinSet`. With
+    // `JoinSet` all pending ops are immediately polled and that caused a problem
+    // when some async ops were fired and canceled before running tests (giving
+    // false positives in the ops sanitizer). We should probably rewrite sanitizers
+    // to be done in Rust instead of in JS (40_testing.js).
+    {
+      // Poll event loop once, this will allow all ops that are already resolved,
+      // but haven't responded to settle.
+      let waker = noop_waker();
+      let mut cx = Context::from_waker(&waker);
+      let _ = worker.js_runtime.poll_event_loop(&mut cx, false);
+    }
+
     let earlier = SystemTime::now();
     let result = match worker.js_runtime.call_and_await(&function).await {
       Ok(r) => r,
@@ -1121,7 +1246,6 @@ fn extract_files_from_regex_blocks(
           .unwrap_or(file_specifier);
 
       Some(File {
-        local: file_specifier.to_file_path().unwrap(),
         maybe_types: None,
         media_type: file_media_type,
         source: file_source.into(),
@@ -1323,6 +1447,7 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
+  let mut reporter = get_test_reporter(&options);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
@@ -1346,11 +1471,6 @@ async fn test_specifiers(
     .buffer_unordered(concurrent_jobs.get())
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-  let mut reporter = Box::new(PrettyTestReporter::new(
-    concurrent_jobs.get() > 1,
-    options.log_level != Some(Level::Error),
-  ));
-
   let handler = {
     spawn(async move {
       let earlier = Instant::now();
@@ -1358,8 +1478,8 @@ async fn test_specifiers(
       let mut test_steps = IndexMap::new();
       let mut tests_started = HashSet::new();
       let mut tests_with_result = HashSet::new();
-      let mut summary = TestSummary::new();
       let mut used_only = false;
+      let mut failed = false;
 
       while let Some(event) = receiver.recv().await {
         match event {
@@ -1369,9 +1489,6 @@ async fn test_specifiers(
           }
 
           TestEvent::Plan(plan) => {
-            summary.total += plan.total;
-            summary.filtered_out += plan.filtered_out;
-
             if plan.used_only {
               used_only = true;
             }
@@ -1391,32 +1508,19 @@ async fn test_specifiers(
 
           TestEvent::Result(id, result, elapsed) => {
             if tests_with_result.insert(id) {
-              let description = tests.get(&id).unwrap();
-              match &result {
-                TestResult::Ok => {
-                  summary.passed += 1;
+              match result {
+                TestResult::Failed(_) | TestResult::Cancelled => {
+                  failed = true;
                 }
-                TestResult::Ignored => {
-                  summary.ignored += 1;
-                }
-                TestResult::Failed(failure) => {
-                  summary.failed += 1;
-                  summary
-                    .failures
-                    .push((description.clone(), failure.clone()));
-                }
-                TestResult::Cancelled => {
-                  summary.failed += 1;
-                }
+                _ => (),
               }
-              reporter.report_result(description, &result, elapsed);
+              reporter.report_result(tests.get(&id).unwrap(), &result, elapsed);
             }
           }
 
           TestEvent::UncaughtError(origin, error) => {
-            reporter.report_uncaught_error(&origin, &error);
-            summary.failed += 1;
-            summary.uncaught_errors.push((origin.clone(), error));
+            failed = true;
+            reporter.report_uncaught_error(&origin, error);
           }
 
           TestEvent::StepRegister(description) => {
@@ -1432,36 +1536,8 @@ async fn test_specifiers(
 
           TestEvent::StepResult(id, result, duration) => {
             if tests_with_result.insert(id) {
-              let description = test_steps.get(&id).unwrap();
-              match &result {
-                TestStepResult::Ok => {
-                  summary.passed_steps += 1;
-                }
-                TestStepResult::Ignored => {
-                  summary.ignored_steps += 1;
-                }
-                TestStepResult::Failed(failure) => {
-                  summary.failed_steps += 1;
-                  summary.failures.push((
-                    TestDescription {
-                      id: description.id,
-                      name: reporter.format_test_step_ancestry(
-                        description,
-                        &tests,
-                        &test_steps,
-                      ),
-                      ignore: false,
-                      only: false,
-                      origin: description.origin.clone(),
-                      location: description.location.clone(),
-                    },
-                    failure.clone(),
-                  ))
-                }
-              }
-
               reporter.report_step_result(
-                description,
+                test_steps.get(&id).unwrap(),
                 &result,
                 duration,
                 &tests,
@@ -1488,7 +1564,7 @@ async fn test_specifiers(
       HAS_TEST_RUN_SIGINT_HANDLER.store(false, Ordering::Relaxed);
 
       let elapsed = Instant::now().duration_since(earlier);
-      reporter.report_summary(&summary, &elapsed);
+      reporter.report_summary(&elapsed, &tests, &test_steps);
 
       if used_only {
         return Err(generic_error(
@@ -1496,7 +1572,7 @@ async fn test_specifiers(
         ));
       }
 
-      if summary.failed > 0 {
+      if failed {
         return Err(generic_error("Test failed"));
       }
 
@@ -1625,11 +1701,12 @@ async fn fetch_specifiers_with_test_mode(
 }
 
 pub async fn run_tests(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+  let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
+  let test_options = cli_options.resolve_test_options(test_flags)?;
   let file_fetcher = factory.file_fetcher()?;
   let module_load_preparer = factory.module_load_preparer().await?;
   // Various test files should not share the same permissions in terms of
@@ -1692,199 +1769,9 @@ pub async fn run_tests(
 }
 
 pub async fn run_tests_with_watch(
-  cli_options: CliOptions,
-  test_options: TestOptions,
+  flags: Flags,
+  test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
-  let module_load_preparer = factory.module_load_preparer().await?;
-  let file_fetcher = factory.file_fetcher()?;
-  let file_watcher = factory.file_watcher()?;
-  // Various test files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
-  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
-  let log_level = cli_options.log_level();
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = test_options.files.include.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
-    let files_changed = changed.is_some();
-    let test_options = &test_options;
-    let cli_options = cli_options.clone();
-    let module_graph_builder = module_graph_builder.clone();
-
-    async move {
-      let test_modules = if test_options.doc {
-        collect_specifiers(&test_options.files, is_supported_test_ext)
-      } else {
-        collect_specifiers(&test_options.files, is_supported_test_path)
-      }?;
-
-      let mut paths_to_watch = paths_to_watch_clone;
-      let mut modules_to_reload = if files_changed {
-        Vec::new()
-      } else {
-        test_modules.clone()
-      };
-      let graph = module_graph_builder
-        .create_graph(test_modules.clone())
-        .await?;
-      graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
-
-      // TODO(@kitsonk) - This should be totally derivable from the graph.
-      for specifier in test_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // This test module and all it's dependencies
-        let mut modules = HashSet::new();
-        modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
-
-        paths_to_watch.extend(
-          modules
-            .iter()
-            .filter_map(|specifier| specifier.to_file_path().ok()),
-        );
-
-        if let Some(changed) = &changed {
-          for path in changed
-            .iter()
-            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
-          {
-            if modules.contains(&path) {
-              modules_to_reload.push(specifier);
-              break;
-            }
-          }
-        }
-      }
-
-      Ok((paths_to_watch, modules_to_reload))
-    }
-    .map(move |result| {
-      if files_changed
-        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        match result {
-          Ok((paths_to_watch, modules_to_reload)) => {
-            ResolutionResult::Restart {
-              paths_to_watch,
-              result: Ok(modules_to_reload),
-            }
-          }
-          Err(e) => ResolutionResult::Restart {
-            paths_to_watch,
-            result: Err(e),
-          },
-        }
-      }
-    })
-  };
-
-  let create_cli_main_worker_factory =
-    factory.create_cli_main_worker_factory_func().await?;
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let permissions = &permissions;
-    let test_options = &test_options;
-    file_watcher.reset();
-    let cli_options = cli_options.clone();
-    let file_fetcher = file_fetcher.clone();
-    let module_load_preparer = module_load_preparer.clone();
-    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
-
-    async move {
-      let worker_factory = Arc::new(create_cli_main_worker_factory());
-      let specifiers_with_mode = fetch_specifiers_with_test_mode(
-        &file_fetcher,
-        &test_options.files,
-        &test_options.doc,
-      )
-      .await?
-      .into_iter()
-      .filter(|(specifier, _)| modules_to_reload.contains(specifier))
-      .collect::<Vec<(ModuleSpecifier, TestMode)>>();
-
-      check_specifiers(
-        &cli_options,
-        &file_fetcher,
-        &module_load_preparer,
-        specifiers_with_mode.clone(),
-      )
-      .await?;
-
-      if test_options.no_run {
-        return Ok(());
-      }
-
-      test_specifiers(
-        worker_factory,
-        permissions,
-        specifiers_with_mode
-          .into_iter()
-          .filter_map(|(s, m)| match m {
-            TestMode::Documentation => None,
-            _ => Some(s),
-          })
-          .collect(),
-        TestSpecifiersOptions {
-          concurrent_jobs: test_options.concurrent_jobs,
-          fail_fast: test_options.fail_fast,
-          log_level,
-          specifier: TestSpecifierOptions {
-            filter: TestFilter::from_flag(&test_options.filter),
-            shuffle: test_options.shuffle,
-            trace_ops: test_options.trace_ops,
-          },
-        },
-      )
-      .await?;
-
-      Ok(())
-    }
-  };
-
   // On top of the sigint handlers which are added and unbound for each test
   // run, a process-scoped basic exit handler is required due to a tokio
   // limitation where it doesn't unbind its own handler for the entire process
@@ -1898,13 +1785,118 @@ pub async fn run_tests_with_watch(
     }
   });
 
-  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
-    resolver,
-    operation,
+    flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen,
+      clear_screen: !test_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
+    },
+    move |flags, sender, changed_paths| {
+      let test_flags = test_flags.clone();
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let test_options = cli_options.resolve_test_options(test_flags)?;
+
+        let _ = sender.send(cli_options.watch_paths());
+        let _ = sender.send(test_options.files.include.clone());
+
+        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let log_level = cli_options.log_level();
+        let cli_options = cli_options.clone();
+        let module_graph_builder = factory.module_graph_builder().await?;
+        let file_fetcher = factory.file_fetcher()?;
+        let test_modules = if test_options.doc {
+          collect_specifiers(&test_options.files, is_supported_test_ext)
+        } else {
+          collect_specifiers(&test_options.files, is_supported_test_path)
+        }?;
+        let permissions =
+          Permissions::from_options(&cli_options.permissions_options())?;
+
+        let graph = module_graph_builder
+          .create_graph(graph_kind, test_modules.clone())
+          .await?;
+        graph_valid_with_cli_options(&graph, &test_modules, &cli_options)?;
+
+        let test_modules_to_reload = if let Some(changed_paths) = changed_paths
+        {
+          let changed_specifiers = changed_paths
+            .into_iter()
+            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+            .collect::<HashSet<_>>();
+          let mut result = Vec::new();
+          for test_module_specifier in test_modules {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &test_module_specifier,
+              &changed_specifiers,
+            ) {
+              result.push(test_module_specifier.clone());
+            }
+          }
+          result
+        } else {
+          test_modules.clone()
+        };
+
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
+        let module_load_preparer = factory.module_load_preparer().await?;
+        let specifiers_with_mode = fetch_specifiers_with_test_mode(
+          file_fetcher,
+          &test_options.files,
+          &test_options.doc,
+        )
+        .await?
+        .into_iter()
+        .filter(|(specifier, _)| test_modules_to_reload.contains(specifier))
+        .collect::<Vec<(ModuleSpecifier, TestMode)>>();
+
+        check_specifiers(
+          &cli_options,
+          file_fetcher,
+          module_load_preparer,
+          specifiers_with_mode.clone(),
+        )
+        .await?;
+
+        if test_options.no_run {
+          return Ok(());
+        }
+
+        test_specifiers(
+          worker_factory,
+          &permissions,
+          specifiers_with_mode
+            .into_iter()
+            .filter_map(|(s, m)| match m {
+              TestMode::Documentation => None,
+              _ => Some(s),
+            })
+            .collect(),
+          TestSpecifiersOptions {
+            concurrent_jobs: test_options.concurrent_jobs,
+            fail_fast: test_options.fail_fast,
+            log_level,
+            specifier: TestSpecifierOptions {
+              filter: TestFilter::from_flag(&test_options.filter),
+              shuffle: test_options.shuffle,
+              trace_ops: test_options.trace_ops,
+            },
+          },
+        )
+        .await?;
+
+        Ok(())
+      })
     },
   )
   .await?;

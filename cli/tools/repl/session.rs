@@ -258,9 +258,15 @@ impl ReplSession {
           Ok(if let Some(exception_details) = exception_details {
             session.set_last_thrown_error(&result).await?;
             let description = match exception_details.exception {
-              Some(exception) => exception
-                .description
-                .unwrap_or_else(|| "undefined".to_string()),
+              Some(exception) => {
+                if let Some(description) = exception.description {
+                  description
+                } else if let Some(value) = exception.value {
+                  value.to_string()
+                } else {
+                  "undefined".to_string()
+                }
+              }
               None => "Unknown exception".to_string(),
             };
             EvaluationOutput::Error(format!(
@@ -518,7 +524,7 @@ impl ReplSession {
         self.has_initialized_node_runtime = true;
       }
 
-      self.npm_resolver.add_package_reqs(npm_imports).await?;
+      self.npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {

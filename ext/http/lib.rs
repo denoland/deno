@@ -28,12 +28,12 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
-use deno_core::ZeroCopyBuf;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
@@ -116,9 +116,12 @@ deno_core::extension!(
     http_next::op_http_set_response_body_text,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
     http_next::op_http_track,
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
+    http_next::op_raw_write_vectored,
+    http_next::op_http_try_wait,
     http_next::op_http_wait,
   ],
   esm = ["00_serve.js", "01_http.js"],
@@ -878,7 +881,7 @@ async fn op_http_write_resource(
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()

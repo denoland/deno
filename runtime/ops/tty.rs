@@ -79,9 +79,6 @@ deno_core::extension!(
     #[cfg(unix)]
     state.put(TtyModeStore::default());
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>

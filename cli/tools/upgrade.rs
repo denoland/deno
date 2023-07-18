@@ -125,7 +125,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   /// Returns the version if a new one is available and it should be prompted about.
   pub fn should_prompt(&self) -> Option<String> {
     let file = self.maybe_file.as_ref()?;
-    // If the current version saved is not the actualy current version of the binary
+    // If the current version saved is not the actually current version of the binary
     // It means
     // - We already check for a new version today
     // - The user have probably upgraded today
@@ -231,7 +231,6 @@ pub fn check_for_upgrades(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -335,7 +334,7 @@ pub async fn upgrade(
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = latest_version.clone();
+        let latest_hash = &latest_version;
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
         let current = Version::parse_standard(crate::version::deno()).unwrap();

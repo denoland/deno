@@ -1,24 +1,33 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
-import { ERR_INVALID_ARG_TYPE, ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
+  ERR_INVALID_ARG_TYPE,
+  ERR_OUT_OF_RANGE,
+} from "ext:deno_node/internal/errors.ts";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
-import { deprecate } from "ext:deno_node/util.ts";
-import { validateFunction, validateInteger } from "ext:deno_node/internal/validators.mjs";
+import { deprecate } from "node:util";
+import {
+  validateFunction,
+  validateInteger,
+} from "ext:deno_node/internal/validators.mjs";
 import { errorOrDestroy } from "ext:deno_node/internal/streams/destroy.mjs";
 import { open as fsOpen } from "ext:deno_node/_fs/_fs_open.ts";
 import { read as fsRead } from "ext:deno_node/_fs/_fs_read.ts";
 import { write as fsWrite } from "ext:deno_node/_fs/_fs_write.mjs";
 import { writev as fsWritev } from "ext:deno_node/_fs/_fs_writev.mjs";
 import { close as fsClose } from "ext:deno_node/_fs/_fs_close.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   copyObject,
   getOptions,
   getValidatedFd,
   validatePath,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { finished, Readable, Writable } from "ext:deno_node/stream.ts";
+import { finished, Readable, Writable } from "node:stream";
 import { toPathIfFileURL } from "ext:deno_node/internal/url.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 const kIoDone = Symbol("kIoDone");

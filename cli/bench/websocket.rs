@@ -10,7 +10,6 @@ use super::Result;
 
 pub fn benchmark() -> Result<HashMap<String, f64>> {
   let deno_exe = test_util::deno_exe_path();
-  let deno_exe = deno_exe.to_str().unwrap();
 
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -22,7 +21,7 @@ pub fn benchmark() -> Result<HashMap<String, f64>> {
     let path = pathbuf.to_str().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
-    let mut cmd = Command::new(deno_exe);
+    let mut cmd = Command::new(&deno_exe);
     let mut server = cmd
       .arg("run")
       .arg("-A")

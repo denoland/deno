@@ -30,6 +30,7 @@ pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use common::FastInsecureHasher;
 pub use deno_dir::DenoDir;
+pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
@@ -83,6 +84,7 @@ impl Loader for FetchCacher {
       return None;
     }
 
+    #[allow(deprecated)]
     let local = self.file_fetcher.get_local_path(specifier)?;
     if local.is_file() {
       let emit = self
