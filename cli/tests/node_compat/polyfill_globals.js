@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import process from "node:process";
-import Buffer from "node:buffer";
+import { Buffer } from "node:buffer";
 import {
   clearImmediate,
   clearInterval,
