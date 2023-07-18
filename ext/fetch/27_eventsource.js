@@ -2,6 +2,8 @@
 
 /// <reference path="../../core/internal.d.ts" />
 
+const core = globalThis.Deno.core;
+
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { URL } from "ext:deno_url/00_url.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
@@ -24,8 +26,6 @@ const {
   NumberIsNaN,
   ObjectDefineProperties,
   Promise,
-  SafeStringIterator,
-  StringFromCharCode,
   Symbol,
 } = primordials;
 
@@ -192,7 +192,6 @@ class EventSource extends EventTarget {
 
     this[_url] = url;
     this[_withCredentials] = eventSourceInitDict.withCredentials;
-    // TODO: 7
 
     this[_loop]();
   }
@@ -205,11 +204,18 @@ class EventSource extends EventTarget {
 
   async [_loop]() {
     let lastEventIDValue = "";
+    let lastEventID = "";
     while (this[_readyState] !== CLOSED) {
       const req = newInnerRequest(
         "GET",
         this[_url],
         () => {
+          if (lastEventIDValue) {
+            console.error(
+              "id:",
+              JSON.stringify(core.ops.op_utf8_to_byte_string(lastEventIDValue)),
+            );
+          }
           return lastEventIDValue === ""
             ? [
               ["accept", "text/event-stream"],
@@ -218,7 +224,7 @@ class EventSource extends EventTarget {
               ["accept", "text/event-stream"],
               [
                 "last-event-id",
-                lastEventIDValue,
+                core.ops.op_utf8_to_byte_string(lastEventIDValue),
               ],
             ];
         },
@@ -268,12 +274,12 @@ class EventSource extends EventTarget {
 
         let data = "";
         let eventType = "";
-        let lastEventID = "";
         for await (
           const chunk of res.body.stream
             .pipeThrough(new TextDecoderStream())
             .pipeThrough(new TextLineStream())
         ) {
+          console.error("chunk:", JSONStringify(chunk));
           if (chunk === "") {
             console.error(
               "inner event id replaced with:",
@@ -310,7 +316,11 @@ class EventSource extends EventTarget {
               }
             }
 
-            console.error(JSONStringify(field), JSONStringify(value));
+            console.error(
+              "pre switch:",
+              JSONStringify(field),
+              JSONStringify(value),
+            );
 
             switch (field) {
               case "event": {

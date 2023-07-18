@@ -113,6 +113,7 @@ deno_core::extension!(deno_fetch,
     op_fetch<FP>,
     op_fetch_send,
     op_fetch_response_upgrade,
+    op_utf8_to_byte_string,
     op_fetch_custom_client<FP>,
   ],
   esm = [
@@ -952,4 +953,9 @@ pub fn create_http_client(
   }
 
   builder.build().map_err(|e| e.into())
+}
+
+#[op]
+pub fn op_utf8_to_byte_string(input: String) -> Result<ByteString, AnyError> {
+  Ok(input.into())
 }
