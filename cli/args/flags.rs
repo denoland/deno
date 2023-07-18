@@ -153,7 +153,7 @@ pub struct UninstallFlags {
   pub root: Option<PathBuf>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
@@ -191,12 +191,12 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WatchFlags {
   pub no_clear_screen: bool,
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct WatchFlagsWithPaths {
   pub paths: Vec<PathBuf>,
   pub no_clear_screen: bool,
@@ -4031,13 +4031,7 @@ mod tests {
             ],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4061,15 +4055,10 @@ mod tests {
             ],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
-          compact: false,
           watch: Some(WatchFlags {
             no_clear_screen: false,
-          })
+          }),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4094,15 +4083,10 @@ mod tests {
             ],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
-          compact: false,
           watch: Some(WatchFlags {
             no_clear_screen: true,
-          })
+          }),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4121,13 +4105,7 @@ mod tests {
               PathBuf::from("script_2.ts")
             ],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4138,17 +4116,8 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: FileFlags {
-            include: vec![],
-            ignore: vec![],
-          },
           rules: true,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4165,17 +4134,10 @@ mod tests {
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Lint(LintFlags {
-          files: FileFlags {
-            include: vec![],
-            ignore: vec![],
-          },
-          rules: false,
           maybe_rules_tags: Some(svec![""]),
           maybe_rules_include: Some(svec!["ban-untagged-todo", "no-undef"]),
           maybe_rules_exclude: Some(svec!["no-const-assign"]),
-          json: false,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4190,13 +4152,8 @@ mod tests {
             include: vec![PathBuf::from("script_1.ts")],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
           json: true,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         ..Flags::default()
       }
@@ -4218,13 +4175,8 @@ mod tests {
             include: vec![PathBuf::from("script_1.ts")],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
           json: true,
-          compact: false,
-          watch: Default::default(),
+          ..Default::default()
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
@@ -4247,13 +4199,8 @@ mod tests {
             include: vec![PathBuf::from("script_1.ts")],
             ignore: vec![],
           },
-          rules: false,
-          maybe_rules_tags: None,
-          maybe_rules_include: None,
-          maybe_rules_exclude: None,
-          json: false,
           compact: true,
-          watch: Default::default(),
+          ..Default::default()
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
         ..Flags::default()
