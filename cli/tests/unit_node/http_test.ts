@@ -713,11 +713,17 @@ Deno.test(
   "[node/http] client end with callback",
   { permissions: { net: true } },
   async () => {
+    let received = false;
+    const ac = new AbortController();
+    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+      received = true;
+      return new Response("hello");
+    });
     const promise = deferred();
     let body = "";
 
     const request = http.request(
-      "http://localhost:4545/http_version",
+      "http://localhost:5928/",
       (resp) => {
         resp.on("data", (chunk) => {
           body += chunk;
@@ -729,10 +735,14 @@ Deno.test(
       },
     );
     request.on("error", promise.reject);
-    request.end();
+    request.end(() => {
+      assert(received);
+    });
 
     await promise;
+    ac.abort();
+    await server.finished;
 
-    assertEquals(body, "HTTP/1.1");
+    assertEquals(body, "hello");
   },
 );
