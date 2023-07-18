@@ -1202,7 +1202,22 @@ function getConstructorName(obj, ctx, recurseTimes, protoProps) {
   let firstProto;
   const tmp = obj;
   while (obj || isUndetectableObject(obj)) {
-    const descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    //NOTE: in addPrototypeProperties function we look for the prototype first
+    // ```js
+    //  obj = ObjectGetPrototypeOf(obj);
+    //  // Stop as soon as a null prototype is encountered.
+    //  if (obj === null) {
+    //    return;
+    //  }
+    //  ``
+    // should it be the same here ?
+    let descriptor = undefined
+    try {
+      descriptor = ObjectGetOwnPropertyDescriptor(obj, "constructor");
+    } catch {
+      // obj might not have a constructor
+    }
+
     if (
       descriptor !== undefined &&
       typeof descriptor.value === "function" &&
