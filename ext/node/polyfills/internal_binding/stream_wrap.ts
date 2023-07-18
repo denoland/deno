@@ -199,14 +199,18 @@ export class LibuvStreamWrap extends HandleWrap {
     allBuffers: boolean,
   ): number {
     const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    const rid = this[kStreamBaseField]!.rid;
     // Fast case optimization: two chunks, and all buffers.
-    if (chunks.length === 2 && allBuffers && supportsWritev) {
+    if (
+      chunks.length === 2 && allBuffers && supportsWritev &&
+      ops.op_can_write_vectored(rid)
+    ) {
       // String chunks.
       if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
       if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
 
       ops.op_raw_write_vectored(
-        this[kStreamBaseField]!.rid,
+        rid,
         chunks[0],
         chunks[1],
       ).then((nwritten) => {
