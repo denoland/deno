@@ -121,6 +121,7 @@ deno_core::extension!(
     http_next::op_http_upgrade_websocket_next,
     http_next::op_http_upgrade_raw,
     http_next::op_raw_write_vectored,
+    http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
     http_next::op_http_wait,
   ],
