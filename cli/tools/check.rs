@@ -120,12 +120,10 @@ impl TypeChecker {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let hash_data = {
-      let mut hasher = FastInsecureHasher::new();
-      hasher.write(&ts_config.as_bytes());
-      hasher.write_str(version::deno());
-      hasher.finish()
-    };
+    let hash_data = FastInsecureHasher::new()
+      .write(&ts_config.as_bytes())
+      .write_str(version::deno())
+      .finish();
 
     let response = tsc::exec(tsc::Request {
       config: ts_config,

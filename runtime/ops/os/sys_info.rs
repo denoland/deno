@@ -210,7 +210,7 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.buffers = info.bufferram * mem_unit;
     }
   }
-  #[cfg(any(target_vendor = "apple"))]
+  #[cfg(target_vendor = "apple")]
   {
     let mut mib: [i32; 2] = [0, 0];
     mib[0] = libc::CTL_HW;
