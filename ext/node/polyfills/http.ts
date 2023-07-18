@@ -629,14 +629,13 @@ class ClientRequest extends OutgoingMessage {
 
               core.tryClose(this._bodyWriteRid);
             }
-
-            try {
-              cb?.();
-            } catch (_) {
-              //
-            }
           })(),
         ]);
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
           webClearTimeout(this._timeout[timerId]);
