@@ -118,7 +118,6 @@ Deno.test("[node/net] connection event has socket value", async () => {
 
     const conn = await Deno.connect({
       port,
-      hostname: address,
       transport: "tcp",
     });
 
