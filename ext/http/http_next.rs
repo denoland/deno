@@ -1078,6 +1078,11 @@ impl Resource for UpgradeStream {
   }
 }
 
+#[op(fast)]
+pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+  state.resource_table.get::<UpgradeStream>(rid).is_ok()
+}
+
 #[op]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,
