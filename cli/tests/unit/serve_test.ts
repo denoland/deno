@@ -2799,6 +2799,8 @@ Deno.test(
         const cloned = req.clone();
         assertEquals(req.headers, cloned.headers);
 
+        assertEquals(cloned.url, req.url);
+
         // both requests can read body
         await req.text();
         await cloned.json();
