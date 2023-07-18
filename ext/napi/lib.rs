@@ -11,8 +11,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
-use deno_core::Extension;
 use deno_core::OpState;
 use std::cell::RefCell;
 use std::ffi::CString;
@@ -311,7 +311,7 @@ pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
   pub engine_error_code: i32,
-  pub status_code: napi_status,
+  pub error_code: napi_status,
 }
 
 #[repr(C)]
@@ -338,16 +338,37 @@ pub struct NapiState {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   pub env_cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
-  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
 }
 
 impl Drop for NapiState {
   fn drop(&mut self) {
-    let mut hooks = self.env_cleanup_hooks.borrow_mut();
+    let hooks = {
+      let h = self.env_cleanup_hooks.borrow_mut();
+      h.clone()
+    };
+
     // Hooks are supposed to be run in LIFO order
-    let hooks = hooks.drain(..).rev();
-    for (fn_ptr, data) in hooks {
-      (fn_ptr)(data);
+    let hooks_to_run = hooks.into_iter().rev();
+
+    for hook in hooks_to_run {
+      // This hook might have been removed by a previous hook, in such case skip it here.
+      if !self
+        .env_cleanup_hooks
+        .borrow()
+        .iter()
+        .any(|pair| pair.0 == hook.0 && pair.1 == hook.1)
+      {
+        continue;
+      }
+
+      (hook.0)(hook.1);
+      {
+        self
+          .env_cleanup_hooks
+          .borrow_mut()
+          .retain(|pair| !(pair.0 == hook.0 && pair.1 == hook.1));
+      }
     }
   }
 }
@@ -394,7 +415,9 @@ pub struct Env {
     mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
   pub cleanup_hooks:
     Rc<RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>>,
-  pub tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+  pub tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
+  pub last_error: napi_extended_error_info,
+  pub global: NonNull<v8::Value>,
 }
 
 unsafe impl Send for Env {}
@@ -404,12 +427,13 @@ impl Env {
   pub fn new(
     isolate_ptr: *mut v8::OwnedIsolate,
     context: v8::Global<v8::Context>,
+    global: v8::Global<v8::Value>,
     sender: mpsc::UnboundedSender<PendingNapiAsyncWork>,
     threadsafe_function_sender: mpsc::UnboundedSender<ThreadSafeFunctionStatus>,
     cleanup_hooks: Rc<
       RefCell<Vec<(extern "C" fn(*const c_void), *const c_void)>>,
     >,
-    tsfn_ref_counters: Rc<RefCell<ThreadsafeFunctionRefCounters>>,
+    tsfn_ref_counters: Arc<Mutex<ThreadsafeFunctionRefCounters>>,
   ) -> Self {
     let sc = sender.clone();
     ASYNC_WORK_SENDER.with(|s| {
@@ -423,12 +447,19 @@ impl Env {
     Self {
       isolate_ptr,
       context: context.into_raw(),
+      global: global.into_raw(),
       shared: std::ptr::null_mut(),
       open_handle_scopes: 0,
       async_work_sender: sender,
       threadsafe_function_sender,
       cleanup_hooks,
       tsfn_ref_counters,
+      last_error: napi_extended_error_info {
+        error_message: std::ptr::null(),
+        engine_reserved: std::ptr::null_mut(),
+        engine_error_code: 0,
+        error_code: napi_ok,
+      },
     }
   }
 
@@ -470,85 +501,90 @@ impl Env {
     id: usize,
     counter: Arc<AtomicUsize>,
   ) {
-    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    let mut counters = self.tsfn_ref_counters.lock();
     assert!(!counters.iter().any(|(i, _)| *i == id));
     counters.push((id, counter));
   }
 
   pub fn remove_threadsafe_function_ref_counter(&mut self, id: usize) {
-    let mut counters = self.tsfn_ref_counters.borrow_mut();
+    let mut counters = self.tsfn_ref_counters.lock();
     let index = counters.iter().position(|(i, _)| *i == id).unwrap();
     counters.remove(index);
   }
 }
 
-pub fn init<P: NapiPermissions + 'static>(unstable: bool) -> Extension {
-  Extension::builder(env!("CARGO_PKG_NAME"))
-    .ops(vec![op_napi_open::decl::<P>()])
-    .event_loop_middleware(|op_state_rc, cx| {
-      // `work` can call back into the runtime. It can also schedule an async task
-      // but we don't know that now. We need to make the runtime re-poll to make
-      // sure no pending NAPI tasks exist.
-      let mut maybe_scheduling = false;
+deno_core::extension!(deno_napi,
+  parameters = [P: NapiPermissions],
+  ops = [
+    op_napi_open<P>
+  ],
+  state = |state| {
+    let (async_work_sender, async_work_receiver) =
+      mpsc::unbounded::<PendingNapiAsyncWork>();
+    let (threadsafe_function_sender, threadsafe_function_receiver) =
+      mpsc::unbounded::<ThreadSafeFunctionStatus>();
+    state.put(NapiState {
+      pending_async_work: Vec::new(),
+      async_work_sender,
+      async_work_receiver,
+      threadsafe_function_sender,
+      threadsafe_function_receiver,
+      active_threadsafe_functions: 0,
+      env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
+      tsfn_ref_counters: Arc::new(Mutex::new(vec![])),
+    });
+  },
+  event_loop_middleware = event_loop_middleware,
+);
 
-      {
-        let mut op_state = op_state_rc.borrow_mut();
-        let napi_state = op_state.borrow_mut::<NapiState>();
+fn event_loop_middleware(
+  op_state_rc: Rc<RefCell<OpState>>,
+  cx: &mut std::task::Context,
+) -> bool {
+  // `work` can call back into the runtime. It can also schedule an async task
+  // but we don't know that now. We need to make the runtime re-poll to make
+  // sure no pending NAPI tasks exist.
+  let mut maybe_scheduling = false;
 
-        while let Poll::Ready(Some(async_work_fut)) =
-          napi_state.async_work_receiver.poll_next_unpin(cx)
-        {
-          napi_state.pending_async_work.push(async_work_fut);
-        }
+  {
+    let mut op_state = op_state_rc.borrow_mut();
+    let napi_state = op_state.borrow_mut::<NapiState>();
 
-        if napi_state.active_threadsafe_functions > 0 {
-          maybe_scheduling = true;
-        }
+    while let Poll::Ready(Some(async_work_fut)) =
+      napi_state.async_work_receiver.poll_next_unpin(cx)
+    {
+      napi_state.pending_async_work.push(async_work_fut);
+    }
 
-        for (_id, counter) in napi_state.tsfn_ref_counters.borrow().iter() {
-          if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
-            maybe_scheduling = true;
-            break;
-          }
-        }
+    if napi_state.active_threadsafe_functions > 0 {
+      maybe_scheduling = true;
+    }
+
+    let tsfn_ref_counters = napi_state.tsfn_ref_counters.lock().clone();
+    for (_id, counter) in tsfn_ref_counters.iter() {
+      if counter.load(std::sync::atomic::Ordering::SeqCst) > 0 {
+        maybe_scheduling = true;
+        break;
       }
+    }
+  }
 
-      loop {
-        let maybe_work = {
-          let mut op_state = op_state_rc.borrow_mut();
-          let napi_state = op_state.borrow_mut::<NapiState>();
-          napi_state.pending_async_work.pop()
-        };
+  loop {
+    let maybe_work = {
+      let mut op_state = op_state_rc.borrow_mut();
+      let napi_state = op_state.borrow_mut::<NapiState>();
+      napi_state.pending_async_work.pop()
+    };
 
-        if let Some(work) = maybe_work {
-          work();
-          maybe_scheduling = true;
-        } else {
-          break;
-        }
-      }
+    if let Some(work) = maybe_work {
+      work();
+      maybe_scheduling = true;
+    } else {
+      break;
+    }
+  }
 
-      maybe_scheduling
-    })
-    .state(move |state| {
-      let (async_work_sender, async_work_receiver) =
-        mpsc::unbounded::<PendingNapiAsyncWork>();
-      let (threadsafe_function_sender, threadsafe_function_receiver) =
-        mpsc::unbounded::<ThreadSafeFunctionStatus>();
-      state.put(NapiState {
-        pending_async_work: Vec::new(),
-        async_work_sender,
-        async_work_receiver,
-        threadsafe_function_sender,
-        threadsafe_function_receiver,
-        active_threadsafe_functions: 0,
-        env_cleanup_hooks: Rc::new(RefCell::new(vec![])),
-        tsfn_ref_counters: Rc::new(RefCell::new(vec![])),
-      });
-      state.put(Unstable(unstable));
-      Ok(())
-    })
-    .build()
+  maybe_scheduling
 }
 
 pub trait NapiPermissions {
@@ -556,27 +592,16 @@ pub trait NapiPermissions {
     -> std::result::Result<(), AnyError>;
 }
 
-pub struct Unstable(pub bool);
-
-fn check_unstable(state: &OpState) {
-  let unstable = state.borrow::<Unstable>();
-
-  if !unstable.0 {
-    eprintln!("Unstable API 'node-api'. The --unstable flag must be provided.");
-    std::process::exit(70);
-  }
-}
-
 #[op(v8)]
 fn op_napi_open<NP, 'scope>(
   scope: &mut v8::HandleScope<'scope>,
   op_state: &mut OpState,
   path: String,
+  global: serde_v8::Value,
 ) -> std::result::Result<serde_v8::Value<'scope>, AnyError>
 where
   NP: NapiPermissions + 'static,
 {
-  check_unstable(op_state);
   let permissions = op_state.borrow_mut::<NP>();
   permissions.check(Some(&PathBuf::from(&path)))?;
 
@@ -614,6 +639,7 @@ where
   let mut env = Env::new(
     isolate_ptr,
     v8::Global::new(scope, ctx),
+    v8::Global::new(scope, global.v8_value),
     async_work_sender,
     tsfn_sender,
     cleanup_hooks,
@@ -649,7 +675,7 @@ where
         let nm = unsafe { &*nm };
         assert_eq!(nm.nm_version, 1);
         // SAFETY: we are going blind, calling the register function on the other side.
-        let exports = unsafe {
+        let maybe_exports = unsafe {
           (nm.nm_register_func)(
             env_ptr,
             std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
@@ -658,11 +684,20 @@ where
           )
         };
 
-        // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
-        // to a value, they have the same layout
-        let exports = unsafe {
-          std::mem::transmute::<napi_value, v8::Local<v8::Value>>(exports)
-        };
+        let exports = maybe_exports
+          .as_ref()
+          .map(|_| unsafe {
+            // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+            // to a value, they have the same layout
+            std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
+              maybe_exports,
+            )
+          })
+          .unwrap_or_else(|| {
+            // If the module didn't return anything, we use the exports object.
+            exports.into()
+          });
+
         Ok(serde_v8::Value { v8_value: exports })
       }
       None => {
@@ -675,17 +710,29 @@ where
               exports: napi_value,
             ) -> napi_value>(b"napi_register_module_v1")
             .expect("napi_register_module_v1 not found");
-          init(
+          let maybe_exports = init(
             env_ptr,
             std::mem::transmute::<v8::Local<v8::Value>, napi_value>(
               exports.into(),
             ),
-          )
-        };
+          );
 
-        Ok(serde_v8::Value {
-          v8_value: exports.into(),
-        })
+          let exports = maybe_exports
+            .as_ref()
+            .map(|_| {
+              // SAFETY: v8::Local is a pointer to a value and napi_value is also a pointer
+              // to a value, they have the same layout
+              std::mem::transmute::<napi_value, v8::Local<v8::Value>>(
+                maybe_exports,
+              )
+            })
+            .unwrap_or_else(|| {
+              // If the module didn't return anything, we use the exports object.
+              exports.into()
+            });
+
+          Ok(serde_v8::Value { v8_value: exports })
+        }
       }
     };
     // NAPI addons can't be unloaded, so we're going to "forget" the library

@@ -1,13 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::BroadcastChannel;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+use crate::BroadcastChannel;
 
 #[derive(Clone)]
 pub struct InMemoryBroadcastChannel(Arc<Mutex<broadcast::Sender<Message>>>);

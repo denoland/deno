@@ -478,6 +478,14 @@ fn dynamic_non_analyzable_import() {
   assert!(output.status.success());
 }
 
+itest!(dynamic_non_existent {
+  args: "vendor http://localhost:4545/vendor/dynamic_non_existent.ts",
+  temp_cwd: true,
+  exit_code: 0,
+  http_server: true,
+  output: "vendor/dynamic_non_existent.ts.out",
+});
+
 #[test]
 fn update_existing_config_test() {
   let _server = http_server();
@@ -530,7 +538,7 @@ fn update_existing_config_test() {
 }
 
 fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
-  let mut text = format!("Vendored {} into {} directory.", module_count, dir);
+  let mut text = format!("Vendored {module_count} into {dir} directory.");
   if has_import_map {
     let f = format!(
       concat!(
@@ -544,7 +552,7 @@ fn success_text(module_count: &str, dir: &str, has_import_map: bool) -> String {
         dir.to_string()
       }
     );
-    write!(text, "{}", f).unwrap();
+    write!(text, "{f}").unwrap();
   }
   text
 }

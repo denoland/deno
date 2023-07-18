@@ -22,7 +22,7 @@ struct EmitMetadata {
 #[derive(Clone)]
 pub struct EmitCache {
   disk_cache: DiskCache,
-  cli_version: String,
+  cli_version: &'static str,
 }
 
 impl EmitCache {
@@ -58,7 +58,7 @@ impl EmitCache {
 
     // load and verify the emit is for the meta data
     let emit_bytes = self.disk_cache.get(&emit_filename).ok()?;
-    if meta.emit_hash != compute_emit_hash(&emit_bytes, &self.cli_version) {
+    if meta.emit_hash != compute_emit_hash(&emit_bytes, self.cli_version) {
       return None;
     }
 
@@ -90,7 +90,7 @@ impl EmitCache {
     if let Err(err) = self.set_emit_code_result(specifier, source_hash, code) {
       // should never error here, but if it ever does don't fail
       if cfg!(debug_assertions) {
-        panic!("Error saving emit data ({}): {}", specifier, err);
+        panic!("Error saving emit data ({specifier}): {err}");
       } else {
         log::debug!("Error saving emit data({}): {}", specifier, err);
       }
@@ -113,7 +113,7 @@ impl EmitCache {
     // save the metadata
     let metadata = EmitMetadata {
       source_hash: source_hash.to_string(),
-      emit_hash: compute_emit_hash(code.as_bytes(), &self.cli_version),
+      emit_hash: compute_emit_hash(code.as_bytes(), self.cli_version),
     };
     self
       .disk_cache
@@ -162,7 +162,7 @@ mod test {
     let disk_cache = DiskCache::new(temp_dir.path());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
-      cli_version: "1.0.0".to_string(),
+      cli_version: "1.0.0",
     };
 
     let specifier1 =
@@ -188,7 +188,7 @@ mod test {
     // try changing the cli version (should not load previous ones)
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
-      cli_version: "2.0.0".to_string(),
+      cli_version: "2.0.0",
     };
     assert_eq!(cache.get_emit_code(&specifier1, 10), None);
     cache.set_emit_code(&specifier1, 5, &emit_code1);
@@ -196,7 +196,7 @@ mod test {
     // recreating the cache should still load the data because the CLI version is the same
     let cache = EmitCache {
       disk_cache,
-      cli_version: "2.0.0".to_string(),
+      cli_version: "2.0.0",
     };
     assert_eq!(cache.get_emit_code(&specifier1, 5), Some(emit_code1));
 

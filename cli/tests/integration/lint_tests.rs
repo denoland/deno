@@ -1,26 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use test_util as util;
-
-#[test]
-fn ignore_unexplicit_files() {
-  let output = util::deno_cmd()
-    .current_dir(util::root_path())
-    .env("NO_COLOR", "1")
-    .arg("lint")
-    .arg("--unstable")
-    .arg("--ignore=./")
-    .stderr(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert_eq!(
-    String::from_utf8_lossy(&output.stderr),
-    "error: No target files found.\n"
-  );
-}
+itest!(ignore_unexplicit_files {
+  args: "lint --unstable --ignore=./",
+  output_str: Some("error: No target files found.\n"),
+  exit_code: 1,
+});
 
 itest!(all {
   args: "lint lint/without_config/file1.js lint/without_config/file2.ts lint/without_config/ignored_file.ts",

@@ -7,6 +7,7 @@ Deno.test("complex", function () {
 Deno.test("sub process with stdin", async () => {
   // ensure launching deno run with stdin doesn't affect coverage
   const code = "console.log('5')";
+  // deno-lint-ignore no-deprecated-deno-api
   const p = await Deno.run({
     cmd: [Deno.execPath(), "run", "-"],
     stdin: "piped",
@@ -25,6 +26,7 @@ Deno.test("sub process with stdin", async () => {
 Deno.test("sub process with deno eval", async () => {
   // ensure launching deno eval doesn't affect coverage
   const code = "console.log('5')";
+  // deno-lint-ignore no-deprecated-deno-api
   const p = await Deno.run({
     cmd: [Deno.execPath(), "eval", code],
     stdout: "piped",

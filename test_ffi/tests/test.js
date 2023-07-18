@@ -1,12 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // deno-lint-ignore-file
 
-// Run using cargo test or `--v8-options=--allow-natives-syntax`
+// Run using cargo test or `--v8-flags=--allow-natives-syntax`
 
-import { assertEquals, assertInstanceOf, assertNotEquals } from "https://deno.land/std@0.149.0/testing/asserts.ts";
 import {
   assertThrows,
   assert,
+  assertNotEquals,
+  assertInstanceOf,
+  assertEquals,
+  assertFalse,
 } from "../../test_util/std/testing/asserts.ts";
 
 const targetDir = Deno.execPath().replace(/[^\/\\]+$/, "");
@@ -37,10 +40,45 @@ assertThrows(
   "Failed to register symbol non_existent_symbol",
 );
 
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [],
+      result: { struct: [] }
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [ { struct: [] } ],
+      result: "void",
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
+const Empty = { struct: [] }
+assertThrows(() => {
+  Deno.dlopen(libPath, {
+    print_something: {
+      parameters: [ { struct: [Empty] } ],
+      result: "void",
+    },
+  }),
+  TypeError,
+  "Struct must have at least one field"
+});
+
 const Point = ["f64", "f64"];
 const Size = ["f64", "f64"];
 const Rect = ["f64", "f64", "f64", "f64"];
 const RectNested = [{ struct: Point }, { struct: Size }];
+const RectNestedCached = [{ struct: Size }, { struct: Size }];
 const Mixed = ["u8", "f32", { struct: Rect }, "usize", { struct: ["u32", "u32"] }];
 
 const dylib = Deno.dlopen(libPath, {
@@ -214,6 +252,7 @@ const dylib = Deno.dlopen(libPath, {
    */
   "static_char": {
     type: "pointer",
+    optional: true,
   },
   "hash": { parameters: ["buffer", "u32"], result: "u32" },
   make_rect: {
@@ -227,7 +266,7 @@ const dylib = Deno.dlopen(libPath, {
     result: { struct: RectNested },
   },
   print_rect: {
-    parameters: [{ struct: Rect }],
+    parameters: [{ struct: RectNestedCached }],
     result: "void",
   },
   print_rect_async: {
@@ -243,6 +282,22 @@ const dylib = Deno.dlopen(libPath, {
   print_mixed: {
     parameters: [{ struct: Mixed }],
     result: "void",
+    optional: true,
+  },
+  non_existent_symbol: {
+    parameters: [],
+    result: "void",
+    optional: true,
+  },
+  non_existent_nonblocking_symbol: {
+    parameters: [],
+    result: "void",
+    nonblocking: true,
+    optional: true,
+  },
+  non_existent_static: {
+    type: "u32",
+    optional: true,
   },
 });
 const { symbols } = dylib;
@@ -334,8 +389,8 @@ assertEquals(isNullBufferDeopt(externalOneBuffer), false, "isNullBufferDeopt(ext
 // Due to ops macro using `Local<ArrayBuffer>->Data()` to get the pointer for the slice that is then used to get
 // the pointer of an ArrayBuffer / TypedArray, the same effect can be seen where a zero byte length buffer returns
 // a null pointer as its pointer value.
-assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), 0, "Deno.UnsafePointer.of(externalZeroBuffer) !== 0");
-assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), 0, "Deno.UnsafePointer.of(externalOneBuffer) !== 0");
+assertEquals(Deno.UnsafePointer.of(externalZeroBuffer), null, "Deno.UnsafePointer.of(externalZeroBuffer) !== null");
+assertNotEquals(Deno.UnsafePointer.of(externalOneBuffer), null, "Deno.UnsafePointer.of(externalOneBuffer) === null");
 
 const addU32Ptr = dylib.symbols.get_add_u32_ptr();
 const addU32 = new Deno.UnsafeFnPointer(addU32Ptr, {
@@ -452,16 +507,15 @@ await promise;
 
 let start = performance.now();
 dylib.symbols.sleep_blocking(100);
-console.log("After sleep_blocking");
-console.log(performance.now() - start >= 100);
+assert(performance.now() - start >= 100);
 
 start = performance.now();
 const promise_2 = dylib.symbols.sleep_nonblocking(100).then(() => {
   console.log("After");
-  console.log(performance.now() - start >= 100);
+  assert(performance.now() - start >= 100);
 });
 console.log("Before");
-console.log(performance.now() - start < 100);
+assert(performance.now() - start < 100);
 
 // Await to make sure `sleep_nonblocking` calls and logs before we proceed
 await promise_2;
@@ -498,7 +552,7 @@ const returnU8Callback = new Deno.UnsafeCallback(
 );
 const returnBufferCallback = new Deno.UnsafeCallback({
   parameters: [],
-  result: "pointer",
+  result: "buffer",
 }, () => {
   return buffer;
 });
@@ -583,27 +637,29 @@ const addToFooCallback = new Deno.UnsafeCallback({
 }, () => counter++);
 
 // Test thread safe callbacks
-console.log("Thread safe call counter:", counter);
+assertEquals(counter, 0);
 addToFooCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(addToFooCallback.pointer);
 addToFooCallback.unref();
 logCallback.ref();
 await dylib.symbols.call_fn_ptr_thread_safe(logCallback.pointer);
 logCallback.unref();
-console.log("Thread safe call counter:", counter);
+assertEquals(counter, 1);
 returnU8Callback.ref();
 await dylib.symbols.call_fn_ptr_return_u8_thread_safe(returnU8Callback.pointer);
 // Purposefully do not unref returnU8Callback: Instead use it to test close() unrefing.
 
 // Test statics
-console.log("Static u32:", dylib.symbols.static_u32);
-console.log("Static i64:", dylib.symbols.static_i64);
-console.log(
-  "Static ptr:",
-  typeof dylib.symbols.static_ptr === "number",
+assertEquals(dylib.symbols.static_u32, 42);
+assertEquals(dylib.symbols.static_i64, -1242464576485);
+assert(
+  typeof dylib.symbols.static_ptr === "object"
+);
+assertEquals(
+  Object.keys(dylib.symbols.static_ptr).length, 0
 );
 const view = new Deno.UnsafePointerView(dylib.symbols.static_ptr);
-console.log("Static ptr value:", view.getUint32());
+assertEquals(view.getUint32(), 42);
 
 // Test struct returning
 const rect_sync = dylib.symbols.make_rect(10, 20, 100, 200);
@@ -622,7 +678,7 @@ assertEquals(rect_async.length, 4 * 8);
 assertEquals(Array.from(new Float64Array(rect_async.buffer)), [10, 20, 100, 200]);
 
 // Test complex, mixed struct returning and passing
-const mixedStruct = dylib.symbols.create_mixed(3, 12.515000343322754, rect_async, 12456789, new Uint32Array([8, 32]));
+const mixedStruct = dylib.symbols.create_mixed(3, 12.515000343322754, rect_async, Deno.UnsafePointer.create(12456789), new Uint32Array([8, 32]));
 assertEquals(mixedStruct.length, 56);
 assertEquals(Array.from(mixedStruct.subarray(0, 4)), [3, 0, 0, 0]);
 assertEquals(new Float32Array(mixedStruct.buffer, 4, 1)[0], 12.515000343322754);
@@ -647,12 +703,31 @@ cb.close();
 
 const arrayBuffer = view.getArrayBuffer(4);
 const uint32Array = new Uint32Array(arrayBuffer);
-console.log("arrayBuffer.byteLength:", arrayBuffer.byteLength);
-console.log("uint32Array.length:", uint32Array.length);
-console.log("uint32Array[0]:", uint32Array[0]);
+assertEquals(arrayBuffer.byteLength, 4);
+assertEquals(uint32Array.length, 1);
+assertEquals(uint32Array[0], 42);
 uint32Array[0] = 55; // MUTATES!
-console.log("uint32Array[0] after mutation:", uint32Array[0]);
-console.log("Static ptr value after mutation:", view.getUint32());
+assertEquals(uint32Array[0], 55);
+assertEquals(view.getUint32(), 55);
+
+
+{
+  // Test UnsafePointer APIs
+  assertEquals(Deno.UnsafePointer.create(0), null);
+  const createdPointer = Deno.UnsafePointer.create(1);
+  assertNotEquals(createdPointer, null);
+  assertEquals(typeof createdPointer, "object");
+  assertEquals(Deno.UnsafePointer.value(null), 0);
+  assertEquals(Deno.UnsafePointer.value(createdPointer), 1);
+  assert(Deno.UnsafePointer.equals(null, null));
+  assertFalse(Deno.UnsafePointer.equals(null, createdPointer));
+  assertFalse(Deno.UnsafePointer.equals(Deno.UnsafePointer.create(2), createdPointer));
+  // Do not allow offsetting from null, `create` function should be used instead.
+  assertThrows(() => Deno.UnsafePointer.offset(null, 5));
+  const offsetPointer = Deno.UnsafePointer.offset(createdPointer, 5);
+  assertEquals(Deno.UnsafePointer.value(offsetPointer), 6);
+  assertEquals(Deno.UnsafePointer.offset(offsetPointer, -6), null);
+}
 
 // Test non-UTF-8 characters
 
@@ -665,10 +740,26 @@ assertEquals([...uint8Array], [
   0x00
 ]);
 
-try {
-  assertThrows(() => charView.getCString(), TypeError, "Invalid CString pointer, not valid UTF-8");
-} catch (_err) {
-  console.log("Invalid UTF-8 characters to `v8::String`:", charView.getCString());
+// Check that `getCString` works equally to `TextDecoder`
+assertEquals(charView.getCString(), new TextDecoder().decode(uint8Array.subarray(0, uint8Array.length - 1)));
+
+// Check a selection of various invalid UTF-8 sequences in C strings and verify
+// that the `getCString` API does not cause unexpected behaviour.
+for (const charBuffer of [
+  Uint8Array.from([0xA0, 0xA1, 0x00]),
+  Uint8Array.from([0xE2, 0x28, 0xA1, 0x00]),
+  Uint8Array.from([0xE2, 0x82, 0x28, 0x00]),
+  Uint8Array.from([0xF0, 0x28, 0x8C, 0xBC, 0x00]),
+  Uint8Array.from([0xF0, 0x90, 0x28, 0xBC, 0x00]),
+  Uint8Array.from([0xF0, 0x28, 0x8C, 0x28, 0x00]),
+  Uint8Array.from([0xF8, 0xA1, 0xA1, 0xA1, 0xA1, 0x00]),
+  Uint8Array.from([0xFC, 0xA1, 0xA1, 0xA1, 0xA1, 0xA1, 0x00]),
+]) {
+  const charBufferPointer = Deno.UnsafePointer.of(charBuffer);
+  const charString = Deno.UnsafePointerView.getCString(charBufferPointer);
+  const charBufferPointerArrayBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(charBufferPointer, charBuffer.length - 1));
+  assertEquals(charString, new TextDecoder().decode(charBufferPointerArrayBuffer));
+  assertEquals([...charBuffer.subarray(0, charBuffer.length - 1)], [...charBufferPointerArrayBuffer]);
 }
 
 

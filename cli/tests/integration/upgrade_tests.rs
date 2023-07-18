@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
 

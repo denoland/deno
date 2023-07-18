@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use bencher::{DynBenchFn, StaticBenchFn, TestDescAndFn, TestOpts};
+use bencher::DynBenchFn;
+use bencher::StaticBenchFn;
+use bencher::TestDescAndFn;
+use bencher::TestOpts;
 
 pub fn is_profiling() -> bool {
   std::env::var("PROFILING").is_ok()

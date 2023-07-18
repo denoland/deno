@@ -55,7 +55,9 @@ function findClosedPortInRange(
 }
 
 Deno.test(
-  { permissions: { net: true } },
+  // TODO(bartlomieju): reenable this test
+  // https://github.com/denoland/deno/issues/18350
+  { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchConnectionError() {
     const port = findClosedPortInRange(4000, 9999);
     await assertRejects(
@@ -1495,6 +1497,18 @@ Deno.test(
 
 Deno.test(
   { permissions: { net: true, read: true } },
+  async function fetchSupportsHttpsOverIpAddress() {
+    const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
+    const client = Deno.createHttpClient({ caCerts: [caCert] });
+    const res = await fetch("https://localhost:5546/http_version", { client });
+    assert(res.ok);
+    assertEquals(await res.text(), "HTTP/1.1");
+    client.close();
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
   async function fetchSupportsHttp1Only() {
     const caCert = await Deno.readTextFile("cli/tests/testdata/tls/RootCA.pem");
     const client = Deno.createHttpClient({ caCerts: [caCert] });
@@ -1705,7 +1719,9 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  // TODO(bartlomieju): reenable this test
+  // https://github.com/denoland/deno/issues/18350
+  { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchWithInvalidContentLength(): Promise<
     void
   > {
@@ -1844,7 +1860,9 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } },
+  // TODO(bartlomieju): reenable this test
+  // https://github.com/denoland/deno/issues/18350
+  { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchRequestBodyErrorCatchable() {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: 4514 });
     const server = (async () => {
@@ -1887,3 +1905,19 @@ Deno.test(
     await server;
   },
 );
+
+Deno.test("Request with subarray TypedArray body", async () => {
+  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
+  const req = new Request("https://example.com", { method: "POST", body });
+  const actual = new Uint8Array(await req.arrayBuffer());
+  const expected = new Uint8Array([2, 3, 4, 5]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("Response with subarray TypedArray body", async () => {
+  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
+  const req = new Response(body);
+  const actual = new Uint8Array(await req.arrayBuffer());
+  const expected = new Uint8Array([2, 3, 4, 5]);
+  assertEquals(actual, expected);
+});
