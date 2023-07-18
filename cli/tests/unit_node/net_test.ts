@@ -114,7 +114,7 @@ Deno.test("[node/net] connection event has socket value", async () => {
   });
   server.listen(async () => {
     // deno-lint-ignore no-explicit-any
-    const { port, address } = server.address() as any;
+    const { port } = server.address() as any;
 
     const conn = await Deno.connect({
       port,
