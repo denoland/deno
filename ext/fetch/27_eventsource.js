@@ -220,7 +220,7 @@ class EventSource extends EventTarget {
                 "last-event-id",
                 lastEventIDValue,
               ],
-            ]
+            ];
         },
         null,
         false,
