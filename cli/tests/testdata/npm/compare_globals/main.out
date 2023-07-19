@@ -4,7 +4,20 @@ Download http://localhost:4545/npm/registry/@denotest/globals/1.0.0.tgz
 Download http://localhost:4545/npm/registry/@types/node/node-18.8.2.tgz
 Check file:///[WILDCARD]/npm/compare_globals/main.ts
 true
+true
 []
-5
+false
+function
+function
+function
 undefined
-undefined
+false
+false
+true
+true
+true
+true
+false
+false
+bar
+bar
