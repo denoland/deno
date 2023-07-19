@@ -287,7 +287,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
           self.insert_granted(desc.clone());
         }
       } else {
-        self.insert_no_prompt(desc.clone());
+        self.insert_prompt_denied(desc.clone());
       }
     }
     result
@@ -304,27 +304,28 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     desc: &Option<T>,
     allow_partial: Option<bool>,
   ) -> PermissionState {
-    if self.is_denied(desc) || self.is_no_prompt(desc) {
+    if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
     } else if self.is_granted(desc) {
       match allow_partial {
         Some(true) => PermissionState::Granted,
         Some(false) => {
-          if self.is_partial_denied(desc) {
+          if self.is_partial_flag_denied(desc) {
             PermissionState::Denied
           } else {
             PermissionState::Granted
           }
         }
         None => {
-          if self.is_partial_denied(desc) {
+          if self.is_partial_flag_denied(desc) {
             PermissionState::GrantedPartial
           } else {
             PermissionState::Granted
           }
         }
       }
-    } else if allow_partial == Some(false) && self.is_partial_denied(desc) {
+    } else if allow_partial == Some(false) && self.is_partial_flag_denied(desc)
+    {
       PermissionState::Denied
     } else {
       PermissionState::Prompt
@@ -366,7 +367,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
         PermissionState::Granted
       }
       PromptResponse::Deny => {
-        self.insert_no_prompt(desc.clone());
+        self.insert_prompt_denied(desc.clone());
         PermissionState::Denied
       }
       PromptResponse::AllowAll => {
@@ -394,11 +395,11 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     Self::list_contains(desc, self.granted_global, &self.granted_list)
   }
 
-  fn is_denied(&self, desc: &Option<T>) -> bool {
+  fn is_flag_denied(&self, desc: &Option<T>) -> bool {
     Self::list_contains(desc, self.flag_denied_global, &self.flag_denied_list)
   }
 
-  fn is_no_prompt(&self, desc: &Option<T>) -> bool {
+  fn is_prompt_denied(&self, desc: &Option<T>) -> bool {
     match desc.as_ref() {
       Some(desc) => self
         .prompt_denied_list
@@ -408,7 +409,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     }
   }
 
-  fn is_partial_denied(&self, desc: &Option<T>) -> bool {
+  fn is_partial_flag_denied(&self, desc: &Option<T>) -> bool {
     match desc {
       None => !self.flag_denied_list.is_empty(),
       Some(desc) => self.flag_denied_list.iter().any(|v| desc.stronger_than(v)),
@@ -430,7 +431,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     Self::list_insert(desc, &mut self.granted_global, &mut self.granted_list);
   }
 
-  fn insert_no_prompt(&mut self, desc: Option<T>) {
+  fn insert_prompt_denied(&mut self, desc: Option<T>) {
     Self::list_insert(
       desc,
       &mut self.prompt_denied_global,
