@@ -628,10 +628,14 @@ function serve(arg1, arg2) {
   };
 
   if (options.certFile || options.keyFile) {
-    throw new TypeError("Either certFile and/or keyFile were provided. Please use cert and/or key instead.")
+    throw new TypeError(
+      "Unsupported 'certFile' / 'keyFile' options provided: use 'cert' / 'key' instead.",
+    );
   }
   if (options.alpnProtocols) {
-    throw new TypeError("Unsupported alpnProtocols option provided. This server automatically provides both 'h2' and 'http/1.1' for TLS connections.")
+    throw new TypeError(
+      "Unsupported 'alpnProtocols' option provided. 'h2' and 'http/1.1' are automatically supported.",
+    );
   }
 
   let listener;
