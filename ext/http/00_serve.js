@@ -627,6 +627,13 @@ function serve(arg1, arg2) {
     reusePort: options.reusePort ?? false,
   };
 
+  if (options.certFile || options.keyFile) {
+    throw new TypeError("Either certFile and/or keyFile were provided. Please use cert and/or key instead.")
+  }
+  if (options.alpnProtocols) {
+    throw new TypeError("Unsupported alpnProtocols option provided. This server automatically provides both 'h2' and 'http/1.1' for TLS connections.")
+  }
+
   let listener;
   if (wantsHttps) {
     if (!options.cert || !options.key) {
