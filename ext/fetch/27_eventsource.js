@@ -29,83 +29,64 @@ const {
   Symbol,
 } = primordials;
 
-// Copied from https://github.com/denoland/deno_std/blob/852968f631b09f6df4a3b0ac6169ba3436d75fc5/streams/delimiter.ts#L89-L166
-class TextLineStream extends TransformStream {
+// Copied from https://github.com/denoland/deno_std/blob/e0753abe0c8602552862a568348c046996709521/streams/text_line_stream.ts#L20-L74
+export class TextLineStream extends TransformStream {
+  #allowCR;
   #buf = "";
-  #prevHadCR = false;
 
-  constructor() {
+  constructor(options) {
     super({
       transform: (chunk, controller) => {
-        this.#handle(chunk, controller);
+        console.error("chunk tls:", JSONStringify(chunk));
+        return this.#handle(chunk, controller);
       },
       flush: (controller) => {
-        controller.enqueue(this.#getBuf(this.#prevHadCR));
-        if (this.#prevHadCR) {
-          controller.enqueue("");
+        if (this.#buf.length > 0) {
+          if (
+            this.#allowCR &&
+            this.#buf[this.#buf.length - 1] === "\r"
+          ) controller.enqueue(this.#buf.slice(0, -1));
+          else controller.enqueue(this.#buf);
         }
       },
     });
+    this.#allowCR = options?.allowCR ?? false;
   }
 
-  #handle(
-    chunk,
-    controller,
-  ) {
-    const lfIndex = chunk.indexOf("\n");
-    const crIndex = chunk.indexOf("\r");
+  #handle(chunk, controller) {
+    chunk = this.#buf + chunk;
 
-    if (this.#prevHadCR) {
-      this.#prevHadCR = false;
-      controller.enqueue(this.#getBuf(true));
-      if (lfIndex === 0) {
-        this.#handle(chunk.slice(1), controller);
-        return;
+    for (;;) {
+      const lfIndex = chunk.indexOf("\n");
+
+      if (this.#allowCR) {
+        const crIndex = chunk.indexOf("\r");
+
+        if (
+          crIndex !== -1 && crIndex !== (chunk.length - 1) &&
+          (lfIndex === -1 || (lfIndex - 1) > crIndex)
+        ) {
+          console.error("enqueue1:", chunk.slice(0, crIndex));
+          controller.enqueue(chunk.slice(0, crIndex));
+          chunk = chunk.slice(crIndex + 1);
+          continue;
+        }
       }
+
+      if (lfIndex !== -1) {
+        let crOrLfIndex = lfIndex;
+        if (chunk[lfIndex - 1] === "\r") {
+          crOrLfIndex--;
+        }
+        controller.enqueue(chunk.slice(0, crOrLfIndex));
+        chunk = chunk.slice(lfIndex + 1);
+        continue;
+      }
+
+      break;
     }
 
-    if (lfIndex === -1 && crIndex === -1) { // neither \n nor \r
-      this.#buf += chunk;
-    } else if (lfIndex === -1 && crIndex !== -1) { // not \n but \r
-      if (crIndex === (chunk.length - 1)) { // \r is last character
-        this.#buf += chunk;
-        this.#prevHadCR = true;
-      } else {
-        this.#mergeHandle(chunk, crIndex, crIndex, controller);
-      }
-    } else if (lfIndex !== -1 && crIndex === -1) { // \n but not \r
-      this.#mergeHandle(chunk, lfIndex, lfIndex, controller);
-    } else { // \n and \r
-      if ((lfIndex - 1) === crIndex) { // \r\n
-        this.#mergeHandle(chunk, crIndex, lfIndex, controller);
-      } else if (crIndex < lfIndex) { // \r first
-        this.#mergeHandle(chunk, crIndex, crIndex, controller);
-      } else { // \n first
-        this.#mergeHandle(chunk, lfIndex, lfIndex, controller);
-      }
-    }
-  }
-
-  #mergeHandle(
-    chunk,
-    prevChunkEndIndex,
-    newChunkStartIndex,
-    controller,
-  ) {
-    this.#buf += chunk.slice(0, prevChunkEndIndex);
-    controller.enqueue(this.#getBuf(false));
-    this.#handle(chunk.slice(newChunkStartIndex + 1), controller);
-  }
-
-  #getBuf(prevHadCR) {
-    const buf = this.#buf;
-    this.#buf = "";
-
-    if (prevHadCR) {
-      return buf.slice(0, -1);
-    } else {
-      return buf;
-    }
+    this.#buf = chunk;
   }
 }
 
@@ -209,14 +190,8 @@ class EventSource extends EventTarget {
       const req = newInnerRequest(
         "GET",
         this[_url],
-        () => {
-          if (lastEventIDValue) {
-            console.error(
-              "id:",
-              JSON.stringify(core.ops.op_utf8_to_byte_string(lastEventIDValue)),
-            );
-          }
-          return lastEventIDValue === ""
+        () =>
+          lastEventIDValue === ""
             ? [
               ["accept", "text/event-stream"],
             ]
@@ -226,8 +201,7 @@ class EventSource extends EventTarget {
                 "last-event-id",
                 core.ops.op_utf8_to_byte_string(lastEventIDValue),
               ],
-            ];
-        },
+            ],
         null,
         false,
       );
@@ -281,10 +255,6 @@ class EventSource extends EventTarget {
         ) {
           console.error("chunk:", JSONStringify(chunk));
           if (chunk === "") {
-            console.error(
-              "inner event id replaced with:",
-              JSONStringify(lastEventID),
-            );
             this[_lastEventID] = lastEventID;
             if (data === "") {
               eventType = "";
@@ -315,12 +285,6 @@ class EventSource extends EventTarget {
                 value = value.slice(1);
               }
             }
-
-            console.error(
-              "pre switch:",
-              JSONStringify(field),
-              JSONStringify(value),
-            );
 
             switch (field) {
               case "event": {
