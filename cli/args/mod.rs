@@ -268,6 +268,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilesConfig,
   pub reporter_kind: LintReporterKind,
+  pub fix: bool,
 }
 
 impl LintOptions {
@@ -306,6 +307,7 @@ impl LintOptions {
       maybe_rules_tags,
       maybe_rules_include,
       maybe_rules_exclude,
+      fix,
     ) = maybe_lint_flags
       .map(|f| {
         (
@@ -313,6 +315,7 @@ impl LintOptions {
           f.maybe_rules_tags,
           f.maybe_rules_include,
           f.maybe_rules_exclude,
+          f.fix,
         )
       })
       .unwrap_or_default();
@@ -328,6 +331,7 @@ impl LintOptions {
         maybe_rules_include,
         maybe_rules_exclude,
       ),
+      fix,
     })
   }
 }

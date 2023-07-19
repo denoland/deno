@@ -1,21 +1,23 @@
 (ban-untagged-ignore) Ignore directive requires lint rule name(s)
 // deno-lint-ignore
 ^^^^^^^^^^^^^^^^^^^
-    at [WILDCARD]file1.js:1:1
+    at [WILDCARD]
 
     hint: [WILDCARD]
 
 (no-extra-boolean-cast) Redundant double negation.
 while (!!false) {}
        ^^^^^^^
-    at [WILDCARD]file1.js:2:8
+    at [WILDCARD]
 
     hint: [WILDCARD]
 
 (no-empty) Empty block statement
 while (!!false) {}
                 ^^
-    at [WILDCARD]file1.js:2:17
+    at [WILDCARD]
 
     hint: [WILDCARD]
 
+Found 3 problems
+Checked 1 file

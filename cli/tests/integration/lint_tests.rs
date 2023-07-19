@@ -68,6 +68,15 @@ itest!(rules {
   exit_code: 0,
 });
 
+// TODO: This is likely to be much more complex than this because --fix is
+// expected to modify the offending files in place.
+// We will need to take inspiration from the tests of fmt.
+itest!(fix {
+  args: "lint --fix lint/without_config/file1.js",
+  output: "lint/expected_fixed.out",
+  exit_code: 1,
+});
+
 // Make sure that the rules are printed if quiet option is enabled.
 itest!(rules_quiet {
   args: "lint --rules -q",

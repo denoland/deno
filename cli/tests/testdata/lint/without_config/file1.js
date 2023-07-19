@@ -1,2 +1,2 @@
 // deno-lint-ignore
-while (false) {}
+while (!!false) {}

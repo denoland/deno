@@ -622,6 +622,7 @@ fn write_file_contents(
   Ok(fs::write(file_path, file_text)?)
 }
 
+// TODO: Put this in its own file as it is also used by `lint`.
 pub async fn run_parallelized<F>(
   file_paths: Vec<PathBuf>,
   f: F,

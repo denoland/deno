@@ -137,6 +137,7 @@ async fn lint_files(
 ) -> Result<bool, AnyError> {
   let caches = factory.caches()?;
   let lint_rules = get_config_rules_err_empty(lint_options.rules)?;
+  let fix = lint_options.fix;
   let incremental_cache = Arc::new(IncrementalCache::new(
     caches.lint_incremental_cache_db(),
     // use a hash of the rule names in order to bust the cache
@@ -167,14 +168,26 @@ async fn lint_files(
         return Ok(());
       }
 
-      let r = lint_file(&file_path, file_text, lint_rules);
+      let r = lint_file(&file_path, file_text, lint_rules, fix);
       if let Ok((file_diagnostics, file_text)) = &r {
         if file_diagnostics.is_empty() {
+          // TODO: Understand why we are caching only when there are no
+          // diagnostics. Why would we want to lint again on an unchanged file,
+          // even if it's not linted yet? Maybe because we don't store the lint
+          // output.
+
           // update the incremental cache if there were no diagnostics
           incremental_cache.update_file(&file_path, file_text)
         }
+        // TODO: Is there a BOM thing to do, like with fmt?
+        // TODO: Only write when there is a reason to write.
+        // FIXME: This makes the test integration::watcher::lint_watch_test fail
+        // as writing the file triggers the watcher.
+        fs::write(&file_path, file_text)?
       }
 
+      // TODO: Should we include information about fixed rules and fixed files
+      // in the reporter?
       let success = handle_lint_result(
         &file_path.to_string_lossy(),
         r,
@@ -246,15 +259,39 @@ fn lint_file(
   file_path: &Path,
   source_code: String,
   lint_rules: Vec<&'static dyn LintRule>,
+  // Passing a magic boolean as a parameter; feels bad.
+  // TODO: determine whether fixing needs to be in its own function.
+  fix: bool,
 ) -> Result<(Vec<LintDiagnostic>, String), AnyError> {
   let file_name = file_path.to_string_lossy().to_string();
   let media_type = MediaType::from_path(file_path);
 
   let linter = create_linter(media_type, lint_rules);
 
+  // TODO: Do the work on deno_lint.
+  // Unclear at the moment whether that would be a different method, say
+  // `linter.fix()`, instead of adding a parameter to `linter.lint()`.
+  // TODO: Is it the linter's job to turn the AST into code? Or should that be
+  // done only in the CLI?
+  // TODO: How do we make sure this does not conflict with fmt? I can imaging
+  // that the linter might want to change the code in a way that fmt would
+  // change again. Ideal would be if the linter could run fmt only on the subset
+  // of the AST that changed, but it's probably too complex.
+
   let (_, file_diagnostics) = linter.lint(file_name, source_code.clone())?;
 
-  Ok((file_diagnostics, source_code))
+  // TODO: We probably want to tell the caller when the source code changes.
+  // Otherwise, if it only wants to write when needed, it need to do a needless
+  // comparison with the original file.
+
+  // Just to mark the logic.
+  let fixed_code = if fix {
+    source_code.clone()
+  } else {
+    source_code
+  };
+
+  Ok((file_diagnostics, fixed_code))
 }
 
 /// Lint stdin and write result to stdout.

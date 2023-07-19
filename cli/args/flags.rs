@@ -163,6 +163,7 @@ pub struct LintFlags {
   pub json: bool,
   pub compact: bool,
   pub watch: Option<WatchFlags>,
+  pub fix: bool,
 }
 
 impl LintFlags {
@@ -1631,6 +1632,12 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .conflicts_with("json"),
         )
         .arg(
+          Arg::new("fix")
+            .long("fix")
+            .help("Fix linting errors")
+            .action(ArgAction::SetTrue),
+        )
+        .arg(
           Arg::new("files")
             .value_parser(value_parser!(PathBuf))
             .num_args(1..)
@@ -2888,6 +2895,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
   let json = matches.get_flag("json");
   let compact = matches.get_flag("compact");
+  let fix = matches.get_flag("fix");
   flags.subcommand = DenoSubcommand::Lint(LintFlags {
     files: FileFlags {
       include: files,
@@ -2900,6 +2908,7 @@ fn lint_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     json,
     compact,
     watch: watch_arg_parse(matches),
+    fix,
   });
 }
 
@@ -4203,6 +4212,18 @@ mod tests {
           ..Default::default()
         }),
         config_flag: ConfigFlag::Path("Deno.jsonc".to_string()),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "lint", "--fix",]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          fix: true,
+          ..Default::default()
+        }),
         ..Flags::default()
       }
     );

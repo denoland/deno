@@ -22,13 +22,31 @@
       "range": {
         "start": {
           "line": 2,
-          "col": 14,
-          "bytePos": 34
+          "col": 7,
+          "bytePos": 27
         },
         "end": {
           "line": 2,
+          "col": 14,
+          "bytePos": 34
+        }
+      },
+      "filename": "[WILDCARD]file1.js",
+      "message": "Redundant double negation.",
+      "code": "no-extra-boolean-cast",
+      "hint": "[WILDCARD]"
+    },
+    {
+      "range": {
+        "start": {
+          "line": 2,
           "col": 16,
           "bytePos": 36
+        },
+        "end": {
+          "line": 2,
+          "col": 18,
+          "bytePos": 38
         }
       },
       "filename": "[WILDCARD]file1.js",
