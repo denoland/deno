@@ -551,7 +551,9 @@ impl SqliteQueue {
 
       let version: i64 = tx
         .prepare_cached(STATEMENT_INC_AND_GET_DATA_VERSION)?
-        .query_row([rand::thread_rng().gen_range(1..=10)], |row| row.get(0))?;
+        .query_row([rand::thread_rng().gen_range(1..=10)], |row| {
+          row.get(0)
+        })?;
 
       for key in keys_if_undelivered {
         let changed = tx
@@ -638,7 +640,9 @@ impl Database for SqliteDb {
 
         let version: i64 = tx
           .prepare_cached(STATEMENT_INC_AND_GET_DATA_VERSION)?
-          .query_row([rand::thread_rng().gen_range(1..=10)], |row| row.get(0))?;
+          .query_row([rand::thread_rng().gen_range(1..=10)], |row| {
+            row.get(0)
+          })?;
 
         for mutation in write.mutations {
           match mutation.kind {
