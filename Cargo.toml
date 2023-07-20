@@ -45,9 +45,15 @@ deno_core = { version = "0.195.0" }
 deno_ops = { version = "0.72.0" }
 serde_v8 = { version = "0.105.0" }
 
+<<<<<<< HEAD
 deno_runtime = { version = "0.119.0", path = "./runtime" }
 napi_sym = { version = "0.41.0", path = "./cli/napi/sym" }
 deno_bench_util = { version = "0.105.0", path = "./bench_util" }
+=======
+deno_runtime = { version = "0.120.0", path = "./runtime" }
+napi_sym = { version = "0.42.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.106.0", path = "./bench_util" }
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 test_util = { path = "./test_util" }
 deno_lockfile = "0.14.1"
 deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
@@ -55,6 +61,7 @@ deno_npm = "0.9.1"
 deno_semver = "0.2.2"
 
 # exts
+<<<<<<< HEAD
 deno_broadcast_channel = { version = "0.105.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.43.0", path = "./ext/cache" }
 deno_console = { version = "0.111.0", path = "./ext/console" }
@@ -74,6 +81,27 @@ deno_webidl = { version = "0.111.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.116.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.106.0", path = "./ext/webstorage" }
 deno_napi = { version = "0.41.0", path = "./ext/napi" }
+=======
+deno_broadcast_channel = { version = "0.106.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.44.0", path = "./ext/cache" }
+deno_console = { version = "0.112.0", path = "./ext/console" }
+deno_crypto = { version = "0.126.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.136.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.99.0", path = "./ext/ffi" }
+deno_fs = { version = "0.22.0", path = "./ext/fs" }
+deno_http = { version = "0.107.0", path = "./ext/http" }
+deno_io = { version = "0.22.0", path = "./ext/io" }
+deno_net = { version = "0.104.0", path = "./ext/net" }
+deno_node = { version = "0.49.0", path = "./ext/node" }
+deno_kv = { version = "0.20.0", path = "./ext/kv" }
+deno_tls = { version = "0.99.0", path = "./ext/tls" }
+deno_url = { version = "0.112.0", path = "./ext/url" }
+deno_web = { version = "0.143.0", path = "./ext/web" }
+deno_webidl = { version = "0.112.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.117.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.107.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.42.0", path = "./ext/napi" }
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 
 aes = "=0.8.2"
 anyhow = "1.0.57"

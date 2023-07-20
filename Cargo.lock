@@ -782,7 +782,11 @@ checksum = "8d7439c3735f405729d52c3fbbe4de140eaf938a1fe47d227c27f8254d4302a5"
 
 [[package]]
 name = "deno"
+<<<<<<< HEAD
 version = "1.35.1"
+=======
+version = "1.35.2"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "atty",
@@ -929,7 +933,11 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
+<<<<<<< HEAD
 version = "0.105.0"
+=======
+version = "0.106.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "bencher",
  "deno_core",
@@ -939,7 +947,11 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
+<<<<<<< HEAD
 version = "0.105.0"
+=======
+version = "0.106.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -949,7 +961,11 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
+<<<<<<< HEAD
 version = "0.43.0"
+=======
+version = "0.44.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -961,7 +977,11 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
+<<<<<<< HEAD
 version = "0.111.0"
+=======
+version = "0.112.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
 ]
@@ -994,7 +1014,11 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
+<<<<<<< HEAD
 version = "0.125.0"
+=======
+version = "0.126.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1064,7 +1088,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
+<<<<<<< HEAD
 version = "0.135.0"
+=======
+version = "0.136.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "bytes",
  "data-url",
@@ -1081,7 +1109,11 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
+<<<<<<< HEAD
 version = "0.98.0"
+=======
+version = "0.99.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
  "dlopen",
@@ -1097,7 +1129,11 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
+<<<<<<< HEAD
 version = "0.21.0"
+=======
+version = "0.22.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1137,7 +1173,11 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
+<<<<<<< HEAD
 version = "0.106.0"
+=======
+version = "0.107.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-compression 0.3.15",
  "async-trait",
@@ -1173,7 +1213,11 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
+<<<<<<< HEAD
 version = "0.21.0"
+=======
+version = "0.22.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1187,7 +1231,11 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
+<<<<<<< HEAD
 version = "0.19.0"
+=======
+version = "0.20.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1245,7 +1293,11 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
+<<<<<<< HEAD
 version = "0.41.0"
+=======
+version = "0.42.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
  "libloading",
@@ -1253,7 +1305,11 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
+<<<<<<< HEAD
 version = "0.103.0"
+=======
+version = "0.104.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
  "deno_tls",
@@ -1269,7 +1325,11 @@ dependencies = [
 
 [[package]]
 name = "deno_node"
+<<<<<<< HEAD
 version = "0.48.0"
+=======
+version = "0.49.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "aes",
  "brotli",
@@ -1363,7 +1423,11 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
+<<<<<<< HEAD
 version = "0.119.0"
+=======
+version = "0.120.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "atty",
  "console_static_text",
@@ -1446,7 +1510,11 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
+<<<<<<< HEAD
 version = "0.98.0"
+=======
+version = "0.99.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
  "once_cell",
@@ -1460,7 +1528,11 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
+<<<<<<< HEAD
 version = "0.111.0"
+=======
+version = "0.112.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1472,7 +1544,11 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
+<<<<<<< HEAD
 version = "0.142.0"
+=======
+version = "0.143.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "async-trait",
  "base64-simd",
@@ -1491,7 +1567,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
+<<<<<<< HEAD
 version = "0.111.0"
+=======
+version = "0.112.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -1499,7 +1579,11 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
+<<<<<<< HEAD
 version = "0.116.0"
+=======
+version = "0.117.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "bytes",
  "deno_core",
@@ -1516,7 +1600,11 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
+<<<<<<< HEAD
 version = "0.106.0"
+=======
+version = "0.107.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "deno_core",
  "deno_web",
@@ -3112,7 +3200,11 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
+<<<<<<< HEAD
 version = "0.41.0"
+=======
+version = "0.42.0"
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
 dependencies = [
  "proc-macro2 1.0.60",
  "quote 1.0.28",

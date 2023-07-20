@@ -627,6 +627,7 @@ function serve(arg1, arg2) {
     reusePort: options.reusePort ?? false,
   };
 
+<<<<<<< HEAD
   if (options.certFile || options.keyFile) {
     throw new TypeError(
       "Unsupported 'certFile' / 'keyFile' options provided: use 'cert' / 'key' instead.",
@@ -638,6 +639,8 @@ function serve(arg1, arg2) {
     );
   }
 
+=======
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
   let listener;
   if (wantsHttps) {
     if (!options.cert || !options.key) {

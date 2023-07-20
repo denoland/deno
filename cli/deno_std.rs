@@ -2,4 +2,8 @@
 
 // WARNING: Ensure this is the only deno_std version reference as this
 // is automatically updated by the version bump workflow.
+<<<<<<< HEAD
 pub const CURRENT_STD_URL_STR: &str = "https://deno.land/std@0.194.0/";
+=======
+pub const CURRENT_STD_URL_STR: &str = "https://deno.land/std@0.195.0/";
+>>>>>>> 60fe8aa53 (1.35.2 (#19885))
