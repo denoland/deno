@@ -41,6 +41,9 @@ enum ResponseStreamResult {
   /// not register a waker and should be called again at the lowest level of this code. Generally this
   /// will only be returned from compression streams that require additional buffering.
   NoData,
+  /// The stream is not ready, but the underlying streams need to be flushed because we've been idle
+  /// for too long.
+  Flush,
   /// Stream provided trailers.
   // TODO(mmastrac): We are threading trailers through the response system to eventually support Grpc.
   #[allow(unused)]
@@ -56,8 +59,8 @@ impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
       ResponseStreamResult::NonEmptyBuf(buf) => Some(Ok(Frame::data(buf))),
       ResponseStreamResult::Error(err) => Some(Err(err)),
       ResponseStreamResult::Trailers(map) => Some(Ok(Frame::trailers(map))),
-      // This result should be handled by retrying
-      ResponseStreamResult::NoData => unimplemented!(),
+      // These results should be handled by retrying
+      ResponseStreamResult::NoData | ResponseStreamResult::Flush => unimplemented!(),
     }
   }
 }
@@ -435,6 +438,7 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
 enum GZipState {
   Header,
   Streaming,
+  StreamFlushing,
   Flushing,
   Trailer,
   EndOfStream,
@@ -501,6 +505,9 @@ impl PollFrame for GZipResponseStream {
           BufView::from(v),
         ));
       }
+      GZipState::StreamFlushing => {
+        ResponseStreamResult::Flush
+      }
       GZipState::Streaming => {
         if let Some(partial) = this.partial.take() {
           ResponseStreamResult::NonEmptyBuf(partial)
@@ -541,6 +548,18 @@ impl PollFrame for GZipResponseStream {
         if len_in < input.len() {
           input.advance_cursor(len_in);
           this.partial = Some(input);
+        }
+        res
+      }
+      ResponseStreamResult::Flush => {
+        let res = stm.compress(&[], &mut buf, flate2::FlushCompress::Full);
+        // If we flushed some data, let's keep flushing otherwise we short-circuit propagate the flush response and go back to
+        // streaming.
+        if stm.total_out() > start_out {
+          *state = GZipState::StreamFlushing;
+        } else {
+          *state = GZipState::Streaming;
+          return std::task::Poll::Ready(ResponseStreamResult::Flush);
         }
         res
       }
