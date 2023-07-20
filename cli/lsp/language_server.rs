@@ -1493,22 +1493,30 @@ impl Inner {
       .collect();
 
     // if the current deno.json has changed, we need to reload it
-    if let Some(config_file) = self.config.maybe_config_file() {
-      if changes.contains(&config_file.specifier)
-        || self
-          .config
-          .maybe_lockfile()
-          .map(|l| has_lockfile_changed(&l.lock(), &changes))
-          .unwrap_or(false)
-      {
-        if let Err(err) = self.update_config_file().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let has_config_changed = match self.config.maybe_config_file() {
+      Some(config_file) => changes.contains(&config_file.specifier),
+      None => {
+        // check for auto-discovery
+        changes.iter().any(|url| {
+          url.path().ends_with("/deno.json")
+            || url.path().ends_with("/deno.jsonc")
+        })
       }
+    } || match self.config.maybe_lockfile() {
+      Some(lockfile) => has_lockfile_changed(&lockfile.lock(), &changes),
+      None => {
+        // check for auto-discovery
+        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
+      }
+    };
+    if has_config_changed {
+      if let Err(err) = self.update_config_file().await {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      if let Err(err) = self.update_tsconfig().await {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      touched = true;
     }
 
     if let Some(package_json) = &self.maybe_package_json {
@@ -2940,7 +2948,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         let watch_registration_options =
           DidChangeWatchedFilesRegistrationOptions {
             watchers: vec![FileSystemWatcher {
-              glob_pattern: "**/*.{json,jsonc}".to_string(),
+              glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
               kind: Some(WatchKind::Change),
             }],
           };
