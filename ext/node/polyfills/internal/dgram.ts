@@ -23,7 +23,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { lookup as defaultLookup } from "ext:deno_node/dns.ts";
+import { lookup as defaultLookup } from "node:dns";
 import {
   isInt32,
   validateFunction,

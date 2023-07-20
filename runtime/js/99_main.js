@@ -251,6 +251,10 @@ core.registerErrorClass("BadResource", errors.BadResource);
 core.registerErrorClass("Http", errors.Http);
 core.registerErrorClass("Busy", errors.Busy);
 core.registerErrorClass("NotSupported", errors.NotSupported);
+core.registerErrorClass("FilesystemLoop", errors.FilesystemLoop);
+core.registerErrorClass("IsADirectory", errors.IsADirectory);
+core.registerErrorClass("NetworkUnreachable", errors.NetworkUnreachable);
+core.registerErrorClass("NotADirectory", errors.NotADirectory);
 core.registerErrorBuilder(
   "DOMExceptionOperationError",
   function DOMExceptionOperationError(msg) {
@@ -409,14 +413,16 @@ function promiseRejectMacrotaskCallback() {
 }
 
 let hasBootstrapped = false;
+// Delete the `console` object that V8 automaticaly adds onto the global wrapper
+// object on context creation. We don't want this console object to shadow the
+// `console` object exposed by the ext/node globalThis proxy.
+delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, {
-  core,
-});
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,

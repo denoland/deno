@@ -6,10 +6,7 @@ members = [
   "bench_util",
   "cli",
   "cli/napi/sym",
-  "core",
-  "ops",
   "runtime",
-  "serde_v8",
   "test_ffi",
   "test_napi",
   "test_util",
@@ -41,41 +38,42 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.73.0", default-features = false }
+v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = { version = "0.191.0", path = "./core" }
-deno_ops = { version = "0.69.0", path = "./ops" }
-serde_v8 = { version = "0.102.0", path = "./serde_v8" }
-deno_runtime = { version = "0.117.0", path = "./runtime" }
-napi_sym = { version = "0.39.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.103.0", path = "./bench_util" }
+deno_core = { version = "0.195.0" }
+deno_ops = { version = "0.72.0" }
+serde_v8 = { version = "0.105.0" }
+
+deno_runtime = { version = "0.120.0", path = "./runtime" }
+napi_sym = { version = "0.42.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.106.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.14.1"
 deno_media_type = { version = "0.1.0", features = ["module_specifier"] }
-deno_npm = "0.8.1"
+deno_npm = "0.9.1"
 deno_semver = "0.2.2"
 
 # exts
-deno_broadcast_channel = { version = "0.103.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.41.0", path = "./ext/cache" }
-deno_console = { version = "0.109.0", path = "./ext/console" }
-deno_crypto = { version = "0.123.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.133.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.96.0", path = "./ext/ffi" }
-deno_fs = { version = "0.19.0", path = "./ext/fs" }
-deno_http = { version = "0.104.0", path = "./ext/http" }
-deno_io = { version = "0.19.0", path = "./ext/io" }
-deno_net = { version = "0.101.0", path = "./ext/net" }
-deno_node = { version = "0.46.0", path = "./ext/node" }
-deno_kv = { version = "0.17.0", path = "./ext/kv" }
-deno_tls = { version = "0.96.0", path = "./ext/tls" }
-deno_url = { version = "0.109.0", path = "./ext/url" }
-deno_web = { version = "0.140.0", path = "./ext/web" }
-deno_webidl = { version = "0.109.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.114.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.104.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.39.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.106.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.44.0", path = "./ext/cache" }
+deno_console = { version = "0.112.0", path = "./ext/console" }
+deno_crypto = { version = "0.126.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.136.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.99.0", path = "./ext/ffi" }
+deno_fs = { version = "0.22.0", path = "./ext/fs" }
+deno_http = { version = "0.107.0", path = "./ext/http" }
+deno_io = { version = "0.22.0", path = "./ext/io" }
+deno_net = { version = "0.104.0", path = "./ext/net" }
+deno_node = { version = "0.49.0", path = "./ext/node" }
+deno_kv = { version = "0.20.0", path = "./ext/kv" }
+deno_tls = { version = "0.99.0", path = "./ext/tls" }
+deno_url = { version = "0.112.0", path = "./ext/url" }
+deno_web = { version = "0.143.0", path = "./ext/web" }
+deno_webidl = { version = "0.112.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.117.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.107.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.42.0", path = "./ext/napi" }
 
 aes = "=0.8.2"
 anyhow = "1.0.57"
@@ -104,7 +102,7 @@ httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 indexmap = { version = "1.9.2", features = ["serde"] }
 libc = "0.2.126"
-log = "=0.4.17"
+log = "=0.4.19"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
 notify = "=5.0.0"
@@ -112,7 +110,7 @@ num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
 os_pipe = "=1.0.1"
 parking_lot = "0.12.0"
-percent-encoding = "=2.2.0"
+percent-encoding = "=2.3.0"
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pretty_assertions = "=1.3.0"
 rand = "=0.8.5"
@@ -120,7 +118,7 @@ regex = "^1.7.0"
 lazy-regex = "2.5.0"
 reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
 ring = "=0.16.20"
-rusqlite = { version = "=0.28.0", features = ["unlock_notify", "bundled"] }
+rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.0"
 rustls-pemfile = "1.0.0"
 serde = { version = "1.0.149", features = ["derive"] }
@@ -132,8 +130,6 @@ signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
-strum = { version = "0.24", features = ["derive"] }
-strum_macros = "0.24"
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"

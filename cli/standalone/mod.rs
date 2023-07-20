@@ -13,7 +13,7 @@ use crate::file_fetcher::get_source_from_data_url;
 use crate::http_util::HttpClient;
 use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::NpmModuleLoader;
-use crate::node::CliCjsEsmCodeAnalyzer;
+use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
@@ -44,7 +44,6 @@ use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::WorkerLogLevel;
@@ -367,7 +366,7 @@ pub async fn run(
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cjs_esm_code_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
+  let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(node_analysis_cache);
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     fs.clone(),
@@ -422,7 +421,7 @@ pub async fn run(
     npm_resolver.clone(),
     node_resolver,
     Box::new(StandaloneHasNodeSpecifierChecker),
-    BlobStore::default(),
+    Default::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
     fs,

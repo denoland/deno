@@ -131,16 +131,35 @@ impl CliNpmResolver {
   pub fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let path = self
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(path) = self
       .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)?;
+      .resolve_package_folder_from_specifier(specifier)? else {
+        return Ok(None);
+      };
     log::debug!(
       "Resolved package folder of {} to {}",
       specifier,
       path.display()
     );
-    Ok(path)
+    Ok(Some(path))
+  }
+
+  /// Resolves the package nv from the provided specifier.
+  pub fn resolve_package_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<NpmPackageId>, AnyError> {
+    let Some(cache_folder_id) = self
+      .fs_resolver
+      .resolve_package_cache_folder_id_from_specifier(specifier)? else {
+return Ok(None);
+      };
+    Ok(Some(
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
+    ))
   }
 
   /// Attempts to get the package size in bytes.
@@ -253,7 +272,7 @@ impl NpmResolver for CliNpmResolver {
   fn resolve_package_folder_from_path(
     &self,
     path: &Path,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<Option<PathBuf>, AnyError> {
     let specifier = path_to_specifier(path)?;
     self.resolve_package_folder_from_specifier(&specifier)
   }
@@ -276,7 +295,8 @@ impl NpmResolver for CliNpmResolver {
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .resolve_package_folder_from_specifier(specifier)
-      .is_ok()
+      .map(|p| p.is_some())
+      .unwrap_or(false)
   }
 
   fn ensure_read_permission(

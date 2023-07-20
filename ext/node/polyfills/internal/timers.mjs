@@ -4,14 +4,24 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+const primordials = globalThis.__bootstrap.primordials;
+const {
+  MapPrototypeDelete,
+  MapPrototypeSet,
+  SafeMap,
+} = primordials;
+
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-import { validateFunction, validateNumber } from "ext:deno_node/internal/validators.mjs";
-import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "ext:deno_node/process.ts";
 import {
-  setTimeout as setTimeout_,
+  validateFunction,
+  validateNumber,
+} from "ext:deno_node/internal/validators.mjs";
+import { ERR_OUT_OF_RANGE } from "ext:deno_node/internal/errors.ts";
+import { emitWarning } from "node:process";
+import {
   clearTimeout as clearTimeout_,
   setInterval as setInterval_,
+  setTimeout as setTimeout_,
 } from "ext:deno_web/02_timers.js";
 
 // Timeout values > TIMEOUT_MAX are set to 1.
@@ -22,6 +32,14 @@ export const kTimeout = Symbol("timeout");
 const kRefed = Symbol("refed");
 const createTimer = Symbol("createTimer");
 
+/**
+ * The keys in this map correspond to the key ID's in the spec's map of active
+ * timers. The values are the timeout's status.
+ *
+ * @type {Map<number, Timeout>}
+ */
+export const activeTimers = new SafeMap();
+
 // Timer constructor function.
 export function Timeout(callback, after, args, isRepeat, isRefed) {
   if (typeof after === "number" && after > TIMEOUT_MAX) {
@@ -31,19 +49,26 @@ export function Timeout(callback, after, args, isRepeat, isRefed) {
   this._onTimeout = callback;
   this._timerArgs = args;
   this._isRepeat = isRepeat;
+  this._destroyed = false;
   this[kRefed] = isRefed;
   this[kTimerId] = this[createTimer]();
 }
 
 Timeout.prototype[createTimer] = function () {
   const callback = this._onTimeout;
-  const cb = (...args) => callback.bind(this)(...args);
+  const cb = (...args) => {
+    if (!this._isRepeat) {
+      MapPrototypeDelete(activeTimers, this[kTimerId]);
+    }
+    return callback.bind(this)(...args);
+  };
   const id = this._isRepeat
     ? setInterval_(cb, this._idleTimeout, ...this._timerArgs)
     : setTimeout_(cb, this._idleTimeout, ...this._timerArgs);
   if (!this[kRefed]) {
     Deno.unrefTimer(id);
   }
+  MapPrototypeSet(activeTimers, id, this);
   return id;
 };
 
@@ -59,8 +84,10 @@ Timeout.prototype[inspect.custom] = function (_, options) {
 };
 
 Timeout.prototype.refresh = function () {
-  clearTimeout_(this[kTimerId]);
-  this[kTimerId] = this[createTimer]();
+  if (!this._destroyed) {
+    clearTimeout_(this[kTimerId]);
+    this[kTimerId] = this[createTimer]();
+  }
   return this;
 };
 

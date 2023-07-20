@@ -3077,16 +3077,16 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k"]),
+      await curlRequest(["https://localhost:8000/path", "-k"]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:9000/path",
+        "https://localhost:8000/path",
         "-k",
         "--http2",
         "--http2-prior-knowledge",

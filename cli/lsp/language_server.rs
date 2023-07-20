@@ -4,7 +4,6 @@ use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -20,7 +19,6 @@ use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
@@ -39,6 +37,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
+use super::analysis::TsResponseImportMapper;
 use super::cache;
 use super::capabilities;
 use super::client::Client;
@@ -101,7 +100,6 @@ use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::fs::remove_dir_all_if_exists;
 use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
@@ -135,56 +133,20 @@ struct LspNpmConfigHash(u64);
 impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
     let mut hasher = FastInsecureHasher::new();
-    hasher.write_hashable(&inner.maybe_node_modules_dir_path());
+    hasher.write_hashable(inner.config.maybe_node_modules_dir_path());
     hasher.write_hashable(&inner.maybe_cache_path);
-    hash_lockfile_with_hasher(&mut hasher, inner.maybe_lockfile());
+    if let Some(lockfile) = inner.config.maybe_lockfile() {
+      hasher.write_hashable(&*lockfile.lock());
+    }
     Self(hasher.finish())
   }
-}
-
-fn hash_lockfile(maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>) -> u64 {
-  let mut hasher = FastInsecureHasher::new();
-  hash_lockfile_with_hasher(&mut hasher, maybe_lockfile);
-  hasher.finish()
-}
-
-fn hash_lockfile_with_hasher(
-  hasher: &mut FastInsecureHasher,
-  maybe_lockfile: Option<&Arc<Mutex<Lockfile>>>,
-) {
-  if let Some(lockfile) = &maybe_lockfile {
-    let lockfile = lockfile.lock();
-    hasher.write_hashable(&*lockfile);
-  }
-}
-
-fn resolve_lockfile_from_path(
-  lockfile_path: PathBuf,
-) -> Option<Arc<Mutex<Lockfile>>> {
-  match Lockfile::new(lockfile_path, false) {
-    Ok(value) => Some(Arc::new(Mutex::new(value))),
-    Err(err) => {
-      lsp_warn!("Error loading lockfile: {:#}", err);
-      None
-    }
-  }
-}
-
-/// Contains the config file and dependent information.
-#[derive(Debug)]
-struct LspConfigFileInfo {
-  config_file: ConfigFile,
-  /// An optional deno.lock file, which is resolved relative to the config file.
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-  /// The canonicalized node_modules directory, which is found relative to the config file.
-  maybe_node_modules_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -219,9 +181,6 @@ pub struct Inner {
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
   maybe_cache_path: Option<PathBuf>,
-  /// An optional configuration file which has been specified in the client
-  /// options along with some data that is computed after the config file is set.
-  maybe_config_file_info: Option<LspConfigFileInfo>,
   /// An optional import map which is used to resolve modules.
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
@@ -520,22 +479,6 @@ impl LanguageServer {
   }
 }
 
-fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
-  // For the language server, require an explicit opt-in via the
-  // `nodeModulesDir: true` setting in the deno.json file. This is to
-  // reduce the chance of modifying someone's node_modules directory
-  // without them having asked us to do so.
-  if config_file.node_modules_dir() != Some(true) {
-    return None;
-  }
-  if config_file.specifier.scheme() != "file" {
-    return None;
-  }
-  let file_path = config_file.specifier.to_file_path().ok()?;
-  let node_modules_dir = file_path.parent()?.join("node_modules");
-  canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
-}
-
 fn create_npm_api_and_cache(
   dir: &DenoDir,
   http_client: Arc<HttpClient>,
@@ -610,11 +553,12 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let documents = Documents::new(location.clone());
     let deps_http_cache = HttpCache::new(location);
+    let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -650,7 +594,6 @@ impl Inner {
       documents,
       http_client,
       maybe_cache_path: None,
-      maybe_config_file_info: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       maybe_package_json: None,
@@ -835,7 +778,7 @@ impl Inner {
     &self,
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
-    if let Some(config_file) = self.maybe_config_file() {
+    if let Some(config_file) = self.config.maybe_config_file() {
       let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
       tsconfig.merge(&value);
       if let Some(ignored_options) = maybe_ignored_options {
@@ -853,7 +796,7 @@ impl Inner {
     let npm_resolution = Arc::new(NpmResolution::new(
       self.npm.api.clone(),
       self.npm.resolution.snapshot(),
-      self.maybe_lockfile().cloned(),
+      self.config.maybe_lockfile().cloned(),
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
@@ -865,10 +808,10 @@ impl Inner {
         &ProgressBar::new(ProgressBarStyle::TextOnly),
         self.npm.api.base_url().clone(),
         npm_resolution,
-        self.maybe_node_modules_dir_path().cloned(),
+        self.config.maybe_node_modules_dir_path().cloned(),
         NpmSystemInfo::default(),
       ),
-      self.maybe_lockfile().cloned(),
+      self.config.maybe_lockfile().cloned(),
     ));
     let node_resolver =
       Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
@@ -979,7 +922,7 @@ impl Inner {
       registry_url,
       &progress_bar,
     );
-    let maybe_snapshot = match self.maybe_lockfile() {
+    let maybe_snapshot = match self.config.maybe_lockfile() {
       Some(lockfile) => {
         match snapshot_from_lockfile(lockfile.clone(), &self.npm.api).await {
           Ok(snapshot) => Some(snapshot),
@@ -997,7 +940,7 @@ impl Inner {
         progress_bar,
         self.npm.api.clone(),
         self.npm.cache.clone(),
-        self.maybe_node_modules_dir_path().cloned(),
+        self.config.maybe_node_modules_dir_path().cloned(),
         maybe_snapshot,
       );
 
@@ -1034,7 +977,7 @@ impl Inner {
   ) -> Result<ImportMap, AnyError> {
     resolve_import_map_from_specifier(
       import_map_url,
-      self.maybe_config_file(),
+      self.config.maybe_config_file(),
       &self.create_file_fetcher(cache_setting),
     )
     .await
@@ -1053,7 +996,7 @@ impl Inner {
       cache_setting,
       true,
       self.http_client.clone(),
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
@@ -1075,7 +1018,7 @@ impl Inner {
           "Setting import map from workspace settings: \"{}\"",
           import_map_str
         );
-        if let Some(config_file) = self.maybe_config_file() {
+        if let Some(config_file) = self.config.maybe_config_file() {
           if let Some(import_map_path) = config_file.to_import_map_path() {
             lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
           }
@@ -1101,7 +1044,7 @@ impl Inner {
             import_map_str
           ));
         }
-      } else if let Some(config_file) = self.maybe_config_file() {
+      } else if let Some(config_file) = self.config.maybe_config_file() {
         if config_file.is_an_import_map() {
           lsp_log!(
             "Setting import map defined in configuration file: \"{}\"",
@@ -1164,7 +1107,7 @@ impl Inner {
   }
 
   async fn update_config_file(&mut self) -> Result<(), AnyError> {
-    self.maybe_config_file_info = None;
+    self.config.clear_config_file();
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
     if let Some(config_file) = self.get_config_file()? {
@@ -1185,11 +1128,7 @@ impl Inner {
           anyhow!("Unable to update formatter configuration: {:?}", err)
         })?;
 
-      self.maybe_config_file_info = Some(LspConfigFileInfo {
-        maybe_lockfile: self.resolve_lockfile_from_config(&config_file),
-        maybe_node_modules_dir: resolve_node_modules_dir(&config_file),
-        config_file,
-      });
+      self.config.set_config_file(config_file);
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
     }
@@ -1197,45 +1136,12 @@ impl Inner {
     Ok(())
   }
 
-  fn resolve_lockfile_from_config(
-    &self,
-    config_file: &ConfigFile,
-  ) -> Option<Arc<Mutex<Lockfile>>> {
-    let lockfile_path = match config_file.resolve_lockfile_path() {
-      Ok(Some(value)) => value,
-      Ok(None) => return None,
-      Err(err) => {
-        lsp_warn!("Error resolving lockfile: {:#}", err);
-        return None;
-      }
-    };
-    resolve_lockfile_from_path(lockfile_path)
-  }
-
-  fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
-    self
-      .maybe_config_file_info
-      .as_ref()
-      .and_then(|p| p.maybe_node_modules_dir.as_ref())
-  }
-
-  fn maybe_config_file(&self) -> Option<&ConfigFile> {
-    self.maybe_config_file_info.as_ref().map(|c| &c.config_file)
-  }
-
-  fn maybe_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
-    self
-      .maybe_config_file_info
-      .as_ref()
-      .and_then(|c| c.maybe_lockfile.as_ref())
-  }
-
   /// Updates the package.json. Always ensure this is done after updating
   /// the configuration file as the resolution of this depends on that.
   fn update_package_json(&mut self) -> Result<(), AnyError> {
     self.maybe_package_json = None;
     self.maybe_package_json =
-      self.get_package_json(self.maybe_config_file())?;
+      self.get_package_json(self.config.maybe_config_file())?;
     Ok(())
   }
 
@@ -1392,10 +1298,7 @@ impl Inner {
         .workspace_settings()
         .document_preload_limit,
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_config_file: self
-        .maybe_config_file_info
-        .as_ref()
-        .map(|c| &c.config_file),
+      maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
       npm_registry_api: self.npm.api.clone(),
       npm_resolution: self.npm.resolution.clone(),
@@ -1555,6 +1458,30 @@ impl Inner {
     &mut self,
     params: DidChangeWatchedFilesParams,
   ) {
+    fn has_lockfile_changed(
+      lockfile: &Lockfile,
+      changed_urls: &HashSet<Url>,
+    ) -> bool {
+      let lockfile_path = lockfile.filename.clone();
+      let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile_path) else {
+        return false;
+      };
+      if !changed_urls.contains(&specifier) {
+        return false;
+      }
+      match Lockfile::new(lockfile_path, false) {
+        Ok(new_lockfile) => {
+          // only update if the lockfile has changed
+          FastInsecureHasher::hash(lockfile)
+            != FastInsecureHasher::hash(new_lockfile)
+        }
+        Err(err) => {
+          lsp_warn!("Error loading lockfile: {:#}", err);
+          false
+        }
+      }
+    }
+
     let mark = self
       .performance
       .mark("did_change_watched_files", Some(&params));
@@ -1566,35 +1493,30 @@ impl Inner {
       .collect();
 
     // if the current deno.json has changed, we need to reload it
-    if let Some(config_file) = self.maybe_config_file() {
-      if changes.contains(&config_file.specifier) {
-        if let Err(err) = self.update_config_file().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let has_config_changed = match self.config.maybe_config_file() {
+      Some(config_file) => changes.contains(&config_file.specifier),
+      None => {
+        // check for auto-discovery
+        changes.iter().any(|url| {
+          url.path().ends_with("/deno.json")
+            || url.path().ends_with("/deno.jsonc")
+        })
       }
-    }
-
-    if let Some(config_info) = self.maybe_config_file_info.as_mut() {
-      if let Some(lockfile) = config_info.maybe_lockfile.as_ref() {
-        let lockfile_path = lockfile.lock().filename.clone();
-        let maybe_specifier =
-          ModuleSpecifier::from_file_path(&lockfile_path).ok();
-        if let Some(specifier) = maybe_specifier {
-          if changes.contains(&specifier) {
-            let lockfile_hash = hash_lockfile(Some(lockfile));
-            let new_lockfile = resolve_lockfile_from_path(lockfile_path);
-            // only update if the lockfile has changed
-            if lockfile_hash != hash_lockfile(new_lockfile.as_ref()) {
-              config_info.maybe_lockfile = new_lockfile;
-              touched = true;
-            }
-          }
-        }
+    } || match self.config.maybe_lockfile() {
+      Some(lockfile) => has_lockfile_changed(&lockfile.lock(), &changes),
+      None => {
+        // check for auto-discovery
+        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
       }
+    };
+    if has_config_changed {
+      if let Err(err) = self.update_config_file().await {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      if let Err(err) = self.update_tsconfig().await {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      touched = true;
     }
 
     if let Some(package_json) = &self.maybe_package_json {
@@ -1724,24 +1646,33 @@ impl Inner {
       return Ok(None);
     }
 
-    let format_result = match document.maybe_parsed_source() {
-      Some(Ok(parsed_source)) => {
-        format_parsed_source(&parsed_source, &self.fmt_options.options)
+    // spawn a blocking task to allow doing other work while this is occurring
+    let format_result = deno_core::task::spawn_blocking({
+      let fmt_options = self.fmt_options.options.clone();
+      let document = document.clone();
+      move || {
+        match document.maybe_parsed_source() {
+          Some(Ok(parsed_source)) => {
+            format_parsed_source(&parsed_source, &fmt_options)
+          }
+          Some(Err(err)) => Err(anyhow!("{}", err)),
+          None => {
+            // the file path is only used to determine what formatter should
+            // be used to format the file, so give the filepath an extension
+            // that matches what the user selected as the language
+            let file_path = document
+              .maybe_language_id()
+              .and_then(|id| id.as_extension())
+              .map(|ext| file_path.with_extension(ext))
+              .unwrap_or(file_path);
+            // it's not a js/ts file, so attempt to format its contents
+            format_file(&file_path, &document.content(), &fmt_options)
+          }
+        }
       }
-      Some(Err(err)) => Err(anyhow!("{}", err)),
-      None => {
-        // the file path is only used to determine what formatter should
-        // be used to format the file, so give the filepath an extension
-        // that matches what the user selected as the language
-        let file_path = document
-          .maybe_language_id()
-          .and_then(|id| id.as_extension())
-          .map(|ext| file_path.with_extension(ext))
-          .unwrap_or(file_path);
-        // it's not a js/ts file, so attempt to format its contents
-        format_file(&file_path, &document.content(), &self.fmt_options.options)
-      }
-    };
+    })
+    .await
+    .unwrap();
 
     let text_edits = match format_result {
       Ok(Some(new_text)) => Some(text::get_edits(
@@ -2030,7 +1961,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.documents,
+          &self.get_ts_response_import_mapper(),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
@@ -2080,6 +2011,15 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
+    TsResponseImportMapper::new(
+      &self.documents,
+      self.maybe_import_map.as_deref(),
+      &self.npm.resolution,
+      &self.npm.resolver,
+    )
   }
 
   async fn code_lens(
@@ -3008,7 +2948,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         let watch_registration_options =
           DidChangeWatchedFilesRegistrationOptions {
             watchers: vec![FileSystemWatcher {
-              glob_pattern: "**/*.{json,jsonc}".to_string(),
+              glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
               kind: Some(WatchKind::Change),
             }],
           };
@@ -3414,14 +3354,16 @@ impl Inner {
         unsafely_ignore_certificate_errors: workspace_settings
           .unsafely_ignore_certificate_errors
           .clone(),
-        node_modules_dir: Some(self.maybe_node_modules_dir_path().is_some()),
+        node_modules_dir: Some(
+          self.config.maybe_node_modules_dir_path().is_some(),
+        ),
         // bit of a hack to force the lsp to cache the @types/node package
         type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
       std::env::current_dir().with_context(|| "Failed getting cwd.")?,
-      self.maybe_config_file().cloned(),
-      self.maybe_lockfile().cloned(),
+      self.config.maybe_config_file().cloned(),
+      self.config.maybe_lockfile().cloned(),
       self.maybe_package_json.clone(),
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
@@ -3454,7 +3396,12 @@ impl Inner {
   }
 
   fn get_tasks(&self) -> LspResult<Option<Value>> {
-    Ok(self.maybe_config_file().and_then(|cf| cf.to_lsp_tasks()))
+    Ok(
+      self
+        .config
+        .maybe_config_file()
+        .and_then(|cf| cf.to_lsp_tasks()),
+    )
   }
 
   async fn inlay_hint(

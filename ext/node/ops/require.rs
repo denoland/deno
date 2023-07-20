@@ -371,7 +371,8 @@ where
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
-    .ok();
+    .ok()
+    .flatten();
   if pkg.is_none() {
     return Ok(None);
   }
@@ -499,7 +500,7 @@ where
 fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
   filename: String,
-) -> Result<PackageJson, AnyError>
+) -> Result<Option<PackageJson>, AnyError>
 where
   P: NodePermissions + 'static,
 {

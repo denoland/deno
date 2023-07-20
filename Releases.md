@@ -6,6 +6,81 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.35.2 / 2023.07.20
+
+- fix(bench): run warmup benchmark to break JIT bias (#19844)
+- fix(ext/node): check if resource can be used with write_vectored (#19868)
+- fix(ext/node): fix stream/promises export (#19820)
+- fix(ext/node): properly segregate node globals (#19307)
+- fix(napi): update env_test.js (#19876)
+- fix(node): add process.dlopen API (#19860)
+- fix(node): improve error message requiring non-npm es module (#19856)
+- fix(node): improve require esm error messages (#19853)
+- fix(node/http): call callback after request is sent (#19871)
+- fix(node/net): Server connection callback include socket value (#19779)
+- fix(npm): improve error message importing non-existent file in a node_modules
+  npm package (#19835)
+- fix(npm): improve error message on directory import in npm package (#19538)
+- fix(npm): support dynamic import of Deno TS from npm package (#19858)
+- fix(runtime): print process name in case of spawn error (#19855)
+- fix(tsc): more informative diagnostic when `Deno` does not exist (#19825)
+- fix(vendor): do not panic vendoring with jsxImportSource and no jsx files
+  (#19837)
+
+### 1.35.1 / 2023.07.12
+
+- fix(ext/http): Use brotli compression params (#19758)
+- fix(lsp): exclude files in deno.json "exclude" (#19791)
+- fix(lsp): remove quotes and period surrounding specifier in uncached messages
+  (#19794)
+- fix(lsp): stop diagnostics flickering (#19803)
+- fix(node/http): add destroy to FakeSocket (#19796)
+- fix(node/http): allow callback in first argument of end call (#19778)
+- fix(node/http): server use FakeSocket and add end method (#19660)
+- fix(vendor): support import mapped jsxImportSource (#19724)
+- fix: remove unstable check for Deno.listenTls#alpnProtocols (#19732)
+- perf(ext/node): native vectored write for server streams (#19752)
+- perf(ext/node): optimize net streams (#19678)
+- perf(ext/websocket): optimize server websocket js (#19719)
+- perf(node/async_hooks): optimize AsyncLocalStorage (#19729)
+- perf: add setup cache for node_modules folder (#19787)
+
+### 1.35.0 / 2023.07.04
+
+- feat: add more Deno.errors classes (#19514)
+- feat: ReadableStream.from (#19446)
+- feat: stabilize 'alpnProtocols' setting (#19704)
+- feat: Stabilize Deno.serve() API (#19141)
+- feat: upgrade to TypeScript 5.1.6 (#19695)
+- feat(ext/fetch): add Headers#getSetCookie (#13542)
+- feat(ext/url): URLSearchParams two-argument delete() and has() (#19654)
+- feat(lock): skip saving declaration files in the lockfile (#19447)
+- feat(lsp): basic support of auto-imports for npm specifiers (#19675)
+- feat(lsp): support import maps in quick fix and auto-imports (#19692)
+- fix: add `exactOptionalPropertyTypes` for configuration file JSON schema
+  (#19647)
+- fix: bump default @types/node version range to 18.16.19 (#19706)
+- fix(cli): don't store blob and data urls in the module cache (#18581)
+- fix(cli): Fix the bug where the command description is not displayed. (#19604)
+- fix(cli/napi): `napi_get_buffer_info` accepts `ArrayBufferView` … (#19551)
+- fix(cli/napi): property with getter/setter always failed (#19562)
+- fix(console): correct the parseCssColor algorithm (#19645)
+- fix(dts): make globals available on globalThis (#19438)
+- fix(ext/crypto): Fix WebCrypto API's deriveKey (#19545)
+- fix(ext/fs): fix boolean checks in JS parser (#19586)
+- fix(ext/http): Catch errors in eager stream timeout to avoid uncaught promise
+  rejections (#19691)
+- fix(ext/kv): expose Deno.AtomicOperation (#19674)
+- fix(ext/node): Define performance.timeOrigin as getter property (#19714)
+- fix(ext/node): ignore cancelled timer when node timer refresh (#19637)
+- fix(ext/node): support brotli APIs (#19223)
+- fix(ext/websocket): Ensure that errors are available after async response
+  returns (#19642)
+- fix(node/http): add setKeepAlive to FakeSocket (#19659)
+- fix(npm): escape export identifier in double quoted string (#19694)
+- fix(npm): handle more reserved words as cjs exports (#19672)
+- fix(npm): support siblings that are peer dependencies of each other (#19657)
+
 ### 1.34.3 / 2023.06.15
 
 - feat(UNSTABLE) kv queue implementation (#19459)

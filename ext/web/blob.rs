@@ -23,10 +23,10 @@ use crate::Location;
 
 pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Default, Debug)]
 pub struct BlobStore {
-  parts: Arc<Mutex<PartMap>>,
-  object_urls: Arc<Mutex<HashMap<Url, Arc<Blob>>>>,
+  parts: Mutex<PartMap>,
+  object_urls: Mutex<HashMap<Url, Arc<Blob>>>,
 }
 
 impl BlobStore {
@@ -79,6 +79,11 @@ impl BlobStore {
   pub fn remove_object_url(&self, url: &Url) {
     let mut blob_store = self.object_urls.lock();
     blob_store.remove(url);
+  }
+
+  pub fn clear(&self) {
+    self.parts.lock().clear();
+    self.object_urls.lock().clear();
   }
 }
 
@@ -162,7 +167,7 @@ impl BlobPart for SlicedBlobPart {
 
 #[op]
 pub fn op_blob_create_part(state: &mut OpState, data: JsBuffer) -> Uuid {
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
 }
@@ -180,7 +185,7 @@ pub fn op_blob_slice_part(
   id: Uuid,
   options: SliceOptions,
 ) -> Result<Uuid, AnyError> {
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
     .get_part(&id)
     .ok_or_else(|| type_error("Blob part not found"))?;
@@ -207,7 +212,7 @@ pub async fn op_blob_read_part(
 ) -> Result<ToJsBuffer, AnyError> {
   let part = {
     let state = state.borrow();
-    let blob_store = state.borrow::<BlobStore>();
+    let blob_store = state.borrow::<Arc<BlobStore>>();
     blob_store.get_part(&id)
   }
   .ok_or_else(|| type_error("Blob part not found"))?;
@@ -217,7 +222,7 @@ pub async fn op_blob_read_part(
 
 #[op]
 pub fn op_blob_remove_part(state: &mut OpState, id: Uuid) {
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_part(&id);
 }
 
@@ -228,7 +233,7 @@ pub fn op_blob_create_object_url(
   part_ids: Vec<Uuid>,
 ) -> Result<String, AnyError> {
   let mut parts = Vec::with_capacity(part_ids.len());
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   for part_id in part_ids {
     let part = blob_store
       .get_part(&part_id)
@@ -239,7 +244,7 @@ pub fn op_blob_create_object_url(
   let blob = Blob { media_type, parts };
 
   let maybe_location = state.try_borrow::<Location>();
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
 
   let url = blob_store
     .insert_object_url(blob, maybe_location.map(|location| location.0.clone()));
@@ -253,7 +258,7 @@ pub fn op_blob_revoke_object_url(
   url: &str,
 ) -> Result<(), AnyError> {
   let url = Url::parse(url)?;
-  let blob_store = state.borrow::<BlobStore>();
+  let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_object_url(&url);
   Ok(())
 }
@@ -280,7 +285,7 @@ pub fn op_blob_from_object_url(
     return Ok(None);
   }
 
-  let blob_store = state.try_borrow::<BlobStore>().ok_or_else(|| {
+  let blob_store = state.try_borrow::<Arc<BlobStore>>().ok_or_else(|| {
     type_error("Blob URLs are not supported in this context.")
   })?;
   if let Some(blob) = blob_store.get_object_url(url) {

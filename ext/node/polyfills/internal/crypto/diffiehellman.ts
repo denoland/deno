@@ -18,7 +18,7 @@ import {
   validateInt32,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   EllipticCurve,
   ellipticCurves,

@@ -28,7 +28,6 @@ mod tests {
       if (!(bootstrap.mainRuntime && bootstrap.workerRuntime)) {
         throw Error("bad");
       }
-      console.log("we have console.log!!!");
     "#,
       )
       .unwrap();

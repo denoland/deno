@@ -21,7 +21,7 @@ import {
   isTypedArray,
 } from "ext:deno_node/internal/util/types.ts";
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   getOwnNonIndexProperties,
   ONLY_ENUMERABLE,

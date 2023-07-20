@@ -3,9 +3,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { EventEmitter } from "ext:deno_node/events.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
-import { promises, read, write } from "ext:deno_node/fs.ts";
+import { EventEmitter } from "node:events";
+import { Buffer } from "node:buffer";
+import { promises, read, write } from "node:fs";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
