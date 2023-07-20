@@ -285,6 +285,7 @@ mod ts {
         );
       })),
       snapshot_module_load_cb: None,
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
@@ -377,6 +378,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     extensions,
     compression_cb: None,
     snapshot_module_load_cb: None,
+    with_runtime_cb: None,
   })
 }
 

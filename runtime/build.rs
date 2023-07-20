@@ -350,6 +350,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());

@@ -350,7 +350,8 @@ impl MainWorker {
     }
 
     let bootstrap_fn_global = {
-      let context = js_runtime.global_context();
+      let realm = js_runtime.main_realm();
+      let context = realm.context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
