@@ -37,6 +37,8 @@ use serde_json::to_value;
 use serde_json::Value;
 use std::collections::HashSet;
 use std::io;
+use std::io::BufRead;
+use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
 use std::process::Child;
@@ -44,6 +46,7 @@ use std::process::ChildStdin;
 use std::process::ChildStdout;
 use std::process::Command;
 use std::process::Stdio;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -468,6 +471,7 @@ impl InitializeParamsBuilder {
 
 pub struct LspClientBuilder {
   print_stderr: bool,
+  capture_stderr: bool,
   deno_exe: PathRef,
   context: Option<TestContext>,
   use_diagnostic_sync: bool,
@@ -478,6 +482,7 @@ impl LspClientBuilder {
   pub fn new() -> Self {
     Self {
       print_stderr: false,
+      capture_stderr: false,
       deno_exe: deno_exe_path(),
       context: None,
       use_diagnostic_sync: true,
@@ -494,6 +499,11 @@ impl LspClientBuilder {
   #[deprecated]
   pub fn print_stderr(&mut self) -> &mut Self {
     self.print_stderr = true;
+    self
+  }
+
+  pub fn capture_stderr(&mut self) -> &mut Self {
+    self.capture_stderr = true;
     self
   }
 
@@ -527,7 +537,9 @@ impl LspClientBuilder {
       .arg("lsp")
       .stdin(Stdio::piped())
       .stdout(Stdio::piped());
-    if !self.print_stderr {
+    if self.capture_stderr {
+      command.stderr(Stdio::piped());
+    } else if !self.print_stderr {
       command.stderr(Stdio::null());
     }
     let mut child = command.spawn()?;
@@ -537,6 +549,31 @@ impl LspClientBuilder {
 
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
+
+    let stderr_lines_rx = if self.capture_stderr {
+      let stderr = child.stderr.take().unwrap();
+      let print_stderr = self.print_stderr;
+      let (tx, rx) = mpsc::channel::<String>();
+      std::thread::spawn(move || {
+        let stderr = BufReader::new(stderr);
+        for line in stderr.lines() {
+          match line {
+            Ok(line) => {
+              if print_stderr {
+                eprintln!("{}", line);
+              }
+              tx.send(line).unwrap();
+            }
+            Err(err) => {
+              panic!("failed to read line from stderr: {:#}", err);
+            }
+          }
+        }
+      });
+      Some(rx)
+    } else {
+      None
+    };
 
     Ok(LspClient {
       child,
@@ -549,6 +586,7 @@ impl LspClientBuilder {
         .unwrap_or_else(|| TestContextBuilder::new().build()),
       writer,
       deno_dir,
+      stderr_lines_rx,
     })
   }
 }
@@ -561,6 +599,7 @@ pub struct LspClient {
   writer: io::BufWriter<ChildStdin>,
   deno_dir: TempDir,
   context: TestContext,
+  stderr_lines_rx: Option<mpsc::Receiver<String>>,
 }
 
 impl Drop for LspClient {
@@ -592,6 +631,26 @@ impl LspClient {
   pub fn queue_len(&self) -> usize {
     self.reader.output_pending_messages();
     self.reader.pending_len()
+  }
+
+  #[track_caller]
+  pub fn wait_until_stderr_line(&self, condition: impl Fn(&str) -> bool) {
+    let timeout_time =
+      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+    let lines_rx = self
+      .stderr_lines_rx
+      .as_ref()
+      .expect("must setup with client_builder.capture_stderr()");
+    while Instant::now() < timeout_time {
+      if let Ok(line) = lines_rx.try_recv() {
+        if condition(&line) {
+          return;
+        }
+      }
+      std::thread::sleep(Duration::from_millis(20));
+    }
+
+    panic!("Timed out.")
   }
 
   pub fn initialize_default(&mut self) {

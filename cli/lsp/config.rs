@@ -773,7 +773,12 @@ fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
 ) -> Option<Arc<Mutex<Lockfile>>> {
   match Lockfile::new(lockfile_path, false) {
-    Ok(value) => Some(Arc::new(Mutex::new(value))),
+    Ok(value) => {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
+        lsp_log!("  Resolved lock file: \"{}\"", specifier);
+      }
+      Some(Arc::new(Mutex::new(value)))
+    }
     Err(err) => {
       lsp_warn!("Error loading lockfile: {:#}", err);
       None
