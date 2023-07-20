@@ -8,7 +8,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
-use deno_runtime::deno_node::analyze::CjsAnalysisError;
 use deno_runtime::deno_node::analyze::CjsCodeAnalyzer;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
 
@@ -89,15 +88,12 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<&str>,
-  ) -> Result<ExtNodeCjsAnalysis, CjsAnalysisError> {
+  ) -> Result<ExtNodeCjsAnalysis, AnyError> {
     let source = match source {
       Some(source) => Cow::Borrowed(source),
-      None => Cow::Owned(
-        self
-          .fs
-          .read_to_string(&specifier.to_file_path().unwrap())
-          .map_err(|err| CjsAnalysisError::ModuleNotFound(err.into()))?,
-      ),
+      None => {
+        Cow::Owned(self.fs.read_to_string(&specifier.to_file_path().unwrap())?)
+      }
     };
     let analysis = self.inner_cjs_analysis(specifier, &source)?;
     Ok(ExtNodeCjsAnalysis {

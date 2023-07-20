@@ -5,11 +5,11 @@ use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_core::anyhow::Context;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 
 use deno_core::error::AnyError;
-use thiserror::Error;
 
 use crate::resolution::NodeResolverRc;
 use crate::NodeModuleKind;
@@ -25,14 +25,6 @@ pub struct CjsAnalysis {
   pub reexports: Vec<String>,
 }
 
-#[derive(Debug, Error)]
-pub enum CjsAnalysisError {
-  #[error(transparent)]
-  ModuleNotFound(AnyError),
-  #[error(transparent)]
-  Other(#[from] AnyError),
-}
-
 /// Code analyzer for CJS and ESM files.
 pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
@@ -46,7 +38,7 @@ pub trait CjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     maybe_source: Option<&str>,
-  ) -> Result<CjsAnalysis, CjsAnalysisError>;
+  ) -> Result<CjsAnalysis, AnyError>;
 }
 
 pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
@@ -129,19 +121,15 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       // Second, resolve its exports and re-exports
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-      let analysis = match self
+      let analysis = self
         .cjs_code_analyzer
         .analyze_cjs(&reexport_specifier, None)
-      {
-        Ok(analysis) => analysis,
-        Err(CjsAnalysisError::ModuleNotFound(err)) => {
-          return Err(err.context(format!(
-            "Could not find '{}' ({}) referenced from {}",
+        .with_context(|| {
+          format!(
+            "Could not load '{}' ({}) referenced from {}",
             reexport, reexport_specifier, referrer
-          )));
-        }
-        Err(CjsAnalysisError::Other(err)) => return Err(err),
-      };
+          )
+        })?;
 
       for reexport in analysis.reexports {
         reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
