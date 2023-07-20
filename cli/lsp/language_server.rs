@@ -1638,24 +1638,33 @@ impl Inner {
       return Ok(None);
     }
 
-    let format_result = match document.maybe_parsed_source() {
-      Some(Ok(parsed_source)) => {
-        format_parsed_source(&parsed_source, &self.fmt_options.options)
+    // spawn a blocking task to allow doing other work while this is occurring
+    let format_result = deno_core::task::spawn_blocking({
+      let fmt_options = self.fmt_options.options.clone();
+      let document = document.clone();
+      move || {
+        match document.maybe_parsed_source() {
+          Some(Ok(parsed_source)) => {
+            format_parsed_source(&parsed_source, &fmt_options)
+          }
+          Some(Err(err)) => Err(anyhow!("{}", err)),
+          None => {
+            // the file path is only used to determine what formatter should
+            // be used to format the file, so give the filepath an extension
+            // that matches what the user selected as the language
+            let file_path = document
+              .maybe_language_id()
+              .and_then(|id| id.as_extension())
+              .map(|ext| file_path.with_extension(ext))
+              .unwrap_or(file_path);
+            // it's not a js/ts file, so attempt to format its contents
+            format_file(&file_path, &document.content(), &fmt_options)
+          }
+        }
       }
-      Some(Err(err)) => Err(anyhow!("{}", err)),
-      None => {
-        // the file path is only used to determine what formatter should
-        // be used to format the file, so give the filepath an extension
-        // that matches what the user selected as the language
-        let file_path = document
-          .maybe_language_id()
-          .and_then(|id| id.as_extension())
-          .map(|ext| file_path.with_extension(ext))
-          .unwrap_or(file_path);
-        // it's not a js/ts file, so attempt to format its contents
-        format_file(&file_path, &document.content(), &self.fmt_options.options)
-      }
-    };
+    })
+    .await
+    .unwrap();
 
     let text_edits = match format_result {
       Ok(Some(new_text)) => Some(text::get_edits(
