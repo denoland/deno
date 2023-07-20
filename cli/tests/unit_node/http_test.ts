@@ -638,6 +638,7 @@ Deno.test("[node/http] HTTPS server", async () => {
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
   }, (req, res) => {
+    // @ts-ignore: It exists on TLSSocket
     assert(req.socket.encrypted);
     res.end("success!");
   });
@@ -666,6 +667,7 @@ Deno.test(
   async () => {
     const promise = deferred();
     const server = http.createServer((req, res) => {
+      // @ts-ignore: It exists on TLSSocket
       assert(!req.socket.encrypted);
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
