@@ -1316,6 +1316,7 @@ dependencies = [
  "sha2",
  "sha3",
  "signature 1.6.4",
+ "thiserror",
  "tokio",
  "typenum",
  "x25519-dalek",

@@ -59,6 +59,7 @@ sha-1 = "0.10.0"
 sha2.workspace = true
 sha3 = "0.10.5"
 signature.workspace = true
+thiserror.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
 # https://github.com/dalek-cryptography/x25519-dalek/pull/89

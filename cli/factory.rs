@@ -475,7 +475,8 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(node_analysis_cache);
+        let cjs_esm_analyzer =
+          CliCjsCodeAnalyzer::new(node_analysis_cache, self.fs().clone());
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
