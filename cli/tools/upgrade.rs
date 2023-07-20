@@ -273,13 +273,8 @@ pub async fn upgrade(
   let output_exe_path =
     upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
 
-  // get permissions of current exe to be used as default when output exe
-  // does not exist
-  let mut permissions = fs::metadata(&current_exe_path)?.permissions();
-
-  if let Ok(metadata) = fs::metadata(output_exe_path) {
-    // update permissions variable
-    permissions = metadata.permissions();
+  let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
+    let permissions = metadata.permissions();
     if permissions.readonly() {
       bail!(
         "You do not have write permission to {}",
@@ -296,7 +291,10 @@ pub async fn upgrade(
         "Otherwise run `deno upgrade` as root.",
       ), output_exe_path.display());
     }
-  }
+    permissions
+  } else {
+    fs::metadata(&current_exe_path)?.permissions()
+  };
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
