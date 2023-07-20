@@ -21,6 +21,7 @@ use deno_core::task::spawn;
 use deno_core::task::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
+use rand::Rng;
 use rusqlite::params;
 use rusqlite::OpenFlags;
 use rusqlite::OptionalExtension;
@@ -45,7 +46,7 @@ use crate::SnapshotReadOptions;
 use crate::Value;
 
 const STATEMENT_INC_AND_GET_DATA_VERSION: &str =
-  "update data_version set version = version + 1 where k = 0 returning version";
+  "update data_version set version = version + ? where k = 0 returning version";
 const STATEMENT_KV_RANGE_SCAN: &str =
   "select k, v, v_encoding, version from kv where k >= ? and k < ? order by k asc limit ?";
 const STATEMENT_KV_RANGE_SCAN_REVERSE: &str =
@@ -550,7 +551,7 @@ impl SqliteQueue {
 
       let version: i64 = tx
         .prepare_cached(STATEMENT_INC_AND_GET_DATA_VERSION)?
-        .query_row([], |row| row.get(0))?;
+        .query_row([rand::thread_rng().gen_range(1..=10)], |row| row.get(0))?;
 
       for key in keys_if_undelivered {
         let changed = tx
@@ -637,7 +638,7 @@ impl Database for SqliteDb {
 
         let version: i64 = tx
           .prepare_cached(STATEMENT_INC_AND_GET_DATA_VERSION)?
-          .query_row([], |row| row.get(0))?;
+          .query_row([rand::thread_rng().gen_range(1..=10)], |row| row.get(0))?;
 
         for mutation in write.mutations {
           match mutation.kind {
