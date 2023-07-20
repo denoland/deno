@@ -2,11 +2,7 @@
 
 [package]
 name = "deno_ffi"
-<<<<<<< HEAD
-version = "0.98.0"
-=======
 version = "0.99.0"
->>>>>>> 60fe8aa53 (1.35.2 (#19885))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true

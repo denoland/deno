@@ -6,8 +6,6 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
-<<<<<<< HEAD
-=======
 ### 1.35.2 / 2023.07.20
 
 - fix(bench): run warmup benchmark to break JIT bias (#19844)
@@ -29,7 +27,6 @@ https://github.com/denoland/deno_install
 - fix(vendor): do not panic vendoring with jsxImportSource and no jsx files
   (#19837)
 
->>>>>>> 60fe8aa53 (1.35.2 (#19885))
 ### 1.35.1 / 2023.07.12
 
 - fix(ext/http): Use brotli compression params (#19758)
