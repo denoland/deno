@@ -541,6 +541,36 @@ fn lsp_import_map_config_file_auto_discovered() {
   );
   assert_eq!(client.read_diagnostics().all().len(), 0);
 
+  // remove the current deno.json
+  temp_dir.remove_file("deno.jsonc");
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "type": 2
+    }]
+  }));
+  assert_eq!(client.read_diagnostics().all().len(), 1);
+
+  // now create a symlink in the current directory to a subdir/deno.json
+  // and ensure the watched files notification still works
+  temp_dir.create_dir_all("subdir");
+  temp_dir.write("subdir/deno.json", r#"{ "imports": { "/~/": "./lib/" } }"#);
+  temp_dir.symlink_file(
+    temp_dir.path().join("subdir").join("deno.json"),
+    temp_dir.path().join("deno.json"),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{
+      // the client will give a watched file changed event for the symlink's target
+      "uri": temp_dir.uri().join("subdir/deno.json").unwrap(),
+      "type": 2
+    }]
+  }));
+  client.wait_until_stderr_line(|line| {
+    line.contains("Auto-resolved configuration file:")
+  });
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
   client.shutdown();
 }
 
