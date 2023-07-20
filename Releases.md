@@ -8,10 +8,10 @@ https://github.com/denoland/deno_install
 
 ### 1.35.2 / 2023.07.20
 
-- feat(ext/node): properly segregate node globals (#19307)
 - fix(bench): run warmup benchmark to break JIT bias (#19844)
 - fix(ext/node): check if resource can be used with write_vectored (#19868)
 - fix(ext/node): fix stream/promises export (#19820)
+- fix(ext/node): properly segregate node globals (#19307)
 - fix(napi): update env_test.js (#19876)
 - fix(node): add process.dlopen API (#19860)
 - fix(node): improve error message requiring non-npm es module (#19856)
