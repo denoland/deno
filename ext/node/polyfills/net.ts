@@ -2374,6 +2374,8 @@ export class Server extends EventEmitter {
     socket._server = this;
 
     DTRACE_NET_SERVER_CONNECTION(socket);
+
+    return socket;
   }
 
   _listen2 = _setupListenHandle;

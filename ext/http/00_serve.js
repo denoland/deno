@@ -633,6 +633,17 @@ function serve(arg1, arg2) {
     reusePort: options.reusePort ?? false,
   };
 
+  if (options.certFile || options.keyFile) {
+    throw new TypeError(
+      "Unsupported 'certFile' / 'keyFile' options provided: use 'cert' / 'key' instead.",
+    );
+  }
+  if (options.alpnProtocols) {
+    throw new TypeError(
+      "Unsupported 'alpnProtocols' option provided. 'h2' and 'http/1.1' are automatically supported.",
+    );
+  }
+
   let listener;
   if (wantsHttps) {
     if (!options.cert || !options.key) {
