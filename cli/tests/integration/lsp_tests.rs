@@ -562,7 +562,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.did_change_watched_files(json!({
     "changes": [{
       // the client will give a watched file changed event for the symlink's target
-      "uri": temp_dir.uri().join("subdir/deno.json").unwrap(),
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri(),
       "type": 2
     }]
   }));
