@@ -19,7 +19,6 @@ use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
-use crate::new_deno_dir;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -36,6 +35,7 @@ pub struct TestContextBuilder {
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
+  temp_dir_path: Option<PathBuf>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
   deno_exe: Option<PathRef>,
@@ -48,6 +48,11 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
+    self.temp_dir_path = Some(path.as_ref().to_path_buf());
+    self
   }
 
   pub fn use_http_server(mut self) -> Self {
@@ -117,9 +122,13 @@ impl TestContextBuilder {
   }
 
   pub fn build(&self) -> TestContext {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
+    let temp_dir_path = self
+      .temp_dir_path
+      .clone()
+      .unwrap_or_else(std::env::temp_dir);
+    let deno_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_separate_deno_dir {
-      TempDir::new()
+      TempDir::new_in(&temp_dir_path)
     } else {
       deno_dir.clone()
     };
