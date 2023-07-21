@@ -321,7 +321,7 @@ where
       io::ErrorKind::InvalidInput,
       "Source and destination cannot be the same",
     )))
-    .context("copyfilesync")
+    .context("copyfilesync");
   }
 
   let from = PathBuf::from(from);
@@ -352,7 +352,7 @@ where
       io::ErrorKind::InvalidInput,
       "Source and destination cannot be the same",
     )))
-    .context("copyfileasync")
+    .context("copyfileasync");
   }
 
   let from = PathBuf::from(from);
