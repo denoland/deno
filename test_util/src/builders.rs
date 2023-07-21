@@ -122,10 +122,10 @@ impl TestContextBuilder {
   }
 
   pub fn build(&self) -> TestContext {
-    let temp_dir_path = match &self.temp_dir_path {
-      Some(temp_dir) => temp_dir.clone(),
-      None => std::env::temp_dir(),
-    };
+    let temp_dir_path = self
+      .temp_dir_path
+      .clone()
+      .unwrap_or_else(std::env::temp_dir);
     let deno_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_separate_deno_dir {
       TempDir::new_in(&temp_dir_path)

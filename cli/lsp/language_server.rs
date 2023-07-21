@@ -1474,10 +1474,19 @@ impl Inner {
 
     fn has_config_changed(config: &Config, changes: &HashSet<Url>) -> bool {
       // Check the canonicalized specifier here because file watcher
-      // changes will be for the canonicalized path.
-      match config.maybe_config_file_canonicalized_specifier() {
-        Some(specifier) => {
-          if changes.contains(specifier) {
+      // changes will be for the canonicalized path in vscode, but also check the
+      // non-canonicalized specifier in order to please the tests and handle
+      // a client that might send that instead.
+      if config
+        .maybe_config_file_canonicalized_specifier()
+        .map(|s| changes.contains(s))
+        .unwrap_or(false)
+      {
+        return true;
+      }
+      match config.maybe_config_file() {
+        Some(file) => {
+          if changes.contains(&file.specifier) {
             return true;
           }
         }
@@ -1493,18 +1502,20 @@ impl Inner {
       }
 
       // if the lockfile has changed, reload the config as well
-      match (
-        config.maybe_lockfile(),
-        config.maybe_lockfile_canonicalized_specifier(),
-      ) {
-        (Some(lockfile), Some(specifier)) => {
-          changes.contains(specifier)
-            && has_lockfile_content_changed(&lockfile.lock())
-        }
-        _ => {
-          // check for auto-discovery
-          changes.iter().any(|url| url.path().ends_with("/deno.lock"))
-        }
+      if let Some(lockfile) = config.maybe_lockfile() {
+        let lockfile_matches = config
+          .maybe_lockfile_canonicalized_specifier()
+          .map(|s| changes.contains(s))
+          .or_else(|| {
+            ModuleSpecifier::from_file_path(&lockfile.lock().filename)
+              .ok()
+              .map(|s| changes.contains(&s))
+          })
+          .unwrap_or(false);
+        lockfile_matches && has_lockfile_content_changed(&lockfile.lock())
+      } else {
+        // check for auto-discovery
+        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
       }
     }
 
