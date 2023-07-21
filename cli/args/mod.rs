@@ -863,6 +863,13 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
+  pub fn remote_modules_dir_path(&self) -> Option<PathBuf> {
+    self
+      .maybe_config_file
+      .as_ref()
+      .and_then(|c| c.remote_modules_dir_path())
+  }
+
   pub fn resolve_root_cert_store_provider(
     &self,
   ) -> Arc<dyn RootCertStoreProvider> {

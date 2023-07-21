@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::HttpCache;
+use crate::cache::HttpCachePaths;
 use crate::util::path::specifier_to_file_path;
 
 use deno_core::parking_lot::Mutex;
@@ -8,7 +9,6 @@ use deno_core::ModuleSpecifier;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -130,8 +130,8 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_location(&mut self, location: PathBuf) {
-    self.cache = HttpCache::new(location);
+  pub fn set_cache(&mut self, cache: HttpCache) {
+    self.cache = cache;
     self.metadata.lock().clear();
   }
 }

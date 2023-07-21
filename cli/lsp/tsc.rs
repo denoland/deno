@@ -3923,7 +3923,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let cache = HttpCache::new(location.to_path_buf());
+    let cache = HttpCache::new_global(location.to_path_buf());
     let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -3952,7 +3952,7 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
-    let cache = HttpCache::new(location.clone());
+    let cache = HttpCache::new_global(location.clone());
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default(), cache);
     start(&mut runtime, debug).unwrap();
@@ -4432,7 +4432,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(location);
+    let cache = HttpCache::new_global(location);
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache

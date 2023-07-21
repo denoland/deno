@@ -673,6 +673,7 @@ pub struct ConfigFileJson {
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
+  pub remote_modules_dir: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -856,6 +857,26 @@ impl ConfigFile {
 
   pub fn node_modules_dir(&self) -> Option<bool> {
     self.json.node_modules_dir
+  }
+
+  pub fn remote_modules_dir(&self) -> Option<bool> {
+    self.json.remote_modules_dir
+  }
+
+  pub fn remote_modules_dir_path(&self) -> Option<PathBuf> {
+    if self.json.remote_modules_dir == Some(true) {
+      Some(
+        self
+          .specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap()
+          .join("remote_modules"),
+      )
+    } else {
+      None
+    }
   }
 
   pub fn to_import_map_value(&self) -> Value {

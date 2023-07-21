@@ -519,14 +519,14 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let cache = HttpCache::new(location.to_path_buf());
+    let cache = HttpCache::new_global(location.to_path_buf());
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new(location.to_path_buf());
+    let http_cache = HttpCache::new_global(location.to_path_buf());
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

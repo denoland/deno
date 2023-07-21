@@ -13,6 +13,7 @@ use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::HttpCache;
+use crate::cache::HttpCachePaths;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
@@ -245,7 +246,10 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       Ok(Arc::new(FileFetcher::new(
-        HttpCache::new(self.deno_dir()?.deps_folder_path()),
+        HttpCache::new(HttpCachePaths {
+          global: self.deno_dir()?.deps_folder_path(),
+          local: self.options.remote_modules_dir_path(),
+        }),
         self.options.cache_setting(),
         !self.options.no_remote(),
         self.http_client().clone(),

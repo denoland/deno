@@ -87,6 +87,7 @@ use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
+use crate::cache::HttpCachePaths;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -553,7 +554,7 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = HttpCache::new(location);
+    let deps_http_cache = HttpCache::new_global(location);
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -894,9 +895,16 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let location = dir.deps_folder_path();
-    self.documents.set_location(location.clone());
-    self.cache_metadata.set_location(location);
+    let cache_paths = HttpCachePaths {
+      global: dir.deps_folder_path(),
+      local: self
+        .config
+        .maybe_config_file()
+        .and_then(|c| c.remote_modules_dir_path()),
+    };
+    let cache = HttpCache::new(cache_paths);
+    self.documents.set_cache(cache.clone());
+    self.cache_metadata.set_cache(cache);
     self.maybe_cache_path = new_cache_path;
     Ok(())
   }
@@ -3029,6 +3037,26 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     let (client, client_uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.write().await;
+      if let Some(remote_modules_dir) = inner
+        .config
+        .maybe_config_file()
+        .and_then(|c| c.remote_modules_dir_path())
+      {
+        if params.text_document.uri.scheme() == "file" {
+          if let Ok(local_path) = params.text_document.uri.to_file_path() {
+            if local_path.starts_with(remote_modules_dir) {
+              let client = inner.client.clone();
+              let client_uri =
+                LspClientUrl::new(params.text_document.uri.clone());
+              let specifier = inner
+                .url_map
+                .normalize_url(client_uri.as_url(), LspUrlKind::File);
+              eprintln!("SPECIFIER: {}", specifier);
+              return;
+            }
+          }
+        }
+      }
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
       let specifier = inner

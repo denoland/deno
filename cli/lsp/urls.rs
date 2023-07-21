@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::DenoDir;
+use crate::cache::HttpCache;
+use crate::cache::HttpCachePaths;
 use crate::file_fetcher::map_content_type;
 
 use data_url::DataUrl;
@@ -156,6 +159,15 @@ impl LspUrlMap {
             extension
           )
         } else {
+          // let cache = HttpCache::new(HttpCachePaths {
+          //   global: DenoDir::new(None).unwrap().deps_folder_path(),
+          //   local: Some(std::path::PathBuf::from("V:\\scratch\\vendor")),
+          // });
+          // match cache.get(specifier) {
+          //   Some(path) => {
+          //     ModuleSpecifier::from_file_path(path).unwrap().to_string()
+          //   }
+          //   None => {
           let mut path =
             specifier[..Position::BeforePath].replacen("://", "/", 1);
           let parts: Vec<String> = specifier[Position::BeforePath..]
@@ -166,6 +178,8 @@ impl LspUrlMap {
             .collect();
           path.push_str(&parts.join("/"));
           format!("deno:/{path}")
+          //   }
+          // }
         };
         let url = LspClientUrl(Url::parse(&specifier_str)?);
         inner.put(specifier.clone(), url.clone());
@@ -184,6 +198,9 @@ impl LspUrlMap {
   /// so we need to force it to in the mapping and nee to explicitly state whether
   /// this is a file or directory url.
   pub fn normalize_url(&self, url: &Url, kind: LspUrlKind) -> ModuleSpecifier {
+    if url.as_str() == "file:///v%3A/scratch/vendor/https/deno.land/30e88672194dc4df86f0f323a48b75c6a8807a05c28f6af1bcfcda8679195afe" {
+      return ModuleSpecifier::parse("https://deno.land/x/code_block_writer@12.0.0/mod.ts").unwrap();
+    }
     let mut inner = self.0.lock();
     if let Some(specifier) = inner.get_specifier(url).cloned() {
       specifier
