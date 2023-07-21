@@ -641,16 +641,24 @@ impl LspClient {
       .stderr_lines_rx
       .as_ref()
       .expect("must setup with client_builder.capture_stderr()");
+    let mut found_lines = Vec::new();
     while Instant::now() < timeout_time {
       if let Ok(line) = lines_rx.try_recv() {
         if condition(&line) {
           return;
         }
+        found_lines.push(line);
       }
       std::thread::sleep(Duration::from_millis(20));
     }
 
-    panic!("Timed out.")
+    eprintln!("==== STDERR OUTPUT ====");
+    for line in found_lines {
+      eprintln!("{}", line)
+    }
+    eprintln!("== END STDERR OUTPUT ==");
+
+    panic!("Timed out waiting on condition.")
   }
 
   pub fn initialize_default(&mut self) {
