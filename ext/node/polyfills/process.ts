@@ -8,6 +8,7 @@ const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
+import Module from "node:module";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -291,6 +292,15 @@ function _kill(pid: number, sig: number): number {
   }
 }
 
+// TODO(bartlomieju): flags is currently not supported.
+export function dlopen(module, filename, flags) {
+  if (typeof flags !== "undefined") {
+    warnNotImplemented("process.dlopen doesn't support 'flags' argument");
+  }
+  Module._extensions[".node"](module, filename);
+  return module;
+}
+
 export function kill(pid: number, sig: string | number = "SIGTERM") {
   if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
@@ -402,6 +412,8 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
   nextTick = _nextTick;
+
+  dlopen = dlopen;
 
   /** https://nodejs.org/api/process.html#process_process_events */
   override on(event: "exit", listener: (code: number) => void): this;

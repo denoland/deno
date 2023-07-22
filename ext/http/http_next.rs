@@ -12,6 +12,7 @@ use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
+use crate::slab::slab_init;
 use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
@@ -836,6 +837,8 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let listener =
     HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
@@ -886,6 +889,8 @@ pub fn op_http_serve_on<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let connection =
     HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
@@ -1076,6 +1081,11 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op(fast)]
+pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+  state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
 #[op]
