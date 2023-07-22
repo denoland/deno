@@ -4156,6 +4156,32 @@ mod tests {
     let r = flags_from_vec(svec![
       "deno",
       "lint",
+      "--rules",
+      "--rules-tags=recommended"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          rules: true,
+          maybe_rules_tags: Some(svec!["recommended"]),
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: false,
+          watch: Default::default(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
       "--rules-tags=",
       "--rules-include=ban-untagged-todo,no-undef",
       "--rules-exclude=no-const-assign"
