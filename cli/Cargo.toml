@@ -51,7 +51,7 @@ deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.12.0"
-eszip = "=0.45.0"
+eszip = "=0.47.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
