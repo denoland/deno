@@ -242,10 +242,11 @@ fn get_maybe_hash(
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
-  let mut hasher = FastInsecureHasher::new();
-  hasher.write_str(source);
-  hasher.write_u64(hash_data);
-  hasher.finish().to_string()
+  FastInsecureHasher::new()
+    .write_str(source)
+    .write_u64(hash_data)
+    .finish()
+    .to_string()
 }
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way

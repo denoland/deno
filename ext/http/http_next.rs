@@ -12,6 +12,7 @@ use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
+use crate::slab::slab_init;
 use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
@@ -32,6 +33,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -835,6 +837,8 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let listener =
     HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
@@ -885,6 +889,8 @@ pub fn op_http_serve_on<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let connection =
     HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
@@ -1034,6 +1040,34 @@ impl UpgradeStream {
     .try_or_cancel(cancel_handle)
     .await
   }
+
+  async fn write_vectored(
+    self: Rc<Self>,
+    buf1: &[u8],
+    buf2: &[u8],
+  ) -> Result<usize, AnyError> {
+    let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
+
+    let total = buf1.len() + buf2.len();
+    let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+    let mut nwritten = wr.write_vectored(&bufs).await?;
+    if nwritten == total {
+      return Ok(nwritten);
+    }
+
+    // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
+    while nwritten <= buf1.len() {
+      bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
+      nwritten += wr.write_vectored(&bufs).await?;
+    }
+
+    // First buffer out of the way.
+    if nwritten < total && nwritten > buf1.len() {
+      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+    }
+
+    Ok(total)
+  }
 }
 
 impl Resource for UpgradeStream {
@@ -1047,4 +1081,22 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op(fast)]
+pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+  state.resource_table.get::<UpgradeStream>(rid).is_ok()
+}
+
+#[op]
+pub async fn op_raw_write_vectored(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf1: JsBuffer,
+  buf2: JsBuffer,
+) -> Result<usize, AnyError> {
+  let resource: Rc<UpgradeStream> =
+    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
+  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
+  Ok(nwritten)
 }
