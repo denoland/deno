@@ -198,9 +198,15 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       let types = tsc::get_types_declaration_file_text(flags.unstable);
       display::write_to_stdout_ignore_sigpipe(types.as_bytes())
     }),
+    #[cfg(feature = "upgrade")]
     DenoSubcommand::Upgrade(upgrade_flags) => spawn_subcommand(async {
       tools::upgrade::upgrade(flags, upgrade_flags).await
     }),
+    #[cfg(not(feature = "upgrade"))]
+    DenoSubcommand::Upgrade(_) => exit_with_message(
+      "This deno was built without the \"upgrade\" feature. Please upgrade using the installation method originally used to install Deno.",
+      1,
+    ),
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
     }),
@@ -233,6 +239,15 @@ fn setup_panic_hook() {
   }));
 }
 
+fn exit_with_message(message: &str, code: i32) -> ! {
+  eprintln!(
+    "{}: {}",
+    colors::red_bold("error"),
+    message.trim_start_matches("error: ")
+  );
+  std::process::exit(code);
+}
+
 fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
   match result {
     Ok(value) => value,
@@ -247,12 +262,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
         error_code = 10;
       }
 
-      eprintln!(
-        "{}: {}",
-        colors::red_bold("error"),
-        error_string.trim_start_matches("error: ")
-      );
-      std::process::exit(error_code);
+      exit_with_message(&error_string, error_code);
     }
   }
 }
