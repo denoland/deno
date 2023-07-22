@@ -122,7 +122,7 @@ pub async fn snapshot_from_lockfile(
   while let Some(result) = version_infos.next().await {
     match result {
       Ok(version_info) => {
-        let mut package = &mut packages[i];
+        let package = &mut packages[i];
         package.dist = version_info.dist;
         package.system = NpmResolutionPackageSystemInfo {
           cpu: version_info.cpu,

@@ -885,3 +885,19 @@ Deno.test(
     );
   },
 );
+
+Deno.test(
+  "process that fails to spawn, prints its name in error",
+  async () => {
+    assertThrows(
+      () => new Deno.Command("doesntexist").outputSync(),
+      Error,
+      "Failed to spawn: doesntexist",
+    );
+    await assertRejects(
+      async () => await new Deno.Command("doesntexist").output(),
+      Error,
+      "Failed to spawn: doesntexist",
+    );
+  },
+);

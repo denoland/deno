@@ -105,6 +105,18 @@ itest!(check_broadcast_channel_unstable {
   exit_code: 0,
 });
 
+itest!(check_deno_not_found {
+  args: "check --quiet check/deno_not_found/main.ts",
+  output: "check/deno_not_found/main.out",
+  exit_code: 1,
+});
+
+itest!(check_deno_unstable_not_found {
+  args: "check --quiet check/deno_unstable_not_found/main.ts",
+  output: "check/deno_unstable_not_found/main.out",
+  exit_code: 1,
+});
+
 #[test]
 fn cache_switching_config_then_no_config() {
   let context = TestContext::default();

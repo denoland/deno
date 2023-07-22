@@ -15,14 +15,6 @@ extern "C" fn get_node_global(
   let mut result: napi_value = std::ptr::null_mut();
   assert_napi_ok!(napi_get_global(env, &mut result));
 
-  let mut r1: napi_value = std::ptr::null_mut();
-  assert_napi_ok!(napi_get_named_property(
-    env,
-    result,
-    "Buffer\0".as_ptr() as _,
-    &mut r1
-  ));
-
   result
 }
 

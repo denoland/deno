@@ -1,11 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import * as net from "node:net";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+} from "../../../test_util/std/testing/asserts.ts";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 import * as http from "node:http";
-import { assert } from "../../../test_util/std/testing/asserts.ts";
 
 Deno.test("[node/net] close event emits after error event", async () => {
   const socket = net.createConnection(27009, "doesnotexist");
@@ -95,4 +97,36 @@ Deno.test({
       assert(e instanceof Deno.errors.PermissionDenied);
     }
   },
+});
+
+Deno.test("[node/net] connection event has socket value", async () => {
+  const p = deferred();
+  const p2 = deferred();
+
+  const server = net.createServer();
+  server.on("error", p.reject);
+  server.on("connection", (socket) => {
+    assert(socket !== undefined);
+    socket.end();
+    server.close(() => {
+      p.resolve();
+    });
+  });
+  server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+
+    const conn = await Deno.connect({
+      port,
+      transport: "tcp",
+    });
+
+    for await (const _ of conn.readable) {
+      //
+    }
+
+    p2.resolve();
+  });
+
+  await Promise.all([p, p2]);
 });
