@@ -32,7 +32,7 @@ pub struct HttpSlabRecord {
 }
 
 thread_local! {
-  static SLAB: RefCell<Slab<HttpSlabRecord>> = RefCell::new(Slab::with_capacity(1024));
+  static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
 }
 
 macro_rules! http_trace {
@@ -55,6 +55,18 @@ pub struct SlabEntry(
   SlabId,
   RefMut<'static, Slab<HttpSlabRecord>>,
 );
+
+const SLAB_CAPACITY: usize = 1024;
+
+pub fn slab_init() {
+  SLAB.with(|slab: &RefCell<Slab<HttpSlabRecord>>| {
+    // Note that there might already be an active HTTP server, so this may just
+    // end up adding room for an additional SLAB_CAPACITY items. All HTTP servers
+    // on a single thread share the same slab.
+    let mut slab = slab.borrow_mut();
+    slab.reserve(SLAB_CAPACITY);
+  })
+}
 
 pub fn slab_get(index: SlabId) -> SlabEntry {
   http_trace!(index, "slab_get");
