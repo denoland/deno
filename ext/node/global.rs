@@ -99,7 +99,7 @@ struct GlobalsStorage {
 }
 
 impl GlobalsStorage {
-  fn inner_for_mode<'s>(&self, mode: Mode) -> v8::Global<v8::Object> {
+  fn inner_for_mode(&self, mode: Mode) -> v8::Global<v8::Object> {
     match mode {
       Mode::Deno => &self.deno_globals,
       Mode::Node => &self.node_globals,
