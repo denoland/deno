@@ -70,7 +70,7 @@ function listenTls({
     throw new TypeError(`Unsupported transport: '${transport}'`);
   }
   const { 0: rid, 1: localAddr } = ops.op_net_listen_tls(
-    { hostname, port },
+    { hostname, port: Number(port) },
     { cert, certFile, key, keyFile, alpnProtocols, reusePort },
   );
   return new TlsListener(rid, localAddr);
