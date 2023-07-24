@@ -108,3 +108,9 @@ itest!(worker_error_event {
   output: "workers/error_event.ts.out",
   exit_code: 1,
 });
+
+itest!(worker_plus_top_level_await {
+  args: "run --quiet -A workers/worker_plus_top_level_await.ts",
+  output: "workers/worker_plus_top_level_await.ts.out",
+  exit_code: 0,
+});
