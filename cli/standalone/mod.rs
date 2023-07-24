@@ -30,6 +30,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -85,9 +86,20 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    let referrer = ModuleSpecifier::parse(referrer).map_err(|err| {
-      type_error(format!("Referrer uses invalid specifier: {}", err))
-    })?;
+    let referrer = if referrer == "." {
+      if kind != ResolutionKind::MainModule {
+        return Err(generic_error(format!(
+          "Expected to resolve main module, got {:?} instead.",
+          kind
+        )));
+      }
+      let current_dir = std::env::current_dir().unwrap();
+      deno_core::resolve_path(".", &current_dir)?
+    } else {
+      ModuleSpecifier::parse(referrer).map_err(|err| {
+        type_error(format!("Referrer uses invalid specifier: {}", err))
+      })?
+    };
 
     let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
       &self.dynamic_permissions
