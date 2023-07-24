@@ -324,6 +324,10 @@ impl TempDir {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
   }
 
+  pub fn new_in(parent_dir: &Path) -> Self {
+    Self::new_inner(parent_dir, None)
+  }
+
   pub fn new_with_path(path: &Path) -> Self {
     Self(Arc::new(TempDirInner::Path(PathRef(path.to_path_buf()))))
   }

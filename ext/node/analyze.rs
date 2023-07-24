@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::fmt::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,21 +18,6 @@ use crate::NodeResolutionMode;
 use crate::NpmResolverRc;
 use crate::PackageJson;
 use crate::PathClean;
-use crate::NODE_GLOBAL_THIS_NAME;
-
-static NODE_GLOBALS: &[&str] = &[
-  "Buffer",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
-  "console",
-  "global",
-  "process",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
-  "performance",
-];
 
 #[derive(Debug, Clone)]
 pub struct CjsAnalysis {
@@ -42,7 +26,7 @@ pub struct CjsAnalysis {
 }
 
 /// Code analyzer for CJS and ESM files.
-pub trait CjsEsmCodeAnalyzer {
+pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
   /// then used to determine the wrapper ESM module exports.
   fn analyze_cjs(
@@ -50,56 +34,28 @@ pub trait CjsEsmCodeAnalyzer {
     specifier: &ModuleSpecifier,
     source: &str,
   ) -> Result<CjsAnalysis, AnyError>;
-
-  /// Analyzes ESM code for top level declarations. This is used
-  /// to help inform injecting node specific globals into Node ESM
-  /// code. For example, if a top level `setTimeout` function exists
-  /// then we don't want to inject a `setTimeout` declaration.
-  ///
-  /// Note: This will go away in the future once we do this all in v8.
-  fn analyze_esm_top_level_decls(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: &str,
-  ) -> Result<HashSet<String>, AnyError>;
 }
 
-pub struct NodeCodeTranslator<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer> {
-  cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+pub struct NodeCodeTranslator<TCjsCodeAnalyzer: CjsCodeAnalyzer> {
+  cjs_code_analyzer: TCjsCodeAnalyzer,
   fs: deno_fs::FileSystemRc,
   node_resolver: NodeResolverRc,
   npm_resolver: NpmResolverRc,
 }
 
-impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
-  NodeCodeTranslator<TCjsEsmCodeAnalyzer>
-{
+impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn new(
-    cjs_esm_code_analyzer: TCjsEsmCodeAnalyzer,
+    cjs_code_analyzer: TCjsCodeAnalyzer,
     fs: deno_fs::FileSystemRc,
     node_resolver: NodeResolverRc,
     npm_resolver: NpmResolverRc,
   ) -> Self {
     Self {
-      cjs_esm_code_analyzer,
+      cjs_code_analyzer,
       fs,
       node_resolver,
       npm_resolver,
     }
-  }
-
-  /// Resolves the code to be used when executing Node specific ESM code.
-  ///
-  /// Note: This will go away in the future once we do this all in v8.
-  pub fn esm_code_with_node_globals(
-    &self,
-    specifier: &ModuleSpecifier,
-    source: &str,
-  ) -> Result<String, AnyError> {
-    let top_level_decls = self
-      .cjs_esm_code_analyzer
-      .analyze_esm_top_level_decls(specifier, source)?;
-    Ok(esm_code_from_top_level_decls(source, &top_level_decls))
   }
 
   /// Translates given CJS module into ESM. This function will perform static
@@ -117,7 +73,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
 
-    let analysis = self.cjs_esm_code_analyzer.analyze_cjs(specifier, source)?;
+    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";
@@ -169,7 +125,7 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
         })?;
       {
         let analysis = self
-          .cjs_esm_code_analyzer
+          .cjs_code_analyzer
           .analyze_cjs(&reexport_specifier, &reexport_file_text)?;
 
         for reexport in analysis.reexports {
@@ -326,42 +282,6 @@ impl<TCjsEsmCodeAnalyzer: CjsEsmCodeAnalyzer>
     }
     Err(not_found(&p.to_string_lossy(), referrer))
   }
-}
-
-fn esm_code_from_top_level_decls(
-  file_text: &str,
-  top_level_decls: &HashSet<String>,
-) -> String {
-  let mut globals = Vec::with_capacity(NODE_GLOBALS.len());
-  let has_global_this = top_level_decls.contains("globalThis");
-  for global in NODE_GLOBALS.iter() {
-    if !top_level_decls.contains(&global.to_string()) {
-      globals.push(*global);
-    }
-  }
-
-  let mut result = String::new();
-  let global_this_expr = NODE_GLOBAL_THIS_NAME;
-  let global_this_expr = if has_global_this {
-    global_this_expr
-  } else {
-    write!(result, "var globalThis = {global_this_expr};").unwrap();
-    "globalThis"
-  };
-  for global in globals {
-    write!(result, "var {global} = {global_this_expr}.{global};").unwrap();
-  }
-
-  // strip the shebang
-  let file_text = if file_text.starts_with("#!/") {
-    let start_index = file_text.find('\n').unwrap_or(file_text.len());
-    &file_text[start_index..]
-  } else {
-    file_text
-  };
-  result.push_str(file_text);
-
-  result
 }
 
 static RESERVED_WORDS: Lazy<HashSet<&str>> = Lazy::new(|| {
@@ -525,43 +445,6 @@ fn escape_for_double_quote_string(text: &str) -> String {
 #[cfg(test)]
 mod tests {
   use super::*;
-
-  #[test]
-  fn test_esm_code_with_node_globals() {
-    let r = esm_code_from_top_level_decls(
-      "export const x = 1;",
-      &HashSet::from(["x".to_string()]),
-    );
-    assert!(
-      r.contains(&format!("var globalThis = {};", NODE_GLOBAL_THIS_NAME,))
-    );
-    assert!(r.contains("var process = globalThis.process;"));
-    assert!(r.contains("export const x = 1;"));
-  }
-
-  #[test]
-  fn test_esm_code_with_node_globals_with_shebang() {
-    let r = esm_code_from_top_level_decls(
-      "#!/usr/bin/env node\nexport const x = 1;",
-      &HashSet::from(["x".to_string()]),
-    );
-    assert_eq!(
-      r,
-      format!(
-        concat!(
-          "var globalThis = {}",
-          ";var Buffer = globalThis.Buffer;",
-          "var clearImmediate = globalThis.clearImmediate;var clearInterval = globalThis.clearInterval;",
-          "var clearTimeout = globalThis.clearTimeout;var console = globalThis.console;",
-          "var global = globalThis.global;var process = globalThis.process;",
-          "var setImmediate = globalThis.setImmediate;var setInterval = globalThis.setInterval;",
-          "var setTimeout = globalThis.setTimeout;var performance = globalThis.performance;\n",
-          "export const x = 1;"
-        ),
-        NODE_GLOBAL_THIS_NAME,
-      )
-    );
-  }
 
   #[test]
   fn test_add_export() {

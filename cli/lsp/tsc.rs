@@ -22,6 +22,9 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::cache::HttpCache;
+use crate::lsp::cache::CacheMetadata;
+use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -96,10 +99,10 @@ type Request = (
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>) -> Self {
+  pub fn new(performance: Arc<Performance>, cache: HttpCache) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance);
+      let mut ts_runtime = js_runtime(performance, cache);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -3242,9 +3245,9 @@ fn op_script_version(
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+fn js_runtime(performance: Arc<Performance>, cache: HttpCache) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance)],
+    extensions: vec![deno_tsc::init_ops(performance, cache)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -3261,11 +3264,19 @@ deno_core::extension!(deno_tsc,
     op_script_version,
   ],
   options = {
-    performance: Arc<Performance>
+    performance: Arc<Performance>,
+    cache: HttpCache,
   },
   state = |state, options| {
     state.put(State::new(
-      Arc::new(StateSnapshot::default()),
+      Arc::new(StateSnapshot {
+        assets: Default::default(),
+        cache_metadata: CacheMetadata::new(options.cache.clone()),
+        documents: Documents::new(options.cache.clone()),
+        maybe_import_map: None,
+        maybe_node_resolver: None,
+        maybe_npm_resolver: None,
+      }),
       options.performance,
     ));
   },
@@ -3897,6 +3908,7 @@ mod tests {
   use super::*;
   use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
+  use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -3911,7 +3923,8 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location.to_path_buf());
+    let cache = HttpCache::new(location.to_path_buf());
+    let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3924,7 +3937,11 @@ mod tests {
     }
     StateSnapshot {
       documents,
-      ..Default::default()
+      assets: Default::default(),
+      cache_metadata: CacheMetadata::new(cache),
+      maybe_import_map: None,
+      maybe_node_resolver: None,
+      maybe_npm_resolver: None,
     }
   }
 
@@ -3935,8 +3952,9 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
+    let cache = HttpCache::new(location.clone());
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime(Default::default());
+    let mut runtime = js_runtime(Default::default(), cache);
     start(&mut runtime, debug).unwrap();
     let ts_config = TsConfig::new(config);
     assert_eq!(

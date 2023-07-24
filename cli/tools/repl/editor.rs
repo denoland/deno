@@ -530,8 +530,7 @@ impl ConditionalEventHandler for TabEventHandler {
     if ctx.line().is_empty()
       || ctx.line()[..ctx.pos()]
         .chars()
-        .rev()
-        .next()
+        .next_back()
         .filter(|c| c.is_whitespace())
         .is_some()
     {
