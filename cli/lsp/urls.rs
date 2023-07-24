@@ -1,8 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::cache::DenoDir;
-use crate::cache::HttpCache;
-use crate::cache::HttpCachePaths;
 use crate::file_fetcher::map_content_type;
 
 use data_url::DataUrl;
@@ -123,8 +120,8 @@ pub enum LspUrlKind {
 /// A bi-directional map of URLs sent to the LSP client and internal module
 /// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
-#[derive(Debug, Default, Clone)]
-pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
+#[derive(Debug, Default)]
+pub struct LspUrlMap(Mutex<LspUrlMapInner>);
 
 impl LspUrlMap {
   /// Normalize a specifier that is used internally within Deno (or tsc) to a

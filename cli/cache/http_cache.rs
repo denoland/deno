@@ -14,7 +14,9 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use indexmap::IndexMap;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -30,16 +32,30 @@ use super::CACHE_PERM;
 /// ":" cannot be used in filename on some platforms).
 /// Ex: $DENO_DIR/deps/https/deno.land/
 fn base_url_to_filename(url: &Url) -> Option<PathBuf> {
-  let mut out = PathBuf::new();
+  base_url_to_filename_parts(url, "_PORT").map(|parts| {
+    let mut out = PathBuf::new();
+    for part in parts {
+      out.push(part);
+    }
+    out
+  })
+}
+
+fn base_url_to_filename_parts(
+  url: &Url,
+  port_separator: &str,
+) -> Option<Vec<String>> {
+  let mut out = Vec::with_capacity(2);
 
   let scheme = url.scheme();
-  out.push(scheme);
+  out.push(scheme.to_string());
 
   match scheme {
     "http" | "https" => {
       let host = url.host_str().unwrap();
       let host_port = match url.port() {
-        Some(port) => format!("{host}_PORT{port}"),
+        // underscores are not allowed in domains, so adding one here is fine
+        Some(port) => format!("{host}{port_separator}{port}"),
         None => host.to_string(),
       };
       out.push(host_port);
@@ -85,6 +101,109 @@ pub fn url_to_filename(
   Ok(cache_filename)
 }
 
+struct LocalCacheSubPath {
+  pub has_hash: bool,
+  pub parts: Vec<String>,
+}
+
+impl LocalCacheSubPath {
+  pub fn as_path_from_root(&self, root_path: &Path) -> PathBuf {
+    let mut path = root_path.to_path_buf();
+    for part in &self.parts {
+      path.push(part);
+    }
+    path
+  }
+}
+
+fn url_to_local_sub_path(
+  url: &Url,
+) -> Result<LocalCacheSubPath, UrlToFilenameConversionError> {
+  // https://stackoverflow.com/a/31976060/188246
+  static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
+    HashSet::from(['?', '<', '>', ':', '*', '|', '\\', ':', '"', '\'', '/'])
+  });
+
+  fn has_forbidden_chars(segment: &str) -> bool {
+    segment.chars().any(|c| {
+      let is_uppercase = c.is_ascii_alphabetic() && !c.is_ascii_lowercase();
+      FORBIDDEN_CHARS.contains(&c)
+        // do not allow uppercase letters in order to make this work
+        // the same on case insensitive file systems
+        || is_uppercase
+    })
+  }
+
+  fn has_known_extension(path: &str) -> bool {
+    let path = path.to_lowercase();
+    path.ends_with(".js")
+      || path.ends_with(".ts")
+      || path.ends_with(".jsx")
+      || path.ends_with(".tsx")
+      || path.ends_with(".mts")
+      || path.ends_with(".mjs")
+      || path.ends_with(".json")
+      || path.ends_with(".wasm")
+  }
+
+  fn short_hash(data: &str) -> String {
+    format!("#{}", &util::checksum::gen(&[data.as_bytes()])[..10])
+  }
+
+  fn should_hash_part(part: &str, is_last: bool) -> bool {
+    let hash_context_specific = if is_last {
+      // if the last part does not have a known extension, hash it in order to
+      // prevent collisions with a directory of the same name
+      !has_known_extension(part)
+    } else {
+      // if any non-ending path part has a known extension, hash it in order to
+      // prevent collisions where a filename has the same name as a directory name
+      has_known_extension(part)
+    };
+
+    // the hash symbol at the start designates a hash for the url part
+    hash_context_specific || part.starts_with('#') || has_forbidden_chars(part)
+  }
+
+  // get the base url
+  let port_separator = "_"; // make this shorter with just an underscore
+  let Some(base_parts) = base_url_to_filename_parts(url, port_separator) else {
+    return Err(UrlToFilenameConversionError { url: url.to_string() });
+  };
+
+  // first, try to get the filename of the path
+  let path_segments = url.path_segments().unwrap();
+  let mut parts = base_parts
+    .into_iter()
+    .chain(path_segments.map(|s| s.to_string()))
+    .collect::<Vec<_>>();
+
+  // push the query parameter onto the last part
+  if let Some(query) = url.query() {
+    let last_part = parts.last_mut().unwrap();
+    last_part.push_str("?");
+    last_part.push_str(query);
+  }
+
+  let mut has_hash = false;
+  let parts_len = parts.len();
+  let parts = parts
+    .into_iter()
+    .enumerate()
+    .map(|(i, part)| {
+      let is_last = i == parts_len - 1;
+      if should_hash_part(&part, is_last) {
+        has_hash = true;
+        short_hash(&part)
+      } else {
+        part
+      }
+    })
+    .collect::<Vec<_>>();
+
+  Ok(LocalCacheSubPath { has_hash, parts })
+}
+
 /// Cached metadata about a url.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CachedUrlMetadata {
@@ -98,7 +217,7 @@ pub struct CachedUrlMetadata {
 // is an implementation detail.
 pub struct MaybeHttpCacheItem {
   url: Url,
-  cache: HttpCache,
+  cache: Arc<HttpCache>,
 }
 
 impl MaybeHttpCacheItem {
@@ -126,7 +245,7 @@ impl MaybeHttpCacheItem {
   }
 
   pub fn read_metadata(&self) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    match &self.cache.0.local {
+    match &self.cache.local {
       Some(local) => {
         if let Some(metadata) = local.manifest.get_metadata(&self.url) {
           return Ok(Some(metadata));
@@ -163,13 +282,10 @@ struct HttpCacheLocal {
 }
 
 #[derive(Debug)]
-struct HttpCacheInner {
+pub struct HttpCache {
   global_path: PathBuf,
   local: Option<HttpCacheLocal>,
 }
-
-#[derive(Debug, Clone)]
-pub struct HttpCache(Arc<HttpCacheInner>);
 
 impl HttpCache {
   pub fn new(paths: HttpCachePaths) -> Self {
@@ -181,10 +297,10 @@ impl HttpCache {
     } else {
       None
     };
-    Self(Arc::new(HttpCacheInner {
+    Self {
       global_path: paths.global,
       local,
-    }))
+    }
   }
 
   /// Returns a new instance.
@@ -234,7 +350,7 @@ impl HttpCache {
   // detail of the cache.
   #[deprecated(note = "Do not assume the cache will be stored at a file path.")]
   pub fn get_global_cache_location(&self) -> &PathBuf {
-    &self.0.global_path
+    &self.global_path
   }
 
   // DEPRECATED: Where the file is stored and how it's stored should be an implementation
@@ -244,14 +360,13 @@ impl HttpCache {
     &self,
     url: &Url,
   ) -> Result<PathBuf, AnyError> {
-    Ok(self.0.global_path.join(url_to_filename(url)?))
+    Ok(self.global_path.join(url_to_filename(url)?))
   }
 
   fn get_active_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
-    let filename = url_to_filename(url)?;
-    Ok(match &self.0.local {
-      Some(local) => local.path.join(filename),
-      None => self.0.global_path.join(filename),
+    Ok(match &self.local {
+      Some(local) => url_to_local_sub_path(url)?.as_path_from_root(&local.path),
+      None => self.global_path.join(url_to_filename(url)?),
     })
   }
 
@@ -268,7 +383,10 @@ impl HttpCache {
   // TODO(bartlomieju): this method should check headers file
   // and validate against ETAG/Last-modified-as headers.
   // ETAG check is currently done in `cli/file_fetcher.rs`.
-  pub fn get(&self, url: &Url) -> Result<MaybeHttpCacheItem, AnyError> {
+  pub fn get(
+    self: &Arc<Self>,
+    url: &Url,
+  ) -> Result<MaybeHttpCacheItem, AnyError> {
     Ok(MaybeHttpCacheItem {
       url: url.clone(),
       cache: self.clone(),
@@ -290,15 +408,9 @@ impl HttpCache {
     // Cache content
     util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
 
-    if let Some(local) = &self.0.local {
-      local.manifest.insert_data(
-        cache_filepath
-          .strip_prefix(&local.path)
-          .unwrap()
-          .to_path_buf(),
-        url.clone(),
-        headers,
-      );
+    if let Some(local) = &self.local {
+      let sub_path = url_to_local_sub_path(url)?;
+      local.manifest.insert_data(sub_path, url.clone(), headers);
     } else {
       let metadata = CachedUrlMetadata {
         time: SystemTime::now(),
@@ -319,11 +431,11 @@ impl HttpCache {
   }
 
   fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
-    let Some(local_cache) = &self.0.local else {
+    let Some(local_cache) = &self.local else {
       return Ok(false);
     };
-    let filename = url_to_filename(url)?;
-    let global_filepath = self.0.global_path.join(&filename);
+    #[allow(deprecated)]
+    let global_filepath = self.get_global_cache_filepath(url)?;
     let Some(cached_bytes) = read_file_bytes(&global_filepath)? else {
       return Ok(false);
     };
@@ -332,11 +444,13 @@ impl HttpCache {
       return Ok(false);
     };
 
-    let local_file_path = local_cache.path.join(&filename);
+    let local_cache_sub_path = url_to_local_sub_path(url)?;
+    let local_file_path =
+      local_cache_sub_path.as_path_from_root(&local_cache.path);
     self.ensure_dir_exists(local_file_path.parent().unwrap())?;
     atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
     local_cache.manifest.insert_data(
-      local_file_path,
+      local_cache_sub_path,
       url.clone(),
       metadata.headers,
     );
@@ -377,7 +491,7 @@ struct LocalCacheManifestData {
   serialized: SerializedLocalCacheManifestData,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SerializedLocalCacheManifestDataModule {
   pub path: String,
   #[serde(
@@ -415,7 +529,7 @@ impl LocalCacheManifest {
 
   pub fn insert_data(
     &self,
-    path: PathBuf,
+    sub_path: LocalCacheSubPath,
     specifier: ModuleSpecifier,
     original_headers: HashMap<String, String>,
   ) {
@@ -429,30 +543,50 @@ impl LocalCacheManifest {
       headers_subset.insert("x-deno-warning".to_string(), value.clone());
     }
     let mut data = self.data.write();
-    let prefix = path
-      .strip_prefix(self.file_path.parent().unwrap())
-      .unwrap()
-      .to_string_lossy()
-      .replace("\\", "/")
-      .to_string();
-    data.serialized.modules.insert(
-      specifier.clone(),
-      SerializedLocalCacheManifestDataModule {
-        path: prefix,
+    let is_empty = headers_subset.is_empty() && !sub_path.has_hash;
+    let has_changed = if is_empty {
+      data.serialized.modules.remove(&specifier).is_some()
+    } else {
+      let new_data = SerializedLocalCacheManifestDataModule {
+        path: sub_path.parts.join("/"),
         headers: headers_subset,
-      },
-    );
-    let _ = atomic_write_file(
-      &self.file_path,
-      serde_json::to_string_pretty(&data.serialized).unwrap(),
-      CACHE_PERM,
-    );
+      };
+      if data.serialized.modules.get(&specifier) == Some(&new_data) {
+        false
+      } else {
+        data.serialized.modules.insert(specifier.clone(), new_data);
+        true
+      }
+    };
+
+    if has_changed {
+      let _ = atomic_write_file(
+        &self.file_path,
+        serde_json::to_string_pretty(&data.serialized).unwrap(),
+        CACHE_PERM,
+      );
+    }
   }
 
   pub fn get_metadata(&self, specifier: &Url) -> Option<CachedUrlMetadata> {
     let data = self.data.read();
     let Some(module) = data.serialized.modules.get(specifier) else {
-      return None;
+      let folder_path = self.file_path.parent().unwrap();
+      let sub_path = url_to_local_sub_path(specifier).ok()?;
+      if sub_path.has_hash {
+        return None;
+      }
+      let file_path = sub_path.as_path_from_root(&folder_path);
+      // todo(THIS PR): use fs trait
+      return if file_path.exists() {
+        Some(CachedUrlMetadata {
+          headers: Default::default(),
+          url: specifier.to_string(),
+          time: SystemTime::now(),
+        })
+      } else {
+        None
+      };
     };
     let headers = module
       .headers
@@ -487,7 +621,7 @@ mod tests {
     // For more details check issue:
     // https://github.com/denoland/deno/issues/5688
     let cache = HttpCache::new_global(cache_path.to_path_buf());
-    assert!(!cache.0.global_path.exists());
+    assert!(!cache.global_path.exists());
     cache
       .set(
         &Url::parse("http://example.com/foo/bar.js").unwrap(),
@@ -495,14 +629,14 @@ mod tests {
         b"hello world",
       )
       .expect("Failed to add to cache");
-    assert!(cache.ensure_dir_exists(&cache.0.global_path).is_ok());
+    assert!(cache.ensure_dir_exists(&cache.global_path).is_ok());
     assert!(cache_path.is_dir());
   }
 
   #[test]
   fn test_get_set() {
     let dir = TempDir::new();
-    let cache = HttpCache::new_global(dir.path().to_path_buf());
+    let cache = Arc::new(HttpCache::new_global(dir.path().to_path_buf()));
     let url = Url::parse("https://deno.land/x/welcome.ts").unwrap();
     let mut headers = HashMap::new();
     headers.insert(

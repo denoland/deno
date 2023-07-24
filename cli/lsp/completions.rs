@@ -519,7 +519,7 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let cache = HttpCache::new_global(location.to_path_buf());
+    let cache = Arc::new(HttpCache::new_global(location.to_path_buf()));
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =

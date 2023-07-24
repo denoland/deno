@@ -12,7 +12,6 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
-use crate::cache::HttpCachePaths;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
@@ -659,12 +658,12 @@ fn recurse_dependents(
 
 #[derive(Debug)]
 struct SpecifierResolver {
-  cache: HttpCache,
+  cache: Arc<HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
 }
 
 impl SpecifierResolver {
-  pub fn new(cache: HttpCache) -> Self {
+  pub fn new(cache: Arc<HttpCache>) -> Self {
     Self {
       cache,
       redirects: Mutex::new(HashMap::new()),
@@ -728,7 +727,7 @@ struct FileSystemDocuments {
 impl FileSystemDocuments {
   pub fn get(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
@@ -750,7 +749,7 @@ impl FileSystemDocuments {
   /// returning the document.
   fn refresh_document(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
@@ -824,7 +823,7 @@ pub enum DocumentsFilter {
 #[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: HttpCache,
+  cache: Arc<HttpCache>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
   dirty: bool,
@@ -854,7 +853,7 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(cache: HttpCache) -> Self {
+  pub fn new(cache: Arc<HttpCache>) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -1152,7 +1151,7 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_cache(&mut self, cache: HttpCache) {
+  pub fn set_cache(&mut self, cache: Arc<HttpCache>) {
     // TODO update resolved dependencies?
     self.cache = cache.clone();
     self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
@@ -1867,7 +1866,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let cache = HttpCache::new_global(location.to_path_buf());
+    let cache = Arc::new(HttpCache::new_global(location.to_path_buf()));
     let documents = Documents::new(cache);
     (documents, location)
   }

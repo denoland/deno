@@ -136,6 +136,7 @@ struct CliFactoryServices {
   deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
+  http_cache: Deferred<Arc<HttpCache>>,
   http_client: Deferred<Arc<HttpClient>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
@@ -234,6 +235,15 @@ impl CliFactory {
       .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
   }
 
+  pub fn http_cache(&self) -> Result<&Arc<HttpCache>, AnyError> {
+    self.services.http_cache.get_or_try_init(|| {
+      Ok(Arc::new(HttpCache::new(HttpCachePaths {
+        global: self.deno_dir()?.deps_folder_path(),
+        local: self.options.remote_modules_dir_path(),
+      })))
+    })
+  }
+
   pub fn http_client(&self) -> &Arc<HttpClient> {
     self.services.http_client.get_or_init(|| {
       Arc::new(HttpClient::new(
@@ -246,10 +256,7 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       Ok(Arc::new(FileFetcher::new(
-        HttpCache::new(HttpCachePaths {
-          global: self.deno_dir()?.deps_folder_path(),
-          local: self.options.remote_modules_dir_path(),
-        }),
+        self.http_cache()?.clone(),
         self.options.cache_setting(),
         !self.options.no_remote(),
         self.http_client().clone(),

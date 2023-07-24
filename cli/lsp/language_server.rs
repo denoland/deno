@@ -169,7 +169,7 @@ pub struct Inner {
   pub client: Client,
   /// Configuration information.
   pub config: Config,
-  deps_http_cache: HttpCache,
+  deps_http_cache: Arc<HttpCache>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -554,7 +554,7 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = HttpCache::new_global(location);
+    let deps_http_cache = Arc::new(HttpCache::new_global(location));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -902,7 +902,8 @@ impl Inner {
         .maybe_config_file()
         .and_then(|c| c.remote_modules_dir_path()),
     };
-    let cache = HttpCache::new(cache_paths);
+    let cache = Arc::new(HttpCache::new(cache_paths));
+    self.deps_http_cache = cache.clone();
     self.documents.set_cache(cache.clone());
     self.cache_metadata.set_cache(cache);
     self.maybe_cache_path = new_cache_path;

@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::HttpCache;
-use crate::cache::HttpCachePaths;
 use crate::util::path::specifier_to_file_path;
 
 use deno_core::parking_lot::Mutex;
@@ -80,12 +79,12 @@ struct Metadata {
 
 #[derive(Debug, Clone)]
 pub struct CacheMetadata {
-  cache: HttpCache,
+  cache: Arc<HttpCache>,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }
 
 impl CacheMetadata {
-  pub fn new(cache: HttpCache) -> Self {
+  pub fn new(cache: Arc<HttpCache>) -> Self {
     Self {
       cache,
       metadata: Default::default(),
@@ -130,7 +129,7 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_cache(&mut self, cache: HttpCache) {
+  pub fn set_cache(&mut self, cache: Arc<HttpCache>) {
     self.cache = cache;
     self.metadata.lock().clear();
   }
