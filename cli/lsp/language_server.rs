@@ -203,7 +203,7 @@ pub struct Inner {
   /// An abstraction that handles interactions with TypeScript.
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
-  pub url_map: urls::LspUrlMap,
+  pub url_map: Arc<urls::LspUrlMap>,
 }
 
 impl LanguageServer {
