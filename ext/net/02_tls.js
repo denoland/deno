@@ -4,7 +4,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import { Conn, Listener } from "ext:deno_net/01_net.js";
 const primordials = globalThis.__bootstrap.primordials;
-const { TypeError } = primordials;
+const { Number, TypeError } = primordials;
 
 function opStartTls(args) {
   return core.opAsync("op_tls_start", args);

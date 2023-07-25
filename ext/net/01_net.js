@@ -15,6 +15,7 @@ const {
   ArrayPrototypeForEach,
   ArrayPrototypePush,
   Error,
+  Number,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
