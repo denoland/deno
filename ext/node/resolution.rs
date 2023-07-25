@@ -1,12 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-#![allow(clippy::disallowed_types)]
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::Mutex;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -116,8 +112,7 @@ pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
 pub struct NodeResolver {
   fs: FileSystemRc,
   npm_resolver: NpmResolverRc,
-  #[allow(clippy::disallowed_types)]
-  in_npm_package_cache: Arc<Mutex<HashMap<String, bool>>>,
+  in_npm_package_cache: deno_fs::sync::MaybeArcMutex<HashMap<String, bool>>,
 }
 
 impl NodeResolver {
@@ -125,8 +120,7 @@ impl NodeResolver {
     Self {
       fs,
       npm_resolver,
-      #[allow(clippy::disallowed_types)]
-      in_npm_package_cache: Arc::new(Mutex::new(HashMap::new())),
+      in_npm_package_cache: deno_fs::sync::MaybeArcMutex::new(HashMap::new()),
     }
   }
 
@@ -135,7 +129,7 @@ impl NodeResolver {
   }
 
   pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
-    let mut cache = self.in_npm_package_cache.lock().unwrap();
+    let mut cache = self.in_npm_package_cache.lock();
 
     if let Some(result) = cache.get(&specifier) {
       return *result;
