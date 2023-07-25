@@ -1,7 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+#![allow(clippy::disallowed_types)]
+
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -111,15 +116,39 @@ pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
 pub struct NodeResolver {
   fs: FileSystemRc,
   npm_resolver: NpmResolverRc,
+  #[allow(clippy::disallowed_types)]
+  in_npm_package_cache: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl NodeResolver {
   pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
-    Self { fs, npm_resolver }
+    Self {
+      fs,
+      npm_resolver,
+      #[allow(clippy::disallowed_types)]
+      in_npm_package_cache: Arc::new(Mutex::new(HashMap::new())),
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self.npm_resolver.in_npm_package(specifier)
+  }
+
+  pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
+    let mut cache = self.in_npm_package_cache.lock().unwrap();
+
+    if let Some(result) = cache.get(&specifier) {
+      return *result;
+    }
+
+    let result =
+      if let Ok(specifier) = deno_core::ModuleSpecifier::parse(&specifier) {
+        self.npm_resolver.in_npm_package(&specifier)
+      } else {
+        false
+      };
+    cache.insert(specifier, result);
+    result
   }
 
   /// This function is an implementation of `defaultResolve` in
