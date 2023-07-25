@@ -191,7 +191,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
 
       let module = module?;
-      let code = module.source().await.unwrap_or_default();
+      let code = module.source().await.unwrap_or_else(|| Arc::new([]));
       let code = std::str::from_utf8(&code)
         .map_err(|_| type_error("Module source is not utf-8"))?
         .to_owned()
@@ -203,6 +203,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
           eszip::ModuleKind::Json => ModuleType::Json,
           eszip::ModuleKind::Jsonc => {
             return Err(type_error("jsonc modules not supported"))
+          }
+          eszip::ModuleKind::OpaqueData => {
+            unreachable!();
           }
         },
         code,

@@ -8,6 +8,8 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
 use once_cell::sync::Lazy;
@@ -93,7 +95,14 @@ impl TypeChecker {
     let debug = self.cli_options.log_level() == Some(log::Level::Debug);
     let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     let check_js = ts_config.get_check_js();
-    let check_hash = match get_check_hash(&graph, type_check_mode, &ts_config) {
+    let check_hash = match get_check_hash(
+      &graph,
+      self
+        .npm_resolver
+        .all_system_packages(&NpmSystemInfo::default()),
+      type_check_mode,
+      &ts_config,
+    ) {
       CheckHashResult::NoFiles => return Ok(()),
       CheckHashResult::Hash(hash) => hash,
     };
@@ -186,6 +195,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
+  mut npm_system_packages: Vec<NpmResolutionPackage>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -198,11 +208,10 @@ fn get_check_hash(
   hasher.write(&ts_config.as_bytes());
 
   let check_js = ts_config.get_check_js();
-  let mut sorted_modules = graph.modules().collect::<Vec<_>>();
-  sorted_modules.sort_by_key(|m| m.specifier().as_str()); // make it deterministic
   let mut has_file = false;
   let mut has_file_to_type_check = false;
-  for module in sorted_modules {
+  // this iterator of modules is already deterministic, so no need to sort it
+  for module in graph.modules() {
     match module {
       Module::Esm(module) => {
         let ts_check = has_ts_check(module.media_type, &module.source);
@@ -240,13 +249,30 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
-      Module::Json(_)
-      | Module::External(_)
-      | Module::Node(_)
-      | Module::Npm(_) => {
-        // ignore
+      Module::Node(_) => {
+        // the @types/node package will be in the resolved
+        // snapshot below so don't bother including it here
+      }
+      Module::Npm(_) => {
+        // don't bother adding this specifier to the hash
+        // because what matters is the resolved npm snapshot,
+        // which is hashed below
+      }
+      Module::Json(module) => {
+        has_file_to_type_check = true;
+        hasher.write_str(module.specifier.as_str());
+        hasher.write_str(&module.source);
+      }
+      Module::External(module) => {
+        hasher.write_str(module.specifier.as_str());
       }
     }
+  }
+
+  // add the resolved npm packages for this system
+  npm_system_packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
+  for package in npm_system_packages {
+    hasher.write_hashable(package.id);
   }
 
   if !has_file || !check_js && !has_file_to_type_check {

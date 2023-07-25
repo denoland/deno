@@ -1029,9 +1029,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.63.1"
+version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "499936300106c3c67caae87e29def3df5ea9385db6ed7428f154972f70ed39fa"
+checksum = "c25d38dc94e4c2190bc7a1851790dd142fd0068888b3a26a1acb958db5113829"
 dependencies = [
  "cfg-if",
  "deno_ast",
@@ -1047,9 +1047,9 @@ dependencies = [
 
 [[package]]
 name = "deno_emit"
-version = "0.24.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6bdc024d2c1e5ec56ef6f923be2c2fea4662d596b0a68074ccf89991b38a05e7"
+checksum = "0ef00ad78bc75e7f35a01bd4b5c32a97018eebc55c311e4b287e158a29021348"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1115,9 +1115,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.49.0"
+version = "0.50.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7e07fdff6c7dc1a9a7c03ce69435fda4b53641d2d6d3d3ed6d29cf67fefd3ea"
+checksum = "73502c4d93a17f259b6edee6d5a5ba063e2fcdcdaeb6ca1c6953129cc14be6a7"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1324,9 +1324,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "371ef0398b5b5460d66b78a958d5015658e198ad3a29fb9ce329459272fd29aa"
+checksum = "87a8a842623fafa8d7e4225552e37ad8db5078fc38ff6a56dd99f364067d30bb"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1334,7 +1334,6 @@ dependencies = [
  "futures",
  "log",
  "monch",
- "once_cell",
  "serde",
  "thiserror",
 ]
@@ -1418,11 +1417,12 @@ dependencies = [
 
 [[package]]
 name = "deno_semver"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "242c8ad9f4ce614ec0fa2e6b3d834f2662ce024ca78e9ed4c58d812cbfc3e41d"
+checksum = "96f99990457915af1f444900003ffd5a9d3ab2e5337b06d681e56ca371b3e11f"
 dependencies = [
  "monch",
+ "once_cell",
  "serde",
  "thiserror",
  "url",
@@ -1938,9 +1938,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.45.0"
+version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbf5a0f47c2e73cb7631accc282ebda9bc9ed9b2034abfddec983dc9c8f78e7a"
+checksum = "58d2382a70396ccffd260adb879ed9f954c45457e8075830c7d4ec30c6dc8ad2"
 dependencies = [
  "anyhow",
  "base64 0.21.0",

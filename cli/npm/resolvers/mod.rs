@@ -18,6 +18,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
@@ -153,7 +154,7 @@ impl CliNpmResolver {
     let Some(cache_folder_id) = self
       .fs_resolver
       .resolve_package_cache_folder_id_from_specifier(specifier)? else {
-return Ok(None);
+        return Ok(None);
       };
     Ok(Some(
       self
@@ -227,6 +228,13 @@ return Ok(None);
         .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
+  }
+
+  pub fn all_system_packages(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> Vec<NpmResolutionPackage> {
+    self.resolution.all_system_packages(system_info)
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
