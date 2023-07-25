@@ -116,11 +116,11 @@ impl<
 {
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_http_upgrade_raw(
   state: &mut OpState,
-  slab_id: SlabId,
-) -> Result<ResourceId, AnyError> {
+  #[smi] slab_id: SlabId,
+) -> Result<u32, AnyError> {
   // Stage 1: extract the upgrade future
   let upgrade = slab_get(slab_id).upgrade()?;
   let (read, write) = tokio::io::duplex(1024);
@@ -183,12 +183,12 @@ pub fn op_http_upgrade_raw(
   )
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
-  slab_id: SlabId,
-  headers: Vec<(ByteString, ByteString)>,
-) -> Result<ResourceId, AnyError> {
+  #[smi] slab_id: SlabId,
+  #[serde] headers: Vec<(ByteString, ByteString)>,
+) -> Result<u32, AnyError> {
   let mut http = slab_get(slab_id);
   // Stage 1: set the response to 101 Switching Protocols and send it
   let upgrade = http.upgrade()?;
@@ -286,10 +286,11 @@ where
   array_value.into()
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_http_get_request_header(
-  slab_id: SlabId,
-  name: String,
+  #[smi] slab_id: SlabId,
+  #[string] name: String,
 ) -> Option<ByteString> {
   let http = slab_get(slab_id);
   let value = http.request_parts().headers.get(name);
@@ -378,11 +379,11 @@ pub fn op_http_read_request_body(
   state.resource_table.add_rc(body_resource)
 }
 
-#[op(fast)]
+#[op2]
 pub fn op_http_set_response_header(
-  slab_id: SlabId,
-  name: ByteString,
-  value: ByteString,
+  #[smi] slab_id: SlabId,
+  #[serde] name: ByteString,
+  #[serde] value: ByteString,
 ) {
   let mut http = slab_get(slab_id);
   let resp_headers = http.response().headers_mut();
@@ -393,24 +394,22 @@ pub fn op_http_set_response_header(
   resp_headers.append(name, value);
 }
 
-#[op(v8)]
-fn op_http_set_response_headers(
+#[op2]
+pub fn op_http_set_response_headers(
   scope: &mut v8::HandleScope,
-  slab_id: SlabId,
-  headers: serde_v8::Value,
+  #[smi] slab_id: SlabId,
+  headers: v8::Local<v8::Array>,
 ) {
   let mut http = slab_get(slab_id);
   // TODO(mmastrac): Invalid headers should be handled?
   let resp_headers = http.response().headers_mut();
 
-  let arr = v8::Local::<v8::Array>::try_from(headers.v8_value).unwrap();
-
-  let len = arr.length();
+  let len = headers.length();
   let header_len = len * 2;
   resp_headers.reserve(header_len.try_into().unwrap());
 
   for i in 0..len {
-    let item = arr.get_index(scope, i).unwrap();
+    let item = headers.get_index(scope, i).unwrap();
     let pair = v8::Local::<v8::Array>::try_from(item).unwrap();
     let name = pair.get_index(scope, 0).unwrap();
     let value = pair.get_index(scope, 1).unwrap();
@@ -425,10 +424,10 @@ fn op_http_set_response_headers(
   }
 }
 
-#[op]
+#[op2]
 pub fn op_http_set_response_trailers(
-  slab_id: SlabId,
-  trailers: Vec<(ByteString, ByteString)>,
+  #[smi] slab_id: SlabId,
+  #[serde] trailers: Vec<(ByteString, ByteString)>,
 ) {
   let mut http = slab_get(slab_id);
   let mut trailer_map: HeaderMap = HeaderMap::with_capacity(trailers.len());
@@ -576,11 +575,11 @@ fn set_response(
   response.body_mut().initialize(response_fn(compression))
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_http_set_response_body_resource(
   state: &mut OpState,
-  slab_id: SlabId,
-  stream_rid: ResourceId,
+  #[smi] slab_id: SlabId,
+  #[smi] stream_rid: ResourceId,
   auto_close: bool,
 ) -> Result<(), AnyError> {
   // If the stream is auto_close, we will hold the last ref to it until the response is complete.
@@ -601,11 +600,11 @@ pub fn op_http_set_response_body_resource(
   Ok(())
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_http_set_response_body_stream(
   state: &mut OpState,
-  slab_id: SlabId,
-) -> Result<ResourceId, AnyError> {
+  #[smi] slab_id: SlabId,
+) -> Result<u32, AnyError> {
   // TODO(mmastrac): what should this channel size be?
   let (tx, rx) = tokio::sync::mpsc::channel(1);
   set_response(slab_id, None, |compression| {
@@ -615,8 +614,11 @@ pub fn op_http_set_response_body_stream(
   Ok(state.resource_table.add(V8StreamHttpResponseBody::new(tx)))
 }
 
-#[op(fast)]
-pub fn op_http_set_response_body_text(slab_id: SlabId, text: String) {
+#[op2(fast)]
+pub fn op_http_set_response_body_text(
+  #[smi] slab_id: SlabId,
+  #[string] text: String,
+) {
   if !text.is_empty() {
     set_response(slab_id, Some(text.len()), |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
@@ -624,8 +626,11 @@ pub fn op_http_set_response_body_text(slab_id: SlabId, text: String) {
   }
 }
 
-#[op(fast)]
-pub fn op_http_set_response_body_bytes(slab_id: SlabId, buffer: &[u8]) {
+#[op2(fast)]
+pub fn op_http_set_response_body_bytes(
+  #[smi] slab_id: SlabId,
+  #[buffer] buffer: &[u8],
+) {
   if !buffer.is_empty() {
     set_response(slab_id, Some(buffer.len()), |compression| {
       ResponseBytesInner::from_slice(compression, buffer)
@@ -633,11 +638,11 @@ pub fn op_http_set_response_body_bytes(slab_id: SlabId, buffer: &[u8]) {
   };
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http_track(
   state: Rc<RefCell<OpState>>,
-  slab_id: SlabId,
-  server_rid: ResourceId,
+  #[smi] slab_id: SlabId,
+  #[smi] server_rid: ResourceId,
 ) -> Result<(), AnyError> {
   let http = slab_get(slab_id);
   let handle = http.body_promise();
@@ -829,10 +834,11 @@ impl Drop for HttpJoinHandle {
   }
 }
 
-#[op(v8)]
+#[op2]
+#[serde]
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
-  listener_rid: ResourceId,
+  #[smi] listener_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError>
 where
   HTTP: HttpPropertyExtractor,
@@ -881,10 +887,11 @@ where
   ))
 }
 
-#[op(v8)]
+#[op2]
+#[serde]
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
-  connection_rid: ResourceId,
+  #[smi] connection_rid: ResourceId,
 ) -> Result<(ResourceId, &'static str, String), AnyError>
 where
   HTTP: HttpPropertyExtractor,
@@ -925,8 +932,8 @@ where
 
 /// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
 /// goes wrong in this method we return [`SlabId::MAX`] and let the async handler pick up the real error.
-#[op(fast)]
-pub fn op_http_try_wait(state: &mut OpState, rid: ResourceId) -> SlabId {
+#[op2(fast)]
+pub fn op_http_try_wait(state: &mut OpState, #[smi] rid: ResourceId) -> u32 {
   // The resource needs to exist.
   let Ok(join_handle) = state
     .resource_table
@@ -947,11 +954,11 @@ pub fn op_http_try_wait(state: &mut OpState, rid: ResourceId) -> SlabId {
   id
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<SlabId, AnyError> {
+  #[smi] rid: ResourceId,
+) -> Result<u32, AnyError> {
   // We will get the join handle initially, as we might be consuming requests still
   let join_handle = state
     .borrow_mut()
@@ -1083,11 +1090,15 @@ impl Resource for UpgradeStream {
   }
 }
 
-#[op(fast)]
-pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+#[op2(fast)]
+pub fn op_can_write_vectored(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> bool {
   state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
+// TODO(bartlomieju): op2 doesn't want to handle `usize` in the return type
 #[op]
 pub async fn op_raw_write_vectored(
   state: Rc<RefCell<OpState>>,
