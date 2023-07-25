@@ -1237,3 +1237,12 @@ Deno.test({
   }, Deno.errors.AddrInUse);
   listener1.close();
 });
+
+Deno.test({
+  permissions: { net: true },
+}, function netTcpListenDoesNotThrowOnStringPort() {
+  // @ts-ignore String port is not allowed by typing, but it shouldn't throw
+  // for backwards compatibility.
+  const listener = Deno.listen({ hostname: "localhost", port: "0" });
+  listener.close();
+});
