@@ -214,8 +214,11 @@ pub async fn op_http_upgrade_websocket_next(
 #[op2(fast)]
 pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
-  // The Javascript code will never provide a status that is invalid here (see 23_response.js)
-  *http.response().status_mut() = StatusCode::from_u16(status).unwrap();
+  // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
+  // will quitely ignore invalid values.
+  if let Ok(code) = StatusCode::from_u16(status) {
+    *http.response().status_mut() = code;
+  }
   http.complete();
 }
 
