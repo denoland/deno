@@ -19,7 +19,6 @@ use crate::ops::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use std::cell::RefCell;
-use std::convert::From;
 use std::path::Path;
 use std::rc::Rc;
 

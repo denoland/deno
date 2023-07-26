@@ -13,17 +13,20 @@ fn setup() -> Vec<Extension> {
   vec![
     deno_webidl::deno_webidl::init_ops_and_esm(),
     deno_url::deno_url::init_ops_and_esm(),
-    Extension::builder("bench_setup")
-      .esm(vec![ExtensionFileSource {
+    Extension {
+      name: "bench_setup",
+      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
         specifier: "ext:bench_setup/setup",
         code: ExtensionFileSourceCode::IncludedInBinary(
-          r#"import { URL } from "ext:deno_url/00_url.js";
-        globalThis.URL = URL;
+          r#"
+          import { URL } from "ext:deno_url/00_url.js";
+          globalThis.URL = URL;
         "#,
         ),
-      }])
-      .esm_entry_point("ext:bench_setup/setup")
-      .build(),
+      }]),
+      esm_entry_point: Some("ext:bench_setup/setup"),
+      ..Default::default()
+    },
   ]
 }
 
