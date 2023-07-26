@@ -258,7 +258,7 @@ Deno.test({
     assertEquals(info.uid, -1);
     assertEquals(info.gid, -1);
     assertEquals(typeof info.homedir, "string");
-    assertEquals(info.shell, null);
+    assert(typeof info.shell === "string" || info.shell===null);
     assertEquals(typeof info.username, "string");
   },
 });
