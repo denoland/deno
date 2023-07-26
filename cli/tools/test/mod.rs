@@ -1191,7 +1191,7 @@ impl TestReporter for JunitTestReporter {
     result: &TestResult,
     elapsed: u64,
   ) {
-    if let Some(mut case) = self.cases.get_mut(&description.id) {
+    if let Some(case) = self.cases.get_mut(&description.id) {
       case.status = Self::convert_status(result);
       case.set_time(Duration::from_millis(elapsed));
     }
