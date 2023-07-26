@@ -528,7 +528,7 @@ impl LspClientBuilder {
       .context
       .as_ref()
       .map(|c| c.deno_dir().clone())
-      .unwrap_or(new_deno_dir);
+      .unwrap_or_else(new_deno_dir);
     let mut command = Command::new(&self.deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
