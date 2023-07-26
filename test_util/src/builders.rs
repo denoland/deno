@@ -29,7 +29,6 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
-  use_separate_deno_dir: bool,
   use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
@@ -77,15 +76,6 @@ impl TestContextBuilder {
     self
   }
 
-  /// By default, the temp_dir and the deno_dir will be shared.
-  /// In some cases, that might cause an issue though, so calling
-  /// this will use a separate directory for the deno dir and the
-  /// temp directory.
-  pub fn use_separate_deno_dir(mut self) -> Self {
-    self.use_separate_deno_dir = true;
-    self
-  }
-
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
@@ -127,11 +117,7 @@ impl TestContextBuilder {
       .clone()
       .unwrap_or_else(std::env::temp_dir);
     let deno_dir = TempDir::new_in(&temp_dir_path);
-    let temp_dir = if self.use_separate_deno_dir {
-      TempDir::new_in(&temp_dir_path)
-    } else {
-      deno_dir.clone()
-    };
+    let temp_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_symlinked_temp_dir {
       TempDir::new_symlinked(temp_dir)
     } else {
@@ -535,10 +521,11 @@ impl TestCommandOutput {
     &self.testdata_dir
   }
 
-  pub fn skip_output_check(&self) {
+  pub fn skip_output_check(&self) -> &Self {
     *self.asserted_combined.borrow_mut() = true;
     *self.asserted_stdout.borrow_mut() = true;
     *self.asserted_stderr.borrow_mut() = true;
+    self
   }
 
   pub fn skip_exit_code_check(&self) {

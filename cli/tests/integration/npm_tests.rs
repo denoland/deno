@@ -1524,7 +1524,6 @@ fn auto_discover_lock_file() {
 fn peer_deps_with_copied_folders_and_lockfile() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
     .cwd("npm/peer_deps_with_copied_folders")
     .build();
@@ -1906,7 +1905,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
 fn binary_package_with_optional_dependencies() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/binary_package")
     .cwd("npm/binary_package")
     .build();
