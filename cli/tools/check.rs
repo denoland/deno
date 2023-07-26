@@ -273,9 +273,9 @@ fn get_check_hash(
   // probably overkill.
   let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
   package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
-  for (package_req, id) in package_reqs {
-    hasher.write_hashable(&package_req);
-    hasher.write_hashable(&id);
+  for (pkg_req, pkg_nv) in package_reqs {
+    hasher.write_hashable(&pkg_req);
+    hasher.write_hashable(&pkg_nv);
   }
 
   if !has_file || !check_js && !has_file_to_type_check {
