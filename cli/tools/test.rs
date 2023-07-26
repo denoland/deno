@@ -25,6 +25,9 @@ use crate::worker::CliMainWorkerFactory;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::MediaType;
 use deno_ast::SourceRangedForSpanned;
+use deno_core::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context as _;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -346,6 +349,7 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
+  junit_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -411,13 +415,158 @@ trait TestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   );
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> anyhow::Result<()>;
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
-  Box::new(PrettyTestReporter::new(
+  let pretty = Box::new(PrettyTestReporter::new(
     options.concurrent_jobs.get() > 1,
     options.log_level != Some(Level::Error),
-  ))
+  ));
+  if let Some(junit_path) = &options.junit_path {
+    let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
+    // If junit is writing to stdout, only enable the junit reporter
+    if junit_path == "-" {
+      junit
+    } else {
+      Box::new(CompoundTestReporter::new(vec![pretty, junit]))
+    }
+  } else {
+    pretty
+  }
+}
+
+struct CompoundTestReporter {
+  test_reporters: Vec<Box<dyn TestReporter>>,
+}
+
+impl CompoundTestReporter {
+  fn new(test_reporters: Vec<Box<dyn TestReporter>>) -> Self {
+    Self { test_reporters }
+  }
+}
+
+impl TestReporter for CompoundTestReporter {
+  fn report_register(&mut self, description: &TestDescription) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_register(description);
+    }
+  }
+
+  fn report_plan(&mut self, plan: &TestPlan) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_plan(plan);
+    }
+  }
+
+  fn report_wait(&mut self, description: &TestDescription) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_wait(description);
+    }
+  }
+
+  fn report_output(&mut self, output: &[u8]) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_output(output);
+    }
+  }
+
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_result(description, result, elapsed);
+    }
+  }
+
+  fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_uncaught_error(origin, error.clone());
+    }
+  }
+
+  fn report_step_register(&mut self, description: &TestStepDescription) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_step_register(description)
+    }
+  }
+
+  fn report_step_wait(&mut self, description: &TestStepDescription) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_step_wait(description)
+    }
+  }
+
+  fn report_step_result(
+    &mut self,
+    desc: &TestStepDescription,
+    result: &TestStepResult,
+    elapsed: u64,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_step_result(desc, result, elapsed, tests, test_steps);
+    }
+  }
+
+  fn report_summary(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_summary(elapsed, tests, test_steps);
+    }
+  }
+
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for reporter in &mut self.test_reporters {
+      reporter.report_sigint(tests_pending, tests, test_steps);
+    }
+  }
+
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> anyhow::Result<()> {
+    let mut errors = vec![];
+    for reporter in &mut self.test_reporters {
+      if let Err(err) = reporter.flush_report(elapsed, tests, test_steps) {
+        errors.push(err)
+      }
+    }
+
+    if errors.is_empty() {
+      Ok(())
+    } else {
+      bail!(
+        "error in one or more wrapped reporters:\n{}",
+        errors
+          .iter()
+          .enumerate()
+          .fold(String::new(), |acc, (i, err)| {
+            format!("{}Error #{}: {:?}\n", acc, i + 1, err)
+          })
+      )
+    }
+  }
 }
 
 struct PrettyTestReporter {
@@ -964,6 +1113,206 @@ impl TestReporter for PrettyTestReporter {
     }
     println!();
     self.in_new_line = true;
+  }
+
+  fn flush_report(
+    &mut self,
+    _elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> anyhow::Result<()> {
+    Ok(())
+  }
+}
+
+struct JunitTestReporter {
+  path: String,
+  // Stores TestCases (i.e. Tests) by the Test ID
+  cases: IndexMap<usize, quick_junit::TestCase>,
+}
+
+impl JunitTestReporter {
+  fn new(path: String) -> Self {
+    Self {
+      path,
+      cases: IndexMap::new(),
+    }
+  }
+
+  fn convert_status(status: &TestResult) -> quick_junit::TestCaseStatus {
+    match status {
+      TestResult::Ok => quick_junit::TestCaseStatus::success(),
+      TestResult::Ignored => quick_junit::TestCaseStatus::skipped(),
+      TestResult::Failed(failure) => quick_junit::TestCaseStatus::NonSuccess {
+        kind: quick_junit::NonSuccessKind::Failure,
+        message: Some(failure.to_string()),
+        ty: None,
+        description: None,
+        reruns: vec![],
+      },
+      TestResult::Cancelled => quick_junit::TestCaseStatus::NonSuccess {
+        kind: quick_junit::NonSuccessKind::Error,
+        message: Some("Cancelled".to_string()),
+        ty: None,
+        description: None,
+        reruns: vec![],
+      },
+    }
+  }
+}
+
+impl TestReporter for JunitTestReporter {
+  fn report_register(&mut self, description: &TestDescription) {
+    self.cases.insert(
+      description.id,
+      quick_junit::TestCase::new(
+        description.name.clone(),
+        quick_junit::TestCaseStatus::skipped(),
+      ),
+    );
+  }
+
+  fn report_plan(&mut self, _plan: &TestPlan) {}
+
+  fn report_wait(&mut self, _description: &TestDescription) {}
+
+  fn report_output(&mut self, _output: &[u8]) {
+    /*
+     TODO(skycoop): Right now I can't include stdout/stderr in the report because
+     we have a global pair of output streams that don't differentiate between the
+     output of different tests. This is a nice to have feature, so we can come
+     back to it later
+    */
+  }
+
+  fn report_result(
+    &mut self,
+    description: &TestDescription,
+    result: &TestResult,
+    elapsed: u64,
+  ) {
+    if let Some(case) = self.cases.get_mut(&description.id) {
+      case.status = Self::convert_status(result);
+      case.set_time(Duration::from_millis(elapsed));
+    }
+  }
+
+  fn report_uncaught_error(&mut self, _origin: &str, _error: Box<JsError>) {}
+
+  fn report_step_register(&mut self, _description: &TestStepDescription) {}
+
+  fn report_step_wait(&mut self, _description: &TestStepDescription) {}
+
+  fn report_step_result(
+    &mut self,
+    description: &TestStepDescription,
+    result: &TestStepResult,
+    _elapsed: u64,
+    _tests: &IndexMap<usize, TestDescription>,
+    test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    let status = match result {
+      TestStepResult::Ok => "passed",
+      TestStepResult::Ignored => "skipped",
+      TestStepResult::Failed(_) => "failure",
+    };
+
+    let root_id: usize;
+    let mut name = String::new();
+    {
+      let mut ancestors = vec![];
+      let mut current_desc = description;
+      loop {
+        if let Some(d) = test_steps.get(&current_desc.parent_id) {
+          ancestors.push(&d.name);
+          current_desc = d;
+        } else {
+          root_id = current_desc.parent_id;
+          break;
+        }
+      }
+      ancestors.reverse();
+      for n in ancestors {
+        name.push_str(n);
+        name.push_str(" ... ");
+      }
+      name.push_str(&description.name);
+    }
+
+    if let Some(case) = self.cases.get_mut(&root_id) {
+      case.add_property(quick_junit::Property::new(
+        format!("step[{}]", status),
+        name,
+      ));
+    }
+  }
+
+  fn report_summary(
+    &mut self,
+    _elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+  }
+
+  fn report_sigint(
+    &mut self,
+    tests_pending: &HashSet<usize>,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) {
+    for id in tests_pending {
+      if let Some(description) = tests.get(id) {
+        self.report_result(description, &TestResult::Cancelled, 0)
+      }
+    }
+  }
+
+  fn flush_report(
+    &mut self,
+    elapsed: &Duration,
+    tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> anyhow::Result<()> {
+    let mut suites: IndexMap<String, quick_junit::TestSuite> = IndexMap::new();
+    for (id, case) in &self.cases {
+      if let Some(test) = tests.get(id) {
+        suites
+          .entry(test.location.file_name.clone())
+          .and_modify(|s| {
+            s.add_test_case(case.clone());
+          })
+          .or_insert_with(|| {
+            quick_junit::TestSuite::new(test.location.file_name.clone())
+              .add_test_case(case.clone())
+              .to_owned()
+          });
+      }
+    }
+
+    let mut report = quick_junit::Report::new("deno test");
+    report.set_time(*elapsed).add_test_suites(
+      suites
+        .values()
+        .cloned()
+        .collect::<Vec<quick_junit::TestSuite>>(),
+    );
+
+    if self.path == "-" {
+      report
+        .serialize(std::io::stdout())
+        .with_context(|| "Failed to write JUnit report to stdout")?;
+    } else {
+      let file =
+        std::fs::File::create(self.path.clone()).with_context(|| {
+          format!("Failed to open JUnit report file {}", self.path)
+        })?;
+      report.serialize(file).with_context(|| {
+        format!("Failed to write JUnit report to {}", self.path)
+      })?;
+    }
+
+    Ok(())
   }
 }
 
@@ -1547,6 +1896,7 @@ async fn test_specifiers(
           }
 
           TestEvent::Sigint => {
+            let elapsed = Instant::now().duration_since(earlier);
             reporter.report_sigint(
               &tests_started
                 .difference(&tests_with_result)
@@ -1555,6 +1905,11 @@ async fn test_specifiers(
               &tests,
               &test_steps,
             );
+            if let Err(err) =
+              reporter.flush_report(&elapsed, &tests, &test_steps)
+            {
+              eprint!("Test reporter failed to flush: {}", err)
+            }
             std::process::exit(130);
           }
         }
@@ -1565,6 +1920,12 @@ async fn test_specifiers(
 
       let elapsed = Instant::now().duration_since(earlier);
       reporter.report_summary(&elapsed, &tests, &test_steps);
+      if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
+        return Err(generic_error(format!(
+          "Test reporter failed to flush: {}",
+          err
+        )));
+      }
 
       if used_only {
         return Err(generic_error(
@@ -1756,6 +2117,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
@@ -1886,6 +2248,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
