@@ -1436,9 +1436,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.12.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fc7ee9db8e2094ace8b1c318b6c83533bc923524f9a5425846fb0e2cd4731a7"
+checksum = "ba1dc995d5731f4431520037b53ce6a8bb88ec5e7baaf0627eb273335769cbbf"
 dependencies = [
  "anyhow",
  "futures",
