@@ -1585,7 +1585,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .num_args(1..)
             .action(ArgAction::Append)
             .use_value_delimiter(true)
-            .conflicts_with("rules")
             .help("Use set of rules with a tag"),
         )
         .arg(
@@ -4158,6 +4157,32 @@ mod tests {
           },
           rules: true,
           maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: false,
+          watch: Default::default(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--rules",
+      "--rules-tags=recommended"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          rules: true,
+          maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
