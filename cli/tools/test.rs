@@ -2272,7 +2272,7 @@ pub async fn run_tests_with_watch(
     flags,
     file_watcher::PrintConfig {
       job_name: "Test".to_string(),
-      clear_screen: !test_flags
+      clear_screen: test_flags
         .watch
         .as_ref()
         .map(|w| !w.no_clear_screen)
