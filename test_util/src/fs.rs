@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use lsp_types::Url;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::assertions::assert_wildcard_match;
 
@@ -110,12 +112,21 @@ impl PathRef {
       .with_context(|| format!("Could not read file: {}", self))
   }
 
+  pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
+    serde_json::from_str(&self.read_to_string()).unwrap()
+  }
+
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }
 
   pub fn write(&self, text: impl AsRef<str>) {
     fs::write(self, text.as_ref()).unwrap();
+  }
+
+  pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
+    let text = serde_json::to_string_pretty(value).unwrap();
+    self.write(text);
   }
 
   pub fn symlink_dir(

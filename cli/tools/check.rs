@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -8,10 +9,10 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_npm::NpmResolutionPackage;
-use deno_npm::NpmSystemInfo;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageReq;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -97,9 +98,7 @@ impl TypeChecker {
     let check_js = ts_config.get_check_js();
     let check_hash = match get_check_hash(
       &graph,
-      self
-        .npm_resolver
-        .all_system_packages(&NpmSystemInfo::default()),
+      self.npm_resolver.package_reqs(),
       type_check_mode,
       &ts_config,
     ) {
@@ -195,7 +194,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
-  mut npm_system_packages: Vec<NpmResolutionPackage>,
+  package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -269,10 +268,14 @@ fn get_check_hash(
     }
   }
 
-  // add the resolved npm packages for this system
-  npm_system_packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
-  for package in npm_system_packages {
-    hasher.write_hashable(package.id);
+  // Check if any of the top level npm pckages have changed. We could go
+  // further and check all the individual npm packages, but that's
+  // probably overkill.
+  let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
+  package_reqs.sort_by(|a, b| a.cmp(&b)); // determinism
+  for (package_req, id) in package_reqs {
+    hasher.write_hashable(&package_req);
+    hasher.write_hashable(&id);
   }
 
   if !has_file || !check_js && !has_file_to_type_check {

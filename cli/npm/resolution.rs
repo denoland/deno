@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -247,6 +248,10 @@ impl NpmResolution {
       package_info,
     )?;
     Ok(nv)
+  }
+
+  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+    self.snapshot.read().package_reqs().clone()
   }
 
   pub fn all_system_packages(

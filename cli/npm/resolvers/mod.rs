@@ -4,6 +4,7 @@ mod common;
 mod global;
 mod local;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -18,7 +19,6 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
@@ -230,11 +230,8 @@ impl CliNpmResolver {
     .unwrap()
   }
 
-  pub fn all_system_packages(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> Vec<NpmResolutionPackage> {
-    self.resolution.all_system_packages(system_info)
+  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+    self.resolution.package_reqs()
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {

@@ -340,23 +340,29 @@ fn npm_module_check_then_error() {
     .use_http_server()
     .build();
   let temp_dir = test_context.temp_dir();
-
   temp_dir.write("deno.json", "{}"); // so the lockfile gets loaded
-  temp_dir.write("deno.lock", r#"{
-  "version": "2",
-  "remote": {},
-  "npm": {
-    "specifiers": {
-      "@denotest/breaking-change-between-versions": "@denotest/breaking-change-between-versions@1.0.0"
-    },
-    "packages": {
-      "@denotest/breaking-change-between-versions@1.0.0": {
-        "integrity": "sha512-wtuhwky69acjp8rdt9xweij5gx1wxd0z35sjemzpwi8narief41fkokuos/mjmh80jtlofjecjjjzq9uv6lqjg==",
-        "dependencies": {}
-      }
-    }
-  }
-}"#);
+
+  // get the lockfiles values first (this is necessary because the test
+  // server generates different tarballs based on the operating system)
+  test_context
+    .new_command()
+    .args_vec([
+      "cache",
+      "npm:@denotest/breaking-change-between-versions@1.0.0",
+      "npm:@denotest/breaking-change-between-versions@2.0.0",
+    ])
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.path().join("deno.lock");
+  let mut lockfile_content =
+    lockfile.read_json::<deno_lockfile::LockfileContent>();
+
+  // make the specifier resolve to version 1
+  lockfile_content.npm.specifiers.insert(
+    "@denotest/breaking-change-between-versions".to_string(),
+    "@denotest/breaking-change-between-versions@1.0.0".to_string(),
+  );
+  lockfile.write_json(&lockfile_content);
   temp_dir.write(
     "main.ts",
     "import { oldName } from 'npm:@denotest/breaking-change-between-versions'; console.log(oldName());\n",
@@ -365,25 +371,16 @@ fn npm_module_check_then_error() {
   let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
   check_command.run().assert_exit_code(0).skip_output_check();
 
-  // now update the lockfile to use version 2.0.0 instead
-  temp_dir.write("deno.lock", r#"{
-    "version": "2",
-    "remote": {},
-    "npm": {
-      "specifiers": {
-        "@denotest/breaking-change-between-versions": "@denotest/breaking-change-between-versions@2.0.0"
-      },
-      "packages": {
-        "@denotest/breaking-change-between-versions@2.0.0": {
-          "integrity": "sha512-/yakolzxaalv8v48xbd3y2hpdgozdskd2+rdwaalx7zvdab+vyrjijcpdzm3khqcusbikpdt8r9louicfkpbga==",
-          "dependencies": {}
-        }
-      }
-    }
-  }"#);
+  // now update the lockfile to use version 2 instead, which should cause a
+  // type checking error because the oldName no longer exists
+  lockfile_content.npm.specifiers.insert(
+    "@denotest/breaking-change-between-versions".to_string(),
+    "@denotest/breaking-change-between-versions@2.0.0".to_string(),
+  );
+  lockfile.write_json(&lockfile_content);
 
   check_command
     .run()
-    .assert_matches_text("Download [WILDCARD]Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
 }
