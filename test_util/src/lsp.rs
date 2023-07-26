@@ -6,7 +6,6 @@ use crate::PathRef;
 use crate::TestContext;
 use crate::TestContextBuilder;
 
-use super::new_deno_dir;
 use super::TempDir;
 
 use anyhow::Result;
@@ -524,7 +523,7 @@ impl LspClientBuilder {
   }
 
   pub fn build_result(&self) -> Result<LspClient> {
-    let deno_dir = new_deno_dir();
+    let deno_dir = self.context.as_ref().unwrap().deno_dir().clone();
     let mut command = Command::new(&self.deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
