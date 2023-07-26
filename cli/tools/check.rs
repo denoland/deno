@@ -272,7 +272,7 @@ fn get_check_hash(
   // further and check all the individual npm packages, but that's
   // probably overkill.
   let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
-  package_reqs.sort_by(|a, b| a.cmp(&b)); // determinism
+  package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
   for (package_req, id) in package_reqs {
     hasher.write_hashable(&package_req);
     hasher.write_hashable(&id);
