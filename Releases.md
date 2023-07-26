@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.35.3 / 2023.07.26
+
+- feat(runtime): sys_info.rs - Use KERN_OSRELEASE on {Free,Open}BSD (#19849)
+- fix(cli): build script panics on musl due to glibc_version check (#19913)
+- fix(cli): output file handling in deno upgrade (#18994)
+- fix(cli/init): update to `assert/mod.ts` (#19924)
+- fix(cli/test): fix clear screen behavior when run `deno test --watch` (#19888)
+- fix(ext/http): Error on deprecated/unavailable features (#19880)
+- fix(ext/http): Quietly ignore invalid status codes (#19936)
+- fix(ext/net): fix string port number handling in listen (#19921)
+- fix(ext/node): inspector with seggregated globals (#19917)
+- fix(lint): allow to use --rules with --rules-tags (#19754)
+- fix(lsp): auto-discover deno.json in more cases (#19894)
+- fix(lsp): handle watched files events from symlinked config files (#19898)
+- fix(node): add writable and readable fields to FakeSocket (#19931)
+- fix(node/http): add encrypted field to FakeSocket (#19886)
+- fix(node_compat): Wrap require resolve exports in try catch block (#19592)
+- fix(task): ensure quoted strings are maintained mid-word (#19944)
+- fix: deno info should respect import map (#19781)
+- perf(lsp): format in a blocking task (#19883)
+- perf: cache node resolution when accesing a global (#19930)
+
 ### 1.35.2 / 2023.07.20
 
 - fix(bench): run warmup benchmark to break JIT bias (#19844)
