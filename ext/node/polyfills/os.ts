@@ -24,6 +24,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
@@ -315,12 +316,28 @@ export function uptime(): number {
   return osUptime();
 }
 
-/** Not yet implemented */
+/** partially implemented
+ * https://nodejs.org/api/os.html#osuserinfooptions
+ * missing gid, uid
+ */
 export function userInfo(
-  // deno-lint-ignore no-unused-vars
   options: UserInfoOptions = { encoding: "utf-8" },
 ): UserInfo {
-  notImplemented(SEE_GITHUB_ISSUE);
+  if (options.encoding !== "utf-8") notImplemented(SEE_GITHUB_ISSUE);
+
+  const username = Deno.env.get("USER");
+  const homedir = Deno.env.get("HOME");
+  const shell = Deno.env.get("SHELL") || null;
+
+  if (!username || !homedir) throw codes.SYSERR;
+
+  return {
+    uid: -1,
+    gid: -1,
+    username,
+    shell,
+    homedir,
+  };
 }
 
 export const EOL = isWindows ? "\r\n" : "\n";

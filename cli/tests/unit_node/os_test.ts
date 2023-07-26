@@ -252,6 +252,18 @@ Deno.test({
 });
 
 Deno.test({
+  name: "os.userInfo()",
+  fn() {
+    const info = os.userInfo()
+    assertEquals(info.uid, -1);
+    assertEquals(info.gid, -1);
+    assertEquals(typeof info.homedir, "string");
+    assertEquals(info.shell, null);
+    assertEquals(typeof info.username, "string");
+  },
+});
+
+Deno.test({
   name: "APIs not yet implemented",
   fn() {
     assertThrows(
@@ -264,13 +276,6 @@ Deno.test({
     assertThrows(
       () => {
         os.setPriority(0);
-      },
-      Error,
-      "Not implemented",
-    );
-    assertThrows(
-      () => {
-        os.userInfo();
       },
       Error,
       "Not implemented",
