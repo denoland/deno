@@ -268,7 +268,7 @@ fn get_check_hash(
     }
   }
 
-  // Check if any of the top level npm pckages have changed. We could go
+  // Check if any of the top level npm packages have changed. We could go
   // further and check all the individual npm packages, but that's
   // probably overkill.
   let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
