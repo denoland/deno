@@ -1230,7 +1230,7 @@ impl Documents {
       });
     let maybe_jsx_config = options
       .maybe_config_file
-      .and_then(|cf| cf.to_maybe_jsx_import_source_config());
+      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       &options.enabled_urls,
       options.document_preload_limit,
