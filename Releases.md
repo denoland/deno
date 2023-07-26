@@ -6,6 +6,7 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+<<<<<<< HEAD
 ### 1.35.3 / 2023.07.26
 
 - feat(runtime): sys_info.rs - Use KERN_OSRELEASE on {Free,Open}BSD (#19849)
@@ -28,6 +29,8 @@ https://github.com/denoland/deno_install
 - perf(lsp): format in a blocking task (#19883)
 - perf: cache node resolution when accesing a global (#19930)
 
+=======
+>>>>>>> b0a4536de (fix(task): ensure quoted strings are maintained mid-word (#19944))
 ### 1.35.2 / 2023.07.20
 
 - fix(bench): run warmup benchmark to break JIT bias (#19844)

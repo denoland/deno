@@ -2,7 +2,11 @@
 
 [package]
 name = "deno_io"
+<<<<<<< HEAD
 version = "0.23.0"
+=======
+version = "0.22.0"
+>>>>>>> b0a4536de (fix(task): ensure quoted strings are maintained mid-word (#19944))
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
