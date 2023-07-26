@@ -267,16 +267,12 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   };
   let string = v8_string.to_rust_string_lossy(scope);
-  // TODO: don't require parsing the specifier
-  let Ok(specifier) = deno_core::ModuleSpecifier::parse(&string) else {
-    return Mode::Deno;
-  };
   let op_state = deno_core::JsRuntime::op_state_from(scope);
   let op_state = op_state.borrow();
   let Some(node_resolver) = op_state.try_borrow::<Rc<NodeResolver>>() else {
     return Mode::Deno;
   };
-  if node_resolver.in_npm_package(&specifier) {
+  if node_resolver.in_npm_package_with_cache(string) {
     Mode::Node
   } else {
     Mode::Deno
