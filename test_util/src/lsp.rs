@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::deno_exe_path;
+use crate::new_deno_dir;
 use crate::npm_registry_url;
 use crate::PathRef;
 use crate::TestContext;
@@ -523,7 +524,11 @@ impl LspClientBuilder {
   }
 
   pub fn build_result(&self) -> Result<LspClient> {
-    let deno_dir = self.context.as_ref().unwrap().deno_dir().clone();
+    let deno_dir = self
+      .context
+      .as_ref()
+      .map(|c| c.deno_dir().clone())
+      .unwrap_or_else(new_deno_dir);
     let mut command = Command::new(&self.deno_exe);
     command
       .env("DENO_DIR", deno_dir.path())
