@@ -46,6 +46,8 @@ mod inner {
 #[cfg(not(feature = "sync_fs"))]
 mod inner {
   pub use std::rc::Rc as MaybeArc;
+  use std::ops::Deref;
+  use std::ops::DerefMut;
 
   pub trait MaybeSync {}
   impl<T> MaybeSync for T where T: ?Sized {}
