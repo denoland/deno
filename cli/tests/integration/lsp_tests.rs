@@ -611,6 +611,39 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 }
 
 #[test]
+fn lsp_import_map_node_specifiers() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("deno.json", r#"{ "imports": { "fs": "node:fs" } }"#);
+
+  // cache @types/node
+  context
+    .new_command()
+    .args("cache npm:@types/node")
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"fs\";\nconsole.log(fs);"
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

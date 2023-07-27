@@ -279,6 +279,8 @@ class FakeSocket extends EventEmitter {
     this.remoteAddress = opts.hostname;
     this.remotePort = opts.port;
     this.encrypted = opts.encrypted;
+    this.writable = true;
+    this.readable = true;
   }
 
   setKeepAlive() {}
