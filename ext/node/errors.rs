@@ -122,7 +122,7 @@ pub fn err_package_path_not_exported(
     msg =
       format!("{msg} No \"exports\" main defined{types_msg} in '{pkg_path}package.json'");
   } else {
-    msg = format!("{msg} Package subpath{types_msg} '{subpath}' is not defined by \"exports\" in '{pkg_path}package.json'");
+    msg = format!("{msg} Package subpath '{subpath}' is not defined{types_msg} by \"exports\" in '{pkg_path}package.json'");
   };
 
   if let Some(referrer) = maybe_referrer {
@@ -183,7 +183,7 @@ mod test {
         NodeResolutionMode::Types,
       )
       .to_string(),
-      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath for types './jsx-runtime' is not defined by \"exports\" in 'test_path{separator_char}package.json'")
+      format!("[ERR_PACKAGE_PATH_NOT_EXPORTED] Package subpath './jsx-runtime' is not defined for types by \"exports\" in 'test_path{separator_char}package.json'")
     );
     assert_eq!(
       err_package_path_not_exported(
