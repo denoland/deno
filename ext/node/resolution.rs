@@ -367,7 +367,7 @@ impl NodeResolver {
         permissions,
       )
       .with_context(|| {
-        format!("Error resolving package config for '{reference}'")
+        format!("Failed resolving package config for '{reference}'")
       })?;
     let resolved_path = match maybe_resolved_path {
       Some(resolved_path) => resolved_path,
