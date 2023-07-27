@@ -32,8 +32,6 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-zstd.workspace = true
-glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -113,7 +111,6 @@ twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
-zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
@@ -125,7 +122,6 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-dotenv = "=0.15.0"
 flaky_test = "=0.1.0"
 once_cell.workspace = true
 os_pipe.workspace = true
