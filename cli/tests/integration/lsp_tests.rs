@@ -545,6 +545,105 @@ fn lsp_import_map_config_file_auto_discovered() {
 }
 
 #[test]
+fn lsp_import_map_config_file_auto_discovered_symlink() {
+  let context = TestContextBuilder::new()
+    // DO NOT COPY THIS CODE. Very rare case where we want to force the temp
+    // directory on the CI to not be a symlinked directory because we are
+    // testing a scenario with a symlink to a non-symlink in the same directory
+    // tree. Generally you want to ensure your code works in symlinked directories
+    // so don't use this unless you have a similar scenario.
+    .temp_dir_path(std::env::temp_dir().canonicalize().unwrap())
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
+
+  let mut client = context.new_lsp_command().capture_stderr().build();
+  client.initialize_default();
+
+  // now create a symlink in the current directory to a subdir/deno.json
+  // and ensure the watched files notification still works
+  temp_dir.create_dir_all("subdir");
+  temp_dir.write("subdir/deno.json", r#"{ }"#);
+  temp_dir.symlink_file(
+    temp_dir.path().join("subdir").join("deno.json"),
+    temp_dir.path().join("deno.json"),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{
+      // the client will give a watched file changed event for the symlink's target
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri(),
+      "type": 2
+    }]
+  }));
+
+  // this will discover the deno.json in the root
+  let search_line = format!(
+    "Auto-resolved configuration file: \"{}\"",
+    temp_dir.uri().join("deno.json").unwrap().as_str()
+  );
+  client.wait_until_stderr_line(|line| line.contains(&search_line));
+
+  // now open a file which will cause a diagnostic because the import map is empty
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
+  assert_eq!(diagnostics.all().len(), 1);
+
+  // update the import map to have the imports now
+  temp_dir.write("subdir/deno.json", r#"{ "imports": { "/~/": "./lib/" } }"#);
+  client.did_change_watched_files(json!({
+    "changes": [{
+      // now still say that the target path has changed
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri(),
+      "type": 2
+    }]
+  }));
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_import_map_node_specifiers() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("deno.json", r#"{ "imports": { "fs": "node:fs" } }"#);
+
+  // cache @types/node
+  context
+    .new_command()
+    .args("cache npm:@types/node")
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"fs\";\nconsole.log(fs);"
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();

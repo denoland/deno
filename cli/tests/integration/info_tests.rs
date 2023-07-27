@@ -147,3 +147,10 @@ itest!(package_json_basic {
   copy_temp_dir: Some("package_json/basic"),
   exit_code: 0,
 });
+
+itest!(info_import_map {
+  args: "info preact/debug",
+  output: "info/with_import_map/with_import_map.out",
+  cwd: Some("info/with_import_map"),
+  exit_code: 0,
+});

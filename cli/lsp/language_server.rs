@@ -1290,7 +1290,7 @@ impl Inner {
     })
   }
 
-  fn refresh_documents_config(&mut self) {
+  async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
       enabled_urls: self.config.enabled_urls(),
       document_preload_limit: self
@@ -1303,6 +1303,10 @@ impl Inner {
       npm_registry_api: self.npm.api.clone(),
       npm_resolution: self.npm.resolution.clone(),
     });
+
+    // refresh the npm specifiers because it might have discovered
+    // a @types/node package and now's a good time to do that anyway
+    self.refresh_npm_specifiers().await;
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1447,7 +1451,7 @@ impl Inner {
     }
 
     self.recreate_npm_services_if_necessary().await;
-    self.refresh_documents_config();
+    self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1458,18 +1462,8 @@ impl Inner {
     &mut self,
     params: DidChangeWatchedFilesParams,
   ) {
-    fn has_lockfile_changed(
-      lockfile: &Lockfile,
-      changed_urls: &HashSet<Url>,
-    ) -> bool {
-      let lockfile_path = lockfile.filename.clone();
-      let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile_path) else {
-        return false;
-      };
-      if !changed_urls.contains(&specifier) {
-        return false;
-      }
-      match Lockfile::new(lockfile_path, false) {
+    fn has_lockfile_content_changed(lockfile: &Lockfile) -> bool {
+      match Lockfile::new(lockfile.filename.clone(), false) {
         Ok(new_lockfile) => {
           // only update if the lockfile has changed
           FastInsecureHasher::hash(lockfile)
@@ -1479,6 +1473,53 @@ impl Inner {
           lsp_warn!("Error loading lockfile: {:#}", err);
           false
         }
+      }
+    }
+
+    fn has_config_changed(config: &Config, changes: &HashSet<Url>) -> bool {
+      // Check the canonicalized specifier here because file watcher
+      // changes will be for the canonicalized path in vscode, but also check the
+      // non-canonicalized specifier in order to please the tests and handle
+      // a client that might send that instead.
+      if config
+        .maybe_config_file_canonicalized_specifier()
+        .map(|s| changes.contains(s))
+        .unwrap_or(false)
+      {
+        return true;
+      }
+      match config.maybe_config_file() {
+        Some(file) => {
+          if changes.contains(&file.specifier) {
+            return true;
+          }
+        }
+        None => {
+          // check for auto-discovery
+          if changes.iter().any(|url| {
+            url.path().ends_with("/deno.json")
+              || url.path().ends_with("/deno.jsonc")
+          }) {
+            return true;
+          }
+        }
+      }
+
+      // if the lockfile has changed, reload the config as well
+      if let Some(lockfile) = config.maybe_lockfile() {
+        let lockfile_matches = config
+          .maybe_lockfile_canonicalized_specifier()
+          .map(|s| changes.contains(s))
+          .or_else(|| {
+            ModuleSpecifier::from_file_path(&lockfile.lock().filename)
+              .ok()
+              .map(|s| changes.contains(&s))
+          })
+          .unwrap_or(false);
+        lockfile_matches && has_lockfile_content_changed(&lockfile.lock())
+      } else {
+        // check for auto-discovery
+        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
       }
     }
 
@@ -1493,23 +1534,7 @@ impl Inner {
       .collect();
 
     // if the current deno.json has changed, we need to reload it
-    let has_config_changed = match self.config.maybe_config_file() {
-      Some(config_file) => changes.contains(&config_file.specifier),
-      None => {
-        // check for auto-discovery
-        changes.iter().any(|url| {
-          url.path().ends_with("/deno.json")
-            || url.path().ends_with("/deno.jsonc")
-        })
-      }
-    } || match self.config.maybe_lockfile() {
-      Some(lockfile) => has_lockfile_changed(&lockfile.lock(), &changes),
-      None => {
-        // check for auto-discovery
-        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
-      }
-    };
-    if has_config_changed {
+    if has_config_changed(&self.config, &changes) {
       if let Err(err) = self.update_config_file().await {
         self.client.show_message(MessageType::WARNING, err);
       }
@@ -1545,8 +1570,7 @@ impl Inner {
 
     if touched {
       self.recreate_npm_services_if_necessary().await;
-      self.refresh_documents_config();
-      self.refresh_npm_specifiers().await;
+      self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.ts_server.restart(self.snapshot()).await;
       self.send_diagnostics_update();
@@ -2986,7 +3010,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
-      ls.refresh_documents_config();
+      ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
     }
@@ -3054,7 +3078,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .map(|d| d.is_diagnosable())
         .unwrap_or(false)
       {
-        ls.refresh_documents_config();
+        ls.refresh_documents_config().await;
         ls.send_diagnostics_update();
         ls.send_testing_update();
       }
@@ -3144,7 +3168,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     if self.refresh_specifiers_from_client().await {
       let mut ls = self.0.write().await;
-      ls.refresh_documents_config();
+      ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
     }

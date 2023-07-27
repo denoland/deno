@@ -49,10 +49,7 @@ const fn str_to_utf16<const N: usize>(s: &str) -> [u16; N] {
 // when a user accesses a global that is the same between Node and Deno (like
 // Uint8Array or fetch), the proxy overhead is avoided.
 //
-// The Deno and Node specific globals are stored in objects in the internal
-// fields of the proxy object. The first internal field is the object storing
-// the Deno specific globals, the second internal field is the object storing
-// the Node specific globals.
+// The Deno and Node specific globals are stored in a struct in a context slot.
 //
 // These are the globals that are handled:
 // - Buffer (node only)
@@ -94,18 +91,27 @@ enum Mode {
   Node,
 }
 
+struct GlobalsStorage {
+  reflect_get: v8::Global<v8::Function>,
+  reflect_set: v8::Global<v8::Function>,
+  deno_globals: v8::Global<v8::Object>,
+  node_globals: v8::Global<v8::Object>,
+}
+
+impl GlobalsStorage {
+  fn inner_for_mode(&self, mode: Mode) -> v8::Global<v8::Object> {
+    match mode {
+      Mode::Deno => &self.deno_globals,
+      Mode::Node => &self.node_globals,
+    }
+    .clone()
+  }
+}
+
 pub fn global_template_middleware<'s>(
   _scope: &mut v8::HandleScope<'s, ()>,
   template: v8::Local<'s, v8::ObjectTemplate>,
 ) -> v8::Local<'s, v8::ObjectTemplate> {
-  // The internal field layout is as follows:
-  // 0: Reflect.get
-  // 1: Reflect.set
-  // 2: An object containing the Deno specific globals
-  // 3: An object containing the Node specific globals
-  assert_eq!(template.internal_field_count(), 0);
-  template.set_internal_field_count(4);
-
   let mut config = v8::NamedPropertyHandlerConfiguration::new().flags(
     v8::PropertyHandlerFlags::NON_MASKING
       | v8::PropertyHandlerFlags::HAS_NO_SIDE_EFFECT,
@@ -147,7 +153,7 @@ pub fn global_object_middleware<'s>(
     .unwrap();
   assert_ne!(global, object_prototype);
 
-  // get the Reflect.get and Reflect.set functions
+  // Get the Reflect object
   let reflect_key =
     v8::String::new_external_onebyte_static(scope, b"Reflect").unwrap();
   let reflect = global
@@ -155,12 +161,18 @@ pub fn global_object_middleware<'s>(
     .unwrap()
     .to_object(scope)
     .unwrap();
+
+  // Get the Reflect.get function.
   let get_key = v8::String::new_external_onebyte_static(scope, b"get").unwrap();
   let reflect_get = reflect.get(scope, get_key.into()).unwrap();
-  assert!(reflect_get.is_function());
+  let reflect_get_fn: v8::Local<v8::Function> = reflect_get.try_into().unwrap();
+  let reflect_get = v8::Global::new(scope, reflect_get_fn);
+
+  // Get the Reflect.set function.
   let set_key = v8::String::new_external_onebyte_static(scope, b"set").unwrap();
   let reflect_set = reflect.get(scope, set_key.into()).unwrap();
-  assert!(reflect_set.is_function());
+  let reflect_set_fn: v8::Local<v8::Function> = reflect_set.try_into().unwrap();
+  let reflect_set = v8::Global::new(scope, reflect_set_fn);
 
   // globalThis.__bootstrap.ext_node_denoGlobals and
   // globalThis.__bootstrap.ext_node_nodeGlobals are the objects that contain
@@ -194,6 +206,9 @@ pub fn global_object_middleware<'s>(
     }
     _ => panic!("__bootstrap.ext_node_denoGlobals should not be tampered with"),
   };
+  let deno_globals_obj: v8::Local<v8::Object> =
+    deno_globals.try_into().unwrap();
+  let deno_globals = v8::Global::new(scope, deno_globals_obj);
   let node_globals_key =
     v8::String::new_external_onebyte_static(scope, b"ext_node_nodeGlobals")
       .unwrap();
@@ -209,12 +224,18 @@ pub fn global_object_middleware<'s>(
     }
     _ => panic!("__bootstrap.ext_node_nodeGlobals should not be tampered with"),
   };
+  let node_globals_obj: v8::Local<v8::Object> =
+    node_globals.try_into().unwrap();
+  let node_globals = v8::Global::new(scope, node_globals_obj);
 
-  // set the internal fields
-  assert!(global.set_internal_field(0, reflect_get));
-  assert!(global.set_internal_field(1, reflect_set));
-  assert!(global.set_internal_field(2, deno_globals));
-  assert!(global.set_internal_field(3, node_globals));
+  // Create the storage struct and store it in a context slot.
+  let storage = GlobalsStorage {
+    reflect_get,
+    reflect_set,
+    deno_globals,
+    node_globals,
+  };
+  scope.get_current_context().set_slot(scope, storage);
 }
 
 fn is_managed_key(
@@ -246,45 +267,16 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   };
   let string = v8_string.to_rust_string_lossy(scope);
-  // TODO: don't require parsing the specifier
-  let Ok(specifier) = deno_core::ModuleSpecifier::parse(&string) else {
-    return Mode::Deno;
-  };
   let op_state = deno_core::JsRuntime::op_state_from(scope);
   let op_state = op_state.borrow();
   let Some(node_resolver) = op_state.try_borrow::<Rc<NodeResolver>>() else {
     return Mode::Deno;
   };
-  if node_resolver.in_npm_package(&specifier) {
+  if node_resolver.in_npm_package_with_cache(string) {
     Mode::Node
   } else {
     Mode::Deno
   }
-}
-
-fn inner_object<'s>(
-  scope: &mut v8::HandleScope<'s>,
-  real_global_object: v8::Local<'s, v8::Object>,
-  mode: Mode,
-) -> v8::Local<'s, v8::Object> {
-  let value = match mode {
-    Mode::Deno => real_global_object.get_internal_field(scope, 2).unwrap(),
-    Mode::Node => real_global_object.get_internal_field(scope, 3).unwrap(),
-  };
-  v8::Local::<v8::Object>::try_from(value).unwrap()
-}
-
-fn real_global_object<'s>(
-  scope: &mut v8::HandleScope<'s>,
-) -> v8::Local<'s, v8::Object> {
-  let context = scope.get_current_context();
-  let global = context.global(scope);
-  let global = global
-    .get_prototype(scope)
-    .unwrap()
-    .to_object(scope)
-    .unwrap();
-  global
 }
 
 pub fn getter<'s>(
@@ -298,16 +290,18 @@ pub fn getter<'s>(
   };
 
   let this = args.this();
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let reflect_get: v8::Local<v8::Function> = real_global_object
-    .get_internal_field(scope, 0)
-    .unwrap()
-    .try_into()
-    .unwrap();
+  let context = scope.get_current_context();
+  let (reflect_get, inner) = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let reflect_get = storage.reflect_get.clone();
+    let inner = storage.inner_for_mode(mode);
+    (reflect_get, inner)
+  };
+  let reflect_get = v8::Local::new(scope, reflect_get);
+  let inner = v8::Local::new(scope, inner);
 
-  let inner = inner_object(scope, real_global_object, mode);
   let undefined = v8::undefined(scope);
   let Some(value) = reflect_get.call(
     scope,
@@ -332,15 +326,18 @@ pub fn setter<'s>(
   };
 
   let this = args.this();
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let reflect_set: v8::Local<v8::Function> = real_global_object
-    .get_internal_field(scope, 1)
-    .unwrap()
-    .try_into()
-    .unwrap();
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let (reflect_set, inner) = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    let reflect_set = storage.reflect_set.clone();
+    let inner = storage.inner_for_mode(mode);
+    (reflect_set, inner)
+  };
+  let reflect_set = v8::Local::new(scope, reflect_set);
+  let inner = v8::Local::new(scope, inner);
+
   let undefined = v8::undefined(scope);
 
   let Some(success) = reflect_set.call(
@@ -363,10 +360,14 @@ pub fn query<'s>(
   if !is_managed_key(scope, key) {
     return;
   };
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let inner = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    storage.inner_for_mode(mode)
+  };
+  let inner = v8::Local::new(scope, inner);
 
   let Some(true) = inner.has_own_property(scope, key) else {
     return;
@@ -389,10 +390,14 @@ pub fn deleter<'s>(
     return;
   };
 
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let inner = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    storage.inner_for_mode(mode)
+  };
+  let inner = v8::Local::new(scope, inner);
 
   let Some(success) = inner.delete(scope, key.into()) else {
     return;
@@ -413,10 +418,14 @@ pub fn enumerator<'s>(
   _args: v8::PropertyCallbackArguments<'s>,
   mut rv: v8::ReturnValue,
 ) {
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let inner = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    storage.inner_for_mode(mode)
+  };
+  let inner = v8::Local::new(scope, inner);
 
   let Some(array) = inner.get_property_names(scope, GetPropertyNamesArgs::default()) else {
     return;
@@ -436,10 +445,15 @@ pub fn definer<'s>(
     return;
   };
 
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let inner = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    storage.inner_for_mode(mode)
+  };
+  let inner = v8::Local::new(scope, inner);
+
   let Some(success) = inner.define_property(scope, key, descriptor) else {
     return;
   };
@@ -464,12 +478,17 @@ pub fn descriptor<'s>(
     return;
   };
 
-  let real_global_object = real_global_object(scope);
   let mode = current_mode(scope);
 
   let scope = &mut v8::TryCatch::new(scope);
 
-  let inner = inner_object(scope, real_global_object, mode);
+  let context = scope.get_current_context();
+  let inner = {
+    let storage = context.get_slot::<GlobalsStorage>(scope).unwrap();
+    storage.inner_for_mode(mode)
+  };
+  let inner = v8::Local::new(scope, inner);
+
   let Some(descriptor) = inner.get_own_property_descriptor(scope, key) else {
     scope.rethrow().expect("to have caught an exception");
     return;
