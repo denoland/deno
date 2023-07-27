@@ -196,19 +196,6 @@ impl NpmCacheDir {
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageCacheFolderId, AnyError> {
-    match self
-      .maybe_resolve_package_folder_id_from_specifier(specifier, registry_url)
-    {
-      Some(id) => Ok(id),
-      None => bail!("could not find npm package for '{}'", specifier),
-    }
-  }
-
-  fn maybe_resolve_package_folder_id_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-    registry_url: &Url,
   ) -> Option<NpmPackageCacheFolderId> {
     let registry_root_dir = self
       .root_dir_url
@@ -455,7 +442,7 @@ impl NpmCache {
     &self,
     specifier: &ModuleSpecifier,
     registry_url: &Url,
-  ) -> Result<NpmPackageCacheFolderId, AnyError> {
+  ) -> Option<NpmPackageCacheFolderId> {
     self
       .cache_dir
       .resolve_package_folder_id_from_specifier(specifier, registry_url)
@@ -463,7 +450,7 @@ impl NpmCache {
 }
 
 pub fn mixed_case_package_name_encode(name: &str) -> String {
-  // use base32 encoding because it's reversable and the character set
+  // use base32 encoding because it's reversible and the character set
   // only includes the characters within 0-9 and A-Z so it can be lower cased
   base32::encode(
     base32::Alphabet::RFC4648 { padding: false },

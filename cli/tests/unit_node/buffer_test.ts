@@ -215,7 +215,7 @@ Deno.test({
     assertEquals(
       Buffer.byteLength(Buffer.alloc(0)),
       Buffer.alloc(0).byteLength,
-      "Byte lenght differs on buffers",
+      "Byte length differs on buffers",
     );
   },
 });

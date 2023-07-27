@@ -1,10 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
+import Module from "node:module";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -13,7 +17,7 @@ import {
 } from "ext:deno_node/internal/errors.ts";
 import { getOptionValue } from "ext:deno_node/internal/options.ts";
 import { assert } from "ext:deno_node/_util/asserts.ts";
-import { join } from "ext:deno_node/path.ts";
+import { join } from "node:path";
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 import {
   arch as arch_,
@@ -288,6 +292,15 @@ function _kill(pid: number, sig: number): number {
   }
 }
 
+// TODO(bartlomieju): flags is currently not supported.
+export function dlopen(module, filename, flags) {
+  if (typeof flags !== "undefined") {
+    warnNotImplemented("process.dlopen doesn't support 'flags' argument");
+  }
+  Module._extensions[".node"](module, filename);
+  return module;
+}
+
 export function kill(pid: number, sig: string | number = "SIGTERM") {
   if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
@@ -399,6 +412,8 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
   nextTick = _nextTick;
+
+  dlopen = dlopen;
 
   /** https://nodejs.org/api/process.html#process_process_events */
   override on(event: "exit", listener: (code: number) => void): this;

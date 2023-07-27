@@ -145,7 +145,7 @@ fn get_script_with_args(script: &str, options: &CliOptions) -> String {
     .argv()
     .iter()
     // surround all the additional arguments in double quotes
-    // and santize any command substition
+    // and sanitize any command substitution
     .map(|a| format!("\"{}\"", a.replace('"', "\\\"").replace('$', "\\$")))
     .collect::<Vec<_>>()
     .join(" ");

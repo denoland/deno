@@ -371,7 +371,8 @@ where
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
-    .ok();
+    .ok()
+    .flatten();
   if pkg.is_none() {
     return Ok(None);
   }
@@ -463,12 +464,12 @@ where
   {
     modules_path
   } else {
-    let orignal = modules_path.clone();
+    let original = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
     if fs.is_dir(Path::new(&mod_dir)) {
       mod_dir
     } else {
-      orignal
+      original
     }
   };
   let pkg = node_resolver.load_package_json(
@@ -499,7 +500,7 @@ where
 fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
   filename: String,
-) -> Result<PackageJson, AnyError>
+) -> Result<Option<PackageJson>, AnyError>
 where
   P: NodePermissions + 'static,
 {

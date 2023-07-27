@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // Mock trace for now
 const trace = () => {};
 import {
@@ -25,9 +28,12 @@ const previewEntries = (iter, isKeyValue) => {
     return [...iter];
   }
 };
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 const { isBuffer } = Buffer;
-import { formatWithOptions, inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import {
+  formatWithOptions,
+  inspect,
+} from "ext:deno_node/internal/util/inspect.mjs";
 import {
   isMap,
   isMapIterator,
@@ -41,7 +47,10 @@ import {
   CHAR_LOWERCASE_N as kTraceInstant,
   CHAR_UPPERCASE_C as kTraceCount,
 } from "ext:deno_node/internal/constants.ts";
-import { clearScreenDown, cursorTo } from "ext:deno_node/internal/readline/callbacks.mjs";
+import {
+  clearScreenDown,
+  cursorTo,
+} from "ext:deno_node/internal/readline/callbacks.mjs";
 import cliTable from "ext:deno_node/internal/cli_table.ts";
 const kCounts = Symbol("counts");
 

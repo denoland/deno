@@ -20,11 +20,22 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
-import { createStylizeWithColor, formatValue, formatNumber, formatBigInt, styles, colors } from "ext:deno_console/01_console.js";
-
-
+import {
+  colors,
+  createStylizeWithColor,
+  formatBigInt,
+  formatNumber,
+  formatValue,
+  styles,
+} from "ext:deno_console/01_console.js";
 
 // Set Graphics Rendition https://en.wikipedia.org/wiki/ANSI_escape_code#graphics
 // Each color consists of an array with the color code as first entry and the
@@ -92,37 +103,36 @@ function defineColorAlias(target, alias) {
   });
 }
 
-defineColorAlias('gray', 'grey');
-defineColorAlias('gray', 'blackBright');
-defineColorAlias('bgGray', 'bgGrey');
-defineColorAlias('bgGray', 'bgBlackBright');
-defineColorAlias('dim', 'faint');
-defineColorAlias('strikethrough', 'crossedout');
-defineColorAlias('strikethrough', 'strikeThrough');
-defineColorAlias('strikethrough', 'crossedOut');
-defineColorAlias('hidden', 'conceal');
-defineColorAlias('inverse', 'swapColors');
-defineColorAlias('inverse', 'swapcolors');
-defineColorAlias('doubleunderline', 'doubleUnderline');
+defineColorAlias("gray", "grey");
+defineColorAlias("gray", "blackBright");
+defineColorAlias("bgGray", "bgGrey");
+defineColorAlias("bgGray", "bgBlackBright");
+defineColorAlias("dim", "faint");
+defineColorAlias("strikethrough", "crossedout");
+defineColorAlias("strikethrough", "strikeThrough");
+defineColorAlias("strikethrough", "crossedOut");
+defineColorAlias("hidden", "conceal");
+defineColorAlias("inverse", "swapColors");
+defineColorAlias("inverse", "swapcolors");
+defineColorAlias("doubleunderline", "doubleUnderline");
 
 // TODO(BridgeAR): Add function style support for more complex styles.
 // Don't use 'blue' not visible on cmd.exe
 inspect.styles = Object.assign(Object.create(null), {
-  special: 'cyan',
-  number: 'yellow',
-  bigint: 'yellow',
-  boolean: 'yellow',
-  undefined: 'grey',
-  null: 'bold',
-  string: 'green',
-  symbol: 'green',
-  date: 'magenta',
+  special: "cyan",
+  number: "yellow",
+  bigint: "yellow",
+  boolean: "yellow",
+  undefined: "grey",
+  null: "bold",
+  string: "green",
+  symbol: "green",
+  date: "magenta",
   // "name": intentionally not styling
   // TODO(BridgeAR): Highlight regular expressions properly.
-  regexp: 'red',
-  module: 'underline',
+  regexp: "red",
+  module: "underline",
 });
-
 
 const inspectDefaultOptions = {
   indentationLvl: 0,
@@ -204,7 +214,9 @@ export function inspect(value, opts) {
       }
     }
   }
-  if (ctx.colors) ctx.stylize = createStylizeWithColor(inspect.styles, inspect.colors);
+  if (ctx.colors) {
+    ctx.stylize = createStylizeWithColor(inspect.styles, inspect.colors);
+  }
   if (ctx.maxArrayLength === null) ctx.maxArrayLength = Infinity;
   if (ctx.maxStringLength === null) ctx.maxStringLength = Infinity;
   return formatValue(ctx, value, 0);

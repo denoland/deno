@@ -12,10 +12,10 @@ use std::rc::Rc;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
 
 #[async_trait]
 pub trait BroadcastChannel: Clone {
@@ -81,7 +81,7 @@ pub async fn op_broadcast_send<BC>(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
   name: String,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), AnyError>
 where
   BC: BroadcastChannel + 'static,

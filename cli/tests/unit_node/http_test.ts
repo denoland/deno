@@ -261,6 +261,7 @@ Deno.test("[node/http] non-string buffer response", {
 }, async () => {
   const promise = deferred<void>();
   const server = http.createServer((_, res) => {
+    res.socket!.end();
     gzip(
       Buffer.from("a".repeat(100), "utf8"),
       {},
@@ -288,7 +289,7 @@ Deno.test("[node/http] non-string buffer response", {
 });
 
 // TODO(kt3k): Enable this test
-// Currently ImcomingMessage constructor has incompatible signature.
+// Currently IncomingMessage constructor has incompatible signature.
 /*
 Deno.test("[node/http] http.IncomingMessage can be created without url", () => {
   const message = new http.IncomingMessage(
@@ -349,6 +350,12 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestHeaders.get("content-length"), "11");
     assertEquals(requestHeaders.has("transfer-encoding"), false);
     assertEquals(requestBody, "hello world");
+  });
+  req.on("socket", (socket) => {
+    assert(socket.writable);
+    assert(socket.readable);
+    socket.setKeepAlive();
+    socket.destroy();
   });
   req.write("hello ");
   req.write("world");
@@ -632,7 +639,9 @@ Deno.test("[node/http] HTTPS server", async () => {
   const server = https.createServer({
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
-  }, (_req, res) => {
+  }, (req, res) => {
+    // @ts-ignore: It exists on TLSSocket
+    assert(req.socket.encrypted);
     res.end("success!");
   });
   server.listen(() => {
@@ -659,7 +668,9 @@ Deno.test(
   { permissions: { net: true } },
   async () => {
     const promise = deferred();
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
+      // @ts-ignore: It exists on TLSSocket
+      assert(!req.socket.encrypted);
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
     });
@@ -701,5 +712,43 @@ Deno.test(
     });
 
     await promise;
+  },
+);
+
+Deno.test(
+  "[node/http] client end with callback",
+  { permissions: { net: true } },
+  async () => {
+    let received = false;
+    const ac = new AbortController();
+    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+      received = true;
+      return new Response("hello");
+    });
+    const promise = deferred();
+    let body = "";
+
+    const request = http.request(
+      "http://localhost:5928/",
+      (resp) => {
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        resp.on("end", () => {
+          promise.resolve();
+        });
+      },
+    );
+    request.on("error", promise.reject);
+    request.end(() => {
+      assert(received);
+    });
+
+    await promise;
+    ac.abort();
+    await server.finished;
+
+    assertEquals(body, "hello");
   },
 );

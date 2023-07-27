@@ -12,18 +12,16 @@ use std::process::Stdio;
 use std::rc::Rc;
 
 use os_pipe::pipe;
-use pretty_assertions::assert_eq;
 
+use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
 use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
-use crate::new_deno_dir;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
-use crate::wildcard_match;
 use crate::HttpServerGuard;
 use crate::TempDir;
 
@@ -31,12 +29,12 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
-  use_separate_deno_dir: bool,
   use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
+  temp_dir_path: Option<PathBuf>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
   deno_exe: Option<PathRef>,
@@ -49,6 +47,11 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
+    self.temp_dir_path = Some(path.as_ref().to_path_buf());
+    self
   }
 
   pub fn use_http_server(mut self) -> Self {
@@ -70,15 +73,6 @@ impl TestContextBuilder {
   #[deprecated]
   pub fn use_symlinked_temp_dir(mut self) -> Self {
     self.use_symlinked_temp_dir = true;
-    self
-  }
-
-  /// By default, the temp_dir and the deno_dir will be shared.
-  /// In some cases, that might cause an issue though, so calling
-  /// this will use a separate directory for the deno dir and the
-  /// temp directory.
-  pub fn use_separate_deno_dir(mut self) -> Self {
-    self.use_separate_deno_dir = true;
     self
   }
 
@@ -111,19 +105,19 @@ impl TestContextBuilder {
 
   pub fn use_sync_npm_download(self) -> Self {
     self.env(
-      // make downloads determinstic
+      // make downloads deterministic
       "DENO_UNSTABLE_NPM_SYNC_DOWNLOAD",
       "1",
     )
   }
 
   pub fn build(&self) -> TestContext {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let temp_dir = if self.use_separate_deno_dir {
-      TempDir::new()
-    } else {
-      deno_dir.clone()
-    };
+    let temp_dir_path = self
+      .temp_dir_path
+      .clone()
+      .unwrap_or_else(std::env::temp_dir);
+    let deno_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_symlinked_temp_dir {
       TempDir::new_symlinked(temp_dir)
     } else {
@@ -379,7 +373,7 @@ impl TestCommandBuilder {
     fn sanitize_output(text: String, args: &[String]) -> String {
       let mut text = strip_ansi_codes(&text).to_string();
       // deno test's output capturing flushes with a zero-width space in order to
-      // synchronize the output pipes. Occassionally this zero width space
+      // synchronize the output pipes. Occasionally this zero width space
       // might end up in the output so strip it from the output comparison here.
       if args.first().map(|s| s.as_str()) == Some("test") {
         text = text.replace('\u{200B}', "");
@@ -527,10 +521,11 @@ impl TestCommandOutput {
     &self.testdata_dir
   }
 
-  pub fn skip_output_check(&self) {
+  pub fn skip_output_check(&self) -> &Self {
     *self.asserted_combined.borrow_mut() = true;
     *self.asserted_stdout.borrow_mut() = true;
     *self.asserted_stderr.borrow_mut() = true;
+    self
   }
 
   pub fn skip_exit_code_check(&self) {
@@ -647,7 +642,7 @@ impl TestCommandOutput {
   }
 
   #[track_caller]
-  pub fn assert_stderrr_matches_file(
+  pub fn assert_stderr_matches_file(
     &self,
     file_path: impl AsRef<Path>,
   ) -> &Self {
@@ -660,14 +655,7 @@ impl TestCommandOutput {
     actual: &str,
     expected: impl AsRef<str>,
   ) -> &Self {
-    let expected = expected.as_ref();
-    if !expected.contains("[WILDCARD]") {
-      assert_eq!(actual, expected);
-    } else if !wildcard_match(expected, actual) {
-      println!("OUTPUT START\n{actual}\nOUTPUT END");
-      println!("EXPECTED START\n{expected}\nEXPECTED END");
-      panic!("pattern match failed");
-    }
+    assert_wildcard_match(actual, expected.as_ref());
     self
   }
 
@@ -679,10 +667,7 @@ impl TestCommandOutput {
   ) -> &Self {
     let output_path = self.testdata_dir().join(file_path);
     println!("output path {}", output_path);
-    let expected_text =
-      std::fs::read_to_string(&output_path).unwrap_or_else(|err| {
-        panic!("failed loading {}\n\n{err:#}", output_path)
-      });
+    let expected_text = output_path.read_to_string();
     self.inner_assert_matches_text(actual, expected_text)
   }
 }

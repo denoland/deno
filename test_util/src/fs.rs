@@ -10,6 +10,10 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use lsp_types::Url;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
+use crate::assertions::assert_wildcard_match;
 
 /// Represents a path on the file system, which can be used
 /// to perform specific actions.
@@ -105,7 +109,11 @@ impl PathRef {
 
   pub fn read_to_string_if_exists(&self) -> Result<String, anyhow::Error> {
     fs::read_to_string(self)
-      .with_context(|| format!("Could not find file: {}", self))
+      .with_context(|| format!("Could not read file: {}", self))
+  }
+
+  pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
+    serde_json::from_str(&self.read_to_string()).unwrap()
   }
 
   pub fn rename(&self, to: impl AsRef<Path>) {
@@ -114,6 +122,11 @@ impl PathRef {
 
   pub fn write(&self, text: impl AsRef<str>) {
     fs::write(self, text.as_ref()).unwrap();
+  }
+
+  pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
+    let text = serde_json::to_string_pretty(value).unwrap();
+    self.write(text);
   }
 
   pub fn symlink_dir(
@@ -194,6 +207,19 @@ impl PathRef {
     } else if cfg!(unix) {
       Command::new("chmod").arg("555").arg(self).output().unwrap();
     }
+  }
+
+  pub fn assert_matches_file(&self, wildcard_file: impl AsRef<Path>) -> &Self {
+    let wildcard_file = PathRef::new(wildcard_file);
+    println!("output path {}", wildcard_file);
+    let expected_text = wildcard_file.read_to_string();
+    self.assert_matches_text(&expected_text)
+  }
+
+  pub fn assert_matches_text(&self, wildcard_text: impl AsRef<str>) -> &Self {
+    let actual = self.read_to_string();
+    assert_wildcard_match(&actual, wildcard_text.as_ref());
+    self
   }
 }
 
@@ -307,6 +333,10 @@ impl TempDir {
 
   pub fn new_with_prefix(prefix: &str) -> Self {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
+  }
+
+  pub fn new_in(parent_dir: &Path) -> Self {
+    Self::new_inner(parent_dir, None)
   }
 
   pub fn new_with_path(path: &Path) -> Self {

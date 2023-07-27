@@ -308,6 +308,7 @@ class Headers {
    * @param {string} name
    */
   delete(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'delete' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
@@ -333,6 +334,7 @@ class Headers {
    * @param {string} name
    */
   get(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'get' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
@@ -345,10 +347,25 @@ class Headers {
     return getHeader(list, name);
   }
 
+  getSetCookie() {
+    webidl.assertBranded(this, HeadersPrototype);
+    const list = this[_headerList];
+
+    const entries = [];
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === "set-cookie") {
+        ArrayPrototypePush(entries, list[i][1]);
+      }
+    }
+
+    return entries;
+  }
+
   /**
    * @param {string} name
    */
   has(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'has' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");

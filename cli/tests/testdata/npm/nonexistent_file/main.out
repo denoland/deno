@@ -1,4 +1,4 @@
-error: Unable to load [WILDCARD]hmac-sha512 imported from [WILDCARD]/testdata/npm/nonexistent_file/main.js
+error: Unable to load [WILDCARD]non-existent imported from [WILDCARD]main.js
 
 Caused by:
 [WILDCARD]

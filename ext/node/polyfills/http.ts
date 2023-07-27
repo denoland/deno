@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 // import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 
 const core = globalThis.__bootstrap.core;
@@ -10,10 +13,10 @@ import {
   // createConnection,
   ListenOptions,
   Socket,
-} from "ext:deno_node/net.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+} from "node:net";
+import { Buffer } from "node:buffer";
 import { ERR_SERVER_NOT_RUNNING } from "ext:deno_node/internal/errors.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
   validateBoolean,
@@ -26,13 +29,13 @@ import {
   finished,
   Readable as NodeReadable,
   Writable as NodeWritable,
-} from "ext:deno_node/stream.ts";
+} from "node:stream";
 import {
   OutgoingMessage,
   parseUniqueHeadersOption,
   validateHeaderName,
 } from "ext:deno_node/_http_outgoing.ts";
-import { ok as assert } from "ext:deno_node/assert.ts";
+import { ok as assert } from "node:assert";
 import { kOutHeaders } from "ext:deno_node/internal/http.ts";
 import { _checkIsHttpToken as checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 import { Agent, globalAgent } from "ext:deno_node/_http_agent.mjs";
@@ -271,6 +274,20 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  constructor(opts = {}) {
+    super();
+    this.remoteAddress = opts.hostname;
+    this.remotePort = opts.port;
+    this.encrypted = opts.encrypted;
+    this.writable = true;
+    this.readable = true;
+  }
+
+  setKeepAlive() {}
+
+  end() {}
+
+  destroy() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -547,7 +564,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
-    this.onSocket(new FakeSocket());
+    this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
 
     const url = this._createUrlStrFromOptions();
 
@@ -587,6 +604,15 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
     this.finished = true;
     if (chunk !== undefined && chunk !== null) {
       this.write(chunk, encoding);
@@ -605,15 +631,14 @@ class ClientRequest extends OutgoingMessage {
               }
 
               core.tryClose(this._bodyWriteRid);
-
-              try {
-                cb?.();
-              } catch (_) {
-                //
-              }
             }
           })(),
         ]);
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
           webClearTimeout(this._timeout[timerId]);
@@ -1284,7 +1309,10 @@ export class ServerResponse extends NodeWritable {
     return status === 101 || status === 204 || status === 205 || status === 304;
   }
 
-  constructor(resolve: (value: Response | PromiseLike<Response>) => void) {
+  constructor(
+    resolve: (value: Response | PromiseLike<Response>) => void,
+    socket: FakeSocket,
+  ) {
     let controller: ReadableByteStreamController;
     const readable = new ReadableStream({
       start(c) {
@@ -1327,6 +1355,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
+    this.socket = socket;
   }
 
   setHeader(name: string, value: string) {
@@ -1415,7 +1444,7 @@ export class IncomingMessageForServer extends NodeReadable {
   // These properties are used by `npm:forwarded` for example.
   socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request, remoteAddr: { hostname: string; port: number }) {
+  constructor(req: Request, socket: FakeSocket) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -1442,10 +1471,7 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = {
-      remoteAddress: remoteAddr.hostname,
-      remotePort: remoteAddr.port,
-    };
+    this.socket = socket;
     this.#req = req;
   }
 
@@ -1549,7 +1575,12 @@ export class ServerImpl extends EventEmitter {
   _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
-      const req = new IncomingMessageForServer(request, info.remoteAddr);
+      const socket = new FakeSocket({
+        remoteAddress: info.remoteAddr.hostname,
+        remotePort: info.remoteAddr.port,
+        encrypted: this._encrypted,
+      });
+      const req = new IncomingMessageForServer(request, socket);
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
@@ -1559,7 +1590,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve);
+          const res = new ServerResponse(resolve, socket);
           this.emit("request", req, res);
         });
       }

@@ -1477,3 +1477,17 @@ Deno.test({
   }, Deno.errors.AddrInUse);
   listener1.close();
 });
+
+Deno.test({
+  permissions: { net: true },
+}, function listenTlsDoesNotThrowOnStringPort() {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    // @ts-ignore String port is not allowed by typing, but it shouldn't throw
+    // for backwards compatibility.
+    port: "0",
+    cert,
+    key,
+  });
+  listener.close();
+});

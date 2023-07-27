@@ -2,6 +2,7 @@
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -12,7 +13,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -198,8 +199,8 @@ impl TryFrom<ExitStatus> for ChildStatus {
 #[serde(rename_all = "camelCase")]
 pub struct SpawnOutput {
   status: ChildStatus,
-  stdout: Option<ZeroCopyBuf>,
-  stderr: Option<ZeroCopyBuf>,
+  stdout: Option<ToJsBuffer>,
+  stderr: Option<ToJsBuffer>,
 }
 
 fn create_command(
@@ -285,7 +286,12 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn()?;
+  let mut child = command.spawn().with_context(|| {
+    format!(
+      "Failed to spawn: {}",
+      command.as_std().get_program().to_string_lossy()
+    )
+  })?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -352,8 +358,13 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output =
-    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
+  let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
+  let output = command.output().with_context(|| {
+    format!(
+      "Failed to spawn: {}",
+      command.get_program().to_string_lossy()
+    )
+  })?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,

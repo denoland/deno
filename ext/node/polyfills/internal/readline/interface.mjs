@@ -20,9 +20,14 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 // deno-lint-ignore-file camelcase no-inner-declarations no-this-alias
 
-import { ERR_INVALID_ARG_VALUE, ERR_USE_AFTER_CLOSE } from "ext:deno_node/internal/errors.ts";
+import {
+  ERR_INVALID_ARG_VALUE,
+  ERR_USE_AFTER_CLOSE,
+} from "ext:deno_node/internal/errors.ts";
 import {
   validateAbortSignal,
   validateArray,
@@ -34,7 +39,7 @@ import {
   getStringWidth,
   stripVTControlCharacters,
 } from "ext:deno_node/internal/util/inspect.mjs";
-import EventEmitter from "ext:deno_node/events.ts";
+import EventEmitter from "node:events";
 import { emitKeypressEvents } from "ext:deno_node/internal/readline/emitKeypressEvents.mjs";
 import {
   charLengthAt,
@@ -42,11 +47,15 @@ import {
   commonPrefix,
   kSubstringSearch,
 } from "ext:deno_node/internal/readline/utils.mjs";
-import { clearScreenDown, cursorTo, moveCursor } from "ext:deno_node/internal/readline/callbacks.mjs";
+import {
+  clearScreenDown,
+  cursorTo,
+  moveCursor,
+} from "ext:deno_node/internal/readline/callbacks.mjs";
 import { Readable } from "ext:deno_node/_stream.mjs";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 
-import { StringDecoder } from "ext:deno_node/string_decoder.ts";
+import { StringDecoder } from "node:string_decoder";
 import {
   kAddHistory,
   kDecoder,

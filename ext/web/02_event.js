@@ -200,7 +200,7 @@ class Event {
         currentTarget: null,
         eventPhase: Event.NONE,
         target: null,
-        timeStamp: DateNow(),
+        timeStamp: 0,
       };
       // TODO(@littledivy): Not spec compliant but performance is hurt badly
       // for users of `_skipInternalInit`.
@@ -516,7 +516,7 @@ function isShadowRoot(nodeImpl) {
   );
 }
 
-function isSlotable(
+function isSlottable(
   nodeImpl,
 ) {
   return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
@@ -586,7 +586,7 @@ function dispatch(
     }
 
     let slotInClosedTree = false;
-    let slotable = isSlotable(targetImpl) && getAssignedSlot(targetImpl)
+    let slottable = isSlottable(targetImpl) && getAssignedSlot(targetImpl)
       ? targetImpl
       : null;
     let parent = getParent(targetImpl);
@@ -594,8 +594,8 @@ function dispatch(
     // Populate event path
     // https://dom.spec.whatwg.org/#event-path
     while (parent !== null) {
-      if (slotable !== null) {
-        slotable = null;
+      if (slottable !== null) {
+        slottable = null;
 
         const parentRoot = getRoot(parent);
         if (

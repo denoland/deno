@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -10,6 +11,8 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
+use deno_semver::npm::NpmPackageNv;
+use deno_semver::npm::NpmPackageReq;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -93,7 +96,12 @@ impl TypeChecker {
     let debug = self.cli_options.log_level() == Some(log::Level::Debug);
     let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
     let check_js = ts_config.get_check_js();
-    let check_hash = match get_check_hash(&graph, type_check_mode, &ts_config) {
+    let check_hash = match get_check_hash(
+      &graph,
+      self.npm_resolver.package_reqs(),
+      type_check_mode,
+      &ts_config,
+    ) {
       CheckHashResult::NoFiles => return Ok(()),
       CheckHashResult::Hash(hash) => hash,
     };
@@ -120,12 +128,10 @@ impl TypeChecker {
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
-    let hash_data = {
-      let mut hasher = FastInsecureHasher::new();
-      hasher.write(&ts_config.as_bytes());
-      hasher.write_str(version::deno());
-      hasher.finish()
-    };
+    let hash_data = FastInsecureHasher::new()
+      .write(&ts_config.as_bytes())
+      .write_str(version::deno())
+      .finish();
 
     let response = tsc::exec(tsc::Request {
       config: ts_config,
@@ -188,6 +194,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
+  package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {
@@ -200,11 +207,10 @@ fn get_check_hash(
   hasher.write(&ts_config.as_bytes());
 
   let check_js = ts_config.get_check_js();
-  let mut sorted_modules = graph.modules().collect::<Vec<_>>();
-  sorted_modules.sort_by_key(|m| m.specifier().as_str()); // make it deterministic
   let mut has_file = false;
   let mut has_file_to_type_check = false;
-  for module in sorted_modules {
+  // this iterator of modules is already deterministic, so no need to sort it
+  for module in graph.modules() {
     match module {
       Module::Esm(module) => {
         let ts_check = has_ts_check(module.media_type, &module.source);
@@ -242,13 +248,34 @@ fn get_check_hash(
         hasher.write_str(module.specifier.as_str());
         hasher.write_str(&module.source);
       }
-      Module::Json(_)
-      | Module::External(_)
-      | Module::Node(_)
-      | Module::Npm(_) => {
-        // ignore
+      Module::Node(_) => {
+        // the @types/node package will be in the resolved
+        // snapshot below so don't bother including it here
+      }
+      Module::Npm(_) => {
+        // don't bother adding this specifier to the hash
+        // because what matters is the resolved npm snapshot,
+        // which is hashed below
+      }
+      Module::Json(module) => {
+        has_file_to_type_check = true;
+        hasher.write_str(module.specifier.as_str());
+        hasher.write_str(&module.source);
+      }
+      Module::External(module) => {
+        hasher.write_str(module.specifier.as_str());
       }
     }
+  }
+
+  // Check if any of the top level npm packages have changed. We could go
+  // further and check all the individual npm packages, but that's
+  // probably overkill.
+  let mut package_reqs = package_reqs.into_iter().collect::<Vec<_>>();
+  package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+  for (pkg_req, pkg_nv) in package_reqs {
+    hasher.write_hashable(&pkg_req);
+    hasher.write_hashable(&pkg_nv);
   }
 
   if !has_file || !check_js && !has_file_to_type_check {
