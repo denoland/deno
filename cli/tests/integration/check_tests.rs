@@ -307,3 +307,80 @@ fn check_error_in_dep_then_fix() {
   output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
   output.assert_exit_code(1);
 }
+
+#[test]
+fn json_module_check_then_error() {
+  let test_context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = test_context.temp_dir();
+  let correct_code = "{ \"foo\": \"bar\" }";
+  let incorrect_code = "{ \"foo2\": \"bar\" }";
+
+  temp_dir.write(
+    "main.ts",
+    "import test from './test.json' assert { type: 'json' }; console.log(test.foo);\n",
+  );
+  temp_dir.write("test.json", correct_code);
+
+  let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
+
+  check_command.run().assert_exit_code(0).skip_output_check();
+
+  temp_dir.write("test.json", incorrect_code);
+  check_command
+    .run()
+    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2551[WILDCARD]")
+    .assert_exit_code(1);
+}
+
+#[test]
+fn npm_module_check_then_error() {
+  let test_context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .add_npm_env_vars()
+    .use_http_server()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  temp_dir.write("deno.json", "{}"); // so the lockfile gets loaded
+
+  // get the lockfiles values first (this is necessary because the test
+  // server generates different tarballs based on the operating system)
+  test_context
+    .new_command()
+    .args_vec([
+      "cache",
+      "npm:@denotest/breaking-change-between-versions@1.0.0",
+      "npm:@denotest/breaking-change-between-versions@2.0.0",
+    ])
+    .run()
+    .skip_output_check();
+  let lockfile = temp_dir.path().join("deno.lock");
+  let mut lockfile_content =
+    lockfile.read_json::<deno_lockfile::LockfileContent>();
+
+  // make the specifier resolve to version 1
+  lockfile_content.npm.specifiers.insert(
+    "@denotest/breaking-change-between-versions".to_string(),
+    "@denotest/breaking-change-between-versions@1.0.0".to_string(),
+  );
+  lockfile.write_json(&lockfile_content);
+  temp_dir.write(
+    "main.ts",
+    "import { oldName } from 'npm:@denotest/breaking-change-between-versions'; console.log(oldName());\n",
+  );
+
+  let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
+  check_command.run().assert_exit_code(0).skip_output_check();
+
+  // now update the lockfile to use version 2 instead, which should cause a
+  // type checking error because the oldName no longer exists
+  lockfile_content.npm.specifiers.insert(
+    "@denotest/breaking-change-between-versions".to_string(),
+    "@denotest/breaking-change-between-versions@2.0.0".to_string(),
+  );
+  lockfile.write_json(&lockfile_content);
+
+  check_command
+    .run()
+    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_exit_code(1);
+}

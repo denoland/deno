@@ -227,6 +227,7 @@ pub struct TestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
+  pub junit_path: Option<String>,
 }
 
 impl TestOptions {
@@ -251,6 +252,7 @@ impl TestOptions {
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_ops: test_flags.trace_ops,
+      junit_path: test_flags.junit_path,
     })
   }
 }
