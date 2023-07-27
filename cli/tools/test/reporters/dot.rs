@@ -2,7 +2,7 @@
 
 use super::*;
 
-struct DotTestReporter {
+pub struct DotTestReporter {
   n: usize,
   width: usize,
   parallel: bool,
@@ -15,7 +15,7 @@ struct DotTestReporter {
 }
 
 impl DotTestReporter {
-  fn new(parallel: bool) -> DotTestReporter {
+  pub fn new(parallel: bool) -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -469,4 +469,27 @@ impl TestReporter for DotTestReporter {
     println!();
     self.in_new_line = true;
   }
+
+  fn flush_report(
+    &mut self,
+    _elapsed: &Duration,
+    _tests: &IndexMap<usize, TestDescription>,
+    _test_steps: &IndexMap<usize, TestStepDescription>,
+  ) -> anyhow::Result<()> {
+    Ok(())
+  }
+}
+
+// TODO(bartlomieju): move to fmt module and dedup with PrettyTestReporter
+fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
+  let url = Url::parse(path_or_url).unwrap();
+  if url.scheme() == "file" {
+    if let Some(mut r) = cwd.make_relative(&url) {
+      if !r.starts_with("../") {
+        r = format!("./{r}");
+      }
+      return r;
+    }
+  }
+  path_or_url.to_string()
 }

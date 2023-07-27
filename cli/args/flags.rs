@@ -6111,6 +6111,7 @@ mod tests {
           dot_reporter: true,
           fail_fast: None,
           filter: None,
+          junit_path: None,
           allow_none: false,
           shuffle: None,
           files: FileFlags {
@@ -6269,6 +6270,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6299,6 +6301,7 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
+          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
