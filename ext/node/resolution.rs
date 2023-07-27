@@ -367,7 +367,7 @@ impl NodeResolver {
         permissions,
       )
       .with_context(|| {
-        format!("Error resolving package config for '{reference}'")
+        format!("Failed resolving package config for '{reference}'")
       })?;
     let resolved_path = match maybe_resolved_path {
       Some(resolved_path) => resolved_path,
@@ -933,6 +933,7 @@ impl NodeResolver {
           package_subpath,
           package_json_path,
           referrer,
+          mode,
         ));
       }
       return Ok(resolved.unwrap());
@@ -994,6 +995,7 @@ impl NodeResolver {
           package_subpath,
           package_json_path,
           referrer,
+          mode,
         ));
       }
     }
@@ -1002,6 +1004,7 @@ impl NodeResolver {
       package_subpath,
       package_json_path,
       referrer,
+      mode,
     ))
   }
 
@@ -1447,11 +1450,13 @@ fn throw_exports_not_found(
   subpath: String,
   package_json_path: &Path,
   referrer: &ModuleSpecifier,
+  mode: NodeResolutionMode,
 ) -> AnyError {
   errors::err_package_path_not_exported(
     package_json_path.parent().unwrap().display().to_string(),
     subpath,
     Some(to_specifier_display_string(referrer)),
+    mode,
   )
 }
 
