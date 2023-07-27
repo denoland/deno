@@ -30,6 +30,7 @@ use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -85,15 +86,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
     referrer: &str,
     kind: ResolutionKind,
   ) -> Result<ModuleSpecifier, AnyError> {
-    // Try to follow redirects when resolving.
-    let referrer = match self.shared.eszip.get_module(referrer) {
-      Some(eszip::Module { ref specifier, .. }) => {
-        ModuleSpecifier::parse(specifier)?
+    let referrer = if referrer == "." {
+      if kind != ResolutionKind::MainModule {
+        return Err(generic_error(format!(
+          "Expected to resolve main module, got {:?} instead.",
+          kind
+        )));
       }
-      None => {
-        let cwd = std::env::current_dir().context("Unable to get CWD")?;
-        deno_core::resolve_url_or_path(referrer, &cwd)?
-      }
+      let current_dir = std::env::current_dir().unwrap();
+      deno_core::resolve_path(".", &current_dir)?
+    } else {
+      ModuleSpecifier::parse(referrer).map_err(|err| {
+        type_error(format!("Referrer uses invalid specifier: {}", err))
+      })?
     };
 
     let permissions = if matches!(kind, ResolutionKind::DynamicImport) {
@@ -101,7 +106,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
     } else {
       &self.root_permissions
     };
-
     if let Some(result) = self
       .shared
       .npm_module_loader
@@ -137,20 +141,29 @@ impl ModuleLoader for EmbeddedModuleLoader {
 
   fn load(
     &self,
-    module_specifier: &ModuleSpecifier,
+    original_specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     is_dynamic: bool,
   ) -> Pin<Box<deno_core::ModuleSourceFuture>> {
-    let is_data_uri = get_source_from_data_url(module_specifier).ok();
+    let is_data_uri = get_source_from_data_url(original_specifier).ok();
+    if let Some((source, _)) = is_data_uri {
+      return Box::pin(deno_core::futures::future::ready(Ok(
+        deno_core::ModuleSource::new(
+          deno_core::ModuleType::JavaScript,
+          source.into(),
+          original_specifier,
+        ),
+      )));
+    }
+
     let permissions = if is_dynamic {
       &self.dynamic_permissions
     } else {
       &self.root_permissions
     };
-
     if let Some(result) =
       self.shared.npm_module_loader.load_sync_if_in_npm_package(
-        module_specifier,
+        original_specifier,
         maybe_referrer,
         permissions,
       )
@@ -163,7 +176,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
               _ => ModuleType::JavaScript,
             },
             code_source.code,
-            module_specifier,
+            original_specifier,
             &code_source.found_url,
           ),
         ))),
@@ -171,33 +184,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
     }
 
-    let module = self
-      .shared
-      .eszip
-      .get_module(module_specifier.as_str())
-      .ok_or_else(|| {
-        type_error(format!("Module not found: {}", module_specifier))
-      });
-    // TODO(mmastrac): This clone can probably be removed in the future if ModuleSpecifier is no longer a full-fledged URL
-    let module_specifier = module_specifier.clone();
+    let Some(module) = self.shared.eszip.get_module(original_specifier.as_str()) else {
+      return Box::pin(deno_core::futures::future::ready(Err(type_error(
+        format!("Module not found: {}", original_specifier),
+      ))))
+    };
+    let original_specifier = original_specifier.clone();
+    let found_specifier =
+      ModuleSpecifier::parse(&module.specifier).expect("invalid url in eszip");
 
     async move {
-      if let Some((source, _)) = is_data_uri {
-        return Ok(deno_core::ModuleSource::new(
-          deno_core::ModuleType::JavaScript,
-          source.into(),
-          &module_specifier,
-        ));
-      }
-
-      let module = module?;
-      let code = module.source().await.unwrap_or_else(|| Arc::new([]));
-      let code = std::str::from_utf8(&code)
-        .map_err(|_| type_error("Module source is not utf-8"))?
-        .to_owned()
-        .into();
-
-      Ok(deno_core::ModuleSource::new(
+      let code = module.source().await.ok_or_else(|| {
+        type_error(format!("Module not found: {}", original_specifier))
+      })?;
+      let code = arc_u8_to_arc_str(code)
+        .map_err(|_| type_error("Module source is not utf-8"))?;
+      Ok(deno_core::ModuleSource::new_with_redirect(
         match module.kind {
           eszip::ModuleKind::JavaScript => ModuleType::JavaScript,
           eszip::ModuleKind::Json => ModuleType::Json,
@@ -208,12 +210,24 @@ impl ModuleLoader for EmbeddedModuleLoader {
             unreachable!();
           }
         },
-        code,
-        &module_specifier,
+        code.into(),
+        &original_specifier,
+        &found_specifier,
       ))
     }
     .boxed_local()
   }
+}
+
+fn arc_u8_to_arc_str(
+  arc_u8: Arc<[u8]>,
+) -> Result<Arc<str>, std::str::Utf8Error> {
+  // Check that the string is valid UTF-8.
+  std::str::from_utf8(&arc_u8)?;
+  // SAFETY: the string is valid UTF-8, and the layout Arc<[u8]> is the same as
+  // Arc<str>. This is proven by the From<Arc<str>> impl for Arc<[u8]> from the
+  // standard library.
+  Ok(unsafe { std::mem::transmute(arc_u8) })
 }
 
 struct StandaloneModuleLoaderFactory {
