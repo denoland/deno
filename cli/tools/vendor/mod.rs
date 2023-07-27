@@ -50,7 +50,7 @@ pub async fn vendor(
   let cli_options = factory.cli_options();
   let entry_points =
     resolve_entry_points(&vendor_flags, cli_options.initial_cwd())?;
-  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config();
+  let jsx_import_source = cli_options.to_maybe_jsx_import_source_config()?;
   let module_graph_builder = factory.module_graph_builder().await?.clone();
   let output = build::build(build::BuildInput {
     entry_points,
