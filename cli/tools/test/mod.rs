@@ -356,7 +356,9 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
+  // TODO(bartlomieju): replace with `reporter` enum?
   junit_path: Option<String>,
+  dot_reporter: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -389,20 +391,25 @@ impl TestSummary {
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
-  let pretty = Box::new(PrettyTestReporter::new(
-    options.concurrent_jobs.get() > 1,
-    options.log_level != Some(Level::Error),
-  ));
+  let reporter: Box<dyn TestReporter> = if options.dot_reporter {
+    Box::new(DotTestReporter::new(options.concurrent_jobs.get() > 1))
+  } else {
+    Box::new(PrettyTestReporter::new(
+      options.concurrent_jobs.get() > 1,
+      options.log_level != Some(Level::Error),
+    ))
+  };
+
   if let Some(junit_path) = &options.junit_path {
     let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
     // If junit is writing to stdout, only enable the junit reporter
     if junit_path == "-" {
       junit
     } else {
-      Box::new(CompoundTestReporter::new(vec![pretty, junit]))
+      Box::new(CompoundTestReporter::new(vec![reporter, junit]))
     }
   } else {
-    pretty
+    reporter
   }
 }
 
@@ -865,7 +872,6 @@ async fn test_specifiers(
   permissions: &Permissions,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
-  dot_reporter: bool,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
@@ -887,11 +893,7 @@ async fn test_specifiers(
     sender_.upgrade().map(|s| s.send(TestEvent::Sigint).ok());
   });
   HAS_TEST_RUN_SIGINT_HANDLER.store(true, Ordering::Relaxed);
-  let mut reporter = if dot_reporter {
-    get_dot_test_reporter(&options)
-  } else {
-    get_test_reporter(&options)
-  };
+  let mut reporter = get_test_reporter(&options);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
@@ -1219,8 +1221,8 @@ pub async fn run_tests(
         shuffle: test_options.shuffle,
         trace_ops: test_options.trace_ops,
       },
+      dot_reporter,
     },
-    dot_reporter,
   )
   .await?;
 
@@ -1352,8 +1354,8 @@ pub async fn run_tests_with_watch(
               shuffle: test_options.shuffle,
               trace_ops: test_options.trace_ops,
             },
+            dot_reporter,
           },
-          dot_reporter,
         )
         .await?;
 
