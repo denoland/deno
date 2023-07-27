@@ -80,7 +80,10 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
 
+pub mod fmt;
 mod reporters;
+
+use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
@@ -355,6 +358,7 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
+  // TODO(bartlomieju): replace with `reporter` enum?
   junit_path: Option<String>,
 }
 
@@ -392,6 +396,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     options.concurrent_jobs.get() > 1,
     options.log_level != Some(Level::Error),
   ));
+
   if let Some(junit_path) = &options.junit_path {
     let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
     // If junit is writing to stdout, only enable the junit reporter
@@ -403,64 +408,6 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   } else {
     pretty
   }
-}
-
-fn abbreviate_test_error(js_error: &JsError) -> JsError {
-  let mut js_error = js_error.clone();
-  let frames = std::mem::take(&mut js_error.frames);
-
-  // check if there are any stack frames coming from user code
-  let should_filter = frames.iter().any(|f| {
-    if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
-    } else {
-      true
-    }
-  });
-
-  if should_filter {
-    let mut frames = frames
-      .into_iter()
-      .rev()
-      .skip_while(|f| {
-        if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
-        } else {
-          false
-        }
-      })
-      .collect::<Vec<_>>();
-    frames.reverse();
-    js_error.frames = frames;
-  } else {
-    js_error.frames = frames;
-  }
-
-  js_error.cause = js_error
-    .cause
-    .as_ref()
-    .map(|e| Box::new(abbreviate_test_error(e)));
-  js_error.aggregated = js_error
-    .aggregated
-    .as_ref()
-    .map(|es| es.iter().map(abbreviate_test_error).collect());
-  js_error
-}
-
-// This function prettifies `JsError` and applies some changes specifically for
-// test runner purposes:
-//
-// - filter out stack frames:
-//   - if stack trace consists of mixed user and internal code, the frames
-//     below the first user code frame are filtered out
-//   - if stack trace consists only of internal code it is preserved as is
-pub fn format_test_error(js_error: &JsError) -> String {
-  let mut js_error = abbreviate_test_error(js_error);
-  js_error.exception_message = js_error
-    .exception_message
-    .trim_start_matches("Uncaught ")
-    .to_string();
-  format_js_error(&js_error)
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
