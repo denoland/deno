@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use super::fmt::format_test_error;
+use super::fmt::to_relative_path_or_remote_url;
 use super::*;
 
 pub struct DotTestReporter {
@@ -478,18 +480,4 @@ impl TestReporter for DotTestReporter {
   ) -> anyhow::Result<()> {
     Ok(())
   }
-}
-
-// TODO(bartlomieju): move to fmt module and dedup with PrettyTestReporter
-fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
-  let url = Url::parse(path_or_url).unwrap();
-  if url.scheme() == "file" {
-    if let Some(mut r) = cwd.make_relative(&url) {
-      if !r.starts_with("../") {
-        r = format!("./{r}");
-      }
-      return r;
-    }
-  }
-  path_or_url.to_string()
 }
