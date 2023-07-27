@@ -227,7 +227,9 @@ pub struct TestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
+  // TODO(bartlomieju): replace with `reporter` enum
   pub junit_path: Option<String>,
+  pub dot_reporter: bool,
 }
 
 impl TestOptions {
@@ -253,6 +255,7 @@ impl TestOptions {
       shuffle: test_flags.shuffle,
       trace_ops: test_flags.trace_ops,
       junit_path: test_flags.junit_path,
+      dot_reporter: test_flags.dot_reporter,
     })
   }
 }

@@ -1162,7 +1162,6 @@ pub async fn run_tests(
   flags: Flags,
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
-  let dot_reporter = test_flags.dot_reporter;
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
   let test_options = cli_options.resolve_test_options(test_flags)?;
@@ -1221,7 +1220,7 @@ pub async fn run_tests(
         shuffle: test_options.shuffle,
         trace_ops: test_options.trace_ops,
       },
-      dot_reporter,
+      dot_reporter: test_options.dot_reporter,
     },
   )
   .await?;
@@ -1245,7 +1244,6 @@ pub async fn run_tests_with_watch(
       }
     }
   });
-  let dot_reporter = test_flags.dot_reporter;
 
   file_watcher::watch_func(
     flags,
@@ -1354,7 +1352,7 @@ pub async fn run_tests_with_watch(
               shuffle: test_options.shuffle,
               trace_ops: test_options.trace_ops,
             },
-            dot_reporter,
+            dot_reporter: test_options.dot_reporter,
           },
         )
         .await?;
