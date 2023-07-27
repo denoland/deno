@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -111,15 +112,37 @@ pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
 pub struct NodeResolver {
   fs: FileSystemRc,
   npm_resolver: NpmResolverRc,
+  in_npm_package_cache: deno_fs::sync::MaybeArcMutex<HashMap<String, bool>>,
 }
 
 impl NodeResolver {
   pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
-    Self { fs, npm_resolver }
+    Self {
+      fs,
+      npm_resolver,
+      in_npm_package_cache: deno_fs::sync::MaybeArcMutex::new(HashMap::new()),
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self.npm_resolver.in_npm_package(specifier)
+  }
+
+  pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
+    let mut cache = self.in_npm_package_cache.lock();
+
+    if let Some(result) = cache.get(&specifier) {
+      return *result;
+    }
+
+    let result =
+      if let Ok(specifier) = deno_core::ModuleSpecifier::parse(&specifier) {
+        self.npm_resolver.in_npm_package(&specifier)
+      } else {
+        false
+      };
+    cache.insert(specifier, result);
+    result
   }
 
   /// This function is an implementation of `defaultResolve` in

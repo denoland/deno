@@ -1104,18 +1104,6 @@ impl Documents {
           continue;
         }
       }
-      if let Some(module_name) = specifier.strip_prefix("node:") {
-        if deno_node::is_builtin_node_module(module_name) {
-          // return itself for node: specifiers because during type checking
-          // we resolve to the ambient modules in the @types/node package
-          // rather than deno_std/node
-          results.push(Some((
-            ModuleSpecifier::parse(&specifier).unwrap(),
-            MediaType::Dts,
-          )));
-          continue;
-        }
-      }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1221,6 +1209,7 @@ impl Documents {
           }
         }
       }
+
       hasher.finish()
     }
 
@@ -1290,9 +1279,10 @@ impl Documents {
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
-    }
 
-    self.dirty = true;
+      self.dirty = true;
+      self.calculate_dependents_if_dirty();
+    }
   }
 
   fn refresh_dependencies(
@@ -1416,12 +1406,11 @@ impl Documents {
 
       fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
         self.analyzed_specifiers.insert(specifier.clone());
-        for (name, dependency) in doc.dependencies() {
-          if !self.has_node_builtin_specifier && name.starts_with("node:") {
-            self.has_node_builtin_specifier = true;
-          }
-
+        for dependency in doc.dependencies().values() {
           if let Some(dep) = dependency.get_code() {
+            if !self.has_node_builtin_specifier && dep.scheme() == "node" {
+              self.has_node_builtin_specifier = true;
+            }
             self.add(dep, specifier);
           }
           if let Some(dep) = dependency.get_type() {
@@ -1484,6 +1473,15 @@ impl Documents {
     specifier: &ModuleSpecifier,
     maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+      if deno_node::is_builtin_node_module(module_name) {
+        // return itself for node: specifiers because during type checking
+        // we resolve to the ambient modules in the @types/node package
+        // rather than deno_std/node
+        return Some((specifier.clone(), MediaType::Dts));
+      }
+    }
+
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
     }

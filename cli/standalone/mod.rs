@@ -206,6 +206,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
           eszip::ModuleKind::Jsonc => {
             return Err(type_error("jsonc modules not supported"))
           }
+          eszip::ModuleKind::OpaqueData => {
+            unreachable!();
+          }
         },
         code.into(),
         &original_specifier,
@@ -380,7 +383,8 @@ pub async fn run(
   let cjs_resolutions = Arc::new(CjsResolutionStore::default());
   let cache_db = Caches::new(deno_dir_provider.clone());
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
-  let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(node_analysis_cache);
+  let cjs_esm_code_analyzer =
+    CliCjsCodeAnalyzer::new(node_analysis_cache, fs.clone());
   let node_code_translator = Arc::new(NodeCodeTranslator::new(
     cjs_esm_code_analyzer,
     fs.clone(),

@@ -1,9 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
+
 use deno_ast::CjsAnalysis;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
+use deno_runtime::deno_fs;
 use deno_runtime::deno_node::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use deno_runtime::deno_node::analyze::CjsCodeAnalyzer;
 use deno_runtime::deno_node::analyze::NodeCodeTranslator;
@@ -34,11 +37,12 @@ pub fn resolve_specifier_into_node_modules(
 
 pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
+  fs: deno_fs::FileSystemRc,
 }
 
 impl CliCjsCodeAnalyzer {
-  pub fn new(cache: NodeAnalysisCache) -> Self {
-    Self { cache }
+  pub fn new(cache: NodeAnalysisCache, fs: deno_fs::FileSystemRc) -> Self {
+    Self { cache, fs }
   }
 
   fn inner_cjs_analysis(
@@ -83,9 +87,15 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
   fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Option<&str>,
   ) -> Result<ExtNodeCjsAnalysis, AnyError> {
-    let analysis = self.inner_cjs_analysis(specifier, source)?;
+    let source = match source {
+      Some(source) => Cow::Borrowed(source),
+      None => {
+        Cow::Owned(self.fs.read_to_string(&specifier.to_file_path().unwrap())?)
+      }
+    };
+    let analysis = self.inner_cjs_analysis(specifier, &source)?;
     Ok(ExtNodeCjsAnalysis {
       exports: analysis.exports,
       reexports: analysis.reexports,

@@ -4,6 +4,7 @@ mod common;
 mod global;
 mod local;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -153,7 +154,7 @@ impl CliNpmResolver {
     let Some(cache_folder_id) = self
       .fs_resolver
       .resolve_package_cache_folder_id_from_specifier(specifier)? else {
-return Ok(None);
+        return Ok(None);
       };
     Ok(Some(
       self
@@ -227,6 +228,10 @@ return Ok(None);
         .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
+  }
+
+  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+    self.resolution.package_reqs()
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
