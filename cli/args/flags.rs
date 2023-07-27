@@ -211,6 +211,7 @@ pub struct TaskFlags {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TestFlags {
   pub doc: bool,
+  // TODO(bartlomieju): remove and use `reporter` enum instead?
   pub dot_reporter: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
