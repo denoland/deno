@@ -28,6 +28,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_core::Snapshot;
+use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
@@ -242,10 +243,11 @@ fn get_maybe_hash(
 }
 
 fn get_hash(source: &str, hash_data: u64) -> String {
-  let mut hasher = FastInsecureHasher::new();
-  hasher.write_str(source);
-  hasher.write_u64(hash_data);
-  hasher.finish().to_string()
+  FastInsecureHasher::new()
+    .write_str(source)
+    .write_u64(hash_data)
+    .finish()
+    .to_string()
 }
 
 /// Hash the URL so it can be sent to `tsc` in a supportable way
@@ -318,7 +320,7 @@ pub struct Response {
   pub stats: Stats,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct State {
   hash_data: u64,
   graph: Arc<ModuleGraph>,
@@ -328,6 +330,21 @@ struct State {
   remapped_specifiers: HashMap<String, ModuleSpecifier>,
   root_map: HashMap<String, ModuleSpecifier>,
   current_dir: PathBuf,
+}
+
+impl Default for State {
+  fn default() -> Self {
+    Self {
+      hash_data: Default::default(),
+      graph: Arc::new(ModuleGraph::new(GraphKind::All)),
+      maybe_tsbuildinfo: Default::default(),
+      maybe_response: Default::default(),
+      maybe_node_resolver: Default::default(),
+      remapped_specifiers: Default::default(),
+      root_map: Default::default(),
+      current_dir: Default::default(),
+    }
+  }
 }
 
 impl State {

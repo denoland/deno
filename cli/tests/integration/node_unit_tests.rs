@@ -73,6 +73,7 @@ util::unit_test_factory!(
     process_test,
     querystring_test,
     readline_test,
+    stream_test,
     string_decoder_test,
     timers_test,
     tls_test,

@@ -694,6 +694,8 @@ function test(
   });
 }
 
+let registeredWarmupBench = false;
+
 // Main bench function provided by Deno.
 function bench(
   nameOrFnOrOptions,
@@ -702,6 +704,25 @@ function bench(
 ) {
   if (typeof ops.op_register_bench != "function") {
     return;
+  }
+
+  if (!registeredWarmupBench) {
+    registeredWarmupBench = true;
+    const warmupBenchDesc = {
+      name: "<warmup>",
+      fn: function warmup() {},
+      async: false,
+      ignore: false,
+      baseline: false,
+      only: false,
+      sanitizeExit: true,
+      permissions: null,
+      warmup: true,
+    };
+    warmupBenchDesc.fn = wrapBenchmark(warmupBenchDesc);
+    const { id, origin } = ops.op_register_bench(warmupBenchDesc);
+    warmupBenchDesc.id = id;
+    warmupBenchDesc.origin = origin;
   }
 
   let benchDesc;
@@ -786,6 +807,7 @@ function bench(
   const AsyncFunction = (async () => {}).constructor;
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
   benchDesc.fn = wrapBenchmark(benchDesc);
+  benchDesc.warmup = false;
 
   const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;

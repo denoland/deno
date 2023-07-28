@@ -285,6 +285,7 @@ mod ts {
         );
       })),
       snapshot_module_load_cb: None,
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
@@ -377,6 +378,7 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     extensions,
     compression_cb: None,
     snapshot_module_load_cb: None,
+    with_runtime_cb: None,
   })
 }
 
@@ -437,11 +439,13 @@ fn main() {
 
   #[cfg(target_os = "linux")]
   {
-    let ver = glibc_version::get_version().unwrap();
-
     // If a custom compiler is set, the glibc version is not reliable.
     // Here, we assume that if a custom compiler is used, that it will be modern enough to support a dynamic symbol list.
-    if env::var("CC").is_err() && ver.major <= 2 && ver.minor < 35 {
+    if env::var("CC").is_err()
+      && glibc_version::get_version()
+        .map(|ver| ver.major <= 2 && ver.minor < 35)
+        .unwrap_or(false)
+    {
       println!("cargo:warning=Compiling with all symbols exported, this will result in a larger binary. Please use glibc 2.35 or later for an optimised build.");
       println!("cargo:rustc-link-arg-bin=deno=-rdynamic");
     } else {

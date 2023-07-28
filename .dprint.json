@@ -13,9 +13,6 @@
     "associations": "**/*.rs",
     "rustfmt": "rustfmt --config imports_granularity=item"
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
-  ],
   "excludes": [
     ".cargo_home",
     ".git",
@@ -38,6 +35,7 @@
     "cli/tests/testdata/lint/glob/*",
     "cli/tests/testdata/test/glob/*",
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
+    "cli/tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "cli/tests/testdata/run/inline_js_source_map*",
     "cli/tests/testdata/malformed_config/*",
     "cli/tests/testdata/npm/registry/",
@@ -56,8 +54,8 @@
     "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.85.0.wasm",
-    "https://plugins.dprint.dev/json-0.17.3.wasm",
+    "https://plugins.dprint.dev/typescript-0.85.1.wasm",
+    "https://plugins.dprint.dev/json-0.17.4.wasm",
     "https://plugins.dprint.dev/markdown-0.15.3.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
     "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
