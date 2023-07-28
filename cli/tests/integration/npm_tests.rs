@@ -88,6 +88,35 @@ itest!(cjs_invalid_name_exports {
   http_server: true,
 });
 
+itest!(cjs_require_esm_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_error/main.ts",
+  output: "npm/cjs_require_esm_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(cjs_require_esm_mjs_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_mjs_error/main.ts",
+  output: "npm/cjs_require_esm_mjs_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(require_esm_error {
+  args: "run --allow-read --quiet node/require_esm_error/main.ts",
+  output: "node/require_esm_error/main.out",
+  exit_code: 1,
+});
+
+itest!(dynamic_import_deno_ts_from_npm {
+  args: "run --allow-read --quiet npm/dynamic_import_deno_ts_from_npm/main.ts",
+  output: "npm/dynamic_import_deno_ts_from_npm/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
@@ -1495,7 +1524,6 @@ fn auto_discover_lock_file() {
 fn peer_deps_with_copied_folders_and_lockfile() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
     .cwd("npm/peer_deps_with_copied_folders")
     .build();
@@ -1877,7 +1905,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
 fn binary_package_with_optional_dependencies() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/binary_package")
     .cwd("npm/binary_package")
     .build();
@@ -2060,4 +2087,12 @@ itest!(reserved_word_exports {
   output: "npm/reserved_word_exports/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
+});
+
+itest!(check_package_file_dts_dmts_dcts {
+  args: "check npm/file_dts_dmts_dcts/main.ts",
+  output: "npm/file_dts_dmts_dcts/main.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
 });

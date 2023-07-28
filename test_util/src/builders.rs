@@ -19,7 +19,6 @@ use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
-use crate::new_deno_dir;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -30,12 +29,12 @@ use crate::TempDir;
 pub struct TestContextBuilder {
   use_http_server: bool,
   use_temp_cwd: bool,
-  use_separate_deno_dir: bool,
   use_symlinked_temp_dir: bool,
   /// Copies the files at the specified directory in the "testdata" directory
   /// to the temp folder and runs the test from there. This is useful when
   /// the test creates files in the testdata directory (ex. a node_modules folder)
   copy_temp_dir: Option<String>,
+  temp_dir_path: Option<PathBuf>,
   cwd: Option<String>,
   envs: HashMap<String, String>,
   deno_exe: Option<PathRef>,
@@ -48,6 +47,11 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
+    self.temp_dir_path = Some(path.as_ref().to_path_buf());
+    self
   }
 
   pub fn use_http_server(mut self) -> Self {
@@ -69,15 +73,6 @@ impl TestContextBuilder {
   #[deprecated]
   pub fn use_symlinked_temp_dir(mut self) -> Self {
     self.use_symlinked_temp_dir = true;
-    self
-  }
-
-  /// By default, the temp_dir and the deno_dir will be shared.
-  /// In some cases, that might cause an issue though, so calling
-  /// this will use a separate directory for the deno dir and the
-  /// temp directory.
-  pub fn use_separate_deno_dir(mut self) -> Self {
-    self.use_separate_deno_dir = true;
     self
   }
 
@@ -117,12 +112,12 @@ impl TestContextBuilder {
   }
 
   pub fn build(&self) -> TestContext {
-    let deno_dir = new_deno_dir(); // keep this alive for the test
-    let temp_dir = if self.use_separate_deno_dir {
-      TempDir::new()
-    } else {
-      deno_dir.clone()
-    };
+    let temp_dir_path = self
+      .temp_dir_path
+      .clone()
+      .unwrap_or_else(std::env::temp_dir);
+    let deno_dir = TempDir::new_in(&temp_dir_path);
+    let temp_dir = TempDir::new_in(&temp_dir_path);
     let temp_dir = if self.use_symlinked_temp_dir {
       TempDir::new_symlinked(temp_dir)
     } else {
@@ -526,10 +521,11 @@ impl TestCommandOutput {
     &self.testdata_dir
   }
 
-  pub fn skip_output_check(&self) {
+  pub fn skip_output_check(&self) -> &Self {
     *self.asserted_combined.borrow_mut() = true;
     *self.asserted_stdout.borrow_mut() = true;
     *self.asserted_stderr.borrow_mut() = true;
+    self
   }
 
   pub fn skip_exit_code_check(&self) {

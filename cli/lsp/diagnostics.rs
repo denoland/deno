@@ -1082,13 +1082,11 @@ impl DenoDiagnostic {
 }
 
 fn diagnose_resolution(
-  lsp_diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
-  ranges: Vec<lsp::Range>,
-) {
+) -> Vec<DenoDiagnostic> {
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
@@ -1172,11 +1170,7 @@ fn diagnose_resolution(
     }
     _ => (),
   }
-  for range in ranges {
-    for diagnostic in &diagnostics {
-      lsp_diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
-    }
-  }
+  diagnostics
 }
 
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
@@ -1210,21 +1204,30 @@ fn diagnose_dependency(
       }
     }
   }
-  diagnose_resolution(
-    diagnostics,
-    snapshot,
-    if dependency.maybe_code.is_none() {
-      &dependency.maybe_type
-    } else {
-      &dependency.maybe_code
-    },
-    dependency.is_dynamic,
-    dependency.maybe_assert_type.as_deref(),
-    dependency
-      .imports
-      .iter()
-      .map(|i| documents::to_lsp_range(&i.range))
-      .collect(),
+
+  let import_ranges: Vec<_> = dependency
+    .imports
+    .iter()
+    .map(|i| documents::to_lsp_range(&i.range))
+    .collect();
+
+  diagnostics.extend(
+    diagnose_resolution(
+      snapshot,
+      if dependency.maybe_code.is_none() {
+        &dependency.maybe_type
+      } else {
+        &dependency.maybe_code
+      },
+      dependency.is_dynamic,
+      dependency.maybe_assert_type.as_deref(),
+    )
+    .iter()
+    .flat_map(|diag| {
+      import_ranges
+        .iter()
+        .map(|range| diag.to_lsp_diagnostic(range))
+    }),
   );
   // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
   // a different specifier and therefore needs a separate call to
@@ -1241,13 +1244,15 @@ fn diagnose_dependency(
       Resolution::Err(error) => documents::to_lsp_range(error.range()),
       Resolution::None => unreachable!(),
     };
-    diagnose_resolution(
-      diagnostics,
-      snapshot,
-      &dependency.maybe_type,
-      dependency.is_dynamic,
-      dependency.maybe_assert_type.as_deref(),
-      vec![range],
+    diagnostics.extend(
+      diagnose_resolution(
+        snapshot,
+        &dependency.maybe_type,
+        dependency.is_dynamic,
+        dependency.maybe_assert_type.as_deref(),
+      )
+      .iter()
+      .map(|diag| diag.to_lsp_diagnostic(&range)),
     );
   }
 }

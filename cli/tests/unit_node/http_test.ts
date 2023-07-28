@@ -352,6 +352,8 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestBody, "hello world");
   });
   req.on("socket", (socket) => {
+    assert(socket.writable);
+    assert(socket.readable);
     socket.setKeepAlive();
     socket.destroy();
   });
@@ -637,7 +639,9 @@ Deno.test("[node/http] HTTPS server", async () => {
   const server = https.createServer({
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
-  }, (_req, res) => {
+  }, (req, res) => {
+    // @ts-ignore: It exists on TLSSocket
+    assert(req.socket.encrypted);
     res.end("success!");
   });
   server.listen(() => {
@@ -664,7 +668,9 @@ Deno.test(
   { permissions: { net: true } },
   async () => {
     const promise = deferred();
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
+      // @ts-ignore: It exists on TLSSocket
+      assert(!req.socket.encrypted);
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
     });
@@ -713,11 +719,17 @@ Deno.test(
   "[node/http] client end with callback",
   { permissions: { net: true } },
   async () => {
+    let received = false;
+    const ac = new AbortController();
+    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+      received = true;
+      return new Response("hello");
+    });
     const promise = deferred();
     let body = "";
 
     const request = http.request(
-      "http://localhost:4545/http_version",
+      "http://localhost:5928/",
       (resp) => {
         resp.on("data", (chunk) => {
           body += chunk;
@@ -729,10 +741,14 @@ Deno.test(
       },
     );
     request.on("error", promise.reject);
-    request.end();
+    request.end(() => {
+      assert(received);
+    });
 
     await promise;
+    ac.abort();
+    await server.finished;
 
-    assertEquals(body, "HTTP/1.1");
+    assertEquals(body, "hello");
   },
 );
