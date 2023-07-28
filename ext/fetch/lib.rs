@@ -289,6 +289,9 @@ where
 
       let mut request = client.request(method.clone(), url);
 
+      let mut content_length: Option<HeaderValue> = None;
+      let has_data = data.is_some();
+
       let request_body_rid = if has_body {
         match data {
           None => {
@@ -298,8 +301,7 @@ where
             // If the size of the body is known, we include a content-length
             // header explicitly.
             if let Some(body_size) = body_length {
-              request =
-                request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
+              content_length = Some(HeaderValue::from(body_size));
             }
 
             request = request.body(Body::wrap_stream(stream));
@@ -322,7 +324,7 @@ where
         // POST and PUT requests should always have a 0 length content-length,
         // if there is no body. https://fetch.spec.whatwg.org/#http-network-or-cache-fetch
         if matches!(method, Method::POST | Method::PUT) {
-          request = request.header(CONTENT_LENGTH, HeaderValue::from(0));
+          content_length = Some(HeaderValue::from(0));
         }
         None
       };
@@ -334,7 +336,13 @@ where
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
 
-        if !matches!(name, HOST | CONTENT_LENGTH) {
+        if name == CONTENT_LENGTH {
+          if let Some(content_length) = &content_length {
+            header_map.append(name, content_length.clone());
+          } else if !has_data {
+            header_map.append(name, v);
+          }
+        } else if name != HOST {
           header_map.append(name, v);
         }
       }

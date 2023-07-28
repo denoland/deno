@@ -1949,23 +1949,59 @@ Deno.test("Response with subarray TypedArray body", async () => {
 });
 
 Deno.test("ReadableStream automatic transfer-encoding header", async () => {
-  const body = new ReadableStream({
-    start(controller) {
-      controller.enqueue(new TextEncoder().encode("Hello"));
-      controller.close();
-    },
-  });
+  {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("Hello"));
+        controller.close();
+      },
+    });
 
-  const res = await fetch("http://localhost:4545/echo_server", {
-    method: "POST",
-    body,
-    headers: {
-      "content-length": "5",
-    },
-  });
+    const res = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body,
+      headers: {
+        "content-length": "5",
+      },
+    });
 
-  assertEquals(res.headers.get("transfer-encoding"), "chunked");
-  assertEquals(res.headers.get("content-length"), null);
+    assertEquals(res.headers.get("transfer-encoding"), null);
+    assertEquals(res.headers.get("content-length"), "5");
 
-  await res.body!.cancel();
+    await res.body!.cancel();
+  }
+
+  {
+    const body2 = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("Hello"));
+        controller.close();
+      },
+    });
+
+    const res2 = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: body2,
+    });
+
+    assertEquals(res2.headers.get("transfer-encoding"), "chunked");
+    assertEquals(res2.headers.get("content-length"), null);
+
+    await res2.body!.cancel();
+  }
+
+  {
+    const res3 = await fetch("http://localhost:4545/echo_server", {
+      method: "POST",
+      body: "Hello",
+      headers: {
+        "content-length": "10",
+      },
+    });
+
+    assertEquals(res3.headers.get("transfer-encoding"), null);
+    assertEquals(res3.headers.get("content-length"), "5");
+
+    await res3.body!.cancel();
+  }
 });
