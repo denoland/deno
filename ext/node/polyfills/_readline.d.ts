@@ -6,7 +6,7 @@
 import { Abortable, EventEmitter } from "ext:deno_node/_events.d.ts";
 import * as promises from "ext:deno_node/readline/promises.ts";
 import { ReadableStream, WritableStream } from "ext:deno_node/_global.d.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type {
   AsyncCompleter,
   Completer,

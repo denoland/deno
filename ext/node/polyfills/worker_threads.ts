@@ -4,9 +4,9 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { isAbsolute, resolve } from "ext:deno_node/path.ts";
+import { isAbsolute, resolve } from "node:path";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { EventEmitter, once } from "ext:deno_node/events.ts";
+import { EventEmitter, once } from "node:events";
 import { BroadcastChannel } from "ext:deno_broadcast_channel/01_broadcast_channel.js";
 import { MessageChannel, MessagePort } from "ext:deno_web/13_message_port.js";
 

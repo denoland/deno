@@ -28,9 +28,6 @@ pub fn benchmark(
   let hyper_hello_exe = target_path.join("test_server");
   let hyper_hello_exe = hyper_hello_exe.to_str().unwrap();
 
-  let core_http_json_ops_exe = target_path.join("examples/http_bench_json_ops");
-  let core_http_json_ops_exe = core_http_json_ops_exe.to_str().unwrap();
-
   let mut res = HashMap::new();
   let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
   let http_dir = manifest_dir.join("bench").join("http");
@@ -112,12 +109,6 @@ pub fn benchmark(
     }
   }
 
-  // "core_http_json_ops" previously had a "bin op" counterpart called "core_http_bin_ops",
-  // which was previously also called "deno_core_http_bench", "deno_core_single"
-  res.insert(
-    "core_http_json_ops".to_string(),
-    core_http_json_ops(core_http_json_ops_exe)?,
-  );
   res.insert("hyper".to_string(), hyper_http(hyper_hello_exe)?);
 
   Ok(res)
@@ -196,12 +187,6 @@ pub(crate) fn get_port() -> u16 {
 
 fn server_addr(port: u16) -> String {
   format!("0.0.0.0:{port}")
-}
-
-fn core_http_json_ops(exe: &str) -> Result<HttpBenchmarkResult> {
-  // let port = get_port();
-  println!("http_benchmark testing CORE http_bench_json_ops");
-  run(&[exe], 4570, None, None, None)
 }
 
 fn hyper_http(exe: &str) -> Result<HttpBenchmarkResult> {

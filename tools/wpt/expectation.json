@@ -2496,7 +2496,9 @@
       "owning-type-message-port.any.html": false,
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
-      "owning-type.any.worker.html": false
+      "owning-type.any.worker.html": false,
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -3205,12 +3207,10 @@
     "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-constructor.any.worker.html": true,
     "urlsearchparams-delete.any.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-delete.any.worker.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-foreach.any.worker.html": true,
@@ -3218,12 +3218,8 @@
     "urlsearchparams-get.any.worker.html": true,
     "urlsearchparams-getall.any.html": true,
     "urlsearchparams-getall.any.worker.html": true,
-    "urlsearchparams-has.any.html": [
-      "Two-argument has()"
-    ],
-    "urlsearchparams-has.any.worker.html": [
-      "Two-argument has()"
-    ],
+    "urlsearchparams-has.any.html": true,
+    "urlsearchparams-has.any.worker.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-set.any.worker.html": true,
     "urlsearchparams-size.any.html": true,
@@ -4041,25 +4037,9 @@
         "headers-record.any.worker.html": true,
         "headers-structure.any.worker.html": true,
         "header-setcookie.any.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ],
         "header-setcookie.any.worker.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ]
       },
@@ -4890,8 +4870,6 @@
         ]
       },
       "idlharness.any.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -4923,8 +4901,6 @@
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ],
       "idlharness.any.worker.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -6945,18 +6921,6 @@
     "Create-extensions-empty.any.worker.html": true,
     "Create-extensions-empty.any.worker.html?wpt_flags=h2": false,
     "Create-extensions-empty.any.worker.html?wss": true,
-    "Create-invalid-urls.any.html": true,
-    "Create-invalid-urls.any.html?wpt_flags=h2": true,
-    "Create-invalid-urls.any.html?wss": true,
-    "Create-invalid-urls.any.worker.html": true,
-    "Create-invalid-urls.any.worker.html?wpt_flags=h2": true,
-    "Create-invalid-urls.any.worker.html?wss": true,
-    "Create-non-absolute-url.any.html": false,
-    "Create-non-absolute-url.any.html?wpt_flags=h2": true,
-    "Create-non-absolute-url.any.html?wss": true,
-    "Create-non-absolute-url.any.worker.html": false,
-    "Create-non-absolute-url.any.worker.html?wpt_flags=h2": true,
-    "Create-non-absolute-url.any.worker.html?wss": true,
     "Create-nonAscii-protocol-string.any.html": true,
     "Create-nonAscii-protocol-string.any.html?wpt_flags=h2": true,
     "Create-nonAscii-protocol-string.any.html?wss": true,
@@ -7030,12 +6994,6 @@
     "Create-valid-url.any.worker.html": true,
     "Create-valid-url.any.worker.html?wpt_flags=h2": false,
     "Create-valid-url.any.worker.html?wss": true,
-    "Create-wrong-scheme.any.html": true,
-    "Create-wrong-scheme.any.html?wpt_flags=h2": true,
-    "Create-wrong-scheme.any.html?wss": true,
-    "Create-wrong-scheme.any.worker.html": true,
-    "Create-wrong-scheme.any.worker.html?wpt_flags=h2": true,
-    "Create-wrong-scheme.any.worker.html?wss": true,
     "Send-0byte-data.any.html": true,
     "Send-0byte-data.any.html?wpt_flags=h2": false,
     "Send-0byte-data.any.html?wss": true,
@@ -7212,19 +7170,17 @@
         "close.any.html?wpt_flags=h2": false,
         "close.any.html?wss": true,
         "close.any.worker.html?wpt_flags=h2": false,
-        "close.any.worker.html?wss": {
-          "ignore": true
-        },
+        "close.any.worker.html?wss": true,
         "constructor.any.html?wpt_flags=h2": false,
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": false,
         "constructor.any.worker.html?wss": true,
-        "abort.any.html?wpt_flags=h2": [
-          "abort after connect should do nothing"
-        ],
-        "abort.any.worker.html?wpt_flags=h2": [
-          "abort after connect should do nothing"
-        ],
+        "abort.any.html?wpt_flags=h2": {
+          "ignore": true
+        },
+        "abort.any.worker.html?wpt_flags=h2": {
+          "ignore": true
+        },
         "backpressure-receive.any.worker.html?wpt_flags=h2": false
       }
     },

@@ -7,6 +7,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
+use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::BrotliEncoderState;
 use bytes::Bytes;
 use bytes::BytesMut;
@@ -613,17 +614,30 @@ impl Drop for BrotliEncoderStateWrapper {
 
 impl BrotliResponseStream {
   pub fn new(underlying: ResponseStream) -> Self {
+    // SAFETY: creating an FFI instance should be OK with these args.
+    let stm = unsafe {
+      let stm = brotli::ffi::compressor::BrotliEncoderCreateInstance(
+        None,
+        None,
+        std::ptr::null_mut(),
+      );
+      // Quality level 6 is based on google's nginx default value for on-the-fly compression
+      // https://github.com/google/ngx_brotli#brotli_comp_level
+      // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
+      brotli::ffi::compressor::BrotliEncoderSetParameter(
+        stm,
+        BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+        6,
+      );
+      brotli::ffi::compressor::BrotliEncoderSetParameter(
+        stm,
+        BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+        22,
+      );
+      BrotliEncoderStateWrapper { stm }
+    };
     Self {
-      // SAFETY: creating an FFI instance should be OK with these args.
-      stm: unsafe {
-        BrotliEncoderStateWrapper {
-          stm: brotli::ffi::compressor::BrotliEncoderCreateInstance(
-            None,
-            None,
-            std::ptr::null_mut(),
-          ),
-        }
-      },
+      stm,
       output_written_so_far: 0,
       current_cursor: 0,
       state: BrotliState::Streaming,

@@ -9,7 +9,7 @@ import {
   validateFunction,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import type { WritableOptions } from "ext:deno_node/_stream.d.ts";
 import Writable from "ext:deno_node/internal/streams/writable.mjs";
 import type {

@@ -25,7 +25,7 @@
 
 const core = globalThis.__bootstrap.core;
 import { validateIntegerRange } from "ext:deno_node/_utils.ts";
-import process from "ext:deno_node/process.ts";
+import process from "node:process";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { ERR_OS_NO_HOMEDIR } from "ext:deno_node/internal/errors.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";

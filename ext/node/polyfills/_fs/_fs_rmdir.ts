@@ -10,12 +10,12 @@ import {
   validateRmOptions,
   validateRmOptionsSync,
 } from "ext:deno_node/internal/fs/utils.mjs";
-import { toNamespacedPath } from "ext:deno_node/path.ts";
+import { toNamespacedPath } from "node:path";
 import {
   denoErrorToNodeError,
   ERR_FS_RMDIR_ENOTDIR,
 } from "ext:deno_node/internal/errors.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 
 type rmdirOptions = {

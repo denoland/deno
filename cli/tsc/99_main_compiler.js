@@ -29,6 +29,37 @@ delete Object.prototype.__proto__;
   /** @type {Map<string, string>} */
   const normalizedToOriginalMap = new Map();
 
+  /** @type {ReadonlySet<string>} */
+  const unstableDenoProps = new Set([
+    "AtomicOperation",
+    "CreateHttpClientOptions",
+    "DatagramConn",
+    "HttpClient",
+    "Kv",
+    "KvListIterator",
+    "KvU64",
+    "UnsafeCallback",
+    "UnsafePointer",
+    "UnsafePointerView",
+    "UnsafeFnPointer",
+    "UnixConnectOptions",
+    "UnixListenOptions",
+    "createHttpClient",
+    "dlopen",
+    "flock",
+    "flockSync",
+    "funlock",
+    "funlockSync",
+    "listen",
+    "listenDatagram",
+    "openKv",
+    "upgradeHttp",
+    "umask",
+  ]);
+  const unstableMsgSuggestion =
+    "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
+    'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.unstable" />';
+
   /**
    * @param {unknown} value
    * @returns {value is ts.CreateSourceFileOptions}
@@ -303,6 +334,49 @@ delete Object.prototype.__proto__;
     return isNodeSourceFile;
   });
 
+  /**
+   * @param msg {string}
+   * @param code {number}
+   */
+  function formatMessage(msg, code) {
+    switch (code) {
+      case 2304: {
+        if (msg === "Cannot find name 'Deno'.") {
+          msg += " Do you need to change your target library? " +
+            "Try changing the 'lib' compiler option to include 'deno.ns' " +
+            'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.ns" />';
+        }
+        return msg;
+      }
+      case 2339: {
+        const property = getProperty();
+        if (property && unstableDenoProps.has(property)) {
+          return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag? ${unstableMsgSuggestion}`;
+        }
+        return msg;
+      }
+      default: {
+        const property = getProperty();
+        if (property && unstableDenoProps.has(property)) {
+          const suggestion = getMsgSuggestion();
+          if (suggestion) {
+            return `${msg} 'Deno.${property}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '${suggestion}'? ${unstableMsgSuggestion}`;
+          }
+        }
+        return msg;
+      }
+    }
+
+    function getProperty() {
+      return /Property '([^']+)' does not exist on type 'typeof Deno'/
+        .exec(msg)?.[1];
+    }
+
+    function getMsgSuggestion() {
+      return / Did you mean '([^']+)'\?/.exec(msg)?.[1];
+    }
+  }
+
   /** @param {ts.DiagnosticRelatedInformation} diagnostic */
   function fromRelatedInformation({
     start,
@@ -316,7 +390,7 @@ delete Object.prototype.__proto__;
     if (typeof msgText === "object") {
       messageChain = msgText;
     } else {
-      messageText = msgText;
+      messageText = formatMessage(msgText, ri.code);
     }
     if (start !== undefined && length !== undefined && file) {
       const startPos = file.getLineAndCharacterOfPosition(start);
@@ -341,7 +415,7 @@ delete Object.prototype.__proto__;
   }
 
   /** @param {readonly ts.Diagnostic[]} diagnostics */
-  function fromTypeScriptDiagnostic(diagnostics) {
+  function fromTypeScriptDiagnostics(diagnostics) {
     return diagnostics.map(({ relatedInformation: ri, source, ...diag }) => {
       /** @type {any} */
       const value = fromRelatedInformation(diag);
@@ -864,7 +938,7 @@ delete Object.prototype.__proto__;
     performanceProgram({ program });
 
     ops.op_respond({
-      diagnostics: fromTypeScriptDiagnostic(diagnostics),
+      diagnostics: fromTypeScriptDiagnostics(diagnostics),
       stats: performanceEnd(),
     });
     debug("<<< exec stop");
@@ -1055,7 +1129,7 @@ delete Object.prototype.__proto__;
           /** @type {Record<string, any[]>} */
           const diagnosticMap = {};
           for (const specifier of request.specifiers) {
-            diagnosticMap[specifier] = fromTypeScriptDiagnostic([
+            diagnosticMap[specifier] = fromTypeScriptDiagnostics([
               ...languageService.getSemanticDiagnostics(specifier),
               ...languageService.getSuggestionDiagnostics(specifier),
               ...languageService.getSyntacticDiagnostics(specifier),

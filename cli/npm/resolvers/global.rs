@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
@@ -82,7 +83,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn package_folder(&self, id: &NpmPackageId) -> Result<PathBuf, AnyError> {
     let folder_id = self
       .resolution
-      .resolve_package_cache_folder_id_from_id(id)
+      .resolve_pkg_cache_folder_id_from_pkg_id(id)
       .unwrap();
     Ok(
       self
@@ -97,9 +98,11 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     referrer: &ModuleSpecifier,
     mode: NodeResolutionMode,
   ) -> Result<PathBuf, AnyError> {
-    let referrer_pkg_id = self
+    let Some(referrer_pkg_id) = self
       .cache
-      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)?;
+      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url) else {
+        bail!("could not find npm package for '{}'", referrer);
+      };
     let pkg = if mode.is_types() && !name.starts_with("@types/") {
       // attempt to resolve the types package first, then fallback to the regular package
       match self.resolve_types_package(name, &referrer_pkg_id) {
@@ -119,15 +122,29 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let pkg_folder_id = self.cache.resolve_package_folder_id_from_specifier(
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(pkg_folder_id) = self.cache.resolve_package_folder_id_from_specifier(
       specifier,
       &self.registry_url,
-    )?;
-    Ok(
+    ) else {
+      return Ok(None);
+    };
+    Ok(Some(
       self
         .cache
         .package_folder_for_id(&pkg_folder_id, &self.registry_url),
+    ))
+  }
+
+  fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+    Ok(
+      self.cache.resolve_package_folder_id_from_specifier(
+        specifier,
+        &self.registry_url,
+      ),
     )
   }
 

@@ -2541,7 +2541,7 @@ function replaceEscapeSequences(string) {
       ESCAPE_PATTERN,
       (c) => ESCAPE_MAP[c],
     ),
-    new SafeRegExp(ESCAPE_PATTERN2),
+    ESCAPE_PATTERN2,
     (c) =>
       "\\x" +
       StringPrototypePadStart(
@@ -2753,9 +2753,9 @@ function parseCssColor(colorString) {
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
-      Number(`0x${smallHashMatch[1]}0`),
-      Number(`0x${smallHashMatch[2]}0`),
-      Number(`0x${smallHashMatch[3]}0`),
+      Number(`0x${smallHashMatch[1]}${smallHashMatch[1]}`),
+      Number(`0x${smallHashMatch[2]}${smallHashMatch[2]}`),
+      Number(`0x${smallHashMatch[3]}${smallHashMatch[3]}`),
     ];
   }
   // deno-fmt-ignore
@@ -3329,7 +3329,7 @@ class Console {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array. " +
-          "Received type string",
+          "Received type " + typeof properties,
       );
     }
 
@@ -3436,7 +3436,7 @@ class Console {
     label = String(label);
 
     if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exists`);
+      this.warn(`Timer '${label}' does not exist`);
       return;
     }
 

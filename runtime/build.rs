@@ -24,16 +24,23 @@ mod startup_snapshot {
   fn transpile_ts_for_snapshotting(
     file_source: &ExtensionFileSource,
   ) -> Result<ModuleCode, AnyError> {
-    let media_type = MediaType::from_path(Path::new(&file_source.specifier));
+    // Always transpile `node:` built-in modules, since they might be TypeScript.
+    let media_type = if file_source.specifier.starts_with("node:") {
+      MediaType::TypeScript
+    } else {
+      MediaType::from_path(Path::new(&file_source.specifier))
+    };
 
     let should_transpile = match media_type {
       MediaType::JavaScript => false,
       MediaType::Mjs => false,
       MediaType::TypeScript => true,
-      _ => panic!(
-        "Unsupported media type for snapshotting {media_type:?} for file {}",
-        file_source.specifier
-      ),
+      _ => {
+        panic!(
+          "Unsupported media type for snapshotting {media_type:?} for file {}",
+          file_source.specifier
+        )
+      }
     };
     let code = file_source.load()?;
 
@@ -291,7 +298,6 @@ mod startup_snapshot {
     runtime_main,
     deps = [runtime],
     customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      eprintln!("I am here!!!");
       ext.esm_entry_point("ext:runtime/90_deno_ns.js");
     }
   );
@@ -305,7 +311,7 @@ mod startup_snapshot {
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
       deno_web::deno_web::init_ops_and_esm::<Permissions>(
-        deno_web::BlobStore::default(),
+        Default::default(),
         Default::default(),
       ),
       deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(
@@ -351,6 +357,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());
