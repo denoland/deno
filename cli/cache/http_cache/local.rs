@@ -232,6 +232,7 @@ impl LocalCacheSubPath {
   }
 }
 
+// todo(THIS PR): unit tests
 fn url_to_local_sub_path(
   url: &Url,
 ) -> Result<LocalCacheSubPath, UrlToFilenameConversionError> {
@@ -263,7 +264,20 @@ fn url_to_local_sub_path(
   }
 
   fn short_hash(data: &str) -> String {
-    format!("#{}", &util::checksum::gen(&[data.as_bytes()])[..10])
+    // This function is a bit of a balancing act between readability
+    // and avoiding collisions.
+    let checksum = util::checksum::gen(&[data.as_bytes()]);
+    let sub = data
+      .to_lowercase()
+      .chars()
+      .filter(|c| !FORBIDDEN_CHARS.contains(c))
+      .take(20) // keep the paths short because of windows path limit
+      .collect::<String>();
+    if sub.is_empty() {
+      format!("#{}", &checksum[..7])
+    } else {
+      format!("#{}_{}", &sub, &checksum[..5])
+    }
   }
 
   fn should_hash_part(part: &str, is_last: bool) -> bool {
