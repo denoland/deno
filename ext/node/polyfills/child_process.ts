@@ -38,10 +38,10 @@ import {
   ObjectAssign,
   StringPrototypeSlice,
 } from "ext:deno_node/internal/primordials.mjs";
-import { getSystemErrorName, promisify } from "ext:deno_node/util.ts";
+import { getSystemErrorName, promisify } from "node:util";
 import { createDeferredPromise } from "ext:deno_node/internal/util.mjs";
-import process from "ext:deno_node/process.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import process from "node:process";
+import { Buffer } from "node:buffer";
 import {
   convertToValidSignal,
   kEmptyObject,

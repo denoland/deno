@@ -20,7 +20,7 @@ import type {
   PrivateKeyInput,
   PublicKeyInput,
 } from "ext:deno_node/internal/crypto/types.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   isAnyArrayBuffer,
   isArrayBufferView,
