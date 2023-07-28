@@ -64,6 +64,7 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub no_terminal: bool,
   pub include: Vec<String>,
 }
 
@@ -1030,6 +1031,12 @@ supported in canary.
             "x86_64-apple-darwin",
             "aarch64-apple-darwin",
           ]),
+      )
+      .arg(
+        Arg::new("no-terminal")
+          .long("no-terminal")
+          .help("Hide terminal on Windows")
+          .action(ArgAction::SetTrue),
       )
       .arg(executable_ext_arg())
     })
@@ -2645,6 +2652,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<PathBuf>("output");
   let target = matches.remove_one::<String>("target");
+  let no_terminal = matches.get_flag("no-terminal");
   let include = match matches.remove_many::<String>("include") {
     Some(f) => f.collect(),
     None => vec![],
@@ -2656,6 +2664,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     args,
     target,
+    no_terminal,
     include,
   });
 }
@@ -6508,6 +6517,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          no_terminal: false,
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -6519,7 +6529,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6528,6 +6538,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          no_terminal: true,
           include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),
