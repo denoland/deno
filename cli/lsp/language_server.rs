@@ -3045,26 +3045,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     let (client, client_uri, specifier, had_specifier_settings) = {
       let mut inner = self.0.write().await;
-      if let Some(remote_modules_dir) = inner
-        .config
-        .maybe_config_file()
-        .and_then(|c| c.remote_modules_dir_path())
-      {
-        if params.text_document.uri.scheme() == "file" {
-          if let Ok(local_path) = params.text_document.uri.to_file_path() {
-            if local_path.starts_with(remote_modules_dir) {
-              let client = inner.client.clone();
-              let client_uri =
-                LspClientUrl::new(params.text_document.uri.clone());
-              let specifier = inner
-                .url_map
-                .normalize_url(client_uri.as_url(), LspUrlKind::File);
-              eprintln!("SPECIFIER: {}", specifier);
-              return;
-            }
-          }
-        }
-      }
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
       let specifier = inner

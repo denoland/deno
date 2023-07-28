@@ -3910,7 +3910,7 @@ fn request(
 mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
+  use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
