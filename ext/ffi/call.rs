@@ -15,6 +15,7 @@ use deno_core::op;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::serde_v8::ExternalPointer;
+use deno_core::task::spawn_blocking;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -298,7 +299,7 @@ where
     .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = tokio::task::spawn_blocking(move || {
+  let join_handle = spawn_blocking(move || {
     let PtrSymbol { cif, ptr } = symbol.clone();
     ffi_call(
       call_args,
@@ -345,7 +346,7 @@ pub fn op_ffi_call_nonblocking<'scope>(
     .map(|v| v8::Local::<v8::TypedArray>::try_from(v.v8_value).unwrap());
   let out_buffer_ptr = out_buffer_as_ptr(scope, out_buffer);
 
-  let join_handle = tokio::task::spawn_blocking(move || {
+  let join_handle = spawn_blocking(move || {
     let Symbol {
       cif,
       ptr,

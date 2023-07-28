@@ -5,10 +5,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -16,6 +18,7 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_lockfile::Lockfile;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -34,6 +37,7 @@ use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::StorageKeyResolver;
@@ -70,7 +74,7 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
 #[derive(Clone)]
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
-  pub debug: bool,
+  pub log_level: WorkerLogLevel,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -92,7 +96,7 @@ struct SharedWorkerState {
   npm_resolver: Arc<CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
   has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
-  blob_store: BlobStore,
+  blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
   shared_array_buffer_store: SharedArrayBufferStore,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -100,6 +104,7 @@ struct SharedWorkerState {
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl SharedWorkerState {
@@ -306,11 +311,12 @@ impl CliMainWorkerFactory {
     npm_resolver: Arc<CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
     has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
-    blob_store: BlobStore,
+    blob_store: Arc<BlobStore>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
@@ -328,6 +334,7 @@ impl CliMainWorkerFactory {
         root_cert_store_provider,
         fs,
         maybe_inspector_server,
+        maybe_lockfile,
       }),
     }
   }
@@ -360,11 +367,22 @@ impl CliMainWorkerFactory {
     {
       shared
         .npm_resolver
-        .add_package_reqs(vec![package_ref.req.clone()])
+        .add_package_reqs(&[package_ref.req.clone()])
         .await?;
       let node_resolution =
         shared.node_resolver.resolve_binary_export(&package_ref)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
+
+      if let Some(lockfile) = &shared.maybe_lockfile {
+        // For npm binary commands, ensure that the lockfile gets updated
+        // so that we can re-use the npm resolution the next time it runs
+        // for better performance
+        lockfile
+          .lock()
+          .write()
+          .context("Failed writing lockfile.")?;
+      }
+
       (node_resolution.into_url(), is_main_cjs)
     } else if shared.options.is_npm_main {
       let node_resolution =
@@ -417,7 +435,7 @@ impl CliMainWorkerFactory {
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -431,6 +449,7 @@ impl CliMainWorkerFactory {
       },
       extensions,
       startup_snapshot: Some(crate::js::deno_isolate_init()),
+      create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -545,7 +564,7 @@ fn create_web_worker_callback(
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),

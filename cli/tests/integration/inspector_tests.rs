@@ -18,6 +18,7 @@ use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
 use url::Url;
+use util::assert_starts_with;
 use util::http_server;
 use util::DenoChild;
 
@@ -29,7 +30,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn(fut);
+    deno_core::task::spawn(fut);
   }
 }
 
@@ -216,15 +217,6 @@ impl InspectorTester {
     );
   }
 }
-
-macro_rules! assert_starts_with {
-    ($string:expr, $($test:expr),+) => {
-      let string = $string; // This might be a function call or something
-      if !($(string.starts_with($test))||+) {
-        panic!("{:?} does not start with {:?}", string, [$($test),+]);
-      }
-    }
-  }
 
 fn assert_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,

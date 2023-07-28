@@ -316,7 +316,15 @@ fn repl_cwd() {
     .args_vec(["repl", "-A"])
     .with_pty(|mut console| {
       console.write_line("Deno.cwd()");
-      console.expect(temp_dir.path().file_name().unwrap().to_str().unwrap());
+      console.expect(
+        temp_dir
+          .path()
+          .as_path()
+          .file_name()
+          .unwrap()
+          .to_str()
+          .unwrap(),
+      );
     });
 }
 
@@ -535,10 +543,7 @@ fn missing_deno_dir() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_DIR".to_owned(),
-        deno_dir_path.to_str().unwrap().to_owned(),
-      ),
+      ("DENO_DIR".to_owned(), deno_dir_path.to_string()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
@@ -558,10 +563,7 @@ fn custom_history_path() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_REPL_HISTORY".to_owned(),
-        history_path.to_str().unwrap().to_owned(),
-      ),
+      ("DENO_REPL_HISTORY".to_owned(), history_path.to_string()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
     false,
@@ -580,10 +582,7 @@ fn disable_history_file() {
     "repl",
     Some(vec!["1"]),
     Some(vec![
-      (
-        "DENO_DIR".to_owned(),
-        deno_dir.path().to_str().unwrap().to_owned(),
-      ),
+      ("DENO_DIR".to_owned(), deno_dir.path().to_string()),
       ("DENO_REPL_HISTORY".to_owned(), "".to_owned()),
       ("NO_COLOR".to_owned(), "1".to_owned()),
     ]),
@@ -745,7 +744,7 @@ fn eval_file_flag_multiple_files() {
   assert_contains!(err, "Download");
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn pty_clear_function() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log('h' + 'ello');");
@@ -802,7 +801,7 @@ fn repl_error() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_reject() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -814,10 +813,14 @@ fn repl_reject() {
     console.expect("    at <anonymous>");
     console.write_line("console.log(2);");
     console.expect("2");
+    console.write_line(r#"throw "hello";"#);
+    console.expect(r#"Uncaught "hello""#);
+    console.write_line(r#"throw `hello ${"world"}`;"#);
+    console.expect(r#"Uncaught "hello world""#);
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_report_error() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line("console.log(1);");
@@ -831,7 +834,7 @@ fn repl_report_error() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn repl_error_undefined() {
   util::with_pty(&["repl"], |mut console| {
     console.write_line(r#"throw undefined;"#);
@@ -873,10 +876,7 @@ fn npm_packages() {
   let mut env_vars = util::env_vars_for_npm_tests();
   env_vars.push(("NO_COLOR".to_owned(), "1".to_owned()));
   let temp_dir = TempDir::new();
-  env_vars.push((
-    "DENO_DIR".to_string(),
-    temp_dir.path().to_string_lossy().to_string(),
-  ));
+  env_vars.push(("DENO_DIR".to_string(), temp_dir.path().to_string()));
 
   {
     let (out, err) = util::run_and_collect_output_with_args(
@@ -972,7 +972,7 @@ fn pty_tab_indexable_props() {
   });
 }
 
-#[test]
+#[flaky_test::flaky_test]
 fn package_json_uncached_no_error() {
   let test_context = TestContextBuilder::for_npm()
     .use_temp_cwd()
@@ -1014,9 +1014,6 @@ fn closed_file_pre_load_does_not_occur() {
     .new_command()
     .args_vec(["repl", "-A", "--log-level=debug"])
     .with_pty(|console| {
-      assert_contains!(
-        console.all_output(),
-        "Skipping document preload for repl.",
-      );
+      assert_contains!(console.all_output(), "Skipping document preload.",);
     });
 }

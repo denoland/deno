@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -9,6 +10,7 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -88,7 +90,7 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::decl(),
+    "op_print" => op_print::DECL,
     _ => op,
   },
   state = |state, options| {
@@ -350,7 +352,7 @@ impl StdFileResourceInner {
         }
       }
     };
-    let (cell_value, result) = tokio::task::spawn_blocking(move || {
+    let (cell_value, result) = spawn_blocking(move || {
       let result = action(&mut cell_value);
       (cell_value, result)
     })
@@ -372,7 +374,7 @@ impl StdFileResourceInner {
     // we want to restrict this to one async action at a time
     let _permit = self.cell_async_task_queue.acquire().await;
 
-    tokio::task::spawn_blocking(action).await.unwrap()
+    spawn_blocking(action).await.unwrap()
   }
 }
 

@@ -1,16 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::logging::lsp_log;
+use crate::args::ConfigFile;
+use crate::lsp::logging::lsp_warn;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::ModuleSpecifier;
+use deno_lockfile::Lockfile;
 use lsp::Url;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
 
@@ -265,6 +271,10 @@ fn default_to_true() -> bool {
   true
 }
 
+fn default_document_preload_limit() -> usize {
+  1000
+}
+
 fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   d: D,
 ) -> Result<Option<String>, D::Error> {
@@ -318,6 +328,10 @@ pub struct WorkspaceSettings {
   #[serde(default = "default_to_true")]
   pub lint: bool,
 
+  /// Limits the number of files that can be preloaded by the language server.
+  #[serde(default = "default_document_preload_limit")]
+  pub document_preload_limit: usize,
+
   /// A flag that indicates if Dene should validate code against the unstable
   /// APIs for the workspace.
   #[serde(default)]
@@ -354,6 +368,7 @@ impl Default for WorkspaceSettings {
       inlay_hints: Default::default(),
       internal_debug: false,
       lint: true,
+      document_preload_limit: default_document_preload_limit(),
       suggest: Default::default(),
       testing: Default::default(),
       tls_certificate: None,
@@ -388,27 +403,19 @@ impl WorkspaceSettings {
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub enabled_paths: HashMap<Url, Vec<Url>>,
+  pub excluded_paths: Option<Vec<Url>>,
   pub settings: Settings,
 }
 
 impl ConfigSnapshot {
   /// Determine if the provided specifier is enabled or not.
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.as_str();
-      for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace.as_str()) {
-          return enabled_paths
-            .iter()
-            .any(|path| specifier_str.starts_with(path.as_str()));
-        }
-      }
-    }
-    if let Some(settings) = self.settings.specifiers.get(specifier) {
-      settings.enable
-    } else {
-      self.settings.workspace.enable
-    }
+    specifier_enabled(
+      &self.enabled_paths,
+      self.excluded_paths.as_ref(),
+      &self.settings,
+      specifier,
+    )
   }
 }
 
@@ -419,12 +426,33 @@ pub struct Settings {
 }
 
 #[derive(Debug)]
+struct WithCanonicalizedSpecifier<T> {
+  /// Stored canonicalized specifier, which is used for file watcher events.
+  canonicalized_specifier: ModuleSpecifier,
+  file: T,
+}
+
+/// Contains the config file and dependent information.
+#[derive(Debug)]
+struct LspConfigFileInfo {
+  config_file: WithCanonicalizedSpecifier<ConfigFile>,
+  /// An optional deno.lock file, which is resolved relative to the config file.
+  maybe_lockfile: Option<WithCanonicalizedSpecifier<Arc<Mutex<Lockfile>>>>,
+  /// The canonicalized node_modules directory, which is found relative to the config file.
+  maybe_node_modules_dir: Option<PathBuf>,
+  excluded_paths: Vec<Url>,
+}
+
+#[derive(Debug)]
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   enabled_paths: HashMap<Url, Vec<Url>>,
   pub root_uri: Option<ModuleSpecifier>,
   settings: Settings,
   pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  /// An optional configuration file which has been specified in the client
+  /// options along with some data that is computed after the config file is set.
+  maybe_config_file_info: Option<LspConfigFileInfo>,
 }
 
 impl Config {
@@ -436,11 +464,98 @@ impl Config {
       root_uri: None,
       settings: Default::default(),
       workspace_folders: None,
+      maybe_config_file_info: None,
     }
   }
 
-  pub fn get_workspace_settings(&self) -> WorkspaceSettings {
-    self.settings.workspace.clone()
+  pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .and_then(|p| p.maybe_node_modules_dir.as_ref())
+  }
+
+  pub fn maybe_config_file(&self) -> Option<&ConfigFile> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .map(|c| &c.config_file.file)
+  }
+
+  /// Canonicalized specifier of the config file, which should only be used for
+  /// file watcher events. Otherwise, prefer using the non-canonicalized path
+  /// as the rest of the CLI does for config files.
+  pub fn maybe_config_file_canonicalized_specifier(
+    &self,
+  ) -> Option<&ModuleSpecifier> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .map(|c| &c.config_file.canonicalized_specifier)
+  }
+
+  pub fn maybe_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .and_then(|c| c.maybe_lockfile.as_ref().map(|l| &l.file))
+  }
+
+  /// Canonicalized specifier of the lockfile, which should only be used for
+  /// file watcher events. Otherwise, prefer using the non-canonicalized path
+  /// as the rest of the CLI does for config files.
+  pub fn maybe_lockfile_canonicalized_specifier(
+    &self,
+  ) -> Option<&ModuleSpecifier> {
+    self.maybe_config_file_info.as_ref().and_then(|c| {
+      c.maybe_lockfile
+        .as_ref()
+        .map(|l| &l.canonicalized_specifier)
+    })
+  }
+
+  pub fn clear_config_file(&mut self) {
+    self.maybe_config_file_info = None;
+  }
+
+  pub fn set_config_file(&mut self, config_file: ConfigFile) {
+    self.maybe_config_file_info = Some(LspConfigFileInfo {
+      maybe_lockfile: resolve_lockfile_from_config(&config_file).map(
+        |lockfile| {
+          let path = canonicalize_path_maybe_not_exists(&lockfile.filename)
+            .unwrap_or_else(|_| lockfile.filename.clone());
+          WithCanonicalizedSpecifier {
+            canonicalized_specifier: ModuleSpecifier::from_file_path(path)
+              .unwrap(),
+            file: Arc::new(Mutex::new(lockfile)),
+          }
+        },
+      ),
+      maybe_node_modules_dir: resolve_node_modules_dir(&config_file),
+      excluded_paths: config_file
+        .to_files_config()
+        .ok()
+        .flatten()
+        .map(|c| c.exclude)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
+        .collect(),
+      config_file: WithCanonicalizedSpecifier {
+        canonicalized_specifier: config_file
+          .specifier
+          .to_file_path()
+          .ok()
+          .and_then(|p| canonicalize_path_maybe_not_exists(&p).ok())
+          .and_then(|p| ModuleSpecifier::from_file_path(p).ok())
+          .unwrap_or_else(|| config_file.specifier.clone()),
+        file: config_file,
+      },
+    });
+  }
+
+  pub fn workspace_settings(&self) -> &WorkspaceSettings {
+    &self.settings.workspace
   }
 
   /// Set the workspace settings directly, which occurs during initialization
@@ -458,6 +573,10 @@ impl Config {
     Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
       enabled_paths: self.enabled_paths.clone(),
+      excluded_paths: self
+        .maybe_config_file_info
+        .as_ref()
+        .map(|i| i.excluded_paths.clone()),
       settings: self.settings.clone(),
     })
   }
@@ -467,22 +586,15 @@ impl Config {
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
-    if !self.enabled_paths.is_empty() {
-      let specifier_str = specifier.as_str();
-      for (workspace, enabled_paths) in self.enabled_paths.iter() {
-        if specifier_str.starts_with(workspace.as_str()) {
-          return enabled_paths
-            .iter()
-            .any(|path| specifier_str.starts_with(path.as_str()));
-        }
-      }
-    }
-    self
-      .settings
-      .specifiers
-      .get(specifier)
-      .map(|settings| settings.enable)
-      .unwrap_or_else(|| self.settings.workspace.enable)
+    specifier_enabled(
+      &self.enabled_paths,
+      self
+        .maybe_config_file_info
+        .as_ref()
+        .map(|i| &i.excluded_paths),
+      &self.settings,
+      specifier,
+    )
   }
 
   /// Gets the directories or specifically enabled file paths based on the
@@ -653,6 +765,77 @@ impl Config {
   }
 }
 
+fn specifier_enabled(
+  enabled_paths: &HashMap<Url, Vec<Url>>,
+  excluded_paths: Option<&Vec<Url>>,
+  settings: &Settings,
+  specifier: &Url,
+) -> bool {
+  let specifier_str = specifier.as_str();
+  for (workspace, enabled_paths) in enabled_paths.iter() {
+    if specifier_str.starts_with(workspace.as_str()) {
+      return enabled_paths
+        .iter()
+        .any(|path| specifier_str.starts_with(path.as_str()));
+    }
+  }
+  if let Some(excluded_paths) = excluded_paths {
+    for excluded_path in excluded_paths {
+      if specifier_str.starts_with(excluded_path.as_str()) {
+        return false;
+      }
+    }
+  }
+  settings
+    .specifiers
+    .get(specifier)
+    .map(|settings| settings.enable)
+    .unwrap_or_else(|| settings.workspace.enable)
+}
+
+fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
+  let lockfile_path = match config_file.resolve_lockfile_path() {
+    Ok(Some(value)) => value,
+    Ok(None) => return None,
+    Err(err) => {
+      lsp_warn!("Error resolving lockfile: {:#}", err);
+      return None;
+    }
+  };
+  resolve_lockfile_from_path(lockfile_path)
+}
+
+fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
+  // For the language server, require an explicit opt-in via the
+  // `nodeModulesDir: true` setting in the deno.json file. This is to
+  // reduce the chance of modifying someone's node_modules directory
+  // without them having asked us to do so.
+  if config_file.node_modules_dir() != Some(true) {
+    return None;
+  }
+  if config_file.specifier.scheme() != "file" {
+    return None;
+  }
+  let file_path = config_file.specifier.to_file_path().ok()?;
+  let node_modules_dir = file_path.parent()?.join("node_modules");
+  canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
+}
+
+fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
+  match Lockfile::new(lockfile_path, false) {
+    Ok(value) => {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
+        lsp_log!("  Resolved lock file: \"{}\"", specifier);
+      }
+      Some(value)
+    }
+    Err(err) => {
+      lsp_warn!("Error loading lockfile: {:#}", err);
+      None
+    }
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -714,7 +897,7 @@ mod tests {
       .set_workspace_settings(json!({}))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings {
         enable: false,
         enable_paths: Vec::new(),
@@ -750,6 +933,7 @@ mod tests {
         },
         internal_debug: false,
         lint: true,
+        document_preload_limit: 1_000,
         suggest: CompletionSettings {
           complete_function_calls: false,
           names: true,
@@ -778,7 +962,7 @@ mod tests {
       .set_workspace_settings(json!({ "cache": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -790,7 +974,7 @@ mod tests {
       .set_workspace_settings(json!({ "import_map": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -802,7 +986,7 @@ mod tests {
       .set_workspace_settings(json!({ "tls_certificate": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }
@@ -814,7 +998,7 @@ mod tests {
       .set_workspace_settings(json!({ "config": "" }))
       .expect("could not update");
     assert_eq!(
-      config.get_workspace_settings(),
+      config.workspace_settings().clone(),
       WorkspaceSettings::default()
     );
   }

@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::url::Url;
 use deno_core::v8;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use serde::Serialize;
@@ -48,24 +49,16 @@ deno_core::extension!(
   state = |state, options| {
     state.put::<ExitCode>(options.exit_code);
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
 
 deno_core::extension!(
   deno_os_worker,
   ops_fn = deno_ops,
   middleware = |op| match op.name {
-    "op_exit" | "op_set_exit_code" => deno_core::OpDecl {
-      v8_fn_ptr: deno_core::op_void_sync::v8_fn_ptr as _,
-      ..op
-    },
+    "op_exit" | "op_set_exit_code" =>
+      op.with_implementation_from(&deno_core::op_void_sync::DECL),
     _ => op,
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  }
 );
 
 #[op]
@@ -384,6 +377,53 @@ fn rss() -> usize {
   // SAFETY: we just asserted that it was success
   let task_info = unsafe { task_info.assume_init() };
   task_info.resident_size as usize
+}
+
+#[cfg(target_os = "openbsd")]
+fn rss() -> usize {
+  // Uses OpenBSD's KERN_PROC_PID sysctl(2)
+  // to retrieve information about the current
+  // process, part of which is the RSS (p_vm_rssize)
+
+  // SAFETY: libc call (get PID of own process)
+  let pid = unsafe { libc::getpid() };
+  // SAFETY: libc call (get system page size)
+  let pagesize = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+  // KERN_PROC_PID returns a struct libc::kinfo_proc
+  let mut kinfoproc = std::mem::MaybeUninit::<libc::kinfo_proc>::uninit();
+  let mut size = std::mem::size_of_val(&kinfoproc) as libc::size_t;
+  let mut mib = [
+    libc::CTL_KERN,
+    libc::KERN_PROC,
+    libc::KERN_PROC_PID,
+    pid,
+    // mib is an array of integers, size is of type size_t
+    // conversion is safe, because the size of a libc::kinfo_proc
+    // structure will not exceed i32::MAX
+    size.try_into().unwrap(),
+    1,
+  ];
+  // SAFETY: libc call, mib has been statically initialized,
+  // kinfoproc is a valid pointer to a libc::kinfo_proc struct
+  let res = unsafe {
+    libc::sysctl(
+      mib.as_mut_ptr(),
+      mib.len() as _,
+      kinfoproc.as_mut_ptr() as *mut libc::c_void,
+      &mut size,
+      std::ptr::null_mut(),
+      0,
+    )
+  };
+
+  if res == 0 {
+    // SAFETY: sysctl returns 0 on success and kinfoproc is initialized
+    // p_vm_rssize contains size in pages -> multiply with pagesize to
+    // get size in bytes.
+    pagesize * unsafe { (*kinfoproc.as_mut_ptr()).p_vm_rssize as usize }
+  } else {
+    0
+  }
 }
 
 #[cfg(windows)]

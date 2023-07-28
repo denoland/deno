@@ -1,18 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::args::BenchOptions;
+use crate::args::BenchFlags;
 use crate::args::CliOptions;
-use crate::args::TypeCheckMode;
+use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
+use crate::factory::CliFactoryBuilder;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_supported_ext;
 use crate::version::get_user_agent;
@@ -23,15 +24,16 @@ use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::serde_v8;
+use deno_core::task::spawn;
+use deno_core::task::spawn_blocking;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::tokio_util::run_local;
+use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::Level;
@@ -39,7 +41,6 @@ use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
@@ -94,6 +95,7 @@ pub struct BenchDescription {
   pub group: Option<String>,
   pub ignore: bool,
   pub only: bool,
+  pub warmup: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +195,10 @@ impl BenchReporter for JsonReporter {
   fn report_output(&mut self, _output: &str) {}
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    if desc.warmup {
+      return;
+    }
+
     let maybe_bench = self.0.benches.iter_mut().find(|bench| {
       bench.origin == desc.origin
         && bench.group == desc.group
@@ -325,6 +331,10 @@ impl BenchReporter for ConsoleReporter {
   }
 
   fn report_result(&mut self, desc: &BenchDescription, result: &BenchResult) {
+    if desc.warmup {
+      return;
+    }
+
     let options = self.options.as_ref().unwrap();
 
     match result {
@@ -436,7 +446,7 @@ async fn check_specifiers(
 
 /// Run a single specifier as an executable bench module.
 async fn bench_specifier(
-  worker_factory: &CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   permissions: Permissions,
   specifier: ModuleSpecifier,
   sender: UnboundedSender<BenchEvent>,
@@ -522,15 +532,15 @@ async fn bench_specifiers(
     let specifier = specifier;
     let sender = sender.clone();
     let options = option_for_handles.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let future = bench_specifier(
-        &worker_factory,
+        worker_factory,
         permissions,
         specifier,
         sender,
         options.filter,
       );
-      run_local(future)
+      create_and_run_current_thread(future)
     })
   });
 
@@ -539,7 +549,7 @@ async fn bench_specifiers(
     .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
   let handler = {
-    tokio::task::spawn(async move {
+    spawn(async move {
       let mut used_only = false;
       let mut report = BenchReport::new();
       let mut reporter =
@@ -629,9 +639,11 @@ fn is_supported_bench_path(path: &Path) -> bool {
 }
 
 pub async fn run_benchmarks(
-  cli_options: CliOptions,
-  bench_options: BenchOptions,
+  flags: Flags,
+  bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
+  let cli_options = CliOptions::from_flags(flags)?;
+  let bench_options = cli_options.resolve_bench_options(bench_flags)?;
   let factory = CliFactory::from_cli_options(Arc::new(cli_options));
   let cli_options = factory.cli_options();
   // Various bench files should not share the same permissions in terms of
@@ -678,181 +690,102 @@ pub async fn run_benchmarks(
 
 // TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
-  cli_options: CliOptions,
-  bench_options: BenchOptions,
+  flags: Flags,
+  bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_cli_options(Arc::new(cli_options));
-  let cli_options = factory.cli_options();
-  let module_graph_builder = factory.module_graph_builder().await?;
-  let file_watcher = factory.file_watcher()?;
-  let module_load_preparer = factory.module_load_preparer().await?;
-  // Various bench files should not share the same permissions in terms of
-  // `PermissionsContainer` - otherwise granting/revoking permissions in one
-  // file would have impact on other files, which is undesirable.
-  let permissions =
-    Permissions::from_options(&cli_options.permissions_options())?;
-  let no_check = cli_options.type_check_mode() == TypeCheckMode::None;
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let paths_to_watch = bench_options.files.include.clone();
-    let paths_to_watch_clone = paths_to_watch.clone();
-    let files_changed = changed.is_some();
-    let bench_options = &bench_options;
-    let module_graph_builder = module_graph_builder.clone();
-    let cli_options = cli_options.clone();
-
-    async move {
-      let bench_modules =
-        collect_specifiers(&bench_options.files, is_supported_bench_path)?;
-
-      let mut paths_to_watch = paths_to_watch_clone;
-      let mut modules_to_reload = if files_changed {
-        Vec::new()
-      } else {
-        bench_modules.clone()
-      };
-      let graph = module_graph_builder
-        .create_graph(bench_modules.clone())
-        .await?;
-      graph_valid_with_cli_options(&graph, &bench_modules, &cli_options)?;
-
-      // TODO(@kitsonk) - This should be totally derivable from the graph.
-      for specifier in bench_modules {
-        fn get_dependencies<'a>(
-          graph: &'a deno_graph::ModuleGraph,
-          maybe_module: Option<&'a deno_graph::Module>,
-          // This needs to be accessible to skip getting dependencies if they're already there,
-          // otherwise this will cause a stack overflow with circular dependencies
-          output: &mut HashSet<&'a ModuleSpecifier>,
-          no_check: bool,
-        ) {
-          if let Some(module) = maybe_module.and_then(|m| m.esm()) {
-            for dep in module.dependencies.values() {
-              if let Some(specifier) = &dep.get_code() {
-                if !output.contains(specifier) {
-                  output.insert(specifier);
-                  get_dependencies(
-                    graph,
-                    graph.get(specifier),
-                    output,
-                    no_check,
-                  );
-                }
-              }
-              if !no_check {
-                if let Some(specifier) = &dep.get_type() {
-                  if !output.contains(specifier) {
-                    output.insert(specifier);
-                    get_dependencies(
-                      graph,
-                      graph.get(specifier),
-                      output,
-                      no_check,
-                    );
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // This bench module and all it's dependencies
-        let mut modules = HashSet::new();
-        modules.insert(&specifier);
-        get_dependencies(&graph, graph.get(&specifier), &mut modules, no_check);
-
-        paths_to_watch.extend(
-          modules
-            .iter()
-            .filter_map(|specifier| specifier.to_file_path().ok()),
-        );
-
-        if let Some(changed) = &changed {
-          for path in changed
-            .iter()
-            .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
-          {
-            if modules.contains(&path) {
-              modules_to_reload.push(specifier);
-              break;
-            }
-          }
-        }
-      }
-
-      Ok((paths_to_watch, modules_to_reload))
-    }
-    .map(move |result| {
-      if files_changed
-        && matches!(result, Ok((_, ref modules)) if modules.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        match result {
-          Ok((paths_to_watch, modules_to_reload)) => {
-            ResolutionResult::Restart {
-              paths_to_watch,
-              result: Ok(modules_to_reload),
-            }
-          }
-          Err(e) => ResolutionResult::Restart {
-            paths_to_watch,
-            result: Err(e),
-          },
-        }
-      }
-    })
-  };
-
-  let create_cli_main_worker_factory =
-    factory.create_cli_main_worker_factory_func().await?;
-  let operation = |modules_to_reload: Vec<ModuleSpecifier>| {
-    let permissions = &permissions;
-    let bench_options = &bench_options;
-    file_watcher.reset();
-    let module_load_preparer = module_load_preparer.clone();
-    let cli_options = cli_options.clone();
-    let create_cli_main_worker_factory = create_cli_main_worker_factory.clone();
-
-    async move {
-      let worker_factory = Arc::new(create_cli_main_worker_factory());
-      let specifiers =
-        collect_specifiers(&bench_options.files, is_supported_bench_path)?
-          .into_iter()
-          .filter(|specifier| modules_to_reload.contains(specifier))
-          .collect::<Vec<ModuleSpecifier>>();
-
-      check_specifiers(&cli_options, &module_load_preparer, specifiers.clone())
-        .await?;
-
-      if bench_options.no_run {
-        return Ok(());
-      }
-
-      let log_level = cli_options.log_level();
-      bench_specifiers(
-        worker_factory,
-        permissions,
-        specifiers,
-        BenchSpecifierOptions {
-          filter: TestFilter::from_flag(&bench_options.filter),
-          json: bench_options.json,
-          log_level,
-        },
-      )
-      .await?;
-
-      Ok(())
-    }
-  };
-
-  let clear_screen = !cli_options.no_clear_screen();
   file_watcher::watch_func(
-    resolver,
-    operation,
+    flags,
     file_watcher::PrintConfig {
       job_name: "Bench".to_string(),
-      clear_screen,
+      clear_screen: bench_flags
+        .watch
+        .as_ref()
+        .map(|w| !w.no_clear_screen)
+        .unwrap_or(true),
+    },
+    move |flags, sender, changed_paths| {
+      let bench_flags = bench_flags.clone();
+      Ok(async move {
+        let factory = CliFactoryBuilder::new()
+          .with_watcher(sender.clone())
+          .build_from_flags(flags)
+          .await?;
+        let cli_options = factory.cli_options();
+        let bench_options = cli_options.resolve_bench_options(bench_flags)?;
+
+        let _ = sender.send(cli_options.watch_paths());
+        let _ = sender.send(bench_options.files.include.clone());
+
+        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let module_graph_builder = factory.module_graph_builder().await?;
+        let module_load_preparer = factory.module_load_preparer().await?;
+
+        let bench_modules =
+          collect_specifiers(&bench_options.files, is_supported_bench_path)?;
+
+        // Various bench files should not share the same permissions in terms of
+        // `PermissionsContainer` - otherwise granting/revoking permissions in one
+        // file would have impact on other files, which is undesirable.
+        let permissions =
+          Permissions::from_options(&cli_options.permissions_options())?;
+
+        let graph = module_graph_builder
+          .create_graph(graph_kind, bench_modules.clone())
+          .await?;
+        graph_valid_with_cli_options(&graph, &bench_modules, cli_options)?;
+
+        let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
+        {
+          let changed_specifiers = changed_paths
+            .into_iter()
+            .filter_map(|p| ModuleSpecifier::from_file_path(p).ok())
+            .collect::<HashSet<_>>();
+          let mut result = Vec::new();
+          for bench_module_specifier in bench_modules {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              &bench_module_specifier,
+              &changed_specifiers,
+            ) {
+              result.push(bench_module_specifier.clone());
+            }
+          }
+          result
+        } else {
+          bench_modules.clone()
+        };
+
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
+
+        let specifiers =
+          collect_specifiers(&bench_options.files, is_supported_bench_path)?
+            .into_iter()
+            .filter(|specifier| bench_modules_to_reload.contains(specifier))
+            .collect::<Vec<ModuleSpecifier>>();
+
+        check_specifiers(cli_options, module_load_preparer, specifiers.clone())
+          .await?;
+
+        if bench_options.no_run {
+          return Ok(());
+        }
+
+        let log_level = cli_options.log_level();
+        bench_specifiers(
+          worker_factory,
+          &permissions,
+          specifiers,
+          BenchSpecifierOptions {
+            filter: TestFilter::from_flag(&bench_options.filter),
+            json: bench_options.json,
+            log_level,
+          },
+        )
+        .await?;
+
+        Ok(())
+      })
     },
   )
   .await?;
@@ -1153,13 +1086,13 @@ mod mitata {
       } else {
         if options.avg {
           s.push_str(&format!(
-            "{:>23}",
+            "{:>30}",
             format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
           ));
         }
         if options.min_max {
           s.push_str(&format!(
-            "{:>42}",
+            "{:>50}",
             format!(
               "({} … {})",
               colors::cyan(fmt_duration(stats.min)),
@@ -1169,7 +1102,7 @@ mod mitata {
         }
         if options.percentiles {
           s.push_str(&format!(
-            " {:>18} {:>18} {:>18}",
+            " {:>22} {:>22} {:>22}",
             colors::magenta(fmt_duration(stats.p75)),
             colors::magenta(fmt_duration(stats.p99)),
             colors::magenta(fmt_duration(stats.p995))

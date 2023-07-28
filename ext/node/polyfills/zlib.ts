@@ -32,11 +32,29 @@ import {
   unzip,
   unzipSync,
 } from "ext:deno_node/_zlib.mjs";
+import {
+  brotliCompress,
+  brotliCompressSync,
+  brotliDecompress,
+  brotliDecompressSync,
+  createBrotliCompress,
+  createBrotliDecompress,
+} from "ext:deno_node/_brotli.js";
+
 export class Options {
   constructor() {
     notImplemented("Options.prototype.constructor");
   }
 }
+
+interface IBrotliOptions {
+  flush?: number;
+  finishFlush?: number;
+  chunkSize?: number;
+  params?: Record<number, number>;
+  maxOutputLength?: number;
+}
+
 export class BrotliOptions {
   constructor() {
     notImplemented("BrotliOptions.prototype.constructor");
@@ -58,24 +76,6 @@ export class ZlibBase {
   }
 }
 export { constants };
-export function createBrotliCompress() {
-  notImplemented("createBrotliCompress");
-}
-export function createBrotliDecompress() {
-  notImplemented("createBrotliDecompress");
-}
-export function brotliCompress() {
-  notImplemented("brotliCompress");
-}
-export function brotliCompressSync() {
-  notImplemented("brotliCompressSync");
-}
-export function brotliDecompress() {
-  notImplemented("brotliDecompress");
-}
-export function brotliDecompressSync() {
-  notImplemented("brotliDecompressSync");
-}
 
 export default {
   Options,
@@ -122,7 +122,13 @@ export default {
 };
 
 export {
+  brotliCompress,
+  brotliCompressSync,
+  brotliDecompress,
+  brotliDecompressSync,
   codes,
+  createBrotliCompress,
+  createBrotliDecompress,
   createDeflate,
   createDeflateRaw,
   createGunzip,

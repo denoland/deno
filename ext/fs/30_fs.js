@@ -10,13 +10,7 @@ const {
   op_fs_truncate_async,
   op_fs_link_async,
   op_fs_flock_async,
-} = Deno.core.generateAsyncOpHandler(
-  "op_fs_chmod_async",
-  "op_fs_ftruncate_async",
-  "op_fs_truncate_async",
-  "op_fs_link_async",
-  "op_fs_flock_async",
-);
+} = Deno.core.ensureFastOps();
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -245,11 +239,12 @@ async function rename(oldpath, newpath) {
 //  high u32 | low u32
 //
 // 4. ?u64 converts a zero u64 value to JS null on Windows.
+//    ?bool converts a false bool value to JS null on Windows.
 function createByteStruct(types) {
   // types can be "date", "bool" or "u64".
   let offset = 0;
   let str =
-    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux"; return {';
+    'const unix = Deno.build.os === "darwin" || Deno.build.os === "linux" || Deno.build.os === "openbsd" || Deno.build.os === "freebsd"; return {';
   const typeEntries = ObjectEntries(types);
   for (let i = 0; i < typeEntries.length; ++i) {
     let { 0: name, 1: type } = typeEntries[i];
@@ -273,7 +268,15 @@ function createByteStruct(types) {
       }] + view[${offset + 3}] * 2**32),`;
       offset += 2;
     } else {
-      str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      if (!optional) {
+        str += `${name}: !!(view[${offset}] + view[${offset + 1}] * 2**32),`;
+      } else {
+        str += `${name}: (unix ? !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) : !!((view[${offset}] + view[${
+          offset + 1
+        }] * 2**32)) || null),`;
+      }
     }
     offset += 2;
   }
@@ -299,18 +302,23 @@ const { 0: statStruct, 1: statBuf } = createByteStruct({
   rdev: "?u64",
   blksize: "?u64",
   blocks: "?u64",
+  isBlockDevice: "?bool",
+  isCharDevice: "?bool",
+  isFifo: "?bool",
+  isSocket: "?bool",
 });
 
 function parseFileInfo(response) {
-  const unix = core.build.os === "darwin" || core.build.os === "linux";
+  const unix = core.build.os === "darwin" || core.build.os === "linux" ||
+    core.build.os === "freebsd" || core.build.os === "openbsd";
   return {
     isFile: response.isFile,
     isDirectory: response.isDirectory,
     isSymlink: response.isSymlink,
     size: response.size,
-    mtime: response.mtimeSet !== null ? new Date(response.mtime) : null,
-    atime: response.atimeSet !== null ? new Date(response.atime) : null,
-    birthtime: response.birthtimeSet !== null
+    mtime: response.mtimeSet === true ? new Date(response.mtime) : null,
+    atime: response.atimeSet === true ? new Date(response.atime) : null,
+    birthtime: response.birthtimeSet === true
       ? new Date(response.birthtime)
       : null,
     dev: response.dev,
@@ -322,6 +330,10 @@ function parseFileInfo(response) {
     rdev: unix ? response.rdev : null,
     blksize: unix ? response.blksize : null,
     blocks: unix ? response.blocks : null,
+    isBlockDevice: unix ? response.isBlockDevice : null,
+    isCharDevice: unix ? response.isCharDevice : null,
+    isFifo: unix ? response.isFifo : null,
+    isSocket: unix ? response.isSocket : null,
   };
 }
 

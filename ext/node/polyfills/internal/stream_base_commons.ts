@@ -20,6 +20,9 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { ownerSymbol } from "ext:deno_node/internal/async_hooks.ts";
 import {
   kArrayBufferOffset,
@@ -32,10 +35,10 @@ import {
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 import { errnoException } from "ext:deno_node/internal/errors.ts";
 import { getTimerDuration, kTimeout } from "ext:deno_node/internal/timers.mjs";
-import { setUnrefTimeout } from "ext:deno_node/timers.ts";
+import { clearTimeout, setUnrefTimeout } from "node:timers";
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 
 export const kMaybeDestroy = Symbol("kMaybeDestroy");
 export const kUpdateTimer = Symbol("kUpdateTimer");
@@ -250,7 +253,9 @@ export function onStreamRead(
       }
     } else {
       const offset = streamBaseState[kArrayBufferOffset];
-      const buf = Buffer.from(arrayBuffer, offset, nread);
+      // Performance note: Pass ArrayBuffer to Buffer#from to avoid
+      // copy.
+      const buf = Buffer.from(arrayBuffer.buffer, offset, nread);
       result = stream.push(buf);
     }
 

@@ -3,7 +3,7 @@
 // TODO(ry) The unit test functions in this module are too coarse. They should
 // be broken up into smaller bits.
 
-// TODO(ry) These tests currentl strip all the ANSI colors out. We don't have a
+// TODO(ry) These tests currently strip all the ANSI colors out. We don't have a
 // good way to control whether we produce color output or not since
 // std/fmt/colors auto determines whether to put colors in or not. We need
 // better infrastructure here so we can properly test the colors.
@@ -1069,7 +1069,7 @@ Deno.test(function consoleTestWithCustomInspectorError() {
     () => stringify(a),
     Error,
     "BOOM",
-    "Inpsect should fail and maintain a clear CTX_STACK",
+    "Inspect should fail and maintain a clear CTX_STACK",
   );
 });
 
@@ -1152,9 +1152,12 @@ Deno.test(function consoleParseCssColor() {
   assertEquals(parseCssColor("darkmagenta"), [139, 0, 139]);
   assertEquals(parseCssColor("slateblue"), [106, 90, 205]);
   assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#ffaa00"), [255, 170, 0]);
-  assertEquals(parseCssColor("#18d"), [16, 128, 208]);
-  assertEquals(parseCssColor("#18D"), [16, 128, 208]);
+  assertEquals(parseCssColor("#ffAA00"), [255, 170, 0]);
+  assertEquals(parseCssColor("#fa0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#FA0"), [255, 170, 0]);
+  assertEquals(parseCssColor("#18d"), [17, 136, 221]);
+  assertEquals(parseCssColor("#18D"), [17, 136, 221]);
+  assertEquals(parseCssColor("#1188DD"), [17, 136, 221]);
   assertEquals(parseCssColor("rgb(100, 200, 50)"), [100, 200, 50]);
   assertEquals(parseCssColor("rgb(+100.3, -200, .5)"), [100, 0, 1]);
   assertEquals(parseCssColor("hsl(75, 60%, 40%)"), [133, 163, 41]);
@@ -1779,7 +1782,7 @@ Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidCssColorsAreGiven() {
 });
 
 // console.log(Invalid Date) test
-Deno.test(function consoleLogShoultNotThrowErrorWhenInvalidDateIsPassed() {
+Deno.test(function consoleLogShouldNotThrowErrorWhenInvalidDateIsPassed() {
   mockConsole((console, out) => {
     const invalidDate = new Date("test");
     console.log(invalidDate);
@@ -2193,6 +2196,31 @@ Deno.test(function inspectEmptyUint8Array() {
   );
 });
 
+Deno.test(function inspectLargeArrayBuffer() {
+  const arrayBuffer = new ArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    `ArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+  structuredClone(arrayBuffer, { transfer: [arrayBuffer] });
+  assertEquals(
+    Deno.inspect(arrayBuffer),
+    "ArrayBuffer { (detached), byteLength: 0 }",
+  );
+
+  const sharedArrayBuffer = new SharedArrayBuffer(2 ** 32 + 1);
+  assertEquals(
+    Deno.inspect(sharedArrayBuffer),
+    `SharedArrayBuffer {
+  [Uint8Contents]: <00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ... 4294967197 more bytes>,
+  byteLength: 4294967297
+}`,
+  );
+});
+
 Deno.test(function inspectStringAbbreviation() {
   const LONG_STRING =
     "This is a really long string which will be abbreviated with ellipsis.";
@@ -2235,6 +2263,13 @@ Deno.test(function inspectWithPrototypePollution() {
   }
 });
 
+Deno.test(function inspectPromiseLike() {
+  assertEquals(
+    Deno.inspect(Object.create(Promise.prototype)),
+    "Promise { <unknown> }",
+  );
+});
+
 Deno.test(function inspectorMethods() {
   console.timeStamp("test");
   console.profile("test");
@@ -2269,5 +2304,29 @@ Deno.test(function inspectAnonymousFunctions() {
   assertEquals(
     Deno.inspect(async function* () {}),
     "[AsyncGeneratorFunction (anonymous)]",
+  );
+});
+
+Deno.test(function inspectBreakLengthOption() {
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 34 }),
+    `"123456789\\n123456789\\n123456789\\n"`,
+  );
+  assertEquals(
+    Deno.inspect("123456789\n".repeat(3), { breakLength: 33 }),
+    `"123456789\\n" +
+  "123456789\\n" +
+  "123456789\\n"`,
+  );
+});
+
+Deno.test(function inspectEscapeSequencesFalse() {
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: true }),
+    '"foo\\nbar"',
+  ); // default behavior
+  assertEquals(
+    Deno.inspect("foo\nbar", { escapeSequences: false }),
+    '"foo\nbar"',
   );
 });

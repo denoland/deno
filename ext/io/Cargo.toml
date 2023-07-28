@@ -2,13 +2,13 @@
 
 [package]
 name = "deno_io"
-version = "0.13.0"
+version = "0.23.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
 readme = "README.md"
 repository.workspace = true
-description = "IO promitives for Deno extensions"
+description = "IO primitives for Deno extensions"
 
 [lib]
 path = "lib.rs"
@@ -20,9 +20,6 @@ filetime.workspace = true
 fs3.workspace = true
 once_cell.workspace = true
 tokio.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winbase", "processenv"] }

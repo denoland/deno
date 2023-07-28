@@ -288,7 +288,7 @@ fn validate(input: &str) -> ValidationResult {
           | (Some(Token::LBrace), Token::RBrace)
           | (Some(Token::DollarLBrace), Token::RBrace) => {}
           (Some(left), _) => {
-            // queue up a validation error to surface once we've finished examininig the current line
+            // queue up a validation error to surface once we've finished examining the current line
             queued_validation_error = Some(ValidationResult::Invalid(Some(
               format!("Mismatched pairs: {left:?} is not properly closed"),
             )));
@@ -530,8 +530,7 @@ impl ConditionalEventHandler for TabEventHandler {
     if ctx.line().is_empty()
       || ctx.line()[..ctx.pos()]
         .chars()
-        .rev()
-        .next()
+        .next_back()
         .filter(|c| c.is_whitespace())
         .is_some()
     {

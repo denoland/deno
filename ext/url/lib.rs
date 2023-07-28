@@ -8,8 +8,8 @@ use deno_core::op;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
+use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use std::path::PathBuf;
 
 use crate::urlpattern::op_urlpattern_parse;
@@ -220,7 +220,7 @@ pub fn op_url_reparse(
 #[op]
 pub fn op_url_parse_search_params(
   args: Option<String>,
-  zero_copy: Option<ZeroCopyBuf>,
+  zero_copy: Option<JsBuffer>,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let params = match (args, zero_copy) {
     (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)

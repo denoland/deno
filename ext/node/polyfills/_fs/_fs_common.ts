@@ -1,4 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import {
   O_APPEND,
   O_CREAT,
@@ -32,6 +36,13 @@ export type BinaryOptionsArgument =
   | BinaryEncodings
   | ({ encoding: BinaryEncodings } & FileOptions);
 export type FileOptionsArgument = Encodings | FileOptions;
+
+export type ReadOptions = {
+  buffer: Buffer | Uint8Array;
+  offset: number;
+  length: number;
+  position: number | null;
+};
 
 export interface WriteFileOptions extends FileOptions {
   mode?: number;
