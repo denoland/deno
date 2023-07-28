@@ -1299,7 +1299,7 @@ impl Inner {
     })
   }
 
-  fn refresh_documents_config(&mut self) {
+  async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
       enabled_urls: self.config.enabled_urls(),
       document_preload_limit: self
@@ -1312,6 +1312,10 @@ impl Inner {
       npm_registry_api: self.npm.api.clone(),
       npm_resolution: self.npm.resolution.clone(),
     });
+
+    // refresh the npm specifiers because it might have discovered
+    // a @types/node package and now's a good time to do that anyway
+    self.refresh_npm_specifiers().await;
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1456,7 +1460,7 @@ impl Inner {
     }
 
     self.recreate_npm_services_if_necessary().await;
-    self.refresh_documents_config();
+    self.refresh_documents_config().await;
 
     self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
@@ -1575,8 +1579,7 @@ impl Inner {
 
     if touched {
       self.recreate_npm_services_if_necessary().await;
-      self.refresh_documents_config();
-      self.refresh_npm_specifiers().await;
+      self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.ts_server.restart(self.snapshot()).await;
       self.send_diagnostics_update();
@@ -3016,7 +3019,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     {
       let mut ls = self.0.write().await;
-      ls.refresh_documents_config();
+      ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
     }
@@ -3104,7 +3107,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .map(|d| d.is_diagnosable())
         .unwrap_or(false)
       {
-        ls.refresh_documents_config();
+        ls.refresh_documents_config().await;
         ls.send_diagnostics_update();
         ls.send_testing_update();
       }
@@ -3194,7 +3197,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
     if self.refresh_specifiers_from_client().await {
       let mut ls = self.0.write().await;
-      ls.refresh_documents_config();
+      ls.refresh_documents_config().await;
       ls.diagnostics_server.invalidate_all();
       ls.send_diagnostics_update();
     }

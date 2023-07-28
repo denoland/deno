@@ -507,6 +507,10 @@ function resolveExports(
     return;
   }
 
+  if (!parentPath) {
+    return false;
+  }
+
   return ops.op_require_resolve_exports(
     usesLocalNodeModulesDir,
     modulesPath,

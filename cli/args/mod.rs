@@ -227,6 +227,7 @@ pub struct TestOptions {
   pub shuffle: Option<u64>,
   pub concurrent_jobs: NonZeroUsize,
   pub trace_ops: bool,
+  pub junit_path: Option<String>,
 }
 
 impl TestOptions {
@@ -251,6 +252,7 @@ impl TestOptions {
       no_run: test_flags.no_run,
       shuffle: test_flags.shuffle,
       trace_ops: test_flags.trace_ops,
+      junit_path: test_flags.junit_path,
     })
   }
 }
@@ -919,11 +921,11 @@ impl CliOptions {
   /// Return the JSX import source configuration.
   pub fn to_maybe_jsx_import_source_config(
     &self,
-  ) -> Option<JsxImportSourceConfig> {
-    self
-      .maybe_config_file
-      .as_ref()
-      .and_then(|c| c.to_maybe_jsx_import_source_config())
+  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
+    match self.maybe_config_file.as_ref() {
+      Some(config) => config.to_maybe_jsx_import_source_config(),
+      None => Ok(None),
+    }
   }
 
   /// Return any imports that should be brought into the scope of the module

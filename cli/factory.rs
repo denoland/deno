@@ -409,7 +409,7 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.options.to_maybe_jsx_import_source_config(),
+          self.options.to_maybe_jsx_import_source_config()?,
           self.maybe_import_map().await?.clone(),
           self.options.no_npm(),
           self.npm_api()?.clone(),
@@ -486,7 +486,8 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(node_analysis_cache);
+        let cjs_esm_analyzer =
+          CliCjsCodeAnalyzer::new(node_analysis_cache, self.fs().clone());
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
