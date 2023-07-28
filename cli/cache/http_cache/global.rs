@@ -101,7 +101,7 @@ impl GlobalHttpCache {
     // The key file path is always set for the global cache because
     // the file will always exist, unlike the local cache, which won't
     // have this for redirects.
-    self.key_file_path(key)
+    key.file_path.as_ref().unwrap()
   }
 }
 

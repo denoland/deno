@@ -699,7 +699,7 @@ impl SpecifierResolver {
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
-      let cache_key = self.cache.cache_item_key(&specifier).ok()?;
+      let cache_key = self.cache.cache_item_key(specifier).ok()?;
       let headers = self
         .cache
         .read_metadata(&cache_key)

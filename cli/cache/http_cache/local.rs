@@ -60,15 +60,15 @@ impl LocalHttpCache {
   ) -> Result<Cow<'a, PathBuf>, AnyError> {
     match &key.file_path {
       Some(path) => Ok(Cow::Borrowed(path)),
-      None => Ok(Cow::Owned(self.get_cache_filepath(&key.url)?)),
+      None => Ok(Cow::Owned(self.get_cache_filepath(key.url)?)),
     }
   }
 
   /// Copies the file from the global cache to the local cache returning
   /// if the data was successfully copied to the local cache.
-  fn check_copy_global_to_local<'a>(
+  fn check_copy_global_to_local(
     &self,
-    local_key: &HttpCacheItemKey<'a>,
+    local_key: &HttpCacheItemKey,
   ) -> Result<bool, AnyError> {
     let global_key = self.global_cache.cache_item_key(local_key.url)?;
     let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
@@ -81,13 +81,13 @@ impl LocalHttpCache {
 
     let is_redirect = metadata.headers.contains_key("location");
     if !is_redirect {
-      let local_file_path = self.get_cache_filepath_from_key(&local_key)?;
+      let local_file_path = self.get_cache_filepath_from_key(local_key)?;
       // if we're here, then this will be set
       ensure_dir_exists(local_file_path.parent().unwrap())?;
-      atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
+      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
     }
     self.manifest.insert_data(
-      url_to_local_sub_path(&local_key.url)?,
+      url_to_local_sub_path(local_key.url)?,
       local_key.url.clone(),
       metadata.headers,
     );
@@ -130,7 +130,7 @@ impl HttpCache for LocalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    let file_path = if self.manifest.has_redirect(&key.url) {
+    let file_path = if self.manifest.has_redirect(key.url) {
       Cow::Borrowed(&self.manifest.file_path)
     } else {
       self.get_cache_filepath_from_key(key)?
@@ -138,7 +138,7 @@ impl HttpCache for LocalHttpCache {
     match fs::metadata(&*file_path) {
       Ok(metadata) => Ok(Some(metadata.modified()?)),
       Err(err) if err.kind() == io::ErrorKind::NotFound => {
-        if self.check_copy_global_to_local(&key)? {
+        if self.check_copy_global_to_local(key)? {
           // try again now that it's saved
           return self.read_modified_time(key);
         }
@@ -187,12 +187,12 @@ impl HttpCache for LocalHttpCache {
       return Ok(Some(Vec::new()));
     }
 
-    match read_file_bytes(&cache_filepath)? {
+    match read_file_bytes(cache_filepath)? {
       Some(bytes) => Ok(Some(bytes)),
       None => {
         if self.check_copy_global_to_local(key)? {
           // try again now that it's saved
-          self.read_file_bytes(&key)
+          self.read_file_bytes(key)
         } else {
           Ok(None)
         }
@@ -207,14 +207,12 @@ impl HttpCache for LocalHttpCache {
     debug_assert!(key.is_local_key);
 
     if let Some(metadata) = self.manifest.get_metadata(key.url) {
-      return Ok(Some(metadata));
+      Ok(Some(metadata))
+    } else if self.check_copy_global_to_local(key)? {
+      // try again now that it's saved
+      Ok(self.manifest.get_metadata(key.url))
     } else {
-      if self.check_copy_global_to_local(key)? {
-        // try again now that it's saved
-        Ok(self.manifest.get_metadata(key.url))
-      } else {
-        Ok(None)
-      }
+      Ok(None)
     }
   }
 }
@@ -299,7 +297,7 @@ fn url_to_local_sub_path(
   // push the query parameter onto the last part
   if let Some(query) = url.query() {
     let last_part = parts.last_mut().unwrap();
-    last_part.push_str("?");
+    last_part.push('?');
     last_part.push_str(query);
   }
 
@@ -429,7 +427,7 @@ impl LocalCacheManifest {
       if sub_path.has_hash {
         return None;
       }
-      let file_path = sub_path.as_path_from_root(&folder_path);
+      let file_path = sub_path.as_path_from_root(folder_path);
       // todo(THIS PR): use fs trait
       return if file_path.exists() {
         Some(CachedUrlMetadata {

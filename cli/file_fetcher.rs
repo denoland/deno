@@ -245,7 +245,7 @@ impl FileFetcher {
       return Err(custom_error("Http", "Too many redirects."));
     }
 
-    let cache_key = self.http_cache.cache_item_key(&specifier)?; // compute this once
+    let cache_key = self.http_cache.cache_item_key(specifier)?; // compute this once
     let Some(metadata) = self.http_cache.read_metadata(&cache_key)? else {
       return Ok(None);
     };
@@ -375,7 +375,7 @@ impl FileFetcher {
 
     let maybe_etag = self
       .http_cache
-      .cache_item_key(&specifier)
+      .cache_item_key(specifier)
       .ok()
       .and_then(|key| self.http_cache.read_metadata(&key).ok().flatten())
       .and_then(|metadata| metadata.headers.get("etag").cloned());
@@ -1290,7 +1290,7 @@ mod tests {
       "export const redirect = 1;\n"
     );
     assert_eq!(
-      get_location_header_from_cache(&file_fetcher, &redirected_01_specifier),
+      get_location_header_from_cache(&file_fetcher, &redirected_02_specifier),
       None,
     );
   }
