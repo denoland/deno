@@ -231,6 +231,8 @@ impl AsRef<str> for EnvVarName {
 pub trait Descriptor: Eq + Clone {
   fn flag_name() -> &'static str;
   fn name(&self) -> Cow<str>;
+  // By default, specifies no-stronger-than relationship.
+  // As this is not strict, it's only true when descriptors are the same.
   fn stronger_than(&self, other: &Self) -> bool {
     self == other
   }
