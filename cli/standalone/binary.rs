@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
-use std::env::consts;
 use std::env::current_exe;
 use std::io::Read;
 use std::io::Seek;
@@ -385,19 +384,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let mut original_binary =
-      self.get_base_binary(compile_flags.target.clone()).await?;
-
-    let target = compile_flags
-      .target
-      .clone()
-      .unwrap_or(consts::OS.to_string());
+    let mut original_binary = self.get_base_binary(compile_flags).await?;
 
     if compile_flags.no_terminal {
-      if target != "x86_64-pc-windows-msvc" && target != "windows" {
-        println!("{}", target);
+      let target = self.resolve_target(compile_flags);
+      if !target.contains("windows") {
         bail!(
-          "The `--no-terminal` flag is only available when targeting Windows"
+          "The `--no-terminal` flag is only available when targeting Windows (current: {})",
+          target,
         )
       }
       set_windows_binary_to_gui(&mut original_binary)?;
@@ -417,14 +411,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn get_base_binary(
     &self,
-    target: Option<String>,
+    compile_flags: &CompileFlags,
   ) -> Result<Vec<u8>, AnyError> {
-    if target.is_none() {
+    if compile_flags.target.is_none() {
       let path = std::env::current_exe()?;
       return Ok(std::fs::read(path)?);
     }
 
-    let target = target.unwrap_or_else(|| env!("TARGET").to_string());
+    let target = self.resolve_target(compile_flags);
     let binary_name = format!("deno-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
@@ -452,6 +446,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
+  }
+
+  fn resolve_target(&self, compile_flags: &CompileFlags) -> String {
+    compile_flags
+      .target
+      .clone()
+      .unwrap_or_else(|| env!("TARGET").to_string())
   }
 
   async fn download_base_binary(
