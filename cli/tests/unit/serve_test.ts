@@ -2789,6 +2789,7 @@ Deno.test(
 
 // https://github.com/denoland/deno/issues/15858
 Deno.test(
+  "Clone should work",
   { permissions: { net: true } },
   async function httpServerCanCloneRequest() {
     const ac = new AbortController();
@@ -2800,6 +2801,18 @@ Deno.test(
         assertEquals(req.headers, cloned.headers);
 
         assertEquals(cloned.url, req.url);
+        assertEquals(cloned.cache, req.cache);
+        assertEquals(cloned.destination, req.destination)
+        assertEquals(cloned.headers, req.headers)
+        assertEquals(cloned.integrity, req.integrity)
+        assertEquals(cloned.isHistoryNavigation, req.isHistoryNavigation)
+        assertEquals(cloned.isReloadNavigation, req.isReloadNavigation)
+        assertEquals(cloned.keepalive, req.keepalive)
+        assertEquals(cloned.method, req.method)
+        assertEquals(cloned.mode, req.mode)
+        assertEquals(cloned.redirect, req.redirect)
+        assertEquals(cloned.referrer, req.referrer)
+        assertEquals(cloned.referrerPolicy, req.referrerPolicy)
 
         // both requests can read body
         await req.text();
