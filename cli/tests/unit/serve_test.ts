@@ -2848,31 +2848,25 @@ Deno.test(
     const ac = new AbortController();
     const listeningPromise = deferred();
 
-    function customErrorCb(ac: AbortController): (error: unknown) => Response {
-      return (error) => {
-        assert(error instanceof TypeError);
-        assert(
-          error.message.endsWith(
-            "Body is unusable.",
-          ),
-        );
-                  
-        ac.abort();
-        return new Response("Internal server error", { status: 500 });
-      };
-    }    
-
     const server = Deno.serve({
       handler: async (req) => {
         await req.text();
 
-        req.clone();
+        try {
+          req.clone();
+        } catch (error) {
+          assert(error instanceof TypeError);
+          assert(
+            error.message.endsWith("Body is unusable."));
+
+          ac.abort();
+          await server.finished;
+        }
         
         return new Response("ok");
       },
       signal: ac.signal,
       onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
-      onError: customErrorCb(ac),
     });
     
     try {
