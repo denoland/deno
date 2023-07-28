@@ -198,6 +198,7 @@ fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext)
     .ignore_git_folder()
     .ignore_node_modules()
+    .ignore_remote_modules()
     .add_ignore_paths(&files.exclude)
     .collect_files(&files.include)
 }

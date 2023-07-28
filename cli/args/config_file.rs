@@ -895,13 +895,17 @@ impl ConfigFile {
   }
 
   pub fn to_files_config(&self) -> Result<Option<FilesConfig>, AnyError> {
-    let exclude: Vec<String> = if let Some(exclude) = self.json.exclude.clone()
-    {
-      serde_json::from_value(exclude)
-        .context("Failed to parse \"exclude\" configuration")?
-    } else {
-      Vec::new()
-    };
+    let mut exclude: Vec<String> =
+      if let Some(exclude) = self.json.exclude.clone() {
+        serde_json::from_value(exclude)
+          .context("Failed to parse \"exclude\" configuration")?
+      } else {
+        Vec::new()
+      };
+
+    if self.remote_modules_dir() == Some(true) {
+      exclude.push("remote_modules".to_string());
+    }
 
     let raw_files_config = SerializedFilesConfig {
       exclude,

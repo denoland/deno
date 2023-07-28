@@ -1271,25 +1271,15 @@ impl Documents {
           .iter()
           .filter_map(|url| specifier_to_file_path(url).ok())
           .collect(),
-        {
-          let mut excluded = options
-            .maybe_config_file
-            .and_then(|cf| {
-              cf.to_files_config()
-                .ok()
-                .flatten()
-                .map(|files| files.exclude)
-            })
-            .unwrap_or_default();
-          if let Some(dir_path) = options
-            .maybe_config_file
-            .as_ref()
-            .and_then(|c| c.remote_modules_dir_path())
-          {
-            excluded.push(dir_path);
-          }
-          excluded
-        },
+        options
+          .maybe_config_file
+          .and_then(|cf| {
+            cf.to_files_config()
+              .ok()
+              .flatten()
+              .map(|files| files.exclude)
+          })
+          .unwrap_or_default(),
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;

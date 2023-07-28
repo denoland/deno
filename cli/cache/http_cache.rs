@@ -25,6 +25,8 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use thiserror::Error;
 
+// todo(THIS PR): also add this folder to the exclude folders automatically
+
 use super::CACHE_PERM;
 
 /// Turn base of url (scheme, hostname, port) into a valid filename.
@@ -493,7 +495,8 @@ struct LocalCacheManifestData {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct SerializedLocalCacheManifestDataModule {
-  pub path: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub path: Option<String>,
   #[serde(
     default = "IndexMap::new",
     skip_serializing_if = "IndexMap::is_empty"
@@ -531,16 +534,22 @@ impl LocalCacheManifest {
     &self,
     sub_path: LocalCacheSubPath,
     specifier: ModuleSpecifier,
-    original_headers: HashMap<String, String>,
+    mut original_headers: HashMap<String, String>,
   ) {
     let mut headers_subset = IndexMap::new();
     // todo: investigate other headers to keep
     // todo: extract to function
-    if let Some(value) = original_headers.get("x-typescript-types") {
-      headers_subset.insert("x-typescript-types".to_string(), value.clone());
+    if let Some((k, v)) = original_headers.remove_entry("x-typescript-types") {
+      headers_subset.insert(k, v);
     }
-    if let Some(value) = original_headers.get("x-deno-warning") {
-      headers_subset.insert("x-deno-warning".to_string(), value.clone());
+    if let Some((k, v)) = original_headers.remove_entry("x-deno-warning") {
+      headers_subset.insert(k, v);
+    }
+    if let Some((k, v)) = original_headers.remove_entry("location") {
+      headers_subset.insert(k, v);
+    }
+    if let Some((k, v)) = original_headers.remove_entry("content-type") {
+      headers_subset.insert(k, v);
     }
     let mut data = self.data.write();
     let is_empty = headers_subset.is_empty() && !sub_path.has_hash;
@@ -548,7 +557,11 @@ impl LocalCacheManifest {
       data.serialized.modules.remove(&specifier).is_some()
     } else {
       let new_data = SerializedLocalCacheManifestDataModule {
-        path: sub_path.parts.join("/"),
+        path: if headers_subset.contains_key("location") {
+          None
+        } else {
+          Some(sub_path.parts.join("/"))
+        },
         headers: headers_subset,
       };
       if data.serialized.modules.get(&specifier) == Some(&new_data) {
