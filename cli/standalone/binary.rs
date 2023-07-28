@@ -387,7 +387,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut original_binary = self.get_base_binary(compile_flags).await?;
 
     if compile_flags.no_terminal {
-      let target = self.resolve_target(compile_flags);
+      let target = compile_flags.resolve_target();
       if !target.contains("windows") {
         bail!(
           "The `--no-terminal` flag is only available when targeting Windows (current: {})",
@@ -418,7 +418,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       return Ok(std::fs::read(path)?);
     }
 
-    let target = self.resolve_target(compile_flags);
+    let target = compile_flags.resolve_target();
     let binary_name = format!("deno-{target}.zip");
 
     let binary_path_suffix = if crate::version::is_canary() {
@@ -446,13 +446,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let base_binary = std::fs::read(base_binary_path)?;
     drop(temp_dir); // delete the temp dir
     Ok(base_binary)
-  }
-
-  fn resolve_target(&self, compile_flags: &CompileFlags) -> String {
-    compile_flags
-      .target
-      .clone()
-      .unwrap_or_else(|| env!("TARGET").to_string())
   }
 
   async fn download_base_binary(
