@@ -2828,6 +2828,56 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "Throw if disturbed",
+  { permissions: { net: true } },
+  async function shouldThrowIfBodyIsUnusableDisturbed() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    function customErrorCb(ac: AbortController): (error: unknown) => Response {
+      return (error) => {
+        assert(error instanceof TypeError);
+        assert(
+          error.message.endsWith(
+            "Body is unusable.",
+          ),
+        );
+                  
+        ac.abort();
+        return new Response("Internal server error", { status: 500 });
+      };
+    }    
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        await req.text();
+
+        req.clone();
+        
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
+      onError: customErrorCb(ac),
+    });
+    
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}'
+      });
+    } catch (e) {
+      assert(e instanceof TypeError);
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
 // Checks large streaming response
 // https://github.com/denoland/deno/issues/16567
 Deno.test(
