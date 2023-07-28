@@ -43,7 +43,10 @@ fn calculate_fs_version_in_cache(
   cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
-  match cache.get_modified_time(specifier) {
+  let Ok(cache_key) = cache.cache_item_key(specifier) else {
+    return Some("1".to_string());
+  };
+  match cache.read_modified_time(&cache_key) {
     Ok(Some(modified)) => {
       match modified.duration_since(SystemTime::UNIX_EPOCH) {
         Ok(n) => Some(n.as_millis().to_string()),
@@ -120,8 +123,8 @@ impl CacheMetadata {
     ) {
       return None;
     }
-    let specifier_metadata =
-      self.cache.get(specifier).ok()?.read_metadata().ok()??;
+    let cache_key = self.cache.cache_item_key(specifier).ok()?;
+    let specifier_metadata = self.cache.read_metadata(&cache_key).ok()??;
     let values = Arc::new(parse_metadata(&specifier_metadata.headers));
     let version = calculate_fs_version_in_cache(&self.cache, specifier);
     let mut metadata_map = self.metadata.lock();

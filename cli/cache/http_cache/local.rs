@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs;
@@ -29,6 +30,7 @@ use super::global::GlobalHttpCache;
 use super::global::UrlToFilenameConversionError;
 use super::CachedUrlMetadata;
 use super::HttpCache;
+use super::HttpCacheItemKey;
 
 #[derive(Debug)]
 pub struct LocalHttpCache {
@@ -52,22 +54,41 @@ impl LocalHttpCache {
     Ok(url_to_local_sub_path(url)?.as_path_from_root(&self.path))
   }
 
-  fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
-    let Some(cached_bytes) = self.global_cache.read_file_bytes(&url)? else {
+  fn get_cache_filepath_from_key<'a>(
+    &self,
+    key: &'a HttpCacheItemKey,
+  ) -> Result<Cow<'a, PathBuf>, AnyError> {
+    match &key.file_path {
+      Some(path) => Ok(Cow::Borrowed(path)),
+      None => Ok(Cow::Owned(self.get_cache_filepath(&key.url)?)),
+    }
+  }
+
+  /// Copies the file from the global cache to the local cache returning
+  /// if the data was successfully copied to the local cache.
+  fn check_copy_global_to_local<'a>(
+    &self,
+    local_key: &HttpCacheItemKey<'a>,
+  ) -> Result<bool, AnyError> {
+    let global_key = self.global_cache.cache_item_key(local_key.url)?;
+    let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
       return Ok(false);
     };
 
-    let Some(metadata) = self.global_cache.read_metadata(&url)? else {
+    let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
       return Ok(false);
     };
 
-    let local_cache_sub_path = url_to_local_sub_path(url)?;
-    let local_file_path = local_cache_sub_path.as_path_from_root(&self.path);
-    ensure_dir_exists(local_file_path.parent().unwrap())?;
-    atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
+    let is_redirect = metadata.headers.contains_key("location");
+    if !is_redirect {
+      let local_file_path = self.get_cache_filepath_from_key(&local_key)?;
+      // if we're here, then this will be set
+      ensure_dir_exists(local_file_path.parent().unwrap())?;
+      atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
+    }
     self.manifest.insert_data(
-      local_cache_sub_path,
-      url.clone(),
+      url_to_local_sub_path(&local_key.url)?,
+      local_key.url.clone(),
       metadata.headers,
     );
 
@@ -76,6 +97,24 @@ impl LocalHttpCache {
 }
 
 impl HttpCache for LocalHttpCache {
+  fn cache_item_key<'a>(
+    &self,
+    url: &'a Url,
+  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+    let file_path = if self.manifest.has_redirect(url) {
+      None // won't have a filepath
+    } else {
+      Some(self.get_cache_filepath(url)?)
+    };
+
+    Ok(HttpCacheItemKey {
+      #[cfg(debug_assertions)]
+      is_local_key: true,
+      url,
+      file_path,
+    })
+  }
+
   fn contains(&self, url: &Url) -> bool {
     if self.manifest.has_redirect(url) {
       return true; // won't have a filepath
@@ -87,21 +126,21 @@ impl HttpCache for LocalHttpCache {
     cache_filepath.is_file()
   }
 
-  fn get_modified_time(
+  fn read_modified_time(
     &self,
-    url: &Url,
+    key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    let file_path = if self.manifest.has_redirect(url) {
-      self.manifest.file_path.clone()
+    let file_path = if self.manifest.has_redirect(&key.url) {
+      Cow::Borrowed(&self.manifest.file_path)
     } else {
-      self.get_cache_filepath(url)?
+      self.get_cache_filepath_from_key(key)?
     };
-    match fs::metadata(file_path) {
+    match fs::metadata(&*file_path) {
       Ok(metadata) => Ok(Some(metadata.modified()?)),
       Err(err) if err.kind() == io::ErrorKind::NotFound => {
-        if self.check_copy_global_to_local(url)? {
+        if self.check_copy_global_to_local(&key)? {
           // try again now that it's saved
-          return self.get_modified_time(url);
+          return self.read_modified_time(key);
         }
         Ok(None)
       }
@@ -131,18 +170,29 @@ impl HttpCache for LocalHttpCache {
     Ok(())
   }
 
-  fn read_file_bytes(&self, url: &Url) -> Result<Option<Vec<u8>>, AnyError> {
-    if self.manifest.has_redirect(url) {
-      return Ok(Some(Vec::new())); // empty file
+  fn read_file_bytes(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<Vec<u8>>, AnyError> {
+    debug_assert!(key.is_local_key);
+
+    let cache_filepath = match key.file_path.as_ref() {
+      Some(file_path) => file_path,
+      // if it's None then it's a redirect, so empty file
+      None => return Ok(Some(Vec::new())),
+    };
+
+    if self.manifest.has_redirect(key.url) {
+      // redirect, so empty file
+      return Ok(Some(Vec::new()));
     }
 
-    let cache_filepath = self.get_cache_filepath(&url)?;
     match read_file_bytes(&cache_filepath)? {
       Some(bytes) => Ok(Some(bytes)),
       None => {
-        if self.check_copy_global_to_local(&url)? {
-          // now try again now that it's saved
-          self.read_file_bytes(url)
+        if self.check_copy_global_to_local(key)? {
+          // try again now that it's saved
+          self.read_file_bytes(&key)
         } else {
           Ok(None)
         }
@@ -152,14 +202,16 @@ impl HttpCache for LocalHttpCache {
 
   fn read_metadata(
     &self,
-    url: &Url,
+    key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    if let Some(metadata) = self.manifest.get_metadata(url) {
+    debug_assert!(key.is_local_key);
+
+    if let Some(metadata) = self.manifest.get_metadata(key.url) {
       return Ok(Some(metadata));
     } else {
-      if self.check_copy_global_to_local(url)? {
+      if self.check_copy_global_to_local(key)? {
         // try again now that it's saved
-        Ok(self.manifest.get_metadata(url))
+        Ok(self.manifest.get_metadata(key.url))
       } else {
         Ok(None)
       }

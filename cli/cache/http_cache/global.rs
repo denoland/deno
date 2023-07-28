@@ -19,6 +19,7 @@ use super::common::ensure_dir_exists;
 use super::common::read_file_bytes;
 use super::CachedUrlMetadata;
 use super::HttpCache;
+use super::HttpCacheItemKey;
 
 #[derive(Debug, Error)]
 #[error("Can't convert url (\"{}\") to filename.", .url)]
@@ -94,9 +95,29 @@ impl GlobalHttpCache {
   fn get_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
     Ok(self.0.join(url_to_filename(url)?))
   }
+
+  #[inline]
+  fn key_file_path<'a>(&self, key: &'a HttpCacheItemKey) -> &'a PathBuf {
+    // The key file path is always set for the global cache because
+    // the file will always exist, unlike the local cache, which won't
+    // have this for redirects.
+    self.key_file_path(key)
+  }
 }
 
 impl HttpCache for GlobalHttpCache {
+  fn cache_item_key<'a>(
+    &self,
+    url: &'a Url,
+  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+    Ok(HttpCacheItemKey {
+      #[cfg(debug_assertions)]
+      is_local_key: false,
+      url,
+      file_path: Some(self.get_cache_filepath(url)?),
+    })
+  }
+
   fn contains(&self, url: &Url) -> bool {
     let Ok(cache_filepath) = self.get_cache_filepath(url) else {
       return false
@@ -104,12 +125,11 @@ impl HttpCache for GlobalHttpCache {
     cache_filepath.is_file()
   }
 
-  fn get_modified_time(
+  fn read_modified_time(
     &self,
-    url: &Url,
+    key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    let filepath = self.get_cache_filepath(url)?;
-    match std::fs::metadata(filepath) {
+    match std::fs::metadata(self.key_file_path(key)) {
       Ok(metadata) => Ok(Some(metadata.modified()?)),
       Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
       Err(err) => Err(err.into()),
@@ -139,17 +159,20 @@ impl HttpCache for GlobalHttpCache {
     Ok(())
   }
 
-  fn read_file_bytes(&self, url: &Url) -> Result<Option<Vec<u8>>, AnyError> {
-    let cache_filepath = self.get_cache_filepath(url)?;
-    Ok(read_file_bytes(&cache_filepath)?)
+  fn read_file_bytes(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<Vec<u8>>, AnyError> {
+    debug_assert!(!key.is_local_key);
+    Ok(read_file_bytes(self.key_file_path(key))?)
   }
 
   fn read_metadata(
     &self,
-    url: &Url,
+    key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    let cache_filepath = self.get_cache_filepath(url)?;
-    match read_metadata(&cache_filepath)? {
+    debug_assert!(!key.is_local_key);
+    match read_metadata(self.key_file_path(key))? {
       Some(metadata) => Ok(Some(metadata)),
       None => Ok(None),
     }
@@ -176,6 +199,7 @@ fn write_metadata(
 
 #[cfg(test)]
 mod test {
+  use super::super::HttpCacheExtensions;
   use super::*;
   use std::collections::HashMap;
   use test_util::TempDir;
@@ -254,9 +278,10 @@ mod test {
     let r = cache.set(&url, headers, content);
     eprintln!("result {r:?}");
     assert!(r.is_ok());
+    let key = cache.cache_item_key(&url).unwrap();
     let content =
-      String::from_utf8(cache.read_file_bytes(&url).unwrap().unwrap()).unwrap();
-    let headers = cache.read_metadata(&url).unwrap().unwrap().headers;
+      String::from_utf8(cache.read_file_bytes(&key).unwrap().unwrap()).unwrap();
+    let headers = cache.read_metadata(&key).unwrap().unwrap().headers;
     assert_eq!(content, "Hello world");
     assert_eq!(
       headers.get("content-type").unwrap(),

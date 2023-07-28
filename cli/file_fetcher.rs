@@ -246,8 +246,8 @@ impl FileFetcher {
       return Err(custom_error("Http", "Too many redirects."));
     }
 
-    let cache_item = self.http_cache.get(specifier)?;
-    let Some(metadata) = cache_item.read_metadata()? else {
+    let cache_key = self.http_cache.cache_item_key(&specifier)?; // compute this once
+    let Some(metadata) = self.http_cache.read_metadata(&cache_key)? else {
       return Ok(None);
     };
     let headers = metadata.headers;
@@ -256,7 +256,7 @@ impl FileFetcher {
         deno_core::resolve_import(redirect_to, specifier.as_str())?;
       return self.fetch_cached(&redirect, redirect_limit - 1);
     }
-    let Some(bytes) = cache_item.read_to_bytes()? else {
+    let Some(bytes) = self.http_cache.read_file_bytes(&cache_key)? else {
       return Ok(None);
     };
     let file = self.build_remote_file(specifier, bytes, &headers)?;
@@ -376,9 +376,9 @@ impl FileFetcher {
 
     let maybe_etag = self
       .http_cache
-      .read_metadata(specifier)
+      .cache_item_key(&specifier)
       .ok()
-      .flatten()
+      .and_then(|key| self.http_cache.read_metadata(&key).ok().flatten())
       .and_then(|metadata| metadata.headers.get("etag").cloned());
     let maybe_auth_token = self.auth_tokens.get(specifier);
     let specifier = specifier.clone();
@@ -434,10 +434,10 @@ impl FileFetcher {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
-        let Ok(item) = self.http_cache.get(specifier) else {
+        let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
           return false;
         };
-        let Ok(Some(metadata)) = item.read_metadata() else {
+        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key) else {
           return false;
         };
         let cache_semantics = CacheSemantics::new(
@@ -1054,9 +1054,11 @@ mod tests {
     );
     assert_eq!(file.media_type, MediaType::TypeScript);
 
+    let cache_item_key =
+      file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
     let mut metadata = file_fetcher
       .http_cache
-      .read_metadata(&specifier)
+      .read_metadata(&cache_item_key)
       .unwrap()
       .unwrap();
     metadata.headers = HashMap::new();
@@ -1083,7 +1085,7 @@ mod tests {
 
     let headers = file_fetcher_02
       .http_cache
-      .read_metadata(&specifier)
+      .read_metadata(&cache_item_key)
       .unwrap()
       .unwrap()
       .headers;
@@ -1153,14 +1155,16 @@ mod tests {
         .fetch(&specifier, PermissionsContainer::allow_all())
         .await;
       assert!(result.is_ok());
+      let cache_key =
+        file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
       (
         file_fetcher
           .http_cache
-          .get_modified_time(&specifier)
+          .read_modified_time(&cache_key)
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&specifier)
+          .read_metadata(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1180,14 +1184,16 @@ mod tests {
         .await;
       assert!(result.is_ok());
 
+      let cache_key =
+        file_fetcher.http_cache.cache_item_key(&specifier).unwrap();
       (
         file_fetcher
           .http_cache
-          .get_modified_time(&specifier)
+          .read_modified_time(&cache_key)
           .unwrap(),
         file_fetcher
           .http_cache
-          .read_metadata(&specifier)
+          .read_metadata(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1356,16 +1362,18 @@ mod tests {
         .await;
       assert!(result.is_ok());
 
+      let cache_key = file_fetcher
+        .http_cache
+        .cache_item_key(&redirected_specifier)
+        .unwrap();
       (
         file_fetcher
           .http_cache
-          .get_modified_time(&redirected_specifier)
+          .read_modified_time(&cache_key)
           .unwrap(),
         file_fetcher
           .http_cache
-          .get(&redirected_specifier)
-          .unwrap()
-          .read_metadata()
+          .read_metadata(&cache_key)
           .unwrap()
           .unwrap(),
       )
@@ -1385,16 +1393,18 @@ mod tests {
         .await;
       assert!(result.is_ok());
 
+      let cache_key = file_fetcher
+        .http_cache
+        .cache_item_key(&redirected_specifier)
+        .unwrap();
       (
         file_fetcher
           .http_cache
-          .get_modified_time(&redirected_specifier)
+          .read_modified_time(&cache_key)
           .unwrap(),
         file_fetcher
           .http_cache
-          .get(&redirected_specifier)
-          .unwrap()
-          .read_metadata()
+          .read_metadata(&cache_key)
           .unwrap()
           .unwrap(),
       )
