@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub fn calculate_fs_version(
-  cache: &HttpCache,
+  cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
   match specifier.scheme() {
@@ -39,7 +39,7 @@ pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
 }
 
 fn calculate_fs_version_in_cache(
-  cache: &HttpCache,
+  cache: &Arc<dyn HttpCache>,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
   match cache.get_modified_time(specifier) {
@@ -79,12 +79,12 @@ struct Metadata {
 
 #[derive(Debug, Clone)]
 pub struct CacheMetadata {
-  cache: Arc<HttpCache>,
+  cache: Arc<dyn HttpCache>,
   metadata: Arc<Mutex<HashMap<ModuleSpecifier, Metadata>>>,
 }
 
 impl CacheMetadata {
-  pub fn new(cache: Arc<HttpCache>) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
       metadata: Default::default(),
@@ -129,7 +129,7 @@ impl CacheMetadata {
     Some(metadata)
   }
 
-  pub fn set_cache(&mut self, cache: Arc<HttpCache>) {
+  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     self.cache = cache;
     self.metadata.lock().clear();
   }

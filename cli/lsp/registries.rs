@@ -13,6 +13,7 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -415,13 +416,13 @@ enum VariableItems {
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
-  http_cache: Arc<HttpCache>,
+  http_cache: Arc<GlobalHttpCache>,
 }
 
 impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     // the http cache should always be the global one for registry completions
-    let http_cache = Arc::new(HttpCache::new_global(location));
+    let http_cache = Arc::new(GlobalHttpCache::new(location));
     let mut file_fetcher = FileFetcher::new(
       http_cache.clone(),
       CacheSetting::RespectHeaders,

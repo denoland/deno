@@ -1302,6 +1302,7 @@ fn generate_deno_diagnostics(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
@@ -1321,7 +1322,7 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let cache = Arc::new(HttpCache::new_global(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -1346,7 +1347,7 @@ mod tests {
       maybe_import_map,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(
-        HttpCache::new_global(location.to_path_buf()),
+        GlobalHttpCache::new(location.to_path_buf()),
       )),
       maybe_node_resolver: None,
       maybe_npm_resolver: None,
@@ -1396,7 +1397,7 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = Arc::new(HttpCache::new_global(cache_location));
+    let cache = Arc::new(GlobalHttpCache::new(cache_location));
     let ts_server = TsServer::new(Default::default(), cache);
 
     // test enabled
@@ -1489,7 +1490,7 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = Arc::new(HttpCache::new_global(cache_location));
+    let cache = Arc::new(GlobalHttpCache::new(cache_location));
     let ts_server = TsServer::new(Default::default(), cache);
 
     let config = mock_config();

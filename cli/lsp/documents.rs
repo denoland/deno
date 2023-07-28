@@ -658,12 +658,12 @@ fn recurse_dependents(
 
 #[derive(Debug)]
 struct SpecifierResolver {
-  cache: Arc<HttpCache>,
+  cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
 }
 
 impl SpecifierResolver {
-  pub fn new(cache: Arc<HttpCache>) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
       redirects: Mutex::new(HashMap::new()),
@@ -727,7 +727,7 @@ struct FileSystemDocuments {
 impl FileSystemDocuments {
   pub fn get(
     &mut self,
-    cache: &Arc<HttpCache>,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
@@ -749,7 +749,7 @@ impl FileSystemDocuments {
   /// returning the document.
   fn refresh_document(
     &mut self,
-    cache: &Arc<HttpCache>,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
@@ -823,7 +823,7 @@ pub enum DocumentsFilter {
 #[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: Arc<HttpCache>,
+  cache: Arc<dyn HttpCache>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
   dirty: bool,
@@ -853,7 +853,7 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(cache: Arc<HttpCache>) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -1139,7 +1139,7 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_cache(&mut self, cache: Arc<HttpCache>) {
+  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     // TODO update resolved dependencies?
     self.cache = cache.clone();
     self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
@@ -1844,6 +1844,7 @@ fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+  use crate::cache::GlobalHttpCache;
   use crate::npm::NpmResolution;
 
   use super::*;
@@ -1854,7 +1855,7 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let cache = Arc::new(HttpCache::new_global(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
     let documents = Documents::new(cache);
     (documents, location)
   }

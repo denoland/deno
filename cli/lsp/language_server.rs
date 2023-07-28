@@ -86,8 +86,10 @@ use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::HttpCachePaths;
+use crate::cache::LocalHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -169,7 +171,7 @@ pub struct Inner {
   pub client: Client,
   /// Configuration information.
   pub config: Config,
-  deps_http_cache: Arc<HttpCache>,
+  deps_http_cache: Arc<dyn HttpCache>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -554,7 +556,7 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = Arc::new(HttpCache::new_global(location));
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(location));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -895,14 +897,17 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let cache_paths = HttpCachePaths {
-      global: dir.deps_folder_path(),
-      local: self
-        .config
-        .maybe_config_file()
-        .and_then(|c| c.remote_modules_dir_path()),
+    let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
+    let cache: Arc<dyn HttpCache> = match self
+      .config
+      .maybe_config_file()
+      .and_then(|c| c.remote_modules_dir_path())
+    {
+      Some(local_path) => {
+        Arc::new(LocalHttpCache::new(local_path, global_cache))
+      }
+      None => global_cache,
     };
-    let cache = Arc::new(HttpCache::new(cache_paths));
     self.deps_http_cache = cache.clone();
     self.documents.set_cache(cache.clone());
     self.cache_metadata.set_cache(cache);

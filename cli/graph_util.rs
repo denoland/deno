@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::Lockfile;
 use crate::args::TsTypeLib;
 use crate::cache;
+use crate::cache::GlobalHttpCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
@@ -174,6 +175,7 @@ pub struct ModuleGraphBuilder {
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   emit_cache: cache::EmitCache,
   file_fetcher: Arc<FileFetcher>,
+  global_http_cache: Arc<GlobalHttpCache>,
   type_checker: Arc<TypeChecker>,
 }
 
@@ -188,6 +190,7 @@ impl ModuleGraphBuilder {
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     emit_cache: cache::EmitCache,
     file_fetcher: Arc<FileFetcher>,
+    global_http_cache: Arc<GlobalHttpCache>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
@@ -199,6 +202,7 @@ impl ModuleGraphBuilder {
       maybe_file_watcher_reporter,
       emit_cache,
       file_fetcher,
+      global_http_cache,
       type_checker,
     }
   }
@@ -345,6 +349,7 @@ impl ModuleGraphBuilder {
       self.emit_cache.clone(),
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
+      self.global_http_cache.clone(),
       permissions,
       self.options.node_modules_dir_specifier(),
     )

@@ -99,7 +99,7 @@ type Request = (
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>, cache: Arc<HttpCache>) -> Self {
+  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
       let mut ts_runtime = js_runtime(performance, cache);
@@ -3247,7 +3247,7 @@ fn op_script_version(
 /// server.
 fn js_runtime(
   performance: Arc<Performance>,
-  cache: Arc<HttpCache>,
+  cache: Arc<dyn HttpCache>,
 ) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
     extensions: vec![deno_tsc::init_ops(performance, cache)],
@@ -3268,7 +3268,7 @@ deno_core::extension!(deno_tsc,
   ],
   options = {
     performance: Arc<Performance>,
-    cache: Arc<HttpCache>,
+    cache: Arc<dyn HttpCache>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -3909,7 +3909,8 @@ fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::HttpCache;
+  use crate::cache::GlobalHttpCache;
+use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
   use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
@@ -3926,7 +3927,7 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let cache = Arc::new(HttpCache::new_global(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
     let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -3955,7 +3956,7 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
-    let cache = Arc::new(HttpCache::new_global(location.clone()));
+    let cache = Arc::new(GlobalHttpCache::new(location.clone()));
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
     let mut runtime = js_runtime(Default::default(), cache);
     start(&mut runtime, debug).unwrap();
@@ -4435,7 +4436,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = Arc::new(HttpCache::new_global(location));
+    let cache = Arc::new(GlobalHttpCache::new(location));
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
