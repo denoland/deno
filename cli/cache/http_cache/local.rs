@@ -270,7 +270,7 @@ fn url_to_local_sub_path(
     let sub = data
       .to_lowercase()
       .chars()
-      .filter(|c| !FORBIDDEN_CHARS.contains(c))
+      .map(|c| if FORBIDDEN_CHARS.contains(&c) { 'x' } else { c })
       .take(20) // keep the paths short because of windows path limit
       .collect::<String>();
     if sub.is_empty() {
@@ -281,6 +281,10 @@ fn url_to_local_sub_path(
   }
 
   fn should_hash_part(part: &str, is_last: bool) -> bool {
+    if part.len() > 30 {
+      // keep short due to windows path limit
+      return true;
+    }
     let hash_context_specific = if is_last {
       // if the last part does not have a known extension, hash it in order to
       // prevent collisions with a directory of the same name
