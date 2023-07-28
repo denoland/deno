@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::collections::BTreeMap;
+use std::env::consts;
 use std::env::current_exe;
 use std::io::Read;
 use std::io::Seek;
@@ -10,6 +11,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::io::AllowStdIo;
@@ -383,8 +385,23 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &CliOptions,
   ) -> Result<(), AnyError> {
     // Select base binary based on target
-    let original_binary =
+    let mut original_binary =
       self.get_base_binary(compile_flags.target.clone()).await?;
+
+    let target = compile_flags
+      .target
+      .clone()
+      .unwrap_or(consts::OS.to_string());
+
+    if compile_flags.no_terminal {
+      if target != "x86_64-pc-windows-msvc" && target != "windows" {
+        println!("{}", target);
+        bail!(
+          "The `--no-terminal` flag is only available when targeting Windows"
+        )
+      }
+      set_windows_binary_to_gui(&mut original_binary)?;
+    }
 
     self
       .write_standalone_binary(
@@ -558,4 +575,43 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       Ok(builder)
     }
   }
+}
+
+/// This function sets the subsystem field in the PE header to 2 (GUI subsystem)
+/// For more information about the PE header: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
+fn set_windows_binary_to_gui(bin: &mut [u8]) -> Result<(), AnyError> {
+  // Get the PE header offset located in an i32 found at offset 60
+  // See: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#ms-dos-stub-image-only
+  let start_pe = u32::from_le_bytes((bin[60..64]).try_into()?);
+
+  // Get image type (PE32 or PE32+) indicates whether the binary is 32 or 64 bit
+  // The used offset and size values can be found here:
+  // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
+  let start_32 = start_pe as usize + 28;
+  let magic_32 =
+    u16::from_le_bytes(bin[(start_32)..(start_32 + 2)].try_into()?);
+
+  let start_64 = start_pe as usize + 24;
+  let magic_64 =
+    u16::from_le_bytes(bin[(start_64)..(start_64 + 2)].try_into()?);
+
+  // Take the standard fields size for the current architecture (32 or 64 bit)
+  // This is the ofset for the Windows-Specific fields
+  let standard_fields_size = if magic_32 == 0x10b {
+    28
+  } else if magic_64 == 0x20b {
+    24
+  } else {
+    bail!("Could not find a matching magic field in the PE header")
+  };
+
+  // Set the subsystem field (offset 68) to 2 (GUI subsystem)
+  // For all possible options, see: https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-windows-specific-fields-image-only
+  let subsystem_offset = 68;
+  let subsystem_start =
+    start_pe as usize + standard_fields_size + subsystem_offset;
+  let subsystem: u16 = 2;
+  bin[(subsystem_start)..(subsystem_start + 2)]
+    .copy_from_slice(&subsystem.to_le_bytes());
+  Ok(())
 }

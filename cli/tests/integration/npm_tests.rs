@@ -2088,3 +2088,11 @@ itest!(reserved_word_exports {
   envs: env_vars_for_npm_tests(),
   http_server: true,
 });
+
+itest!(check_package_file_dts_dmts_dcts {
+  args: "check npm/file_dts_dmts_dcts/main.ts",
+  output: "npm/file_dts_dmts_dcts/main.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
+});

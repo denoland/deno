@@ -914,11 +914,11 @@ impl CliOptions {
   /// Return the JSX import source configuration.
   pub fn to_maybe_jsx_import_source_config(
     &self,
-  ) -> Option<JsxImportSourceConfig> {
-    self
-      .maybe_config_file
-      .as_ref()
-      .and_then(|c| c.to_maybe_jsx_import_source_config())
+  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
+    match self.maybe_config_file.as_ref() {
+      Some(config) => config.to_maybe_jsx_import_source_config(),
+      None => Ok(None),
+    }
   }
 
   /// Return any imports that should be brought into the scope of the module
