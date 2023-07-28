@@ -9,6 +9,27 @@
 use crate::colors;
 use std::str::FromStr;
 
+fn avg_to_iter_per_s(time: f64) -> String {
+  let iter_per_s = 1e9 / time;
+
+  let decimals = ((iter_per_s - iter_per_s.floor()) * 10.0).round() as i64;
+  let integers = iter_per_s.round() as i64;
+
+  // Sweet one-liner to separate integer by commas from:
+  // https://stackoverflow.com/a/67834588/21759102
+  let fmt_integers = integers
+    .to_string()
+    .as_bytes()
+    .rchunks(3)
+    .rev()
+    .map(std::str::from_utf8)
+    .collect::<Result<Vec<&str>, _>>()
+    .unwrap()
+    .join(",");
+
+  format!("{}.{}", fmt_integers, decimals)
+}
+
 pub fn fmt_duration(time: f64) -> String {
   // SAFETY: this is safe since its just reformatting numbers
   unsafe {
@@ -194,7 +215,10 @@ pub mod reporter {
     let mut s = String::new();
 
     s.push_str(&"-".repeat(
-      options.size + 14 * options.avg as usize + 24 * options.min_max as usize,
+      options.size
+        + 14 * options.avg as usize
+        + 14 * options.avg as usize
+        + 24 * options.min_max as usize,
     ));
 
     if options.percentiles {
@@ -239,6 +263,7 @@ pub mod reporter {
     s.push_str(&format!("{:<size$}", "benchmark"));
     if options.avg {
       s.push_str(&format!("{:>14}", "time (avg)"));
+      s.push_str(&format!("{:>14}", "iter/s"));
     }
     if options.min_max {
       s.push_str(&format!("{:>24}", "(min … max)"));
@@ -266,6 +291,7 @@ pub mod reporter {
           "{:>14}",
           format!("{}/iter", fmt_duration(stats.avg))
         ));
+        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
       }
       if options.min_max {
         s.push_str(&format!(
@@ -291,6 +317,7 @@ pub mod reporter {
           "{:>30}",
           format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
         ));
+        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
       }
       if options.min_max {
         s.push_str(&format!(
