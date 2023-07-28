@@ -1044,7 +1044,7 @@ declare namespace Deno {
    */
   export interface BenchDefinition {
     /** The test function which will be benchmarked. */
-    fn: (t: BenchContext) => void | Promise<void>;
+    fn: (b: BenchContext) => void | Promise<void>;
     /** The name of the test, which will be used in displaying the results. */
     name: string;
     /** If truthy, the benchmark test will be ignored/skipped. */
@@ -1115,7 +1115,7 @@ declare namespace Deno {
    *
    * @category Testing
    */
-  export function bench(t: BenchDefinition): void;
+  export function bench(b: BenchDefinition): void;
 
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
@@ -1142,7 +1142,7 @@ declare namespace Deno {
    */
   export function bench(
     name: string,
-    fn: (t: BenchContext) => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1168,7 +1168,7 @@ declare namespace Deno {
    *
    * @category Testing
    */
-  export function bench(fn: (t: BenchContext) => void | Promise<void>): void;
+  export function bench(fn: (b: BenchContext) => void | Promise<void>): void;
 
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
@@ -1204,7 +1204,7 @@ declare namespace Deno {
   export function bench(
     name: string,
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: (t: BenchContext) => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1238,7 +1238,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn">,
-    fn: (t: BenchContext) => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1272,7 +1272,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: (t: BenchContext) => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /** Exit the Deno process with optional exit code.
