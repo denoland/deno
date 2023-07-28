@@ -58,6 +58,14 @@ itest!(bundle_jsximportsource_importmap_config {
   output: "check/jsximportsource_importmap_config/main.bundle.js",
 });
 
+itest!(jsx_not_checked {
+  args: "check check/jsx_not_checked/main.jsx",
+  output: "check/jsx_not_checked/main.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
+});
+
 itest!(check_npm_install_diagnostics {
   args: "check --quiet check/npm_install_diagnostics/main.ts",
   output: "check/npm_install_diagnostics/main.out",
