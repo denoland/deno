@@ -1959,9 +1959,13 @@ Deno.test("ReadableStream automatic transfer-encoding header", async () => {
   const res = await fetch("http://localhost:4545/echo_server", {
     method: "POST",
     body,
+    headers: {
+      "content-length": "5",
+    },
   });
 
   assertEquals(res.headers.get("transfer-encoding"), "chunked");
+  assertEquals(res.headers.get("content-length"), null);
 
   await res.body!.cancel();
 });
