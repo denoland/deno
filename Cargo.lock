@@ -832,6 +832,7 @@ dependencies = [
  "flate2",
  "fs3",
  "fwdansi",
+ "glibc_version",
  "glob",
  "http",
  "hyper 0.14.26",
@@ -2295,6 +2296,15 @@ checksum = "d930750de5717d2dd0b8c0d42c076c0e884c81a73e6cab859bbd2339c71e3e40"
 dependencies = [
  "opaque-debug",
  "polyval",
+]
+
+[[package]]
+name = "glibc_version"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "803ff7635f1ab4e2c064b68a0c60da917d3d18dc8d086130f689d62ce4f1c33e"
+dependencies = [
+ "regex",
 ]
 
 [[package]]
