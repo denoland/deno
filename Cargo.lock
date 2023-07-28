@@ -433,12 +433,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "block-modes"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e2211b0817f061502a8dd9f11a37e879e79763e3c698d2418cf824d8cb2f21e"
-
-[[package]]
 name = "block-padding"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1015,7 +1009,6 @@ dependencies = [
  "aes-gcm",
  "aes-kw",
  "base64 0.13.1",
- "block-modes",
  "cbc",
  "const-oid",
  "ctr",
@@ -1090,7 +1083,6 @@ dependencies = [
  "reqwest",
  "serde",
  "tokio",
- "tokio-stream",
  "tokio-util",
 ]
 
@@ -1194,7 +1186,6 @@ dependencies = [
  "deno_core",
  "filetime",
  "fs3",
- "nix",
  "once_cell",
  "tokio",
  "winapi",
@@ -1329,7 +1320,6 @@ dependencies = [
  "serde",
  "sha-1",
  "sha2",
- "sha3",
  "signature 1.6.4",
  "tokio",
  "typenum",
@@ -1481,7 +1471,6 @@ dependencies = [
  "deno_core",
  "deno_webidl",
  "serde",
- "serde_repr",
  "urlpattern",
 ]
 
@@ -1501,7 +1490,6 @@ dependencies = [
  "serde",
  "tokio",
  "uuid",
- "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2779,15 +2767,6 @@ checksum = "be39922b087cecaba4e2d5592dedfc8bda5d4a5a1231f143337cca207950b61d"
 dependencies = [
  "scopeguard",
  "winapi",
-]
-
-[[package]]
-name = "keccak"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3afef3b6eff9ce9d8ff9b3601125eec7f0c8cbac7abd14f355d053fa56c98768"
-dependencies = [
- "cpufeatures",
 ]
 
 [[package]]
@@ -4499,16 +4478,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sha3"
-version = "0.10.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdf0c33fae925bdc080598b84bc15c55e7b9a4a43b3c704da051f977469691c9"
-dependencies = [
- "digest 0.10.6",
- "keccak",
-]
-
-[[package]]
 name = "shell-escape"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5271,7 +5240,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "atty",
  "base64 0.13.1",
  "console_static_text",
  "fastwebsockets",
