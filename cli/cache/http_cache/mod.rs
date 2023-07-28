@@ -34,10 +34,6 @@ pub struct MaybeHttpCacheItem {
 }
 
 impl MaybeHttpCacheItem {
-  pub fn new(cache: Arc<dyn HttpCache>, url: Url) -> Self {
-    Self { url, cache }
-  }
-
   #[cfg(test)]
   pub fn read_to_string(&self) -> Result<Option<String>, AnyError> {
     let Some(bytes) = self.read_to_bytes()? else {
@@ -72,9 +68,17 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     url: &Url,
   ) -> Result<Option<CachedUrlMetadata>, AnyError>;
-  fn write_metadata(
-    &self,
-    url: &Url,
-    meta_data: &CachedUrlMetadata,
-  ) -> Result<(), AnyError>;
+}
+
+pub trait HttpCacheExtensions {
+  fn get(&self, url: &Url) -> Result<MaybeHttpCacheItem, AnyError>;
+}
+
+impl HttpCacheExtensions for Arc<dyn HttpCache> {
+  fn get(&self, url: &Url) -> Result<MaybeHttpCacheItem, AnyError> {
+    Ok(MaybeHttpCacheItem {
+      url: url.clone(),
+      cache: self.clone(),
+    })
+  }
 }

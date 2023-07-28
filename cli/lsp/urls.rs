@@ -12,7 +12,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.

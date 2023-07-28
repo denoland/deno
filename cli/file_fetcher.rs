@@ -4,6 +4,7 @@ use crate::args::CacheSetting;
 use crate::auth_tokens::AuthToken;
 use crate::auth_tokens::AuthTokens;
 use crate::cache::HttpCache;
+use crate::cache::HttpCacheExtensions;
 use crate::colors;
 use crate::http_util;
 use crate::http_util::resolve_redirect_from_response;
@@ -1064,7 +1065,7 @@ mod tests {
       .insert("content-type".to_string(), "text/javascript".to_string());
     file_fetcher
       .http_cache
-      .write_metadata(&specifier, &metadata)
+      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_01
@@ -1093,7 +1094,7 @@ mod tests {
       .insert("content-type".to_string(), "application/json".to_string());
     file_fetcher_02
       .http_cache
-      .write_metadata(&specifier, &metadata)
+      .set(&specifier, metadata.headers.clone(), file.source.as_bytes())
       .unwrap();
 
     let result = file_fetcher_02

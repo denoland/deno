@@ -23,7 +23,7 @@ use super::HttpCache;
 #[derive(Debug, Error)]
 #[error("Can't convert url (\"{}\") to filename.", .url)]
 pub struct UrlToFilenameConversionError {
-  url: String,
+  pub(super) url: String,
 }
 
 /// Turn provided `url` into a hashed filename.
@@ -153,15 +153,6 @@ impl HttpCache for GlobalHttpCache {
       Some(metadata) => Ok(Some(metadata)),
       None => Ok(None),
     }
-  }
-
-  fn write_metadata(
-    &self,
-    url: &Url,
-    meta_data: &CachedUrlMetadata,
-  ) -> Result<(), AnyError> {
-    let cache_path = self.get_cache_filepath(url)?;
-    write_metadata(&cache_path, meta_data)
   }
 }
 

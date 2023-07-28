@@ -37,6 +37,7 @@ pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
 pub use http_cache::GlobalHttpCache;
 pub use http_cache::HttpCache;
+pub use http_cache::HttpCacheExtensions;
 pub use http_cache::LocalHttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
@@ -92,7 +93,7 @@ impl FetchCacher {
   #[deprecated(
     note = "There should not be a way to do this because the file may not be cached at a local path in the future."
   )]
-  pub fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+  fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
     // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
     // modules
     if specifier.scheme() == "flags" {

@@ -1303,7 +1303,6 @@ fn generate_deno_diagnostics(
 mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
-  use crate::cache::HttpCache;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::SpecifierSettings;

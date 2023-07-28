@@ -24,6 +24,7 @@ use crate::util::fs::atomic_write_file;
 
 use super::common::base_url_to_filename_parts;
 use super::common::ensure_dir_exists;
+use super::common::read_file_bytes;
 use super::global::GlobalHttpCache;
 use super::global::UrlToFilenameConversionError;
 use super::CachedUrlMetadata;
@@ -131,22 +132,38 @@ impl HttpCache for LocalHttpCache {
   }
 
   fn read_file_bytes(&self, url: &Url) -> Result<Option<Vec<u8>>, AnyError> {
-    todo!()
+    if self.manifest.has_redirect(url) {
+      return Ok(Some(Vec::new())); // empty file
+    }
+
+    let cache_filepath = self.get_cache_filepath(&url)?;
+    match read_file_bytes(&cache_filepath)? {
+      Some(bytes) => Ok(Some(bytes)),
+      None => {
+        if self.check_copy_global_to_local(&url)? {
+          // now try again now that it's saved
+          self.read_file_bytes(url)
+        } else {
+          Ok(None)
+        }
+      }
+    }
   }
 
   fn read_metadata(
     &self,
     url: &Url,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    todo!()
-  }
-
-  fn write_metadata(
-    &self,
-    url: &Url,
-    meta_data: &CachedUrlMetadata,
-  ) -> Result<(), AnyError> {
-    todo!()
+    if let Some(metadata) = self.manifest.get_metadata(url) {
+      return Ok(Some(metadata));
+    } else {
+      if self.check_copy_global_to_local(url)? {
+        // try again now that it's saved
+        Ok(self.manifest.get_metadata(url))
+      } else {
+        Ok(None)
+      }
+    }
   }
 }
 

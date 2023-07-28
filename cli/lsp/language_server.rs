@@ -88,7 +88,6 @@ use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
-use crate::cache::HttpCachePaths;
 use crate::cache::LocalHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
