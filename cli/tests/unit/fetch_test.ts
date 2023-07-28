@@ -1947,3 +1947,21 @@ Deno.test("Response with subarray TypedArray body", async () => {
   const expected = new Uint8Array([2, 3, 4, 5]);
   assertEquals(actual, expected);
 });
+
+Deno.test("ReadableStream automatic transfer-encoding header", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("Hello"));
+      controller.close();
+    },
+  });
+
+  const res = await fetch("http://localhost:4545/echo_server", {
+    method: "POST",
+    body,
+  });
+
+  assertEquals(res.headers.get("transfer-encoding"), "chunked");
+
+  await res.body!.cancel();
+});
