@@ -12,4 +12,10 @@ type _TestHasProcessGlobal = AssertTrue<
   typeof globalThis extends { process: any } ? true : false
 >;
 
-export function withNodeGlobalThis(action: (global: typeof globalThis) => void): void;
+export function deleteSetTimeout(): void;
+export function getSetTimeout(): typeof setTimeout;
+
+export function checkProcessGlobal(): void;
+export function checkWindowGlobal(): void;
+
+export function getFoo(): string;

@@ -278,6 +278,9 @@ class FakeSocket extends EventEmitter {
     super();
     this.remoteAddress = opts.hostname;
     this.remotePort = opts.port;
+    this.encrypted = opts.encrypted;
+    this.writable = true;
+    this.readable = true;
   }
 
   setKeepAlive() {}
@@ -561,7 +564,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
-    this.onSocket(new FakeSocket());
+    this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
 
     const url = this._createUrlStrFromOptions();
 
@@ -629,14 +632,13 @@ class ClientRequest extends OutgoingMessage {
 
               core.tryClose(this._bodyWriteRid);
             }
-
-            try {
-              cb?.();
-            } catch (_) {
-              //
-            }
           })(),
         ]);
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
           webClearTimeout(this._timeout[timerId]);
@@ -1307,7 +1309,10 @@ export class ServerResponse extends NodeWritable {
     return status === 101 || status === 204 || status === 205 || status === 304;
   }
 
-  constructor(resolve: (value: Response | PromiseLike<Response>) => void) {
+  constructor(
+    resolve: (value: Response | PromiseLike<Response>) => void,
+    socket: FakeSocket,
+  ) {
     let controller: ReadableByteStreamController;
     const readable = new ReadableStream({
       start(c) {
@@ -1350,7 +1355,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
-    this.socket = new FakeSocket();
+    this.socket = socket;
   }
 
   setHeader(name: string, value: string) {
@@ -1439,7 +1444,7 @@ export class IncomingMessageForServer extends NodeReadable {
   // These properties are used by `npm:forwarded` for example.
   socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request, remoteAddr: { hostname: string; port: number }) {
+  constructor(req: Request, socket: FakeSocket) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -1466,10 +1471,7 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = new FakeSocket({
-      remoteAddress: remoteAddr.hostname,
-      remotePort: remoteAddr.port,
-    });
+    this.socket = socket;
     this.#req = req;
   }
 
@@ -1573,7 +1575,12 @@ export class ServerImpl extends EventEmitter {
   _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
-      const req = new IncomingMessageForServer(request, info.remoteAddr);
+      const socket = new FakeSocket({
+        remoteAddress: info.remoteAddr.hostname,
+        remotePort: info.remoteAddr.port,
+        encrypted: this._encrypted,
+      });
+      const req = new IncomingMessageForServer(request, socket);
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
@@ -1583,7 +1590,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve);
+          const res = new ServerResponse(resolve, socket);
           this.emit("request", req, res);
         });
       }

@@ -12,6 +12,7 @@ use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
+use crate::slab::slab_init;
 use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
@@ -213,8 +214,11 @@ pub async fn op_http_upgrade_websocket_next(
 #[op2(fast)]
 pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
-  // The Javascript code will never provide a status that is invalid here (see 23_response.js)
-  *http.response().status_mut() = StatusCode::from_u16(status).unwrap();
+  // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
+  // will quitely ignore invalid values.
+  if let Ok(code) = StatusCode::from_u16(status) {
+    *http.response().status_mut() = code;
+  }
   http.complete();
 }
 
@@ -836,6 +840,8 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let listener =
     HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
@@ -886,6 +892,8 @@ pub fn op_http_serve_on<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let connection =
     HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
@@ -1076,6 +1084,11 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op(fast)]
+pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+  state.resource_table.get::<UpgradeStream>(rid).is_ok()
 }
 
 #[op]
