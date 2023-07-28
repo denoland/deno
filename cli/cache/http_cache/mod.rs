@@ -26,29 +26,6 @@ pub struct CachedUrlMetadata {
   pub time: SystemTime,
 }
 
-pub struct MaybeHttpCacheItem<'a, 'b> {
-  cache: &'a dyn HttpCache,
-  key: HttpCacheItemKey<'b>,
-}
-
-impl<'a, 'b> MaybeHttpCacheItem<'a, 'b> {
-  #[cfg(test)]
-  pub fn read_to_string(&self) -> Result<Option<String>, AnyError> {
-    let Some(bytes) = self.read_to_bytes()? else {
-      return Ok(None);
-    };
-    Ok(Some(String::from_utf8(bytes)?))
-  }
-
-  pub fn read_to_bytes(&self) -> Result<Option<Vec<u8>>, AnyError> {
-    self.cache.read_file_bytes(&self.key)
-  }
-
-  pub fn read_metadata(&self) -> Result<Option<CachedUrlMetadata>, AnyError> {
-    self.cache.read_metadata(&self.key)
-  }
-}
-
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
 pub struct HttpCacheItemKey<'a> {
   // The key is specific to the implementation of HttpCache,
@@ -69,6 +46,7 @@ pub struct HttpCacheItemKey<'a> {
 }
 
 pub trait HttpCache: Send + Sync + std::fmt::Debug {
+  /// A pre-computed key for looking up items in the cache.
   fn cache_item_key<'a>(
     &self,
     url: &'a Url,
@@ -93,26 +71,4 @@ pub trait HttpCache: Send + Sync + std::fmt::Debug {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError>;
-}
-
-pub trait HttpCacheExtensions {
-  fn get<'a, 'b>(
-    &'a self,
-    url: &'b Url,
-  ) -> Result<MaybeHttpCacheItem<'a, 'b>, AnyError>;
-}
-
-impl HttpCacheExtensions for dyn HttpCache {
-  fn get<'a, 'b>(
-    &'a self,
-    url: &'b Url,
-  ) -> Result<MaybeHttpCacheItem<'a, 'b>, AnyError> {
-    let cache_item_key = self.cache_item_key(url)?;
-    Ok(MaybeHttpCacheItem {
-      key: cache_item_key,
-      // this requires a dyn HttpCache and so we can't include
-      // this method directly in the HttpCache trait
-      cache: &*self,
-    })
-  }
 }

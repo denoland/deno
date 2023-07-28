@@ -199,7 +199,6 @@ fn write_metadata(
 
 #[cfg(test)]
 mod test {
-  use super::super::HttpCacheExtensions;
   use super::*;
   use std::collections::HashMap;
   use test_util::TempDir;

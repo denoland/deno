@@ -12,7 +12,6 @@ use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
-use crate::cache::HttpCacheExtensions;
 use crate::file_fetcher::get_source_from_bytes;
 use crate::file_fetcher::get_source_from_data_url;
 use crate::file_fetcher::map_content_type;
@@ -700,11 +699,12 @@ impl SpecifierResolver {
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
     if redirect_limit > 0 {
+      let cache_key = self.cache.cache_item_key(&specifier).ok()?;
       let headers = self
         .cache
-        .get(specifier)
+        .read_metadata(&cache_key)
         .ok()
-        .and_then(|i| i.read_metadata().ok()?)
+        .flatten()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
         let redirect =
@@ -779,9 +779,9 @@ impl FileSystemDocuments {
       )
     } else {
       let fs_version = calculate_fs_version(cache, specifier)?;
-      let cache_item = cache.get(specifier).ok()?;
-      let bytes = cache_item.read_to_bytes().ok()??;
-      let specifier_metadata = cache_item.read_metadata().ok()??;
+      let cache_key = cache.cache_item_key(specifier).ok()?;
+      let bytes = cache.read_file_bytes(&cache_key).ok()??;
+      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let maybe_headers = Some(specifier_metadata.headers);

@@ -37,7 +37,6 @@ pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
 pub use http_cache::GlobalHttpCache;
 pub use http_cache::HttpCache;
-pub use http_cache::HttpCacheExtensions;
 pub use http_cache::LocalHttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;

@@ -4,7 +4,6 @@ use crate::args::CacheSetting;
 use crate::auth_tokens::AuthToken;
 use crate::auth_tokens::AuthTokens;
 use crate::cache::HttpCache;
-use crate::cache::HttpCacheExtensions;
 use crate::colors;
 use crate::http_util;
 use crate::http_util::resolve_redirect_from_response;
@@ -710,10 +709,15 @@ mod tests {
     let result: Result<File, AnyError> = file_fetcher
       .fetch_remote(specifier, PermissionsContainer::allow_all(), 1, None)
       .await;
-    let cache_item = file_fetcher.http_cache.get(specifier).unwrap();
+    let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
     (
       result.unwrap(),
-      cache_item.read_metadata().unwrap().unwrap().headers,
+      file_fetcher
+        .http_cache
+        .read_metadata(&cache_key)
+        .unwrap()
+        .unwrap()
+        .headers,
     )
   }
 
@@ -1220,40 +1224,24 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_specifier);
 
-    {
-      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "",
-        "redirected files should have empty cached contents"
-      );
-      assert_eq!(
-        cache_item
-          .read_metadata()
-          .unwrap()
-          .unwrap()
-          .headers
-          .get("location")
-          .unwrap(),
-        "http://localhost:4545/subdir/redirects/redirect1.js"
-      );
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &specifier),
+      "",
+      "redirected files should have empty cached contents"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &specifier),
+      Some("http://localhost:4545/subdir/redirects/redirect1.js".to_string()),
+    );
 
-    {
-      let cache_item =
-        file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "export const redirect = 1;\n"
-      );
-      assert!(cache_item
-        .read_metadata()
-        .unwrap()
-        .unwrap()
-        .headers
-        .get("location")
-        .is_none());
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &redirected_specifier),
+      "export const redirect = 1;\n"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &redirected_specifier),
+      None,
+    );
   }
 
   #[tokio::test]
@@ -1277,64 +1265,34 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_02_specifier);
 
-    {
-      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "",
-        "redirected files should have empty cached contents"
-      );
-      assert_eq!(
-        cache_item
-          .read_metadata()
-          .unwrap()
-          .unwrap()
-          .headers
-          .get("location")
-          .unwrap(),
-        "http://localhost:4546/subdir/redirects/redirect1.js"
-      );
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &specifier),
+      "",
+      "redirected files should have empty cached contents"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &specifier),
+      Some("http://localhost:4546/subdir/redirects/redirect1.js".to_string()),
+    );
 
-    {
-      let cache_item = file_fetcher
-        .http_cache
-        .get(&redirected_01_specifier)
-        .unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "",
-        "redirected files should have empty cached contents"
-      );
-      assert_eq!(
-        cache_item
-          .read_metadata()
-          .unwrap()
-          .unwrap()
-          .headers
-          .get("location")
-          .unwrap(),
-        "http://localhost:4545/subdir/redirects/redirect1.js"
-      );
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &redirected_01_specifier),
+      "",
+      "redirected files should have empty cached contents"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &redirected_01_specifier),
+      Some("http://localhost:4545/subdir/redirects/redirect1.js".to_string()),
+    );
 
-    {
-      let cache_item = file_fetcher
-        .http_cache
-        .get(&redirected_02_specifier)
-        .unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "export const redirect = 1;\n"
-      );
-      assert!(cache_item
-        .read_metadata()
-        .unwrap()
-        .unwrap()
-        .headers
-        .get("location")
-        .is_none());
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &redirected_02_specifier),
+      "export const redirect = 1;\n"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &redirected_01_specifier),
+      None,
+    );
   }
 
   #[tokio::test]
@@ -1457,40 +1415,24 @@ mod tests {
     let file = result.unwrap();
     assert_eq!(file.specifier, redirected_specifier);
 
-    {
-      let cache_item = file_fetcher.http_cache.get(&specifier).unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "",
-        "redirected files should have empty cached contents"
-      );
-      assert_eq!(
-        cache_item
-          .read_metadata()
-          .unwrap()
-          .unwrap()
-          .headers
-          .get("location")
-          .unwrap(),
-        "/subdir/redirects/redirect1.js"
-      );
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &specifier),
+      "",
+      "redirected files should have empty cached contents"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &specifier),
+      Some("/subdir/redirects/redirect1.js".to_string()),
+    );
 
-    {
-      let cache_item =
-        file_fetcher.http_cache.get(&redirected_specifier).unwrap();
-      assert_eq!(
-        cache_item.read_to_string().unwrap().unwrap(),
-        "export const redirect = 1;\n"
-      );
-      assert!(cache_item
-        .read_metadata()
-        .unwrap()
-        .unwrap()
-        .headers
-        .get("location")
-        .is_none());
-    }
+    assert_eq!(
+      get_text_from_cache(&file_fetcher, &redirected_specifier),
+      "export const redirect = 1;\n"
+    );
+    assert_eq!(
+      get_location_header_from_cache(&file_fetcher, &redirected_specifier),
+      None
+    );
   }
 
   #[tokio::test]
@@ -2198,5 +2140,34 @@ mod tests {
     let err = result.unwrap_err();
     // Check that the error message contains the original URL
     assert!(err.to_string().contains(url_str));
+  }
+
+  #[track_caller]
+  fn get_text_from_cache(
+    file_fetcher: &FileFetcher,
+    url: &ModuleSpecifier,
+  ) -> String {
+    let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
+    let bytes = file_fetcher
+      .http_cache
+      .read_file_bytes(&cache_key)
+      .unwrap()
+      .unwrap();
+    String::from_utf8(bytes).unwrap()
+  }
+
+  #[track_caller]
+  fn get_location_header_from_cache(
+    file_fetcher: &FileFetcher,
+    url: &ModuleSpecifier,
+  ) -> Option<String> {
+    let cache_key = file_fetcher.http_cache.cache_item_key(url).unwrap();
+    file_fetcher
+      .http_cache
+      .read_metadata(&cache_key)
+      .unwrap()
+      .unwrap()
+      .headers
+      .remove("location")
   }
 }
