@@ -7229,7 +7229,10 @@
     "remove-own-iframe-during-onerror.window.html": false,
     "remove-own-iframe-during-onerror.window.html?wpt_flags=h2": false,
     "remove-own-iframe-during-onerror.window.html?wss": false,
-    "Create-on-worker-shutdown.any.worker.html": false
+    "Create-on-worker-shutdown.any.worker.html": false,
+    "Create-http-urls.any.html": true,
+    "Create-invalid-urls.any.html": true,
+    "Create-non-absolute-url.any.html": true
   },
   "workers": {
     "Worker-base64.any.worker.html": true,
