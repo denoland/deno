@@ -68,6 +68,15 @@ pub struct CompileFlags {
   pub include: Vec<String>,
 }
 
+impl CompileFlags {
+  pub fn resolve_target(&self) -> String {
+    self
+      .target
+      .clone()
+      .unwrap_or_else(|| env!("TARGET").to_string())
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
