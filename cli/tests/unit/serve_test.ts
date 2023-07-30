@@ -2802,17 +2802,17 @@ Deno.test(
 
         assertEquals(cloned.url, req.url);
         assertEquals(cloned.cache, req.cache);
-        assertEquals(cloned.destination, req.destination)
-        assertEquals(cloned.headers, req.headers)
-        assertEquals(cloned.integrity, req.integrity)
-        assertEquals(cloned.isHistoryNavigation, req.isHistoryNavigation)
-        assertEquals(cloned.isReloadNavigation, req.isReloadNavigation)
-        assertEquals(cloned.keepalive, req.keepalive)
-        assertEquals(cloned.method, req.method)
-        assertEquals(cloned.mode, req.mode)
-        assertEquals(cloned.redirect, req.redirect)
-        assertEquals(cloned.referrer, req.referrer)
-        assertEquals(cloned.referrerPolicy, req.referrerPolicy)
+        assertEquals(cloned.destination, req.destination);
+        assertEquals(cloned.headers, req.headers);
+        assertEquals(cloned.integrity, req.integrity);
+        assertEquals(cloned.isHistoryNavigation, req.isHistoryNavigation);
+        assertEquals(cloned.isReloadNavigation, req.isReloadNavigation);
+        assertEquals(cloned.keepalive, req.keepalive);
+        assertEquals(cloned.method, req.method);
+        assertEquals(cloned.mode, req.mode);
+        assertEquals(cloned.redirect, req.redirect);
+        assertEquals(cloned.referrer, req.referrer);
+        assertEquals(cloned.referrerPolicy, req.referrerPolicy);
 
         // both requests can read body
         await req.text();
@@ -2841,6 +2841,7 @@ Deno.test(
   },
 );
 
+// https://fetch.spec.whatwg.org/#dom-request-clone
 Deno.test(
   "Throw if disturbed",
   { permissions: { net: true } },
@@ -2857,24 +2858,25 @@ Deno.test(
         } catch (error) {
           assert(error instanceof TypeError);
           assert(
-            error.message.endsWith("Body is unusable."));
+            error.message.endsWith("Body is unusable."),
+          );
 
           ac.abort();
           await server.finished;
         }
-        
+
         return new Response("ok");
       },
       signal: ac.signal,
       onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
     });
-    
+
     try {
       const port = await listeningPromise;
       await fetch(`http://localhost:${port}/`, {
         headers: { connection: "close" },
         method: "POST",
-        body: '{"bar":true}'
+        body: '{"bar":true}',
       });
     } catch (e) {
       assert(e instanceof TypeError);
@@ -2885,6 +2887,8 @@ Deno.test(
   },
 );
 
+// TODO(fbaltor): As it is this test should throw and fail
+// https://fetch.spec.whatwg.org/#dom-request-clone
 Deno.test({
   name: "Throw if locked",
   ignore: true,
@@ -2895,21 +2899,21 @@ Deno.test({
 
     const server = Deno.serve({
       handler: (req) => {
-        const _reader =  req.body?.getReader();
+        const _reader = req.body?.getReader();
 
         req.clone();
-        
+
         return new Response("ok");
       },
       signal: ac.signal,
       onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
     });
-    
+
     const port = await listeningPromise;
     const resp = await fetch(`http://localhost:${port}/`, {
       headers: { connection: "close" },
       method: "POST",
-      body: '{"bar":true}'
+      body: '{"bar":true}',
     });
 
     ac.abort();
