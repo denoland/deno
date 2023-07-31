@@ -1,6 +1,7 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+//
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::json_types::CoverageRange;
 use std::iter::Peekable;
@@ -85,7 +86,7 @@ impl<'rt> RangeTree<'rt> {
           };
         if is_chain_end {
           let mut chain_iter = chain.drain(..);
-          let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+          let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
           for tree in chain_iter {
             head.end = tree.end;
             for sub_child in tree.children.drain(..) {
@@ -99,7 +100,7 @@ impl<'rt> RangeTree<'rt> {
       }
       if !chain.is_empty() {
         let mut chain_iter = chain.drain(..);
-        let mut head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
+        let head: &'a mut RangeTree<'a> = chain_iter.next().unwrap();
         for tree in chain_iter {
           head.end = tree.end;
           for sub_child in tree.children.drain(..) {

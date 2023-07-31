@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_web"
-version = "0.113.0"
+version = "0.144.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,16 +15,18 @@ path = "lib.rs"
 
 [dependencies]
 async-trait.workspace = true
-base64-simd = "0.7"
+base64-simd = "0.8"
 deno_core.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+windows-sys.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
+deno_console.workspace = true
 deno_url.workspace = true
 deno_webidl.workspace = true
 

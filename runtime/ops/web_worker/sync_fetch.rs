@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::sync::Arc;
+
 use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::type_error;
@@ -8,11 +10,11 @@ use deno_core::op;
 use deno_core::url::Url;
 use deno_core::OpState;
 use deno_fetch::data_url::DataUrl;
-use deno_fetch::reqwest;
 use deno_web::BlobStore;
 use deno_websocket::DomExceptionNetworkError;
 use hyper::body::Bytes;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::task::JoinHandle;
 
 // TODO(andreubotella) Properly parse the MIME type
@@ -40,25 +42,24 @@ pub fn op_worker_sync_fetch(
   let handle = state.borrow::<WebWorkerInternalHandle>().clone();
   assert_eq!(handle.worker_type, WebWorkerType::Classic);
 
-  let client = state.borrow::<reqwest::Client>().clone();
+  let client = deno_fetch::get_or_create_client_from_state(state)?;
 
   // TODO(andreubotella) It's not good to throw an exception related to blob
   // URLs when none of the script URLs use the blob scheme.
   // Also, in which contexts are blob URLs not supported?
   let blob_store = state
-    .try_borrow::<BlobStore>()
+    .try_borrow::<Arc<BlobStore>>()
     .ok_or_else(|| type_error("Blob URLs are not supported in this context."))?
     .clone();
 
   // TODO(andreubotella): make the below thread into a resource that can be
-  // re-used. This would allow parallel fecthing of multiple scripts.
+  // re-used. This would allow parallel fetching of multiple scripts.
 
   let thread = std::thread::spawn(move || {
     let runtime = tokio::runtime::Builder::new_current_thread()
       .enable_io()
       .enable_time()
-      .build()
-      .unwrap();
+      .build()?;
 
     let handles: Vec<_> = scripts
       .into_iter()
@@ -92,7 +93,7 @@ pub fn op_worker_sync_fetch(
             }
             "data" => {
               let data_url = DataUrl::process(&script)
-                .map_err(|e| type_error(format!("{:?}", e)))?;
+                .map_err(|e| type_error(format!("{e:?}")))?;
 
               let mime_type = {
                 let mime = data_url.mime_type();
@@ -101,13 +102,13 @@ pub fn op_worker_sync_fetch(
 
               let (body, _) = data_url
                 .decode_to_vec()
-                .map_err(|e| type_error(format!("{:?}", e)))?;
+                .map_err(|e| type_error(format!("{e:?}")))?;
 
               (Bytes::from(body), Some(mime_type), script)
             }
             "blob" => {
               let blob =
-                blob_store.get_object_url(script_url)?.ok_or_else(|| {
+                blob_store.get_object_url(script_url).ok_or_else(|| {
                   type_error("Blob for the given URL not found.")
                 })?;
 
@@ -132,7 +133,7 @@ pub fn op_worker_sync_fetch(
               Some(mime_type) => {
                 return Err(
                   DomExceptionNetworkError {
-                    msg: format!("Invalid MIME type {:?}.", mime_type),
+                    msg: format!("Invalid MIME type {mime_type:?}."),
                   }
                   .into(),
                 )

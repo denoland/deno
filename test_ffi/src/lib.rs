@@ -15,17 +15,17 @@ pub extern "C" fn print_something() {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = std::slice::from_raw_parts(ptr, len);
-  println!("{:?}", buf);
+  println!("{buf:?}");
 }
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn print_buffer2(
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn print_buffer2(
 ) {
   let buf1 = std::slice::from_raw_parts(ptr1, len1);
   let buf2 = std::slice::from_raw_parts(ptr2, len2);
-  println!("{:?} {:?}", buf1, buf2);
+  println!("{buf1:?} {buf2:?}");
 }
 
 #[no_mangle]
@@ -117,7 +117,7 @@ pub extern "C" fn sleep_blocking(ms: u64) {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
@@ -129,7 +129,7 @@ pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
@@ -189,7 +189,7 @@ pub extern "C" fn call_fn_ptr_return_buffer(
   let func = func.unwrap();
   let ptr = func();
   let buf = unsafe { std::slice::from_raw_parts(ptr, 8) };
-  println!("buf: {:?}", buf);
+  println!("buf: {buf:?}");
 }
 
 static mut STORED_FUNCTION: Option<extern "C" fn()> = None;
@@ -485,3 +485,61 @@ pub static static_char: [u8; 14] = [
   0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
   0x00,
 ];
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Rect {
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+}
+
+#[no_mangle]
+pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+  Rect { x, y, w, h }
+}
+
+#[no_mangle]
+pub extern "C" fn print_rect(rect: Rect) {
+  println!("{rect:?}");
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Mixed {
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: [u32; 2],
+}
+
+/// # Safety
+///
+/// The array pointer to the buffer must be valid and initialized, and the length must
+/// be 2.
+#[no_mangle]
+pub unsafe extern "C" fn create_mixed(
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: *const [u32; 2],
+) -> Mixed {
+  let array = *array
+    .as_ref()
+    .expect("Array parameter should contain value");
+  Mixed {
+    u8,
+    f32,
+    rect,
+    usize,
+    array,
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn print_mixed(mixed: Mixed) {
+  println!("{mixed:?}");
+}

@@ -14,11 +14,17 @@ use crate::NativeType;
 use crate::Symbol;
 
 pub(crate) fn is_compatible(sym: &Symbol) -> bool {
+  // TODO: Support structs by value in fast call
   cfg!(any(
     all(target_arch = "x86_64", target_family = "unix"),
     all(target_arch = "x86_64", target_family = "windows"),
     all(target_arch = "aarch64", target_vendor = "apple")
   )) && !sym.can_callback
+    && !matches!(sym.result_type, NativeType::Struct(_))
+    && !sym
+      .parameter_types
+      .iter()
+      .any(|t| matches!(t, NativeType::Struct(_)))
 }
 
 pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
@@ -34,23 +40,29 @@ pub(crate) fn compile_trampoline(sym: &Symbol) -> Trampoline {
   }
 }
 
-pub(crate) fn make_template(sym: &Symbol, trampoline: &Trampoline) -> Template {
+pub(crate) fn make_template(
+  sym: &Symbol,
+  trampoline: &Trampoline,
+) -> fast_api::FastFunction {
   let mut params = once(fast_api::Type::V8Value) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Vec<_>>();
 
-  let ret = if needs_unwrap(sym.result_type) {
+  let ret = if needs_unwrap(&sym.result_type) {
     params.push(fast_api::Type::TypedArray(fast_api::CType::Int32));
-    fast_api::Type::Void
+    fast_api::CType::Void
+  } else if sym.result_type == NativeType::Buffer {
+    // Buffer can be used as a return type and converts differently than in parameters.
+    fast_api::CType::Pointer
   } else {
-    fast_api::Type::from(&sym.result_type)
+    fast_api::CType::from(&fast_api::Type::from(&sym.result_type))
   };
 
-  Template {
-    args: params.into_boxed_slice(),
-    ret: (&ret).into(),
-    symbol_ptr: trampoline.ptr(),
-  }
+  fast_api::FastFunction::new(
+    Box::leak(params.into_boxed_slice()),
+    ret,
+    trampoline.ptr(),
+  )
 }
 
 /// Trampoline for fast-call FFI functions
@@ -61,26 +73,6 @@ pub(crate) struct Trampoline(ExecutableBuffer);
 impl Trampoline {
   fn ptr(&self) -> *const c_void {
     &self.0[0] as *const u8 as *const c_void
-  }
-}
-
-pub(crate) struct Template {
-  args: Box<[fast_api::Type]>,
-  ret: fast_api::CType,
-  symbol_ptr: *const c_void,
-}
-
-impl fast_api::FastFunction for Template {
-  fn function(&self) -> *const c_void {
-    self.symbol_ptr
-  }
-
-  fn args(&self) -> &'static [fast_api::Type] {
-    Box::leak(self.args.clone())
-  }
-
-  fn return_type(&self) -> fast_api::CType {
-    self.ret
   }
 }
 
@@ -100,10 +92,12 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::I64 => fast_api::Type::Int64,
       NativeType::U64 => fast_api::Type::Uint64,
       NativeType::ISize => fast_api::Type::Int64,
-      NativeType::USize | NativeType::Pointer | NativeType::Function => {
-        fast_api::Type::Uint64
-      }
+      NativeType::USize => fast_api::Type::Uint64,
+      NativeType::Pointer | NativeType::Function => fast_api::Type::Pointer,
       NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
+      NativeType::Struct(_) => {
+        fast_api::Type::TypedArray(fast_api::CType::Uint8)
+      }
     }
   }
 }
@@ -161,9 +155,9 @@ impl SysVAmd64 {
     let mut compiler = Self::new();
 
     let must_cast_return_value =
-      compiler.must_cast_return_value(sym.result_type);
+      compiler.must_cast_return_value(&sym.result_type);
     let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
     let must_save_preserved_register = must_wrap_return_value;
     let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
 
@@ -174,7 +168,7 @@ impl SysVAmd64 {
       compiler.allocate_stack(&sym.parameter_types);
     }
 
-    for param in sym.parameter_types.iter().copied() {
+    for param in sym.parameter_types.iter().cloned() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
@@ -188,7 +182,7 @@ impl SysVAmd64 {
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
-        compiler.cast_return_value(sym.result_type);
+        compiler.cast_return_value(&sym.result_type);
       }
       if must_wrap_return_value {
         compiler.wrap_return_value_in_out_array();
@@ -400,7 +394,7 @@ impl SysVAmd64 {
     );
   }
 
-  fn cast_return_value(&mut self, rv: NativeType) {
+  fn cast_return_value(&mut self, rv: &NativeType) {
     let s = &mut self.assmblr;
     // V8 only supports 32bit integers. We support 8 and 16 bit integers casting them to 32bits.
     // In SysV-AMD64 the convention dictates that the unused bits of the return value contain garbage, so we
@@ -550,7 +544,7 @@ impl SysVAmd64 {
     self.integral_params > 0
   }
 
-  fn must_cast_return_value(&self, rv: NativeType) -> bool {
+  fn must_cast_return_value(&self, rv: &NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 8 and 16 bit integers by extending them to 32 bits in the trampoline before returning
     matches!(
@@ -559,7 +553,7 @@ impl SysVAmd64 {
     )
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
     crate::dlfcn::needs_unwrap(rv)
@@ -607,7 +601,7 @@ impl Aarch64Apple {
     let mut compiler = Self::new();
 
     let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
     let must_save_preserved_register = must_wrap_return_value;
     let cannot_tailcall = must_wrap_return_value;
 
@@ -619,14 +613,14 @@ impl Aarch64Apple {
       }
     }
 
-    for param in sym.parameter_types.iter().copied() {
+    for param in sym.parameter_types.iter().cloned() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
       // the receiver object should never be expected. Avoid its unexpected or deliberate leak
       compiler.zero_first_arg();
     }
-    if compiler.must_wrap_return_value_in_typed_array(sym.result_type) {
+    if compiler.must_wrap_return_value_in_typed_array(&sym.result_type) {
       compiler.save_out_array_to_preserved_register();
     }
 
@@ -963,7 +957,7 @@ impl Aarch64Apple {
     let mut int_params = 0u32;
     let mut float_params = 0u32;
     let mut stack_size = 0u32;
-    for param in symbol.parameter_types.iter().copied() {
+    for param in symbol.parameter_types.iter().cloned() {
       match param.into() {
         Float(float_param) => {
           float_params += 1;
@@ -1069,10 +1063,10 @@ impl Aarch64Apple {
   }
 
   fn must_save_preserved_register_to_stack(&mut self, symbol: &Symbol) -> bool {
-    self.must_wrap_return_value_in_typed_array(symbol.result_type)
+    self.must_wrap_return_value_in_typed_array(&symbol.result_type)
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
     crate::dlfcn::needs_unwrap(rv)
@@ -1120,9 +1114,9 @@ impl Win64 {
     let mut compiler = Self::new();
 
     let must_cast_return_value =
-      compiler.must_cast_return_value(sym.result_type);
+      compiler.must_cast_return_value(&sym.result_type);
     let must_wrap_return_value =
-      compiler.must_wrap_return_value_in_typed_array(sym.result_type);
+      compiler.must_wrap_return_value_in_typed_array(&sym.result_type);
     let must_save_preserved_register = must_wrap_return_value;
     let cannot_tailcall = must_cast_return_value || must_wrap_return_value;
 
@@ -1133,7 +1127,7 @@ impl Win64 {
       compiler.allocate_stack(&sym.parameter_types);
     }
 
-    for param in sym.parameter_types.iter().copied() {
+    for param in sym.parameter_types.iter().cloned() {
       compiler.move_left(param)
     }
     if !compiler.is_recv_arg_overridden() {
@@ -1147,7 +1141,7 @@ impl Win64 {
     if cannot_tailcall {
       compiler.call(sym.ptr.as_ptr());
       if must_cast_return_value {
-        compiler.cast_return_value(sym.result_type);
+        compiler.cast_return_value(&sym.result_type);
       }
       if must_wrap_return_value {
         compiler.wrap_return_value_in_out_array();
@@ -1284,7 +1278,7 @@ impl Win64 {
     x64!(self.assmblr; xor ecx, ecx);
   }
 
-  fn cast_return_value(&mut self, rv: NativeType) {
+  fn cast_return_value(&mut self, rv: &NativeType) {
     let s = &mut self.assmblr;
     // V8 only supports 32bit integers. We support 8 and 16 bit integers casting them to 32bits.
     // Section "Return Values" of the Windows x64 Calling Convention doc:
@@ -1419,7 +1413,7 @@ impl Win64 {
     self.params > 0
   }
 
-  fn must_cast_return_value(&self, rv: NativeType) -> bool {
+  fn must_cast_return_value(&self, rv: &NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 8 and 16 bit integers by extending them to 32 bits in the trampoline before returning
     matches!(
@@ -1428,7 +1422,7 @@ impl Win64 {
     )
   }
 
-  fn must_wrap_return_value_in_typed_array(&self, rv: NativeType) -> bool {
+  fn must_wrap_return_value_in_typed_array(&self, rv: &NativeType) -> bool {
     // V8 only supports i32 and u32 return types for integers
     // We support 64 bit integers by wrapping them in a TypedArray out parameter
     crate::dlfcn::needs_unwrap(rv)
@@ -1510,6 +1504,7 @@ impl From<NativeType> for Param {
       NativeType::I32 => Int(I(DW)),
       NativeType::I64 | NativeType::ISize => Int(I(QW)),
       NativeType::Buffer => Int(Buffer),
+      NativeType::Struct(_) => unimplemented!(),
     }
   }
 }
@@ -1907,7 +1902,8 @@ mod tests {
   mod x64_windows {
     use std::ops::Deref;
 
-    use dynasmrt::{dynasm, DynasmApi};
+    use dynasmrt::dynasm;
+    use dynasmrt::DynasmApi;
 
     use super::super::Win64;
     use super::symbol;

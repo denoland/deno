@@ -4,17 +4,17 @@ use deno_ast::LineAndColumnIndex;
 use deno_ast::ModuleSpecifier;
 use deno_ast::SourceTextInfo;
 use deno_core::error::AnyError;
-use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::Position;
 use deno_graph::Range;
-use deno_graph::Resolved;
+use deno_graph::Resolution;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 use indexmap::IndexMap;
 use log::warn;
 
+use crate::args::JsxImportSourceConfig;
 use crate::cache::ParsedSourceCache;
 
 use super::mappings::Mappings;
@@ -177,14 +177,30 @@ impl<'a> ImportsBuilder<'a> {
   }
 }
 
+pub struct BuildImportMapInput<'a> {
+  pub base_dir: &'a ModuleSpecifier,
+  pub modules: &'a [&'a Module],
+  pub graph: &'a ModuleGraph,
+  pub mappings: &'a Mappings,
+  pub original_import_map: Option<&'a ImportMap>,
+  pub jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub resolver: &'a dyn deno_graph::source::Resolver,
+  pub parsed_source_cache: &'a ParsedSourceCache,
+}
+
 pub fn build_import_map(
-  base_dir: &ModuleSpecifier,
-  graph: &ModuleGraph,
-  modules: &[&Module],
-  mappings: &Mappings,
-  original_import_map: Option<&ImportMap>,
-  parsed_source_cache: &ParsedSourceCache,
+  input: BuildImportMapInput<'_>,
 ) -> Result<String, AnyError> {
+  let BuildImportMapInput {
+    base_dir,
+    modules,
+    graph,
+    mappings,
+    original_import_map,
+    jsx_import_source,
+    resolver,
+    parsed_source_cache,
+  } = input;
   let mut builder = ImportMapBuilder::new(base_dir, mappings);
   visit_modules(graph, modules, mappings, &mut builder, parsed_source_cache)?;
 
@@ -192,6 +208,17 @@ pub fn build_import_map(
     builder
       .imports
       .add(base_specifier.to_string(), base_specifier);
+  }
+
+  // add the jsx import source to the destination import map, if mapped in the original import map
+  if let Some(jsx_import_source) = jsx_import_source {
+    if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
+      if let Ok(resolved_url) =
+        resolver.resolve(&specifier_text, &jsx_import_source.base_url)
+      {
+        builder.imports.add(specifier_text, &resolved_url);
+      }
+    }
   }
 
   Ok(builder.into_import_map(original_import_map).to_json())
@@ -205,23 +232,22 @@ fn visit_modules(
   parsed_source_cache: &ParsedSourceCache,
 ) -> Result<(), AnyError> {
   for module in modules {
-    if module.media_type == MediaType::Json {
+    let module = match module {
+      Module::Esm(module) => module,
       // skip visiting Json modules as they are leaves
-      continue;
-    }
-
-    let text_info =
-      match parsed_source_cache.get_parsed_source_from_module(module)? {
-        Some(source) => source.text_info().clone(),
-        None => continue,
-      };
-    let source_text = match &module.maybe_source {
-      Some(source) => source,
-      None => continue,
+      Module::Json(_)
+      | Module::Npm(_)
+      | Module::Node(_)
+      | Module::External(_) => continue,
     };
 
+    let parsed_source =
+      parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+    let text_info = parsed_source.text_info().clone();
+    let source_text = &module.source;
+
     for dep in module.dependencies.values() {
-      visit_maybe_resolved(
+      visit_resolution(
         &dep.maybe_code,
         graph,
         import_map,
@@ -230,7 +256,7 @@ fn visit_modules(
         &text_info,
         source_text,
       );
-      visit_maybe_resolved(
+      visit_resolution(
         &dep.maybe_type,
         graph,
         import_map,
@@ -241,9 +267,9 @@ fn visit_modules(
       );
     }
 
-    if let Some((_, maybe_resolved)) = &module.maybe_types_dependency {
-      visit_maybe_resolved(
-        maybe_resolved,
+    if let Some(types_dep) = &module.maybe_types_dependency {
+      visit_resolution(
+        &types_dep.dependency,
         graph,
         import_map,
         &module.specifier,
@@ -257,8 +283,8 @@ fn visit_modules(
   Ok(())
 }
 
-fn visit_maybe_resolved(
-  maybe_resolved: &Resolved,
+fn visit_resolution(
+  resolution: &Resolution,
   graph: &ModuleGraph,
   import_map: &mut ImportMapBuilder,
   referrer: &ModuleSpecifier,
@@ -266,15 +292,17 @@ fn visit_maybe_resolved(
   text_info: &SourceTextInfo,
   source_text: &str,
 ) {
-  if let Resolved::Ok {
-    specifier, range, ..
-  } = maybe_resolved
-  {
-    let text = text_from_range(text_info, source_text, range);
+  if let Some(resolved) = resolution.ok() {
+    let text = text_from_range(text_info, source_text, &resolved.range);
     // if the text is empty then it's probably an x-TypeScript-types
     if !text.is_empty() {
       handle_dep_specifier(
-        text, specifier, graph, import_map, referrer, mappings,
+        text,
+        &resolved.specifier,
+        graph,
+        import_map,
+        referrer,
+        mappings,
       );
     }
   }
@@ -288,7 +316,12 @@ fn handle_dep_specifier(
   referrer: &ModuleSpecifier,
   mappings: &Mappings,
 ) {
-  let specifier = graph.resolve(unresolved_specifier);
+  let specifier = match graph.get(unresolved_specifier) {
+    Some(module) => module.specifier().clone(),
+    // Ignore when None. The graph was previous validated so this is a
+    // dynamic import that was missing and is ignored for vendoring
+    None => return,
+  };
   // check if it's referencing a remote module
   if is_remote_specifier(&specifier) {
     handle_remote_dep_specifier(
@@ -299,7 +332,7 @@ fn handle_dep_specifier(
       referrer,
       mappings,
     )
-  } else {
+  } else if specifier.scheme() == "file" {
     handle_local_dep_specifier(
       text,
       unresolved_specifier,
@@ -321,15 +354,16 @@ fn handle_remote_dep_specifier(
 ) {
   if is_remote_specifier_text(text) {
     let base_specifier = mappings.base_specifier(specifier);
-    if !text.starts_with(base_specifier.as_str()) {
-      panic!("Expected {} to start with {}", text, base_specifier);
-    }
-
-    let sub_path = &text[base_specifier.as_str().len()..];
-    let relative_text =
-      mappings.relative_specifier_text(base_specifier, specifier);
-    let expected_sub_path = relative_text.trim_start_matches("./");
-    if expected_sub_path != sub_path {
+    if text.starts_with(base_specifier.as_str()) {
+      let sub_path = &text[base_specifier.as_str().len()..];
+      let relative_text =
+        mappings.relative_specifier_text(base_specifier, specifier);
+      let expected_sub_path = relative_text.trim_start_matches("./");
+      if expected_sub_path != sub_path {
+        import_map.imports.add(text.to_string(), specifier);
+      }
+    } else {
+      // it's probably a redirect. Add it explicitly to the import map
       import_map.imports.add(text.to_string(), specifier);
     }
   } else {

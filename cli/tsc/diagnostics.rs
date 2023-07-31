@@ -6,91 +6,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::error::Error;
 use std::fmt;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
-
-const UNSTABLE_DENO_PROPS: &[&str] = &[
-  "CreateHttpClientOptions",
-  "DatagramConn",
-  "HttpClient",
-  "UnixConnectOptions",
-  "UnixListenOptions",
-  "connect",
-  "createHttpClient",
-  "kill",
-  "listen",
-  "listenDatagram",
-  "dlopen",
-  "ppid",
-  "removeSignalListener",
-  "shutdown",
-  "umask",
-  "spawnChild",
-  "Child",
-  "ChildProcess",
-  "spawn",
-  "spawnSync",
-  "SpawnOptions",
-  "ChildStatus",
-  "SpawnOutput",
-  "command",
-  "Command",
-  "CommandOptions",
-  "CommandStatus",
-  "CommandOutput",
-  "serve",
-  "ServeInit",
-  "ServeTlsInit",
-  "Handler",
-  "osUptime",
-];
-
-static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#)
-    .unwrap()
-});
-
-static MSG_SUGGESTION: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#" Did you mean '([^']+)'\?"#).unwrap());
-
-/// Potentially convert a "raw" diagnostic message from TSC to something that
-/// provides a more sensible error message given a Deno runtime context.
-fn format_message(msg: &str, code: &u64) -> String {
-  match code {
-    2339 => {
-      if let Some(captures) = MSG_MISSING_PROPERTY_DENO.captures(msg) {
-        if let Some(property) = captures.get(1) {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag?", msg, property.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    2551 => {
-      if let (Some(caps_property), Some(caps_suggestion)) = (
-        MSG_MISSING_PROPERTY_DENO.captures(msg),
-        MSG_SUGGESTION.captures(msg),
-      ) {
-        if let (Some(property), Some(suggestion)) =
-          (caps_property.get(1), caps_suggestion.get(1))
-        {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '{}'?", MSG_SUGGESTION.replace(msg, ""), property.as_str(), suggestion.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    _ => msg.to_string(),
-  }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
@@ -147,7 +66,7 @@ impl From<i64> for DiagnosticCategory {
       1 => DiagnosticCategory::Error,
       2 => DiagnosticCategory::Suggestion,
       3 => DiagnosticCategory::Message,
-      _ => panic!("Unknown value: {}", value),
+      _ => panic!("Unknown value: {value}"),
     }
   }
 }
@@ -216,7 +135,7 @@ impl Diagnostic {
     };
 
     if !category.is_empty() {
-      write!(f, "{}[{}]: ", code, category)
+      write!(f, "{code}[{category}]: ")
     } else {
       Ok(())
     }
@@ -248,7 +167,7 @@ impl Diagnostic {
         f,
         "{:indent$}{}",
         "",
-        format_message(&self.message_text.clone().unwrap(), &self.code),
+        self.message_text.as_deref().unwrap_or_default(),
         indent = level,
       )
     }
@@ -299,9 +218,11 @@ impl Diagnostic {
 
   fn fmt_related_information(&self, f: &mut fmt::Formatter) -> fmt::Result {
     if let Some(related_information) = self.related_information.as_ref() {
-      write!(f, "\n\n")?;
-      for info in related_information {
-        info.fmt_stack(f, 4)?;
+      if !related_information.is_empty() {
+        write!(f, "\n\n")?;
+        for info in related_information {
+          info.fmt_stack(f, 4)?;
+        }
       }
     }
 
@@ -340,9 +261,9 @@ impl Diagnostics {
   /// returns `true` are included.
   pub fn filter<P>(&self, predicate: P) -> Self
   where
-    P: FnMut(&Diagnostic) -> bool,
+    P: FnMut(&Diagnostic) -> Option<Diagnostic>,
   {
-    let diagnostics = self.0.clone().into_iter().filter(predicate).collect();
+    let diagnostics = self.0.iter().filter_map(predicate).collect();
     Self(diagnostics)
   }
 
@@ -377,12 +298,12 @@ impl fmt::Display for Diagnostics {
       if i > 0 {
         write!(f, "\n\n")?;
       }
-      write!(f, "{}", item)?;
+      write!(f, "{item}")?;
       i += 1;
     }
 
     if i > 1 {
-      write!(f, "\n\nFound {} errors.", i)?;
+      write!(f, "\n\nFound {i} errors.")?;
     }
 
     Ok(())

@@ -34,10 +34,10 @@ $.log(`Opened PR at ${openedPr.data.url}`);
 function getPrBody() {
   let text = `Bumped versions for ${cliCrate.version}\n\n` +
     `Please ensure:\n` +
-    `- [ ] Target branch is correct\n` +
+    `- [ ] Target branch is correct (\`vX.XX\` if a patch release, \`main\` if minor)\n` +
     `- [ ] Crate versions are bumped correctly\n` +
     `- [ ] deno_std version is incremented in the code (see \`cli/deno_std.rs\`)\n` +
-    `- [ ] Releases.md is updated correctly\n\n` +
+    `- [ ] Releases.md is updated correctly (think relevancy and remove reverts)\n\n` +
     `To make edits to this PR:\n` +
     "```shell\n" +
     `git fetch upstream ${newBranchName} && git checkout -b ${newBranchName} upstream/${newBranchName}\n` +

@@ -1,4 +1,5 @@
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::KeyIvInit;
@@ -19,7 +20,9 @@ use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ZeroCopyBuf;
+use deno_core::task::spawn_blocking;
+use deno_core::JsBuffer;
+use deno_core::ToJsBuffer;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::PaddingScheme;
 use serde::Deserialize;
@@ -29,10 +32,12 @@ use sha2::Sha256;
 use sha2::Sha384;
 use sha2::Sha512;
 
+use crate::shared::*;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DecryptOptions {
-  key: RawKeyData,
+  key: V8RawKeyData,
   #[serde(flatten)]
   algorithm: DecryptAlgorithm,
 }
@@ -73,8 +78,8 @@ pub enum DecryptAlgorithm {
 #[op]
 pub async fn op_crypto_decrypt(
   opts: DecryptOptions,
-  data: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+  data: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
   let key = opts.key;
   let fun = move || match opts.algorithm {
     DecryptAlgorithm::RsaOaep { hash, label } => {
@@ -95,12 +100,12 @@ pub async fn op_crypto_decrypt(
       tag_length,
     } => decrypt_aes_gcm(key, length, tag_length, iv, additional_data, &data),
   };
-  let buf = tokio::task::spawn_blocking(fun).await.unwrap()?;
+  let buf = spawn_blocking(fun).await.unwrap()?;
   Ok(buf.into())
 }
 
 fn decrypt_rsa_oaep(
-  key: RawKeyData,
+  key: V8RawKeyData,
   hash: ShaHash,
   label: Vec<u8>,
   data: &[u8],
@@ -139,7 +144,7 @@ fn decrypt_rsa_oaep(
 }
 
 fn decrypt_aes_cbc(
-  key: RawKeyData,
+  key: V8RawKeyData,
   length: usize,
   iv: Vec<u8>,
   data: &[u8],
@@ -277,7 +282,7 @@ fn decrypt_aes_gcm_gen<N: ArrayLength<u8>>(
 }
 
 fn decrypt_aes_ctr(
-  key: RawKeyData,
+  key: V8RawKeyData,
   key_length: usize,
   counter: &[u8],
   ctr_length: usize,
@@ -311,7 +316,7 @@ fn decrypt_aes_ctr(
 }
 
 fn decrypt_aes_gcm(
-  key: RawKeyData,
+  key: V8RawKeyData,
   length: usize,
   tag_length: usize,
   iv: Vec<u8>,

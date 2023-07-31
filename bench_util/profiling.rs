@@ -1,5 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use bencher::{DynBenchFn, StaticBenchFn, TestDescAndFn, TestOpts};
+use bencher::DynBenchFn;
+use bencher::StaticBenchFn;
+use bencher::TestDescAndFn;
+use bencher::TestOpts;
 
 pub fn is_profiling() -> bool {
   std::env::var("PROFILING").is_ok()
@@ -23,7 +26,7 @@ macro_rules! bench_or_profile {
       )+
 
       if $crate::is_profiling() {
-        // Run profling
+        // Run profiling
         $crate::run_profiles(&test_opts, benches);
       } else {
         // Run benches

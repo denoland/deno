@@ -11,3 +11,11 @@ type AssertTrue<T extends true> = never;
 type _TestHasProcessGlobal = AssertTrue<
   typeof globalThis extends { process: any } ? true : false
 >;
+
+export function deleteSetTimeout(): void;
+export function getSetTimeout(): typeof setTimeout;
+
+export function checkProcessGlobal(): void;
+export function checkWindowGlobal(): void;
+
+export function getFoo(): string;

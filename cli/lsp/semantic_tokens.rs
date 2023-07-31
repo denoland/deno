@@ -5,7 +5,8 @@
 // and https://github.com/microsoft/vscode/blob/main/src/vs/workbench/api/common/extHostTypes.ts
 // for the SemanticTokensBuilder implementation.
 
-use std::ops::{Index, IndexMut};
+use std::ops::Index;
+use std::ops::IndexMut;
 use tower_lsp::lsp_types::SemanticToken;
 use tower_lsp::lsp_types::SemanticTokenModifier;
 use tower_lsp::lsp_types::SemanticTokenType;

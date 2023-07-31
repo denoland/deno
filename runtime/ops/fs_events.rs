@@ -1,6 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::AsyncRefCell;
@@ -13,7 +13,6 @@ use deno_core::ResourceId;
 
 use deno_core::op;
 
-use deno_core::Extension;
 use notify::event::Event as NotifyEvent;
 use notify::Error as NotifyError;
 use notify::EventKind;
@@ -29,11 +28,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use tokio::sync::mpsc;
 
-pub fn init() -> Extension {
-  Extension::builder()
-    .ops(vec![op_fs_events_open::decl(), op_fs_events_poll::decl()])
-    .build()
-}
+deno_core::extension!(
+  deno_fs_events,
+  ops = [op_fs_events_open, op_fs_events_poll],
+);
 
 struct FsEventsResource {
   #[allow(unused)]
@@ -119,9 +117,8 @@ fn op_fs_events_open(
   for path in &args.paths {
     let path = PathBuf::from(path);
     state
-      .borrow_mut::<Permissions>()
-      .read
-      .check(&path, Some("Deno.watchFs()"))?;
+      .borrow_mut::<PermissionsContainer>()
+      .check_read(&path, "Deno.watchFs()")?;
     watcher.watch(&path, recursive_mode)?;
   }
   let resource = FsEventsResource {
