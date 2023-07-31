@@ -96,9 +96,15 @@ itest!(_017_import_redirect {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check run/017_import_redirect.ts",
+itest!(_017_import_redirect_check {
+  args: "run --quiet --reload --check run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_remote_modules_dir {
+  args: "run --quiet --reload --remote-modules-dir --check run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
+  temp_cwd: true,
 });
 
 itest!(_017_import_redirect_info {

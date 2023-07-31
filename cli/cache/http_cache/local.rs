@@ -362,11 +362,16 @@ struct LocalCacheManifest {
 
 impl LocalCacheManifest {
   pub fn new(file_path: PathBuf) -> Self {
-    // todo: debug log when deserialization fails
     let serialized: SerializedLocalCacheManifestData =
       std::fs::read(&file_path)
         .ok()
-        .and_then(|data| serde_json::from_slice(&data).ok())
+        .and_then(|data| match serde_json::from_slice(&data) {
+          Ok(data) => Some(data),
+          Err(err) => {
+            log::debug!("Failed deserializing local cache manifest: {:#}", err);
+            None
+          }
+        })
         .unwrap_or_default();
     Self {
       data: RwLock::new(LocalCacheManifestData { serialized }),
