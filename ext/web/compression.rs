@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
@@ -74,32 +75,32 @@ pub fn op_compression_write(
   let mut inner = resource.0.borrow_mut();
   let out: Vec<u8> = match &mut *inner {
     Inner::DeflateDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::DeflateRawEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzDecoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
     Inner::GzEncoder(d) => {
-      d.write_all(input)?;
+      d.write_all(input).map_err(|e| type_error(e.to_string()))?;
       d.flush()?;
       d.get_mut().drain(..)
     }
@@ -117,12 +118,20 @@ pub fn op_compression_finish(
   let resource = Rc::try_unwrap(resource).unwrap();
   let inner = resource.0.into_inner();
   let out: Vec<u8> = match inner {
-    Inner::DeflateDecoder(d) => d.finish()?,
-    Inner::DeflateEncoder(d) => d.finish()?,
-    Inner::DeflateRawDecoder(d) => d.finish()?,
-    Inner::DeflateRawEncoder(d) => d.finish()?,
-    Inner::GzDecoder(d) => d.finish()?,
-    Inner::GzEncoder(d) => d.finish()?,
+    Inner::DeflateDecoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateEncoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateRawDecoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::DeflateRawEncoder(d) => {
+      d.finish().map_err(|e| type_error(e.to_string()))?
+    }
+    Inner::GzDecoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
+    Inner::GzEncoder(d) => d.finish().map_err(|e| type_error(e.to_string()))?,
   };
   Ok(out.into())
 }

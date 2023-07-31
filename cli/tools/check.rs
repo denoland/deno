@@ -308,9 +308,13 @@ fn get_tsc_roots(
         | MediaType::Cts
         | MediaType::Dts
         | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Jsx => Some((module.specifier.clone(), module.media_type)),
-        MediaType::JavaScript | MediaType::Mjs | MediaType::Cjs => {
+        | MediaType::Dcts => {
+          Some((module.specifier.clone(), module.media_type))
+        }
+        MediaType::JavaScript
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::Jsx => {
           if check_js || has_ts_check(module.media_type, &module.source) {
             Some((module.specifier.clone(), module.media_type))
           } else {
