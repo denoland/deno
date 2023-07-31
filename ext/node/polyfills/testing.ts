@@ -6,8 +6,39 @@ export function run() {
   notImplemented("test.run");
 }
 
-export function test() {
-  notImplemented("test.test");
+export function test(nameOrOptionsOrFn, optionsOrFn, fn) {
+  if (typeof nameOrOptionsOrFn === "undefined") {
+    return;
+  }
+
+  let testName = "<anonymous>";
+  let testOptions = {};
+  let testFn = () => {};
+
+  if (typeof nameOrOptionsOrFn === "string" && typeof optionsOrFn === "undefined") {
+    if (nameOrOptionsOrFn.length) {
+      testName = nameOrOptionsOrFn;
+    }
+    Deno.test(testName, testFn);
+    return;
+  }
+
+  if (typeof nameOrOptionsOrFn === "function") {
+    testFn = nameOrOptionsOrFn;
+    console.log(testName, testFn);
+    Deno.test(testName, testFn);
+    return;
+  }
+
+  if (typeof optionsOrFn === "undefined") {
+    testOptions = nameOrOptionsOrFn;
+  } else if (typeof fn === "undefined") {
+    testOptions = nameOrOptionsOrFn;
+    testFn = optionsOrFn;
+  }
+  console.log(testName, testFn);
+
+  Deno.test(testName, testOptions, testFn);
 }
 
 export function describe() {
@@ -69,14 +100,4 @@ export const mock = {
   },
 };
 
-export default {
-  run,
-  test,
-  describe,
-  it,
-  before,
-  after,
-  beforeEach,
-  afterEach,
-  mock,
-};
+export default test;
