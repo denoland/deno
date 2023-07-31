@@ -40,6 +40,8 @@ const {
   Error,
   TypeError,
 } = primordials;
+import { nodeGlobalThis } from "ext:deno_node/00_globals.js";
+
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
 import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
 import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
@@ -915,9 +917,17 @@ Module.prototype.require = function (id) {
   }
 };
 
+// The module wrapper looks slightly different to Node. Instead of using one
+// wrapper function, we use two. The first one exists to performance optimize
+// access to magic node globals, like `Buffer` or `process`. The second one
+// is the actual wrapper function we run the users code in.
+// The only observable difference is that in Deno `arguments.callee` is not
+// null.
+// We pull nodeGlobalThis from arguments, to avoid the name `nodeGlobalThis`
+// being accessible from user code.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname) { (function () {",
-  "\n}).call(this); })",
+  "(function (exports, require, module, __filename, __dirname, /* nodeGlobalThis */) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance } = global /* this is nodeGlobalThis */; (function (exports, require, module, __filename, __dirname) {",
+  "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
@@ -989,6 +999,7 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
+    nodeGlobalThis,
   );
   if (requireDepth === 0) {
     statCache = null;
