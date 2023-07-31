@@ -125,7 +125,6 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-dotenv = "=0.15.0"
 flaky_test = "=0.1.0"
 once_cell.workspace = true
 os_pipe.workspace = true

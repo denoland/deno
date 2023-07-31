@@ -22,6 +22,7 @@ import {
   ErrorEvent,
   EventTarget,
   MessageEvent,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import {
   deserializeJsMessageData,
@@ -187,6 +188,7 @@ class Worker extends EventTarget {
           cancelable: false,
           data: err,
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
         return;
       }
@@ -198,6 +200,7 @@ class Worker extends EventTarget {
           (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
         ),
       });
+      setIsTrusted(event, true);
       this.dispatchEvent(event);
     }
   };

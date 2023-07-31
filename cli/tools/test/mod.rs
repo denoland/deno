@@ -83,7 +83,7 @@ use tokio::sync::mpsc::WeakUnboundedSender;
 pub mod fmt;
 mod reporters;
 
-use fmt::format_test_error;
+pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;

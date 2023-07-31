@@ -72,15 +72,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Option<&str>,
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
     let mut handled_reexports: HashSet<String> = HashSet::default();
 
-    let analysis = self
-      .cjs_code_analyzer
-      .analyze_cjs(specifier, Some(source))?;
+    let analysis = self.cjs_code_analyzer.analyze_cjs(specifier, source)?;
 
     let mut source = vec![
       r#"import {createRequire as __internalCreateRequire} from "node:module";

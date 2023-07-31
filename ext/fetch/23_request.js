@@ -174,8 +174,8 @@ function cloneInnerRequest(request, skipBody = false) {
     body,
     redirectMode: request.redirectMode,
     redirectCount: request.redirectCount,
-    urlList: request.urlList,
-    urlListProcessed: request.urlListProcessed,
+    urlList: [() => request.url()],
+    urlListProcessed: [request.url()],
     clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
     url() {

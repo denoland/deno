@@ -40,6 +40,8 @@ const {
   Error,
   TypeError,
 } = primordials;
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
+
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
 import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
 import _streamDuplex from "ext:deno_node/internal/streams/duplex.mjs";
@@ -915,9 +917,15 @@ Module.prototype.require = function (id) {
   }
 };
 
+// The module wrapper looks slightly different to Node. Instead of using one
+// wrapper function, we use two. The first one exists to performance optimize
+// access to magic node globals, like `Buffer` or `process`. The second one
+// is the actual wrapper function we run the users code in.
+// The only observable difference is that in Deno `arguments.callee` is not
+// null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname) { (function () {",
-  "\n}).call(this); })",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
   script = script.replace(/^#!.*?\n/, "");
@@ -982,6 +990,20 @@ Module.prototype._compile = function (content, filename) {
     ops.op_require_break_on_next_statement();
   }
 
+  const {
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
+  } = nodeGlobals;
+
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -989,6 +1011,17 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
   );
   if (requireDepth === 0) {
     statCache = null;
