@@ -567,7 +567,19 @@ where
   }
 
   let async_work_sender =
-    state.borrow_mut::<FfiState>().async_work_sender.clone();
+    if let Some(ffi_state) = state.try_borrow_mut::<FfiState>() {
+      ffi_state.async_work_sender.clone()
+    } else {
+      let (async_work_sender, async_work_receiver) =
+        mpsc::unbounded::<PendingFfiAsyncWork>();
+
+      state.put(FfiState {
+        async_work_receiver,
+        async_work_sender: async_work_sender.clone(),
+      });
+
+      async_work_sender
+    };
   let callback = v8::Global::new(scope, cb).into_raw();
   let current_context = scope.get_current_context();
   let context = v8::Global::new(scope, current_context).into_raw();

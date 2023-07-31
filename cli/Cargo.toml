@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.35.2"
+version = "1.35.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -42,16 +42,16 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "=0.63.1"
-deno_emit = "=0.24.0"
-deno_graph = "=0.49.0"
+deno_doc = "=0.64.0"
+deno_emit = "=0.25.0"
+deno_graph = "=0.50.0"
 deno_lint = { version = "=0.49.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
-deno_task_shell = "=0.12.0"
-eszip = "=0.45.0"
+deno_task_shell = "=0.13.1"
+eszip = "=0.48.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -92,6 +92,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 percent-encoding.workspace = true
 pin-project.workspace = true
+quick-junit = "^0.3.3"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
@@ -124,7 +125,6 @@ nix.workspace = true
 
 [dev-dependencies]
 deno_bench_util.workspace = true
-dotenv = "=0.15.0"
 flaky_test = "=0.1.0"
 once_cell.workspace = true
 os_pipe.workspace = true

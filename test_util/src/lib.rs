@@ -728,10 +728,7 @@ async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
-    (
-      &hyper::Method::POST | &hyper::Method::PATCH | &hyper::Method::PUT,
-      "/echo_server",
-    ) => {
+    (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(body);
 
