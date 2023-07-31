@@ -1292,6 +1292,10 @@ impl deno_node::NodePermissions for PermissionsContainer {
   fn check_read(&self, path: &Path) -> Result<(), AnyError> {
     self.0.lock().read.check(path, None)
   }
+
+  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError> {
+    self.0.lock().sys.check(kind, Some(api_name))
+  }
 }
 
 impl deno_net::NetPermissions for PermissionsContainer {
