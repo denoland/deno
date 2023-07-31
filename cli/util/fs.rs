@@ -6,6 +6,9 @@ pub use deno_core::normalize_path;
 use deno_core::task::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::deno_crypto::rand;
+use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_io;
 use deno_runtime::deno_node::PathClean;
 use std::borrow::Cow;
 use std::env::current_dir;
@@ -38,6 +41,31 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
   let tmp_file = filename.with_extension(extension);
   write_file(&tmp_file, data, mode)?;
   std::fs::rename(tmp_file, filename)?;
+  Ok(())
+}
+
+pub fn atomic_write_file_with_fs(
+  filename: &Path,
+  data: &[u8],
+  mode: u32,
+  file_system: &dyn FileSystem,
+) -> deno_io::FsResult<()> {
+  let rand: String = (0..4)
+    .map(|_| format!("{:02x}", rand::random::<u8>()))
+    .collect();
+  let extension = format!("{rand}.tmp");
+  let tmp_file = filename.with_extension(extension);
+  let options = deno_fs::OpenOptions {
+    read: false,
+    write: true,
+    create: true,
+    truncate: true,
+    append: false,
+    create_new: false,
+    mode: Some(mode),
+  };
+  file_system.write_file_sync(&tmp_file, options, data)?;
+  file_system.rename_sync(&tmp_file, filename)?;
   Ok(())
 }
 

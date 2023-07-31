@@ -16,8 +16,6 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::TaskQueue;
 use fs::FileResource;
-use fs::FsError;
-use fs::FsResult;
 use fs::FsStat;
 use fs3::FileExt;
 use once_cell::sync::Lazy;
@@ -35,6 +33,9 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
+
+pub use fs::FsError;
+pub use fs::FsResult;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;

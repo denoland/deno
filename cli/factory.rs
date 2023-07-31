@@ -250,7 +250,8 @@ impl CliFactory {
       let global_cache = self.global_http_cache()?.clone();
       match self.options.remote_modules_dir_path() {
         Some(local_path) => {
-          let local_cache = LocalHttpCache::new(local_path, global_cache);
+          let local_cache =
+            LocalHttpCache::new(local_path, global_cache, self.fs().clone());
           Ok(Arc::new(local_cache))
         }
         None => Ok(global_cache),

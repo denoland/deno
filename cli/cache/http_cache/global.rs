@@ -15,8 +15,6 @@ use crate::http_util::HeadersMap;
 use crate::util;
 
 use super::common::base_url_to_filename_parts;
-use super::common::ensure_dir_exists;
-use super::common::read_file_bytes;
 use super::CachedUrlMetadata;
 use super::HttpCache;
 use super::HttpCacheItemKey;
@@ -197,6 +195,29 @@ fn write_metadata(
   let json = serde_json::to_string_pretty(meta_data)?;
   util::fs::atomic_write_file(&path, json, CACHE_PERM)?;
   Ok(())
+}
+
+fn read_file_bytes(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+  match std::fs::read(path) {
+    Ok(s) => Ok(Some(s)),
+    Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+    Err(err) => Err(err),
+  }
+}
+
+/// Ensures the location of the cache.
+fn ensure_dir_exists(path: &Path) -> std::io::Result<()> {
+  if path.is_dir() {
+    return Ok(());
+  }
+  std::fs::create_dir_all(path).map_err(|e| {
+    std::io::Error::new(
+      e.kind(),
+      format!(
+        "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
+      ),
+    )
+  })
 }
 
 #[cfg(test)]
