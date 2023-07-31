@@ -317,13 +317,13 @@ deno_core::extension!(
     "40_testing.js",
     "99_main.js"
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.esm(vec![ExtensionFileSource {
+  customizer = |ext: &mut deno_core::Extension| {
+    ext.esm_files.to_mut().push(ExtensionFileSource {
       specifier: "ext:cli/runtime/js/99_main.js",
       code: ExtensionFileSourceCode::LoadedFromFsDuringSnapshot(
-        std::path::PathBuf::from(deno_runtime::js::PATH_FOR_99_MAIN_JS),
+        deno_runtime::js::PATH_FOR_99_MAIN_JS,
       ),
-    }]);
+    });
   }
 );
 
