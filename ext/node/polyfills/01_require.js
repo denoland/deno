@@ -923,10 +923,8 @@ Module.prototype.require = function (id) {
 // is the actual wrapper function we run the users code in.
 // The only observable difference is that in Deno `arguments.callee` is not
 // null.
-// We pull nodeGlobalThis from arguments, to avoid the name `nodeGlobalThis`
-// being accessible from user code.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, /* nodeGlobalThis */) { const { Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance } = global /* this is nodeGlobalThis */; (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, console, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -992,6 +990,20 @@ Module.prototype._compile = function (content, filename) {
     ops.op_require_break_on_next_statement();
   }
 
+  const {
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
+  } = nodeGlobalThis;
+
   const result = compiledWrapper.call(
     thisValue,
     exports,
@@ -999,7 +1011,17 @@ Module.prototype._compile = function (content, filename) {
     this,
     filename,
     dirname,
-    nodeGlobalThis,
+    Buffer,
+    clearImmediate,
+    clearInterval,
+    clearTimeout,
+    console,
+    global,
+    process,
+    setImmediate,
+    setInterval,
+    setTimeout,
+    performance,
   );
   if (requireDepth === 0) {
     statCache = null;
