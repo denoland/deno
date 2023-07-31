@@ -40,7 +40,7 @@ const {
   Error,
   TypeError,
 } = primordials;
-import { nodeGlobalThis } from "ext:deno_node/00_globals.js";
+import { nodeGlobals } from "ext:deno_node/00_globals.js";
 
 import _httpAgent from "ext:deno_node/_http_agent.mjs";
 import _httpOutgoing from "ext:deno_node/_http_outgoing.ts";
@@ -1002,7 +1002,7 @@ Module.prototype._compile = function (content, filename) {
     setInterval,
     setTimeout,
     performance,
-  } = nodeGlobalThis;
+  } = nodeGlobals;
 
   const result = compiledWrapper.call(
     thisValue,
