@@ -2300,4 +2300,25 @@ mod tests {
       panic!();
     }
   }
+
+  #[tokio::test]
+  async fn request_error() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:9999/";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_test_client();
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+
+    assert!(matches!(result, Ok(FetchOnceResult::RequestError(_))));
+  }
 }
