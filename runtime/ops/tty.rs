@@ -51,6 +51,7 @@ fn get_fd_from_resource(
 ) -> Result<std::os::windows::io::RawHandle, AnyError> {
   use winapi::um::handleapi;
 
+  #[allow(deprecated)]
   let Some(handle) = resource.backing_fd() else {
     return Err(resource_unavailable());
   };
@@ -66,6 +67,7 @@ fn get_fd_from_resource(
 fn get_fd_from_resource(
   resource: Rc<FileResource>,
 ) -> Result<std::os::unix::prelude::RawFd, AnyError> {
+  #[allow(deprecated)]
   match resource.backing_fd() {
     Some(fd) => Ok(fd),
     None => Err(resource_unavailable()),
