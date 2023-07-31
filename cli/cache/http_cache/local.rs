@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use std::time::SystemTime;
 
 use deno_ast::MediaType;
@@ -14,8 +13,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_io::FsError;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -24,9 +21,11 @@ use serde::Serialize;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HeadersMap;
 use crate::util;
-use crate::util::fs::atomic_write_file_with_fs;
+use crate::util::fs::atomic_write_file;
 
 use super::common::base_url_to_filename_parts;
+use super::common::ensure_dir_exists;
+use super::common::read_file_bytes;
 use super::global::GlobalHttpCache;
 use super::global::UrlToFilenameConversionError;
 use super::CachedUrlMetadata;
@@ -36,25 +35,18 @@ use super::HttpCacheItemKey;
 #[derive(Debug)]
 pub struct LocalHttpCache {
   path: PathBuf,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  global_cache: Arc<GlobalHttpCache>,
   manifest: LocalCacheManifest,
+  global_cache: Arc<GlobalHttpCache>,
 }
 
 impl LocalHttpCache {
-  pub fn new(
-    path: PathBuf,
-    global_cache: Arc<GlobalHttpCache>,
-    fs: Arc<dyn deno_fs::FileSystem>,
-  ) -> Self {
+  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache>) -> Self {
     assert!(path.is_absolute());
-    let manifest =
-      LocalCacheManifest::new(path.join("manifest.json"), fs.clone());
+    let manifest = LocalCacheManifest::new(path.join("manifest.json"));
     Self {
       path,
-      fs,
-      global_cache,
       manifest,
+      global_cache,
     }
   }
 
@@ -81,16 +73,8 @@ impl LocalHttpCache {
 
       let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
       // if we're here, then this will be set
-      self.ensure_dir_exists(local_file_path.parent().unwrap())?;
-      atomic_write_file_with_fs(
-        &local_file_path,
-        &cached_bytes,
-        CACHE_PERM,
-        self.fs.as_ref(),
-      )
-      .with_context(|| {
-        format!("Failed saving '{}'", local_file_path.display())
-      })?;
+      ensure_dir_exists(local_file_path.parent().unwrap())?;
+      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
     }
     self.manifest.insert_data(
       url_to_local_sub_path(url, &metadata.headers)?,
@@ -113,29 +97,6 @@ impl LocalHttpCache {
     } else {
       Ok(None)
     }
-  }
-
-  fn read_file_from_fs(&self, path: &Path) -> Result<Option<Vec<u8>>, FsError> {
-    match self.fs.read_file_sync(path) {
-      Ok(s) => Ok(Some(s)),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-      Err(err) => Err(err),
-    }
-  }
-
-  /// Ensures the location of the cache.
-  fn ensure_dir_exists(&self, path: &Path) -> std::io::Result<()> {
-    if path.is_dir() {
-      return Ok(());
-    }
-    self.fs.mkdir_sync(&path, true, CACHE_PERM).map_err(|e| {
-      std::io::Error::new(
-        e.kind(),
-        format!(
-          "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
-        ),
-      )
-    })
   }
 }
 
@@ -177,17 +138,9 @@ impl HttpCache for LocalHttpCache {
       let cache_filepath = self.get_cache_filepath(url, &headers)?;
       // Create parent directory
       let parent_filename = cache_filepath.parent().unwrap();
-      self.ensure_dir_exists(parent_filename)?;
+      ensure_dir_exists(parent_filename)?;
       // Cache content
-      atomic_write_file_with_fs(
-        &cache_filepath,
-        content,
-        CACHE_PERM,
-        self.fs.as_ref(),
-      )
-      .with_context(|| {
-        format!("Failed saving '{}'", cache_filepath.display())
-      })?;
+      util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
     }
 
     let sub_path = url_to_local_sub_path(url, &headers)?;
@@ -212,7 +165,7 @@ impl HttpCache for LocalHttpCache {
           // if it's not a redirect, then it should have a file path
           let cache_filepath =
             self.get_cache_filepath(key.url, &data.headers)?;
-          Ok(self.read_file_from_fs(&cache_filepath)?)
+          Ok(read_file_bytes(&cache_filepath)?)
         }
       }
       None => Ok(None),
@@ -392,21 +345,19 @@ struct SerializedLocalCacheManifestData {
 struct LocalCacheManifest {
   file_path: PathBuf,
   data: RwLock<LocalCacheManifestData>,
-  fs: Arc<dyn deno_fs::FileSystem>,
 }
 
 impl LocalCacheManifest {
-  pub fn new(file_path: PathBuf, fs: Arc<dyn deno_fs::FileSystem>) -> Self {
+  pub fn new(file_path: PathBuf) -> Self {
     // todo: debug log when deserialization fails
-    let serialized: SerializedLocalCacheManifestData = fs
-      .read_file_sync(&file_path)
-      .ok()
-      .and_then(|data| serde_json::from_slice(&data).ok())
-      .unwrap_or_default();
+    let serialized: SerializedLocalCacheManifestData =
+      std::fs::read(&file_path)
+        .ok()
+        .and_then(|data| serde_json::from_slice(&data).ok())
+        .unwrap_or_default();
     Self {
       data: RwLock::new(LocalCacheManifestData { serialized }),
       file_path,
-      fs,
     }
   }
 
@@ -453,13 +404,10 @@ impl LocalCacheManifest {
     };
 
     if has_changed {
-      let _ = atomic_write_file_with_fs(
+      let _ = atomic_write_file(
         &self.file_path,
-        serde_json::to_string_pretty(&data.serialized)
-          .unwrap()
-          .as_bytes(),
+        serde_json::to_string_pretty(&data.serialized).unwrap(),
         CACHE_PERM,
-        self.fs.as_ref(),
       );
     }
   }
@@ -476,11 +424,11 @@ impl LocalCacheManifest {
       }
       let file_path = sub_path.as_path_from_root(folder_path);
       // todo(THIS PR): use fs trait
-      return if let Ok(metadata) = self.fs.stat_sync(&file_path) {
+      return if let Ok(metadata) = file_path.metadata() {
         Some(CachedUrlMetadata {
           headers: Default::default(),
           url: url.to_string(),
-          time: metadata.mtime.map(ms_to_system_time).unwrap_or_else(|| SystemTime::now()),
+          time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
         })
       } else {
         None
@@ -497,21 +445,14 @@ impl LocalCacheManifest {
       }
       None => Cow::Borrowed(&self.file_path),
     };
-    let Ok(metadata) = self.fs.stat_sync(&sub_path) else {
+    let Ok(metadata) = sub_path.metadata() else {
       return None;
     };
 
     Some(CachedUrlMetadata {
       headers,
       url: url.to_string(),
-      time: metadata
-        .mtime
-        .map(ms_to_system_time)
-        .unwrap_or_else(|| SystemTime::now()),
+      time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
     })
   }
-}
-
-fn ms_to_system_time(ms: u64) -> SystemTime {
-  SystemTime::UNIX_EPOCH + Duration::from_millis(ms)
 }
