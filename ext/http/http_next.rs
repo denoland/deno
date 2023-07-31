@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
+use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -139,7 +140,7 @@ pub fn op_http_upgrade_raw(
           let mut http = slab_get(slab_id);
           *http.response() = response;
           http.complete();
-          let mut upgraded = upgrade.await?;
+          let mut upgraded = TokioIo::new(upgrade.await?);
           upgraded.write_all(&bytes).await?;
           break upgraded;
         }
@@ -709,7 +710,7 @@ fn serve_http11_unconditional(
   let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
-    .serve_connection(io, svc);
+    .serve_connection(TokioIo::new(io), svc);
 
   conn.with_upgrades().map_err(AnyError::from)
 }
@@ -718,7 +719,8 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
 ) -> impl Future<Output = Result<(), AnyError>> + 'static {
-  let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
+  let conn =
+    http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
   conn.map_err(AnyError::from)
 }
 
