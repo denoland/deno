@@ -160,7 +160,7 @@ mod priority {
         Err(std::io::Error::last_os_error().into())
       } else {
         let priority_class =
-          if priority < UV_PRIORITY_HIGHEST || priority > PRIORITY_LOW {
+          if priority < PRIORITY_HIGHEST || priority > PRIORITY_LOW {
             return Err(type_error("Invalid priority"));
           } else if priority < PRIORITY_HIGH {
             REALTIME_PRIORITY_CLASS
