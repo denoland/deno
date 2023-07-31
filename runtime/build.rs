@@ -275,14 +275,14 @@ mod startup_snapshot {
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.esm(vec![ExtensionFileSource {
+    esm_entry_point = "ext:runtime_main/js/99_main.js",
+    customizer = |ext: &mut deno_core::Extension| {
+      ext.esm_files.to_mut().push(ExtensionFileSource {
         specifier: "ext:runtime_main/js/99_main.js",
         code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
           include_str!("js/99_main.js"),
         ),
-      }]);
-      ext.esm_entry_point("ext:runtime_main/js/99_main.js");
+      });
     }
   );
 
@@ -290,9 +290,7 @@ mod startup_snapshot {
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.esm_entry_point("ext:runtime/90_deno_ns.js");
-    }
+    esm_entry_point = "ext:runtime/90_deno_ns.js",
   );
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
