@@ -2496,7 +2496,9 @@
       "owning-type-message-port.any.html": false,
       "owning-type-message-port.any.worker.html": false,
       "owning-type.any.html": false,
-      "owning-type.any.worker.html": false
+      "owning-type.any.worker.html": false,
+      "from.any.html": true,
+      "from.any.worker.html": true
     },
     "transform-streams": {
       "backpressure.any.html": true,
@@ -3205,12 +3207,10 @@
     "urlsearchparams-constructor.any.html": true,
     "urlsearchparams-constructor.any.worker.html": true,
     "urlsearchparams-delete.any.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-delete.any.worker.html": [
-      "Changing the query of a URL with an opaque path can impact the path",
-      "Two-argument delete()"
+      "Changing the query of a URL with an opaque path can impact the path"
     ],
     "urlsearchparams-foreach.any.html": true,
     "urlsearchparams-foreach.any.worker.html": true,
@@ -3218,12 +3218,8 @@
     "urlsearchparams-get.any.worker.html": true,
     "urlsearchparams-getall.any.html": true,
     "urlsearchparams-getall.any.worker.html": true,
-    "urlsearchparams-has.any.html": [
-      "Two-argument has()"
-    ],
-    "urlsearchparams-has.any.worker.html": [
-      "Two-argument has()"
-    ],
+    "urlsearchparams-has.any.html": true,
+    "urlsearchparams-has.any.worker.html": true,
     "urlsearchparams-set.any.html": true,
     "urlsearchparams-set.any.worker.html": true,
     "urlsearchparams-size.any.html": true,
@@ -4041,25 +4037,9 @@
         "headers-record.any.worker.html": true,
         "headers-structure.any.worker.html": true,
         "header-setcookie.any.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ],
         "header-setcookie.any.worker.html": [
-          "Headers.prototype.getSetCookie with no headers present",
-          "Headers.prototype.getSetCookie with one header",
-          "Headers.prototype.getSetCookie with one header created from an object",
-          "Headers.prototype.getSetCookie with multiple headers",
-          "Headers.prototype.getSetCookie with an empty header",
-          "Headers.prototype.getSetCookie with two equal headers",
-          "Headers.prototype.getSetCookie ignores set-cookie2 headers",
-          "Headers.prototype.getSetCookie preserves header ordering",
           "Set-Cookie is a forbidden response header"
         ]
       },
@@ -4890,8 +4870,6 @@
         ]
       },
       "idlharness.any.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -4923,8 +4901,6 @@
         "Window interface: operation fetch(RequestInfo, optional RequestInit)"
       ],
       "idlharness.any.worker.html": [
-        "Headers interface: operation getSetCookie()",
-        "Headers interface: new Headers() must inherit property \"getSetCookie()\" with the proper type",
         "Request interface: attribute destination",
         "Request interface: attribute referrer",
         "Request interface: attribute referrerPolicy",
@@ -7253,7 +7229,10 @@
     "remove-own-iframe-during-onerror.window.html": false,
     "remove-own-iframe-during-onerror.window.html?wpt_flags=h2": false,
     "remove-own-iframe-during-onerror.window.html?wss": false,
-    "Create-on-worker-shutdown.any.worker.html": false
+    "Create-on-worker-shutdown.any.worker.html": false,
+    "Create-http-urls.any.html": true,
+    "Create-invalid-urls.any.html": true,
+    "Create-non-absolute-url.any.html": true
   },
   "workers": {
     "Worker-base64.any.worker.html": true,
@@ -7632,18 +7611,8 @@
     "decompression-constructor-error.tentative.any.worker.html": true,
     "decompression-correct-input.tentative.any.html": true,
     "decompression-correct-input.tentative.any.worker.html": true,
-    "decompression-corrupt-input.tentative.any.html": [
-      "truncating the input for 'deflate' should give an error",
-      "trailing junk for 'deflate' should give an error",
-      "format 'deflate' field DATA should be error for 5",
-      "trailing junk for 'gzip' should give an error"
-    ],
-    "decompression-corrupt-input.tentative.any.worker.html": [
-      "truncating the input for 'deflate' should give an error",
-      "trailing junk for 'deflate' should give an error",
-      "format 'deflate' field DATA should be error for 5",
-      "trailing junk for 'gzip' should give an error"
-    ],
+    "decompression-corrupt-input.tentative.any.html": true,
+    "decompression-corrupt-input.tentative.any.worker.html": true,
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,
     "decompression-split-chunk.tentative.any.html": true,

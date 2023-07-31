@@ -69,15 +69,12 @@ import {
   CHAR_VERTICAL_LINE,
   CHAR_ZERO_WIDTH_NOBREAK_SPACE,
 } from "ext:deno_node/path/_constants.ts";
-import * as path from "ext:deno_node/path.ts";
-import { toASCII, toUnicode } from "ext:deno_node/punycode.ts";
+import * as path from "node:path";
+import { toASCII, toUnicode } from "node:punycode";
 import { isWindows, osType } from "ext:deno_node/_util/os.ts";
 import { encodeStr, hexTable } from "ext:deno_node/internal/querystring.ts";
-import querystring from "ext:deno_node/querystring.ts";
-import type {
-  ParsedUrlQuery,
-  ParsedUrlQueryInput,
-} from "ext:deno_node/querystring.ts";
+import querystring from "node:querystring";
+import type { ParsedUrlQuery, ParsedUrlQueryInput } from "node:querystring";
 import { URL, URLSearchParams } from "ext:deno_url/00_url.js";
 
 const forwardSlashRegEx = /\//g;

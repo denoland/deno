@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::task::spawn;
 use deno_core::url::Url;
+use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_fs::FileSystem;
@@ -45,7 +46,12 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<Option<PathBuf>, AnyError>;
+
+  fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
   async fn cache_packages(&self) -> Result<(), AnyError>;
 

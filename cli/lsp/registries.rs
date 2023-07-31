@@ -13,7 +13,6 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
-use crate::cache::DenoDir;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -29,7 +28,6 @@ use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
-use deno_runtime::deno_web::BlobStore;
 use deno_runtime::permissions::PermissionsContainer;
 use log::error;
 use once_cell::sync::Lazy;
@@ -419,18 +417,6 @@ pub struct ModuleRegistry {
   file_fetcher: FileFetcher,
 }
 
-impl Default for ModuleRegistry {
-  fn default() -> Self {
-    // This only gets used when creating the tsc runtime and for testing, and so
-    // it shouldn't ever actually access the DenoDir, so it doesn't support a
-    // custom root.
-    let dir = DenoDir::new(None).unwrap();
-    let location = dir.registries_folder_path();
-    let http_client = Arc::new(HttpClient::new(None, None));
-    Self::new(location, http_client)
-  }
-}
-
 impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     let http_cache = HttpCache::new(location);
@@ -439,7 +425,7 @@ impl ModuleRegistry {
       CacheSetting::RespectHeaders,
       true,
       http_client,
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());

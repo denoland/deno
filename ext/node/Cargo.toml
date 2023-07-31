@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.46.0"
+version = "0.50.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -57,7 +57,6 @@ secp256k1 = { version = "0.27.0", features = ["rand-std"] }
 serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
-sha3 = "0.10.5"
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"

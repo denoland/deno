@@ -54,8 +54,10 @@ const performance:
     nodeTiming: {},
     now: () => shimPerformance.now(),
     timerify: () => notImplemented("timerify from performance"),
-    // deno-lint-ignore no-explicit-any
-    timeOrigin: (shimPerformance as any).timeOrigin,
+    get timeOrigin() {
+      // deno-lint-ignore no-explicit-any
+      return (shimPerformance as any).timeOrigin;
+    },
     markResourceTiming: () => {},
     // @ts-ignore waiting on update in `deno`, but currently this is
     // a circular dependency

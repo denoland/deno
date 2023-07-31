@@ -19,6 +19,7 @@ import {
   MessageEvent,
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
+import { getLocationHref } from "ext:deno_web/12_location.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayBufferPrototype,
@@ -143,9 +144,15 @@ class WebSocket extends EventTarget {
     let wsURL;
 
     try {
-      wsURL = new URL(url);
+      wsURL = new URL(url, getLocationHref());
     } catch (e) {
       throw new DOMException(e.message, "SyntaxError");
+    }
+
+    if (wsURL.protocol === "http:") {
+      wsURL.protocol = "ws:";
+    } else if (wsURL.protocol === "https:") {
+      wsURL.protocol = "wss:";
     }
 
     if (wsURL.protocol !== "ws:" && wsURL.protocol !== "wss:") {
@@ -322,7 +329,12 @@ class WebSocket extends EventTarget {
       throw new DOMException("readyState not OPEN", "InvalidStateError");
     }
 
-    if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
+    if (ArrayBufferIsView(data)) {
+      op_ws_send_binary(this[_rid], data);
+    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
+      // deno-lint-ignore prefer-primordials
+      op_ws_send_binary(this[_rid], new Uint8Array(data));
+    } else if (ObjectPrototypeIsPrototypeOf(BlobPrototype, data)) {
       PromisePrototypeThen(
         // deno-lint-ignore prefer-primordials
         data.slice().arrayBuffer(),
@@ -332,10 +344,6 @@ class WebSocket extends EventTarget {
             new DataView(ab),
           ),
       );
-    } else if (ArrayBufferIsView(data)) {
-      op_ws_send_binary(this[_rid], data);
-    } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, data)) {
-      op_ws_send_binary(this[_rid], data);
     } else {
       const string = String(data);
       op_ws_send_text(

@@ -46,7 +46,7 @@ Deno.test({
   },
 });
 
-function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
+function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
   Deno.test({
     name,
     // https://github.com/denoland/deno/issues/18363
@@ -58,7 +58,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
       try {
         await fn(db);
       } finally {
-        await db.close();
+        db.close();
       }
     },
   });
@@ -1749,4 +1749,10 @@ Deno.test({
       }
     }
   },
+});
+
+dbTest("atomic operation is exposed", (db) => {
+  assert(Deno.AtomicOperation);
+  const ao = db.atomic();
+  assert(ao instanceof Deno.AtomicOperation);
 });

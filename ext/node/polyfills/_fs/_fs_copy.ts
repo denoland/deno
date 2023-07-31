@@ -5,7 +5,7 @@
 
 import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { makeCallback } from "ext:deno_node/_fs/_fs_common.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import {
   getValidatedPath,
   getValidMode,
