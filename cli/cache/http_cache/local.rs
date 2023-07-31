@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_ast::MediaType;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
@@ -74,7 +75,10 @@ impl LocalHttpCache {
       let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
       // if we're here, then this will be set
       ensure_dir_exists(local_file_path.parent().unwrap())?;
-      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
+      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)
+        .with_context(|| {
+          format!("Failed saving '{}'", local_file_path.display())
+        })?;
     }
     self.manifest.insert_data(
       url_to_local_sub_path(url, &metadata.headers)?,
@@ -140,7 +144,9 @@ impl HttpCache for LocalHttpCache {
       let parent_filename = cache_filepath.parent().unwrap();
       ensure_dir_exists(parent_filename)?;
       // Cache content
-      util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
+      atomic_write_file(&cache_filepath, content, CACHE_PERM).with_context(
+        || format!("Failed saving '{}'", cache_filepath.display()),
+      )?;
     }
 
     let sub_path = url_to_local_sub_path(url, &headers)?;
@@ -197,7 +203,6 @@ impl LocalCacheSubPath {
   }
 }
 
-// todo(THIS PR): unit tests
 fn url_to_local_sub_path(
   url: &Url,
   headers: &HeadersMap,
@@ -236,22 +241,30 @@ fn url_to_local_sub_path(
   fn short_hash(data: &str, ext: Option<&str>) -> String {
     // This function is a bit of a balancing act between readability
     // and avoiding collisions.
-    let checksum = util::checksum::gen(&[data.as_bytes()]);
-    let sub = data
-      .to_lowercase()
-      .chars()
-      .map(|c| if FORBIDDEN_CHARS.contains(&c) { 'x' } else { c })
-      .take(20) // keep the paths short because of windows path limit
-      .collect::<String>();
+    let hash = util::checksum::gen(&[data.as_bytes()]);
+    // keep the paths short because of windows path limit
+    const MAX_LENGTH: usize = 20;
+    let mut sub = String::with_capacity(MAX_LENGTH);
+    for c in data.chars().take(MAX_LENGTH) {
+      // don't include the query string (only use it in the hash)
+      if c == '?' {
+        break;
+      }
+      if FORBIDDEN_CHARS.contains(&c) {
+        sub.push('_');
+      } else {
+        sub.extend(c.to_lowercase());
+      }
+    }
     let sub = match ext {
       Some(ext) => sub.strip_suffix(ext).unwrap_or(&sub),
       None => &sub,
     };
     let ext = ext.unwrap_or("");
     if sub.is_empty() {
-      format!("#{}{}", &checksum[..7], ext)
+      format!("#{}{}", &hash[..7], ext)
     } else {
-      format!("#{}_{}{}", &sub, &checksum[..5], ext)
+      format!("#{}_{}{}", &sub, &hash[..5], ext)
     }
   }
 
@@ -423,7 +436,6 @@ impl LocalCacheManifest {
         return None;
       }
       let file_path = sub_path.as_path_from_root(folder_path);
-      // todo(THIS PR): use fs trait
       return if let Ok(metadata) = file_path.metadata() {
         Some(CachedUrlMetadata {
           headers: Default::default(),
@@ -454,5 +466,77 @@ impl LocalCacheManifest {
       url: url.to_string(),
       time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
     })
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn test_url_to_local_sub_path() {
+    run_test(
+      "https://deno.land/x/mod.ts",
+      &[],
+      "https/deno.land/x/mod.ts",
+    );
+    run_test(
+      // capital letter in filename
+      "https://deno.land/x/MOD.ts",
+      &[],
+      "https/deno.land/x/#mod_fa860.ts",
+    );
+    run_test(
+      // query string
+      "https://deno.land/x/mod.ts?testing=1",
+      &[],
+      "https/deno.land/x/#mod_2eb80.ts",
+    );
+    run_test(
+      // capital letter in directory
+      "https://deno.land/OTHER/mod.ts",
+      &[],
+      "https/deno.land/#other_1c55d/mod.ts",
+    );
+    run_test(
+      // under max of 30 chars
+      "https://deno.land/x/012345678901234567890123456.js",
+      &[],
+      "https/deno.land/x/012345678901234567890123456.js",
+    );
+    run_test(
+      // max 30 chars
+      "https://deno.land/x/0123456789012345678901234567.js",
+      &[],
+      "https/deno.land/x/#01234567890123456789_836de.js",
+    );
+    run_test(
+      // forbidden char
+      "https://deno.land/x/mod's.js",
+      &[],
+      "https/deno.land/x/#mod_s_44fc8.js",
+    );
+    run_test(
+      // no extension
+      "https://deno.land/x/mod",
+      &[("content-type", "application/typescript")],
+      "https/deno.land/x/#mod_e55cf.ts",
+    );
+
+    #[track_caller]
+    fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
+      let url = Url::parse(url).unwrap();
+      let headers = headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+      let result = url_to_local_sub_path(&url, &headers).unwrap();
+      let parts = result.parts.join("/");
+      assert_eq!(parts, expected);
+      assert_eq!(
+        result.parts.iter().any(|p| p.starts_with('#')),
+        result.has_hash
+      )
+    }
   }
 }
