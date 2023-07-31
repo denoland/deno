@@ -59,7 +59,6 @@ secp256k1 = { version = "0.27.0", features = ["rand-std"] }
 serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
-sha3 = "0.10.5"
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"

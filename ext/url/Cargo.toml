@@ -16,7 +16,6 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 serde.workspace = true
-serde_repr.workspace = true
 urlpattern = "0.2.0"
 
 [dev-dependencies]
