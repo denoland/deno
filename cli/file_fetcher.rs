@@ -385,6 +385,22 @@ impl FileFetcher {
     let file_fetcher = self.clone();
     // A single pass of fetch either yields code or yields a redirect, server
     // error causes a single retry to avoid crashing hard on intermittent failures.
+
+    async fn handle_request_or_server_error(retried: &mut bool, specifier: &Url, err_str: String) -> Result<(), AnyError> {
+      // Retry once, and bail otherwise.
+      if !*retried {
+        *retried = true;
+        log::warn!("Import '{}' failed: {}. Retrying...", specifier, err_str);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Ok(())
+      } else {
+        Err(generic_error(format!(
+          "Import '{}' failed: {}",
+          specifier, err_str
+        )))
+      }
+    }
+
     async move {
       let mut retried = false;
       let result = loop {
@@ -424,28 +440,12 @@ impl FileFetcher {
             Ok(file)
           }
           FetchOnceResult::RequestError(err) => {
-            // Retry once, and bail otherwise.
-            if !retried {
-              retried = true;
-              continue;
-            } else {
-              Err(generic_error(format!(
-                "Import '{}' failed: {}",
-                specifier, err
-              )))
-            }
+            handle_request_or_server_error(&mut retried, &specifier, err).await?;
+            continue;
           }
           FetchOnceResult::ServerError(status) => {
-            // Retry once, and bail otherwise.
-            if !retried {
-              retried = true;
-              continue;
-            } else {
-              Err(generic_error(format!(
-                "Import '{}' failed: {}",
-                specifier, status
-              )))
-            }
+            handle_request_or_server_error(&mut retried, &specifier, status.to_string()).await?;
+            continue;
           }
         };
         break result;
