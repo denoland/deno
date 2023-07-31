@@ -383,7 +383,8 @@ impl FileFetcher {
     let specifier = specifier.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
-    // A single pass of fetch either yields code or yields a redirect.
+    // A single pass of fetch either yields code or yields a redirect, server
+    // error causes a single retry to avoid crashing hard on intermittent failures.
     async move {
       let mut retried = false;
       let result = loop {
@@ -421,6 +422,18 @@ impl FileFetcher {
             let file =
               file_fetcher.build_remote_file(&specifier, bytes, &headers)?;
             Ok(file)
+          }
+          FetchOnceResult::RequestError(err) => {
+            // Retry once, and bail otherwise.
+            if !retried {
+              retried = true;
+              continue;
+            } else {
+              Err(generic_error(format!(
+                "Import '{}' failed: {}",
+                specifier, err
+              )))
+            }
           }
           FetchOnceResult::ServerError(status) => {
             // Retry once, and bail otherwise.
@@ -589,6 +602,7 @@ enum FetchOnceResult {
   Code(Vec<u8>, HeadersMap),
   NotModified,
   Redirect(Url, HeadersMap),
+  RequestError(String),
   ServerError(StatusCode),
 }
 
@@ -624,7 +638,15 @@ async fn fetch_once<'a>(
     let accepts_val = HeaderValue::from_str(&accept)?;
     request = request.header(ACCEPT, accepts_val);
   }
-  let response = request.send().await?;
+  let response = match request.send().await {
+    Ok(resp) => resp,
+    Err(err) => {
+      if err.is_connect() || err.is_timeout() {
+        return Ok(FetchOnceResult::RequestError(err.to_string()));
+      }
+      return Err(err.into());
+    }
+  };
 
   if response.status() == StatusCode::NOT_MODIFIED {
     return Ok(FetchOnceResult::NotModified);
