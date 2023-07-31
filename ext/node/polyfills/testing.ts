@@ -66,7 +66,7 @@ export const mock = {
     runAll: () => {
       notImplemented("test.mock.timers.runAll");
     },
-  }
+  },
 };
 
 export default {
