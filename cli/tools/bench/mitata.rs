@@ -12,7 +12,14 @@ use std::str::FromStr;
 fn avg_to_iter_per_s(time: f64) -> String {
   let iter_per_s = 1e9 / time;
 
-  let decimals = ((iter_per_s - iter_per_s.floor()) * 10.0).round() as i64;
+  let decimals = {
+    let decs = ((iter_per_s - iter_per_s.floor()) * 10.0).round();
+    if decs == 10.0 {
+      0
+    } else {
+      decs as i64
+    }
+  };
   let integers = iter_per_s.round() as i64;
 
   // Sweet one-liner to separate integer by commas from:
