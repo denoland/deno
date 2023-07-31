@@ -386,7 +386,11 @@ impl FileFetcher {
     // A single pass of fetch either yields code or yields a redirect, server
     // error causes a single retry to avoid crashing hard on intermittent failures.
 
-    async fn handle_request_or_server_error(retried: &mut bool, specifier: &Url, err_str: String) -> Result<(), AnyError> {
+    async fn handle_request_or_server_error(
+      retried: &mut bool,
+      specifier: &Url,
+      err_str: String,
+    ) -> Result<(), AnyError> {
       // Retry once, and bail otherwise.
       if !*retried {
         *retried = true;
@@ -440,11 +444,17 @@ impl FileFetcher {
             Ok(file)
           }
           FetchOnceResult::RequestError(err) => {
-            handle_request_or_server_error(&mut retried, &specifier, err).await?;
+            handle_request_or_server_error(&mut retried, &specifier, err)
+              .await?;
             continue;
           }
           FetchOnceResult::ServerError(status) => {
-            handle_request_or_server_error(&mut retried, &specifier, status.to_string()).await?;
+            handle_request_or_server_error(
+              &mut retried,
+              &specifier,
+              status.to_string(),
+            )
+            .await?;
             continue;
           }
         };
