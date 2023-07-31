@@ -102,7 +102,7 @@ itest!(_017_import_redirect_check {
 });
 
 itest!(_017_import_redirect_remote_modules_dir {
-  args: "run --quiet --reload --remote-modules-dir --check run/017_import_redirect.ts",
+  args: "run --quiet --reload --remote-modules-dir --check $TESTDATA/run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
   temp_cwd: true,
 });
@@ -162,6 +162,14 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
+itest!(_027_redirect_typescript_remote_modules_dir {
+  args:
+    "run --quiet --reload --remote-modules-dir $TESTDATA/run/027_redirect_typescript.ts",
+  output: "run/027_redirect_typescript.ts.out",
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
@@ -190,6 +198,14 @@ itest!(_033_import_map_remote {
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
+});
+
+itest!(_033_import_map_remote_modules_dir_remote {
+  args:
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --remote-modules-dir --unstable $TESTDATA/import_maps/test_remote.ts",
+  output: "run/033_import_map_remote.out",
+  http_server: true,
+  temp_cwd: true,
 });
 
 itest!(_033_import_map_data_uri {
@@ -1659,6 +1675,13 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
+itest!(jsx_import_source_pragma_with_config_remote_modules_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --remote-modules-dir $TESTDATA/run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(jsx_import_source_no_pragma_no_check {
   args:
     "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
@@ -1708,6 +1731,13 @@ itest!(references_types_remote {
 itest!(reference_types_error {
   args:
     "run --config run/checkjs.tsconfig.json --check run/reference_types_error.js",
+  output: "run/reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_remote_modules_dir {
+  args:
+    "run --config run/checkjs.tsconfig.json --check --remote-modules-dir $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
