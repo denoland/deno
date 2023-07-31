@@ -390,7 +390,7 @@ impl FileFetcher {
       // Retry once, and bail otherwise.
       if !*retried {
         *retried = true;
-        log::warn!("Import '{}' failed: {}. Retrying...", specifier, err_str);
+        log::debug!("Import '{}' failed: {}. Retrying...", specifier, err_str);
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         Ok(())
       } else {
