@@ -1166,7 +1166,7 @@ dependencies = [
  "http",
  "httparse",
  "hyper 0.14.26",
- "hyper 1.0.0-rc.3",
+ "hyper 1.0.0-rc.4",
  "memmem",
  "mime",
  "once_cell",
@@ -2530,13 +2530,12 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b75264b2003a3913f118d35c586e535293b3e22e41f074930762929d071e092"
+checksum = "d280a71f348bcc670fc55b02b63c53a04ac0bf2daff2980795aeaf53edae10e6"
 dependencies = [
  "bytes",
  "futures-channel",
- "futures-core",
  "futures-util",
  "h2",
  "http",
