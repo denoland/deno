@@ -6,7 +6,7 @@ Deno.openKv;
     'open' is declared here.
       export function open(
                       ~~~~
-        at asset:///lib.deno.ns.d.ts:1667:19
+        at asset:///lib.deno.ns.d.ts:[WILDCARD]:19
 
 TS2339 [ERROR]: Property 'createHttpClient' does not exist on type 'typeof Deno'. 'Deno.createHttpClient' is an unstable API. Did you forget to run with the '--unstable' flag? If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to your entrypoint: /// <reference lib="deno.unstable" />
 Deno.createHttpClient;

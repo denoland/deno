@@ -1,5 +1,4 @@
 {
-  "incremental": true,
   "typescript": {
     "deno": true
   },
@@ -10,14 +9,16 @@
     "deno": true
   },
   "exec": {
-    "associations": "**/*.rs",
-    "rustfmt": "rustfmt --config imports_granularity=item"
+    "commands": [{
+      "command": "rustfmt --config imports_granularity=item",
+      "exts": ["rs"]
+    }]
   },
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
-    "cli/bench/testdata/npm/*",
+    "cli/bench/testdata/npm/",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.decorators*.d.ts",
@@ -31,13 +32,13 @@
     "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
-    "cli/tests/testdata/fmt/*",
-    "cli/tests/testdata/lint/glob/*",
-    "cli/tests/testdata/test/glob/*",
+    "cli/tests/testdata/fmt/",
+    "cli/tests/testdata/lint/glob/",
+    "cli/tests/testdata/test/glob/",
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
     "cli/tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "cli/tests/testdata/run/inline_js_source_map*",
-    "cli/tests/testdata/malformed_config/*",
+    "cli/tests/testdata/malformed_config/",
     "cli/tests/testdata/npm/registry/",
     "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
@@ -58,6 +59,6 @@
     "https://plugins.dprint.dev/json-0.17.4.wasm",
     "https://plugins.dprint.dev/markdown-0.15.3.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
-    "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
+    "https://plugins.dprint.dev/exec-0.4.2.json@ca3c3d1cc1105b4ac1c31afdb26791a90209f13a5950f8de00dcab5e5ee293a7"
   ]
 }
