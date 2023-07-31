@@ -187,6 +187,7 @@ export class ClientHttp2Session extends Http2Session {
 
     const client = createHttpClient({ http1: false, http2: true });
     request.client = client;
+    console.log("request", request);
     const fetchPromise = fetch(`http://${authority}${path}`, request);
     const readerPromise = deferred();
     const headersPromise = deferred();
@@ -267,6 +268,8 @@ export class Http2Stream extends EventEmitter {
       callback?.();
     })();
   }
+
+  setEncoding(_encoding) {}
 
   resume() {
   }
