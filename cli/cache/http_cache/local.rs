@@ -269,7 +269,7 @@ fn url_to_local_sub_path(
   }
 
   fn should_hash_part(part: &str, is_last: bool) -> bool {
-    if part.len() > 30 {
+    if part.is_empty() || part.len() > 30 {
       // keep short due to windows path limit
       return true;
     }
@@ -294,7 +294,11 @@ fn url_to_local_sub_path(
   };
 
   // first, try to get the filename of the path
-  let path_segments = url.path_segments().unwrap();
+  let path_segments = url
+    .path()
+    .strip_prefix('/')
+    .unwrap_or(url.path())
+    .split('/');
   let mut parts = base_parts
     .into_iter()
     .chain(path_segments.map(|s| s.to_string()))
@@ -533,6 +537,12 @@ mod test {
       "https://deno.land/x/mod.js/mod.js",
       &[],
       "https/deno.land/x/#mod.js_59c58/mod.js",
+    );
+    run_test(
+      // slash slash in path
+      "https://localhost//mod.js",
+      &[],
+      "https/localhost/#e3b0c44/mod.js",
     );
 
     #[track_caller]
