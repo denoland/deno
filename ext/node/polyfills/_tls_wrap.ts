@@ -19,6 +19,7 @@ import {
   constants as TCPConstants,
   TCP,
 } from "ext:deno_node/internal_binding/tcp_wrap.ts";
+import { kHandle } from "ext:deno_node/internal/stream_base_commons.ts";
 import {
   constants as PipeConstants,
   Pipe,
@@ -162,6 +163,7 @@ export class TLSSocket extends net.Socket {
   }
 
   _start() {
+    this[kHandle].afterConnect();
   }
 
   _tlsError(err: Error) {
