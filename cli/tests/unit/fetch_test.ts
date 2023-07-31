@@ -1909,7 +1909,7 @@ Deno.test(
   // https://github.com/denoland/deno/issues/18350
   { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchRequestBodyErrorCatchable() {
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 4514 });
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: listenPort });
     const server = (async () => {
       const conn = await listener.accept();
       listener.close();
@@ -1936,7 +1936,7 @@ Deno.test(
     });
 
     const err = await assertRejects(() =>
-      fetch("http://localhost:4514", {
+      fetch(`http://localhost:${listenPort}/`, {
         body: stream,
         method: "POST",
       })
