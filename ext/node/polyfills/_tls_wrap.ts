@@ -71,7 +71,7 @@ export class TLSSocket extends net.Socket {
   [kPendingSession]: any;
   [kConnectOptions]: any;
   ssl: any;
-  _start: any;
+
   constructor(socket: any, opts: any = kEmptyObject) {
     const tlsOptions = { ...opts };
 
@@ -159,6 +159,9 @@ export class TLSSocket extends net.Socket {
 
       return handle;
     }
+  }
+
+  _start() {
   }
 
   _tlsError(err: Error) {
