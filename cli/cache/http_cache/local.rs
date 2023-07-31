@@ -522,6 +522,13 @@ mod test {
       &[("content-type", "application/typescript")],
       "https/deno.land/x/#mod_e55cf.ts",
     );
+    run_test(
+      // known extension in directory is not allowed
+      // because it could conflict with a file of the same name
+      "https://deno.land/x/mod.js/mod.js",
+      &[],
+      "https/deno.land/x/#mod.js_59c58/mod.js",
+    );
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
