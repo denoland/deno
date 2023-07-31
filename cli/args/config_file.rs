@@ -28,10 +28,20 @@ use std::path::PathBuf;
 pub type MaybeImportsResult =
   Result<Vec<deno_graph::ReferrerImports>, AnyError>;
 
-#[derive(Hash)]
+#[derive(Debug, Clone, Hash)]
 pub struct JsxImportSourceConfig {
   pub default_specifier: Option<String>,
   pub module: String,
+  pub base_url: ModuleSpecifier,
+}
+
+impl JsxImportSourceConfig {
+  pub fn maybe_specifier_text(&self) -> Option<String> {
+    self
+      .default_specifier
+      .as_ref()
+      .map(|default_specifier| format!("{}/{}", default_specifier, self.module))
+  }
 }
 
 /// The transpile options that are significant out of a user provided tsconfig
@@ -1023,19 +1033,37 @@ impl ConfigFile {
   /// JSX import source configuration.
   pub fn to_maybe_jsx_import_source_config(
     &self,
-  ) -> Option<JsxImportSourceConfig> {
-    let compiler_options_value = self.json.compiler_options.as_ref()?;
-    let compiler_options: CompilerOptions =
-      serde_json::from_value(compiler_options_value.clone()).ok()?;
-    let module = match compiler_options.jsx.as_deref() {
-      Some("react-jsx") => Some("jsx-runtime".to_string()),
-      Some("react-jsxdev") => Some("jsx-dev-runtime".to_string()),
-      _ => None,
+  ) -> Result<Option<JsxImportSourceConfig>, AnyError> {
+    let Some(compiler_options_value) = self.json.compiler_options.as_ref() else {
+      return Ok(None);
     };
-    module.map(|module| JsxImportSourceConfig {
+    let Some(compiler_options) =
+      serde_json::from_value::<CompilerOptions>(compiler_options_value.clone()).ok() else {
+        return Ok(None);
+      };
+    let module = match compiler_options.jsx.as_deref() {
+      Some("react-jsx") => "jsx-runtime".to_string(),
+      Some("react-jsxdev") => "jsx-dev-runtime".to_string(),
+      Some("react") | None => {
+        if compiler_options.jsx_import_source.is_some() {
+          bail!(
+            "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n  at {}",
+            self.specifier,
+          );
+        }
+        return Ok(None);
+      }
+      Some(setting) => bail!(
+        "Unsupported 'jsx' compiler option value '{}'. Supported: 'react-jsx', 'react-jsxdev', 'react'\n  at {}",
+        setting,
+        self.specifier,
+      ),
+    };
+    Ok(Some(JsxImportSourceConfig {
       default_specifier: compiler_options.jsx_import_source,
       module,
-    })
+      base_url: self.specifier.clone(),
+    }))
   }
 
   pub fn resolve_tasks_config(
@@ -1596,6 +1624,59 @@ mod tests {
       ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
     // Emit error: config file JSON "<config_path>" should be an object
     assert!(ConfigFile::new(config_text, config_specifier).is_err());
+  }
+
+  #[test]
+  fn test_jsx_invalid_setting() {
+    let config_text = r#"{ "compilerOptions": { "jsx": "preserve" } }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    let config = ConfigFile::new(config_text, config_specifier).unwrap();
+    assert_eq!(
+      config.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
+      concat!(
+        "Unsupported 'jsx' compiler option value 'preserve'. Supported: 'react-jsx', 'react-jsxdev', 'react'\n",
+        "  at file:///deno/tsconfig.json",
+      ),
+    );
+  }
+
+  #[test]
+  fn test_jsx_import_source_only() {
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    {
+      let config_text =
+        r#"{ "compilerOptions": { "jsxImportSource": "test" } }"#;
+      let config =
+        ConfigFile::new(config_text, config_specifier.clone()).unwrap();
+      assert_eq!(
+        config.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
+        concat!(
+          "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+          "  at file:///deno/tsconfig.json",
+        ),
+      );
+    }
+    {
+      let config_text = r#"{ "compilerOptions": { "jsx": "react", "jsxImportSource": "test" } }"#;
+      let config = ConfigFile::new(config_text, config_specifier).unwrap();
+      assert_eq!(
+        config.to_maybe_jsx_import_source_config().err().unwrap().to_string(),
+        concat!(
+          "'jsxImportSource' is only supported when 'jsx' is set to 'react-jsx' or 'react-jsxdev'.\n",
+          "  at file:///deno/tsconfig.json",
+        ),
+      );
+    }
+  }
+
+  #[test]
+  fn test_jsx_import_source_valid() {
+    let config_text = r#"{ "compilerOptions": { "jsx": "react" } }"#;
+    let config_specifier =
+      ModuleSpecifier::parse("file:///deno/tsconfig.json").unwrap();
+    assert!(ConfigFile::new(config_text, config_specifier).is_ok());
   }
 
   #[test]

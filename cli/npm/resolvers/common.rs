@@ -46,12 +46,12 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<Option<PathBuf>, AnyError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<NpmPackageCacheFolderId, AnyError>;
+  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError>;
 
   async fn cache_packages(&self) -> Result<(), AnyError>;
 

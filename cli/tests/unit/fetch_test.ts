@@ -1569,6 +1569,25 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function createHttpClientAllowHost() {
+    const client = Deno.createHttpClient({
+      allowHost: true,
+    });
+    const res = await fetch("http://localhost:4545/echo_server", {
+      headers: {
+        "host": "example.com",
+      },
+      client,
+    });
+    assert(res.ok);
+    assertEquals(res.headers.get("host"), "example.com");
+    await res.body?.cancel();
+    client.close();
+  },
+);
+
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));

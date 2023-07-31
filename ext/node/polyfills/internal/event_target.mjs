@@ -10,10 +10,16 @@ import {
   ERR_INVALID_THIS,
   ERR_MISSING_ARGS,
 } from "ext:deno_node/internal/errors.ts";
-import { validateObject, validateString } from "ext:deno_node/internal/validators.mjs";
+import {
+  validateObject,
+  validateString,
+} from "ext:deno_node/internal/validators.mjs";
 import { emitWarning } from "node:process";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
-import { Event as WebEvent, EventTarget as WebEventTarget } from "ext:deno_web/02_event.js";
+import {
+  Event as WebEvent,
+  EventTarget as WebEventTarget,
+} from "ext:deno_web/02_event.js";
 
 import {
   customInspectSymbol,

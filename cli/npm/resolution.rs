@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -249,6 +250,10 @@ impl NpmResolution {
     Ok(nv)
   }
 
+  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+    self.snapshot.read().package_reqs().clone()
+  }
+
   pub fn all_system_packages(
     &self,
     system_info: &NpmSystemInfo,
@@ -303,45 +308,44 @@ async fn add_package_reqs_to_snapshot(
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
   let snapshot = get_new_snapshot();
-  if !snapshot.has_pending()
+  let snapshot = if !snapshot.has_pending()
     && package_reqs
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
     log::debug!("Snapshot already up to date. Skipping pending resolution.");
-    return Ok(snapshot);
-  }
+    snapshot
+  } else {
+    let pending_resolver = get_npm_pending_resolver(api);
+    let result = pending_resolver
+      .resolve_pending(snapshot, package_reqs)
+      .await;
+    api.clear_memory_cache();
+    match result {
+      Ok(snapshot) => snapshot,
+      Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+        log::debug!("{err:#}");
+        log::debug!("npm resolution failed. Trying again...");
 
-  let pending_resolver = get_npm_pending_resolver(api);
-  let result = pending_resolver
-    .resolve_pending(snapshot, package_reqs)
-    .await;
-  api.clear_memory_cache();
-  let snapshot = match result {
-    Ok(snapshot) => snapshot,
-    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
-      log::debug!("{err:#}");
-      log::debug!("npm resolution failed. Trying again...");
-
-      // try again
-      let snapshot = get_new_snapshot();
-      let result = pending_resolver
-        .resolve_pending(snapshot, package_reqs)
-        .await;
-      api.clear_memory_cache();
-      // now surface the result after clearing the cache
-      result?
+        // try again
+        let snapshot = get_new_snapshot();
+        let result = pending_resolver
+          .resolve_pending(snapshot, package_reqs)
+          .await;
+        api.clear_memory_cache();
+        // now surface the result after clearing the cache
+        result?
+      }
+      Err(err) => return Err(err.into()),
     }
-    Err(err) => return Err(err.into()),
   };
 
   if let Some(lockfile_mutex) = maybe_lockfile {
     let mut lockfile = lockfile_mutex.lock();
     populate_lockfile_from_snapshot(&mut lockfile, &snapshot)?;
-    Ok(snapshot)
-  } else {
-    Ok(snapshot)
   }
+
+  Ok(snapshot)
 }
 
 fn get_npm_pending_resolver(
@@ -353,7 +357,7 @@ fn get_npm_pending_resolver(
       // WARNING: When bumping this version, check if anything needs to be
       // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
       types_node_version_req: Some(
-        VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
+        VersionReq::parse_from_npm("18.0.0 - 18.16.19").unwrap(),
       ),
     },
   )

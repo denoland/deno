@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.123.0"
+version = "0.127.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,7 +18,6 @@ aes.workspace = true
 aes-gcm = "0.10"
 aes-kw = { version = "0.2.1", features = ["alloc"] }
 base64.workspace = true
-block-modes = "0.9.1"
 cbc.workspace = true
 const-oid = "0.9.0"
 ctr = "0.9.1"

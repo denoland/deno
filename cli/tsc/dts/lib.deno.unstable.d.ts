@@ -837,6 +837,11 @@ declare namespace Deno {
      * @default {true}
      */
     http2?: boolean;
+    /** Whether setting the host header is allowed or not.
+     *
+     * @default {false}
+     */
+    allowHost?: boolean;
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1132,13 +1137,6 @@ declare namespace Deno {
      * PEM formatted (RSA or PKCS8) private key of client certificate.
      */
     privateKey?: string;
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Application-Layer Protocol Negotiation (ALPN) protocols supported by
-     * the client. If not specified, no ALPN extension will be included in the
-     * TLS handshake.
-     */
-    alpnProtocols?: string[];
   }
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -1187,34 +1185,6 @@ declare namespace Deno {
    * @category Network
    */
   export function connectTls(options: ConnectTlsOptions): Promise<TlsConn>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Network
-   */
-  export interface ListenTlsOptions {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
-     * the client. If not specified, no ALPN extension will be included in the
-     * TLS handshake.
-     */
-    alpnProtocols?: string[];
-  }
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * @category Network
-   */
-  export interface StartTlsOptions {
-    /** **UNSTABLE**: New API, yet to be vetted.
-     *
-     * Application-Layer Protocol Negotiation (ALPN) protocols to announce to
-     * the client. If not specified, no ALPN extension will be included in the
-     * TLS handshake.
-     */
-    alpnProtocols?: string[];
-  }
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
