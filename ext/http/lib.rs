@@ -50,6 +50,7 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
+use hyper_util_tokioio::TokioIo;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -76,6 +77,7 @@ use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
 mod http_next;
+mod hyper_util_tokioio;
 mod network_buffered_stream;
 mod reader_stream;
 mod request_body;
@@ -1061,8 +1063,9 @@ impl CanDowncastUpgrade for hyper1::upgrade::Upgraded {
   fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
     self,
   ) -> Result<(T, Bytes), Self> {
-    let hyper1::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
-    Ok((io, read_buf))
+    let hyper1::upgrade::Parts { io, read_buf, .. } =
+      self.downcast::<TokioIo<T>>()?;
+    Ok((io.into_inner(), read_buf))
   }
 }
 
