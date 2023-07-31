@@ -3,13 +3,12 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::fs;
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
@@ -20,6 +19,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::cache::CACHE_PERM;
+use crate::http_util::HeadersMap;
 use crate::util;
 use crate::util::fs::atomic_write_file;
 
@@ -50,49 +50,53 @@ impl LocalHttpCache {
     }
   }
 
-  fn get_cache_filepath(&self, url: &Url) -> Result<PathBuf, AnyError> {
-    Ok(url_to_local_sub_path(url)?.as_path_from_root(&self.path))
-  }
-
-  fn get_cache_filepath_from_key<'a>(
+  fn get_cache_filepath(
     &self,
-    key: &'a HttpCacheItemKey,
-  ) -> Result<Cow<'a, PathBuf>, AnyError> {
-    match &key.file_path {
-      Some(path) => Ok(Cow::Borrowed(path)),
-      None => Ok(Cow::Owned(self.get_cache_filepath(key.url)?)),
-    }
+    url: &Url,
+    headers: &HeadersMap,
+  ) -> Result<PathBuf, AnyError> {
+    Ok(url_to_local_sub_path(url, headers)?.as_path_from_root(&self.path))
   }
 
   /// Copies the file from the global cache to the local cache returning
   /// if the data was successfully copied to the local cache.
-  fn check_copy_global_to_local(
-    &self,
-    local_key: &HttpCacheItemKey,
-  ) -> Result<bool, AnyError> {
-    let global_key = self.global_cache.cache_item_key(local_key.url)?;
-    let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
-      return Ok(false);
-    };
-
+  fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
+    let global_key = self.global_cache.cache_item_key(url)?;
     let Some(metadata) = self.global_cache.read_metadata(&global_key)? else {
       return Ok(false);
     };
 
-    let is_redirect = metadata.headers.contains_key("location");
-    if !is_redirect {
-      let local_file_path = self.get_cache_filepath_from_key(local_key)?;
+    if !metadata.is_redirect() {
+      let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
+        return Ok(false);
+      };
+
+      let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
       // if we're here, then this will be set
       ensure_dir_exists(local_file_path.parent().unwrap())?;
       atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
     }
     self.manifest.insert_data(
-      url_to_local_sub_path(local_key.url)?,
-      local_key.url.clone(),
+      url_to_local_sub_path(url, &metadata.headers)?,
+      url.clone(),
       metadata.headers,
     );
 
     Ok(true)
+  }
+
+  fn get_url_metadata_checking_global_cache(
+    &self,
+    url: &Url,
+  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    if let Some(metadata) = self.manifest.get_metadata(url) {
+      Ok(Some(metadata))
+    } else if self.check_copy_global_to_local(url)? {
+      // try again now that it's saved
+      Ok(self.manifest.get_metadata(url))
+    } else {
+      Ok(None)
+    }
   }
 }
 
@@ -101,51 +105,26 @@ impl HttpCache for LocalHttpCache {
     &self,
     url: &'a Url,
   ) -> Result<HttpCacheItemKey<'a>, AnyError> {
-    let file_path = if self.manifest.has_redirect(url) {
-      None // won't have a filepath
-    } else {
-      Some(self.get_cache_filepath(url)?)
-    };
-
     Ok(HttpCacheItemKey {
       #[cfg(debug_assertions)]
       is_local_key: true,
       url,
-      file_path,
+      file_path: None, // need to compute this every time
     })
   }
 
   fn contains(&self, url: &Url) -> bool {
-    if self.manifest.has_redirect(url) {
-      return true; // won't have a filepath
-    }
-
-    let Ok(cache_filepath) = self.get_cache_filepath(url) else {
-      return false
-    };
-    cache_filepath.is_file()
+    self.manifest.get_metadata(url).is_some()
   }
 
   fn read_modified_time(
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
-    let file_path = if self.manifest.has_redirect(key.url) {
-      Cow::Borrowed(&self.manifest.file_path)
-    } else {
-      self.get_cache_filepath_from_key(key)?
-    };
-    match fs::metadata(&*file_path) {
-      Ok(metadata) => Ok(Some(metadata.modified()?)),
-      Err(err) if err.kind() == io::ErrorKind::NotFound => {
-        if self.check_copy_global_to_local(key)? {
-          // try again now that it's saved
-          return self.read_modified_time(key);
-        }
-        Ok(None)
-      }
-      Err(err) => Err(err.into()),
-    }
+    debug_assert!(key.is_local_key);
+    self
+      .get_url_metadata_checking_global_cache(key.url)
+      .map(|m| m.map(|m| m.time))
   }
 
   fn set(
@@ -156,7 +135,7 @@ impl HttpCache for LocalHttpCache {
   ) -> Result<(), AnyError> {
     let is_redirect = headers.contains_key("location");
     if !is_redirect {
-      let cache_filepath = self.get_cache_filepath(url)?;
+      let cache_filepath = self.get_cache_filepath(url, &headers)?;
       // Create parent directory
       let parent_filename = cache_filepath.parent().unwrap();
       ensure_dir_exists(parent_filename)?;
@@ -164,7 +143,7 @@ impl HttpCache for LocalHttpCache {
       util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
     }
 
-    let sub_path = url_to_local_sub_path(url)?;
+    let sub_path = url_to_local_sub_path(url, &headers)?;
     self.manifest.insert_data(sub_path, url.clone(), headers);
 
     Ok(())
@@ -176,27 +155,20 @@ impl HttpCache for LocalHttpCache {
   ) -> Result<Option<Vec<u8>>, AnyError> {
     debug_assert!(key.is_local_key);
 
-    let cache_filepath = match key.file_path.as_ref() {
-      Some(file_path) => file_path,
-      // if it's None then it's a redirect, so empty file
-      None => return Ok(Some(Vec::new())),
-    };
-
-    if self.manifest.has_redirect(key.url) {
-      // redirect, so empty file
-      return Ok(Some(Vec::new()));
-    }
-
-    match read_file_bytes(cache_filepath)? {
-      Some(bytes) => Ok(Some(bytes)),
-      None => {
-        if self.check_copy_global_to_local(key)? {
-          // try again now that it's saved
-          self.read_file_bytes(key)
+    let metadata = self.get_url_metadata_checking_global_cache(key.url)?;
+    match metadata {
+      Some(data) => {
+        if data.is_redirect() {
+          // return back an empty file for redirect
+          Ok(Some(Vec::new()))
         } else {
-          Ok(None)
+          // if it's not a redirect, then it should have a file path
+          let cache_filepath =
+            self.get_cache_filepath(key.url, &data.headers)?;
+          Ok(read_file_bytes(&cache_filepath)?)
         }
       }
+      None => Ok(None),
     }
   }
 
@@ -206,14 +178,7 @@ impl HttpCache for LocalHttpCache {
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
     debug_assert!(key.is_local_key);
 
-    if let Some(metadata) = self.manifest.get_metadata(key.url) {
-      Ok(Some(metadata))
-    } else if self.check_copy_global_to_local(key)? {
-      // try again now that it's saved
-      Ok(self.manifest.get_metadata(key.url))
-    } else {
-      Ok(None)
-    }
+    self.get_url_metadata_checking_global_cache(key.url)
   }
 }
 
@@ -235,6 +200,7 @@ impl LocalCacheSubPath {
 // todo(THIS PR): unit tests
 fn url_to_local_sub_path(
   url: &Url,
+  headers: &HeadersMap,
 ) -> Result<LocalCacheSubPath, UrlToFilenameConversionError> {
   // https://stackoverflow.com/a/31976060/188246
   static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
@@ -263,7 +229,11 @@ fn url_to_local_sub_path(
       || path.ends_with(".wasm")
   }
 
-  fn short_hash(data: &str) -> String {
+  fn get_extension(url: &Url, headers: &HeadersMap) -> &'static str {
+    MediaType::from_specifier_and_headers(url, Some(headers)).as_ts_extension()
+  }
+
+  fn short_hash(data: &str, ext: Option<&str>) -> String {
     // This function is a bit of a balancing act between readability
     // and avoiding collisions.
     let checksum = util::checksum::gen(&[data.as_bytes()]);
@@ -273,10 +243,15 @@ fn url_to_local_sub_path(
       .map(|c| if FORBIDDEN_CHARS.contains(&c) { 'x' } else { c })
       .take(20) // keep the paths short because of windows path limit
       .collect::<String>();
+    let sub = match ext {
+      Some(ext) => sub.strip_suffix(ext).unwrap_or(&sub),
+      None => &sub,
+    };
+    let ext = ext.unwrap_or("");
     if sub.is_empty() {
-      format!("#{}", &checksum[..7])
+      format!("#{}{}", &checksum[..7], ext)
     } else {
-      format!("#{}_{}", &sub, &checksum[..5])
+      format!("#{}_{}{}", &sub, &checksum[..5], ext)
     }
   }
 
@@ -328,7 +303,14 @@ fn url_to_local_sub_path(
       let is_last = i == parts_len - 1;
       if should_hash_part(&part, is_last) {
         has_hash = true;
-        short_hash(&part)
+        short_hash(
+          &part,
+          if is_last {
+            Some(get_extension(url, headers))
+          } else {
+            None
+          },
+        )
       } else {
         part
       }
@@ -377,13 +359,6 @@ impl LocalCacheManifest {
       data: RwLock::new(LocalCacheManifestData { serialized }),
       file_path,
     }
-  }
-
-  pub fn has_redirect(&self, url: &Url) -> bool {
-    self
-      .get_metadata(url)
-      .map(|m| m.headers.contains_key("location"))
-      .unwrap_or(false)
   }
 
   pub fn insert_data(
@@ -441,17 +416,19 @@ impl LocalCacheManifest {
     let data = self.data.read();
     let Some(module) = data.serialized.modules.get(url) else {
       let folder_path = self.file_path.parent().unwrap();
-      let sub_path = url_to_local_sub_path(url).ok()?;
+      let sub_path = url_to_local_sub_path(url, &Default::default()).ok()?;
       if sub_path.has_hash {
+        // only paths without a hash are considered as in the cache
+        // when they don't have a metadata entry
         return None;
       }
       let file_path = sub_path.as_path_from_root(folder_path);
       // todo(THIS PR): use fs trait
-      return if file_path.exists() {
+      return if let Ok(metadata) = file_path.metadata() {
         Some(CachedUrlMetadata {
           headers: Default::default(),
           url: url.to_string(),
-          time: SystemTime::now(),
+          time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
         })
       } else {
         None
@@ -462,10 +439,20 @@ impl LocalCacheManifest {
       .iter()
       .map(|(k, v)| (k.to_string(), v.to_string()))
       .collect::<HashMap<_, _>>();
+    let sub_path = match &module.path {
+      Some(sub_path) => {
+        Cow::Owned(self.file_path.parent().unwrap().join(sub_path))
+      }
+      None => Cow::Borrowed(&self.file_path),
+    };
+    let Ok(metadata) = sub_path.metadata() else {
+      return None;
+    };
+
     Some(CachedUrlMetadata {
       headers,
       url: url.to_string(),
-      time: SystemTime::now(),
+      time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
     })
   }
 }

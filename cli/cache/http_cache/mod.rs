@@ -26,6 +26,12 @@ pub struct CachedUrlMetadata {
   pub time: SystemTime,
 }
 
+impl CachedUrlMetadata {
+  pub fn is_redirect(&self) -> bool {
+    self.headers.contains_key("location")
+  }
+}
+
 /// Computed cache key, which can help reduce the work of computing the cache key multiple times.
 pub struct HttpCacheItemKey<'a> {
   // The key is specific to the implementation of HttpCache,
@@ -36,12 +42,8 @@ pub struct HttpCacheItemKey<'a> {
   pub(super) is_local_key: bool,
   pub(super) url: &'a Url,
   /// This will be set all the time for the global cache, but it
-  /// may not be set for the local cache if it's a redirect.
-  ///
-  /// That/ said, even redirects might have this set if they haven't
-  /// previously been cached, so the local cache code should never assume
-  /// that it being set means it's not a redirect, but it can assume
-  /// that it not being set means it's a redirect.
+  /// won't ever be set for the local cache because that also needs
+  /// header information to determine the final path.
   pub(super) file_path: Option<PathBuf>,
 }
 

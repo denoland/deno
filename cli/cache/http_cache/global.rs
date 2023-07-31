@@ -129,6 +129,8 @@ impl HttpCache for GlobalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
+    debug_assert!(!key.is_local_key);
+
     match std::fs::metadata(self.key_file_path(key)) {
       Ok(metadata) => Ok(Some(metadata.modified()?)),
       Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(None),
