@@ -130,22 +130,25 @@ function prepareOptions(name, options, fn, overrides) {
   return { fn, options: finalOptions, name };
 }
 
-function prepareDenoTest(name, options, fn, overrides) {
-  const prepared = prepareOptions(name, options, fn, overrides);
-
-  const promise = deferred();
-  const wrappedFn = async (t) => {
+function wrapTestFn(fn, promise) {
+  return async function (t) {
     const nodeTestContext = new NodeTestContext(t);
     try {
-      await prepared.fn(nodeTestContext);
+      await fn(nodeTestContext);
     } finally {
       promise.resolve(undefined);
     }
   };
+}
+
+function prepareDenoTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+
+  const promise = deferred();
 
   const denoTestOptions = {
     name: prepared.name,
-    fn: wrappedFn,
+    fn: wrapTestFn(prepared.fn, promise),
     only: prepared.options.only,
     ignore: prepared.options.todo || prepared.options.skip,
   };

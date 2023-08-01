@@ -5,141 +5,136 @@ Warning: Not implemented: test.options.timeout
 Warning: Not implemented: test.options.timeout
 Warning: Not implemented: test.options.timeout
 Warning: Not implemented: test.options.timeout
-running 63 tests from ./node/test.js
+running 62 tests from ./node/test.js
 sync pass todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync pass todo ... ok ([WILDCARD])
+sync pass todo ... ok [WILDCARD]
 sync pass todo with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync pass todo with message ... ok ([WILDCARD])
+sync pass todo with message ... ok [WILDCARD]
 sync fail todo ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync fail todo ... FAILED ([WILDCARD])
+sync fail todo ... FAILED [WILDCARD]
 sync fail todo with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.todo
 ----- output end -----
-sync fail todo with message ... FAILED ([WILDCARD])
+sync fail todo with message ... FAILED [WILDCARD]
 sync skip pass ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-sync skip pass ... ok ([WILDCARD])
+sync skip pass ... ok [WILDCARD]
 sync skip pass with message ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-sync skip pass with message ... ok ([WILDCARD])
+sync skip pass with message ... ok [WILDCARD]
 sync pass ...
 ------- output -------
 DIAGNOSTIC: this test should pass
 ----- output end -----
-sync pass ... ok ([WILDCARD])
-sync throw fail ... FAILED ([WILDCARD])
+sync pass ... ok [WILDCARD]
+sync throw fail ... FAILED [WILDCARD]
 async skip pass ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-async skip pass ... ok ([WILDCARD])
-async pass ... ok ([WILDCARD])
-async throw fail ... FAILED ([WILDCARD])
+async skip pass ... ok [WILDCARD]
+async pass ... ok [WILDCARD]
+async throw fail ... FAILED [WILDCARD]
 async skip fail ...
 ------- output -------
 Warning: Not implemented: test.TestContext.skip
 ----- output end -----
-async skip fail ... FAILED ([WILDCARD])
-async assertion fail ... FAILED ([WILDCARD])
-resolve pass ... ok ([WILDCARD])
-reject fail ... FAILED ([WILDCARD])
+async skip fail ... FAILED [WILDCARD]
+async assertion fail ... FAILED [WILDCARD]
+resolve pass ... ok [WILDCARD]
+reject fail ... FAILED [WILDCARD]
 unhandled rejection - passes but warns ...
 Uncaught error from ./node/test.js FAILED
-unhandled rejection - passes but warns ... cancelled ([WILDCARD])
-async unhandled rejection - passes but warns ... cancelled ([WILDCARD])
-immediate throw - passes but warns ... cancelled ([WILDCARD])
-immediate reject - passes but warns ... cancelled ([WILDCARD])
-immediate resolve pass ... cancelled ([WILDCARD])
-subtest sync throw fail ... cancelled ([WILDCARD])
-sync throw non-error fail ... cancelled ([WILDCARD])
-level 0a ... cancelled ([WILDCARD])
-top level ... cancelled ([WILDCARD])
-invalid subtest - pass but subtest fails ... cancelled ([WILDCARD])
-sync skip option ... ignored ([WILDCARD])
-sync skip option with message ... cancelled ([WILDCARD])
-sync skip option is false fail ... cancelled ([WILDCARD])
-noop ... cancelled ([WILDCARD])
-functionOnly ... cancelled ([WILDCARD])
-<anonymous> ... cancelled ([WILDCARD])
-test with only a name provided ... cancelled ([WILDCARD])
-noop ... cancelled ([WILDCARD])
-noop ... ignored ([WILDCARD])
-test with a name and options provided ... ignored ([WILDCARD])
-functionAndOptions ... ignored ([WILDCARD])
-escaped skip message ... cancelled ([WILDCARD])
-escaped todo message ... cancelled ([WILDCARD])
-escaped diagnostic ... cancelled ([WILDCARD])
-callback pass ... cancelled ([WILDCARD])
-callback fail ... cancelled ([WILDCARD])
-sync t is this in test ... cancelled ([WILDCARD])
-async t is this in test ... cancelled ([WILDCARD])
-callback t is this in test ... cancelled ([WILDCARD])
-callback also returns a Promise ... cancelled ([WILDCARD])
-callback throw ... cancelled ([WILDCARD])
-callback called twice ... cancelled ([WILDCARD])
-callback called twice in different ticks ... cancelled ([WILDCARD])
-callback called twice in future tick ... cancelled ([WILDCARD])
-callback async throw ... cancelled ([WILDCARD])
-callback async throw after done ... cancelled ([WILDCARD])
-custom inspect symbol fail ... cancelled ([WILDCARD])
-custom inspect symbol that throws fail ... cancelled ([WILDCARD])
-subtest sync throw fails ... cancelled ([WILDCARD])
-timed out async test ... cancelled ([WILDCARD])
-timed out callback test ... cancelled ([WILDCARD])
-large timeout async test is ok ... cancelled ([WILDCARD])
-large timeout callback test is ok ... cancelled ([WILDCARD])
-successful thenable ... cancelled ([WILDCARD])
-rejected thenable ... cancelled ([WILDCARD])
-unfinished test with uncaughtException ... cancelled ([WILDCARD])
-unfinished test with unhandledRejection ... cancelled ([WILDCARD])
+unhandled rejection - passes but warns ... cancelled (0ms)
+async unhandled rejection - passes but warns ... cancelled (0ms)
+immediate throw - passes but warns ... cancelled (0ms)
+immediate reject - passes but warns ... cancelled (0ms)
+immediate resolve pass ... cancelled (0ms)
+subtest sync throw fail ... cancelled (0ms)
+sync throw non-error fail ... cancelled (0ms)
+level 0a ... cancelled (0ms)
+top level ... cancelled (0ms)
+invalid subtest - pass but subtest fails ... cancelled (0ms)
+sync skip option ... ignored (0ms)
+sync skip option with message ... cancelled (0ms)
+sync skip option is false fail ... cancelled (0ms)
+noop ... cancelled (0ms)
+functionOnly ... cancelled (0ms)
+<anonymous> ... cancelled (0ms)
+test with only a name provided ... cancelled (0ms)
+noop ... cancelled (0ms)
+noop ... ignored (0ms)
+test with a name and options provided ... ignored (0ms)
+functionAndOptions ... ignored (0ms)
+escaped skip message ... cancelled (0ms)
+escaped todo message ... cancelled (0ms)
+escaped diagnostic ... cancelled (0ms)
+callback pass ... cancelled (0ms)
+callback fail ... cancelled (0ms)
+sync t is this in test ... cancelled (0ms)
+async t is this in test ... cancelled (0ms)
+callback t is this in test ... cancelled (0ms)
+callback also returns a Promise ... cancelled (0ms)
+callback throw ... cancelled (0ms)
+callback called twice ... cancelled (0ms)
+callback called twice in different ticks ... cancelled (0ms)
+callback called twice in future tick ... cancelled (0ms)
+callback async throw ... cancelled (0ms)
+callback async throw after done ... cancelled (0ms)
+custom inspect symbol fail ... cancelled (0ms)
+custom inspect symbol that throws fail ... cancelled (0ms)
+subtest sync throw fails ... cancelled (0ms)
+timed out async test ... cancelled (0ms)
+timed out callback test ... cancelled (0ms)
+large timeout async test is ok ... cancelled (0ms)
+large timeout callback test is ok ... cancelled (0ms)
+successful thenable ... cancelled (0ms)
+rejected thenable ... cancelled (0ms)
+unfinished test with uncaughtException ... cancelled (0ms)
+unfinished test with unhandledRejection ... cancelled (0ms)
 
- ERRORS
+ ERRORS 
 
-sync fail todo => node:test:131:10
+sync fail todo => node:test:133:10
 error: Error: thrown from sync fail todo
   throw new Error("thrown from sync fail todo");
-        ^
-    at [WILDCARD]
+[WILDCARD]
 
-sync fail todo with message => node:test:131:10
+sync fail todo with message => node:test:133:10
 error: Error: thrown from sync fail todo with message
   throw new Error("thrown from sync fail todo with message");
-        ^
-    at [WILDCARD]
+[WILDCARD]
 
-sync throw fail => node:test:131:10
+sync throw fail => node:test:133:10
 error: Error: thrown from sync throw fail
   throw new Error("thrown from sync throw fail");
-        ^
-    at [WILDCARD]
+[WILDCARD]
 
-async throw fail => node:test:131:10
+async throw fail => node:test:133:10
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
-        ^
-    at [WILDCARD]
+[WILDCARD]
 
-async skip fail => node:test:131:10
+async skip fail => node:test:133:10
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
-        ^
-    at [WILDCARD]
+[WILDCARD]
 
-async assertion fail => node:test:131:10
+async assertion fail => node:test:133:10
 error: AssertionError: Values are not strictly equal:
 
 
@@ -151,7 +146,7 @@ error: AssertionError: Values are not strictly equal:
 
     at [WILDCARD]
 
-reject fail => node:test:131:10
+reject fail => node:test:133:10
 error: Error: rejected from reject fail
   return Promise.reject(new Error("rejected from reject fail"));
                         ^
@@ -165,17 +160,17 @@ error: Error: rejected from unhandled rejection fail
 This error was not caught from a test and caused the test runner to fail on the referenced module.
 It most likely originated from a dangling promise, event/timeout handler or top-level code.
 
- FAILURES
+ FAILURES 
 
-sync fail todo => node:test:131:10
-sync fail todo with message => node:test:131:10
-sync throw fail => node:test:131:10
-async throw fail => node:test:131:10
-async skip fail => node:test:131:10
-async assertion fail => node:test:131:10
-reject fail => node:test:131:10
+sync fail todo => node:test:133:10
+sync fail todo with message => node:test:133:10
+sync throw fail => node:test:133:10
+async throw fail => node:test:133:10
+async skip fail => node:test:133:10
+async assertion fail => node:test:133:10
+reject fail => node:test:133:10
 ./node/test.js (uncaught error)
 
-FAILED | 8 passed | 52 failed | 4 ignored ([WILDCARD])
+FAILED | 8 passed | 51 failed | 4 ignored [WILDCARD]
 
 error: Test failed
