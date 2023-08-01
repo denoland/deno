@@ -109,32 +109,32 @@ unfinished test with unhandledRejection ... cancelled (0ms)
 
  ERRORS 
 
-sync fail todo => node:test:133:10
+sync fail todo => node:test:135:10
 error: Error: thrown from sync fail todo
   throw new Error("thrown from sync fail todo");
 [WILDCARD]
 
-sync fail todo with message => node:test:133:10
+sync fail todo with message => node:test:135:10
 error: Error: thrown from sync fail todo with message
   throw new Error("thrown from sync fail todo with message");
 [WILDCARD]
 
-sync throw fail => node:test:133:10
+sync throw fail => node:test:135:10
 error: Error: thrown from sync throw fail
   throw new Error("thrown from sync throw fail");
 [WILDCARD]
 
-async throw fail => node:test:133:10
+async throw fail => node:test:135:10
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async skip fail => node:test:133:10
+async skip fail => node:test:135:10
 error: Error: thrown from async throw fail
   throw new Error("thrown from async throw fail");
 [WILDCARD]
 
-async assertion fail => node:test:133:10
+async assertion fail => node:test:135:10
 error: AssertionError: Values are not strictly equal:
 
 
@@ -146,7 +146,7 @@ error: AssertionError: Values are not strictly equal:
 
     at [WILDCARD]
 
-reject fail => node:test:133:10
+reject fail => node:test:135:10
 error: Error: rejected from reject fail
   return Promise.reject(new Error("rejected from reject fail"));
                         ^
@@ -162,13 +162,13 @@ It most likely originated from a dangling promise, event/timeout handler or top-
 
  FAILURES 
 
-sync fail todo => node:test:133:10
-sync fail todo with message => node:test:133:10
-sync throw fail => node:test:133:10
-async throw fail => node:test:133:10
-async skip fail => node:test:133:10
-async assertion fail => node:test:133:10
-reject fail => node:test:133:10
+sync fail todo => node:test:135:10
+sync fail todo with message => node:test:135:10
+sync throw fail => node:test:135:10
+async throw fail => node:test:135:10
+async skip fail => node:test:135:10
+async assertion fail => node:test:135:10
+reject fail => node:test:135:10
 ./node/test.js (uncaught error)
 
 FAILED | 8 passed | 51 failed | 4 ignored [WILDCARD]
