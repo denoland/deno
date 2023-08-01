@@ -673,7 +673,7 @@ pub struct ConfigFileJson {
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
-  pub remote_modules_dir: Option<bool>,
+  pub deno_modules_dir: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -859,12 +859,12 @@ impl ConfigFile {
     self.json.node_modules_dir
   }
 
-  pub fn remote_modules_dir(&self) -> Option<bool> {
-    self.json.remote_modules_dir
+  pub fn deno_modules_dir(&self) -> Option<bool> {
+    self.json.deno_modules_dir
   }
 
-  pub fn remote_modules_dir_path(&self) -> Option<PathBuf> {
-    if self.json.remote_modules_dir == Some(true) {
+  pub fn deno_modules_dir_path(&self) -> Option<PathBuf> {
+    if self.json.deno_modules_dir == Some(true) {
       Some(
         self
           .specifier
@@ -903,7 +903,7 @@ impl ConfigFile {
         Vec::new()
       };
 
-    if self.remote_modules_dir() == Some(true) {
+    if self.deno_modules_dir() == Some(true) {
       exclude.push("remote_modules".to_string());
     }
 

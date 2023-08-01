@@ -101,8 +101,8 @@ itest!(_017_import_redirect_check {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_remote_modules_dir {
-  args: "run --quiet --reload --remote-modules-dir --check $TESTDATA/run/017_import_redirect.ts",
+itest!(_017_import_redirect_deno_modules_dir {
+  args: "run --quiet --reload --deno-modules-dir --check $TESTDATA/run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
   temp_cwd: true,
 });
@@ -162,9 +162,9 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
-itest!(_027_redirect_typescript_remote_modules_dir {
+itest!(_027_redirect_typescript_deno_modules_dir {
   args:
-    "run --quiet --reload --remote-modules-dir $TESTDATA/run/027_redirect_typescript.ts",
+    "run --quiet --reload --deno-modules-dir $TESTDATA/run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
   http_server: true,
   temp_cwd: true,
@@ -200,9 +200,9 @@ itest!(_033_import_map_remote {
   http_server: true,
 });
 
-itest!(_033_import_map_remote_modules_dir_remote {
+itest!(_033_import_map_deno_modules_dir_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --remote-modules-dir --unstable $TESTDATA/import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --deno-modules-dir --unstable $TESTDATA/import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
   temp_cwd: true,
@@ -1675,8 +1675,8 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
-itest!(jsx_import_source_pragma_with_config_remote_modules_dir {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --remote-modules-dir $TESTDATA/run/jsx_import_source_pragma.tsx",
+itest!(jsx_import_source_pragma_with_config_deno_modules_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --deno-modules-dir $TESTDATA/run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
   temp_cwd: true,
@@ -1735,9 +1735,9 @@ itest!(reference_types_error {
   exit_code: 1,
 });
 
-itest!(reference_types_error_remote_modules_dir {
+itest!(reference_types_error_deno_modules_dir {
   args:
-    "run --config run/checkjs.tsconfig.json --check --remote-modules-dir $TESTDATA/run/reference_types_error.js",
+    "run --config run/checkjs.tsconfig.json --check --deno-modules-dir $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });

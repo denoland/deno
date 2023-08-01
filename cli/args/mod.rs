@@ -872,7 +872,7 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
-  pub fn remote_modules_dir_path(&self) -> Option<&PathBuf> {
+  pub fn deno_modules_dir_path(&self) -> Option<&PathBuf> {
     self.maybe_remote_modules_folder.as_ref()
   }
 
@@ -1204,12 +1204,12 @@ fn resolve_remote_modules_folder(
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
 ) -> Option<PathBuf> {
-  let use_remote_modules_dir = flags
-    .remote_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.remote_modules_dir()));
-  if use_remote_modules_dir == Some(false) {
+  let use_deno_modules_dir = flags
+    .deno_modules_dir
+    .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()));
+  if use_deno_modules_dir == Some(false) {
     None
-  } else if use_remote_modules_dir.is_none() {
+  } else if use_deno_modules_dir.is_none() {
     None
   } else if let Some(config_path) = maybe_config_file
     .as_ref()

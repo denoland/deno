@@ -248,7 +248,7 @@ impl CliFactory {
   pub fn http_cache(&self) -> Result<&Arc<dyn HttpCache>, AnyError> {
     self.services.http_cache.get_or_try_init(|| {
       let global_cache = self.global_http_cache()?.clone();
-      match self.options.remote_modules_dir_path() {
+      match self.options.deno_modules_dir_path() {
         Some(local_path) => {
           let local_cache =
             LocalHttpCache::new(local_path.clone(), global_cache);

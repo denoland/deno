@@ -906,7 +906,7 @@ impl Inner {
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
     let cache: Arc<dyn HttpCache> =
-      match self.config.maybe_remote_modules_dir_path() {
+      match self.config.maybe_deno_modules_dir_path() {
         Some(local_path) => {
           Arc::new(LocalHttpCache::new(local_path, global_cache))
         }
