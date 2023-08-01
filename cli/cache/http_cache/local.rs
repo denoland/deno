@@ -238,7 +238,7 @@ fn url_to_local_sub_path(
     MediaType::from_specifier_and_headers(url, Some(headers)).as_ts_extension()
   }
 
-  fn short_hash(data: &str, ext: Option<&str>) -> String {
+  fn short_hash(data: &str, last_ext: Option<&str>) -> String {
     // This function is a bit of a balancing act between readability
     // and avoiding collisions.
     let hash = util::checksum::gen(&[data.as_bytes()]);
@@ -256,11 +256,11 @@ fn url_to_local_sub_path(
         sub.extend(c.to_lowercase());
       }
     }
-    let sub = match ext {
+    let sub = match last_ext {
       Some(ext) => sub.strip_suffix(ext).unwrap_or(&sub),
       None => &sub,
     };
-    let ext = ext.unwrap_or("");
+    let ext = last_ext.unwrap_or("");
     if sub.is_empty() {
       format!("#{}{}", &hash[..7], ext)
     } else {
@@ -268,15 +268,15 @@ fn url_to_local_sub_path(
     }
   }
 
-  fn should_hash_part(part: &str, is_last: bool) -> bool {
+  fn should_hash_part(part: &str, last_ext: Option<&str>) -> bool {
     if part.is_empty() || part.len() > 30 {
       // keep short due to windows path limit
       return true;
     }
-    let hash_context_specific = if is_last {
+    let hash_context_specific = if let Some(last_ext) = last_ext {
       // if the last part does not have a known extension, hash it in order to
       // prevent collisions with a directory of the same name
-      !has_known_extension(part)
+      !has_known_extension(part) || !part.ends_with(last_ext)
     } else {
       // if any non-ending path part has a known extension, hash it in order to
       // prevent collisions where a filename has the same name as a directory name
@@ -318,16 +318,14 @@ fn url_to_local_sub_path(
     .enumerate()
     .map(|(i, part)| {
       let is_last = i == parts_len - 1;
-      if should_hash_part(&part, is_last) {
+      let last_ext = if is_last {
+        Some(get_extension(url, headers))
+      } else {
+        None
+      };
+      if should_hash_part(&part, last_ext) {
         has_hash = true;
-        short_hash(
-          &part,
-          if is_last {
-            Some(get_extension(url, headers))
-          } else {
-            None
-          },
-        )
+        short_hash(&part, last_ext)
       } else {
         part
       }
@@ -389,16 +387,30 @@ impl LocalCacheManifest {
     url: Url,
     mut original_headers: HashMap<String, String>,
   ) {
+    fn should_keep_content_type_header(
+      url: &Url,
+      headers: &HashMap<String, String>,
+    ) -> bool {
+      // only keep the location header if it can't be derived from the url
+      MediaType::from_specifier(url)
+        != MediaType::from_specifier_and_headers(url, Some(headers))
+    }
+
     let mut headers_subset = IndexMap::new();
 
-    // todo: investigate other headers to keep (etag?)
     const HEADER_KEYS_TO_KEEP: [&str; 4] = [
+      // keep alphabetical for cleanliness in the output
       "content-type",
       "location",
-      "x-typescript-types",
       "x-deno-warning",
+      "x-typescript-types",
     ];
     for key in HEADER_KEYS_TO_KEEP {
+      if key == "content-type"
+        && !should_keep_content_type_header(&url, &original_headers)
+      {
+        continue;
+      }
       if let Some((k, v)) = original_headers.remove_entry(key) {
         headers_subset.insert(k, v);
       }
@@ -482,6 +494,10 @@ impl LocalCacheManifest {
 mod test {
   use super::*;
 
+  use deno_core::serde_json::json;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   #[test]
   fn test_url_to_local_sub_path() {
     run_test(
@@ -544,6 +560,20 @@ mod test {
       &[],
       "https/localhost/#e3b0c44/mod.js",
     );
+    run_test(
+      // headers same extension
+      "https://deno.land/x/mod.ts",
+      &[("content-type", "application/typescript")],
+      "https/deno.land/x/mod.ts",
+    );
+    run_test(
+      // headers different extension... We hash this because
+      // if someone deletes the manifest file, then we don't want
+      // https://deno.land/x/mod.ts to resolve as a typescript file
+      "https://deno.land/x/mod.ts",
+      &[("content-type", "application/javascript")],
+      "https/deno.land/x/#mod.ts_e8c36.js",
+    );
 
     #[track_caller]
     fn run_test(url: &str, headers: &[(&str, &str)], expected: &str) {
@@ -559,6 +589,237 @@ mod test {
         result.parts.iter().any(|p| p.starts_with('#')),
         result.has_hash
       )
+    }
+  }
+
+  #[test]
+  fn test_local_global_cache() {
+    let temp_dir = TempDir::new();
+    let global_cache_path = temp_dir.path().join("global");
+    let local_cache_path = temp_dir.path().join("local");
+    let global_cache =
+      Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf()));
+    let local_cache =
+      LocalHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone());
+
+    let manifest_file = local_cache_path.join("manifest.json");
+    // mapped url
+    {
+      let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(
+          &url,
+          HashMap::from([(
+            "content-type".to_string(),
+            "application/typescript".to_string(),
+          )]),
+          content.as_bytes(),
+        )
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      // won't have any headers because the content-type is derivable from the url
+      assert_eq!(metadata.headers, HashMap::new());
+      assert_eq!(metadata.url, url.to_string());
+      // no manifest file yet
+      assert!(!manifest_file.exists());
+
+      // now try deleting the global cache and we should still be able to load it
+      global_cache_path.remove_dir_all();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+    }
+
+    // file that's directly mappable to a url
+    {
+      let content = "export const a = 1;";
+      local_cache_path
+        .join("https")
+        .join("deno.land")
+        .join("main.js")
+        .write(&content);
+
+      // now we should be able to read this file because it's directly mappable to a url
+      let url = Url::parse("https://deno.land/main.js").unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      assert_eq!(metadata.headers, HashMap::new());
+      assert_eq!(metadata.url, url.to_string());
+    }
+
+    // now try a file with a different content-type header
+    {
+      let url =
+        Url::parse("https://deno.land/x/different_content_type.ts").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(
+          &url,
+          HashMap::from([(
+            "content-type".to_string(),
+            "application/javascript".to_string(),
+          )]),
+          content.as_bytes(),
+        )
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      assert_eq!(
+        metadata.headers,
+        HashMap::from([(
+          "content-type".to_string(),
+          "application/javascript".to_string(),
+        )])
+      );
+      assert_eq!(metadata.url, url.to_string());
+      assert_eq!(
+        manifest_file.read_json_value(),
+        json!({
+          "modules": {
+            "https://deno.land/x/different_content_type.ts": {
+              "path": "https/deno.land/x/#different_content_ty_f15dc.js",
+              "headers": {
+                "content-type": "application/javascript"
+              }
+            }
+          }
+        })
+      );
+      // delete the manifest file
+      manifest_file.remove_file();
+
+      // Now try resolving the key again and the content type should still be application/javascript.
+      // This is maintained because we hash the filename when the headers don't match the extension.
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      assert_eq!(
+        metadata.headers,
+        HashMap::from([(
+          "content-type".to_string(),
+          "application/javascript".to_string(),
+        )])
+      );
+    }
+
+    // reset the local cache
+    local_cache_path.remove_dir_all();
+    let local_cache =
+      LocalHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone());
+
+    // now try caching a file with many headers
+    {
+      let url = Url::parse("https://deno.land/x/my_file.ts").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(
+          &url,
+          HashMap::from([
+            (
+              "content-type".to_string(),
+              "application/typescript".to_string(),
+            ),
+            ("x-typescript-types".to_string(), "./types.d.ts".to_string()),
+            ("x-deno-warning".to_string(), "Stop right now.".to_string()),
+            (
+              "x-other-header".to_string(),
+              "Thank you very much.".to_string(),
+            ),
+          ]),
+          content.as_bytes(),
+        )
+        .unwrap();
+      let check_output = |local_cache: &LocalHttpCache| {
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
+          .unwrap(),
+          content
+        );
+        let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+        assert_eq!(
+          metadata.headers,
+          HashMap::from([
+            ("x-typescript-types".to_string(), "./types.d.ts".to_string(),),
+            ("x-deno-warning".to_string(), "Stop right now.".to_string(),)
+          ])
+        );
+        assert_eq!(metadata.url, url.to_string());
+        assert_eq!(
+          manifest_file.read_json_value(),
+          json!({
+            "modules": {
+              "https://deno.land/x/my_file.ts": {
+                "path": "https/deno.land/x/my_file.ts",
+                "headers": {
+                  "x-deno-warning": "Stop right now.",
+                  "x-typescript-types": "./types.d.ts"
+                }
+              }
+            }
+          })
+        );
+      };
+      check_output(&local_cache);
+      // now ensure it's the same when re-creating the cache
+      check_output(&LocalHttpCache::new(
+        local_cache_path.to_path_buf(),
+        global_cache.clone(),
+      ));
+    }
+
+    // reset the local cache
+    local_cache_path.remove_dir_all();
+    let local_cache =
+      LocalHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone());
+
+    // try a file that can't be mapped to the file system
+    {
+      let url = Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(&url, HashMap::new(), content.as_bytes())
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      // won't have any headers because the content-type is derivable from the url
+      assert_eq!(metadata.headers, HashMap::new());
+      assert_eq!(metadata.url, url.to_string());
+
+      assert_eq!(
+        manifest_file.read_json_value(),
+        json!({
+          "modules": {
+            "https://deno.land/INVALID/Module.ts?dev": {
+              "path": "https/deno.land/#invalid_1ee01/#module_b8d2b.ts"
+            }
+          }
+        })
+      );
     }
   }
 }
