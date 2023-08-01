@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::TestFlags;
+use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -359,9 +360,7 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
-  // TODO(bartlomieju): replace with `reporter` enum?
-  junit_path: Option<String>,
-  dot_reporter: bool,
+  reporter: TestReporterConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -394,25 +393,28 @@ impl TestSummary {
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
-  let reporter: Box<dyn TestReporter> = if options.dot_reporter {
-    Box::new(DotTestReporter::new(options.concurrent_jobs.get() > 1))
-  } else {
-    Box::new(PrettyTestReporter::new(
-      options.concurrent_jobs.get() > 1,
+  let parallel = options.concurrent_jobs.get() > 1;
+  match &options.reporter {
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new(parallel)),
+    TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
+      parallel,
       options.log_level != Some(Level::Error),
-    ))
-  };
-
-  if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
-    // If junit is writing to stdout, only enable the junit reporter
-    if junit_path == "-" {
-      junit
-    } else {
-      Box::new(CompoundTestReporter::new(vec![reporter, junit]))
+    )),
+    TestReporterConfig::Junit(path) => {
+      let junit = Box::new(JunitTestReporter::new(path.clone()));
+      // If junit is writing to stdout, only enable the junit reporter
+      if path == "-" {
+        junit
+      } else {
+        Box::new(CompoundTestReporter::new(vec![
+          Box::new(PrettyTestReporter::new(
+            parallel,
+            options.log_level != Some(Level::Error),
+          )),
+          junit,
+        ]))
+      }
     }
-  } else {
-    reporter
   }
 }
 
@@ -1159,13 +1161,12 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
-      junit_path: test_options.junit_path,
+      reporter: test_options.reporter,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
         trace_ops: test_options.trace_ops,
       },
-      dot_reporter: test_options.dot_reporter,
     },
   )
   .await?;
@@ -1291,13 +1292,12 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
-            junit_path: test_options.junit_path,
+            reporter: test_options.reporter,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,
               trace_ops: test_options.trace_ops,
             },
-            dot_reporter: test_options.dot_reporter,
           },
         )
         .await?;

@@ -219,10 +219,17 @@ pub struct TaskFlags {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum TestReporterConfig {
+  #[default]
+  Pretty,
+  Dot,
+  // Contains path to write to or "-" to print to stdout.
+  Junit(String),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TestFlags {
   pub doc: bool,
-  // TODO(bartlomieju): remove and use `reporter` enum instead?
-  pub dot_reporter: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
   pub fail_fast: Option<NonZeroUsize>,
@@ -233,7 +240,7 @@ pub struct TestFlags {
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_ops: bool,
   pub watch: Option<WatchFlags>,
-  pub junit_path: Option<String>,
+  pub reporter: TestReporterConfig,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1784,12 +1791,6 @@ Directory arguments are expanded to all contained files matching the glob
         .action(ArgAction::SetTrue),
     )
     .arg(
-      Arg::new("dot-reporter")
-        .long("dot")
-        .help("Use 'dot' test reporter with a concise output format")
-        .action(ArgAction::SetTrue),
-    )
-    .arg(
       Arg::new("trace-ops")
         .long("trace-ops")
         .help("Enable tracing of async ops. Useful when debugging leaking ops in test, but impacts test execution time.")
@@ -1882,6 +1883,13 @@ Directory arguments are expanded to all contained files matching the glob
         .num_args(0..=1)
         .require_equals(true)
         .default_missing_value("-")
+    )
+    .arg(
+      Arg::new("dot-reporter")
+        .long("dot")
+        .conflicts_with("junit")
+        .help("Use 'dot' test reporter with a concise output format")
+        .action(ArgAction::SetTrue),
     )
   )
 }
@@ -3012,10 +3020,6 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let no_run = matches.get_flag("no-run");
-  let dot_reporter = matches.get_flag("dot-reporter");
-  if dot_reporter {
-    flags.log_level = Some(Level::Error);
-  }
   let trace_ops = matches.get_flag("trace-ops");
   let doc = matches.get_flag("doc");
   let allow_none = matches.get_flag("allow-none");
@@ -3076,11 +3080,22 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   };
 
   let junit_path = matches.remove_one::<String>("junit");
+  let dot_reporter = matches.get_flag("dot-reporter");
+  if dot_reporter {
+    flags.log_level = Some(Level::Error);
+  }
+
+  let reporter = if dot_reporter {
+    TestReporterConfig::Dot
+  } else if let Some(path) = junit_path {
+    TestReporterConfig::Junit(path)
+  } else {
+    TestReporterConfig::Pretty
+  };
 
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
-    dot_reporter,
     coverage_dir: matches.remove_one::<String>("coverage"),
     fail_fast,
     files: FileFlags { include, ignore },
@@ -3090,7 +3105,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     concurrent_jobs,
     trace_ops,
     watch: watch_arg_parse(matches),
-    junit_path,
+    reporter,
   });
 }
 
@@ -5943,7 +5958,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: true,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: Some("- foo".to_string()),
           allow_none: true,
@@ -5956,7 +5970,7 @@ mod tests {
           trace_ops: true,
           coverage_dir: Some("cov".to_string()),
           watch: Default::default(),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         unstable: true,
         no_prompt: true,
@@ -6022,7 +6036,7 @@ mod tests {
       Flags {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
-          dot_reporter: false,
+          reporter: Default::default(),
           doc: false,
           fail_fast: None,
           filter: None,
@@ -6036,7 +6050,6 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6057,7 +6070,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: Some(NonZeroUsize::new(3).unwrap()),
           filter: None,
           allow_none: false,
@@ -6070,7 +6082,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6095,7 +6107,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6108,7 +6119,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6127,10 +6138,9 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: true,
           fail_fast: None,
           filter: None,
-          junit_path: None,
+          reporter: TestReporterConfig::Dot,
           allow_none: false,
           shuffle: None,
           files: FileFlags {
@@ -6148,6 +6158,9 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "test", "--dot", "--junit"]);
+    assert!(r.is_err());
   }
 
   #[test]
@@ -6159,7 +6172,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6172,7 +6184,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6190,7 +6202,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6205,7 +6216,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6222,7 +6233,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6237,7 +6247,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6256,7 +6266,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6271,7 +6280,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: true,
           }),
-          junit_path: None,
+          reporter: Default::default(),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6289,7 +6298,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6302,7 +6310,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: Some("-".to_string()),
+          reporter: TestReporterConfig::Junit("-".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6320,7 +6328,6 @@ mod tests {
         subcommand: DenoSubcommand::Test(TestFlags {
           no_run: false,
           doc: false,
-          dot_reporter: false,
           fail_fast: None,
           filter: None,
           allow_none: false,
@@ -6333,7 +6340,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
-          junit_path: Some("junit.xml".to_string()),
+          reporter: TestReporterConfig::Junit("junit.xml".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
