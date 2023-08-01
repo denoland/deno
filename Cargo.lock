@@ -1296,11 +1296,13 @@ dependencies = [
  "dsa",
  "ecb",
  "elliptic-curve 0.13.4",
+ "errno",
  "hex",
  "hkdf",
  "idna 0.3.0",
  "indexmap 1.9.2",
  "lazy-regex",
+ "libc",
  "libz-sys",
  "md-5",
  "md4",
@@ -1328,6 +1330,8 @@ dependencies = [
  "signature 1.6.4",
  "tokio",
  "typenum",
+ "whoami",
+ "winapi",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -6087,6 +6091,16 @@ dependencies = [
  "either",
  "libc",
  "once_cell",
+]
+
+[[package]]
+name = "whoami"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c70234412ca409cc04e864e89523cb0fc37f5e1344ebed5a3ebf4192b6b9f68"
+dependencies = [
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

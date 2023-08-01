@@ -383,44 +383,84 @@ impl FileFetcher {
     let specifier = specifier.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
-    // A single pass of fetch either yields code or yields a redirect.
+    // A single pass of fetch either yields code or yields a redirect, server
+    // error causes a single retry to avoid crashing hard on intermittent failures.
+
+    async fn handle_request_or_server_error(
+      retried: &mut bool,
+      specifier: &Url,
+      err_str: String,
+    ) -> Result<(), AnyError> {
+      // Retry once, and bail otherwise.
+      if !*retried {
+        *retried = true;
+        log::debug!("Import '{}' failed: {}. Retrying...", specifier, err_str);
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        Ok(())
+      } else {
+        Err(generic_error(format!(
+          "Import '{}' failed: {}",
+          specifier, err_str
+        )))
+      }
+    }
+
     async move {
-      let result = match fetch_once(
-        &client,
-        FetchOnceArgs {
-          url: specifier.clone(),
-          maybe_accept: maybe_accept.clone(),
-          maybe_etag,
-          maybe_auth_token,
-          maybe_progress_guard: maybe_progress_guard.as_ref(),
-        },
-      )
-      .await?
-      {
-        FetchOnceResult::NotModified => {
-          let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
-          Ok(file)
-        }
-        FetchOnceResult::Redirect(redirect_url, headers) => {
-          file_fetcher.http_cache.set(&specifier, headers, &[])?;
-          file_fetcher
-            .fetch_remote(
-              &redirect_url,
-              permissions,
-              redirect_limit - 1,
-              maybe_accept,
+      let mut retried = false;
+      let result = loop {
+        let result = match fetch_once(
+          &client,
+          FetchOnceArgs {
+            url: specifier.clone(),
+            maybe_accept: maybe_accept.clone(),
+            maybe_etag: maybe_etag.clone(),
+            maybe_auth_token: maybe_auth_token.clone(),
+            maybe_progress_guard: maybe_progress_guard.as_ref(),
+          },
+        )
+        .await?
+        {
+          FetchOnceResult::NotModified => {
+            let file = file_fetcher.fetch_cached(&specifier, 10)?.unwrap();
+            Ok(file)
+          }
+          FetchOnceResult::Redirect(redirect_url, headers) => {
+            file_fetcher.http_cache.set(&specifier, headers, &[])?;
+            file_fetcher
+              .fetch_remote(
+                &redirect_url,
+                permissions,
+                redirect_limit - 1,
+                maybe_accept,
+              )
+              .await
+          }
+          FetchOnceResult::Code(bytes, headers) => {
+            file_fetcher
+              .http_cache
+              .set(&specifier, headers.clone(), &bytes)?;
+            let file =
+              file_fetcher.build_remote_file(&specifier, bytes, &headers)?;
+            Ok(file)
+          }
+          FetchOnceResult::RequestError(err) => {
+            handle_request_or_server_error(&mut retried, &specifier, err)
+              .await?;
+            continue;
+          }
+          FetchOnceResult::ServerError(status) => {
+            handle_request_or_server_error(
+              &mut retried,
+              &specifier,
+              status.to_string(),
             )
-            .await
-        }
-        FetchOnceResult::Code(bytes, headers) => {
-          file_fetcher
-            .http_cache
-            .set(&specifier, headers.clone(), &bytes)?;
-          let file =
-            file_fetcher.build_remote_file(&specifier, bytes, &headers)?;
-          Ok(file)
-        }
+            .await?;
+            continue;
+          }
+        };
+        break result;
       };
+
       drop(maybe_progress_guard);
       result
     }
@@ -545,6 +585,8 @@ enum FetchOnceResult {
   Code(Vec<u8>, HeadersMap),
   NotModified,
   Redirect(Url, HeadersMap),
+  RequestError(String),
+  ServerError(StatusCode),
 }
 
 #[derive(Debug)]
@@ -579,7 +621,15 @@ async fn fetch_once<'a>(
     let accepts_val = HeaderValue::from_str(&accept)?;
     request = request.header(ACCEPT, accepts_val);
   }
-  let response = request.send().await?;
+  let response = match request.send().await {
+    Ok(resp) => resp,
+    Err(err) => {
+      if err.is_connect() || err.is_timeout() {
+        return Ok(FetchOnceResult::RequestError(err.to_string()));
+      }
+      return Err(err.into());
+    }
+  };
 
   if response.status() == StatusCode::NOT_MODIFIED {
     return Ok(FetchOnceResult::NotModified);
@@ -612,8 +662,13 @@ async fn fetch_once<'a>(
     return Ok(FetchOnceResult::Redirect(new_url, result_headers));
   }
 
-  if response.status().is_client_error() || response.status().is_server_error()
-  {
+  let status = response.status();
+
+  if status.is_server_error() {
+    return Ok(FetchOnceResult::ServerError(status));
+  }
+
+  if status.is_client_error() {
     let err = if response.status() == StatusCode::NOT_FOUND {
       custom_error(
         "NotFound",
@@ -2140,6 +2195,52 @@ mod tests {
     let err = result.unwrap_err();
     // Check that the error message contains the original URL
     assert!(err.to_string().contains(url_str));
+  }
+
+  #[tokio::test]
+  async fn server_error() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:4545/server_error";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_test_client();
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+
+    if let Ok(FetchOnceResult::ServerError(status)) = result {
+      assert_eq!(status, 500);
+    } else {
+      panic!();
+    }
+  }
+
+  #[tokio::test]
+  async fn request_error() {
+    let _g = test_util::http_server();
+    let url_str = "http://127.0.0.1:9999/";
+    let url = Url::parse(url_str).unwrap();
+    let client = create_test_client();
+    let result = fetch_once(
+      &client,
+      FetchOnceArgs {
+        url,
+        maybe_accept: None,
+        maybe_etag: None,
+        maybe_auth_token: None,
+        maybe_progress_guard: None,
+      },
+    )
+    .await;
+
+    assert!(matches!(result, Ok(FetchOnceResult::RequestError(_))));
   }
 
   #[track_caller]
