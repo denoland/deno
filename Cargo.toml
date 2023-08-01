@@ -41,7 +41,7 @@ repository = "https://github.com/denoland/deno"
 v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = { version = "0.198.0", path = "../deno_core/core" }
+deno_core = { git = "https://github.com/bartlomieju/deno_core.git", branch = "run_js_event_loop_tick" }
 deno_ops = "0.76.0"
 serde_v8 = "0.109.0"
 
