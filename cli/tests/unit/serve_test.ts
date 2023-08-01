@@ -1297,9 +1297,12 @@ Deno.test(
     const server = Deno.serve(
       { port: servePort, signal: ac.signal },
       (request) => {
+        console.log("req");
         assert(request.body);
+        console.log("got body");
 
         promise.resolve();
+        console.log("resolved");
         return new Response(request.body);
       },
     );
@@ -1307,10 +1310,12 @@ Deno.test(
     const ts = new TransformStream();
     const writable = ts.writable.getWriter();
 
+    console.log("fetching");
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
       body: ts.readable,
     });
+    console.log("fetched");
 
     await promise;
     assert(resp.body);

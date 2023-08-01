@@ -216,7 +216,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     if let Some(mode) = options.mode {
       file.clone().chmod_async(mode).await?;
     }
-    file.write_all(data.into()).await?;
+    deno_io::fs::File::write_all(file, data.into()).await?;
     Ok(())
   }
 

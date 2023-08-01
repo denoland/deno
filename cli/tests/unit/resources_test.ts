@@ -51,5 +51,5 @@ Deno.test({ permissions: { read: true } }, async function resourcesFile() {
   const newRid = +Object.keys(resourcesAfter).find((rid): boolean => {
     return !Object.prototype.hasOwnProperty.call(resourcesBefore, rid);
   })!;
-  assertEquals(resourcesAfter[newRid], "fsFile");
+  assertEquals(resourcesAfter[newRid], "file");
 });

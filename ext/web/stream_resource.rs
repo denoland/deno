@@ -31,6 +31,15 @@ use tokio::sync::mpsc::Sender;
 
 type SenderCell = RefCell<Option<Sender<Result<BufView, Error>>>>;
 
+
+static READABLE_STREAM_RESOURCE: ResourceBuilder<
+  Receiver<Result<BufView, Error>>,
+  ReadableStreamResourceData,
+> = ResourceBuilderImpl::new_with_data("readableStream")
+  .with_read_channel()
+  .build();
+
+
 // This indirection allows us to more easily integrate the fast streams work at a later date
 #[repr(transparent)]
 struct ChannelStreamAdapter<C>(C);
@@ -167,26 +176,26 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
   let tx = RefCell::new(Some(tx));
   let completion = CompletionHandle::default();
   let tx = Box::new(tx);
-  let resource = ReadableStreamResource {
-    cancel_handle: Default::default(),
-    reader: AsyncRefCell::new(ChannelStreamAdapter(rx).peekable()),
-    data: ReadableStreamResourceData {
-      tx: Box::into_raw(tx),
-      completion,
-    },
-  };
-  state.resource_table.add(resource)
+  state
+    .resource_table
+    .add_rc_dyn(READABLE_STREAM_RESOURCE.build_with_data(
+      rx,
+      ReadableStreamResourceData {
+        tx: Box::into_raw(tx),
+        completion,
+      },
+    ))
 }
 
 #[op2(fast)]
-pub fn op_readable_stream_resource_get_sink(
-  state: &mut OpState,
-  #[smi] rid: ResourceId,
-) -> *const c_void {
-  let Ok(resource) = state.resource_table.get::<ReadableStreamResource>(rid) else {
+pub fn op_readable_stream_resource_get_sink(state: &mut OpState, #[smi] rid: ResourceId) -> *const c_void {
+  let Ok(resource) = state.resource_table.get_any(rid) else {
     return std::ptr::null();
   };
-  resource.data.tx as _
+  let Some(data) = READABLE_STREAM_RESOURCE.data(&resource) else {
+    return std::ptr::null();
+  };
+  data.tx as _
 }
 
 fn get_sender(sender: *const c_void) -> Option<Sender<Result<BufView, Error>>> {

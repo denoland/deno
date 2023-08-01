@@ -6,15 +6,25 @@ use std::rc::Rc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use deno_core::error::bad_resource_id;
+use deno_core::error::custom_error;
 use deno_core::error::not_supported;
 use deno_core::error::resource_unavailable;
 use deno_core::error::AnyError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
+use deno_core::ResourceBuilder;
+use deno_core::ResourceBuilderImpl;
+use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
+use deno_core::ResourceStream;
+use deno_core::ResourceStreamRead;
+use deno_core::ResourceStreamWrite;
 use tokio::task::JoinError;
+
+use crate::StdFileResourceInner;
 
 #[derive(Debug)]
 pub enum FsError {
@@ -166,12 +176,30 @@ impl FsStat {
   }
 }
 
+// TODO(mmastrac): Restore dynamic name
+pub static FILE_RESOURCE: ResourceBuilder<Rc<dyn File>> =
+  ResourceBuilderImpl::new("file")
+    .with_read_write_resource_stream::<dyn File>()
+    .build();
+pub static FILE_STDIN_RESOURCE: ResourceBuilder<Rc<dyn File>> =
+  ResourceBuilderImpl::new("stdin")
+    .with_read_write_resource_stream::<dyn File>()
+    .build();
+pub static FILE_STDERR_RESOURCE: ResourceBuilder<Rc<dyn File>> =
+  ResourceBuilderImpl::new("stderr")
+    .with_read_write_resource_stream::<dyn File>()
+    .build();
+pub static FILE_STDOUT_RESOURCE: ResourceBuilder<Rc<dyn File>> =
+  ResourceBuilderImpl::new("stdout")
+    .with_read_write_resource_stream::<dyn File>()
+    .build();
+
 #[async_trait::async_trait(?Send)]
-pub trait File {
+pub trait File: ResourceStreamRead + ResourceStreamWrite {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
     let buf = BufMutView::new(limit);
-    let (nread, mut buf) = self.read_byob(buf).await?;
+    let (nread, mut buf) = File::read_byob(self, buf).await?;
     buf.truncate(nread);
     Ok(buf.into_view())
   }
@@ -233,8 +261,83 @@ pub trait File {
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
-  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
+  fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
+}
+
+/// Implement [`ResourceStream`], [`ResourceStreamRead`] and [`ResourceStreamWrite`] for a given [`File`] type
+/// by delegating to the appropriate file methods.
+#[macro_export]
+macro_rules! resource_stream_for_file {
+  ($file:ident) => {
+    impl ::deno_core::ResourceStream for $file {
+      fn backing_handle(
+        self: ::std::rc::Rc<Self>,
+      ) -> Option<::deno_core::ResourceHandle> {
+        <Self as $crate::fs::File>::backing_handle(self)
+      }
+    }
+
+    impl ::deno_core::ResourceStreamWrite for $file {
+      fn write(
+        self: ::std::rc::Rc<Self>,
+        buf: BufView,
+      ) -> ::deno_core::AsyncResult<::deno_core::WriteOutcome> {
+        use deno_core::futures::TryFutureExt;
+        Box::pin(
+          <Self as $crate::fs::File>::write(self, buf).map_err(|e| e.into()),
+        )
+      }
+
+      fn write_all(
+        self: Rc<Self>,
+        view: ::deno_core::BufView,
+      ) -> ::deno_core::AsyncResult<()> {
+        use deno_core::futures::TryFutureExt;
+        Box::pin(
+          <Self as $crate::fs::File>::write_all(self, view)
+            .map_err(|e| e.into()),
+        )
+      }
+
+      fn write_sync(
+        self: ::std::rc::Rc<Self>,
+        data: &[u8],
+      ) -> ::std::result::Result<usize, deno_core::anyhow::Error> {
+        <Self as $crate::fs::File>::write_sync(self, data).map_err(|e| e.into())
+      }
+    }
+
+    impl ::deno_core::ResourceStreamRead for $file {
+      fn read(
+        self: ::std::rc::Rc<Self>,
+        limit: usize,
+      ) -> ::deno_core::AsyncResult<::deno_core::BufView> {
+        use deno_core::futures::TryFutureExt;
+        Box::pin(
+          <Self as $crate::fs::File>::read(self, limit).map_err(|e| e.into()),
+        )
+      }
+
+      fn read_byob(
+        self: ::std::rc::Rc<Self>,
+        buf: ::deno_core::BufMutView,
+      ) -> ::deno_core::AsyncResult<(usize, ::deno_core::BufMutView)> {
+        use deno_core::futures::TryFutureExt;
+        Box::pin(
+          <Self as $crate::fs::File>::read_byob(self, buf)
+            .map_err(|e| e.into()),
+        )
+      }
+
+      fn read_byob_sync(
+        self: ::std::rc::Rc<Self>,
+        data: &mut [u8],
+      ) -> ::std::result::Result<usize, deno_core::anyhow::Error> {
+        <Self as $crate::fs::File>::read_sync(self, data).map_err(|e| e.into())
+      }
+    }
+  };
 }
 
 pub struct FileResource {
@@ -247,24 +350,17 @@ impl FileResource {
     Self { name, file }
   }
 
-  fn with_resource<F, R>(
-    state: &OpState,
-    rid: ResourceId,
-    f: F,
-  ) -> Result<R, AnyError>
-  where
-    F: FnOnce(Rc<FileResource>) -> Result<R, AnyError>,
-  {
-    let resource = state.resource_table.get::<FileResource>(rid)?;
-    f(resource)
-  }
-
   pub fn get_file(
     state: &OpState,
     rid: ResourceId,
   ) -> Result<Rc<dyn File>, AnyError> {
-    let resource = state.resource_table.get::<FileResource>(rid)?;
-    Ok(resource.file())
+    let res = state.resource_table.get_any(rid)?;
+    Ok(
+      FILE_RESOURCE
+        .reader::<dyn File>(&res)
+        .ok_or_else(bad_resource_id)?
+        .clone(),
+    )
   }
 
   pub fn with_file<F, R>(
@@ -275,85 +371,10 @@ impl FileResource {
   where
     F: FnOnce(Rc<dyn File>) -> Result<R, AnyError>,
   {
-    Self::with_resource(state, rid, |r| f(r.file.clone()))
+    f(Self::get_file(state, rid)?)
   }
 
   pub fn file(&self) -> Rc<dyn File> {
     self.file.clone()
-  }
-}
-
-impl deno_core::Resource for FileResource {
-  fn name(&self) -> Cow<str> {
-    Cow::Borrowed(&self.name)
-  }
-
-  fn read(
-    self: Rc<Self>,
-    limit: usize,
-  ) -> deno_core::AsyncResult<deno_core::BufView> {
-    Box::pin(async move {
-      self
-        .file
-        .clone()
-        .read(limit)
-        .await
-        .map_err(|err| err.into())
-    })
-  }
-
-  fn read_byob(
-    self: Rc<Self>,
-    buf: deno_core::BufMutView,
-  ) -> deno_core::AsyncResult<(usize, deno_core::BufMutView)> {
-    Box::pin(async move {
-      self
-        .file
-        .clone()
-        .read_byob(buf)
-        .await
-        .map_err(|err| err.into())
-    })
-  }
-
-  fn write(
-    self: Rc<Self>,
-    buf: deno_core::BufView,
-  ) -> deno_core::AsyncResult<deno_core::WriteOutcome> {
-    Box::pin(async move {
-      self.file.clone().write(buf).await.map_err(|err| err.into())
-    })
-  }
-
-  fn write_all(
-    self: Rc<Self>,
-    buf: deno_core::BufView,
-  ) -> deno_core::AsyncResult<()> {
-    Box::pin(async move {
-      self
-        .file
-        .clone()
-        .write_all(buf)
-        .await
-        .map_err(|err| err.into())
-    })
-  }
-
-  fn read_byob_sync(
-    self: Rc<Self>,
-    data: &mut [u8],
-  ) -> Result<usize, deno_core::anyhow::Error> {
-    self.file.clone().read_sync(data).map_err(|err| err.into())
-  }
-
-  fn write_sync(
-    self: Rc<Self>,
-    data: &[u8],
-  ) -> Result<usize, deno_core::anyhow::Error> {
-    self.file.clone().write_sync(data).map_err(|err| err.into())
-  }
-
-  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
-    self.file.clone().backing_fd()
   }
 }

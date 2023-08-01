@@ -20,8 +20,11 @@ use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
+use deno_core::futures::TryStream;
 use deno_core::op;
 use deno_core::BufView;
+use deno_core::ResourceBuilder;
+use deno_core::ResourceBuilderImpl;
 use deno_core::WriteOutcome;
 
 use deno_core::task::spawn;
@@ -62,6 +65,9 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+use tokio::io::DuplexStream;
+use tokio::io::ReadHalf;
+use tokio::io::WriteHalf;
 use tokio::sync::mpsc;
 
 // Re-export reqwest and data_url
@@ -69,6 +75,14 @@ pub use data_url;
 pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
+
+/// A request body object that can be passed to V8. This body will feed byte buffers to a channel which
+/// feed's hyper's HTTP response.
+pub static V8_STREAM_HTTP_REQUEST_BODY_RESOURCE: ResourceBuilder<
+  tokio::sync::mpsc::Sender<Result<BufView, AnyError>>,
+> = ResourceBuilderImpl::new("fetchRequestBody")
+  .with_write_channel::<tokio::sync::mpsc::Sender<Result<BufView, AnyError>>>()
+  .build();
 
 #[derive(Clone)]
 pub struct Options {
@@ -293,11 +307,9 @@ where
 
             request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
-            let request_body_rid =
-              state.resource_table.add(FetchRequestBodyResource {
-                body: AsyncRefCell::new(Some(tx)),
-                cancel: CancelHandle::default(),
-              });
+            let request_body_rid = state
+              .resource_table
+              .add_rc_dyn(V8_STREAM_HTTP_REQUEST_BODY_RESOURCE.build(tx));
 
             Some(request_body_rid)
           }
@@ -511,63 +523,16 @@ pub async fn op_fetch_response_upgrade(
     state
       .borrow_mut()
       .resource_table
-      .add(UpgradeStream::new(read_rx, write_tx)),
+      .add_rc_dyn(UPGRADE_STREAM_RESOURCE.build((read_rx, write_tx))),
   )
 }
 
-struct UpgradeStream {
-  read: AsyncRefCell<tokio::io::ReadHalf<tokio::io::DuplexStream>>,
-  write: AsyncRefCell<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
-  cancel_handle: CancelHandle,
-}
-
-impl UpgradeStream {
-  pub fn new(
-    read: tokio::io::ReadHalf<tokio::io::DuplexStream>,
-    write: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-  ) -> Self {
-    Self {
-      read: AsyncRefCell::new(read),
-      write: AsyncRefCell::new(write),
-      cancel_handle: CancelHandle::new(),
-    }
-  }
-
-  async fn read(self: Rc<Self>, buf: &mut [u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let read = RcRef::map(self, |this| &this.read);
-      let mut read = read.borrow_mut().await;
-      Ok(Pin::new(&mut *read).read(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-
-  async fn write(self: Rc<Self>, buf: &[u8]) -> Result<usize, AnyError> {
-    let cancel_handle = RcRef::map(self.clone(), |this| &this.cancel_handle);
-    async {
-      let write = RcRef::map(self, |this| &this.write);
-      let mut write = write.borrow_mut().await;
-      Ok(Pin::new(&mut *write).write(buf).await?)
-    }
-    .try_or_cancel(cancel_handle)
-    .await
-  }
-}
-
-impl Resource for UpgradeStream {
-  fn name(&self) -> Cow<str> {
-    "fetchUpgradedStream".into()
-  }
-
-  deno_core::impl_readable_byob!();
-  deno_core::impl_writable!();
-
-  fn close(self: Rc<Self>) {
-    self.cancel_handle.cancel();
-  }
-}
+pub static UPGRADE_STREAM_RESOURCE: ResourceBuilder<(
+  ReadHalf<DuplexStream>,
+  WriteHalf<DuplexStream>,
+)> = ResourceBuilderImpl::new("upgradeStream")
+  .with_reader_and_writer()
+  .build();
 
 type CancelableResponseResult = Result<Result<Response, AnyError>, Canceled>;
 
@@ -594,70 +559,15 @@ impl Resource for FetchCancelHandle {
 }
 
 /// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].
-pub struct FetchBodyStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
+pub struct FetchBodyStream(pub mpsc::Receiver<Result<BufView, Error>>);
 
 impl Stream for FetchBodyStream {
-  type Item = Result<bytes::Bytes, Error>;
+  type Item = Result<BufView, Error>;
   fn poll_next(
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Self::Item>> {
     self.0.poll_recv(cx)
-  }
-}
-
-pub struct FetchRequestBodyResource {
-  pub body: AsyncRefCell<Option<mpsc::Sender<Result<bytes::Bytes, Error>>>>,
-  pub cancel: CancelHandle,
-}
-
-impl Resource for FetchRequestBodyResource {
-  fn name(&self) -> Cow<str> {
-    "fetchRequestBody".into()
-  }
-
-  fn write(self: Rc<Self>, buf: BufView) -> AsyncResult<WriteOutcome> {
-    Box::pin(async move {
-      let bytes: bytes::Bytes = buf.into();
-      let nwritten = bytes.len();
-      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      let body = (*body).as_ref();
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
-        "request body receiver not connected (request closed)",
-      ))?;
-      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
-        type_error("request body receiver not connected (request closed)")
-      })?;
-      Ok(WriteOutcome::Full { nwritten })
-    })
-  }
-
-  fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
-    async move {
-      let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      let body = (*body).as_ref();
-      let cancel = RcRef::map(self, |r| &r.cancel);
-      let body = body.ok_or(type_error(
-        "request body receiver not connected (request closed)",
-      ))?;
-      body.send(Err(error)).or_cancel(cancel).await??;
-      Ok(())
-    }
-    .boxed_local()
-  }
-
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    async move {
-      let mut body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
-      body.take();
-      Ok(())
-    }
-    .boxed_local()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel.cancel();
   }
 }
 

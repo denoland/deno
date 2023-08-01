@@ -21,6 +21,7 @@ use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
+use deno_io::fs::FILE_RESOURCE;
 use rand::rngs::ThreadRng;
 use rand::thread_rng;
 use rand::Rng;
@@ -90,9 +91,7 @@ where
   let fs = state.borrow::<FileSystemRc>();
   let file = fs.open_sync(&path, options).context_path("open", &path)?;
 
-  let rid = state
-    .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
+  let rid = state.resource_table.add_rc_dyn(FILE_RESOURCE.build(file));
   Ok(rid)
 }
 
@@ -122,7 +121,7 @@ where
   let rid = state
     .borrow_mut()
     .resource_table
-    .add(FileResource::new(file, "fsFile".to_string()));
+    .add_rc_dyn(FILE_RESOURCE.build(file));
   Ok(rid)
 }
 

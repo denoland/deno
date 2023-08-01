@@ -373,9 +373,14 @@ impl PollFrame for ResourceBodyAdapter {
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<ResponseStreamResult> {
+    println!("polling");
     let res = match ready!(self.future.poll_unpin(cx)) {
-      Err(err) => ResponseStreamResult::Error(err),
+      Err(err) => {
+        println!("err");
+        ResponseStreamResult::Error(err)
+      }
       Ok(buf) => {
+        println!("buf={buf:?}");
         if buf.is_empty() {
           if self.auto_close {
             self.stm.clone().close();
@@ -409,7 +414,8 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<ResponseStreamResult> {
     let res = match ready!(self.poll_recv(cx)) {
-      Some(buf) => ResponseStreamResult::NonEmptyBuf(buf),
+      Some(Ok(buf)) => ResponseStreamResult::NonEmptyBuf(buf),
+      Some(Err(err)) => ResponseStreamResult::Error(err),
       None => ResponseStreamResult::EndOfStream,
     };
     std::task::Poll::Ready(res)
@@ -839,7 +845,7 @@ mod tests {
     let mut resp = GZipResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
-        tx.send(chunk.into()).await.ok().unwrap();
+        tx.send(Ok(chunk.into())).await.ok().unwrap();
       }
     });
     // Limit how many times we'll loop
@@ -881,7 +887,7 @@ mod tests {
     let mut resp = BrotliResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
-        tx.send(chunk.into()).await.ok().unwrap();
+        tx.send(Ok(chunk.into())).await.ok().unwrap();
       }
     });
     // Limit how many times we'll loop

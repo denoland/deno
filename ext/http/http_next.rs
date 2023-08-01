@@ -3,7 +3,8 @@ use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
 use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
-use crate::request_body::HttpRequestBody;
+use crate::request_body::HyperIncomingStream;
+use crate::request_body::HTTP_REQUEST_BODY_RESOURCE;
 use crate::request_properties::HttpConnectionProperties;
 use crate::request_properties::HttpListenProperties;
 use crate::request_properties::HttpPropertyExtractor;
@@ -381,8 +382,9 @@ pub fn op_http_read_request_body(
 ) -> ResourceId {
   let mut http = slab_get(slab_id);
   let incoming = http.take_body();
-  let body_resource = Rc::new(HttpRequestBody::new(incoming));
-  state.resource_table.add_rc(body_resource)
+  state
+    .resource_table
+    .add_rc_dyn(HTTP_REQUEST_BODY_RESOURCE.build(HyperIncomingStream(incoming)))
 }
 
 #[op2(fast)]

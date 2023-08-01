@@ -223,7 +223,7 @@ function assertOps(fn) {
 
 function prettyResourceNames(name) {
   switch (name) {
-    case "fsFile":
+    case "file":
       return ["A file", "opened", "closed"];
     case "fetchRequest":
       return ["A fetch request", "started", "finished"];
@@ -290,7 +290,7 @@ function prettyResourceNames(name) {
 
 function resourceCloseHint(name) {
   switch (name) {
-    case "fsFile":
+    case "file":
       return "Close the file handle by calling `file.close()`.";
     case "fetchRequest":
       return "Await the promise returned from `fetch()` or abort the fetch with an abort signal.";

@@ -12,10 +12,10 @@ use deno_core::OpState;
 use deno_fetch::get_or_create_client_from_state;
 use deno_fetch::FetchBodyStream;
 use deno_fetch::FetchCancelHandle;
-use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
+use deno_fetch::V8_STREAM_HTTP_REQUEST_BODY_RESOURCE;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -68,10 +68,9 @@ where
 
     request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
-    let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
-      body: AsyncRefCell::new(Some(tx)),
-      cancel: CancelHandle::default(),
-    });
+    let request_body_rid = state
+      .resource_table
+      .add_rc_dyn(V8_STREAM_HTTP_REQUEST_BODY_RESOURCE.build(tx));
 
     Some(request_body_rid)
   } else {

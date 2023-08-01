@@ -15,9 +15,9 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
-use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
-use deno_io::ChildStdoutResource;
+use deno_io::CHILD_STDERR_RESOURCE;
+use deno_io::CHILD_STDOUT_RESOURCE;
 use serde::Deserialize;
 use serde::Serialize;
 use std::borrow::Cow;
@@ -299,15 +299,17 @@ fn spawn_child(
     .take()
     .map(|stdin| state.resource_table.add(ChildStdinResource::from(stdin)));
 
-  let stdout_rid = child
-    .stdout
-    .take()
-    .map(|stdout| state.resource_table.add(ChildStdoutResource::from(stdout)));
+  let stdout_rid = child.stdout.take().map(|stdout| {
+    state
+      .resource_table
+      .add_rc_dyn(CHILD_STDOUT_RESOURCE.build(stdout))
+  });
 
-  let stderr_rid = child
-    .stderr
-    .take()
-    .map(|stderr| state.resource_table.add(ChildStderrResource::from(stderr)));
+  let stderr_rid = child.stderr.take().map(|stderr| {
+    state
+      .resource_table
+      .add_rc_dyn(CHILD_STDERR_RESOURCE.build(stderr))
+  });
 
   let child_rid = state
     .resource_table
@@ -395,6 +397,9 @@ fn op_spawn_kill(
 }
 
 mod deprecated {
+  use deno_core::ResourceBuilder;
+  use deno_io::CHILD_STDERR_RESOURCE;
+
   use super::*;
 
   #[derive(Deserialize)]
@@ -525,7 +530,7 @@ mod deprecated {
       Some(child_stdout) => {
         let rid = state
           .resource_table
-          .add(ChildStdoutResource::from(child_stdout));
+          .add_rc_dyn(CHILD_STDOUT_RESOURCE.build(child_stdout));
         Some(rid)
       }
       None => None,
@@ -535,7 +540,7 @@ mod deprecated {
       Some(child_stderr) => {
         let rid = state
           .resource_table
-          .add(ChildStderrResource::from(child_stderr));
+          .add_rc_dyn(CHILD_STDERR_RESOURCE.build(child_stderr));
         Some(rid)
       }
       None => None,

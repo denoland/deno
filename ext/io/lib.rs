@@ -8,19 +8,26 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
-use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
 use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceBuilder;
+use deno_core::ResourceBuilderImpl;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_core::ResourceStream;
+use deno_core::ResourceStreamRead;
+use deno_core::ResourceStreamWrite;
 use deno_core::TaskQueue;
+use fs::File;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
+use fs::FILE_STDERR_RESOURCE;
+use fs::FILE_STDIN_RESOURCE;
+use fs::FILE_STDOUT_RESOURCE;
 use fs3::FileExt;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
@@ -37,6 +44,9 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
+use tokio::process::ChildStderr;
+use tokio::process::ChildStdin;
+use tokio::process::ChildStdout;
 
 #[cfg(unix)]
 use std::os::unix::io::FromRawFd;
@@ -99,40 +109,31 @@ deno_core::extension!(deno_io,
     if let Some(stdio) = options.stdio {
       let t = &mut state.resource_table;
 
-      let rid = t.add(fs::FileResource::new(
-        Rc::new(match stdio.stdin {
+      let rid = t.add_rc_dyn(FILE_STDIN_RESOURCE.build(Rc::new(match stdio.stdin {
           StdioPipe::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdin,
             STDIN_HANDLE.try_clone().unwrap(),
           ),
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stdin".to_string(),
-      ));
+        })));
       assert_eq!(rid, 0, "stdin must have ResourceId 0");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stdout {
+      let rid = t.add_rc_dyn(FILE_STDOUT_RESOURCE.build(Rc::new(match stdio.stdout {
           StdioPipe::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stdout,
             STDOUT_HANDLE.try_clone().unwrap(),
           ),
           StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stdout".to_string(),
-      ));
+        })));
       assert_eq!(rid, 1, "stdout must have ResourceId 1");
 
-      let rid = t.add(FileResource::new(
-        Rc::new(match stdio.stderr {
+      let rid = t.add_rc_dyn(FILE_STDERR_RESOURCE.build(Rc::new(match stdio.stderr {
           StdioPipe::Inherit => StdFileResourceInner::new(
             StdFileResourceKind::Stderr,
             STDERR_HANDLE.try_clone().unwrap(),
           ),
-          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe),
-        }),
-        "stderr".to_string(),
-      ));
+          StdioPipe::File(pipe) => StdFileResourceInner::file(pipe)
+        })));
       assert_eq!(rid, 2, "stderr must have ResourceId 2");
     }
   },
@@ -205,47 +206,16 @@ where
   }
 }
 
-#[derive(Debug)]
-pub struct ReadOnlyResource<S> {
-  stream: AsyncRefCell<S>,
-  cancel_handle: CancelHandle,
-}
-
-impl<S: 'static> From<S> for ReadOnlyResource<S> {
-  fn from(stream: S) -> Self {
-    Self {
-      stream: stream.into(),
-      cancel_handle: Default::default(),
-    }
-  }
-}
-
-impl<S> ReadOnlyResource<S>
-where
-  S: AsyncRead + Unpin + 'static,
-{
-  pub fn borrow_mut(self: &Rc<Self>) -> AsyncMutFuture<S> {
-    RcRef::map(self, |r| &r.stream).borrow_mut()
-  }
-
-  pub fn cancel_handle(self: &Rc<Self>) -> RcRef<CancelHandle> {
-    RcRef::map(self, |r| &r.cancel_handle)
-  }
-
-  pub fn cancel_read_ops(&self) {
-    self.cancel_handle.cancel()
-  }
-
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
-    let mut rd = self.borrow_mut().await;
-    let nread = rd.read(data).try_or_cancel(self.cancel_handle()).await?;
-    Ok(nread)
-  }
-
-  pub fn into_inner(self) -> S {
-    self.stream.into_inner()
-  }
-}
+pub static CHILD_STDOUT_RESOURCE: ResourceBuilder<ChildStdout> =
+  ResourceBuilderImpl::new("childStdout")
+    .with_reader::<ChildStdout>()
+    .and_fd()
+    .build();
+pub static CHILD_STDERR_RESOURCE: ResourceBuilder<ChildStderr> =
+  ResourceBuilderImpl::new("childStderr")
+    .with_reader::<ChildStderr>()
+    .and_fd()
+    .build();
 
 pub type ChildStdinResource = WriteOnlyResource<process::ChildStdin>;
 
@@ -261,35 +231,7 @@ impl Resource for ChildStdinResource {
   }
 }
 
-pub type ChildStdoutResource = ReadOnlyResource<process::ChildStdout>;
-
-impl Resource for ChildStdoutResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "childStdout".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
-  }
-}
-
-pub type ChildStderrResource = ReadOnlyResource<process::ChildStderr>;
-
-impl Resource for ChildStderrResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "childStderr".into()
-  }
-
-  fn close(self: Rc<Self>) {
-    self.cancel_read_ops();
-  }
-}
-
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum StdFileResourceKind {
   File,
   // For stdout and stderr, we sometimes instead use std::io::stdout() directly,
@@ -310,7 +252,7 @@ pub struct StdFileResourceInner {
   // Used to keep async actions in order and only allow one
   // to occur at a time
   cell_async_task_queue: TaskQueue,
-  handle: ResourceHandleFd,
+  handle: Option<ResourceHandle>,
 }
 
 impl StdFileResourceInner {
@@ -319,8 +261,14 @@ impl StdFileResourceInner {
   }
 
   fn new(kind: StdFileResourceKind, fs_file: StdFile) -> Self {
-    // We know this will be an fd
-    let handle = ResourceHandle::from_fd_like(&fs_file).as_fd_like().unwrap();
+    // stdin/stdout/stderr are locked out in certain cases, so we will actually want to
+    // avoid allowing consumers to consume that raw descriptors here.
+    let handle = //if kind == StdFileResourceKind::File {
+      Some(ResourceHandle::from_fd_like(&fs_file));
+    // } else {
+    // None
+    // };
+
     StdFileResourceInner {
       kind,
       handle,
@@ -727,10 +675,12 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
-    Some(self.handle)
+  fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle> {
+    self.handle
   }
 }
+
+resource_stream_for_file!(StdFileResourceInner);
 
 // override op_print to use the stdout and stderr in the resource table
 #[op]

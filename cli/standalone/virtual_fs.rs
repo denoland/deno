@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -17,12 +16,14 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
+use deno_runtime::deno_io::resource_stream_for_file;
 use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
@@ -698,13 +699,15 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
     Err(FsError::NotSupported)
   }
-  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
+  fn backing_handle(self: Rc<Self>) -> Option<ResourceHandle> {
     None
   }
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn deno_io::fs::File>> {
     Ok(self)
   }
 }
+
+resource_stream_for_file!(FileBackedVfsFile);
 
 #[derive(Debug)]
 pub struct FileBackedVfs {
@@ -830,6 +833,7 @@ impl FileBackedVfs {
 
 #[cfg(test)]
 mod test {
+  use deno_core::ResourceStreamRead;
   use std::io::Write;
   use test_util::TempDir;
 
@@ -1071,7 +1075,7 @@ mod test {
     // go beyond the file length, then back
     file.clone().seek_sync(SeekFrom::Current(40)).unwrap();
     file.clone().seek_sync(SeekFrom::Current(-38)).unwrap();
-    let read_buf = file.clone().read(2).await.unwrap();
+    let read_buf = ResourceStreamRead::read(file.clone(), 2).await.unwrap();
     assert_eq!(read_buf.to_vec(), b"67");
     file.clone().seek_sync(SeekFrom::Current(-2)).unwrap();
 

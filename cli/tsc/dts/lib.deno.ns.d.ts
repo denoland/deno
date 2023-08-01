@@ -3677,7 +3677,7 @@ declare namespace Deno {
    * // { 0: "stdin", 1: "stdout", 2: "stderr" }
    * Deno.openSync('../test.file');
    * console.log(Deno.resources());
-   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "fsFile" }
+   * // { 0: "stdin", 1: "stdout", 2: "stderr", 3: "file" }
    * ```
    *
    * @category Observability

@@ -15,10 +15,11 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
 use deno_core::Resource;
+use deno_core::ResourceBuilder;
+use deno_core::ResourceBuilderImpl;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
 use crate::deserialize_headers;
@@ -264,7 +265,7 @@ impl Cache for SqliteBackedCache {
         let file = tokio::fs::File::open(response_path).await?;
         return Ok(Some((
           cache_meta,
-          Some(Rc::new(CacheResponseResource::new(file))),
+          Some(CACHE_RESPONSE_RESOURCE.build(file)),
         )));
       }
       Some((cache_meta, None)) => {
@@ -388,32 +389,11 @@ impl Resource for CachePutResource {
   deno_core::impl_writable!();
 }
 
-pub struct CacheResponseResource {
-  file: AsyncRefCell<tokio::fs::File>,
-}
-
-impl CacheResponseResource {
-  fn new(file: tokio::fs::File) -> Self {
-    Self {
-      file: AsyncRefCell::new(file),
-    }
-  }
-
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
-    let resource = deno_core::RcRef::map(&self, |r| &r.file);
-    let mut file = resource.borrow_mut().await;
-    let nread = file.read(data).await?;
-    Ok(nread)
-  }
-}
-
-impl Resource for CacheResponseResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "CacheResponseResource".into()
-  }
-}
+pub static CACHE_RESPONSE_RESOURCE: ResourceBuilder<tokio::fs::File> =
+  ResourceBuilderImpl::new("cacheResponse")
+    .with_reader::<tokio::fs::File>()
+    .and_fd()
+    .build();
 
 pub fn hash(token: &str) -> String {
   use sha2::Digest;
