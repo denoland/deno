@@ -9,7 +9,6 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use deno_ast::MediaType;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
 use deno_core::serde_json;
@@ -25,7 +24,6 @@ use crate::util;
 use crate::util::fs::atomic_write_file;
 
 use super::common::base_url_to_filename_parts;
-use super::common::ensure_dir_exists;
 use super::common::read_file_bytes;
 use super::global::GlobalHttpCache;
 use super::global::UrlToFilenameConversionError;
@@ -74,11 +72,7 @@ impl LocalHttpCache {
 
       let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
       // if we're here, then this will be set
-      ensure_dir_exists(local_file_path.parent().unwrap())?;
-      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)
-        .with_context(|| {
-          format!("Failed saving '{}'", local_file_path.display())
-        })?;
+      atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
     }
     self.manifest.insert_data(
       url_to_local_sub_path(url, &metadata.headers)?,
@@ -140,13 +134,8 @@ impl HttpCache for LocalHttpCache {
     let is_redirect = headers.contains_key("location");
     if !is_redirect {
       let cache_filepath = self.get_cache_filepath(url, &headers)?;
-      // Create parent directory
-      let parent_filename = cache_filepath.parent().unwrap();
-      ensure_dir_exists(parent_filename)?;
       // Cache content
-      atomic_write_file(&cache_filepath, content, CACHE_PERM).with_context(
-        || format!("Failed saving '{}'", cache_filepath.display()),
-      )?;
+      atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
     }
 
     let sub_path = url_to_local_sub_path(url, &headers)?;
@@ -438,55 +427,65 @@ impl LocalCacheManifest {
     };
 
     if has_changed {
-      let _ = atomic_write_file(
+      // don't bother ensuring the directory here because it will
+      // eventually be created by files being added to the cache
+      let result = atomic_write_file(
         &self.file_path,
         serde_json::to_string_pretty(&data.serialized).unwrap(),
         CACHE_PERM,
       );
+      if let Err(err) = result {
+        log::debug!("Failed saving local cache manifest: {:#}", err);
+      }
     }
   }
 
   pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
     let data = self.data.read();
-    let Some(module) = data.serialized.modules.get(url) else {
-      let folder_path = self.file_path.parent().unwrap();
-      let sub_path = url_to_local_sub_path(url, &Default::default()).ok()?;
-      if sub_path.has_hash {
-        // only paths without a hash are considered as in the cache
-        // when they don't have a metadata entry
-        return None;
-      }
-      let file_path = sub_path.as_path_from_root(folder_path);
-      return if let Ok(metadata) = file_path.metadata() {
+    match data.serialized.modules.get(url) {
+      Some(module) => {
+        let headers = module
+          .headers
+          .iter()
+          .map(|(k, v)| (k.to_string(), v.to_string()))
+          .collect::<HashMap<_, _>>();
+        let sub_path = match &module.path {
+          Some(sub_path) => {
+            Cow::Owned(self.file_path.parent().unwrap().join(sub_path))
+          }
+          None => Cow::Borrowed(&self.file_path),
+        };
+
+        let Ok(metadata) = sub_path.metadata() else {
+          return None;
+        };
+
         Some(CachedUrlMetadata {
-          headers: Default::default(),
+          headers,
           url: url.to_string(),
           time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
         })
-      } else {
-        None
-      };
-    };
-    let headers = module
-      .headers
-      .iter()
-      .map(|(k, v)| (k.to_string(), v.to_string()))
-      .collect::<HashMap<_, _>>();
-    let sub_path = match &module.path {
-      Some(sub_path) => {
-        Cow::Owned(self.file_path.parent().unwrap().join(sub_path))
       }
-      None => Cow::Borrowed(&self.file_path),
-    };
-    let Ok(metadata) = sub_path.metadata() else {
-      return None;
-    };
-
-    Some(CachedUrlMetadata {
-      headers,
-      url: url.to_string(),
-      time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
-    })
+      None => {
+        let folder_path = self.file_path.parent().unwrap();
+        let sub_path = url_to_local_sub_path(url, &Default::default()).ok()?;
+        if sub_path.has_hash {
+          // only paths without a hash are considered as in the cache
+          // when they don't have a metadata entry
+          return None;
+        }
+        let file_path = sub_path.as_path_from_root(folder_path);
+        if let Ok(metadata) = file_path.metadata() {
+          Some(CachedUrlMetadata {
+            headers: Default::default(),
+            url: url.to_string(),
+            time: metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+          })
+        } else {
+          None
+        }
+      }
+    }
   }
 }
 
@@ -816,6 +815,42 @@ mod test {
           "modules": {
             "https://deno.land/INVALID/Module.ts?dev": {
               "path": "https/deno.land/#invalid_1ee01/#module_b8d2b.ts"
+            }
+          }
+        })
+      );
+    }
+
+    // reset the local cache
+    local_cache_path.remove_dir_all();
+    let local_cache =
+      LocalHttpCache::new(local_cache_path.to_path_buf(), global_cache.clone());
+
+    // now try a redirect
+    {
+      let url = Url::parse("https://deno.land/redirect.ts").unwrap();
+      global_cache
+        .set(
+          &url,
+          HashMap::from([("location".to_string(), "./x/mod.ts".to_string())]),
+          "Redirecting to other url...".as_bytes(),
+        )
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+      assert_eq!(
+        metadata.headers,
+        HashMap::from([("location".to_string(), "./x/mod.ts".to_string())])
+      );
+      assert_eq!(metadata.url, url.to_string());
+      assert_eq!(
+        manifest_file.read_json_value(),
+        json!({
+          "modules": {
+            "https://deno.land/redirect.ts": {
+              "headers": {
+                "location": "./x/mod.ts"
+              }
             }
           }
         })

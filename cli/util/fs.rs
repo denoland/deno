@@ -26,19 +26,79 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 
 use super::path::specifier_to_file_path;
 
+/// Writes the file to the file system at a temporary path, then
+/// renames it to the destination in a single sys call in order
+/// to never leave the file system in a corrupted state.
+///
+/// This also handles creating the directory if a NotFound error
+/// occurs.
 pub fn atomic_write_file<T: AsRef<[u8]>>(
-  filename: &Path,
+  file_path: &Path,
   data: T,
   mode: u32,
 ) -> std::io::Result<()> {
-  let rand: String = (0..4)
-    .map(|_| format!("{:02x}", rand::random::<u8>()))
-    .collect();
-  let extension = format!("{rand}.tmp");
-  let tmp_file = filename.with_extension(extension);
-  write_file(&tmp_file, data, mode)?;
-  std::fs::rename(tmp_file, filename)?;
-  Ok(())
+  fn atomic_write_file_raw(
+    temp_file_path: &Path,
+    file_path: &Path,
+    data: &[u8],
+    mode: u32,
+  ) -> std::io::Result<()> {
+    write_file(temp_file_path, data, mode)?;
+    std::fs::rename(temp_file_path, file_path)?;
+    Ok(())
+  }
+
+  fn add_file_context(file_path: &Path, err: Error) -> Error {
+    Error::new(
+      err.kind(),
+      format!("{:#} (for '{}')", err, file_path.display()),
+    )
+  }
+
+  fn inner(file_path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
+    let temp_file_path = {
+      let rand: String = (0..4)
+        .map(|_| format!("{:02x}", rand::random::<u8>()))
+        .collect();
+      let extension = format!("{rand}.tmp");
+      file_path.with_extension(extension)
+    };
+
+    if let Err(write_err) =
+      atomic_write_file_raw(&temp_file_path, file_path, data, mode)
+    {
+      if write_err.kind() == ErrorKind::NotFound {
+        let parent_dir_path = file_path.parent().unwrap();
+        match std::fs::create_dir_all(&parent_dir_path) {
+          Ok(()) => {
+            return atomic_write_file_raw(
+              &temp_file_path,
+              file_path,
+              data,
+              mode,
+            )
+            .map_err(|err| add_file_context(file_path, err));
+          }
+          Err(create_err) => {
+            if !parent_dir_path.exists() {
+              return Err(Error::new(
+                create_err.kind(),
+                format!(
+                  "{:#} (for '{}')\nCheck the permission of the directory.",
+                  create_err,
+                  parent_dir_path.display()
+                ),
+              ));
+            }
+          }
+        }
+      }
+      return Err(add_file_context(file_path, write_err));
+    }
+    Ok(())
+  }
+
+  inner(file_path, data.as_ref(), mode)
 }
 
 pub fn write_file<T: AsRef<[u8]>>(

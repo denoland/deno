@@ -13,9 +13,9 @@ use thiserror::Error;
 use crate::cache::CACHE_PERM;
 use crate::http_util::HeadersMap;
 use crate::util;
+use crate::util::fs::atomic_write_file;
 
 use super::common::base_url_to_filename_parts;
-use super::common::ensure_dir_exists;
 use super::common::read_file_bytes;
 use super::CachedUrlMetadata;
 use super::HttpCache;
@@ -145,11 +145,8 @@ impl HttpCache for GlobalHttpCache {
     content: &[u8],
   ) -> Result<(), AnyError> {
     let cache_filepath = self.get_cache_filepath(url)?;
-    // Create parent directory
-    let parent_filename = cache_filepath.parent().unwrap();
-    ensure_dir_exists(parent_filename)?;
     // Cache content
-    util::fs::atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
+    atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
 
     let metadata = CachedUrlMetadata {
       time: SystemTime::now(),
@@ -195,7 +192,7 @@ fn write_metadata(
 ) -> Result<(), AnyError> {
   let path = path.with_extension("metadata.json");
   let json = serde_json::to_string_pretty(meta_data)?;
-  util::fs::atomic_write_file(&path, json, CACHE_PERM)?;
+  atomic_write_file(&path, json, CACHE_PERM)?;
   Ok(())
 }
 

@@ -6643,7 +6643,7 @@ fn lsp_cache_location() {
   );
   let cache_path = temp_dir.path().join(".cache");
   assert!(cache_path.is_dir());
-  assert!(cache_path.join("gen").is_dir());
+  assert!(!cache_path.join("gen").is_dir()); // not created because no emitting has occurred
   client.shutdown();
 }
 

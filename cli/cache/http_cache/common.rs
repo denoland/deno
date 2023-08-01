@@ -40,18 +40,3 @@ pub fn read_file_bytes(path: &Path) -> std::io::Result<Option<Vec<u8>>> {
     Err(err) => Err(err),
   }
 }
-
-/// Ensures the location of the cache.
-pub fn ensure_dir_exists(path: &Path) -> std::io::Result<()> {
-  if path.is_dir() {
-    return Ok(());
-  }
-  std::fs::create_dir_all(path).map_err(|e| {
-    std::io::Error::new(
-      e.kind(),
-      format!(
-        "Could not create remote modules cache location: {path:?}\nCheck the permission of the directory."
-      ),
-    )
-  })
-}
