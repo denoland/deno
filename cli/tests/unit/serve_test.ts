@@ -2855,10 +2855,11 @@ Deno.test(
 
         try {
           req.clone();
-        } catch (error) {
-          assert(error instanceof TypeError);
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
           assert(
-            error.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable."),
           );
 
           ac.abort();
@@ -2878,8 +2879,13 @@ Deno.test(
         method: "POST",
         body: '{"bar":true}',
       });
-    } catch (e) {
-      assert(e instanceof TypeError);
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
     } finally {
       ac.abort();
       await server.finished;
@@ -2901,10 +2907,11 @@ Deno.test({
 
         try {
           req.clone();
-        } catch (error) {
-          assert(error instanceof TypeError);
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
           assert(
-            error.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable."),
           );
 
           ac.abort();
@@ -2923,8 +2930,13 @@ Deno.test({
         method: "POST",
         body: '{"bar":true}',
       });
-    } catch (e) {
-      assert(e instanceof TypeError);
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
     } finally {
       ac.abort();
       await server.finished;
