@@ -8766,3 +8766,95 @@ fn lsp_node_modules_dir() {
 
   client.shutdown();
 }
+
+#[test]
+fn lsp_deno_modules_dir() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts'; console.log(returnsHi());",
+    }
+  }));
+  let cache = |client: &mut LspClient| {
+    client.write_request(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": file_uri,
+        },
+        "uris": [
+          {
+            "uri": "http://localhost:4545/subdir/mod1.ts",
+          }
+        ]
+      }),
+    );
+  };
+
+  cache(&mut client);
+
+  assert!(!temp_dir.path().join("deno_modules").exists());
+
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    "{ \"denoModulesDir\": true, \"lock\": false }\n",
+  );
+  let refresh_config = |client: &mut LspClient| {
+    client.write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {
+          "enable": true,
+          "config": "./deno.json",
+        }
+      }),
+    );
+
+    let request = json!([{
+      "enable": true,
+      "config": "./deno.json",
+      "codeLens": {
+        "implementations": true,
+        "references": true
+      },
+      "importMap": null,
+      "lint": false,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {}
+      },
+      "unstable": false
+    }]);
+    // one for the workspace
+    client.handle_configuration_request(request.clone());
+    // one for the specifier
+    client.handle_configuration_request(request);
+  };
+  refresh_config(&mut client);
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
+
+  // no caching necessary because it was already cached. It should exist now
+
+  assert!(temp_dir
+    .path()
+    .join("deno_modules/http/localhost_4545/subdir/mod1.ts")
+    .exists());
+
+  client.shutdown();
+}
