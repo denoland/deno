@@ -45,20 +45,47 @@ impl DotTestReporter {
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    self.write_output_end();
     self.in_new_line = false;
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.scope_test_id = Some(description.id);
   }
 
+  fn print_status(&mut self, status: String) {
+    if self.n != 0 && self.n % self.width == 0 {
+      println!();
+    }
+    self.n += 1;
+
+    print!("{}", status);
+  }
+
+  fn print_test_step_result(&mut self, result: &TestStepResult) {
+    let status = match result {
+      TestStepResult::Ok => colors::gray(".").to_string(),
+      TestStepResult::Ignored => colors::cyan(",").to_string(),
+      TestStepResult::Failed(_failure) => colors::red("!").to_string(),
+    };
+    self.print_status(status);
+  }
+
+  fn print_test_result(&mut self, result: &TestResult) {
+    let status = match result {
+      TestResult::Ok => colors::gray(".").to_string(),
+      TestResult::Ignored => colors::cyan(",").to_string(),
+      TestResult::Failed(_failure) => colors::red("!").to_string(),
+      TestResult::Cancelled => colors::gray("!").to_string(),
+    };
+
+    self.print_status(status);
+  }
+
   fn force_report_step_result(
     &mut self,
     description: &TestStepDescription,
-    _result: &TestStepResult,
+    result: &TestStepResult,
     _elapsed: u64,
   ) {
-    self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_step_wait(description);
     }
@@ -75,6 +102,8 @@ impl DotTestReporter {
         self.force_report_step_wait(description);
       }
     }
+
+    self.print_test_step_result(result);
 
     self.in_new_line = true;
     if self.parallel {
@@ -202,24 +231,11 @@ impl TestReporter for DotTestReporter {
       self.force_report_wait(description);
     }
 
-    self.write_output_end();
     if self.in_new_line || self.scope_test_id != Some(description.id) {
       self.force_report_wait(description);
     }
 
-    let status = match result {
-      TestResult::Ok => colors::gray(".").to_string(),
-      TestResult::Ignored => colors::cyan(",").to_string(),
-      TestResult::Failed(_failure) => colors::red("!").to_string(),
-      TestResult::Cancelled => colors::gray("!").to_string(),
-    };
-
-    if self.n != 0 && self.n % self.width == 0 {
-      println!();
-    }
-    self.n += 1;
-
-    print!("{}", status);
+    self.print_test_result(result);
     self.in_new_line = true;
     self.scope_test_id = None;
   }
@@ -283,14 +299,6 @@ impl TestReporter for DotTestReporter {
 
     if self.parallel {
       self.write_output_end();
-      print!(
-        "{} {} ...",
-        colors::gray(format!(
-          "{} =>",
-          to_relative_path_or_remote_url(&self.cwd, &desc.origin)
-        )),
-        self.format_test_step_ancestry(desc, tests, test_steps)
-      );
       self.in_new_line = false;
       self.scope_test_id = Some(desc.id);
       self.force_report_step_result(desc, result, elapsed);
@@ -301,10 +309,10 @@ impl TestReporter for DotTestReporter {
         || self.scope_test_id == Some(desc.parent_id)
       {
         let sibling_results = std::mem::take(sibling_results);
-        self.force_report_step_result(desc, result, elapsed);
+        self.print_test_step_result(result);
         // Flush buffered sibling results.
-        for (desc, result, elapsed) in sibling_results.values() {
-          self.force_report_step_result(desc, result, *elapsed);
+        for (_desc, result, _elapsed) in sibling_results.values() {
+          self.print_test_step_result(result);
         }
       } else {
         sibling_results
