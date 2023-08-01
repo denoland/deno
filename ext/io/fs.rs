@@ -253,7 +253,7 @@ impl FileResource {
     Self { name, file }
   }
 
-  pub fn with_resource<F, R>(
+  fn with_resource<F, R>(
     state: &OpState,
     rid: ResourceId,
     f: F,
