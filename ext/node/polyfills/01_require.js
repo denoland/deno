@@ -117,6 +117,7 @@ import streamPromises from "node:stream/promises";
 import streamWeb from "node:stream/web";
 import stringDecoder from "node:string_decoder";
 import sys from "node:sys";
+import test from "node:test";
 import timers from "node:timers";
 import timersPromises from "node:timers/promises";
 import tls from "node:tls";
@@ -219,6 +220,7 @@ function setupBuiltinModules() {
     "stream/web": streamWeb,
     string_decoder: stringDecoder,
     sys,
+    test,
     timers,
     "timers/promises": timersPromises,
     tls,
