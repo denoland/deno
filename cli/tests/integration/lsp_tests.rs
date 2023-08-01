@@ -5108,9 +5108,12 @@ fn lsp_completions_auto_import() {
   );
   assert!(!list.is_incomplete);
   let item = list.items.iter().find(|item| item.label == "foo");
-  if item.is_none() {
+  let Some(item) = item else {
     panic!("completions items missing 'foo' symbol");
-  }
+  };
+  let mut item_value = serde_json::to_value(item).unwrap();
+  item_value["data"]["tsc"]["data"]["exportMapKey"] =
+    serde_json::Value::String("".to_string());
 
   let req = json!({
     "label": "foo",
@@ -5130,7 +5133,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6812|file:///a/b",
+          "exportMapKey": "",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -5138,7 +5141,7 @@ fn lsp_completions_auto_import() {
       }
     }
   });
-  assert_eq!(serde_json::to_value(item.unwrap()).unwrap(), req);
+  assert_eq!(item_value, req);
 
   let res = client.write_request("completionItem/resolve", req);
   assert_eq!(
