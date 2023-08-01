@@ -119,7 +119,6 @@ pub(super) fn report_summary(
       let _ = uncaught_error.insert(js_error.as_ref());
     }
 
-    println!();
     // note: the trailing whitespace is intentional to get a red background
     println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
     for (origin, (failures, uncaught_error)) in failures_by_origin {
@@ -157,7 +156,6 @@ pub(super) fn report_summary(
   }
 
   let status = if summary.has_failed() {
-    println!();
     colors::red("FAILED").to_string()
   } else {
     colors::green("ok").to_string()
