@@ -136,7 +136,7 @@ jobs:
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
       - name: Clone submodule ./tools/node_compat/node
         run: git submodule update --init --recursive --depth=1 -- ./tools/node_compat/node
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
       - name: 'Create source tarballs (release, linux)'
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
@@ -297,8 +297,7 @@ jobs:
           rustc --version
           cargo --version
           which dpkg && dpkg -l
-          if [ "${{ matrix.job }}" == "lint" || "${{ matrix.job }}" == "test" ]
-          then
+          if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
             deno --version
           fi
           if [ "${{ matrix.job }}" == "bench" ]

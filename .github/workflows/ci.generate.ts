@@ -402,7 +402,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -497,8 +497,7 @@ const ci = {
             "cargo --version",
             "which dpkg && dpkg -l",
             // Deno is installed when linting or testing.
-            'if [ "${{ matrix.job }}" == "lint" || "${{ matrix.job }}" == "test" ]',
-            "then",
+            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
             "  deno --version",
             "fi",
             // Node is installed for benchmarks.
