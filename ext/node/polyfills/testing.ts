@@ -2,6 +2,23 @@
 
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
+export function deferred() {
+  let methods;
+  const promise = new Promise((resolve, reject) => {
+    methods = {
+      async resolve(value) {
+        await value;
+        resolve(value);
+      },
+      // deno-lint-ignore no-explicit-any
+      reject(reason?: any) {
+        reject(reason);
+      },
+    };
+  });
+  return Object.assign(promise, methods);
+}
+
 export function run() {
   notImplemented("test.run");
 }
@@ -49,8 +66,13 @@ class NodeTestContext {
     return null;
   }
 
-  test(_name, _options, _fn) {
-    notImplemented("test.TestContext.test");
+  test(name, options, fn) {
+    const prepared = prepareOptions(name, options, fn, {});
+    return this.#denoContext.step({
+      name: prepared.name,
+      fn: prepared.fn,
+      ignore: prepared.options.todo || prepared.options.skip,
+    }).then(() => undefined);
   }
 
   before(_fn, _options) {
@@ -70,7 +92,7 @@ class NodeTestContext {
   }
 }
 
-function prepareDenoTest(name, options, fn) {
+function prepareOptions(name, options, fn, overrides) {
   if (typeof name === "function") {
     fn = name;
   } else if (name !== null && typeof name === "object") {
@@ -84,8 +106,18 @@ function prepareDenoTest(name, options, fn) {
     options = {};
   }
 
-  // TODO(bartlomieju): warn once on each unsupported option
-  const { todo, only, concurrency, timeout, signal } = options;
+  const finalOptions = { ...options, ...overrides };
+  const { concurrency, timeout, signal } = finalOptions;
+
+  if (typeof concurrency !== "undefined") {
+    warnNotImplemented("test.options.concurrency");
+  }
+  if (typeof timeout !== "undefined") {
+    warnNotImplemented("test.options.timeout");
+  }
+  if (typeof signal !== "undefined") {
+    warnNotImplemented("test.options.signal");
+  }
 
   if (typeof fn !== "function") {
     fn = noop;
@@ -95,24 +127,47 @@ function prepareDenoTest(name, options, fn) {
     name = fn.name || "<anonymous>";
   }
 
+  return { fn, options: finalOptions, name };
+}
+
+function prepareDenoTest(name, options, fn, overrides) {
+  const prepared = prepareOptions(name, options, fn, overrides);
+
+  const promise = deferred();
   const wrappedFn = async (t) => {
     const nodeTestContext = new NodeTestContext(t);
-    await fn(nodeTestContext);
+    try {
+      await prepared.fn(nodeTestContext);
+    } finally {
+      promise.resolve(undefined);
+    }
   };
 
   const denoTestOptions = {
-    name,
+    name: prepared.name,
     fn: wrappedFn,
-    only,
-    ignore: todo,
+    only: prepared.options.only,
+    ignore: prepared.options.todo || prepared.options.skip,
   };
-  return Deno.test(denoTestOptions);
+  Deno.test(denoTestOptions);
+  return promise;
 }
 
 export function test(name, options, fn) {
-  prepareDenoTest(name, options, fn);
-  // TODO(bartlomieju): fix return type
+  return prepareDenoTest(name, options, fn, {});
 }
+
+test.skip = function skip(name, options, fn) {
+  return prepareDenoTest(name, options, fn, { skip: true });
+};
+
+test.todo = function todo(name, options, fn) {
+  return prepareDenoTest(name, options, fn, { todo: true });
+};
+
+test.only = function only(name, options, fn) {
+  return prepareDenoTest(name, options, fn, { only: true });
+};
 
 export function describe() {
   notImplemented("test.describe");
