@@ -1206,10 +1206,9 @@ fn resolve_deno_modules_folder(
 ) -> Option<PathBuf> {
   let use_deno_modules_dir = flags
     .deno_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()));
-  if use_deno_modules_dir == Some(false) {
-    None
-  } else if use_deno_modules_dir.is_none() {
+    .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()))
+    .unwrap_or(false);
+  if !use_deno_modules_dir {
     None
   } else if let Some(config_path) = maybe_config_file
     .as_ref()

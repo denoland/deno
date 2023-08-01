@@ -69,7 +69,7 @@ pub fn atomic_write_file<T: AsRef<[u8]>>(
     {
       if write_err.kind() == ErrorKind::NotFound {
         let parent_dir_path = file_path.parent().unwrap();
-        match std::fs::create_dir_all(&parent_dir_path) {
+        match std::fs::create_dir_all(parent_dir_path) {
           Ok(()) => {
             return atomic_write_file_raw(
               &temp_file_path,

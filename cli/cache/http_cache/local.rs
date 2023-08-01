@@ -72,7 +72,7 @@ impl LocalHttpCache {
 
       let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
       // if we're here, then this will be set
-      atomic_write_file(&local_file_path, &cached_bytes, CACHE_PERM)?;
+      atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
     }
     self.manifest.insert_data(
       url_to_local_sub_path(url, &metadata.headers)?,
@@ -653,7 +653,7 @@ mod test {
       local_cache_path
         .join("deno.land")
         .join("main.js")
-        .write(&content);
+        .write(content);
 
       // now we should be able to read this file because it's directly mappable to a url
       let url = Url::parse("https://deno.land/main.js").unwrap();
