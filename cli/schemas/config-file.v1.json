@@ -433,7 +433,7 @@
       "type": "boolean"
     },
     "denoModulesDir": {
-      "description": "UNSTABLE: Enables or disables the use of a local remote_modules folder as a local cache for remote modules. Alternatively, use the `--deno-modules-dir` or `--deno-modules-dir=false` flag. Requires Deno 1.36 or later.",
+      "description": "UNSTABLE: Enables or disables the use of a local deno_modules folder as a local cache for remote modules. Alternatively, use the `--deno-modules-dir` or `--deno-modules-dir=false` flag. Requires Deno 1.36 or later.",
       "type": "boolean"
     },
     "tasks": {

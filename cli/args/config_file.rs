@@ -872,7 +872,7 @@ impl ConfigFile {
           .unwrap()
           .parent()
           .unwrap()
-          .join("remote_modules"),
+          .join("deno_modules"),
       )
     } else {
       None
@@ -904,7 +904,7 @@ impl ConfigFile {
       };
 
     if self.deno_modules_dir() == Some(true) {
-      exclude.push("remote_modules".to_string());
+      exclude.push("deno_modules".to_string());
     }
 
     let raw_files_config = SerializedFilesConfig {

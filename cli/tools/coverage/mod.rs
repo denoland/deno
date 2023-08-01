@@ -571,7 +571,7 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
-  .ignore_remote_modules()
+  .ignore_deno_modules()
   .add_ignore_paths(&files.ignore)
   .collect_files(&files.include)?;
 

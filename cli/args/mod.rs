@@ -539,7 +539,7 @@ pub struct CliOptions {
   flags: Flags,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
-  maybe_remote_modules_folder: Option<PathBuf>,
+  maybe_deno_modules_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -575,7 +575,7 @@ impl CliOptions {
       maybe_package_json.as_ref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_remote_modules_folder = resolve_remote_modules_folder(
+    let maybe_deno_modules_folder = resolve_deno_modules_folder(
       &initial_cwd,
       &flags,
       maybe_config_file.as_ref(),
@@ -588,7 +588,7 @@ impl CliOptions {
       maybe_lockfile,
       maybe_package_json,
       maybe_node_modules_folder,
-      maybe_remote_modules_folder,
+      maybe_deno_modules_folder,
       overrides: Default::default(),
     })
   }
@@ -873,7 +873,7 @@ impl CliOptions {
   }
 
   pub fn deno_modules_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_remote_modules_folder.as_ref()
+    self.maybe_deno_modules_folder.as_ref()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1199,7 +1199,7 @@ fn resolve_node_modules_folder(
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
-fn resolve_remote_modules_folder(
+fn resolve_deno_modules_folder(
   cwd: &Path,
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
@@ -1215,9 +1215,9 @@ fn resolve_remote_modules_folder(
     .as_ref()
     .and_then(|c| c.specifier.to_file_path().ok())
   {
-    Some(config_path.parent().unwrap().join("remote_modules"))
+    Some(config_path.parent().unwrap().join("deno_modules"))
   } else {
-    Some(cwd.join("remote_modules"))
+    Some(cwd.join("deno_modules"))
   }
 }
 

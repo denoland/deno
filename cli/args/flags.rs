@@ -2571,7 +2571,7 @@ fn deno_modules_dir_arg() -> Arg {
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("UNSTABLE: Enables or disables the use of a local remote_modules folder for remote modules")
+    .help("UNSTABLE: Enables or disables the use of a local deno_modules folder for remote modules")
 }
 
 fn unsafely_ignore_certificate_errors_arg() -> Arg {
