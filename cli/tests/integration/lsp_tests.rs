@@ -8853,7 +8853,7 @@ fn lsp_deno_modules_dir() {
 
   assert!(temp_dir
     .path()
-    .join("deno_modules/http/localhost_4545/subdir/mod1.ts")
+    .join("deno_modules/http_localhost_4545/subdir/mod1.ts")
     .exists());
 
   client.shutdown();

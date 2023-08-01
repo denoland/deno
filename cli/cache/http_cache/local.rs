@@ -278,9 +278,16 @@ fn url_to_local_sub_path(
 
   // get the base url
   let port_separator = "_"; // make this shorter with just an underscore
-  let Some(base_parts) = base_url_to_filename_parts(url, port_separator) else {
+  let Some(mut base_parts) = base_url_to_filename_parts(url, port_separator) else {
     return Err(UrlToFilenameConversionError { url: url.to_string() });
   };
+
+  if base_parts[0] == "https" {
+    base_parts.remove(0);
+  } else {
+    let scheme = base_parts.remove(0);
+    base_parts[0] = format!("{}_{}", scheme, base_parts[0]);
+  }
 
   // first, try to get the filename of the path
   let path_segments = url
@@ -499,71 +506,73 @@ mod test {
 
   #[test]
   fn test_url_to_local_sub_path() {
+    run_test("https://deno.land/x/mod.ts", &[], "deno.land/x/mod.ts");
     run_test(
-      "https://deno.land/x/mod.ts",
+      "http://deno.land/x/mod.ts",
       &[],
-      "https/deno.land/x/mod.ts",
+      // http gets added to the folder name, but not https
+      "http_deno.land/x/mod.ts",
     );
     run_test(
       // capital letter in filename
       "https://deno.land/x/MOD.ts",
       &[],
-      "https/deno.land/x/#mod_fa860.ts",
+      "deno.land/x/#mod_fa860.ts",
     );
     run_test(
       // query string
       "https://deno.land/x/mod.ts?testing=1",
       &[],
-      "https/deno.land/x/#mod_2eb80.ts",
+      "deno.land/x/#mod_2eb80.ts",
     );
     run_test(
       // capital letter in directory
       "https://deno.land/OTHER/mod.ts",
       &[],
-      "https/deno.land/#other_1c55d/mod.ts",
+      "deno.land/#other_1c55d/mod.ts",
     );
     run_test(
       // under max of 30 chars
       "https://deno.land/x/012345678901234567890123456.js",
       &[],
-      "https/deno.land/x/012345678901234567890123456.js",
+      "deno.land/x/012345678901234567890123456.js",
     );
     run_test(
       // max 30 chars
       "https://deno.land/x/0123456789012345678901234567.js",
       &[],
-      "https/deno.land/x/#01234567890123456789_836de.js",
+      "deno.land/x/#01234567890123456789_836de.js",
     );
     run_test(
       // forbidden char
       "https://deno.land/x/mod's.js",
       &[],
-      "https/deno.land/x/#mod_s_44fc8.js",
+      "deno.land/x/#mod_s_44fc8.js",
     );
     run_test(
       // no extension
       "https://deno.land/x/mod",
       &[("content-type", "application/typescript")],
-      "https/deno.land/x/#mod_e55cf.ts",
+      "deno.land/x/#mod_e55cf.ts",
     );
     run_test(
       // known extension in directory is not allowed
       // because it could conflict with a file of the same name
       "https://deno.land/x/mod.js/mod.js",
       &[],
-      "https/deno.land/x/#mod.js_59c58/mod.js",
+      "deno.land/x/#mod.js_59c58/mod.js",
     );
     run_test(
       // slash slash in path
-      "https://localhost//mod.js",
+      "http://localhost//mod.js",
       &[],
-      "https/localhost/#e3b0c44/mod.js",
+      "http_localhost/#e3b0c44/mod.js",
     );
     run_test(
       // headers same extension
       "https://deno.land/x/mod.ts",
       &[("content-type", "application/typescript")],
-      "https/deno.land/x/mod.ts",
+      "deno.land/x/mod.ts",
     );
     run_test(
       // headers different extension... We hash this because
@@ -571,7 +580,7 @@ mod test {
       // https://deno.land/x/mod.ts to resolve as a typescript file
       "https://deno.land/x/mod.ts",
       &[("content-type", "application/javascript")],
-      "https/deno.land/x/#mod.ts_e8c36.js",
+      "deno.land/x/#mod.ts_e8c36.js",
     );
 
     #[track_caller]
@@ -642,7 +651,6 @@ mod test {
     {
       let content = "export const a = 1;";
       local_cache_path
-        .join("https")
         .join("deno.land")
         .join("main.js")
         .write(&content);
@@ -695,7 +703,7 @@ mod test {
         json!({
           "modules": {
             "https://deno.land/x/different_content_type.ts": {
-              "path": "https/deno.land/x/#different_content_ty_f15dc.js",
+              "path": "deno.land/x/#different_content_ty_f15dc.js",
               "headers": {
                 "content-type": "application/javascript"
               }
@@ -768,7 +776,7 @@ mod test {
           json!({
             "modules": {
               "https://deno.land/x/my_file.ts": {
-                "path": "https/deno.land/x/my_file.ts",
+                "path": "deno.land/x/my_file.ts",
                 "headers": {
                   "x-deno-warning": "Stop right now.",
                   "x-typescript-types": "./types.d.ts"
@@ -814,7 +822,7 @@ mod test {
         json!({
           "modules": {
             "https://deno.land/INVALID/Module.ts?dev": {
-              "path": "https/deno.land/#invalid_1ee01/#module_b8d2b.ts"
+              "path": "deno.land/#invalid_1ee01/#module_b8d2b.ts"
             }
           }
         })

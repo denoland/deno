@@ -4501,8 +4501,7 @@ console.log(returnsHi());"#,
 
   assert!(deno_modules_dir.exists());
   let mod1_file = deno_modules_dir
-    .join("http")
-    .join("localhost_4545")
+    .join("http_localhost_4545")
     .join("subdir")
     .join("mod1.ts");
   mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
