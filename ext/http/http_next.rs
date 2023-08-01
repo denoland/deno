@@ -118,11 +118,10 @@ impl<
 }
 
 #[op2(fast)]
-#[smi]
 pub fn op_http_upgrade_raw(
   state: &mut OpState,
   #[smi] slab_id: SlabId,
-) -> Result<ResourceId, AnyError> {
+) -> Result<u32, AnyError> {
   // Stage 1: extract the upgrade future
   let upgrade = slab_get(slab_id).upgrade()?;
   let (read, write) = tokio::io::duplex(1024);
@@ -186,12 +185,11 @@ pub fn op_http_upgrade_raw(
 }
 
 #[op2(async)]
-#[smi]
 pub async fn op_http_upgrade_websocket_next(
   state: Rc<RefCell<OpState>>,
   #[smi] slab_id: SlabId,
   #[serde] headers: Vec<(ByteString, ByteString)>,
-) -> Result<ResourceId, AnyError> {
+) -> Result<u32, AnyError> {
   let mut http = slab_get(slab_id);
   // Stage 1: set the response to 101 Switching Protocols and send it
   let upgrade = http.upgrade()?;
@@ -607,11 +605,10 @@ pub fn op_http_set_response_body_resource(
 }
 
 #[op2(fast)]
-#[smi]
 pub fn op_http_set_response_body_stream(
   state: &mut OpState,
   #[smi] slab_id: SlabId,
-) -> Result<ResourceId, AnyError> {
+) -> Result<u32, AnyError> {
   // TODO(mmastrac): what should this channel size be?
   let (tx, rx) = tokio::sync::mpsc::channel(1);
   set_response(slab_id, None, |compression| {
@@ -941,8 +938,7 @@ where
 /// Synchronous, non-blocking call to see if there are any further HTTP requests. If anything
 /// goes wrong in this method we return [`SlabId::MAX`] and let the async handler pick up the real error.
 #[op2(fast)]
-#[smi]
-pub fn op_http_try_wait(state: &mut OpState, #[smi] rid: ResourceId) -> SlabId {
+pub fn op_http_try_wait(state: &mut OpState, #[smi] rid: ResourceId) -> u32 {
   // The resource needs to exist.
   let Ok(join_handle) = state
     .resource_table
@@ -964,11 +960,10 @@ pub fn op_http_try_wait(state: &mut OpState, #[smi] rid: ResourceId) -> SlabId {
 }
 
 #[op2(async)]
-#[smi]
 pub async fn op_http_wait(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<SlabId, AnyError> {
+) -> Result<u32, AnyError> {
   // We will get the join handle initially, as we might be consuming requests still
   let join_handle = state
     .borrow_mut()
