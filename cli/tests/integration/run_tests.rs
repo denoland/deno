@@ -1680,6 +1680,7 @@ itest!(jsx_import_source_pragma_with_config_deno_modules_dir {
   output: "run/jsx_import_source.out",
   http_server: true,
   temp_cwd: true,
+  copy_temp_dir: Some("jsx/"),
 });
 
 itest!(jsx_import_source_no_pragma_no_check {
@@ -3036,7 +3037,7 @@ itest!(
     args: "run -A main.js",
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
-    copy_temp_dir: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
   }
@@ -4460,3 +4461,67 @@ itest!(extension_dynamic_import {
   output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });
+
+#[test]
+pub fn deno_modules_dir_config_file() {
+  let test_context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  let deno_modules_dir = temp_dir.path().join("deno_modules");
+  let rm_deno_modules = || std::fs::remove_dir_all(&deno_modules_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+
+  let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+
+  assert!(deno_modules_dir.exists());
+  rm_deno_modules();
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": false }"#);
+
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+  assert!(!deno_modules_dir.exists());
+  test_context
+    .new_command()
+    .args("cache --quiet --deno-modules-dir main.ts")
+    .run();
+  assert!(deno_modules_dir.exists());
+  rm_deno_modules();
+
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  let cache_command = test_context.new_command().args("cache --quiet main.ts");
+  cache_command.run();
+
+  assert!(deno_modules_dir.exists());
+  let mod1_file = deno_modules_dir
+    .join("http")
+    .join("localhost_4545")
+    .join("subdir")
+    .join("mod1.ts");
+  mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
+
+  // won't match the lockfile now
+  deno_run_cmd
+    .run()
+    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
+  Specifier: http://localhost:4545/subdir/mod1.ts
+  Lock file: [WILDCARD]deno.lock
+"#)
+    .assert_exit_code(10);
+
+  // try updating by deleting the lockfile
+  let lockfile = temp_dir.path().join("deno.lock");
+  lockfile.remove_file();
+  cache_command.run();
+
+  // now it should run
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
+  assert!(lockfile.exists());
+}
