@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::io::Error;
-use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -18,7 +17,9 @@ use std::collections::HashMap;
 
 #[cfg(unix)]
 #[derive(Default, Clone)]
-struct TtyModeStore(Rc<RefCell<HashMap<ResourceId, termios::Termios>>>);
+struct TtyModeStore(
+  std::rc::Rc<RefCell<HashMap<ResourceId, termios::Termios>>>,
+);
 
 #[cfg(unix)]
 impl TtyModeStore {
@@ -35,8 +36,6 @@ impl TtyModeStore {
   }
 }
 
-#[cfg(windows)]
-use deno_core::error::custom_error;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
