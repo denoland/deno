@@ -2,7 +2,7 @@
 import assert from "node:assert";
 import test from "node:test";
 import util from "node:util";
-import { setImmediate  } from "node:timers";
+import { setImmediate } from "node:timers";
 
 test("sync pass todo", (t) => {
   t.todo();
@@ -38,73 +38,73 @@ test("sync throw fail", () => {
   throw new Error("thrown from sync throw fail");
 });
 
-// test("async skip pass", async (t) => {
-//   t.skip();
-// });
+test("async skip pass", async (t) => {
+  t.skip();
+});
 
-// test("async pass", async () => {
-// });
+test("async pass", async () => {
+});
 
-// test("async throw fail", async () => {
-//   throw new Error("thrown from async throw fail");
-// });
+test("async throw fail", async () => {
+  throw new Error("thrown from async throw fail");
+});
 
-// test("async skip fail", async (t) => {
-//   t.skip();
-//   throw new Error("thrown from async throw fail");
-// });
+test("async skip fail", async (t) => {
+  t.skip();
+  throw new Error("thrown from async throw fail");
+});
 
-// test("async assertion fail", async () => {
-//   // Make sure the assert module is handled.
-//   assert.strictEqual(true, false);
-// });
+test("async assertion fail", async () => {
+  // Make sure the assert module is handled.
+  assert.strictEqual(true, false);
+});
 
-// test("resolve pass", () => {
-//   return Promise.resolve();
-// });
+test("resolve pass", () => {
+  return Promise.resolve();
+});
 
-// test("reject fail", () => {
-//   return Promise.reject(new Error("rejected from reject fail"));
-// });
+test("reject fail", () => {
+  return Promise.reject(new Error("rejected from reject fail"));
+});
 
-// test("unhandled rejection - passes but warns", () => {
-//   Promise.reject(new Error("rejected from unhandled rejection fail"));
-// });
+test("unhandled rejection - passes but warns", () => {
+  Promise.reject(new Error("rejected from unhandled rejection fail"));
+});
 
-// test("async unhandled rejection - passes but warns", async () => {
-//   Promise.reject(new Error("rejected from async unhandled rejection fail"));
-// });
+test("async unhandled rejection - passes but warns", async () => {
+  Promise.reject(new Error("rejected from async unhandled rejection fail"));
+});
 
-// test("immediate throw - passes but warns", () => {
-//   setImmediate(() => {
-//     throw new Error("thrown from immediate throw fail");
-//   });
-// });
+test("immediate throw - passes but warns", () => {
+  setImmediate(() => {
+    throw new Error("thrown from immediate throw fail");
+  });
+});
 
-// test("immediate reject - passes but warns", () => {
-//   setImmediate(() => {
-//     Promise.reject(new Error("rejected from immediate reject fail"));
-//   });
-// });
+test("immediate reject - passes but warns", () => {
+  setImmediate(() => {
+    Promise.reject(new Error("rejected from immediate reject fail"));
+  });
+});
 
-// test("immediate resolve pass", () => {
-//   return new Promise((resolve) => {
-//     setImmediate(() => {
-//       resolve();
-//     });
-//   });
-// });
+test("immediate resolve pass", () => {
+  return new Promise((resolve) => {
+    setImmediate(() => {
+      resolve();
+    });
+  });
+});
 
-// test("subtest sync throw fail", async (t) => {
-//   await t.test("+sync throw fail", (t) => {
-//     t.diagnostic("this subtest should make its parent test fail");
-//     throw new Error("thrown from subtest sync throw fail");
-//   });
-// });
+test("subtest sync throw fail", async (t) => {
+  await t.test("+sync throw fail", (t) => {
+    t.diagnostic("this subtest should make its parent test fail");
+    throw new Error("thrown from subtest sync throw fail");
+  });
+});
 
-// test("sync throw non-error fail", async (t) => {
-//   throw Symbol("thrown symbol from sync throw non-error fail");
-// });
+test("sync throw non-error fail", async (t) => {
+  throw Symbol("thrown symbol from sync throw non-error fail");
+});
 
 // test("level 0a", { concurrency: 4 }, async (t) => {
 //   t.test("level 1a", async (t) => {

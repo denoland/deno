@@ -1,44 +1,117 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { notImplemented } from "ext:deno_node/_utils.ts";
+import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
 export function run() {
   notImplemented("test.run");
 }
 
-export function test(nameOrOptionsOrFn, optionsOrFn, fn) {
-  if (typeof nameOrOptionsOrFn === "undefined") {
-    return;
+function noop() {}
+
+class NodeTestContext {
+  #denoContext: Deno.TestContext;
+
+  constructor(t: Deno.TestContext) {
+    this.#denoContext = t;
   }
 
-  let testName = "<anonymous>";
-  let testOptions = {};
-  let testFn = () => {};
-
-  if (typeof nameOrOptionsOrFn === "string" && typeof optionsOrFn === "undefined") {
-    if (nameOrOptionsOrFn.length) {
-      testName = nameOrOptionsOrFn;
-    }
-    Deno.test(testName, testFn);
-    return;
+  get signal() {
+    notImplemented("test.TestContext.signal");
+    return null;
   }
 
-  if (typeof nameOrOptionsOrFn === "function") {
-    testFn = nameOrOptionsOrFn;
-    console.log(testName, testFn);
-    Deno.test(testName, testFn);
-    return;
+  get name() {
+    notImplemented("test.TestContext.name");
+    return null;
   }
 
-  if (typeof optionsOrFn === "undefined") {
-    testOptions = nameOrOptionsOrFn;
-  } else if (typeof fn === "undefined") {
-    testOptions = nameOrOptionsOrFn;
-    testFn = optionsOrFn;
+  diagnostic(message) {
+    console.log("DIAGNOSTIC:", message);
   }
-  console.log(testName, testFn);
 
-  Deno.test(testName, testOptions, testFn);
+  get mock() {
+    notImplemented("test.TestContext.mock");
+    return null;
+  }
+
+  runOnly() {
+    notImplemented("test.TestContext.runOnly");
+    return null;
+  }
+
+  skip() {
+    warnNotImplemented("test.TestContext.skip");
+    return null;
+  }
+
+  todo() {
+    warnNotImplemented("test.TestContext.todo");
+    return null;
+  }
+
+  test(_name, _options, _fn) {
+    notImplemented("test.TestContext.test");
+  }
+
+  before(_fn, _options) {
+    notImplemented("test.TestContext.before");
+  }
+
+  after(_fn, _options) {
+    notImplemented("test.TestContext.after");
+  }
+
+  beforeEach(_fn, _options) {
+    notImplemented("test.TestContext.beforeEach");
+  }
+
+  afterEach(_fn, _options) {
+    notImplemented("test.TestContext.afterEach");
+  }
+}
+
+function prepareDenoTest(name, options, fn) {
+  if (typeof name === "function") {
+    fn = name;
+  } else if (name !== null && typeof name === "object") {
+    fn = options;
+    options = name;
+  } else if (typeof options === "function") {
+    fn = options;
+  }
+
+  if (options === null || typeof options !== "object") {
+    options = {};
+  }
+
+  // TODO(bartlomieju): warn once on each unsupported option
+  const { todo, only, concurrency, timeout, signal } = options;
+
+  if (typeof fn !== "function") {
+    fn = noop;
+  }
+
+  if (typeof name !== "string" || name === "") {
+    name = fn.name || "<anonymous>";
+  }
+
+  const wrappedFn = async (t) => {
+    const nodeTestContext = new NodeTestContext(t);
+    await fn(nodeTestContext);
+  };
+
+  const denoTestOptions = {
+    name,
+    fn: wrappedFn,
+    only,
+    ignore: todo,
+  };
+  return Deno.test(denoTestOptions);
+}
+
+export function test(name, options, fn) {
+  prepareDenoTest(name, options, fn);
+  // TODO(bartlomieju): fix return type
 }
 
 export function describe() {
