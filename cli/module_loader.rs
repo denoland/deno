@@ -785,11 +785,8 @@ impl NpmModuleLoader {
         Some(code.as_str()),
         permissions,
       )?
-    } else if specifier.as_str().ends_with(".json") {
-      // keep json as is
-      code
     } else {
-      // esm code is untouched
+      // esm and json code is untouched
       code
     };
     Ok(ModuleCodeSource {
