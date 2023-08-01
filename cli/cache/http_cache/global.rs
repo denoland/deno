@@ -129,6 +129,7 @@ impl HttpCache for GlobalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
 
     match std::fs::metadata(self.key_file_path(key)) {
@@ -162,7 +163,9 @@ impl HttpCache for GlobalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<Vec<u8>>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
+
     Ok(read_file_bytes(self.key_file_path(key))?)
   }
 
@@ -170,7 +173,9 @@ impl HttpCache for GlobalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(!key.is_local_key);
+
     match read_metadata(self.key_file_path(key))? {
       Some(metadata) => Ok(Some(metadata)),
       None => Ok(None),

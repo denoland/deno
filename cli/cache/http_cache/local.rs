@@ -119,7 +119,9 @@ impl HttpCache for LocalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<SystemTime>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
+
     self
       .get_url_metadata_checking_global_cache(key.url)
       .map(|m| m.map(|m| m.time))
@@ -148,6 +150,7 @@ impl HttpCache for LocalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<Vec<u8>>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
     let metadata = self.get_url_metadata_checking_global_cache(key.url)?;
@@ -171,6 +174,7 @@ impl HttpCache for LocalHttpCache {
     &self,
     key: &HttpCacheItemKey,
   ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    #[cfg(debug_assertions)]
     debug_assert!(key.is_local_key);
 
     self.get_url_metadata_checking_global_cache(key.url)
