@@ -2119,6 +2119,20 @@ itest!(reserved_word_exports {
   http_server: true,
 });
 
+itest!(import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(dynamic_import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(check_package_file_dts_dmts_dcts {
   args: "check npm/file_dts_dmts_dcts/main.ts",
   output: "npm/file_dts_dmts_dcts/main.out",
