@@ -178,21 +178,15 @@ fn op_isatty(
     let handle = raw_fd;
     let mut test_mode: DWORD = 0;
     // If I cannot get mode out of console, it is not a console.
-    // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    {
-      out[0] =
-        unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE }
-          as u8;
-    }
+    out[0] =
+      // SAFETY: Windows API
+      unsafe { consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE }
+        as u8;
   }
   #[cfg(unix)]
   {
-    // TODO(bartlomieju):
-    #[allow(clippy::undocumented_unsafe_blocks)]
-    {
-      out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
-    }
+    // SAFETY: Posix API
+    out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
   }
   Ok(())
 }
