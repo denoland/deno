@@ -775,6 +775,20 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_esm_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli.mjs this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli-cjs.js this is a test",
+  output: "npm/deno_run_cjs.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_special_chars {
   args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
   output: "npm/deno_run_special_chars_in_bin_name.out",
@@ -812,6 +826,22 @@ fn deno_run_bin_lockfile() {
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/esm-basic",
+  output: "npm/deno_run_no_bin_entrypoint.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint_non_existent_subpath {
+  args: "run -A --quiet npm:@denotest/esm-basic/non-existent.js",
+  output: "npm/deno_run_no_bin_entrypoint_non_existent_subpath.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
