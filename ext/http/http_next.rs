@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use crate::compressible::is_content_compressible;
 use crate::extract_network_stream;
+use crate::hyper_util_tokioio::TokioIo;
 use crate::network_buffered_stream::NetworkStreamPrefixCheck;
 use crate::request_body::HttpRequestBody;
 use crate::request_properties::HttpConnectionProperties;
@@ -12,6 +13,7 @@ use crate::response_body::ResponseBytesInner;
 use crate::response_body::V8StreamHttpResponseBody;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
+use crate::slab::slab_init;
 use crate::slab::slab_insert;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
@@ -32,6 +34,7 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -137,7 +140,7 @@ pub fn op_http_upgrade_raw(
           let mut http = slab_get(slab_id);
           *http.response() = response;
           http.complete();
-          let mut upgraded = upgrade.await?;
+          let mut upgraded = TokioIo::new(upgrade.await?);
           upgraded.write_all(&bytes).await?;
           break upgraded;
         }
@@ -212,8 +215,11 @@ pub async fn op_http_upgrade_websocket_next(
 #[op2(fast)]
 pub fn op_http_set_promise_complete(#[smi] slab_id: SlabId, status: u16) {
   let mut http = slab_get(slab_id);
-  // The Javascript code will never provide a status that is invalid here (see 23_response.js)
-  *http.response().status_mut() = StatusCode::from_u16(status).unwrap();
+  // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
+  // will quitely ignore invalid values.
+  if let Ok(code) = StatusCode::from_u16(status) {
+    *http.response().status_mut() = code;
+  }
   http.complete();
 }
 
@@ -704,7 +710,7 @@ fn serve_http11_unconditional(
   let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
-    .serve_connection(io, svc);
+    .serve_connection(TokioIo::new(io), svc);
 
   conn.with_upgrades().map_err(AnyError::from)
 }
@@ -713,7 +719,8 @@ fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
 ) -> impl Future<Output = Result<(), AnyError>> + 'static {
-  let conn = http2::Builder::new(LocalExecutor).serve_connection(io, svc);
+  let conn =
+    http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
   conn.map_err(AnyError::from)
 }
 
@@ -835,6 +842,8 @@ pub fn op_http_serve<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let listener =
     HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
@@ -885,6 +894,8 @@ pub fn op_http_serve_on<HTTP>(
 where
   HTTP: HttpPropertyExtractor,
 {
+  slab_init();
+
   let connection =
     HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
@@ -1034,6 +1045,34 @@ impl UpgradeStream {
     .try_or_cancel(cancel_handle)
     .await
   }
+
+  async fn write_vectored(
+    self: Rc<Self>,
+    buf1: &[u8],
+    buf2: &[u8],
+  ) -> Result<usize, AnyError> {
+    let mut wr = RcRef::map(self, |r| &r.write).borrow_mut().await;
+
+    let total = buf1.len() + buf2.len();
+    let mut bufs = [std::io::IoSlice::new(buf1), std::io::IoSlice::new(buf2)];
+    let mut nwritten = wr.write_vectored(&bufs).await?;
+    if nwritten == total {
+      return Ok(nwritten);
+    }
+
+    // Slightly more optimized than (unstable) write_all_vectored for 2 iovecs.
+    while nwritten <= buf1.len() {
+      bufs[0] = std::io::IoSlice::new(&buf1[nwritten..]);
+      nwritten += wr.write_vectored(&bufs).await?;
+    }
+
+    // First buffer out of the way.
+    if nwritten < total && nwritten > buf1.len() {
+      wr.write_all(&buf2[nwritten - buf1.len()..]).await?;
+    }
+
+    Ok(total)
+  }
 }
 
 impl Resource for UpgradeStream {
@@ -1047,4 +1086,22 @@ impl Resource for UpgradeStream {
   fn close(self: Rc<Self>) {
     self.cancel_handle.cancel();
   }
+}
+
+#[op(fast)]
+pub fn op_can_write_vectored(state: &mut OpState, rid: ResourceId) -> bool {
+  state.resource_table.get::<UpgradeStream>(rid).is_ok()
+}
+
+#[op]
+pub async fn op_raw_write_vectored(
+  state: Rc<RefCell<OpState>>,
+  rid: ResourceId,
+  buf1: JsBuffer,
+  buf2: JsBuffer,
+) -> Result<usize, AnyError> {
+  let resource: Rc<UpgradeStream> =
+    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
+  let nwritten = resource.write_vectored(&buf1, &buf2).await?;
+  Ok(nwritten)
 }

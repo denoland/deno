@@ -23,7 +23,11 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { charLengthAt, CSI, emitKeys } from "ext:deno_node/internal/readline/utils.mjs";
+import {
+  charLengthAt,
+  CSI,
+  emitKeys,
+} from "ext:deno_node/internal/readline/utils.mjs";
 import { kSawKeyPress } from "ext:deno_node/internal/readline/symbols.mjs";
 import { clearTimeout, setTimeout } from "node:timers";
 

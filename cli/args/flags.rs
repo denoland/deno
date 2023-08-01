@@ -64,7 +64,17 @@ pub struct CompileFlags {
   pub output: Option<PathBuf>,
   pub args: Vec<String>,
   pub target: Option<String>,
+  pub no_terminal: bool,
   pub include: Vec<String>,
+}
+
+impl CompileFlags {
+  pub fn resolve_target(&self) -> String {
+    self
+      .target
+      .clone()
+      .unwrap_or_else(|| env!("TARGET").to_string())
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -221,6 +231,7 @@ pub struct TestFlags {
   pub concurrent_jobs: Option<NonZeroUsize>,
   pub trace_ops: bool,
   pub watch: Option<WatchFlags>,
+  pub junit_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1030,6 +1041,12 @@ supported in canary.
             "aarch64-apple-darwin",
           ]),
       )
+      .arg(
+        Arg::new("no-terminal")
+          .long("no-terminal")
+          .help("Hide terminal on Windows")
+          .action(ArgAction::SetTrue),
+      )
       .arg(executable_ext_arg())
     })
 }
@@ -1584,7 +1601,6 @@ Ignore linting a file by adding an ignore comment at the top of the file:
             .num_args(1..)
             .action(ArgAction::Append)
             .use_value_delimiter(true)
-            .conflicts_with("rules")
             .help("Use set of rules with a tag"),
         )
         .arg(
@@ -1849,6 +1865,16 @@ Directory arguments are expanded to all contained files matching the glob
     )
     .arg(no_clear_screen_arg())
     .arg(script_arg().last(true))
+    .arg(
+      Arg::new("junit")
+        .long("junit")
+        .value_name("PATH")
+        .value_hint(ValueHint::FilePath)
+        .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
+        .num_args(0..=1)
+        .require_equals(true)
+        .default_missing_value("-")
+    )
   )
 }
 
@@ -2635,6 +2661,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let args = script.collect();
   let output = matches.remove_one::<PathBuf>("output");
   let target = matches.remove_one::<String>("target");
+  let no_terminal = matches.get_flag("no-terminal");
   let include = match matches.remove_many::<String>("include") {
     Some(f) => f.collect(),
     None => vec![],
@@ -2646,6 +2673,7 @@ fn compile_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output,
     args,
     target,
+    no_terminal,
     include,
   });
 }
@@ -3035,6 +3063,8 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     Vec::new()
   };
 
+  let junit_path = matches.remove_one::<String>("junit");
+
   flags.subcommand = DenoSubcommand::Test(TestFlags {
     no_run,
     doc,
@@ -3047,6 +3077,7 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     concurrent_jobs,
     trace_ops,
     watch: watch_arg_parse(matches),
+    junit_path,
   });
 }
 
@@ -4144,6 +4175,32 @@ mod tests {
           },
           rules: true,
           maybe_rules_tags: None,
+          maybe_rules_include: None,
+          maybe_rules_exclude: None,
+          json: false,
+          compact: false,
+          watch: Default::default(),
+        }),
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "lint",
+      "--rules",
+      "--rules-tags=recommended"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Lint(LintFlags {
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          rules: true,
+          maybe_rules_tags: Some(svec!["recommended"]),
           maybe_rules_include: None,
           maybe_rules_exclude: None,
           json: false,
@@ -5885,6 +5942,7 @@ mod tests {
           trace_ops: true,
           coverage_dir: Some("cov".to_string()),
           watch: Default::default(),
+          junit_path: None,
         }),
         unstable: true,
         no_prompt: true,
@@ -5963,6 +6021,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -5995,6 +6054,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6031,6 +6091,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6061,6 +6122,7 @@ mod tests {
           trace_ops: false,
           coverage_dir: None,
           watch: Default::default(),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6092,6 +6154,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6122,6 +6185,7 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: false,
           }),
+          junit_path: None,
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
@@ -6154,6 +6218,67 @@ mod tests {
           watch: Some(WatchFlags {
             no_clear_screen: true,
           }),
+          junit_path: None,
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_junit_default() {
+    let r = flags_from_vec(svec!["deno", "test", "--junit"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          concurrent_jobs: None,
+          trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
+          junit_path: Some("-".to_string()),
+        }),
+        type_check_mode: TypeCheckMode::Local,
+        no_prompt: true,
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn test_junit_with_path() {
+    let r = flags_from_vec(svec!["deno", "test", "--junit=junit.xml"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          no_run: false,
+          doc: false,
+          fail_fast: None,
+          filter: None,
+          allow_none: false,
+          shuffle: None,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          concurrent_jobs: None,
+          trace_ops: false,
+          coverage_dir: None,
+          watch: Default::default(),
+          junit_path: Some("junit.xml".to_string()),
         }),
         type_check_mode: TypeCheckMode::Local,
         no_prompt: true,
@@ -6401,6 +6526,7 @@ mod tests {
           output: None,
           args: vec![],
           target: None,
+          no_terminal: false,
           include: vec![]
         }),
         type_check_mode: TypeCheckMode::Local,
@@ -6412,7 +6538,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6421,6 +6547,7 @@ mod tests {
           output: Some(PathBuf::from("colors")),
           args: svec!["foo", "bar"],
           target: None,
+          no_terminal: true,
           include: vec![]
         }),
         import_map_path: Some("import_map.json".to_string()),

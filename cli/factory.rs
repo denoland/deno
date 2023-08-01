@@ -25,7 +25,7 @@ use crate::module_loader::CjsResolutionStore;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::module_loader::NpmModuleLoader;
-use crate::node::CliCjsEsmCodeAnalyzer;
+use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
@@ -398,7 +398,7 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.options.to_maybe_jsx_import_source_config(),
+          self.options.to_maybe_jsx_import_source_config()?,
           self.maybe_import_map().await?.clone(),
           self.options.no_npm(),
           self.npm_api()?.clone(),
@@ -475,7 +475,8 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let cjs_esm_analyzer = CliCjsEsmCodeAnalyzer::new(node_analysis_cache);
+        let cjs_esm_analyzer =
+          CliCjsCodeAnalyzer::new(node_analysis_cache, self.fs().clone());
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,

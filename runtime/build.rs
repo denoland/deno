@@ -139,6 +139,13 @@ mod startup_snapshot {
     fn check_read(&self, _p: &Path) -> Result<(), deno_core::error::AnyError> {
       unreachable!("snapshotting!")
     }
+    fn check_sys(
+      &self,
+      _kind: &str,
+      _api_name: &str,
+    ) -> Result<(), deno_core::error::AnyError> {
+      unreachable!("snapshotting!")
+    }
   }
 
   impl deno_net::NetPermissions for Permissions {
@@ -275,14 +282,14 @@ mod startup_snapshot {
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.esm(vec![ExtensionFileSource {
+    esm_entry_point = "ext:runtime_main/js/99_main.js",
+    customizer = |ext: &mut deno_core::Extension| {
+      ext.esm_files.to_mut().push(ExtensionFileSource {
         specifier: "ext:runtime_main/js/99_main.js",
         code: deno_core::ExtensionFileSourceCode::IncludedInBinary(
           include_str!("js/99_main.js"),
         ),
-      }]);
-      ext.esm_entry_point("ext:runtime_main/js/99_main.js");
+      });
     }
   );
 
@@ -290,9 +297,7 @@ mod startup_snapshot {
   deno_core::extension!(
     runtime_main,
     deps = [runtime],
-    customizer = |ext: &mut deno_core::ExtensionBuilder| {
-      ext.esm_entry_point("ext:runtime/90_deno_ns.js");
-    }
+    esm_entry_point = "ext:runtime/90_deno_ns.js",
   );
 
   pub fn create_runtime_snapshot(snapshot_path: PathBuf) {
@@ -350,6 +355,7 @@ mod startup_snapshot {
       extensions,
       compression_cb: None,
       snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
+      with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
       println!("cargo:rerun-if-changed={}", path.display());

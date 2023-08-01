@@ -728,10 +728,7 @@ async fn main_server(
   req: Request<Body>,
 ) -> Result<Response<Body>, hyper::http::Error> {
   return match (req.method(), req.uri().path()) {
-    (
-      &hyper::Method::POST | &hyper::Method::PATCH | &hyper::Method::PUT,
-      "/echo_server",
-    ) => {
+    (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(body);
 
@@ -809,6 +806,11 @@ async fn main_server(
     (_, "/bad_redirect") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::FOUND;
+      Ok(res)
+    }
+    (_, "/server_error") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
       Ok(res)
     }
     (_, "/x_deno_warning.js") => {
