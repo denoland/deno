@@ -2,6 +2,8 @@
 
 // Ported from https://github.com/nodejs/node/blob/d396a041f71cc055ad60b0abc63ad81c0ee6a574/test/fixtures/test-runner/output/output.js
 
+// deno-lint-ignore-file
+
 import assert from "node:assert";
 import test from "node:test";
 import util from "node:util";
