@@ -14,6 +14,7 @@ import {
   EventTarget,
   MessageEvent,
   setEventTargetData,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
@@ -155,6 +156,7 @@ class MessagePort extends EventTarget {
           transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", { data: err });
+          setIsTrusted(event, true);
           this.dispatchEvent(event);
           return;
         }
@@ -165,6 +167,7 @@ class MessagePort extends EventTarget {
             (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
           ),
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
       }
       this[_enabled] = false;

@@ -17,6 +17,7 @@ import {
   Event,
   EventTarget,
   MessageEvent,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import { Blob, BlobPrototype } from "ext:deno_web/09_file.js";
 import { getLocationHref } from "ext:deno_web/12_location.js";
@@ -430,6 +431,7 @@ class WebSocket extends EventTarget {
             data: op_ws_get_buffer_as_string(rid),
             origin: this[_url],
           });
+          setIsTrusted(event, true);
           dispatch(this, event);
           break;
         }
@@ -450,6 +452,7 @@ class WebSocket extends EventTarget {
             origin: this[_url],
             [_skipInternalInit]: true,
           });
+          setIsTrusted(event, true);
           dispatch(this, event);
           break;
         }
