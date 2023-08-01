@@ -75,9 +75,9 @@ impl GlobalHttpCache {
     Self(path)
   }
 
-  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
-  // detail of the cache.
-  #[deprecated(note = "Do not assume the cache will be stored at a file path.")]
+  // Deprecated to discourage using this as where the file is stored and
+  // how it's stored should be an implementation detail of the cache.
+  #[deprecated(note = "Should only be used for deno info.")]
   pub fn get_global_cache_location(&self) -> &PathBuf {
     &self.0
   }
