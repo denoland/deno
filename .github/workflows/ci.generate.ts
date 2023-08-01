@@ -369,6 +369,14 @@ const ci = {
             os: Runners.ubuntu,
             job: "lint",
             profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "lint",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "lint",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to

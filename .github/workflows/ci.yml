@@ -95,6 +95,14 @@ jobs:
             job: lint
             profile: debug
             os_display_name: ubuntu-x86_64
+          - os: macos-12
+            job: lint
+            profile: debug
+            os_display_name: macos-x86_64
+          - os: windows-2022
+            job: lint
+            profile: debug
+            os_display_name: windows-x86_64
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
