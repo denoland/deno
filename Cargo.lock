@@ -983,7 +983,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.198.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#544360e577e2e9edcac95c7302dfda639b2778c1"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1354,7 +1354,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.76.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#544360e577e2e9edcac95c7302dfda639b2778c1"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -4455,7 +4455,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.109.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#544360e577e2e9edcac95c7302dfda639b2778c1"
+source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
 dependencies = [
  "bytes",
  "derive_more",
