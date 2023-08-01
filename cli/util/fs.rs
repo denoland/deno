@@ -728,12 +728,12 @@ mod tests {
     // ├── a.ts
     // ├── b.js
     // ├── child
+    // |   ├── deno_modules
+    // |   |   └── deno_modules.js
     // |   ├── git
     // |   |   └── git.js
     // |   ├── node_modules
     // |   |   └── node_modules.js
-    // |   ├── deno_modules
-    // |   |   └── deno_modules.js
     // │   ├── e.mjs
     // │   ├── f.mjsx
     // │   ├── .foo.TS
@@ -784,11 +784,11 @@ mod tests {
       "b.js",
       "c.tsx",
       "d.jsx",
+      "deno_modules.js",
       "e.mjs",
       "f.mjsx",
       "git.js",
       "node_modules.js",
-      "deno_modules.js",
     ];
     let mut file_names = result
       .into_iter()
