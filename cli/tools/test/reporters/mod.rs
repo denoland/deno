@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod common;
 mod compound;
 mod dot;
 mod junit;
