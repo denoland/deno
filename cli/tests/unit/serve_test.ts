@@ -2879,6 +2879,7 @@ Deno.test(
         method: "POST",
         body: '{"bar":true}',
       });
+      fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
       assert(
@@ -2930,6 +2931,7 @@ Deno.test({
         method: "POST",
         body: '{"bar":true}',
       });
+      fail();
     } catch (clientError) {
       assert(clientError instanceof TypeError);
       assert(
