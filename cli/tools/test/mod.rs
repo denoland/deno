@@ -395,7 +395,7 @@ impl TestSummary {
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
   match &options.reporter {
-    TestReporterConfig::Dot => Box::new(DotTestReporter::new(parallel)),
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),

@@ -7,17 +7,12 @@ use super::*;
 pub struct DotTestReporter {
   n: usize,
   width: usize,
-  parallel: bool,
-  in_new_line: bool,
-  scope_test_id: Option<usize>,
   cwd: Url,
-  child_results_buffer:
-    HashMap<usize, IndexMap<usize, (TestStepDescription, TestStepResult, u64)>>,
   summary: TestSummary,
 }
 
 impl DotTestReporter {
-  pub fn new(parallel: bool) -> DotTestReporter {
+  pub fn new() -> DotTestReporter {
     let console_width = if let Some(size) = crate::util::console::console_size()
     {
       size.cols as usize
@@ -28,27 +23,9 @@ impl DotTestReporter {
     DotTestReporter {
       n: 0,
       width: console_width,
-      parallel,
-      in_new_line: true,
-      scope_test_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
-      child_results_buffer: Default::default(),
       summary: TestSummary::new(),
     }
-  }
-
-  fn force_report_wait(&mut self, description: &TestDescription) {
-    self.in_new_line = false;
-    // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
-    self.scope_test_id = Some(description.id);
-  }
-
-  fn force_report_step_wait(&mut self, description: &TestStepDescription) {
-    self.in_new_line = false;
-    // flush for faster feedback when line buffered
-    std::io::stdout().flush().unwrap();
-    self.scope_test_id = Some(description.id);
   }
 
   fn print_status(&mut self, status: String) {
@@ -68,64 +45,25 @@ impl DotTestReporter {
 
   fn print_test_step_result(&mut self, result: &TestStepResult) {
     let status = match result {
-      TestStepResult::Ok => colors::gray(".").to_string(),
-      TestStepResult::Ignored => colors::cyan(",").to_string(),
-      TestStepResult::Failed(_failure) => colors::red("!").to_string(),
+      TestStepResult::Ok => fmt_ok(),
+      TestStepResult::Ignored => fmt_ignored(),
+      TestStepResult::Failed(_failure) => fmt_failed(),
     };
     self.print_status(status);
   }
 
   fn print_test_result(&mut self, result: &TestResult) {
     let status = match result {
-      TestResult::Ok => colors::gray(".").to_string(),
-      TestResult::Ignored => colors::cyan(",").to_string(),
-      TestResult::Failed(_failure) => colors::red("!").to_string(),
-      TestResult::Cancelled => colors::gray("!").to_string(),
+      TestResult::Ok => fmt_ok(),
+      TestResult::Ignored => fmt_ignored(),
+      TestResult::Failed(_failure) => fmt_failed(),
+      TestResult::Cancelled => fmt_cancelled(),
     };
 
     self.print_status(status);
   }
 
-  fn force_report_step_result(
-    &mut self,
-    description: &TestStepDescription,
-    result: &TestStepResult,
-    _elapsed: u64,
-  ) {
-    if self.in_new_line || self.scope_test_id != Some(description.id) {
-      self.force_report_step_wait(description);
-    }
-
-    if !self.parallel {
-      let child_results = self
-        .child_results_buffer
-        .remove(&description.id)
-        .unwrap_or_default();
-      for (desc, result, elapsed) in child_results.values() {
-        self.force_report_step_result(desc, result, *elapsed);
-      }
-      if !child_results.is_empty() {
-        self.force_report_step_wait(description);
-      }
-    }
-
-    self.print_test_step_result(result);
-
-    self.in_new_line = true;
-    if self.parallel {
-      self.scope_test_id = None;
-    } else {
-      self.scope_test_id = Some(description.parent_id);
-    }
-    self
-      .child_results_buffer
-      .entry(description.parent_id)
-      .or_default()
-      .remove(&description.id);
-  }
-
-  fn write_output_end(&mut self) {}
-
+  // TODO(bartlomieju): deduplicate with PrettyTestReporter
   fn format_test_step_ancestry(
     &self,
     desc: &TestStepDescription,
@@ -156,6 +94,7 @@ impl DotTestReporter {
     result
   }
 
+  // TODO(bartlomieju): deduplicate with PrettyTestReporter
   fn format_test_for_summary(&self, desc: &TestDescription) -> String {
     format!(
       "{} {}",
@@ -169,6 +108,7 @@ impl DotTestReporter {
     )
   }
 
+  // TODO(bartlomieju): deduplicate with PrettyTestReporter
   fn format_test_step_for_summary(
     &self,
     desc: &TestStepDescription,
@@ -189,21 +129,33 @@ impl DotTestReporter {
   }
 }
 
+fn fmt_ok() -> String {
+  colors::gray(".").to_string()
+}
+
+fn fmt_ignored() -> String {
+  colors::cyan(",").to_string()
+}
+
+fn fmt_failed() -> String {
+  colors::red_bold("!").to_string()
+}
+
+fn fmt_cancelled() -> String {
+  colors::gray("!").to_string()
+}
+
 impl TestReporter for DotTestReporter {
   fn report_register(&mut self, _description: &TestDescription) {}
+
   fn report_plan(&mut self, plan: &TestPlan) {
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
-    if self.parallel {
-      return;
-    }
-    self.in_new_line = true;
   }
 
-  fn report_wait(&mut self, description: &TestDescription) {
-    if !self.parallel {
-      self.force_report_wait(description);
-    }
+  fn report_wait(&mut self, _description: &TestDescription) {
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
   }
 
   fn report_output(&mut self, _output: &[u8]) {}
@@ -233,17 +185,7 @@ impl TestReporter for DotTestReporter {
       }
     }
 
-    if self.parallel {
-      self.force_report_wait(description);
-    }
-
-    if self.in_new_line || self.scope_test_id != Some(description.id) {
-      self.force_report_wait(description);
-    }
-
     self.print_test_result(result);
-    self.in_new_line = true;
-    self.scope_test_id = None;
   }
 
   fn report_uncaught_error(&mut self, origin: &str, error: Box<JsError>) {
@@ -253,30 +195,25 @@ impl TestReporter for DotTestReporter {
       .uncaught_errors
       .push((origin.to_string(), error));
 
-    if !self.in_new_line {
-      println!();
-    }
     println!(
       "Uncaught error from {} {}",
       to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
     );
-    self.in_new_line = true;
   }
 
   fn report_step_register(&mut self, _description: &TestStepDescription) {}
 
-  fn report_step_wait(&mut self, description: &TestStepDescription) {
-    if !self.parallel && self.scope_test_id == Some(description.parent_id) {
-      self.force_report_step_wait(description);
-    }
+  fn report_step_wait(&mut self, _description: &TestStepDescription) {
+    // flush for faster feedback when line buffered
+    std::io::stdout().flush().unwrap();
   }
 
   fn report_step_result(
     &mut self,
     desc: &TestStepDescription,
     result: &TestStepResult,
-    elapsed: u64,
+    _elapsed: u64,
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
@@ -303,30 +240,10 @@ impl TestReporter for DotTestReporter {
       }
     }
 
-    if self.parallel {
-      self.write_output_end();
-      self.in_new_line = false;
-      self.scope_test_id = Some(desc.id);
-      self.force_report_step_result(desc, result, elapsed);
-    } else {
-      let sibling_results =
-        self.child_results_buffer.entry(desc.parent_id).or_default();
-      if self.scope_test_id == Some(desc.id)
-        || self.scope_test_id == Some(desc.parent_id)
-      {
-        let sibling_results = std::mem::take(sibling_results);
-        self.print_test_step_result(result);
-        // Flush buffered sibling results.
-        for (_desc, result, _elapsed) in sibling_results.values() {
-          self.print_test_step_result(result);
-        }
-      } else {
-        sibling_results
-          .insert(desc.id, (desc.clone(), result.clone(), elapsed));
-      }
-    }
+    self.print_test_step_result(result);
   }
 
+  // TODO(bartlomieju): deduplicate with PrettyTestReporter
   fn report_summary(
     &mut self,
     elapsed: &Duration,
@@ -453,9 +370,9 @@ impl TestReporter for DotTestReporter {
         display::human_elapsed(elapsed.as_millis())
       )),
     );
-    self.in_new_line = true;
   }
 
+  // TODO(bartlomieju): deduplicate with PrettyTestReporter
   fn report_sigint(
     &mut self,
     tests_pending: &HashSet<usize>,
@@ -483,7 +400,6 @@ impl TestReporter for DotTestReporter {
       println!("{}", entry);
     }
     println!();
-    self.in_new_line = true;
   }
 
   fn flush_report(
