@@ -982,9 +982,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.197.0"
+version = "0.198.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efdf066ffb540f889e481c4f1cdbb7bc202a7af937e7c435234586395e533976"
+checksum = "9b34b6caa86eeea6f1449334c9ee26bec07e1db909bff5a4849727482cf06473"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1166,7 +1166,7 @@ dependencies = [
  "http",
  "httparse",
  "hyper 0.14.26",
- "hyper 1.0.0-rc.3",
+ "hyper 1.0.0-rc.4",
  "memmem",
  "mime",
  "once_cell",
@@ -1296,11 +1296,13 @@ dependencies = [
  "dsa",
  "ecb",
  "elliptic-curve 0.13.4",
+ "errno",
  "hex",
  "hkdf",
  "idna 0.3.0",
  "indexmap 1.9.2",
  "lazy-regex",
+ "libc",
  "libz-sys",
  "md-5",
  "md4",
@@ -1328,6 +1330,8 @@ dependencies = [
  "signature 1.6.4",
  "tokio",
  "typenum",
+ "whoami",
+ "winapi",
  "x25519-dalek",
  "x509-parser",
 ]
@@ -1350,9 +1354,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.75.0"
+version = "0.76.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba2d2ca95637f48ba885bfa78cf3b962aa6752e4bb0bacda438e024a4b6b3b69"
+checksum = "e4ca7df186f9f20d087a03d0ab314706bf5ffec1cf18c658efae833ce5dac3e8"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -2530,13 +2534,12 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b75264b2003a3913f118d35c586e535293b3e22e41f074930762929d071e092"
+checksum = "d280a71f348bcc670fc55b02b63c53a04ac0bf2daff2980795aeaf53edae10e6"
 dependencies = [
  "bytes",
  "futures-channel",
- "futures-core",
  "futures-util",
  "h2",
  "http",
@@ -4454,9 +4457,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.108.0"
+version = "0.109.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a1a26c89d56d8607d220c639e971e3e3901138fcc5dd0f619cee0868e1cc89e"
+checksum = "440a8a1f1cb9abe071937aa5190b0186fa6ce15ba0de5f88e57f71583e212b2c"
 dependencies = [
  "bytes",
  "derive_more",
@@ -6088,6 +6091,16 @@ dependencies = [
  "either",
  "libc",
  "once_cell",
+]
+
+[[package]]
+name = "whoami"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c70234412ca409cc04e864e89523cb0fc37f5e1344ebed5a3ebf4192b6b9f68"
+dependencies = [
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
