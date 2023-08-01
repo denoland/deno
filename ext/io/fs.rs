@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
+use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use tokio::task::JoinError;
 
@@ -236,10 +237,7 @@ pub trait File {
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd>;
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle>;
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }
 
@@ -359,13 +357,7 @@ impl deno_core::Resource for FileResource {
     self.file.clone().write_sync(data).map_err(|err| err.into())
   }
 
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    self.file.clone().backing_fd()
-  }
-
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     self.file.clone().backing_fd()
   }
 }
