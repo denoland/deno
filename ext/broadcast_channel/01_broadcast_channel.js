@@ -8,6 +8,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
+  setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
@@ -56,6 +57,7 @@ function dispatch(source, name, data) {
         data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
+      setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
     };

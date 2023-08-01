@@ -53,6 +53,7 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -66,6 +67,9 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -243,6 +247,9 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::os::op_node_os_get_priority<P>,
+    ops::os::op_node_os_set_priority<P>,
+    ops::os::op_node_os_username<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
