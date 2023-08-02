@@ -15,9 +15,9 @@ use std::sync::Arc;
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::op;
@@ -301,11 +301,11 @@ where
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
 
-            request = request.body(Body::wrap_stream(FetchResponseStream(stream)));
+            request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
             let request_body_rid =
               state.resource_table.add(FetchRequestBodyResource {
-                body: AsyncRefCell::new(tx),
+                body: AsyncRefCell::new(Some(tx)),
                 cancel: CancelHandle::default(),
               });
 
@@ -603,17 +603,31 @@ impl Resource for FetchCancelHandle {
   }
 }
 
-pub struct FetchResponseStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
+/// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].
+pub struct FetchBodyStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
 
-impl Stream for FetchResponseStream {
+impl Stream for FetchBodyStream {
   type Item = Result<bytes::Bytes, Error>;
-  fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
-    self.0.poll_recv(cx)
+  fn poll_next(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Self::Item>> {
+    let res = self.0.poll_recv(cx);
+    if let std::task::Poll::Ready(r) = &res {
+      println!("res = {res:?}");
+    }
+    res
+  }
+}
+
+impl Drop for FetchBodyStream {
+  fn drop(&mut self) {
+    println!("drop!!!");
   }
 }
 
 pub struct FetchRequestBodyResource {
-  pub body: AsyncRefCell<mpsc::Sender<Result<bytes::Bytes, Error>>>,
+  pub body: AsyncRefCell<Option<mpsc::Sender<Result<bytes::Bytes, Error>>>>,
   pub cancel: CancelHandle,
 }
 
@@ -627,33 +641,46 @@ impl Resource for FetchRequestBodyResource {
       let bytes: bytes::Bytes = buf.into();
       let nwritten = bytes.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      println!("writing...");
-      body
-        .send(Ok(bytes))
-        .or_cancel(cancel)
-        .await?
-        .map_err(|_| {
-          type_error("request body receiver not connected (request closed)")
-        })?;
-        println!("written!");
-        Ok(WriteOutcome::Full { nwritten })
+      println!("writing");
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
+        type_error("request body receiver not connected (request closed)")
+      })?;
+      println!("written");
+      Ok(WriteOutcome::Full { nwritten })
     })
   }
 
   fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
     async move {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      // We may be asked to write an error, but hyper/reqwest has already sent the entire request.
-      _ = body.send(Err(error)).or_cancel(cancel).await;
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Err(error)).or_cancel(cancel).await??;
       Ok(())
-    }.boxed_local()
+    }
+    .boxed_local()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    async move {
+      let mut body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      body.take();
+      Ok(())
+    }
+    .boxed_local()
   }
 
   fn close(self: Rc<Self>) {
-    println!("close!");
-    self.cancel.cancel()
+    println!("close");
+    self.cancel.cancel();
   }
 }
 

@@ -399,6 +399,7 @@ Deno.test("[node/http] send request with chunked body", async () => {
   const req = http.request(opts, (res) => {
     res.on("data", () => {});
     res.on("end", () => {
+      console.log("end");
       abortController.abort();
     });
     assertEquals(res.statusCode, 200);

@@ -9,8 +9,8 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
-use deno_fetch::FetchResponseStream;
 use deno_fetch::get_or_create_client_from_state;
+use deno_fetch::FetchBodyStream;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
@@ -66,10 +66,10 @@ where
     // If no body is passed, we return a writer for streaming the body.
     let (tx, stream) = tokio::sync::mpsc::channel(1);
 
-    request = request.body(Body::wrap_stream(FetchResponseStream(stream)));
+    request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
     let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
-      body: AsyncRefCell::new(tx),
+      body: AsyncRefCell::new(Some(tx)),
       cancel: CancelHandle::default(),
     });
 

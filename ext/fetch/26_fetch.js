@@ -201,6 +201,23 @@ async function mainFetch(req, recursive, terminator) {
 
   let requestSendError;
   let requestSendErrorSet = false;
+
+  async function propagateError(err, message) {
+    // TODO(lucacasonato): propagate error into response body stream
+    try {
+      await core.writeTypeError(requestBodyRid, message);
+    } catch (err) {
+      if (!requestSendErrorSet) {
+        requestSendErrorSet = true;
+        requestSendError = err;
+      }
+    }
+    if (!requestSendErrorSet) {
+      requestSendErrorSet = true;
+      requestSendError = err;
+    }
+  }
+
   if (requestBodyRid !== null) {
     if (
       reqBody === null ||
@@ -219,12 +236,8 @@ async function mainFetch(req, recursive, terminator) {
           done = res.done;
           val = res.value;
         } catch (err) {
-          console.log(err);
           if (terminator.aborted) break;
-          await core.writeTypeError(requestBodyRid, "failed to read");
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
+          await propagateError(err, "failed to read");
           break;
         }
         if (done) break;
@@ -233,23 +246,25 @@ async function mainFetch(req, recursive, terminator) {
             "Item in request body ReadableStream is not a Uint8Array",
           );
           await reader.cancel(error);
-          await core.writeTypeError(requestBodyRid, error.message);
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = error;
-          requestSendErrorSet = true;
+          await propagateError(error, error.message);
           break;
         }
         try {
           await core.writeAll(requestBodyRid, val);
         } catch (err) {
-          console.log(err);
           if (terminator.aborted) break;
           await reader.cancel(err);
-          await core.writeTypeError(requestBodyRid, "failed to write");
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
+          await propagateError(err, "failed to write");
           break;
+        }
+      }
+      if (done && !terminator.aborted) {
+        try {
+          await core.shutdown(requestBodyRid);
+        } catch (err) {
+          if (!terminator.aborted) {
+            await propagateError(err, "failed to flush");
+          }
         }
       }
       WeakMapPrototypeDelete(requestBodyReaders, req);
