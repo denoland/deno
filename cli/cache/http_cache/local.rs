@@ -11,12 +11,9 @@ use std::time::SystemTime;
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::RwLock;
-use deno_core::serde_json;
 use deno_core::url::Url;
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crate::cache::CACHE_PERM;
 use crate::http_util::HeadersMap;
@@ -30,6 +27,129 @@ use super::global::UrlToFilenameConversionError;
 use super::CachedUrlMetadata;
 use super::HttpCache;
 use super::HttpCacheItemKey;
+
+/// A deno_modules http cache for the lsp that provides functionality
+/// for doing a reverse mapping.
+#[derive(Debug)]
+pub struct LocalLspHttpCache {
+  cache: LocalHttpCache,
+}
+
+impl LocalLspHttpCache {
+  pub fn new(path: PathBuf, global_cache: Arc<GlobalHttpCache>) -> Self {
+    assert!(path.is_absolute());
+    let manifest = LocalCacheManifest::new_for_lsp(path.join("manifest.json"));
+    Self {
+      cache: LocalHttpCache {
+        path,
+        manifest,
+        global_cache,
+      },
+    }
+  }
+
+  pub fn get_file_url(&self, url: &Url) -> Option<Url> {
+    {
+      let data = self.cache.manifest.data.read();
+      if let Some(data) = data.get(url) {
+        if let Some(path) = &data.path {
+          return Url::from_file_path(self.cache.path.join(path)).ok();
+        }
+      }
+    }
+    match self.cache.get_cache_filepath(url, &Default::default()) {
+      Ok(path) if path.exists() => Url::from_file_path(path).ok(),
+      _ => None,
+    }
+  }
+
+  pub fn get_remote_url(&self, path: &Path) -> Option<Url> {
+    let Ok(path) = path.strip_prefix(&self.cache.path) else {
+      return None; // not in this directory
+    };
+    let has_hashed_component = path
+      .components()
+      .any(|p| p.as_os_str().to_string_lossy().starts_with('#'));
+    if has_hashed_component {
+      // check in the manifest
+      {
+        let data = self.cache.manifest.data.read();
+        if let Some(url) = data.get_reverse_mapping(path) {
+          return Some(url);
+        }
+      }
+      None
+    } else {
+      // we can work backwards from the path to the url
+      let mut parts = Vec::new();
+      for (i, part) in path.components().enumerate() {
+        let part = part.as_os_str().to_string_lossy();
+        if i == 0 {
+          let mut result = String::new();
+          let part = if let Some(part) = part.strip_prefix("http_") {
+            result.push_str("http://");
+            part
+          } else {
+            result.push_str("https://");
+            &part
+          };
+          if let Some((domain, port)) = part.rsplit_once('_') {
+            result.push_str(&format!("{}:{}", domain, port));
+          } else {
+            result.push_str(part);
+          }
+          parts.push(result);
+        } else {
+          parts.push(part.to_string());
+        }
+      }
+      Url::parse(&parts.join("/")).ok()
+    }
+  }
+}
+
+impl HttpCache for LocalLspHttpCache {
+  fn cache_item_key<'a>(
+    &self,
+    url: &'a Url,
+  ) -> Result<HttpCacheItemKey<'a>, AnyError> {
+    self.cache.cache_item_key(url)
+  }
+
+  fn contains(&self, url: &Url) -> bool {
+    self.cache.contains(url)
+  }
+
+  fn set(
+    &self,
+    url: &Url,
+    headers: HeadersMap,
+    content: &[u8],
+  ) -> Result<(), AnyError> {
+    self.cache.set(url, headers, content)
+  }
+
+  fn read_modified_time(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<SystemTime>, AnyError> {
+    self.cache.read_modified_time(key)
+  }
+
+  fn read_file_bytes(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<Vec<u8>>, AnyError> {
+    self.cache.read_file_bytes(key)
+  }
+
+  fn read_metadata(
+    &self,
+    key: &HttpCacheItemKey,
+  ) -> Result<Option<CachedUrlMetadata>, AnyError> {
+    self.cache.read_metadata(key)
+  }
+}
 
 #[derive(Debug)]
 pub struct LocalHttpCache {
@@ -181,7 +301,7 @@ impl HttpCache for LocalHttpCache {
   }
 }
 
-struct LocalCacheSubPath {
+pub(super) struct LocalCacheSubPath {
   pub has_hash: bool,
   pub parts: Vec<String>,
 }
@@ -189,6 +309,14 @@ struct LocalCacheSubPath {
 impl LocalCacheSubPath {
   pub fn as_path_from_root(&self, root_path: &Path) -> PathBuf {
     let mut path = root_path.to_path_buf();
+    for part in &self.parts {
+      path.push(part);
+    }
+    path
+  }
+
+  pub fn as_relative_path(&self) -> PathBuf {
+    let mut path = PathBuf::with_capacity(self.parts.len());
     for part in &self.parts {
       path.push(part);
     }
@@ -335,48 +463,28 @@ fn url_to_local_sub_path(
   Ok(LocalCacheSubPath { has_hash, parts })
 }
 
-#[derive(Debug, Default, Clone)]
-struct LocalCacheManifestData {
-  serialized: SerializedLocalCacheManifestData,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct SerializedLocalCacheManifestDataModule {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub path: Option<String>,
-  #[serde(
-    default = "IndexMap::new",
-    skip_serializing_if = "IndexMap::is_empty"
-  )]
-  pub headers: IndexMap<String, String>,
-}
-
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
-struct SerializedLocalCacheManifestData {
-  pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
-}
-
 #[derive(Debug)]
 struct LocalCacheManifest {
   file_path: PathBuf,
-  data: RwLock<LocalCacheManifestData>,
+  data: RwLock<manifest::LocalCacheManifestData>,
 }
 
 impl LocalCacheManifest {
   pub fn new(file_path: PathBuf) -> Self {
-    let serialized: SerializedLocalCacheManifestData =
-      std::fs::read(&file_path)
-        .ok()
-        .and_then(|data| match serde_json::from_slice(&data) {
-          Ok(data) => Some(data),
-          Err(err) => {
-            log::debug!("Failed deserializing local cache manifest: {:#}", err);
-            None
-          }
-        })
-        .unwrap_or_default();
+    Self::new_internal(file_path, false)
+  }
+
+  pub fn new_for_lsp(file_path: PathBuf) -> Self {
+    Self::new_internal(file_path, true)
+  }
+
+  fn new_internal(file_path: PathBuf, use_reverse_mapping: bool) -> Self {
+    let text = std::fs::read_to_string(&file_path).ok();
     Self {
-      data: RwLock::new(LocalCacheManifestData { serialized }),
+      data: RwLock::new(manifest::LocalCacheManifestData::new(
+        text.as_deref(),
+        use_reverse_mapping,
+      )),
       file_path,
     }
   }
@@ -419,9 +527,9 @@ impl LocalCacheManifest {
     let mut data = self.data.write();
     let is_empty = headers_subset.is_empty() && !sub_path.has_hash;
     let has_changed = if is_empty {
-      data.serialized.modules.remove(&url).is_some()
+      data.remove(&url, &sub_path)
     } else {
-      let new_data = SerializedLocalCacheManifestDataModule {
+      let new_data = manifest::SerializedLocalCacheManifestDataModule {
         path: if headers_subset.contains_key("location") {
           None
         } else {
@@ -429,10 +537,10 @@ impl LocalCacheManifest {
         },
         headers: headers_subset,
       };
-      if data.serialized.modules.get(&url) == Some(&new_data) {
+      if data.get(&url) == Some(&new_data) {
         false
       } else {
-        data.serialized.modules.insert(url.clone(), new_data);
+        data.insert(url.clone(), &sub_path, new_data);
         true
       }
     };
@@ -440,11 +548,8 @@ impl LocalCacheManifest {
     if has_changed {
       // don't bother ensuring the directory here because it will
       // eventually be created by files being added to the cache
-      let result = atomic_write_file(
-        &self.file_path,
-        serde_json::to_string_pretty(&data.serialized).unwrap(),
-        CACHE_PERM,
-      );
+      let result =
+        atomic_write_file(&self.file_path, data.as_json(), CACHE_PERM);
       if let Err(err) = result {
         log::debug!("Failed saving local cache manifest: {:#}", err);
       }
@@ -453,7 +558,7 @@ impl LocalCacheManifest {
 
   pub fn get_metadata(&self, url: &Url) -> Option<CachedUrlMetadata> {
     let data = self.data.read();
-    match data.serialized.modules.get(url) {
+    match data.get(url) {
       Some(module) => {
         let headers = module
           .headers
@@ -496,6 +601,126 @@ impl LocalCacheManifest {
           None
         }
       }
+    }
+  }
+}
+
+// This is in a separate module in order to enforce keeping
+// the internal implementation private.
+mod manifest {
+  use std::collections::HashMap;
+  use std::path::Path;
+  use std::path::PathBuf;
+
+  use deno_core::serde_json;
+  use deno_core::url::Url;
+  use indexmap::IndexMap;
+  use serde::Deserialize;
+  use serde::Serialize;
+
+  use super::LocalCacheSubPath;
+
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+  pub struct SerializedLocalCacheManifestDataModule {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(
+      default = "IndexMap::new",
+      skip_serializing_if = "IndexMap::is_empty"
+    )]
+    pub headers: IndexMap<String, String>,
+  }
+
+  #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+  struct SerializedLocalCacheManifestData {
+    pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
+  }
+
+  #[derive(Debug, Default, Clone)]
+  pub(super) struct LocalCacheManifestData {
+    serialized: SerializedLocalCacheManifestData,
+    // reverse mapping used in the lsp
+    reverse_mapping: Option<HashMap<PathBuf, Url>>,
+  }
+
+  impl LocalCacheManifestData {
+    pub fn new(maybe_text: Option<&str>, use_reverse_mapping: bool) -> Self {
+      let serialized: SerializedLocalCacheManifestData = maybe_text
+        .and_then(|text| match serde_json::from_str(text) {
+          Ok(data) => Some(data),
+          Err(err) => {
+            log::debug!("Failed deserializing local cache manifest: {:#}", err);
+            None
+          }
+        })
+        .unwrap_or_default();
+      let reverse_mapping = if use_reverse_mapping {
+        Some(
+          serialized
+            .modules
+            .iter()
+            .filter_map(|(url, module)| {
+              module.path.as_ref().map(|path| {
+                let path = if cfg!(windows) {
+                  PathBuf::from(path.split('/').collect::<Vec<_>>().join("\\"))
+                } else {
+                  PathBuf::from(path)
+                };
+                (path, url.clone())
+              })
+            })
+            .collect::<HashMap<_, _>>(),
+        )
+      } else {
+        None
+      };
+      Self {
+        serialized,
+        reverse_mapping,
+      }
+    }
+
+    pub fn get(
+      &self,
+      url: &Url,
+    ) -> Option<&SerializedLocalCacheManifestDataModule> {
+      self.serialized.modules.get(url)
+    }
+
+    pub fn get_reverse_mapping(&self, path: &Path) -> Option<Url> {
+      debug_assert!(self.reverse_mapping.is_some()); // only call this if you're in the lsp
+      self
+        .reverse_mapping
+        .as_ref()
+        .and_then(|mapping| mapping.get(path))
+        .cloned()
+    }
+
+    pub fn insert(
+      &mut self,
+      url: Url,
+      sub_path: &LocalCacheSubPath,
+      new_data: SerializedLocalCacheManifestDataModule,
+    ) {
+      if let Some(reverse_mapping) = &mut self.reverse_mapping {
+        reverse_mapping.insert(sub_path.as_relative_path(), url.clone());
+      }
+      self.serialized.modules.insert(url, new_data);
+    }
+
+    pub fn remove(&mut self, url: &Url, sub_path: &LocalCacheSubPath) -> bool {
+      if self.serialized.modules.remove(url).is_some() {
+        if let Some(reverse_mapping) = &mut self.reverse_mapping {
+          reverse_mapping.remove(&sub_path.as_relative_path());
+        }
+        true
+      } else {
+        false
+      }
+    }
+
+    pub fn as_json(&self) -> String {
+      serde_json::to_string_pretty(&self.serialized).unwrap()
     }
   }
 }
@@ -867,6 +1092,109 @@ mod test {
           }
         })
       );
+    }
+  }
+
+  #[test]
+  fn test_lsp_local_cache() {
+    let temp_dir = TempDir::new();
+    let global_cache_path = temp_dir.path().join("global");
+    let local_cache_path = temp_dir.path().join("local");
+    let global_cache =
+      Arc::new(GlobalHttpCache::new(global_cache_path.to_path_buf()));
+    let local_cache = LocalLspHttpCache::new(
+      local_cache_path.to_path_buf(),
+      global_cache.clone(),
+    );
+
+    // mapped url
+    {
+      let url = Url::parse("https://deno.land/x/mod.ts").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(
+          &url,
+          HashMap::from([(
+            "content-type".to_string(),
+            "application/typescript".to_string(),
+          )]),
+          content.as_bytes(),
+        )
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+
+      // check getting the file url works
+      let file_url = local_cache.get_file_url(&url);
+      let expected = local_cache_path
+        .uri_dir()
+        .join("deno.land/x/mod.ts")
+        .unwrap();
+      assert_eq!(file_url, Some(expected));
+
+      // get the reverse mapping
+      let mapping = local_cache.get_remote_url(
+        local_cache_path
+          .join("deno.land")
+          .join("x")
+          .join("mod.ts")
+          .as_path(),
+      );
+      assert_eq!(mapping.as_ref(), Some(&url));
+    }
+
+    // now try a file with a different content-type header
+    {
+      let url =
+        Url::parse("https://deno.land/x/different_content_type.ts").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(
+          &url,
+          HashMap::from([(
+            "content-type".to_string(),
+            "application/javascript".to_string(),
+          )]),
+          content.as_bytes(),
+        )
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+
+      let file_url = local_cache.get_file_url(&url).unwrap();
+      let path = file_url.to_file_path().unwrap();
+      assert!(path.exists());
+      let mapping = local_cache.get_remote_url(&path);
+      assert_eq!(mapping.as_ref(), Some(&url));
+    }
+
+    // try an http specifier that can't be mapped to the file system
+    {
+      let url = Url::parse("http://deno.land/INVALID/Module.ts?dev").unwrap();
+      let content = "export const test = 5;";
+      global_cache
+        .set(&url, HashMap::new(), content.as_bytes())
+        .unwrap();
+      let key = local_cache.cache_item_key(&url).unwrap();
+      assert_eq!(
+        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+          .unwrap(),
+        content
+      );
+
+      let file_url = local_cache.get_file_url(&url).unwrap();
+      let path = file_url.to_file_path().unwrap();
+      assert!(path.exists());
+      let mapping = local_cache.get_remote_url(&path);
+      assert_eq!(mapping.as_ref(), Some(&url));
     }
   }
 }

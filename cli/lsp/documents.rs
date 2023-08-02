@@ -969,6 +969,13 @@ impl Documents {
     }
   }
 
+  pub fn resolve_redirected(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    self.specifier_resolver.resolve(specifier)
+  }
+
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
     let specifier = self.specifier_resolver.resolve(specifier);
@@ -1498,7 +1505,7 @@ impl Documents {
       self.resolve_dependency(specifier, maybe_node_resolver)
     } else {
       let media_type = doc.media_type();
-      Some((specifier.clone(), media_type))
+      Some((doc.specifier().clone(), media_type))
     }
   }
 

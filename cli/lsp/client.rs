@@ -154,11 +154,14 @@ impl OutsideLockClient {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: LspClientUrl,
     diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
-    self.0.publish_diagnostics(uri, diags, version).await;
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
   }
 }
 

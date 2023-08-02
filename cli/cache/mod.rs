@@ -38,6 +38,7 @@ pub use http_cache::CachedUrlMetadata;
 pub use http_cache::GlobalHttpCache;
 pub use http_cache::HttpCache;
 pub use http_cache::LocalHttpCache;
+pub use http_cache::LocalLspHttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
