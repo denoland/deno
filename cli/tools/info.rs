@@ -7,7 +7,6 @@ use std::fmt::Write;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_graph::Dependency;
@@ -36,28 +35,14 @@ use crate::util::checksum;
 pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags).await?;
   let cli_options = factory.cli_options();
-  if let Some(specifier) = info_flags.file {
+  if info_flags.file.is_some() {
     let module_graph_builder = factory.module_graph_builder().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
-    let maybe_imports_map = factory.maybe_import_map().await?;
+    let maybe_import_map = factory.maybe_import_map().await?;
 
-    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
-      if let Ok(imports_specifier) =
-        imports_map.resolve(&specifier, imports_map.base_url())
-      {
-        Some(imports_specifier)
-      } else {
-        None
-      }
-    } else {
-      None
-    };
-
-    let specifier = match maybe_import_specifier {
-      Some(specifier) => specifier,
-      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
-    };
+    let specifier =
+      cli_options.resolve_main_module_with_import_map(maybe_import_map)?;
 
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information

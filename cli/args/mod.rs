@@ -782,11 +782,33 @@ impl CliOptions {
     }
   }
 
+  pub fn resolve_using_import_map_or_default_resolve(
+    &self,
+    specifier: &str,
+    maybe_import_map: &Option<Arc<ImportMap>>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    if let Some(import_map) = maybe_import_map {
+      if let Ok(mapped_specifier) =
+        import_map.resolve(specifier, import_map.base_url())
+      {
+        return Ok(mapped_specifier);
+      }
+    }
+    resolve_url_or_path(specifier, self.initial_cwd()).map_err(AnyError::from)
+  }
+
   pub fn resolve_main_module_with_import_map(
     &self,
     maybe_import_map: &Option<Arc<ImportMap>>,
   ) -> Result<ModuleSpecifier, AnyError> {
     match &self.flags.subcommand {
+      DenoSubcommand::Info(info_flags) => {
+        assert!(info_flags.file.is_some());
+        self.resolve_using_import_map_or_default_resolve(
+          info_flags.file.as_ref().unwrap(),
+          maybe_import_map,
+        )
+      }
       DenoSubcommand::Run(run_flags) => {
         if run_flags.is_stdin() {
           std::env::current_dir()
@@ -798,16 +820,10 @@ impl CliOptions {
         } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
           ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
         } else {
-          if let Some(import_map) = maybe_import_map {
-            if let Ok(mapped_specifier) =
-              import_map.resolve(&run_flags.script, import_map.base_url())
-            {
-              return Ok(mapped_specifier);
-            }
-          }
-
-          resolve_url_or_path(&run_flags.script, self.initial_cwd())
-            .map_err(AnyError::from)
+          self.resolve_using_import_map_or_default_resolve(
+            &run_flags.script,
+            maybe_import_map,
+          )
         }
       }
       _ => panic!("Unexpected subcommand {:#?}", self.flags.subcommand),

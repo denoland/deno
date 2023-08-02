@@ -233,11 +233,17 @@ pub async fn install_command(
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
   // ensure the module is cached
-  CliFactory::from_flags(flags.clone())
-    .await?
-    .module_load_preparer()
-    .await?
-    .load_and_type_check_files(&[install_flags.module_url.clone()])
+  let factory = CliFactory::from_flags(flags.clone()).await?;
+
+  let module_load_preparer = factory.module_load_preparer().await?;
+  let specifier = resolve_url_or_path(
+    &install_flags.module_url,
+    factory.cli_options().initial_cwd(),
+  )
+  .map_err(AnyError::from)?;
+
+  module_load_preparer
+    .load_and_type_check_files(vec![specifier])
     .await?;
 
   // create the install shim

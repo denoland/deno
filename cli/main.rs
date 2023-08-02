@@ -102,16 +102,36 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       let module_load_preparer = factory.module_load_preparer().await?;
       let emitter = factory.emitter()?;
       let graph_container = factory.graph_container();
+      let maybe_import_map = factory.maybe_import_map().await?;
+      let cli_options = factory.cli_options();
+      let specifiers = cache_flags
+        .files
+        .iter()
+        .map(|file| {
+          cli_options
+            .resolve_using_import_map_or_default_resolve(file, maybe_import_map)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
       module_load_preparer
-        .load_and_type_check_files(&cache_flags.files)
+        .load_and_type_check_files(specifiers)
         .await?;
       emitter.cache_module_emits(&graph_container.graph())
     }),
     DenoSubcommand::Check(check_flags) => spawn_subcommand(async move {
       let factory = CliFactory::from_flags(flags).await?;
       let module_load_preparer = factory.module_load_preparer().await?;
+      let maybe_import_map = factory.maybe_import_map().await?;
+      let cli_options = factory.cli_options();
+      let specifiers = check_flags
+        .files
+        .iter()
+        .map(|file| {
+          cli_options
+            .resolve_using_import_map_or_default_resolve(file, maybe_import_map)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
       module_load_preparer
-        .load_and_type_check_files(&check_flags.files)
+        .load_and_type_check_files(specifiers)
         .await
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {

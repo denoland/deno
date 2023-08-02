@@ -14,7 +14,6 @@ use deno_ast::MediaType;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::resolve_path;
-use deno_core::resolve_url_or_path;
 use deno_doc as doc;
 use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
@@ -66,9 +65,13 @@ pub async fn print_docs(
       let module_graph_builder = factory.module_graph_builder().await?;
       let maybe_lockfile = factory.maybe_lockfile();
       let parsed_source_cache = factory.parsed_source_cache()?;
+      let maybe_import_map = factory.maybe_import_map().await?;
 
-      let module_specifier =
-        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
+      let module_specifier = cli_options
+        .resolve_using_import_map_or_default_resolve(
+          &source_file,
+          maybe_import_map,
+        )?;
 
       // If the root module has external types, the module graph won't redirect it,
       // so instead create a dummy file which exports everything from the actual file being documented.

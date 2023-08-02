@@ -30,7 +30,6 @@ use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
-use deno_core::resolve_url_or_path;
 use deno_core::ModuleCode;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -194,14 +193,10 @@ impl ModuleLoadPreparer {
   /// the provided files.
   pub async fn load_and_type_check_files(
     &self,
-    files: &[String],
+    specifiers: Vec<ModuleSpecifier>,
   ) -> Result<(), AnyError> {
     let lib = self.options.ts_type_lib_window();
 
-    let specifiers = files
-      .iter()
-      .map(|file| resolve_url_or_path(file, self.options.initial_cwd()))
-      .collect::<Result<Vec<_>, _>>()?;
     self
       .prepare_module_load(
         specifiers,
