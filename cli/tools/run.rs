@@ -41,6 +41,7 @@ To grant permissions, set them before the script argument. For example:
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client();
   let cli_options = factory.cli_options();
+  let maybe_import_map = factory.maybe_import_map().await?;
 
   // Run a background task that checks for available upgrades. If an earlier
   // run of this background task found a new version of Deno.
@@ -49,7 +50,8 @@ To grant permissions, set them before the script argument. For example:
     deno_dir.upgrade_check_file_path(),
   );
 
-  let main_module = cli_options.resolve_main_module()?;
+  let main_module =
+    cli_options.resolve_main_module_with_import_map(maybe_import_map)?;
 
   maybe_npm_install(&factory).await?;
 
@@ -117,7 +119,9 @@ async fn run_with_watch(
           .build_from_flags(flags)
           .await?;
         let cli_options = factory.cli_options();
-        let main_module = cli_options.resolve_main_module()?;
+        let maybe_import_map = factory.maybe_import_map().await?;
+        let main_module =
+          cli_options.resolve_main_module_with_import_map(maybe_import_map)?;
 
         maybe_npm_install(&factory).await?;
 

@@ -782,6 +782,38 @@ impl CliOptions {
     }
   }
 
+  pub fn resolve_main_module_with_import_map(
+    &self,
+    maybe_import_map: &Option<Arc<ImportMap>>,
+  ) -> Result<ModuleSpecifier, AnyError> {
+    match &self.flags.subcommand {
+      DenoSubcommand::Run(run_flags) => {
+        if run_flags.is_stdin() {
+          std::env::current_dir()
+            .context("Unable to get CWD")
+            .and_then(|cwd| {
+              resolve_url_or_path("./$deno$stdin.ts", &cwd)
+                .map_err(AnyError::from)
+            })
+        } else if NpmPackageReqReference::from_str(&run_flags.script).is_ok() {
+          ModuleSpecifier::parse(&run_flags.script).map_err(AnyError::from)
+        } else {
+          if let Some(import_map) = maybe_import_map {
+            if let Ok(mapped_specifier) =
+              import_map.resolve(&run_flags.script, import_map.base_url())
+            {
+              return Ok(mapped_specifier);
+            }
+          }
+
+          resolve_url_or_path(&run_flags.script, self.initial_cwd())
+            .map_err(AnyError::from)
+        }
+      }
+      _ => panic!("Unexpected subcommand {:#?}", self.flags.subcommand),
+    }
+  }
+
   pub fn resolve_file_header_overrides(
     &self,
   ) -> HashMap<ModuleSpecifier, HashMap<String, String>> {
