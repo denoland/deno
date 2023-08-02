@@ -1208,6 +1208,10 @@ fn resolve_deno_modules_folder(
     .deno_modules_dir
     .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()))
     .unwrap_or(false);
+  // Unlike the node_modules directory, there is no need to canonicalize
+  // this directory because it's just used as a cache and the resolved
+  // specifier is not based on the canonicalized path (unlike the modules
+  // in the node_modules folder).
   if !use_deno_modules_dir {
     None
   } else if let Some(config_path) = maybe_config_file
