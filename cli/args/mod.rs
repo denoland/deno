@@ -787,13 +787,34 @@ impl CliOptions {
     specifier: &str,
     maybe_import_map: &Option<Arc<ImportMap>>,
   ) -> Result<ModuleSpecifier, AnyError> {
-    if let Some(import_map) = maybe_import_map {
-      if let Ok(mapped_specifier) =
-        import_map.resolve(specifier, import_map.base_url())
-      {
-        return Ok(mapped_specifier);
+    'try_import_map: {
+      if let Some(import_map) = maybe_import_map {
+        if let Ok(mapped_specifier) =
+          import_map.resolve(specifier, import_map.base_url())
+        {
+          // Check if we took "try_url_like_specifier" from import map - in such
+          // case we don't want to use resolution provided by the import map,
+          // but resolve using CWD.
+          if specifier.starts_with('/')
+            || specifier.starts_with("./")
+            || specifier.starts_with("../")
+          {
+            if let Ok(specifier) = import_map.base_url().join(specifier) {
+              if mapped_specifier == specifier {
+                break 'try_import_map;
+              }
+            }
+          }
+
+          if Url::parse(specifier).is_ok() {
+            break 'try_import_map;
+          }
+
+          return Ok(mapped_specifier);
+        }
       }
     }
+
     resolve_url_or_path(specifier, self.initial_cwd()).map_err(AnyError::from)
   }
 
