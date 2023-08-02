@@ -13,6 +13,7 @@ use super::path_to_regex::StringOrVec;
 use super::path_to_regex::Token;
 
 use crate::args::CacheSetting;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::file_fetcher::FileFetcher;
 use crate::http_util::HttpClient;
@@ -415,13 +416,15 @@ enum VariableItems {
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   file_fetcher: FileFetcher,
+  http_cache: Arc<GlobalHttpCache>,
 }
 
 impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
-    let http_cache = HttpCache::new(location);
+    // the http cache should always be the global one for registry completions
+    let http_cache = Arc::new(GlobalHttpCache::new(location));
     let mut file_fetcher = FileFetcher::new(
-      http_cache,
+      http_cache.clone(),
       CacheSetting::RespectHeaders,
       true,
       http_client,
@@ -433,6 +436,7 @@ impl ModuleRegistry {
     Self {
       origins: HashMap::new(),
       file_fetcher,
+      http_cache,
     }
   }
 
@@ -517,10 +521,7 @@ impl ModuleRegistry {
         "cache-control".to_string(),
         "max-age=604800, immutable".to_string(),
       );
-      self
-        .file_fetcher
-        .http_cache
-        .set(specifier, headers_map, &[])?;
+      self.http_cache.set(specifier, headers_map, &[])?;
     }
     let file = fetch_result?;
     let config: RegistryConfigurationJson = serde_json::from_str(&file.source)?;

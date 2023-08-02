@@ -12,7 +12,6 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Used in situations where a default URL needs to be used where otherwise a
 /// panic is undesired.
@@ -120,8 +119,8 @@ pub enum LspUrlKind {
 /// A bi-directional map of URLs sent to the LSP client and internal module
 /// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
-#[derive(Debug, Default, Clone)]
-pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
+#[derive(Debug, Default)]
+pub struct LspUrlMap(Mutex<LspUrlMapInner>);
 
 impl LspUrlMap {
   /// Normalize a specifier that is used internally within Deno (or tsc) to a

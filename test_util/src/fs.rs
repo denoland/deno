@@ -116,6 +116,10 @@ impl PathRef {
     serde_json::from_str(&self.read_to_string()).unwrap()
   }
 
+  pub fn read_json_value(&self) -> serde_json::Value {
+    serde_json::from_str(&self.read_to_string()).unwrap()
+  }
+
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }

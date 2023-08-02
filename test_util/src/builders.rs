@@ -123,15 +123,13 @@ impl TestContextBuilder {
     } else {
       temp_dir
     };
-    let testdata_dir = if let Some(temp_copy_dir) = &self.copy_temp_dir {
-      let test_data_path = PathRef::new(testdata_path()).join(temp_copy_dir);
+    let testdata_dir = testdata_path();
+    if let Some(temp_copy_dir) = &self.copy_temp_dir {
+      let test_data_path = testdata_dir.join(temp_copy_dir);
       let temp_copy_dir = temp_dir.path().join(temp_copy_dir);
       temp_copy_dir.create_dir_all();
       test_data_path.copy_to_recursive(&temp_copy_dir);
-      temp_dir.path().clone()
-    } else {
-      PathRef::new(testdata_path())
-    };
+    }
 
     let deno_exe = self.deno_exe.clone().unwrap_or_else(deno_exe_path);
     println!("deno_exe path {}", deno_exe);
@@ -146,7 +144,7 @@ impl TestContextBuilder {
       cwd: self.cwd.clone(),
       deno_exe,
       envs: self.envs.clone(),
-      use_temp_cwd: self.use_temp_cwd,
+      use_temp_cwd: self.use_temp_cwd || self.copy_temp_dir.is_some(),
       _http_server_guard: http_server_guard,
       deno_dir,
       temp_dir,
@@ -279,14 +277,15 @@ impl TestCommandBuilder {
   }
 
   fn build_cwd(&self) -> PathRef {
-    let cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
-    if self.context.use_temp_cwd {
-      assert!(cwd.is_none());
+    let root_dir = if self.context.use_temp_cwd {
       self.context.temp_dir.path().to_owned()
-    } else if let Some(cwd_) = cwd {
-      self.context.testdata_dir.join(cwd_)
     } else {
       self.context.testdata_dir.clone()
+    };
+    let specified_cwd = self.cwd.as_ref().or(self.context.cwd.as_ref());
+    match specified_cwd {
+      Some(cwd) => root_dir.join(cwd),
+      None => root_dir,
     }
   }
 

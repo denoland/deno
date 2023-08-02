@@ -96,9 +96,15 @@ itest!(_017_import_redirect {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check run/017_import_redirect.ts",
+itest!(_017_import_redirect_check {
+  args: "run --quiet --reload --check run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_deno_modules_dir {
+  args: "run --quiet --reload --deno-modules-dir --check $TESTDATA/run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
+  temp_cwd: true,
 });
 
 itest!(_017_import_redirect_info {
@@ -156,6 +162,14 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
+itest!(_027_redirect_typescript_deno_modules_dir {
+  args:
+    "run --quiet --reload --deno-modules-dir $TESTDATA/run/027_redirect_typescript.ts",
+  output: "run/027_redirect_typescript.ts.out",
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
@@ -184,6 +198,14 @@ itest!(_033_import_map_remote {
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
+});
+
+itest!(_033_import_map_deno_modules_dir_remote {
+  args:
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --deno-modules-dir --unstable $TESTDATA/import_maps/test_remote.ts",
+  output: "run/033_import_map_remote.out",
+  http_server: true,
+  temp_cwd: true,
 });
 
 itest!(_033_import_map_data_uri {
@@ -1683,6 +1705,14 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
+itest!(jsx_import_source_pragma_with_config_deno_modules_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --deno-modules-dir $TESTDATA/run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
+  http_server: true,
+  temp_cwd: true,
+  copy_temp_dir: Some("jsx/"),
+});
+
 itest!(jsx_import_source_no_pragma_no_check {
   args:
     "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
@@ -1732,6 +1762,13 @@ itest!(references_types_remote {
 itest!(reference_types_error {
   args:
     "run --config run/checkjs.tsconfig.json --check run/reference_types_error.js",
+  output: "run/reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_deno_modules_dir {
+  args:
+    "run --config run/checkjs.tsconfig.json --check --deno-modules-dir $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
@@ -3030,7 +3067,7 @@ itest!(
     args: "run -A main.js",
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
-    copy_temp_dir: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
   }
@@ -4454,3 +4491,66 @@ itest!(extension_dynamic_import {
   output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });
+
+#[test]
+pub fn deno_modules_dir_config_file() {
+  let test_context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  let deno_modules_dir = temp_dir.path().join("deno_modules");
+  let rm_deno_modules = || std::fs::remove_dir_all(&deno_modules_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+
+  let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+
+  assert!(deno_modules_dir.exists());
+  rm_deno_modules();
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": false }"#);
+
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+  assert!(!deno_modules_dir.exists());
+  test_context
+    .new_command()
+    .args("cache --quiet --deno-modules-dir main.ts")
+    .run();
+  assert!(deno_modules_dir.exists());
+  rm_deno_modules();
+
+  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  let cache_command = test_context.new_command().args("cache --quiet main.ts");
+  cache_command.run();
+
+  assert!(deno_modules_dir.exists());
+  let mod1_file = deno_modules_dir
+    .join("http_localhost_4545")
+    .join("subdir")
+    .join("mod1.ts");
+  mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
+
+  // won't match the lockfile now
+  deno_run_cmd
+    .run()
+    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
+  Specifier: http://localhost:4545/subdir/mod1.ts
+  Lock file: [WILDCARD]deno.lock
+"#)
+    .assert_exit_code(10);
+
+  // try updating by deleting the lockfile
+  let lockfile = temp_dir.path().join("deno.lock");
+  lockfile.remove_file();
+  cache_command.run();
+
+  // now it should run
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
+  assert!(lockfile.exists());
+}

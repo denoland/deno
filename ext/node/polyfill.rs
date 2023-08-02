@@ -62,6 +62,7 @@ generate_builtin_node_module_lists! {
   "stream/web",
   "string_decoder",
   "sys",
+  "test",
   "timers",
   "timers/promises",
   "tls",
