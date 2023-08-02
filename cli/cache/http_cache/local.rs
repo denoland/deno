@@ -1130,7 +1130,10 @@ mod test {
 
       // check getting the file url works
       let file_url = local_cache.get_file_url(&url);
-      let expected = local_cache_path.uri().join("deno.land/x/mod.ts").unwrap();
+      let expected = local_cache_path
+        .uri_dir()
+        .join("deno.land/x/mod.ts")
+        .unwrap();
       assert_eq!(file_url, Some(expected));
 
       // get the reverse mapping

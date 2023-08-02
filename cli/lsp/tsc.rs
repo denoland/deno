@@ -3147,7 +3147,6 @@ fn op_resolve(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
   let referrer = state.normalize_specifier(&args.base)?;
-  eprintln!("RESOLVING from {}: {:?}", args.base, args.specifiers);
   let result = match state.get_asset_or_document(&referrer) {
     Some(referrer_doc) => {
       let resolved = state.state_snapshot.documents.resolve(
@@ -3217,8 +3216,8 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
     for specifier in specifiers {
       if seen.insert(specifier.as_str()) {
         if let Some(specifier) = documents.resolve_redirected(specifier) {
+          // only include dependencies we know to exist otherwise typescript will error
           if documents.exists(&specifier) {
-            // only include dependencies we know to exist otherwise typescript will error
             result.push(specifier.to_string());
           }
         }
