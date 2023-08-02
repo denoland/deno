@@ -12,6 +12,8 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::LspClientUrl;
+use super::urls::LspUrlMap;
 
 use crate::args::LintOptions;
 use crate::graph_util;
@@ -54,6 +56,7 @@ pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub config: Arc<ConfigSnapshot>,
   pub lint_options: LintOptions,
+  pub url_map: LspUrlMap,
 }
 
 struct DiagnosticRecord {
@@ -107,6 +110,7 @@ impl DiagnosticsPublisher {
     &self,
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
+    url_map: &LspUrlMap,
     token: &CancellationToken,
   ) -> usize {
     let mut diagnostics_by_specifier =
@@ -141,7 +145,9 @@ impl DiagnosticsPublisher {
         .client
         .when_outside_lsp_lock()
         .publish_diagnostics(
-          record.specifier,
+          url_map
+            .normalize_specifier(&record.specifier)
+            .unwrap_or(LspClientUrl::new(record.specifier)),
           all_specifier_diagnostics,
           version,
         )
@@ -169,7 +175,9 @@ impl DiagnosticsPublisher {
             .client
             .when_outside_lsp_lock()
             .publish_diagnostics(
-              specifier.clone(),
+              url_map
+                .normalize_specifier(specifier)
+                .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
               Vec::new(),
               removed_value.version,
             )
@@ -366,9 +374,11 @@ impl DiagnosticsServer {
                     snapshot,
                     config,
                     lint_options,
+                    url_map,
                   },
                 batch_index,
               } = message;
+              let url_map = Arc::new(url_map);
 
               // cancel the previous run
               token.cancel();
@@ -383,6 +393,7 @@ impl DiagnosticsServer {
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
                     // Wait on the previous run to complete in order to prevent
@@ -419,7 +430,12 @@ impl DiagnosticsServer {
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Ts, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Ts,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -447,6 +463,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
                     previous_handle.await;
@@ -463,7 +480,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Deno, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Deno,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -491,6 +513,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
@@ -514,7 +537,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Lint, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Lint,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {

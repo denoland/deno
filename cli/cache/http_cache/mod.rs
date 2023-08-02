@@ -16,6 +16,7 @@ mod local;
 pub use global::url_to_filename;
 pub use global::GlobalHttpCache;
 pub use local::LocalHttpCache;
+pub use local::LocalLspHttpCache;
 
 /// Cached metadata about a url.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
