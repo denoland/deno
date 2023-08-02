@@ -389,6 +389,15 @@ impl Highlighter for EditorHelper {
                     // We're looking for something that looks like a function
                     // We use a simple heuristic: 'ident' followed by 'LParen'
                     colors::intense_blue(&line[range]).to_string()
+                  } else if ident == *"from"
+                    && matches!(
+                      next,
+                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
+                    )
+                  {
+                    // When ident 'from' is followed by a string literal, highlight it
+                    // E.g. "export * from 'something'" or "import a from 'something'"
+                    colors::cyan(&line[range]).to_string()
                   } else {
                     line[range].to_string()
                   }
