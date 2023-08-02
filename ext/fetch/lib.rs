@@ -612,17 +612,7 @@ impl Stream for FetchBodyStream {
     mut self: Pin<&mut Self>,
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Self::Item>> {
-    let res = self.0.poll_recv(cx);
-    if let std::task::Poll::Ready(r) = &res {
-      println!("res = {res:?}");
-    }
-    res
-  }
-}
-
-impl Drop for FetchBodyStream {
-  fn drop(&mut self) {
-    println!("drop!!!");
+    self.0.poll_recv(cx)
   }
 }
 
@@ -643,14 +633,12 @@ impl Resource for FetchRequestBodyResource {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
       let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      println!("writing");
       let body = body.ok_or(type_error(
         "request body receiver not connected (request closed)",
       ))?;
       body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
         type_error("request body receiver not connected (request closed)")
       })?;
-      println!("written");
       Ok(WriteOutcome::Full { nwritten })
     })
   }
@@ -679,7 +667,6 @@ impl Resource for FetchRequestBodyResource {
   }
 
   fn close(self: Rc<Self>) {
-    println!("close");
     self.cancel.cancel();
   }
 }

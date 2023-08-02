@@ -604,7 +604,6 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
-    console.log("end...");
     if (typeof chunk === "function") {
       cb = chunk;
       chunk = null;
