@@ -786,7 +786,7 @@ impl NpmModuleLoader {
         permissions,
       )?
     } else {
-      // esm code is untouched
+      // esm and json code is untouched
       code
     };
     Ok(ModuleCodeSource {

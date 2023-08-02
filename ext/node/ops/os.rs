@@ -4,9 +4,6 @@ use crate::NodePermissions;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::OpState;
-use errno::errno;
-use errno::set_errno;
-use errno::Errno;
 
 #[op]
 pub fn op_node_os_get_priority<P>(
@@ -54,11 +51,12 @@ where
   Ok(whoami::username())
 }
 
-const PRIORITY_HIGH: i32 = -14;
-
 #[cfg(unix)]
 mod priority {
   use super::*;
+  use errno::errno;
+  use errno::set_errno;
+  use errno::Errno;
   use libc::id_t;
   use libc::PRIO_PROCESS;
 
@@ -68,6 +66,8 @@ mod priority {
   #[cfg(target_os = "linux")]
   #[allow(non_camel_case_types)]
   type priority_t = u32;
+
+  const PRIORITY_HIGH: i32 = -14;
 
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
   pub fn get_priority(pid: u32) -> Result<i32, AnyError> {
@@ -119,10 +119,12 @@ mod priority {
   const PRIORITY_BELOW_NORMAL: i32 = 10;
   const PRIORITY_NORMAL: i32 = 0;
   const PRIORITY_ABOVE_NORMAL: i32 = -7;
+  const PRIORITY_HIGH: i32 = -14;
   const PRIORITY_HIGHEST: i32 = -20;
 
   // Ported from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/src/win/util.c#L1649-L1685
   pub fn get_priority(pid: u32) -> Result<i32, AnyError> {
+    // SAFETY: Windows API calls
     unsafe {
       let handle = if pid == 0 {
         GetCurrentProcess()
@@ -150,6 +152,7 @@ mod priority {
 
   // Ported from: https://github.com/libuv/libuv/blob/a877ca2435134ef86315326ef4ef0c16bdbabf17/src/win/util.c#L1688-L1719
   pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
+    // SAFETY: Windows API calls
     unsafe {
       let handle = if pid == 0 {
         GetCurrentProcess()
@@ -159,6 +162,7 @@ mod priority {
       if handle == NULL {
         Err(std::io::Error::last_os_error().into())
       } else {
+        #[allow(clippy::manual_range_contains)]
         let priority_class =
           if priority < PRIORITY_HIGHEST || priority > PRIORITY_LOW {
             return Err(type_error("Invalid priority"));

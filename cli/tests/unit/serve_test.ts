@@ -2855,10 +2855,11 @@ Deno.test(
 
         try {
           req.clone();
-        } catch (error) {
-          assert(error instanceof TypeError);
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
           assert(
-            error.message.endsWith("Body is unusable."),
+            cloneError.message.endsWith("Body is unusable."),
           );
 
           ac.abort();
@@ -2878,8 +2879,14 @@ Deno.test(
         method: "POST",
         body: '{"bar":true}',
       });
-    } catch (e) {
-      assert(e instanceof TypeError);
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
     } finally {
       ac.abort();
       await server.finished;
@@ -2887,38 +2894,55 @@ Deno.test(
   },
 );
 
-// TODO(fbaltor): As it is this test should throw and fail
 // https://fetch.spec.whatwg.org/#dom-request-clone
 Deno.test({
   name: "Throw if locked",
-  ignore: true,
   permissions: { net: true },
   fn: async function shouldThrowIfBodyIsUnusableLocked() {
     const ac = new AbortController();
     const listeningPromise = deferred();
 
     const server = Deno.serve({
-      handler: (req) => {
+      handler: async (req) => {
         const _reader = req.body?.getReader();
 
-        req.clone();
+        try {
+          req.clone();
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
+          assert(
+            cloneError.message.endsWith("Body is unusable."),
+          );
 
+          ac.abort();
+          await server.finished;
+        }
         return new Response("ok");
       },
       signal: ac.signal,
       onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
     });
 
-    const port = await listeningPromise;
-    const resp = await fetch(`http://localhost:${port}/`, {
-      headers: { connection: "close" },
-      method: "POST",
-      body: '{"bar":true}',
-    });
-
-    ac.abort();
-    await resp.body?.cancel();
-    await server.finished;
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}',
+      });
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
   },
 });
 

@@ -369,6 +369,14 @@ const ci = {
             os: Runners.ubuntu,
             job: "lint",
             profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "lint",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "lint",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -394,7 +402,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -488,9 +496,8 @@ const ci = {
             "rustc --version",
             "cargo --version",
             "which dpkg && dpkg -l",
-            // Deno is installed when linting.
-            'if [ "${{ matrix.job }}" == "lint" ]',
-            "then",
+            // Deno is installed when linting or testing.
+            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
             "  deno --version",
             "fi",
             // Node is installed for benchmarks.
@@ -543,13 +550,14 @@ const ci = {
         },
         {
           name: "test_format.js",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
-          if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')",
           env: {
             PR_TITLE: "${{ github.event.pull_request.title }}",
           },
@@ -563,7 +571,7 @@ const ci = {
         },
         {
           name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },

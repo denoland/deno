@@ -2,8 +2,8 @@ cpu: [WILDCARD]
 runtime: deno [WILDCARD] ([WILDCARD])
 
 [WILDCARD]/explicit_start_and_end.ts
-benchmark          time (avg)             (min … max)       p75       p99      p995
------------------------------------------------------ -----------------------------
+benchmark          time (avg)        iter/s             (min … max)       p75       p99      p995
+------------------------------------------------------------------- -----------------------------
 start and end  [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 start only     [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
 end only       [WILDCARD] [WILDCARD]/iter[WILDCARD]([WILDCARD] … [WILDCARD]) [WILDCARD]
