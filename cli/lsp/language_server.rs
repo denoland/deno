@@ -926,14 +926,13 @@ impl Inner {
     let lockfile = self.config.maybe_lockfile()?;
     let incomplete_snapshot = {
       let lock = lockfile.lock();
-      let s = match incomplete_snapshot_from_lockfile(&lock) {
+      match incomplete_snapshot_from_lockfile(&lock) {
         Ok(s) => s,
         Err(err) => {
           lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
           return None;
         }
-      };
-      s
+      }
     };
 
     match snapshot_from_lockfile(incomplete_snapshot, &*self.npm.api).await {
