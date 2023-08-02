@@ -982,8 +982,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.198.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
+version = "0.199.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70fbd0cb620ac36fac08d708c5f01362280c5aa8149657a225db4932bd73758e"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1353,8 +1354,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.76.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
+version = "0.77.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b345c096fd8433337ed8e1727f4732397c134e188e1739c88b0c077869020f3"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -4454,8 +4456,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.109.0"
-source = "git+https://github.com/bartlomieju/deno_core.git?branch=run_js_event_loop_tick#735e6936a125542433073a6e2cb5aa9bad629e48"
+version = "0.110.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3bafaee0eecbef6c47ad3e7e0a764e22eb35a229ff7d06b7801fcbeaa5364b8"
 dependencies = [
  "bytes",
  "derive_more",
