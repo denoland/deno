@@ -154,6 +154,14 @@ impl NpmRegistryApi for CliNpmRegistryApi {
       }
     }
   }
+
+  fn mark_force_reload(&self) -> bool {
+    todo!()
+  }
+
+  fn clear_cache(&self) {
+    todo!()
+  }
 }
 
 type CacheItemPendingResult =

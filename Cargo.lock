@@ -1339,11 +1339,11 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5d1097de53e8ce3316d3e44095e253719ae367cf7478263f83082f44dddabf"
+source = "git+https://github.com/magurotuna/deno_npm.git?branch=snapshot_from_lockfile#abab4c26461f817dbcee342e8348f7241f5889eb"
 dependencies = [
  "anyhow",
  "async-trait",
+ "deno_lockfile",
  "deno_semver",
  "futures",
  "log",
