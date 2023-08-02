@@ -2365,10 +2365,10 @@ impl Inner {
                 tsc::ImportModuleSpecifierEnding::Index,
               ),
               include_automatic_optional_chain_completions: Some(true),
-              include_completions_for_import_statements: Some(
+              include_completions_for_import_statements: Some(true),
+              include_completions_for_module_exports: Some(
                 self.config.workspace_settings().suggest.auto_imports,
               ),
-              include_completions_for_module_exports: Some(true),
               include_completions_with_object_literal_method_snippets: Some(
                 use_snippets,
               ),
