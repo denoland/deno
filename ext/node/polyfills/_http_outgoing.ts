@@ -389,10 +389,12 @@ export class OutgoingMessage extends Stream {
         chunk = new Uint8Array(chunk.buffer);
       }
 
+      console.log(chunk);
       core.writeAll(this._bodyWriteRid, chunk).then(() => {
         callback?.();
         this.emit("drain");
       }).catch((e) => {
+        console.log(e);
         this._requestSendError = e;
       });
     }

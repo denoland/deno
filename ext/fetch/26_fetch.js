@@ -219,7 +219,9 @@ async function mainFetch(req, recursive, terminator) {
           done = res.done;
           val = res.value;
         } catch (err) {
+          console.log(err);
           if (terminator.aborted) break;
+          await core.writeTypeError(requestBodyRid, "failed to read");
           // TODO(lucacasonato): propagate error into response body stream
           requestSendError = err;
           requestSendErrorSet = true;
@@ -231,6 +233,7 @@ async function mainFetch(req, recursive, terminator) {
             "Item in request body ReadableStream is not a Uint8Array",
           );
           await reader.cancel(error);
+          await core.writeTypeError(requestBodyRid, error.message);
           // TODO(lucacasonato): propagate error into response body stream
           requestSendError = error;
           requestSendErrorSet = true;
@@ -239,22 +242,14 @@ async function mainFetch(req, recursive, terminator) {
         try {
           await core.writeAll(requestBodyRid, val);
         } catch (err) {
+          console.log(err);
           if (terminator.aborted) break;
           await reader.cancel(err);
+          await core.writeTypeError(requestBodyRid, "failed to write");
           // TODO(lucacasonato): propagate error into response body stream
           requestSendError = err;
           requestSendErrorSet = true;
           break;
-        }
-      }
-      if (done && !terminator.aborted) {
-        try {
-          await core.shutdown(requestBodyRid);
-        } catch (err) {
-          if (!terminator.aborted) {
-            requestSendError = err;
-            requestSendErrorSet = true;
-          }
         }
       }
       WeakMapPrototypeDelete(requestBodyReaders, req);

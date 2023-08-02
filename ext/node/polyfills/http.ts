@@ -620,20 +620,10 @@ class ClientRequest extends OutgoingMessage {
 
     (async () => {
       try {
-        const [res, _] = await Promise.all([
-          core.opAsync("op_fetch_send", this._req.requestRid),
-          (async () => {
-            if (this._bodyWriteRid) {
-              try {
-                await core.shutdown(this._bodyWriteRid);
-              } catch (err) {
-                this._requestSendError = err;
-              }
-
-              core.tryClose(this._bodyWriteRid);
-            }
-          })(),
-        ]);
+        const res = await core.opAsync("op_fetch_send", this._req.requestRid);
+        if (this._bodyWriteRid) {
+          core.tryClose(this._bodyWriteRid);
+        }
         try {
           cb?.();
         } catch (_) {
