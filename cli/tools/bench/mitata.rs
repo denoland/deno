@@ -18,16 +18,17 @@ fn avg_to_iter_per_s(time: f64) -> String {
 /// Return a tuple representing decimal part of provided float, as well as its
 /// first fractional digit.
 fn into_decimal_and_fractional_parts(num: f64) -> (i64, i64) {
-  let decimal_part = num.floor();
+  let mut decimal_part = num.floor() as i64;
   let fractional_part = {
     let decs = ((num - num.floor()) * 10.0).round();
     if decs == 10.0 {
+      decimal_part += 1;
       0
     } else {
       decs as i64
     }
   };
-  (decimal_part as i64, fractional_part)
+  (decimal_part, fractional_part)
 }
 
 fn human_readable_decimal_with_fractional(
@@ -47,32 +48,6 @@ fn human_readable_decimal_with_fractional(
     .join(",");
 
   format!("{}.{}", fmt_decimal, fractional)
-}
-
-#[test]
-fn test_into_decimal_and_fractional_parts() {
-  assert_eq!(into_decimal_and_fractional_parts(10.0), (10, 0));
-  assert_eq!(into_decimal_and_fractional_parts(10.1), (10, 1));
-  assert_eq!(into_decimal_and_fractional_parts(10.2), (10, 2));
-  assert_eq!(into_decimal_and_fractional_parts(10.3), (10, 3));
-  assert_eq!(into_decimal_and_fractional_parts(10.4), (10, 4));
-  assert_eq!(into_decimal_and_fractional_parts(10.5), (10, 5));
-  assert_eq!(into_decimal_and_fractional_parts(10.6), (10, 6));
-  assert_eq!(into_decimal_and_fractional_parts(10.7), (10, 7));
-  assert_eq!(into_decimal_and_fractional_parts(10.8), (10, 8));
-  assert_eq!(into_decimal_and_fractional_parts(10.9), (10, 9));
-}
-
-#[test]
-fn test_avg_to_iter_per_s() {
-  assert_eq!(avg_to_iter_per_s(55.85), "17,905,102.0");
-  assert_eq!(avg_to_iter_per_s(64_870_000.0), "15.4");
-  assert_eq!(avg_to_iter_per_s(104_370_000.0), "9.6");
-  assert_eq!(avg_to_iter_per_s(6_400_000.0), "156.3");
-  assert_eq!(avg_to_iter_per_s(46_890_000.0), "21.3");
-  assert_eq!(avg_to_iter_per_s(100_000_000.0), "10.0");
-  assert_eq!(avg_to_iter_per_s(1_000_000_000.0), "1.0");
-  assert_eq!(avg_to_iter_per_s(5_920_000_000.0), "0.2");
 }
 
 pub fn fmt_duration(time: f64) -> String {
@@ -451,5 +426,37 @@ pub mod reporter {
     }
 
     s
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_into_decimal_and_fractional_parts() {
+    assert_eq!(into_decimal_and_fractional_parts(10.0), (10, 0));
+    assert_eq!(into_decimal_and_fractional_parts(10.1), (10, 1));
+    assert_eq!(into_decimal_and_fractional_parts(10.2), (10, 2));
+    assert_eq!(into_decimal_and_fractional_parts(10.3), (10, 3));
+    assert_eq!(into_decimal_and_fractional_parts(10.4), (10, 4));
+    assert_eq!(into_decimal_and_fractional_parts(10.5), (10, 5));
+    assert_eq!(into_decimal_and_fractional_parts(10.6), (10, 6));
+    assert_eq!(into_decimal_and_fractional_parts(10.7), (10, 7));
+    assert_eq!(into_decimal_and_fractional_parts(10.8), (10, 8));
+    assert_eq!(into_decimal_and_fractional_parts(10.9), (10, 9));
+    assert_eq!(into_decimal_and_fractional_parts(10.99), (11, 0));
+  }
+
+  #[test]
+  fn test_avg_to_iter_per_s() {
+    assert_eq!(avg_to_iter_per_s(55.85), "17,905,103.0");
+    assert_eq!(avg_to_iter_per_s(64_870_000.0), "15.4");
+    assert_eq!(avg_to_iter_per_s(104_370_000.0), "9.6");
+    assert_eq!(avg_to_iter_per_s(6_400_000.0), "156.3");
+    assert_eq!(avg_to_iter_per_s(46_890_000.0), "21.3");
+    assert_eq!(avg_to_iter_per_s(100_000_000.0), "10.0");
+    assert_eq!(avg_to_iter_per_s(1_000_000_000.0), "1.0");
+    assert_eq!(avg_to_iter_per_s(5_920_000_000.0), "0.2");
   }
 }
