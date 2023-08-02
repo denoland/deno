@@ -146,7 +146,10 @@ function cache(desc, rawStatus) {
   }
   if (MapPrototypeHas(statusCache, key)) {
     const cachedObj = MapPrototypeGet(statusCache, key);
-    if (cachedObj.state !== rawStatus.state || cachedObj.partial !== rawStatus.partial) {
+    if (
+      cachedObj.state !== rawStatus.state ||
+      cachedObj.partial !== rawStatus.partial
+    ) {
       cachedObj.state = rawStatus.state;
       cachedObj.partial = rawStatus.partial;
       cachedObj.status.dispatchEvent(
