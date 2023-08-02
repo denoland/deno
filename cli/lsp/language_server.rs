@@ -86,7 +86,9 @@ use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::cache::LocalHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -134,7 +136,7 @@ impl LspNpmConfigHash {
   pub fn from_inner(inner: &Inner) -> Self {
     let mut hasher = FastInsecureHasher::new();
     hasher.write_hashable(inner.config.maybe_node_modules_dir_path());
-    hasher.write_hashable(&inner.maybe_cache_path);
+    hasher.write_hashable(&inner.maybe_global_cache_path);
     if let Some(lockfile) = inner.config.maybe_lockfile() {
       hasher.write_hashable(&*lockfile.lock());
     }
@@ -168,7 +170,7 @@ pub struct Inner {
   pub client: Client,
   /// Configuration information.
   pub config: Config,
-  deps_http_cache: HttpCache,
+  deps_http_cache: Arc<dyn HttpCache>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -180,7 +182,7 @@ pub struct Inner {
   module_registries_location: PathBuf,
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
-  maybe_cache_path: Option<PathBuf>,
+  maybe_global_cache_path: Option<PathBuf>,
   /// An optional import map which is used to resolve modules.
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
@@ -202,7 +204,7 @@ pub struct Inner {
   /// An abstraction that handles interactions with TypeScript.
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
-  pub url_map: urls::LspUrlMap,
+  pub url_map: Arc<urls::LspUrlMap>,
 }
 
 impl LanguageServer {
@@ -553,7 +555,7 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = HttpCache::new(location);
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(location));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -593,7 +595,7 @@ impl Inner {
       diagnostics_server,
       documents,
       http_client,
-      maybe_cache_path: None,
+      maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       maybe_package_json: None,
@@ -829,8 +831,8 @@ impl Inner {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
-    let maybe_cache_path = if let Some(cache_str) = maybe_cache {
-      lsp_log!("Setting cache path from: \"{}\"", cache_str);
+    let maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
+      lsp_log!("Setting global cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &self.config.root_uri {
@@ -847,23 +849,31 @@ impl Inner {
       }?;
       let cache_path = specifier_to_file_path(&cache_url)?;
       lsp_log!(
-        "  Resolved cache path: \"{}\"",
+        "  Resolved global cache path: \"{}\"",
         cache_path.to_string_lossy()
       );
       Some(cache_path)
     } else {
       None
     };
-    if self.maybe_cache_path != maybe_cache_path {
+    if self.maybe_global_cache_path != maybe_global_cache_path {
       self
-        .recreate_http_client_and_dependents(maybe_cache_path)
+        .set_new_global_cache_path(maybe_global_cache_path)
         .await?;
     }
     Ok(())
   }
 
-  /// Recreates the http client and all dependent structs.
   async fn recreate_http_client_and_dependents(
+    &mut self,
+  ) -> Result<(), AnyError> {
+    self
+      .set_new_global_cache_path(self.maybe_global_cache_path.clone())
+      .await
+  }
+
+  /// Recreates the http client and all dependent structs.
+  async fn set_new_global_cache_path(
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
@@ -894,15 +904,23 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let location = dir.deps_folder_path();
-    self.documents.set_location(location.clone());
-    self.cache_metadata.set_location(location);
-    self.maybe_cache_path = new_cache_path;
+    let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
+    let cache: Arc<dyn HttpCache> =
+      match self.config.maybe_deno_modules_dir_path() {
+        Some(local_path) => {
+          Arc::new(LocalHttpCache::new(local_path, global_cache))
+        }
+        None => global_cache,
+      };
+    self.deps_http_cache = cache.clone();
+    self.documents.set_cache(cache.clone());
+    self.cache_metadata.set_cache(cache);
+    self.maybe_global_cache_path = new_cache_path;
     Ok(())
   }
 
   async fn recreate_npm_services_if_necessary(&mut self) {
-    let deno_dir = match DenoDir::new(self.maybe_cache_path.clone()) {
+    let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
       Ok(deno_dir) => deno_dir,
       Err(err) => {
         lsp_warn!("Error getting deno dir: {}", err);
@@ -1090,9 +1108,7 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    self
-      .recreate_http_client_and_dependents(self.maybe_cache_path.clone())
-      .await?;
+    self.recreate_http_client_and_dependents().await?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
@@ -1131,6 +1147,7 @@ impl Inner {
       self.config.set_config_file(config_file);
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
+      self.recreate_http_client_and_dependents().await?;
     }
 
     Ok(())
@@ -3372,7 +3389,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     let mut cli_options = CliOptions::new(
       Flags {
-        cache_path: self.maybe_cache_path.clone(),
+        cache_path: self.maybe_global_cache_path.clone(),
         ca_stores: workspace_settings.certificate_stores.clone(),
         ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
         unsafely_ignore_certificate_errors: workspace_settings

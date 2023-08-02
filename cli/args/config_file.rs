@@ -673,6 +673,7 @@ pub struct ConfigFileJson {
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
+  pub deno_modules_dir: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -858,6 +859,26 @@ impl ConfigFile {
     self.json.node_modules_dir
   }
 
+  pub fn deno_modules_dir(&self) -> Option<bool> {
+    self.json.deno_modules_dir
+  }
+
+  pub fn deno_modules_dir_path(&self) -> Option<PathBuf> {
+    if self.json.deno_modules_dir == Some(true) {
+      Some(
+        self
+          .specifier
+          .to_file_path()
+          .unwrap()
+          .parent()
+          .unwrap()
+          .join("deno_modules"),
+      )
+    } else {
+      None
+    }
+  }
+
   pub fn to_import_map_value(&self) -> Value {
     let mut value = serde_json::Map::with_capacity(2);
     if let Some(imports) = &self.json.imports {
@@ -874,13 +895,17 @@ impl ConfigFile {
   }
 
   pub fn to_files_config(&self) -> Result<Option<FilesConfig>, AnyError> {
-    let exclude: Vec<String> = if let Some(exclude) = self.json.exclude.clone()
-    {
-      serde_json::from_value(exclude)
-        .context("Failed to parse \"exclude\" configuration")?
-    } else {
-      Vec::new()
-    };
+    let mut exclude: Vec<String> =
+      if let Some(exclude) = self.json.exclude.clone() {
+        serde_json::from_value(exclude)
+          .context("Failed to parse \"exclude\" configuration")?
+      } else {
+        Vec::new()
+      };
+
+    if self.deno_modules_dir() == Some(true) {
+      exclude.push("deno_modules".to_string());
+    }
 
     let raw_files_config = SerializedFilesConfig {
       exclude,
