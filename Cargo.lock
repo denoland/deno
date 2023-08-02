@@ -1339,7 +1339,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.10.1"
-source = "git+https://github.com/magurotuna/deno_npm.git?branch=snapshot_from_lockfile#abab4c26461f817dbcee342e8348f7241f5889eb"
+source = "git+https://github.com/magurotuna/deno_npm.git?branch=snapshot_from_lockfile#a2df4ee921246a260f7f8dc213ad215cc178d4ae"
 dependencies = [
  "anyhow",
  "async-trait",
