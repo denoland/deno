@@ -373,7 +373,7 @@ pub fn op_zlib_init(
 
   zlib.init_stream()?;
 
-  zlib.dictionary = if dictionary.len() > 0 {
+  zlib.dictionary = if !dictionary.is_empty() {
     Some(dictionary.to_vec())
   } else {
     None
