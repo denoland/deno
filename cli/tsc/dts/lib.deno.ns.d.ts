@@ -4563,6 +4563,12 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     onchange: ((this: PermissionStatus, ev: Event) => any) | null;
     readonly state: PermissionState;
+    /**
+     * Describes if permission is only granted partially, eg. an access
+     * might be granted to "/foo" directory, but denied for "/foo/bar".
+     * In such case this field will be set to `true` when querying for
+     * read permissions of "/foo" directory.
+     */
     readonly partial: boolean;
     addEventListener<K extends keyof PermissionStatusEventMap>(
       type: K,
