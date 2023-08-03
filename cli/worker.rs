@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::task::LocalFutureObj;
@@ -24,6 +25,7 @@ use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -370,7 +372,7 @@ impl CliMainWorkerFactory {
         .add_package_reqs(&[package_ref.req.clone()])
         .await?;
       let node_resolution =
-        shared.node_resolver.resolve_binary_export(&package_ref)?;
+        self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
@@ -491,6 +493,65 @@ impl CliMainWorkerFactory {
       worker,
       shared: shared.clone(),
     })
+  }
+
+  fn resolve_binary_entrypoint(
+    &self,
+    package_ref: &NpmPackageReqReference,
+    permissions: &PermissionsContainer,
+  ) -> Result<NodeResolution, AnyError> {
+    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+      Ok(node_resolution) => Ok(node_resolution),
+      Err(original_err) => {
+        // if the binary entrypoint was not found, fallback to regular node resolution
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_ref, permissions);
+        match result {
+          Ok(Some(resolution)) => Ok(resolution),
+          Ok(None) => Err(original_err),
+          Err(fallback_err) => {
+            bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
+          }
+        }
+      }
+    }
+  }
+
+  /// resolve the binary entrypoint using regular node resolution
+  fn resolve_binary_entrypoint_fallback(
+    &self,
+    package_ref: &NpmPackageReqReference,
+    permissions: &PermissionsContainer,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    // only fallback if the user specified a sub path
+    if package_ref.sub_path.is_none() {
+      // it's confusing to users if the package doesn't have any binary
+      // entrypoint and we just execute the main script which will likely
+      // have blank output, so do not resolve the entrypoint in this case
+      return Ok(None);
+    }
+
+    let Some(resolution) = self.shared.node_resolver.resolve_npm_req_reference(
+      package_ref,
+      NodeResolutionMode::Execution,
+      permissions,
+    )? else {
+      return Ok(None);
+    };
+    match &resolution {
+      NodeResolution::BuiltIn(_) => Ok(None),
+      NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
+        if specifier
+          .to_file_path()
+          .map(|p| p.exists())
+          .unwrap_or(false)
+        {
+          Ok(Some(resolution))
+        } else {
+          bail!("Cannot find module '{}'", specifier)
+        }
+      }
+    }
   }
 }
 

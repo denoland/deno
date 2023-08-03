@@ -144,7 +144,7 @@ where
 
   check_unstable(state, "Deno.dlopen");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(Some(&PathBuf::from(&path)))?;
+  permissions.check_partial(Some(&PathBuf::from(&path)))?;
 
   let lib = Library::open(&path).map_err(|e| {
     dlopen::Error::OpeningLibraryError(std::io::Error::new(

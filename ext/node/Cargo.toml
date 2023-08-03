@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.50.0"
+version = "0.51.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,11 +28,13 @@ digest = { version = "0.10.5", features = ["core-api", "std"] }
 dsa = "0.6.1"
 ecb.workspace = true
 elliptic-curve.workspace = true
+errno = "0.2.8"
 hex.workspace = true
 hkdf.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 lazy-regex.workspace = true
+libc.workspace = true
 libz-sys = { version = "1.1.8", features = ["static"] }
 md-5 = "0.10.5"
 md4 = "0.10.2"
@@ -60,6 +62,8 @@ sha2.workspace = true
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
+whoami = "1.4.0"
+winapi.workspace = true
 # https://github.com/dalek-cryptography/x25519-dalek/pull/89
 x25519-dalek = "2.0.0-pre.1"
 x509-parser = "0.15.0"

@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use super::common;
+use super::fmt::to_relative_path_or_remote_url;
 use super::*;
 
 pub struct PrettyTestReporter {
@@ -39,7 +41,7 @@ impl PrettyTestReporter {
         "{}",
         colors::gray(format!(
           "{} => ",
-          self.to_relative_path_or_remote_url(&description.origin)
+          to_relative_path_or_remote_url(&self.cwd, &description.origin)
         ))
       );
     }
@@ -48,19 +50,6 @@ impl PrettyTestReporter {
     // flush for faster feedback when line buffered
     std::io::stdout().flush().unwrap();
     self.scope_test_id = Some(description.id);
-  }
-
-  fn to_relative_path_or_remote_url(&self, path_or_url: &str) -> String {
-    let url = Url::parse(path_or_url).unwrap();
-    if url.scheme() == "file" {
-      if let Some(mut r) = self.cwd.make_relative(&url) {
-        if !r.starts_with("../") {
-          r = format!("./{r}");
-        }
-        return r;
-      }
-    }
-    path_or_url.to_string()
   }
 
   fn force_report_step_wait(&mut self, description: &TestStepDescription) {
@@ -137,68 +126,6 @@ impl PrettyTestReporter {
       self.did_have_user_output = false;
     }
   }
-
-  fn format_test_step_ancestry(
-    &self,
-    desc: &TestStepDescription,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> String {
-    let root;
-    let mut ancestor_names = vec![];
-    let mut current_desc = desc;
-    loop {
-      if let Some(step_desc) = test_steps.get(&current_desc.parent_id) {
-        ancestor_names.push(&step_desc.name);
-        current_desc = step_desc;
-      } else {
-        root = tests.get(&current_desc.parent_id).unwrap();
-        break;
-      }
-    }
-    ancestor_names.reverse();
-    let mut result = String::new();
-    result.push_str(&root.name);
-    result.push_str(" ... ");
-    for name in ancestor_names {
-      result.push_str(name);
-      result.push_str(" ... ");
-    }
-    result.push_str(&desc.name);
-    result
-  }
-
-  fn format_test_for_summary(&self, desc: &TestDescription) -> String {
-    format!(
-      "{} {}",
-      &desc.name,
-      colors::gray(format!(
-        "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
-        desc.location.line_number,
-        desc.location.column_number
-      ))
-    )
-  }
-
-  fn format_test_step_for_summary(
-    &self,
-    desc: &TestStepDescription,
-    tests: &IndexMap<usize, TestDescription>,
-    test_steps: &IndexMap<usize, TestStepDescription>,
-  ) -> String {
-    let long_name = self.format_test_step_ancestry(desc, tests, test_steps);
-    format!(
-      "{} {}",
-      long_name,
-      colors::gray(format!(
-        "=> {}:{}:{}",
-        self.to_relative_path_or_remote_url(&desc.location.file_name),
-        desc.location.line_number,
-        desc.location.column_number
-      ))
-    )
-  }
 }
 
 impl TestReporter for PrettyTestReporter {
@@ -216,7 +143,7 @@ impl TestReporter for PrettyTestReporter {
         "running {} {} from {}",
         plan.total,
         inflection,
-        self.to_relative_path_or_remote_url(&plan.origin)
+        to_relative_path_or_remote_url(&self.cwd, &plan.origin)
       ))
     );
     self.in_new_line = true;
@@ -314,7 +241,7 @@ impl TestReporter for PrettyTestReporter {
     }
     println!(
       "Uncaught error from {} {}",
-      self.to_relative_path_or_remote_url(origin),
+      to_relative_path_or_remote_url(&self.cwd, origin),
       colors::red("FAILED")
     );
     self.in_new_line = true;
@@ -349,7 +276,7 @@ impl TestReporter for PrettyTestReporter {
         self.summary.failures.push((
           TestDescription {
             id: desc.id,
-            name: self.format_test_step_ancestry(desc, tests, test_steps),
+            name: common::format_test_step_ancestry(desc, tests, test_steps),
             ignore: false,
             only: false,
             origin: desc.origin.clone(),
@@ -366,9 +293,9 @@ impl TestReporter for PrettyTestReporter {
         "{} {} ...",
         colors::gray(format!(
           "{} =>",
-          self.to_relative_path_or_remote_url(&desc.origin)
+          to_relative_path_or_remote_url(&self.cwd, &desc.origin)
         )),
-        self.format_test_step_ancestry(desc, tests, test_steps)
+        common::format_test_step_ancestry(desc, tests, test_steps)
       );
       self.in_new_line = false;
       self.scope_test_id = Some(desc.id);
@@ -398,123 +325,7 @@ impl TestReporter for PrettyTestReporter {
     _tests: &IndexMap<usize, TestDescription>,
     _test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    if !self.summary.failures.is_empty()
-      || !self.summary.uncaught_errors.is_empty()
-    {
-      #[allow(clippy::type_complexity)] // Type alias doesn't look better here
-      let mut failures_by_origin: BTreeMap<
-        String,
-        (Vec<(&TestDescription, &TestFailure)>, Option<&JsError>),
-      > = BTreeMap::default();
-      let mut failure_titles = vec![];
-      for (description, failure) in &self.summary.failures {
-        let (failures, _) = failures_by_origin
-          .entry(description.origin.clone())
-          .or_default();
-        failures.push((description, failure));
-      }
-
-      for (origin, js_error) in &self.summary.uncaught_errors {
-        let (_, uncaught_error) =
-          failures_by_origin.entry(origin.clone()).or_default();
-        let _ = uncaught_error.insert(js_error.as_ref());
-      }
-      // note: the trailing whitespace is intentional to get a red background
-      println!("\n{}\n", colors::white_bold_on_red(" ERRORS "));
-      for (origin, (failures, uncaught_error)) in failures_by_origin {
-        for (description, failure) in failures {
-          if !failure.hide_in_summary() {
-            let failure_title = self.format_test_for_summary(description);
-            println!("{}", &failure_title);
-            println!("{}: {}", colors::red_bold("error"), failure.to_string());
-            println!();
-            failure_titles.push(failure_title);
-          }
-        }
-        if let Some(js_error) = uncaught_error {
-          let failure_title = format!(
-            "{} (uncaught error)",
-            self.to_relative_path_or_remote_url(&origin)
-          );
-          println!("{}", &failure_title);
-          println!(
-            "{}: {}",
-            colors::red_bold("error"),
-            format_test_error(js_error)
-          );
-          println!("This error was not caught from a test and caused the test runner to fail on the referenced module.");
-          println!("It most likely originated from a dangling promise, event/timeout handler or top-level code.");
-          println!();
-          failure_titles.push(failure_title);
-        }
-      }
-      // note: the trailing whitespace is intentional to get a red background
-      println!("{}\n", colors::white_bold_on_red(" FAILURES "));
-      for failure_title in failure_titles {
-        println!("{failure_title}");
-      }
-    }
-
-    let status = if self.summary.has_failed() {
-      colors::red("FAILED").to_string()
-    } else {
-      colors::green("ok").to_string()
-    };
-
-    let get_steps_text = |count: usize| -> String {
-      if count == 0 {
-        String::new()
-      } else if count == 1 {
-        " (1 step)".to_string()
-      } else {
-        format!(" ({count} steps)")
-      }
-    };
-
-    let mut summary_result = String::new();
-
-    write!(
-      summary_result,
-      "{} passed{} | {} failed{}",
-      self.summary.passed,
-      get_steps_text(self.summary.passed_steps),
-      self.summary.failed,
-      get_steps_text(self.summary.failed_steps),
-    )
-    .unwrap();
-
-    let ignored_steps = get_steps_text(self.summary.ignored_steps);
-    if self.summary.ignored > 0 || !ignored_steps.is_empty() {
-      write!(
-        summary_result,
-        " | {} ignored{}",
-        self.summary.ignored, ignored_steps
-      )
-      .unwrap()
-    }
-
-    if self.summary.measured > 0 {
-      write!(summary_result, " | {} measured", self.summary.measured,).unwrap();
-    }
-
-    if self.summary.filtered_out > 0 {
-      write!(
-        summary_result,
-        " | {} filtered out",
-        self.summary.filtered_out
-      )
-      .unwrap()
-    };
-
-    println!(
-      "\n{} | {} {}\n",
-      status,
-      summary_result,
-      colors::gray(format!(
-        "({})",
-        display::human_elapsed(elapsed.as_millis())
-      )),
-    );
+    common::report_summary(&self.cwd, &self.summary, elapsed);
     self.in_new_line = true;
   }
 
@@ -524,27 +335,7 @@ impl TestReporter for PrettyTestReporter {
     tests: &IndexMap<usize, TestDescription>,
     test_steps: &IndexMap<usize, TestStepDescription>,
   ) {
-    if tests_pending.is_empty() {
-      return;
-    }
-    let mut formatted_pending = BTreeSet::new();
-    for id in tests_pending {
-      if let Some(desc) = tests.get(id) {
-        formatted_pending.insert(self.format_test_for_summary(desc));
-      }
-      if let Some(desc) = test_steps.get(id) {
-        formatted_pending
-          .insert(self.format_test_step_for_summary(desc, tests, test_steps));
-      }
-    }
-    println!(
-      "\n{} The following tests were pending:\n",
-      colors::intense_blue("SIGINT")
-    );
-    for entry in formatted_pending {
-      println!("{}", entry);
-    }
-    println!();
+    common::report_sigint(&self.cwd, tests_pending, tests, test_steps);
     self.in_new_line = true;
   }
 

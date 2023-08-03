@@ -12,6 +12,7 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 mod cache_db;
@@ -34,7 +35,10 @@ pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use http_cache::CachedUrlMetadata;
+pub use http_cache::GlobalHttpCache;
 pub use http_cache::HttpCache;
+pub use http_cache::LocalHttpCache;
+pub use http_cache::LocalLspHttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
@@ -48,6 +52,7 @@ pub struct FetchCacher {
   emit_cache: EmitCache,
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+  global_http_cache: Arc<GlobalHttpCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
@@ -58,6 +63,7 @@ impl FetchCacher {
     emit_cache: EmitCache,
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
+    global_http_cache: Arc<GlobalHttpCache>,
     permissions: PermissionsContainer,
     maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
@@ -65,6 +71,7 @@ impl FetchCacher {
       emit_cache,
       file_fetcher,
       file_header_overrides,
+      global_http_cache,
       permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
@@ -76,6 +83,31 @@ impl FetchCacher {
   pub fn enable_loading_cache_info(&mut self) {
     self.cache_info_enabled = true;
   }
+
+  // DEPRECATED: Where the file is stored and how it's stored should be an implementation
+  // detail of the cache.
+  //
+  // todo(dsheret): remove once implementing
+  //  * https://github.com/denoland/deno/issues/17707
+  //  * https://github.com/denoland/deno/issues/17703
+  #[deprecated(
+    note = "There should not be a way to do this because the file may not be cached at a local path in the future."
+  )]
+  fn get_local_path(&self, specifier: &ModuleSpecifier) -> Option<PathBuf> {
+    // TODO(@kitsonk) fix when deno_graph does not query cache for synthetic
+    // modules
+    if specifier.scheme() == "flags" {
+      None
+    } else if specifier.scheme() == "file" {
+      specifier.to_file_path().ok()
+    } else {
+      #[allow(deprecated)]
+      self
+        .global_http_cache
+        .get_global_cache_filepath(specifier)
+        .ok()
+    }
+  }
 }
 
 impl Loader for FetchCacher {
@@ -85,7 +117,7 @@ impl Loader for FetchCacher {
     }
 
     #[allow(deprecated)]
-    let local = self.file_fetcher.get_local_path(specifier)?;
+    let local = self.get_local_path(specifier)?;
     if local.is_file() {
       let emit = self
         .emit_cache

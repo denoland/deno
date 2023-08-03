@@ -64,7 +64,7 @@ pub fn check_unstable2(state: &Rc<RefCell<OpState>>, api_name: &str) {
 }
 
 pub trait FfiPermissions {
-  fn check(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
+  fn check_partial(&mut self, path: Option<&Path>) -> Result<(), AnyError>;
 }
 
 pub(crate) type PendingFfiAsyncWork = Box<dyn FnOnce()>;
