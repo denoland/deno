@@ -44,10 +44,10 @@ impl Pty {
   }
 
   pub fn is_supported() -> bool {
-    let is_mac_or_windows = cfg!(target_os = "macos") || cfg!(windows);
-    if is_mac_or_windows && std::env::var("CI").is_ok() {
-      // the pty tests give a ENOTTY error for Mac and don't really start up
-      // on the windows CI for some reason so ignore them for now
+    let is_windows = cfg!(windows);
+    if is_windows && std::env::var("CI").is_ok() {
+      // the pty tests don't really start up on the windows CI for some reason
+      // so ignore them for now
       eprintln!("Ignoring windows CI.");
       false
     } else {
