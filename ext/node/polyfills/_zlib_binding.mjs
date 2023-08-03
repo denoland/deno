@@ -149,7 +149,7 @@ class Zlib {
       windowBits,
       memLevel,
       strategy,
-      dictionary,
+      dictionary ? new Uint8Array(dictionary).buffer : undefined,
     );
 
     if (err != Z_OK) {
