@@ -24,7 +24,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointer#create");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   Ok(ptr_number as *mut c_void)
 }
@@ -40,7 +40,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointer#equals");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   Ok(a == b)
 }
@@ -55,7 +55,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointer#of");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   Ok(buf as *mut c_void)
 }
@@ -71,7 +71,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointer#offset");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid pointer to offset, pointer is null"));
@@ -99,7 +99,7 @@ where
 {
   check_unstable(state, "Deno.UnsafePointer#value");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   let outptr = out.as_ptr() as *mut usize;
   let length = out.len();
@@ -129,7 +129,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getArrayBuffer");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid ArrayBuffer pointer, pointer is null"));
@@ -164,7 +164,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#copyInto");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if src.is_null() {
     Err(type_error("Invalid ArrayBuffer pointer, pointer is null"))
@@ -197,7 +197,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getCString");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid CString pointer, pointer is null"));
@@ -227,7 +227,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getBool");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid bool pointer, pointer is null"));
@@ -249,7 +249,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getUint8");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u8 pointer, pointer is null"));
@@ -273,7 +273,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getInt8");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i8 pointer, pointer is null"));
@@ -297,7 +297,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getUint16");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u16 pointer, pointer is null"));
@@ -321,7 +321,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getInt16");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i16 pointer, pointer is null"));
@@ -345,7 +345,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getUint32");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid u32 pointer, pointer is null"));
@@ -367,7 +367,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getInt32");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid i32 pointer, pointer is null"));
@@ -390,7 +390,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   let outptr = out.as_mut_ptr() as *mut u64;
 
@@ -425,7 +425,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getBigUint64");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   let outptr = out.as_mut_ptr() as *mut i64;
 
@@ -458,7 +458,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getFloat32");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid f32 pointer, pointer is null"));
@@ -480,7 +480,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getFloat64");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid f64 pointer, pointer is null"));
@@ -502,7 +502,7 @@ where
   check_unstable(state, "Deno.UnsafePointerView#getPointer");
 
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   if ptr.is_null() {
     return Err(type_error("Invalid pointer pointer, pointer is null"));

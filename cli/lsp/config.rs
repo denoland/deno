@@ -475,6 +475,12 @@ impl Config {
       .and_then(|p| p.maybe_node_modules_dir.as_ref())
   }
 
+  pub fn maybe_deno_modules_dir_path(&self) -> Option<PathBuf> {
+    self
+      .maybe_config_file()
+      .and_then(|c| c.deno_modules_dir_path())
+  }
+
   pub fn maybe_config_file(&self) -> Option<&ConfigFile> {
     self
       .maybe_config_file_info

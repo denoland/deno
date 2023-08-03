@@ -2,11 +2,14 @@
 
 use super::*;
 
+mod common;
 mod compound;
+mod dot;
 mod junit;
 mod pretty;
 
 pub use compound::CompoundTestReporter;
+pub use dot::DotTestReporter;
 pub use junit::JunitTestReporter;
 pub use pretty::PrettyTestReporter;
 

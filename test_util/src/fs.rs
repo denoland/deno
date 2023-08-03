@@ -47,8 +47,12 @@ impl PathRef {
     PathRef(self.as_path().parent().unwrap().to_path_buf())
   }
 
-  pub fn uri(&self) -> Url {
+  pub fn uri_dir(&self) -> Url {
     Url::from_directory_path(self.as_path()).unwrap()
+  }
+
+  pub fn uri_file(&self) -> Url {
+    Url::from_file_path(self.as_path()).unwrap()
   }
 
   pub fn as_path(&self) -> &Path {
@@ -113,6 +117,10 @@ impl PathRef {
   }
 
   pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
+    serde_json::from_str(&self.read_to_string()).unwrap()
+  }
+
+  pub fn read_json_value(&self) -> serde_json::Value {
     serde_json::from_str(&self.read_to_string()).unwrap()
   }
 

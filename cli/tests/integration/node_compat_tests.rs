@@ -17,3 +17,9 @@ fn node_compat_tests() {
   assert_eq!(Some(0), status.code());
   assert!(status.success());
 }
+
+itest!(node_test_module {
+  args: "test node/test.js",
+  output: "node/test.out",
+  exit_code: 1,
+});

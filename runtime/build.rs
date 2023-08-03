@@ -111,7 +111,7 @@ mod startup_snapshot {
   }
 
   impl deno_ffi::FfiPermissions for Permissions {
-    fn check(
+    fn check_partial(
       &mut self,
       _path: Option<&Path>,
     ) -> Result<(), deno_core::error::AnyError> {
@@ -197,6 +197,14 @@ mod startup_snapshot {
     }
 
     fn check_write(
+      &mut self,
+      _path: &Path,
+      _api_name: &str,
+    ) -> Result<(), AnyError> {
+      unreachable!("snapshotting!")
+    }
+
+    fn check_write_partial(
       &mut self,
       _path: &Path,
       _api_name: &str,

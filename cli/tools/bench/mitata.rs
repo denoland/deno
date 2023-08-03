@@ -9,6 +9,47 @@
 use crate::colors;
 use std::str::FromStr;
 
+fn avg_to_iter_per_s(time: f64) -> String {
+  let iter_per_s = 1e9 / time;
+  let (decimals, fractional) = into_decimal_and_fractional_parts(iter_per_s);
+  human_readable_decimal_with_fractional(decimals, fractional)
+}
+
+/// Return a tuple representing decimal part of provided float, as well as its
+/// first fractional digit.
+fn into_decimal_and_fractional_parts(num: f64) -> (i64, i64) {
+  let mut decimal_part = num.floor() as i64;
+  let fractional_part = {
+    let decs = ((num - num.floor()) * 10.0).round();
+    if decs == 10.0 {
+      decimal_part += 1;
+      0
+    } else {
+      decs as i64
+    }
+  };
+  (decimal_part, fractional_part)
+}
+
+fn human_readable_decimal_with_fractional(
+  decimal: i64,
+  fractional: i64,
+) -> String {
+  // Sweet one-liner to separate integer by commas from:
+  // https://stackoverflow.com/a/67834588/21759102
+  let fmt_decimal = decimal
+    .to_string()
+    .as_bytes()
+    .rchunks(3)
+    .rev()
+    .map(std::str::from_utf8)
+    .collect::<Result<Vec<&str>, _>>()
+    .unwrap()
+    .join(",");
+
+  format!("{}.{}", fmt_decimal, fractional)
+}
+
 pub fn fmt_duration(time: f64) -> String {
   // SAFETY: this is safe since its just reformatting numbers
   unsafe {
@@ -194,7 +235,10 @@ pub mod reporter {
     let mut s = String::new();
 
     s.push_str(&"-".repeat(
-      options.size + 14 * options.avg as usize + 24 * options.min_max as usize,
+      options.size
+        + 14 * options.avg as usize
+        + 14 * options.avg as usize
+        + 24 * options.min_max as usize,
     ));
 
     if options.percentiles {
@@ -239,6 +283,7 @@ pub mod reporter {
     s.push_str(&format!("{:<size$}", "benchmark"));
     if options.avg {
       s.push_str(&format!("{:>14}", "time (avg)"));
+      s.push_str(&format!("{:>14}", "iter/s"));
     }
     if options.min_max {
       s.push_str(&format!("{:>24}", "(min … max)"));
@@ -266,6 +311,7 @@ pub mod reporter {
           "{:>14}",
           format!("{}/iter", fmt_duration(stats.avg))
         ));
+        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
       }
       if options.min_max {
         s.push_str(&format!(
@@ -291,6 +337,7 @@ pub mod reporter {
           "{:>30}",
           format!("{}/iter", colors::yellow(fmt_duration(stats.avg)))
         ));
+        s.push_str(&format!("{:>14}", avg_to_iter_per_s(stats.avg)));
       }
       if options.min_max {
         s.push_str(&format!(
@@ -379,5 +426,37 @@ pub mod reporter {
     }
 
     s
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_into_decimal_and_fractional_parts() {
+    assert_eq!(into_decimal_and_fractional_parts(10.0), (10, 0));
+    assert_eq!(into_decimal_and_fractional_parts(10.1), (10, 1));
+    assert_eq!(into_decimal_and_fractional_parts(10.2), (10, 2));
+    assert_eq!(into_decimal_and_fractional_parts(10.3), (10, 3));
+    assert_eq!(into_decimal_and_fractional_parts(10.4), (10, 4));
+    assert_eq!(into_decimal_and_fractional_parts(10.5), (10, 5));
+    assert_eq!(into_decimal_and_fractional_parts(10.6), (10, 6));
+    assert_eq!(into_decimal_and_fractional_parts(10.7), (10, 7));
+    assert_eq!(into_decimal_and_fractional_parts(10.8), (10, 8));
+    assert_eq!(into_decimal_and_fractional_parts(10.9), (10, 9));
+    assert_eq!(into_decimal_and_fractional_parts(10.99), (11, 0));
+  }
+
+  #[test]
+  fn test_avg_to_iter_per_s() {
+    assert_eq!(avg_to_iter_per_s(55.85), "17,905,103.0");
+    assert_eq!(avg_to_iter_per_s(64_870_000.0), "15.4");
+    assert_eq!(avg_to_iter_per_s(104_370_000.0), "9.6");
+    assert_eq!(avg_to_iter_per_s(6_400_000.0), "156.3");
+    assert_eq!(avg_to_iter_per_s(46_890_000.0), "21.3");
+    assert_eq!(avg_to_iter_per_s(100_000_000.0), "10.0");
+    assert_eq!(avg_to_iter_per_s(1_000_000_000.0), "1.0");
+    assert_eq!(avg_to_iter_per_s(5_920_000_000.0), "0.2");
   }
 }

@@ -108,3 +108,10 @@ itest!(worker_error_event {
   output: "workers/error_event.ts.out",
   exit_code: 1,
 });
+
+// Regression test for https://github.com/denoland/deno/issues/19903
+itest!(worker_doest_stall_event_loop {
+  args: "run --quiet -A workers/worker_doest_stall_event_loop.ts",
+  output: "workers/worker_doest_stall_event_loop.ts.out",
+  exit_code: 0,
+});

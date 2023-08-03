@@ -546,7 +546,7 @@ where
 {
   check_unstable(state, "Deno.UnsafeCallback");
   let permissions = state.borrow_mut::<FP>();
-  permissions.check(None)?;
+  permissions.check_partial(None)?;
 
   let v8_value = cb.v8_value;
   let cb = v8::Local::<v8::Function>::try_from(v8_value)?;
