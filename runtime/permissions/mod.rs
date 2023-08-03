@@ -51,6 +51,31 @@ pub enum PermissionState {
   Denied = 3,
 }
 
+/// `AllowPartial` prescribes how to treat a permission which is partially
+/// denied due to a `--deny-*` flag affecting a subscope of the queried
+/// permission.
+///
+/// `TreatAsGranted` is used in place of `TreatAsPartialGranted` when we don't
+/// want to wastefully check for partial denials when, say, checking read
+/// access for a file.
+#[derive(Debug, Eq, PartialEq)]
+#[allow(clippy::enum_variant_names)]
+enum AllowPartial {
+  TreatAsGranted,
+  TreatAsDenied,
+  TreatAsPartialGranted,
+}
+
+impl From<bool> for AllowPartial {
+  fn from(value: bool) -> Self {
+    if value {
+      Self::TreatAsGranted
+    } else {
+      Self::TreatAsDenied
+    }
+  }
+}
+
 impl PermissionState {
   #[inline(always)]
   fn log_perm_access(name: &str, info: impl FnOnce() -> Option<String>) {
@@ -271,8 +296,9 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     api_name: Option<&str>,
     get_display_name: impl Fn() -> Option<String>,
   ) -> Result<(), AnyError> {
-    let (result, prompted, is_allow_all) =
-      self.query_desc(desc, Some(assert_non_partial)).check2(
+    let (result, prompted, is_allow_all) = self
+      .query_desc(desc, AllowPartial::from(assert_non_partial))
+      .check2(
         T::flag_name(),
         api_name,
         || match get_display_name() {
@@ -295,30 +321,24 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     result
   }
 
-  /// `allow_partial` prescribes how to treat a permission which is partially
-  /// denied due to a `--deny-*` flag affecting a subscope of the queried
-  /// permission. `Some(true)` means treat as granted, `Some(false)` means treat
-  /// as denied and `None` means report as `PermissionState::GrantedPartial`.
-  /// `Some(true)` is used in place of `None` when we don't want to wastefully
-  /// check for partial denials when, say, checking read access for a file.
   fn query_desc(
     &self,
     desc: &Option<T>,
-    allow_partial: Option<bool>,
+    allow_partial: AllowPartial,
   ) -> PermissionState {
     if self.is_flag_denied(desc) || self.is_prompt_denied(desc) {
       PermissionState::Denied
     } else if self.is_granted(desc) {
       match allow_partial {
-        Some(true) => PermissionState::Granted,
-        Some(false) => {
+        AllowPartial::TreatAsGranted => PermissionState::Granted,
+        AllowPartial::TreatAsDenied => {
           if self.is_partial_flag_denied(desc) {
             PermissionState::Denied
           } else {
             PermissionState::Granted
           }
         }
-        None => {
+        AllowPartial::TreatAsPartialGranted => {
           if self.is_partial_flag_denied(desc) {
             PermissionState::GrantedPartial
           } else {
@@ -326,7 +346,8 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
           }
         }
       }
-    } else if allow_partial == Some(false) && self.is_partial_flag_denied(desc)
+    } else if matches!(allow_partial, AllowPartial::TreatAsDenied)
+      && self.is_partial_flag_denied(desc)
     {
       PermissionState::Denied
     } else {
@@ -339,7 +360,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
     desc: &Option<T>,
     get_display_name: impl Fn() -> Option<String>,
   ) -> PermissionState {
-    let state = self.query_desc(desc, None);
+    let state = self.query_desc(desc, AllowPartial::TreatAsPartialGranted);
     if state == PermissionState::Granted {
       self.insert_granted(desc.clone());
       return state;
@@ -390,7 +411,7 @@ impl<T: Descriptor + Hash> UnaryPermission<T> {
         self.granted_list.clear();
       }
     }
-    self.query_desc(desc, None)
+    self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }
 
   fn is_granted(&self, desc: &Option<T>) -> bool {
@@ -639,7 +660,7 @@ impl UnaryPermission<ReadDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| ReadDescriptor(resolve_from_cwd(p).unwrap())),
-      None,
+      AllowPartial::TreatAsPartialGranted,
     )
   }
 
@@ -703,7 +724,7 @@ impl UnaryPermission<WriteDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| WriteDescriptor(resolve_from_cwd(p).unwrap())),
-      None,
+      AllowPartial::TreatAsPartialGranted,
     )
   }
 
@@ -770,7 +791,10 @@ impl UnaryPermission<NetDescriptor> {
     &self,
     host: Option<&(T, Option<u16>)>,
   ) -> PermissionState {
-    self.query_desc(&host.map(|h| NetDescriptor::new(&h)), None)
+    self.query_desc(
+      &host.map(|h| NetDescriptor::new(&h)),
+      AllowPartial::TreatAsPartialGranted,
+    )
   }
 
   pub fn request<T: AsRef<str>>(
@@ -821,7 +845,10 @@ impl UnaryPermission<NetDescriptor> {
 
 impl UnaryPermission<EnvDescriptor> {
   pub fn query(&self, env: Option<&str>) -> PermissionState {
-    self.query_desc(&env.map(EnvDescriptor::new), None)
+    self.query_desc(
+      &env.map(EnvDescriptor::new),
+      AllowPartial::TreatAsPartialGranted,
+    )
   }
 
   pub fn request(&mut self, env: Option<&str>) -> PermissionState {
@@ -843,7 +870,10 @@ impl UnaryPermission<EnvDescriptor> {
 
 impl UnaryPermission<SysDescriptor> {
   pub fn query(&self, kind: Option<&str>) -> PermissionState {
-    self.query_desc(&kind.map(|k| SysDescriptor(k.to_string())), None)
+    self.query_desc(
+      &kind.map(|k| SysDescriptor(k.to_string())),
+      AllowPartial::TreatAsPartialGranted,
+    )
   }
 
   pub fn request(&mut self, kind: Option<&str>) -> PermissionState {
@@ -874,7 +904,10 @@ impl UnaryPermission<SysDescriptor> {
 
 impl UnaryPermission<RunDescriptor> {
   pub fn query(&self, cmd: Option<&str>) -> PermissionState {
-    self.query_desc(&cmd.map(|c| RunDescriptor::from_str(c).unwrap()), None)
+    self.query_desc(
+      &cmd.map(|c| RunDescriptor::from_str(c).unwrap()),
+      AllowPartial::TreatAsPartialGranted,
+    )
   }
 
   pub fn request(&mut self, cmd: Option<&str>) -> PermissionState {
@@ -909,7 +942,7 @@ impl UnaryPermission<FfiDescriptor> {
   pub fn query(&self, path: Option<&Path>) -> PermissionState {
     self.query_desc(
       &path.map(|p| FfiDescriptor(resolve_from_cwd(p).unwrap())),
-      None,
+      AllowPartial::TreatAsPartialGranted,
     )
   }
 
