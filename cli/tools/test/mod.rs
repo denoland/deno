@@ -361,6 +361,7 @@ struct TestSpecifiersOptions {
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
+  junit_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -394,28 +395,23 @@ impl TestSummary {
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
   let parallel = options.concurrent_jobs.get() > 1;
-  match &options.reporter {
+  let reporter: Box<dyn TestReporter> = match &options.reporter {
     TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
     )),
-    TestReporterConfig::Junit(path) => {
-      let junit = Box::new(JunitTestReporter::new(path.clone()));
-      // If junit is writing to stdout, only enable the junit reporter
-      if path == "-" {
-        junit
-      } else {
-        Box::new(CompoundTestReporter::new(vec![
-          Box::new(PrettyTestReporter::new(
-            parallel,
-            options.log_level != Some(Level::Error),
-          )),
-          junit,
-        ]))
-      }
+    TestReporterConfig::Junit => {
+      Box::new(JunitTestReporter::new("-".to_string()))
     }
+  };
+
+  if let Some(junit_path) = &options.junit_path {
+    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
+
+  reporter
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -1162,6 +1158,7 @@ pub async fn run_tests(
       fail_fast: test_options.fail_fast,
       log_level,
       reporter: test_options.reporter,
+      junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
         shuffle: test_options.shuffle,
@@ -1293,6 +1290,7 @@ pub async fn run_tests_with_watch(
             fail_fast: test_options.fail_fast,
             log_level,
             reporter: test_options.reporter,
+            junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),
               shuffle: test_options.shuffle,

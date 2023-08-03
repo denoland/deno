@@ -334,19 +334,19 @@ itest!(steps_ignored_steps {
 });
 
 itest!(steps_dot_passing_steps {
-  args: "test --dot test/steps/passing_steps.ts",
+  args: "test --reporter=dot test/steps/passing_steps.ts",
   exit_code: 0,
   output: "test/steps/passing_steps.dot.out",
 });
 
 itest!(steps_dot_failing_steps {
-  args: "test --dot test/steps/failing_steps.ts",
+  args: "test --reporter=dot test/steps/failing_steps.ts",
   exit_code: 1,
   output: "test/steps/failing_steps.dot.out",
 });
 
 itest!(steps_dot_ignored_steps {
-  args: "test --dot test/steps/ignored_steps.ts",
+  args: "test --reporter=dot test/steps/ignored_steps.ts",
   exit_code: 0,
   output: "test/steps/ignored_steps.dot.out",
 });
