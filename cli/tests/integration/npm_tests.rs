@@ -1915,7 +1915,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
       "\n",
       "Caused by:\n",
-      "    Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n"
+      "    0: Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n",
+      "    1: Could not find version '1.0.0' for npm package '@denotest/esm-basic'.\n",
     ));
     output.assert_exit_code(1);
 
