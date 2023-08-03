@@ -3806,16 +3806,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pty2"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4461e7f96399674b9112e620e511089bc7c4c0d76545b3cc3e0b46bab72a15d5"
-dependencies = [
- "errno",
- "libc",
-]
-
-[[package]]
 name = "pulldown-cmark"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5274,13 +5264,13 @@ dependencies = [
  "glob",
  "hyper 0.14.26",
  "lazy-regex",
+ "libc",
  "lsp-types",
  "nix",
  "once_cell",
  "os_pipe",
  "parking_lot 0.12.1",
  "pretty_assertions",
- "pty2",
  "regex",
  "reqwest",
  "ring",
