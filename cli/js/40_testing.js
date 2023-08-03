@@ -152,7 +152,7 @@ function assertOps(fn) {
       // cleared can actually be removed from resource table, otherwise
       // false positives may occur (https://github.com/denoland/deno/issues/4591)
       await opSanitizerDelay();
-      await opSanitizerDelay();
+      // await opSanitizerDelay();
     }
     const post = core.metrics();
     const postTraces = new Map(core.opCallTraces);
