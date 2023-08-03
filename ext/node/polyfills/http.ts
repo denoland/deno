@@ -770,6 +770,10 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
+    const rid = this._client?.rid;
+    if (rid) {
+      core.tryClose(rid);
+    }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
       this.res._dump();
