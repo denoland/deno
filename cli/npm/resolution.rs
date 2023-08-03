@@ -321,7 +321,7 @@ async fn add_package_reqs_to_snapshot(
     let result = pending_resolver
       .resolve_pending(snapshot, package_reqs)
       .await;
-    api.clear_cache();
+    api.clear_memory_cache();
     match result {
       Ok(snapshot) => snapshot,
       Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
@@ -333,7 +333,7 @@ async fn add_package_reqs_to_snapshot(
         let result = pending_resolver
           .resolve_pending(snapshot, package_reqs)
           .await;
-        api.clear_cache();
+        api.clear_memory_cache();
         // now surface the result after clearing the cache
         result?
       }

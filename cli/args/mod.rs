@@ -829,16 +829,17 @@ impl CliOptions {
             lockfile.lock().filename.display()
           )
         })?;
-        return Ok(Some(
-          snapshot_from_lockfile(incomplete_snapshot, api)
-            .await
-            .with_context(|| {
-              format!(
-                "failed reading lockfile '{}'",
-                lockfile.lock().filename.display()
-              )
-            })?,
-        ));
+        let snapshot = snapshot_from_lockfile(incomplete_snapshot, api)
+          .await
+          .with_context(|| {
+          format!(
+            "failed reading lockfile '{}'",
+            lockfile.lock().filename.display()
+          )
+        })?;
+        // clear the memory cache to reduce memory usage
+        api.clear_memory_cache();
+        return Ok(Some(snapshot));
       }
     }
 

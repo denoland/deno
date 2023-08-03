@@ -935,13 +935,19 @@ impl Inner {
       }
     };
 
-    match snapshot_from_lockfile(incomplete_snapshot, &*self.npm.api).await {
-      Ok(snapshot) => Some(snapshot),
-      Err(err) => {
-        lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-        None
-      }
-    }
+    let snapshot =
+      match snapshot_from_lockfile(incomplete_snapshot, &*self.npm.api).await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+          return None;
+        }
+      };
+
+    // clear the memory cache to reduce memory usage
+    self.npm.api.clear_memory_cache();
+
+    Some(snapshot)
   }
 
   async fn recreate_npm_services_if_necessary(&mut self) {

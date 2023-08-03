@@ -83,6 +83,11 @@ impl CliNpmRegistryApi {
     Self(None)
   }
 
+  /// Clears the internal memory cache.
+  pub fn clear_memory_cache(&self) {
+    self.inner().clear_memory_cache();
+  }
+
   pub fn get_cached_package_info(
     &self,
     name: &str,
@@ -139,15 +144,11 @@ impl NpmRegistryApi for CliNpmRegistryApi {
       return false;
     }
     if self.inner().force_reload_flag.raise() {
-      self.clear_cache(); // clear the cache to force reloading
+      self.clear_memory_cache(); // clear the cache to force reloading
       true
     } else {
       false
     }
-  }
-
-  fn clear_cache(&self) {
-    self.inner().clear_memory_cache();
   }
 }
 
