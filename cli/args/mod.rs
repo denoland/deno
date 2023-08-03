@@ -2,7 +2,7 @@
 
 mod config_file;
 mod flags;
-mod flags_allow_net;
+mod flags_net;
 mod import_map;
 mod lockfile;
 pub mod package_json;
@@ -1105,13 +1105,21 @@ impl CliOptions {
   pub fn permissions_options(&self) -> PermissionsOptions {
     PermissionsOptions {
       allow_env: self.flags.allow_env.clone(),
+      deny_env: self.flags.deny_env.clone(),
       allow_hrtime: self.flags.allow_hrtime,
+      deny_hrtime: self.flags.deny_hrtime,
       allow_net: self.flags.allow_net.clone(),
+      deny_net: self.flags.deny_net.clone(),
       allow_ffi: self.flags.allow_ffi.clone(),
+      deny_ffi: self.flags.deny_ffi.clone(),
       allow_read: self.flags.allow_read.clone(),
+      deny_read: self.flags.deny_read.clone(),
       allow_run: self.flags.allow_run.clone(),
+      deny_run: self.flags.deny_run.clone(),
       allow_sys: self.flags.allow_sys.clone(),
+      deny_sys: self.flags.deny_sys.clone(),
       allow_write: self.flags.allow_write.clone(),
+      deny_write: self.flags.deny_write.clone(),
       prompt: !self.no_prompt(),
     }
   }
