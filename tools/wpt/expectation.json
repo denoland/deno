@@ -4414,8 +4414,16 @@
         "response-consume-empty.any.worker.html": [
           "Consume empty FormData response body as text"
         ],
-        "response-consume-stream.any.html": false,
-        "response-consume-stream.any.worker.html": false,
+        "response-consume-stream.any.html": [
+          "Read text response's body as readableStream with mode=byob",
+          "Read URLSearchParams response's body as readableStream with mode=byob",
+          "Read array buffer response's body as readableStream with mode=byob"
+        ],
+        "response-consume-stream.any.worker.html": [
+          "Read text response's body as readableStream with mode=byob",
+          "Read URLSearchParams response's body as readableStream with mode=byob",
+          "Read array buffer response's body as readableStream with mode=byob"
+        ],
         "response-init-contenttype.any.html": true,
         "response-init-contenttype.any.worker.html": true,
         "response-static-json.any.html": true,
