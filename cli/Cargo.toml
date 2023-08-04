@@ -11,10 +11,17 @@ license.workspace = true
 repository.workspace = true
 description = "Provides the deno executable"
 
+[features]
+deno_version = []
+
 [[bin]]
 name = "deno"
 path = "main.rs"
 doc = false
+
+[[bin]]
+name = "promote"
+path = "promote.rs"
 
 [[bench]]
 name = "deno_bench"
@@ -86,6 +93,8 @@ lazy-regex.workspace = true
 libc.workspace = true
 log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
+memmap2.workspace = true
+memmem.workspace = true
 monch = "=0.4.2"
 notify.workspace = true
 once_cell.workspace = true

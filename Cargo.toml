@@ -105,6 +105,7 @@ libc = "0.2.126"
 log = "=0.4.19"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
+memmap2 = "0.7.1"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"

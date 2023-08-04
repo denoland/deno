@@ -833,6 +833,8 @@ dependencies = [
  "libc",
  "log",
  "lsp-types",
+ "memmap2 0.7.1",
+ "memmem",
  "monch",
  "napi_sym",
  "nix",
@@ -1762,7 +1764,7 @@ checksum = "64fba5a42bd76a17cad4bfa00de168ee1cbfa06a5e8ce992ae880218c05641a9"
 dependencies = [
  "byteorder",
  "dynasm",
- "memmap2",
+ "memmap2 0.5.10",
 ]
 
 [[package]]
@@ -3064,6 +3066,15 @@ name = "memmap2"
 version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83faa42c0a078c393f6b29d5db232d8be22776a891f8f56e5284faee4a20b327"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "memmap2"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
 dependencies = [
  "libc",
 ]
