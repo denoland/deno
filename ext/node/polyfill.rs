@@ -55,6 +55,7 @@ generate_builtin_node_module_lists! {
   "process",
   "punycode",
   "querystring",
+  "repl",
   "readline",
   "stream",
   "stream/consumers",

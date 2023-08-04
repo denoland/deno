@@ -8,8 +8,10 @@ Deno.test({
   name: "repl module exports",
   fn() {
     assert(typeof repl.REPLServer !== "undefined");
-    assert(typeof repl.builtinModules !== "undefined");
-    assert(typeof repl._builtinLibs !== "undefined");
     assert(typeof repl.start !== "undefined");
+    // @ts-ignore not present in declaration files, but libraries depend on it
+    assert(typeof repl.builtinModules !== "undefined");
+    // @ts-ignore not present in declaration files, but libraries depend on it
+    assert(typeof repl._builtinLibs !== "undefined");
   },
 });
