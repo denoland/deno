@@ -1186,7 +1186,7 @@ fn resolve_node_modules_folder(
   let use_node_modules_dir = flags
     .node_modules_dir
     .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir_flag()))
-    .or_else(|| flags.vendor)
+    .or(flags.vendor)
     .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()));
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
