@@ -44,10 +44,10 @@ impl Pty {
   }
 
   pub fn is_supported() -> bool {
-    let is_mac_or_windows = cfg!(target_os = "macos") || cfg!(windows);
-    if is_mac_or_windows && std::env::var("CI").is_ok() {
-      // the pty tests give a ENOTTY error for Mac and don't really start up
-      // on the windows CI for some reason so ignore them for now
+    let is_windows = cfg!(windows);
+    if is_windows && std::env::var("CI").is_ok() {
+      // the pty tests don't really start up on the windows CI for some reason
+      // so ignore them for now
       eprintln!("Ignoring windows CI.");
       false
     } else {
@@ -216,8 +216,10 @@ impl Pty {
 
 trait SystemPty: Read + Write {}
 
+impl SystemPty for std::fs::File {}
+
 #[cfg(unix)]
-fn setup_pty(master: &pty2::fork::Master) {
+fn setup_pty(fd: i32) {
   use nix::fcntl::fcntl;
   use nix::fcntl::FcntlArg;
   use nix::fcntl::OFlag;
@@ -225,9 +227,7 @@ fn setup_pty(master: &pty2::fork::Master) {
   use nix::sys::termios::tcgetattr;
   use nix::sys::termios::tcsetattr;
   use nix::sys::termios::SetArg;
-  use std::os::fd::AsRawFd;
 
-  let fd = master.as_raw_fd();
   let mut term = tcgetattr(fd).unwrap();
   // disable cooked mode
   term.local_flags.remove(termios::LocalFlags::ICANON);
@@ -246,21 +246,60 @@ fn create_pty(
   cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn SystemPty> {
-  let fork = pty2::fork::Fork::from_ptmx().unwrap();
-  if fork.is_parent().is_ok() {
-    let master = fork.is_parent().unwrap();
-    setup_pty(&master);
-    Box::new(unix::UnixPty { fork })
-  } else {
-    std::process::Command::new(program)
+  use crate::pty::unix::UnixPty;
+  use std::os::unix::process::CommandExt;
+
+  // Manually open pty main/secondary sides in the test process. Since we're not actually
+  // changing uid/gid here, this is the easiest way to do it.
+
+  // SAFETY: Posix APIs
+  let (fdm, fds) = unsafe {
+    let fdm = libc::posix_openpt(libc::O_RDWR);
+    if fdm < 0 {
+      panic!("posix_openpt failed");
+    }
+    let res = libc::grantpt(fdm);
+    if res != 0 {
+      panic!("grantpt failed");
+    }
+    let res = libc::unlockpt(fdm);
+    if res != 0 {
+      panic!("unlockpt failed");
+    }
+    let fds = libc::open(libc::ptsname(fdm), libc::O_RDWR);
+    if fdm < 0 {
+      panic!("open(ptsname) failed");
+    }
+    (fdm, fds)
+  };
+
+  // SAFETY: Posix APIs
+  unsafe {
+    let cmd = std::process::Command::new(program)
       .current_dir(cwd)
       .args(args)
       .envs(env_vars.unwrap_or_default())
+      .pre_exec(move || {
+        // Close parent's main handle
+        libc::close(fdm);
+        libc::dup2(fds, 0);
+        libc::dup2(fds, 1);
+        libc::dup2(fds, 2);
+        // Note that we could close `fds` here as well, but this is a short-lived process and
+        // we're just not going to worry about "leaking" it
+        Ok(())
+      })
       .spawn()
-      .unwrap()
-      .wait()
       .unwrap();
-    std::process::exit(0);
+
+    // Close child's secondary handle
+    libc::close(fds);
+    setup_pty(fdm);
+
+    use std::os::fd::FromRawFd;
+    let pid = nix::unistd::Pid::from_raw(cmd.id() as _);
+    let file = std::fs::File::from_raw_fd(fdm);
+    Box::new(UnixPty { pid, file })
   }
 }
 
@@ -272,19 +311,15 @@ mod unix {
   use super::SystemPty;
 
   pub struct UnixPty {
-    pub fork: pty2::fork::Fork,
+    pub pid: nix::unistd::Pid,
+    pub file: std::fs::File,
   }
 
   impl Drop for UnixPty {
     fn drop(&mut self) {
       use nix::sys::signal::kill;
       use nix::sys::signal::Signal;
-      use nix::unistd::Pid;
-
-      if let pty2::fork::Fork::Parent(child_pid, _) = self.fork {
-        let pid = Pid::from_raw(child_pid);
-        kill(pid, Signal::SIGTERM).unwrap()
-      }
+      kill(self.pid, Signal::SIGTERM).unwrap()
     }
   }
 
@@ -292,20 +327,17 @@ mod unix {
 
   impl Read for UnixPty {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-      let mut master = self.fork.is_parent().unwrap();
-      master.read(buf)
+      self.file.read(buf)
     }
   }
 
   impl Write for UnixPty {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-      let mut master = self.fork.is_parent().unwrap();
-      master.write(buf)
+      self.file.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-      let mut master = self.fork.is_parent().unwrap();
-      master.flush()
+      self.file.flush()
     }
   }
 }

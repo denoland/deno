@@ -726,7 +726,7 @@ function serveHttpOn(context, callback) {
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
+        while ((req = op_http_try_wait(rid)) !== -1) {
           PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
@@ -741,7 +741,7 @@ function serveHttpOn(context, callback) {
         }
         throw new Deno.errors.Http(error);
       }
-      if (req === 0xffffffff) {
+      if (req === -1) {
         break;
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
