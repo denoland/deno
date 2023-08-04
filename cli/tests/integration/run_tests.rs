@@ -4554,4 +4554,17 @@ console.log(returnsHi());"#,
   // now it should run
   deno_run_cmd.run().assert_matches_text("bye bye bye\n");
   assert!(lockfile.exists());
+
+  // now try importing directly from the vendor folder
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from './vendor/http_localhost_4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+  deno_run_cmd
+    .run()
+    .assert_matches_text("error: Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.
+    at [WILDCARD]/main.ts:1:27
+")
+    .assert_exit_code(1);
 }

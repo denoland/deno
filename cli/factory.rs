@@ -38,6 +38,7 @@ use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
@@ -424,13 +425,18 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.options.to_maybe_jsx_import_source_config()?,
-          self.maybe_import_map().await?.clone(),
-          self.options.no_npm(),
           self.npm_api()?.clone(),
           self.npm_resolution().await?.clone(),
           self.package_json_deps_provider().clone(),
           self.package_json_deps_installer().await?.clone(),
+          CliGraphResolverOptions {
+            maybe_jsx_import_source_config: self
+              .options
+              .to_maybe_jsx_import_source_config()?,
+            maybe_import_map: self.maybe_import_map().await?.clone(),
+            maybe_vendor_dir: self.options.vendor_dir_path(),
+            no_npm: self.options.no_npm(),
+          },
         )))
       })
       .await
