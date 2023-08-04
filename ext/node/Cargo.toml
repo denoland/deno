@@ -60,7 +60,6 @@ serde = "1.0.149"
 sha-1 = "0.10.0"
 sha2.workspace = true
 signature.workspace = true
-target-lexicon.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
 whoami = "1.4.0"
