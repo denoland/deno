@@ -862,10 +862,10 @@ async fn op_http_write_resource(
       break;
     }
 
-    // Yield to tokio every 1MB or 16 packets to ensure we don't starve the event loop
+    // Yield to tokio every 1MB or 32 packets to ensure we don't starve the event loop
     byte_count += view.len();
     packet_count += 1;
-    if byte_count > 1024 * 1024 || packet_count > 16 {
+    if byte_count > 1024 * 1024 || packet_count > 32 {
       tokio::task::yield_now().await;
       byte_count = 0;
       packet_count = 0;
