@@ -843,9 +843,6 @@ async fn op_http_write_resource(
     .get::<HttpStreamResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
   let resource = state.borrow().resource_table.get_any(stream)?;
-  let mut byte_count = 0;
-  let mut packet_count = 0;
-
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
@@ -860,15 +857,6 @@ async fn op_http_write_resource(
     let view = resource.clone().read(64 * 1024).await?; // 64KB
     if view.is_empty() {
       break;
-    }
-
-    // Yield to tokio every 1MB or 32 packets to ensure we don't starve the event loop
-    byte_count += view.len();
-    packet_count += 1;
-    if byte_count > 1024 * 1024 || packet_count > 32 {
-      tokio::task::yield_now().await;
-      byte_count = 0;
-      packet_count = 0;
     }
 
     match &mut *wr {
