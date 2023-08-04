@@ -510,7 +510,7 @@ impl ReplSession {
     let npm_imports = resolved_imports
       .iter()
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
-      .map(|r| r.req)
+      .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");

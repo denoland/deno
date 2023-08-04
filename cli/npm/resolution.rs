@@ -26,8 +26,8 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
@@ -81,7 +81,7 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: &[NpmPackageReq],
+    package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -99,7 +99,7 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: &[NpmPackageReq],
+    package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -184,7 +184,7 @@ impl NpmResolution {
   /// Resolve a node package from a deno module.
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self
       .snapshot
@@ -196,7 +196,7 @@ impl NpmResolution {
   pub fn resolve_pkg_reqs_from_pkg_id(
     &self,
     id: &NpmPackageId,
-  ) -> Vec<NpmPackageReq> {
+  ) -> Vec<PackageReq> {
     let snapshot = self.snapshot.read();
     let mut pkg_reqs = snapshot
       .package_reqs()
@@ -210,7 +210,7 @@ impl NpmResolution {
 
   pub fn resolve_pkg_id_from_deno_module(
     &self,
-    id: &NpmPackageNv,
+    id: &PackageNv,
   ) -> Result<NpmPackageId, PackageNvNotFoundError> {
     self
       .snapshot
@@ -224,8 +224,8 @@ impl NpmResolution {
   /// a package.json
   pub fn resolve_package_req_as_pending(
     &self,
-    pkg_req: &NpmPackageReq,
-  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
+    pkg_req: &PackageReq,
+  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     // we should always have this because it should have been cached before here
     let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
     self.resolve_package_req_as_pending_with_info(pkg_req, &package_info)
@@ -236,9 +236,9 @@ impl NpmResolution {
   /// a package.json
   pub fn resolve_package_req_as_pending_with_info(
     &self,
-    pkg_req: &NpmPackageReq,
+    pkg_req: &PackageReq,
     package_info: &NpmPackageInfo,
-  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
+  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
     let mut snapshot = self.snapshot.write();
     let pending_resolver = get_npm_pending_resolver(&self.api);
@@ -250,7 +250,7 @@ impl NpmResolution {
     Ok(nv)
   }
 
-  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
     self.snapshot.read().package_reqs().clone()
   }
 
@@ -303,7 +303,7 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
-  package_reqs: &[NpmPackageReq],
+  package_reqs: &[PackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {

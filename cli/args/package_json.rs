@@ -10,9 +10,9 @@ use deno_core::error::AnyError;
 use deno_npm::registry::parse_dep_entry_name_and_raw_version;
 use deno_npm::registry::PackageDepNpmSchemeValueParseError;
 use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmVersionReqSpecifierParseError;
+use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
+use deno_semver::VersionReqSpecifierParseError;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone)]
@@ -20,13 +20,13 @@ pub enum PackageJsonDepValueParseError {
   #[error(transparent)]
   SchemeValue(#[from] PackageDepNpmSchemeValueParseError),
   #[error(transparent)]
-  Specifier(#[from] NpmVersionReqSpecifierParseError),
+  Specifier(#[from] VersionReqSpecifierParseError),
   #[error("Not implemented scheme '{scheme}'")]
   Unsupported { scheme: String },
 }
 
 pub type PackageJsonDeps =
-  BTreeMap<String, Result<NpmPackageReq, PackageJsonDepValueParseError>>;
+  BTreeMap<String, Result<PackageReq, PackageJsonDepValueParseError>>;
 
 #[derive(Debug, Default)]
 pub struct PackageJsonDepsProvider(Option<PackageJsonDeps>);
@@ -40,7 +40,7 @@ impl PackageJsonDepsProvider {
     self.0.as_ref()
   }
 
-  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
+  pub fn reqs(&self) -> Vec<&PackageReq> {
     match &self.0 {
       Some(deps) => {
         let mut package_reqs = deps
@@ -67,7 +67,7 @@ pub fn get_local_package_json_version_reqs(
   fn parse_entry(
     key: &str,
     value: &str,
-  ) -> Result<NpmPackageReq, PackageJsonDepValueParseError> {
+  ) -> Result<PackageReq, PackageJsonDepValueParseError> {
     if value.starts_with("workspace:")
       || value.starts_with("file:")
       || value.starts_with("git:")
@@ -83,7 +83,7 @@ pub fn get_local_package_json_version_reqs(
 
     let result = VersionReq::parse_from_specifier(version_req);
     match result {
-      Ok(version_req) => Ok(NpmPackageReq {
+      Ok(version_req) => Ok(PackageReq {
         name: name.to_string(),
         version_req,
       }),
@@ -182,7 +182,7 @@ mod test {
 
   fn get_local_package_json_version_reqs_for_tests(
     package_json: &PackageJson,
-  ) -> BTreeMap<String, Result<NpmPackageReq, String>> {
+  ) -> BTreeMap<String, Result<PackageReq, String>> {
     get_local_package_json_version_reqs(package_json)
       .into_iter()
       .map(|(k, v)| {
@@ -215,15 +215,15 @@ mod test {
       BTreeMap::from([
         (
           "test".to_string(),
-          Ok(NpmPackageReq::from_str("test@^1.2").unwrap())
+          Ok(PackageReq::from_str("test@^1.2").unwrap())
         ),
         (
           "other".to_string(),
-          Ok(NpmPackageReq::from_str("package@~1.3").unwrap())
+          Ok(PackageReq::from_str("package@~1.3").unwrap())
         ),
         (
           "package_b".to_string(),
-          Ok(NpmPackageReq::from_str("package_b@~2.2").unwrap())
+          Ok(PackageReq::from_str("package_b@~2.2").unwrap())
         )
       ])
     );
@@ -286,7 +286,7 @@ mod test {
         ),
         (
           "test".to_string(),
-          Ok(NpmPackageReq::from_str("test@1").unwrap())
+          Ok(PackageReq::from_str("test@1").unwrap())
         ),
         (
           "work-test".to_string(),

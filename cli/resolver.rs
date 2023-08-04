@@ -14,7 +14,7 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::sync::Arc;
 
@@ -305,10 +305,7 @@ impl NpmResolver for CliGraphResolver {
     .boxed()
   }
 
-  fn resolve_npm(
-    &self,
-    package_req: &NpmPackageReq,
-  ) -> NpmPackageReqResolution {
+  fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
     if self.no_npm {
       return NpmPackageReqResolution::Err(anyhow!(
         "npm specifiers were requested; but --no-npm is specified"
@@ -342,7 +339,7 @@ mod test {
   fn test_resolve_package_json_dep() {
     fn resolve(
       specifier: &str,
-      deps: &BTreeMap<String, NpmPackageReq>,
+      deps: &BTreeMap<String, PackageReq>,
     ) -> Result<Option<String>, String> {
       let deps = deps
         .iter()
@@ -356,15 +353,15 @@ mod test {
     let deps = BTreeMap::from([
       (
         "package".to_string(),
-        NpmPackageReq::from_str("package@1.0").unwrap(),
+        PackageReq::from_str("package@1.0").unwrap(),
       ),
       (
         "package-alias".to_string(),
-        NpmPackageReq::from_str("package@^1.2").unwrap(),
+        PackageReq::from_str("package@^1.2").unwrap(),
       ),
       (
         "@deno/test".to_string(),
-        NpmPackageReq::from_str("@deno/test@~0.2").unwrap(),
+        PackageReq::from_str("@deno/test@~0.2").unwrap(),
       ),
     ]);
 

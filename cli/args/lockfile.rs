@@ -16,7 +16,7 @@ use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackageSystemInfo;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageReq;
 
 use crate::args::ConfigFile;
 use crate::npm::CliNpmRegistryApi;
@@ -68,13 +68,12 @@ pub async fn snapshot_from_lockfile(
   let (root_packages, mut packages) = {
     let lockfile = lockfile.lock();
 
-    let mut root_packages =
-      HashMap::<NpmPackageReq, NpmPackageId>::with_capacity(
-        lockfile.content.npm.specifiers.len(),
-      );
+    let mut root_packages = HashMap::<PackageReq, NpmPackageId>::with_capacity(
+      lockfile.content.npm.specifiers.len(),
+    );
     // collect the specifiers to version mappings
     for (key, value) in &lockfile.content.npm.specifiers {
-      let package_req = NpmPackageReq::from_str(key)
+      let package_req = PackageReq::from_str(key)
         .with_context(|| format!("Unable to parse npm specifier: {key}"))?;
       let package_id = NpmPackageId::from_serialized(value)?;
       root_packages.insert(package_req, package_id.clone());

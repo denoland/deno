@@ -803,7 +803,7 @@ dependencies = [
  "deno_emit",
  "deno_graph",
  "deno_lint",
- "deno_lockfile",
+ "deno_lockfile 0.14.1",
  "deno_npm",
  "deno_runtime",
  "deno_semver",
@@ -1114,8 +1114,6 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.50.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73502c4d93a17f259b6edee6d5a5ba063e2fcdcdaeb6ca1c6953129cc14be6a7"
 dependencies = [
  "anyhow",
  "data-url",
@@ -1230,6 +1228,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_lockfile"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e1fcc91fa4e18c3e0574965d7133709e76eda665cb589de703219f0819dfaec"
+dependencies = [
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "deno_media_type"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1324,12 +1334,11 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5d1097de53e8ce3316d3e44095e253719ae367cf7478263f83082f44dddabf"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "deno_lockfile 0.15.0",
  "deno_semver",
  "futures",
  "log",
@@ -1417,8 +1426,6 @@ dependencies = [
 [[package]]
 name = "deno_semver"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96f99990457915af1f444900003ffd5a9d3ab2e5337b06d681e56ca371b3e11f"
 dependencies = [
  "monch",
  "once_cell",
@@ -1937,8 +1944,6 @@ dependencies = [
 [[package]]
 name = "eszip"
 version = "0.48.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58d2382a70396ccffd260adb879ed9f954c45457e8075830c7d4ec30c6dc8ad2"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
@@ -3118,9 +3123,9 @@ dependencies = [
 
 [[package]]
 name = "monch"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb73e1dc7d232e1ab47ef27f45fa1d173a0979b370e763a9d0584556011150e0"
+checksum = "4519a88847ba2d5ead3dc53f1060ec6a571de93f325d9c5c4968147382b1cbc3"
 
 [[package]]
 name = "napi-build"
