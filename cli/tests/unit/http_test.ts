@@ -2045,7 +2045,7 @@ Deno.test({
       assert(output.includes("content-encoding: gzip\r\n"));
       // Ensure the content-length header is updated (but don't check the exact length).
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
-      assert(output.includes("content-length: \r\n"));
+      assert(output.includes("content-length: "));
     }
 
     await Promise.all([server(), client()]);
@@ -2106,7 +2106,7 @@ Deno.test({
       assert(output.includes("content-encoding: gzip\r\n"));
       // Ensure the content-length header is updated.
       assert(!output.includes(`content-length: ${contentLength}\r\n`));
-      assert(output.includes("content-length: \r\n"));
+      assert(output.includes("content-length: "));
       proc.close();
     }
 
