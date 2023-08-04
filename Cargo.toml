@@ -131,6 +131,7 @@ slab = "0.4"
 smallvec = "1.8"
 socket2 = "0.4.7"
 tar = "=0.4.38"
+target-lexicon = "0.12.11"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
 tokio = { version = "1.28.1", features = ["full"] }

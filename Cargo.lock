@@ -1327,6 +1327,7 @@ dependencies = [
  "sha-1",
  "sha2",
  "signature 1.6.4",
+ "target-lexicon",
  "tokio",
  "typenum",
  "whoami",
@@ -5207,6 +5208,12 @@ dependencies = [
  "libc",
  "xattr",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.12.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d0e916b1148c8e263850e1ebcbd046f333e0683c724876bb0da63ea4373dc8a"
 
 [[package]]
 name = "tempfile"
