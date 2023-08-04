@@ -5,6 +5,7 @@ const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {

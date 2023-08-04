@@ -529,6 +529,11 @@ itest!(test_no_lock {
   output: "lockfile/basic/test.nolock.out",
 });
 
+itest!(test_replace_timers {
+  args: "test test/replace_timers.js",
+  output: "test/replace_timers.js.out",
+});
+
 #[test]
 fn test_with_glob_config() {
   let context = TestContextBuilder::new().cwd("test").build();
