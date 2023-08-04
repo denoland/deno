@@ -12,6 +12,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_runtime::permissions::parse_sys_kind;
+use deno_runtime::url_util::specifier_to_file_path;
 use log::debug;
 use log::Level;
 use std::env;
@@ -615,7 +616,7 @@ impl Flags {
           if module_specifier.scheme() == "file"
             || module_specifier.scheme() == "npm"
           {
-            if let Ok(p) = module_specifier.to_file_path() {
+            if let Ok(p) = specifier_to_file_path(&module_specifier) {
               Some(vec![p])
             } else {
               Some(vec![])
@@ -655,9 +656,8 @@ impl Flags {
       Run(RunFlags { script, .. }) => {
         let module_specifier = resolve_url_or_path(script, current_dir).ok()?;
         if module_specifier.scheme() == "file" {
-          let p = module_specifier
-            .to_file_path()
-            .unwrap()
+          let p = specifier_to_file_path(&module_specifier)
+            .ok()?
             .parent()?
             .to_owned();
           Some(p)

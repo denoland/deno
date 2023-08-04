@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::cache::HttpCache;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::url_util::specifier_to_file_path;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::ModuleSpecifier;

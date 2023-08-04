@@ -106,9 +106,9 @@ use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::util::fs::remove_dir_all_if_exists;
-use crate::util::path::specifier_to_file_path;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
+use deno_runtime::url_util::specifier_to_file_path;
 
 struct LspRootCertStoreProvider(RootCertStore);
 

@@ -24,7 +24,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 
-use super::path::specifier_to_file_path;
+use deno_runtime::url_util::specifier_to_file_path;
 
 /// Writes the file to the file system at a temporary path, then
 /// renames it to the destination in a single sys call in order

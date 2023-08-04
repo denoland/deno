@@ -30,6 +30,7 @@ pub mod js;
 pub mod ops;
 pub mod permissions;
 pub mod tokio_util;
+pub mod url_util;
 pub mod web_worker;
 pub mod worker;
 

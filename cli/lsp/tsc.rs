@@ -30,7 +30,7 @@ use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::url_util::specifier_to_file_path;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;

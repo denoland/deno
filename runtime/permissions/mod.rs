@@ -2,6 +2,7 @@
 
 use crate::colors;
 use crate::fs_util::resolve_from_cwd;
+use crate::url_util::specifier_to_file_path;
 use deno_core::error::custom_error;
 use deno_core::error::type_error;
 use deno_core::error::uri_error;
@@ -1239,7 +1240,7 @@ impl Permissions {
     specifier: &ModuleSpecifier,
   ) -> Result<(), AnyError> {
     match specifier.scheme() {
-      "file" => match specifier.to_file_path() {
+      "file" => match specifier_to_file_path(specifier) {
         Ok(path) => self.read.check(&path, Some("import()")),
         Err(_) => Err(uri_error(format!(
           "Invalid file path.\n  Specifier: {specifier}"

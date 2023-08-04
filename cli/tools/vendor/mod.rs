@@ -24,7 +24,7 @@ use crate::tools::fmt::format_json;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::resolve_from_cwd;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::url_util::specifier_to_file_path;
 
 mod analyze;
 mod build;

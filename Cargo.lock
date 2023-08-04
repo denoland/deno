@@ -1507,6 +1507,7 @@ dependencies = [
  "notify",
  "ntapi",
  "once_cell",
+ "percent-encoding",
  "regex",
  "ring",
  "serde",

@@ -6,8 +6,6 @@ use std::path::PathBuf;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::uri_error;
-use deno_core::error::AnyError;
 
 /// Checks if the path has extension Deno supports.
 pub fn is_supported_ext(path: &Path) -> bool {

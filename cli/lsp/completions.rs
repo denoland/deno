@@ -12,7 +12,7 @@ use super::tsc;
 
 use crate::util::path::is_supported_ext;
 use crate::util::path::relative_specifier;
-use crate::util::path::specifier_to_file_path;
+use deno_runtime::url_util::specifier_to_file_path;
 
 use deno_ast::LineAndColumnIndex;
 use deno_ast::SourceTextInfo;

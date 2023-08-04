@@ -23,8 +23,8 @@ use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
 use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
-use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
+use deno_runtime::url_util::specifier_to_file_path;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
