@@ -249,8 +249,9 @@ impl Resolver for CliGraphResolver {
     };
 
     // When the user is vendoring, don't allow them to import directly from the vendor/ directory
-    // as it might cause them confusion or duplicate dependencies. Instead they should import via
-    // a remote specifier.
+    // as it might cause them confusion or duplicate dependencies. Additionally, this folder has
+    // special treatment in the language server so it will definitely cause issues/confusion there
+    // if they do this.
     if let Some(vendor_specifier) = &self.maybe_vendor_specifier {
       if let Ok(specifier) = &result {
         if specifier.as_str().starts_with(vendor_specifier.as_str()) {
