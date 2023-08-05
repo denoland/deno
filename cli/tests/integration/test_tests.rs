@@ -351,6 +351,25 @@ itest!(steps_dot_ignored_steps {
   output: "test/steps/ignored_steps.dot.out",
 });
 
+itest!(steps_tap_passing_steps {
+  args: "test --reporter=tap test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.tap.out",
+});
+
+itest!(steps_tap_failing_steps {
+  args: "test --reporter=tap test/steps/failing_steps.ts",
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_owned(), "1".to_owned())],
+  output: "test/steps/failing_steps.tap.out",
+});
+
+itest!(steps_tap_ignored_steps {
+  args: "test --reporter=tap test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.tap.out",
+});
+
 itest!(steps_invalid_usage {
   args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
