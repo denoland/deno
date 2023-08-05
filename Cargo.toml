@@ -92,7 +92,7 @@ encoding_rs = "=0.8.31"
 ecb = "=0.1.1"
 fastwebsockets = "=0.3.1"
 filetime = "0.2.16"
-flate2 = "1.0.26"
+flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
