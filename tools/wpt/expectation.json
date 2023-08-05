@@ -7619,8 +7619,12 @@
     "decompression-constructor-error.tentative.any.worker.html": true,
     "decompression-correct-input.tentative.any.html": true,
     "decompression-correct-input.tentative.any.worker.html": true,
-    "decompression-corrupt-input.tentative.any.html": true,
-    "decompression-corrupt-input.tentative.any.worker.html": true,
+    "decompression-corrupt-input.tentative.any.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
+    "decompression-corrupt-input.tentative.any.worker.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,
     "decompression-split-chunk.tentative.any.html": true,
