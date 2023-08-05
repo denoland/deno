@@ -49,17 +49,19 @@ impl LocalLspHttpCache {
   }
 
   pub fn get_file_url(&self, url: &Url) -> Option<Url> {
-    {
+    let sub_path = {
       let data = self.cache.manifest.data.read();
       if let Some(data) = data.get(url) {
-        if let Some(path) = &data.path {
-          return Url::from_file_path(self.cache.path.join(path)).ok();
-        }
+        url_to_local_sub_path(url, &data.content_type_header_map()).ok()?
+      } else {
+        url_to_local_sub_path(url, &Default::default()).ok()?
       }
-    }
-    match self.cache.get_cache_filepath(url, &Default::default()) {
-      Ok(path) if path.exists() => Url::from_file_path(path).ok(),
-      _ => None,
+    };
+    let path = sub_path.as_path_from_root(&self.cache.path);
+    if path.exists() {
+      Url::from_file_path(path).ok()
+    } else {
+      None
     }
   }
 
@@ -67,18 +69,39 @@ impl LocalLspHttpCache {
     let Ok(path) = path.strip_prefix(&self.cache.path) else {
       return None; // not in this directory
     };
-    let has_hashed_component = path
+    let components = path
       .components()
-      .any(|p| p.as_os_str().to_string_lossy().starts_with('#'));
-    if has_hashed_component {
-      // check in the manifest
-      {
-        let data = self.cache.manifest.data.read();
-        if let Some(url) = data.get_reverse_mapping(path) {
-          return Some(url);
-        }
-      }
-      None
+      .map(|c| c.as_os_str().to_string_lossy())
+      .collect::<Vec<_>>();
+    if components
+      .last()
+      .map(|c| c.starts_with('#'))
+      .unwrap_or(false)
+    {
+      // the file itself will have an entry in the manifest
+      let data = self.cache.manifest.data.read();
+      data.get_reverse_mapping(path)
+    } else if let Some(last_index) =
+      components.iter().rposition(|c| c.starts_with('#'))
+    {
+      // get the mapping to the deepest hashed directory and
+      // then add the remaining path components to the url
+      let dir_path: PathBuf = components[..last_index + 1].iter().fold(
+        PathBuf::new(),
+        |mut path, c| {
+          path.push(c.as_ref());
+          path
+        },
+      );
+      let dir_url = self
+        .cache
+        .manifest
+        .data
+        .read()
+        .get_reverse_mapping(&dir_path)?;
+      let file_url =
+        dir_url.join(&components[last_index + 1..].join("/")).ok()?;
+      Some(file_url)
     } else {
       // we can work backwards from the path to the url
       let mut parts = Vec::new();
@@ -422,11 +445,7 @@ fn url_to_local_sub_path(
   }
 
   // first, try to get the filename of the path
-  let path_segments = url
-    .path()
-    .strip_prefix('/')
-    .unwrap_or(url.path())
-    .split('/');
+  let path_segments = url_path_segments(url);
   let mut parts = base_parts
     .into_iter()
     .chain(path_segments.map(|s| s.to_string()))
@@ -525,16 +544,16 @@ impl LocalCacheManifest {
     }
 
     let mut data = self.data.write();
-    let is_empty = headers_subset.is_empty() && !sub_path.has_hash;
-    let has_changed = if is_empty {
+    let add_module_entry = headers_subset.is_empty()
+      && !sub_path
+        .parts
+        .last()
+        .map(|s| s.starts_with('#'))
+        .unwrap_or(false);
+    let mut has_changed = if add_module_entry {
       data.remove(&url, &sub_path)
     } else {
       let new_data = manifest::SerializedLocalCacheManifestDataModule {
-        path: if headers_subset.contains_key("location") {
-          None
-        } else {
-          Some(sub_path.parts.join("/"))
-        },
         headers: headers_subset,
       };
       if data.get(&url) == Some(&new_data) {
@@ -544,6 +563,29 @@ impl LocalCacheManifest {
         true
       }
     };
+
+    if sub_path.has_hash {
+      let url_path_parts = url_path_segments(&url).collect::<Vec<_>>();
+      let base_url = {
+        let mut url = url.clone();
+        url.set_path("/");
+        url.set_query(None);
+        url.set_fragment(None);
+        url
+      };
+      for (i, local_part) in sub_path.parts[1..sub_path.parts.len() - 1]
+        .iter()
+        .enumerate()
+      {
+        if local_part.starts_with('#') {
+          let mut url = base_url.clone();
+          url.set_path(&format!("{}/", url_path_parts[..i + 1].join("/")));
+          if data.add_directory(url, sub_path.parts[..i + 2].join("/")) {
+            has_changed = true;
+          }
+        }
+      }
+    }
 
     if has_changed {
       // don't bother ensuring the directory here because it will
@@ -565,11 +607,12 @@ impl LocalCacheManifest {
           .iter()
           .map(|(k, v)| (k.to_string(), v.to_string()))
           .collect::<HashMap<_, _>>();
-        let sub_path = match &module.path {
-          Some(sub_path) => {
-            Cow::Owned(self.file_path.parent().unwrap().join(sub_path))
-          }
-          None => Cow::Borrowed(&self.file_path),
+        let sub_path = if headers.contains_key("location") {
+          Cow::Borrowed(&self.file_path)
+        } else {
+          let sub_path = url_to_local_sub_path(url, &headers).ok()?;
+          let folder_path = self.file_path.parent().unwrap();
+          Cow::Owned(sub_path.as_path_from_root(folder_path))
         };
 
         let Ok(metadata) = sub_path.metadata() else {
@@ -585,8 +628,13 @@ impl LocalCacheManifest {
       None => {
         let folder_path = self.file_path.parent().unwrap();
         let sub_path = url_to_local_sub_path(url, &Default::default()).ok()?;
-        if sub_path.has_hash {
-          // only paths without a hash are considered as in the cache
+        if sub_path
+          .parts
+          .last()
+          .map(|s| s.starts_with('#'))
+          .unwrap_or(false)
+        {
+          // only filenames without a hash are considered as in the cache
           // when they don't have a metadata entry
           return None;
         }
@@ -618,12 +666,11 @@ mod manifest {
   use serde::Deserialize;
   use serde::Serialize;
 
+  use super::url_to_local_sub_path;
   use super::LocalCacheSubPath;
 
   #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
   pub struct SerializedLocalCacheManifestDataModule {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
     #[serde(
       default = "IndexMap::new",
       skip_serializing_if = "IndexMap::is_empty"
@@ -631,9 +678,30 @@ mod manifest {
     pub headers: IndexMap<String, String>,
   }
 
+  impl SerializedLocalCacheManifestDataModule {
+    pub fn content_type_header_map(&self) -> HashMap<String, String> {
+      // todo(dsherret): remove this once https://github.com/denoland/deno_media_type/pull/1 is released
+      match self.headers.get("content-type") {
+        Some(content_type) => {
+          HashMap::from([("content-type".to_string(), content_type.clone())])
+        }
+        None => HashMap::new(),
+      }
+    }
+  }
+
   #[derive(Debug, Default, Clone, Serialize, Deserialize)]
   struct SerializedLocalCacheManifestData {
+    #[serde(
+      default = "IndexMap::new",
+      skip_serializing_if = "IndexMap::is_empty"
+    )]
     pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
+    #[serde(
+      default = "IndexMap::new",
+      skip_serializing_if = "IndexMap::is_empty"
+    )]
+    pub directories: IndexMap<Url, String>,
   }
 
   #[derive(Debug, Default, Clone)]
@@ -660,15 +728,28 @@ mod manifest {
             .modules
             .iter()
             .filter_map(|(url, module)| {
-              module.path.as_ref().map(|path| {
-                let path = if cfg!(windows) {
-                  PathBuf::from(path.split('/').collect::<Vec<_>>().join("\\"))
-                } else {
-                  PathBuf::from(path)
-                };
-                (path, url.clone())
-              })
+              if module.headers.contains_key("location") {
+                return None;
+              }
+              url_to_local_sub_path(url, &module.content_type_header_map())
+                .ok()
+                .map(|local_path| {
+                  let path = if cfg!(windows) {
+                    PathBuf::from(local_path.parts.join("\\"))
+                  } else {
+                    PathBuf::from(local_path.parts.join("/"))
+                  };
+                  (path, url.clone())
+                })
             })
+            .chain(serialized.directories.iter().map(|(url, local_path)| {
+              let path = if cfg!(windows) {
+                PathBuf::from(local_path.replace('/', "\\"))
+              } else {
+                PathBuf::from(local_path)
+              };
+              (path, url.clone())
+            }))
             .collect::<HashMap<_, _>>(),
         )
       } else {
@@ -694,6 +775,28 @@ mod manifest {
         .as_ref()
         .and_then(|mapping| mapping.get(path))
         .cloned()
+    }
+
+    pub fn add_directory(&mut self, url: Url, local_path: String) -> bool {
+      if let Some(current) = self.serialized.directories.get(&url) {
+        if *current == local_path {
+          return false;
+        }
+      }
+
+      if let Some(reverse_mapping) = &mut self.reverse_mapping {
+        reverse_mapping.insert(
+          if cfg!(windows) {
+            PathBuf::from(local_path.replace('/', "\\"))
+          } else {
+            PathBuf::from(&local_path)
+          },
+          url.clone(),
+        );
+      }
+
+      self.serialized.directories.insert(url, local_path);
+      true
     }
 
     pub fn insert(
@@ -723,6 +826,14 @@ mod manifest {
       serde_json::to_string_pretty(&self.serialized).unwrap()
     }
   }
+}
+
+fn url_path_segments(url: &Url) -> impl Iterator<Item = &str> {
+  url
+    .path()
+    .strip_prefix('/')
+    .unwrap_or(url.path())
+    .split('/')
 }
 
 #[cfg(test)]
@@ -932,7 +1043,6 @@ mod test {
         json!({
           "modules": {
             "https://deno.land/x/different_content_type.ts": {
-              "path": "deno.land/x/#different_content_ty_f15dc.js",
               "headers": {
                 "content-type": "application/javascript"
               }
@@ -1005,7 +1115,6 @@ mod test {
           json!({
             "modules": {
               "https://deno.land/x/my_file.ts": {
-                "path": "deno.land/x/my_file.ts",
                 "headers": {
                   "x-deno-warning": "Stop right now.",
                   "x-typescript-types": "./types.d.ts"
@@ -1030,29 +1139,69 @@ mod test {
 
     // try a file that can't be mapped to the file system
     {
-      let url = Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
-      let content = "export const test = 5;";
-      global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
-        .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
-      assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+      {
+        let url =
+          Url::parse("https://deno.land/INVALID/Module.ts?dev").unwrap();
+        let content = "export const test = 5;";
+        global_cache
+          .set(&url, HashMap::new(), content.as_bytes())
+          .unwrap();
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
           .unwrap(),
-        content
-      );
-      let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
-      // won't have any headers because the content-type is derivable from the url
-      assert_eq!(metadata.headers, HashMap::new());
-      assert_eq!(metadata.url, url.to_string());
+          content
+        );
+        let metadata = local_cache.read_metadata(&key).unwrap().unwrap();
+        // won't have any headers because the content-type is derivable from the url
+        assert_eq!(metadata.headers, HashMap::new());
+        assert_eq!(metadata.url, url.to_string());
+      }
+
+      // now try a file in the same directory, but that maps to the local filesystem
+      {
+        let url = Url::parse("https://deno.land/INVALID/module2.ts").unwrap();
+        let content = "export const test = 4;";
+        global_cache
+          .set(&url, HashMap::new(), content.as_bytes())
+          .unwrap();
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
+          .unwrap(),
+          content
+        );
+        assert!(local_cache_path
+          .join("deno.land/#invalid_1ee01/module2.ts")
+          .exists());
+
+        // ensure we can still read this file with a new local cache
+        let local_cache = LocalHttpCache::new(
+          local_cache_path.to_path_buf(),
+          global_cache.clone(),
+        );
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
+          .unwrap(),
+          content
+        );
+      }
 
       assert_eq!(
         manifest_file.read_json_value(),
         json!({
           "modules": {
             "https://deno.land/INVALID/Module.ts?dev": {
-              "path": "deno.land/#invalid_1ee01/#module_b8d2b.ts"
             }
+          },
+          "directories": {
+            "https://deno.land/INVALID/": "deno.land/#invalid_1ee01",
           }
         })
       );
@@ -1176,25 +1325,71 @@ mod test {
       assert_eq!(mapping.as_ref(), Some(&url));
     }
 
-    // try an http specifier that can't be mapped to the file system
+    // try http specifiers that can't be mapped to the file system
     {
-      let url = Url::parse("http://deno.land/INVALID/Module.ts?dev").unwrap();
-      let content = "export const test = 5;";
-      global_cache
-        .set(&url, HashMap::new(), content.as_bytes())
-        .unwrap();
-      let key = local_cache.cache_item_key(&url).unwrap();
-      assert_eq!(
-        String::from_utf8(local_cache.read_file_bytes(&key).unwrap().unwrap())
+      let urls = [
+        "http://deno.land/INVALID/Module.ts?dev",
+        "http://deno.land/INVALID/SubDir/Module.ts?dev",
+      ];
+      for url in urls {
+        let url = Url::parse(url).unwrap();
+        let content = "export const test = 5;";
+        global_cache
+          .set(&url, HashMap::new(), content.as_bytes())
+          .unwrap();
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
           .unwrap(),
-        content
-      );
+          content
+        );
 
-      let file_url = local_cache.get_file_url(&url).unwrap();
-      let path = file_url.to_file_path().unwrap();
-      assert!(path.exists());
-      let mapping = local_cache.get_remote_url(&path);
-      assert_eq!(mapping.as_ref(), Some(&url));
+        let file_url = local_cache.get_file_url(&url).unwrap();
+        let path = file_url.to_file_path().unwrap();
+        assert!(path.exists());
+        let mapping = local_cache.get_remote_url(&path);
+        assert_eq!(mapping.as_ref(), Some(&url));
+      }
+
+      // now try a files in the same and sub directories, that maps to the local filesystem
+      let urls = [
+        "http://deno.land/INVALID/module2.ts",
+        "http://deno.land/INVALID/SubDir/module3.ts",
+        "http://deno.land/INVALID/SubDir/sub_dir/module4.ts",
+      ];
+      for url in urls {
+        let url = Url::parse(url).unwrap();
+        let content = "export const test = 4;";
+        global_cache
+          .set(&url, HashMap::new(), content.as_bytes())
+          .unwrap();
+        let key = local_cache.cache_item_key(&url).unwrap();
+        assert_eq!(
+          String::from_utf8(
+            local_cache.read_file_bytes(&key).unwrap().unwrap()
+          )
+          .unwrap(),
+          content
+        );
+        let file_url = local_cache.get_file_url(&url).unwrap();
+        let path = file_url.to_file_path().unwrap();
+        assert!(path.exists());
+        let mapping = local_cache.get_remote_url(&path);
+        assert_eq!(mapping.as_ref(), Some(&url));
+
+        // ensure we can still get this file with a new local cache
+        let local_cache = LocalLspHttpCache::new(
+          local_cache_path.to_path_buf(),
+          global_cache.clone(),
+        );
+        let file_url = local_cache.get_file_url(&url).unwrap();
+        let path = file_url.to_file_path().unwrap();
+        assert!(path.exists());
+        let mapping = local_cache.get_remote_url(&path);
+        assert_eq!(mapping.as_ref(), Some(&url));
+      }
     }
   }
 }
