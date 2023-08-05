@@ -284,7 +284,6 @@ mod ts {
             .expect("snapshot compression failed"),
         );
       })),
-      snapshot_module_load_cb: None,
       with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {
@@ -377,7 +376,6 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
     extensions,
     compression_cb: None,
-    snapshot_module_load_cb: None,
     with_runtime_cb: None,
   })
 }

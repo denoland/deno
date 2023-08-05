@@ -41,9 +41,7 @@ repository = "https://github.com/denoland/deno"
 v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = "0.199.0"
-deno_ops = "0.77.0"
-serde_v8 = "0.110.0"
+deno_core = "0.200.0"
 
 deno_runtime = { version = "0.122.0", path = "./runtime" }
 napi_sym = { version = "0.44.0", path = "./cli/napi/sym" }
