@@ -696,12 +696,12 @@ mod manifest {
       default = "IndexMap::new",
       skip_serializing_if = "IndexMap::is_empty"
     )]
-    pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
+    pub folders: IndexMap<Url, String>,
     #[serde(
       default = "IndexMap::new",
       skip_serializing_if = "IndexMap::is_empty"
     )]
-    pub directories: IndexMap<Url, String>,
+    pub modules: IndexMap<Url, SerializedLocalCacheManifestDataModule>,
   }
 
   #[derive(Debug, Default, Clone)]
@@ -742,7 +742,7 @@ mod manifest {
                   (path, url.clone())
                 })
             })
-            .chain(serialized.directories.iter().map(|(url, local_path)| {
+            .chain(serialized.folders.iter().map(|(url, local_path)| {
               let path = if cfg!(windows) {
                 PathBuf::from(local_path.replace('/', "\\"))
               } else {
@@ -778,7 +778,7 @@ mod manifest {
     }
 
     pub fn add_directory(&mut self, url: Url, local_path: String) -> bool {
-      if let Some(current) = self.serialized.directories.get(&url) {
+      if let Some(current) = self.serialized.folders.get(&url) {
         if *current == local_path {
           return false;
         }
@@ -795,7 +795,7 @@ mod manifest {
         );
       }
 
-      self.serialized.directories.insert(url, local_path);
+      self.serialized.folders.insert(url, local_path);
       true
     }
 
@@ -1200,7 +1200,7 @@ mod test {
             "https://deno.land/INVALID/Module.ts?dev": {
             }
           },
-          "directories": {
+          "folders": {
             "https://deno.land/INVALID/": "deno.land/#invalid_1ee01",
           }
         })

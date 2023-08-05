@@ -4565,7 +4565,7 @@ console.log(returnsHi());"#,
   assert_eq!(
     deno_modules_dir.join("manifest.json").read_json_value(),
     json!({
-      "directories": {
+      "folders": {
         "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
       }
     })
