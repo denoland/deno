@@ -35,7 +35,7 @@ regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
 rustls-pemfile.workspace = true
-semver = "=1.0.14"
+semver = "1.0.18"
 serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true

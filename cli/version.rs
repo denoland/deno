@@ -34,6 +34,16 @@ impl ReleaseInfo {
   }
 }
 
+const fn git_hash_as_bytes() -> [u8; 40] {
+  let mut hash = [0; 40];
+  let mut i = 0;
+  while i < GIT_COMMIT_HASH.len() {
+    hash[i] = GIT_COMMIT_HASH.as_bytes()[i];
+    i += 1;
+  }
+  hash
+}
+
 pub const DENO_METADATA_BLOCK_SIGNATURE: u128 =
   0x6b6f6c62617461646174656d6f6e6564;
 
@@ -42,12 +52,27 @@ pub const DENO_METADATA_BLOCK_SIGNATURE: u128 =
 static mut DENO_RELEASE_SYMBOL: ReleaseInfo = ReleaseInfo {
   metadata_magic: DENO_METADATA_BLOCK_SIGNATURE,
   metadata_version: 1,
-  git_hash: /*git_hash_as_bytes!()*/ [0; 40],
+  git_hash: git_hash_as_bytes(),
   version_string: [0; 16],
   release_state: ReleaseState::Unpromoted,
 };
 
+pub fn deno_release_info() -> &'static ReleaseInfo {
+  unsafe { std::hint::black_box(&DENO_RELEASE_SYMBOL) }
+}
+
 pub fn deno() -> &'static str {
+  #[cfg(feature = "deno_version")]
+  {
+    let release_info = deno_release_info();
+    if release_info.release_state == ReleaseState::Released {
+      release_info.version_string()
+    } else {
+      concat!("canary+", env!("GIT_COMMIT_HASH_SHORT"))
+    }
+  }
+
+  #[cfg(not(feature = "deno_version"))]
   if is_canary() {
     concat!(
       env!("CARGO_PKG_VERSION"),

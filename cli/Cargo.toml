@@ -13,6 +13,7 @@ description = "Provides the deno executable"
 
 [features]
 deno_version = []
+promote = ["dep:apple-codesign"]
 
 [[bin]]
 name = "deno"
@@ -22,6 +23,7 @@ doc = false
 [[bin]]
 name = "promote"
 path = "promote.rs"
+required-features = ["promote"]
 
 [[bench]]
 name = "deno_bench"
@@ -123,6 +125,8 @@ typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zstd.workspace = true
+
+apple-codesign = { version = "0.22.0", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true

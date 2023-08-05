@@ -102,6 +102,7 @@ fn patch(
     }
   }
   release_info.release_state = ReleaseState::Released;
+  release_info.version_string = [0; 16];
   release_info.version_string[..version.as_bytes().len()]
     .copy_from_slice(version.as_bytes());
   println!("Updating release info:");
@@ -112,6 +113,7 @@ fn patch(
     mmap.flush()?;
     drop(mmap);
     drop(file);
+    UnifiedSigner
     println!("Validating...");
     let readback = read(binary, false)?;
     if readback != version {
