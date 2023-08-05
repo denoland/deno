@@ -2,16 +2,10 @@
 
 use std::env;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use deno_core::snapshot_util::*;
-use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
-use deno_runtime::deno_cache::SqliteBackedCache;
-use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
-use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
-use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::*;
 
 mod ts {
@@ -304,12 +298,10 @@ mod ts {
   }
 }
 
-// FIXME(bartlomieju): information about which extensions were
-// already snapshotted is not preserved in the snapshot. This should be
-// fixed, so we can reliably depend on that information.
-// deps = [runtime]
+// Duplicated in `ops/mod.rs`. Keep in sync!
 deno_core::extension!(
   cli,
+  deps = [runtime],
   esm_entry_point = "ext:cli/99_main.js",
   esm = [
     dir "js",
@@ -326,8 +318,16 @@ deno_core::extension!(
   }
 );
 
+#[cfg(not(feature = "__runtime_js_sources"))]
 #[must_use = "The files listed by create_cli_snapshot should be printed as 'cargo:rerun-if-changed' lines"]
 fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
+  use deno_core::Extension;
+  use deno_runtime::deno_cache::SqliteBackedCache;
+  use deno_runtime::deno_http::DefaultHttpPropertyExtractor;
+  use deno_runtime::deno_kv::sqlite::SqliteDbHandler;
+  use deno_runtime::permissions::PermissionsContainer;
+  use std::sync::Arc;
+
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
   // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/build.rs`!
   let fs = Arc::new(deno_fs::RealFs);
@@ -367,13 +367,14 @@ fn create_cli_snapshot(snapshot_path: PathBuf) -> CreateSnapshotOutput {
     deno_io::deno_io::init_ops(Default::default()),
     deno_fs::deno_fs::init_ops::<PermissionsContainer>(false, fs.clone()),
     deno_node::deno_node::init_ops::<PermissionsContainer>(None, fs),
+    deno_runtime::runtime::init_ops(),
     cli::init_ops_and_esm(), // NOTE: This needs to be init_ops_and_esm!
   ];
 
   create_snapshot(CreateSnapshotOptions {
     cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
     snapshot_path,
-    startup_snapshot: Some(deno_runtime::js::deno_isolate_init()),
+    startup_snapshot: deno_runtime::js::deno_isolate_init(),
     extensions,
     compression_cb: None,
     with_runtime_cb: None,
@@ -483,10 +484,13 @@ fn main() {
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
-  let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-  let output = create_cli_snapshot(cli_snapshot_path);
-  for path in output.files_loaded_during_snapshot {
-    println!("cargo:rerun-if-changed={}", path.display())
+  #[cfg(not(feature = "__runtime_js_sources"))]
+  {
+    let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
+    let output = create_cli_snapshot(cli_snapshot_path);
+    for path in output.files_loaded_during_snapshot {
+      println!("cargo:rerun-if-changed={}", path.display())
+    }
   }
 
   #[cfg(target_os = "windows")]

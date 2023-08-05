@@ -21,6 +21,7 @@ mod startup_snapshot {
   use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
 
+  // Duplicated in `worker.rs`. Keep in sync!
   fn maybe_transpile_source(
     source: &mut ExtensionFileSource,
   ) -> Result<(), AnyError> {
@@ -240,6 +241,7 @@ mod startup_snapshot {
     }
   }
 
+  // Duplicated in `worker.rs`. Keep in sync!
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,
