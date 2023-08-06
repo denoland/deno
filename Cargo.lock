@@ -1279,6 +1279,7 @@ version = "0.51.0"
 dependencies = [
  "aes",
  "brotli",
+ "bytes",
  "cbc",
  "data-encoding",
  "deno_core",
@@ -1292,8 +1293,10 @@ dependencies = [
  "ecb",
  "elliptic-curve 0.13.4",
  "errno",
+ "h2",
  "hex",
  "hkdf",
+ "http",
  "idna 0.3.0",
  "indexmap 1.9.2",
  "lazy-regex",
