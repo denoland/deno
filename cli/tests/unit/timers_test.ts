@@ -734,11 +734,10 @@ Deno.test({
   fn: async () => {
     const timeoutsFired = [];
 
+    // deno-lint-ignore require-await
     async function start(n: number) {
       let i = 0;
-      let intervalId;
-
-      intervalId = setInterval(() => {
+      const intervalId = setInterval(() => {
         i++;
         if (i > 2) {
           clearInterval(intervalId!);
