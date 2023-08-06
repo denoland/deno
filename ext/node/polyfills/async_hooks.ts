@@ -48,7 +48,6 @@ function setPromiseHooks() {
     }
   };
   const before = (promise: Promise<unknown>) => {
-    console.log("promiseHook before");
     const maybeFrame = promise[asyncContext];
     if (maybeFrame) {
       pushAsyncFrame(maybeFrame);
@@ -57,7 +56,6 @@ function setPromiseHooks() {
     }
   };
   const after = (promise: Promise<unknown>) => {
-    console.log("promiseHook after", promise);
     popAsyncFrame();
     if (!ops.op_node_is_promise_rejected(promise)) {
       // @ts-ignore promise async context
