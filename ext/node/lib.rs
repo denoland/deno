@@ -132,12 +132,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 
 #[op]
 fn op_node_build_os() -> String {
-  std::env::var("TARGET")
-    .unwrap()
-    .split('-')
-    .nth(2)
-    .unwrap()
-    .to_string()
+  env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
 #[op(fast)]
@@ -452,7 +447,6 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "repl.ts",
     "wasi.ts",
     "assert.ts" with_specifier "node:assert",
     "assert/strict.ts" with_specifier "node:assert/strict",
@@ -485,6 +479,7 @@ deno_core::extension!(deno_node,
     "punycode.ts" with_specifier "node:punycode",
     "querystring.ts" with_specifier "node:querystring",
     "readline.ts" with_specifier "node:readline",
+    "repl.ts" with_specifier "node:repl",
     "stream.ts" with_specifier "node:stream",
     "stream/consumers.mjs" with_specifier "node:stream/consumers",
     "stream/promises.mjs" with_specifier "node:stream/promises",
