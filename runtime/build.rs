@@ -17,39 +17,34 @@ mod startup_snapshot {
   use deno_core::snapshot_util::*;
   use deno_core::Extension;
   use deno_core::ExtensionFileSource;
-  use deno_core::ModuleCode;
+  use deno_core::ExtensionFileSourceCode;
   use deno_http::DefaultHttpPropertyExtractor;
   use std::path::Path;
 
-  fn transpile_ts_for_snapshotting(
-    file_source: &ExtensionFileSource,
-  ) -> Result<ModuleCode, AnyError> {
+  // Duplicated in `worker.rs`. Keep in sync!
+  fn maybe_transpile_source(
+    source: &mut ExtensionFileSource,
+  ) -> Result<(), AnyError> {
     // Always transpile `node:` built-in modules, since they might be TypeScript.
-    let media_type = if file_source.specifier.starts_with("node:") {
+    let media_type = if source.specifier.starts_with("node:") {
       MediaType::TypeScript
     } else {
-      MediaType::from_path(Path::new(&file_source.specifier))
+      MediaType::from_path(Path::new(&source.specifier))
     };
 
-    let should_transpile = match media_type {
-      MediaType::JavaScript => false,
-      MediaType::Mjs => false,
-      MediaType::TypeScript => true,
-      _ => {
-        panic!(
-          "Unsupported media type for snapshotting {media_type:?} for file {}",
-          file_source.specifier
-        )
-      }
-    };
-    let code = file_source.load()?;
-
-    if !should_transpile {
-      return Ok(code);
+    match media_type {
+      MediaType::TypeScript => {}
+      MediaType::JavaScript => return Ok(()),
+      MediaType::Mjs => return Ok(()),
+      _ => panic!(
+        "Unsupported media type for snapshotting {media_type:?} for file {}",
+        source.specifier
+      ),
     }
+    let code = source.load()?;
 
     let parsed = deno_ast::parse_module(ParseParams {
-      specifier: file_source.specifier.to_string(),
+      specifier: source.specifier.to_string(),
       text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
       media_type,
       capture_tokens: false,
@@ -62,7 +57,9 @@ mod startup_snapshot {
       ..Default::default()
     })?;
 
-    Ok(transpiled_source.text.into())
+    source.code =
+      ExtensionFileSourceCode::Computed(transpiled_source.text.into());
+    Ok(())
   }
 
   #[derive(Clone)]
@@ -244,6 +241,7 @@ mod startup_snapshot {
     }
   }
 
+  // Duplicated in `worker.rs`. Keep in sync!
   deno_core::extension!(runtime,
     deps = [
       deno_webidl,
@@ -312,7 +310,7 @@ mod startup_snapshot {
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let fs = std::sync::Arc::new(deno_fs::RealFs);
-    let extensions: Vec<Extension> = vec![
+    let mut extensions: Vec<Extension> = vec![
       deno_webidl::deno_webidl::init_ops_and_esm(),
       deno_console::deno_console::init_ops_and_esm(),
       deno_url::deno_url::init_ops_and_esm(),
@@ -356,13 +354,21 @@ mod startup_snapshot {
       runtime_main::init_ops_and_esm(),
     ];
 
+    for extension in &mut extensions {
+      for source in extension.esm_files.to_mut() {
+        maybe_transpile_source(source).unwrap();
+      }
+      for source in extension.js_files.to_mut() {
+        maybe_transpile_source(source).unwrap();
+      }
+    }
+
     let output = create_snapshot(CreateSnapshotOptions {
       cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
       snapshot_path,
       startup_snapshot: None,
       extensions,
       compression_cb: None,
-      snapshot_module_load_cb: Some(Box::new(transpile_ts_for_snapshotting)),
       with_runtime_cb: None,
     });
     for path in output.files_loaded_during_snapshot {

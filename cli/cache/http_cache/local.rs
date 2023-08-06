@@ -355,6 +355,19 @@ fn url_to_local_sub_path(
   static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
     HashSet::from(['?', '<', '>', ':', '*', '|', '\\', ':', '"', '\'', '/'])
   });
+  // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
+  static FORBIDDEN_WINDOWS_NAMES: Lazy<HashSet<&'static str>> =
+    Lazy::new(|| {
+      let set = HashSet::from([
+        "con", "prn", "aux", "nul", "com0", "com1", "com2", "com3", "com4",
+        "com5", "com6", "com7", "com8", "com9", "lpt0", "lpt1", "lpt2", "lpt3",
+        "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+      ]);
+      // ensure everything is lowercase because we'll be comparing
+      // lowercase filenames against this
+      debug_assert!(set.iter().all(|s| s.to_lowercase() == *s));
+      set
+    });
 
   fn has_forbidden_chars(segment: &str) -> bool {
     segment.chars().any(|c| {
@@ -428,7 +441,11 @@ fn url_to_local_sub_path(
     };
 
     // the hash symbol at the start designates a hash for the url part
-    hash_context_specific || part.starts_with('#') || has_forbidden_chars(part)
+    hash_context_specific
+      || part.starts_with('#')
+      || has_forbidden_chars(part)
+      || last_ext.is_none() && FORBIDDEN_WINDOWS_NAMES.contains(part)
+      || part.ends_with('.')
   }
 
   // get the base url
@@ -921,6 +938,19 @@ mod test {
       "https://deno.land/x/mod.ts",
       &[("content-type", "application/javascript")],
       "deno.land/x/#mod.ts_e8c36.js",
+    );
+    run_test(
+      // not allowed windows folder name
+      "https://deno.land/x/con/con.ts",
+      &[],
+      "deno.land/x/#con_1143d/con.ts",
+    );
+    run_test(
+      // disallow ending a directory with a period
+      // https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file
+      "https://deno.land/x/test./main.ts",
+      &[],
+      "deno.land/x/#test._4ee3d/main.ts",
     );
 
     #[track_caller]

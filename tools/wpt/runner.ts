@@ -101,6 +101,7 @@ export async function runSingleTest(
       "run",
       "-A",
       "--unstable",
+      "--v8-flags=--expose-gc",
     ];
 
     if (inspectBrk) {

@@ -41,9 +41,7 @@ repository = "https://github.com/denoland/deno"
 v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = "0.199.0"
-deno_ops = "0.77.0"
-serde_v8 = "0.110.0"
+deno_core = "0.200.0"
 
 deno_runtime = { version = "0.122.0", path = "./runtime" }
 napi_sym = { version = "0.44.0", path = "./cli/napi/sym" }
@@ -92,7 +90,7 @@ encoding_rs = "=0.8.31"
 ecb = "=0.1.1"
 fastwebsockets = "=0.3.1"
 filetime = "0.2.16"
-flate2 = "1.0.26"
+flate2 = { version = "1.0.26", features = ["zlib-ng"], default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
