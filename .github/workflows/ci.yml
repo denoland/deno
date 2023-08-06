@@ -67,11 +67,11 @@ jobs:
             job: test
             profile: debug
             os_display_name: windows-x86_64
-          - os: windows-2022
+          - os: '${{ github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             job: test
             profile: release
             skip_pr: true
-            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || ''windows-2022'' }}'
+            runner: '${{ github.event_name == ''pull_request'' && ''ubuntu-22.04'' || github.repository == ''denoland/deno'' && ''windows-2022-xl'' || ''windows-2022'' }}'
             os_display_name: windows-x86_64
           - os: '${{ github.repository == ''denoland/deno'' && ''ubuntu-22.04-xl'' || ''ubuntu-22.04'' }}'
             job: test
@@ -95,11 +95,25 @@ jobs:
             job: lint
             profile: debug
             os_display_name: ubuntu-x86_64
+          - os: macos-12
+            job: lint
+            profile: debug
+            os_display_name: macos-x86_64
+          - os: windows-2022
+            job: lint
+            profile: debug
+            os_display_name: windows-x86_64
       fail-fast: '${{ github.event_name == ''pull_request'' || (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/'')) }}'
     env:
       CARGO_TERM_COLOR: always
       RUST_BACKTRACE: full
     steps:
+      - name: Reconfigure Windows Storage
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (startsWith(matrix.os, ''windows'') && !endsWith(matrix.os, ''-xl''))'
+        shell: pwsh
+        run: |-
+          New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+          New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
       - name: Configure git
         run: |-
           git config --global core.symlinks true
@@ -120,6 +134,9 @@ jobs:
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
+      - name: Clone submodule ./tools/node_compat/node
+        run: git submodule update --init --recursive --depth=1 -- ./tools/node_compat/node
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
       - name: 'Create source tarballs (release, linux)'
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (startsWith(matrix.os, 'ubuntu') &&
@@ -206,16 +223,20 @@ jobs:
           # Avoid running man-db triggers, which sometimes takes several minutes
           # to complete.
           sudo apt-get remove --purge -y man-db
+          # Remove older clang before we install
+          sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
-          # Install clang-15, lld-15, and debootstrap.
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+          # Install clang-XXX, lld-XXX, and debootstrap.
+          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main" |
+            sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-16.list
           curl https://apt.llvm.org/llvm-snapshot.gpg.key |
             gpg --dearmor                                 |
           sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
           sudo apt-get update
           # this was unreliable sometimes, so try again if it fails
-          sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15
+          sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16 clang-tools-16 clang-format-16 clang-tidy-16 || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && sudo apt-get install --no-install-recommends debootstrap clang-16 lld-16 clang-tools-16 clang-format-16 clang-tidy-16
+          # Fix alternatives
+          (yes '' | sudo update-alternatives --force --all) || true
 
           # Create ubuntu-16.04 sysroot environment, which is used to avoid
           # depending on a very recent version of glibc.
@@ -246,19 +267,20 @@ jobs:
           CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-15
-            -C link-arg=-fuse-ld=lld-15
+            -C linker=clang-16
+            -C link-arg=-fuse-ld=lld-16
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+            --cfg tokio_unstable
             ${{ env.RUSTFLAGS }}
           __1
           RUSTDOCFLAGS<<__1
             -C linker-plugin-lto=true
-            -C linker=clang-15
-            -C link-arg=-fuse-ld=lld-15
+            -C linker=clang-16
+            -C link-arg=-fuse-ld=lld-16
             -C link-arg=--sysroot=/sysroot
             -C link-arg=-ldl
             -C link-arg=-Wl,--allow-shlib-undefined
@@ -266,7 +288,7 @@ jobs:
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
             ${{ env.RUSTFLAGS }}
           __1
-          CC=clang-15
+          CC=clang-16
           CFLAGS=-flto=thin --sysroot=/sysroot
           __0
       - name: Log versions
@@ -274,8 +296,8 @@ jobs:
           python --version
           rustc --version
           cargo --version
-          if [ "${{ matrix.job }}" == "lint" ]
-          then
+          which dpkg && dpkg -l
+          if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then
             deno --version
           fi
           if [ "${{ matrix.job }}" == "bench" ]
@@ -289,8 +311,8 @@ jobs:
           path: |-
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: '23-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          key: '48-cargo-home-${{ matrix.os }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '48-cargo-home-${{ matrix.os }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v3
@@ -302,35 +324,32 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '23-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '48-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
-      - name: Shallow clone crates.io index
-        run: |-
-          if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]
-          then
-            git clone --depth 1 --no-checkout                      \
-                      https://github.com/rust-lang/crates.io-index \
-                      ~/.cargo/registry/index/github.com-1ecc6299db9ec823
-          fi
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: test_format.js
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check
       - name: Lint PR title
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && github.event_name == ''pull_request'')'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && github.event_name == ''pull_request'' && startsWith(matrix.os, ''ubuntu''))'
         env:
           PR_TITLE: '${{ github.event.pull_request.title }}'
         run: deno run ./tools/verify_pr_title.js "$PR_TITLE"
       - name: lint.js
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'')'
         run: deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js
+      - name: node_compat/setup.ts --check
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''lint'' && startsWith(matrix.os, ''ubuntu''))'
+        run: deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check
       - name: Build debug
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
-        run: cargo build --locked --all-targets
+        run: |-
+          df -h
+          cargo build --locked --all-targets
+          df -h
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
@@ -340,7 +359,10 @@ jobs:
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
           startsWith(github.ref, 'refs/tags/')))))
-        run: cargo build --release --locked --all-targets
+        run: |-
+          df -h
+          cargo build --release --locked --all-targets
+          df -h
       - name: Upload PR artifact (linux)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' &&
@@ -413,11 +435,18 @@ jobs:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test debug (fast)
         if: |-
-          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' && 
+          !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(matrix.os, 'ubuntu'))
         run: |-
           cargo test --locked --lib
           cargo test --locked --test '*'
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
+      - name: Test examples debug
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
+        run: |-
+          cargo run -p deno_runtime --example extension_with_esm
+          cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test release
@@ -583,7 +612,7 @@ jobs:
             !./target/*/gn_out
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '23-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '48-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-22.04

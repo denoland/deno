@@ -11,7 +11,7 @@ use test_util::lsp::LspClientBuilder;
 // Intended to match the benchmark in quick-lint-js
 // https://github.com/quick-lint/quick-lint-js/blob/35207e6616267c6c81be63f47ce97ec2452d60df/benchmark/benchmark-lsp/lsp-benchmarks.cpp#L223-L268
 fn incremental_change_wait(bench: &mut Bencher) {
-  let mut client = LspClientBuilder::new().build();
+  let mut client = LspClientBuilder::new().use_diagnostic_sync(false).build();
   client.initialize_default();
 
   client.write_notification(

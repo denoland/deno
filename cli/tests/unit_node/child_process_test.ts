@@ -577,3 +577,66 @@ Deno.test(
     assertStringIncludes(output, "typescript");
   },
 );
+
+Deno.test(
+  "[node/child_process spawn] supports stdio array option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
+
+Deno.test(
+  "[node/child_process spawn] supports stdio [0, 1, 2] option",
+  async () => {
+    const cmdFinished = deferred();
+    let output = "";
+    const script = path.join(
+      path.dirname(path.fromFileUrl(import.meta.url)),
+      "testdata",
+      "child_process_stdio_012.js",
+    );
+    const cp = spawn(Deno.execPath(), ["run", "-A", script]);
+    cp.stdout?.on("data", (data) => {
+      output += data;
+    });
+    cp.on("close", () => cmdFinished.resolve());
+    await cmdFinished;
+
+    assertStringIncludes(output, "foo");
+    assertStringIncludes(output, "close");
+  },
+);
+
+Deno.test({
+  name: "[node/child_process spawn] supports SIGIOT signal",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    // Note: attempting to kill Deno with SIGABRT causes the process to zombify on certain OSX builds
+    // eg: 22.5.0 Darwin Kernel Version 22.5.0: Mon Apr 24 20:53:19 PDT 2023; root:xnu-8796.121.2~5/RELEASE_ARM64_T6020 arm64
+    // M2 Pro running Ventura 13.4
+
+    // Spawn an infinite cat
+    const cp = spawn("cat", ["-"]);
+    const p = withTimeout();
+    cp.on("exit", () => p.resolve());
+    cp.kill("SIGIOT");
+    await p;
+    assert(cp.killed);
+    assertEquals(cp.signalCode, "SIGIOT");
+  },
+});

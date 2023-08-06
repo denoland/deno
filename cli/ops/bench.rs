@@ -42,9 +42,6 @@ deno_core::extension!(deno_bench,
     state.put(options.sender);
     state.put(BenchContainer::default());
   },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[derive(Clone)]
@@ -104,6 +101,8 @@ struct BenchInfo<'s> {
   group: Option<String>,
   ignore: bool,
   only: bool,
+  #[serde(default)]
+  warmup: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +130,7 @@ fn op_register_bench<'a>(
     group: info.group,
     ignore: info.ignore,
     only: info.only,
+    warmup: info.warmup,
   };
   let function: v8::Local<v8::Function> = info.function.v8_value.try_into()?;
   let function = v8::Global::new(scope, function);

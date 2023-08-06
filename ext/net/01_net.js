@@ -15,6 +15,7 @@ const {
   ArrayPrototypeForEach,
   ArrayPrototypePush,
   Error,
+  Number,
   ObjectPrototypeIsPrototypeOf,
   PromiseResolve,
   SymbolAsyncIterator,
@@ -420,7 +421,7 @@ function listen(args) {
     case "tcp": {
       const { 0: rid, 1: addr } = ops.op_net_listen_tcp({
         hostname: args.hostname ?? "0.0.0.0",
-        port: args.port,
+        port: Number(args.port),
       }, args.reusePort);
       addr.transport = "tcp";
       return new Listener(rid, addr);

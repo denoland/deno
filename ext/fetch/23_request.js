@@ -36,7 +36,7 @@ const {
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
@@ -174,8 +174,8 @@ function cloneInnerRequest(request, skipBody = false) {
     body,
     redirectMode: request.redirectMode,
     redirectCount: request.redirectCount,
-    urlList: request.urlList,
-    urlListProcessed: request.urlListProcessed,
+    urlList: [() => request.url()],
+    urlListProcessed: [request.url()],
     clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
     url() {
@@ -227,7 +227,7 @@ function validateAndNormalizeMethod(m) {
   }
 
   // Regular path
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);

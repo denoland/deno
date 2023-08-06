@@ -1,5 +1,4 @@
 {
-  "incremental": true,
   "typescript": {
     "deno": true
   },
@@ -10,17 +9,16 @@
     "deno": true
   },
   "exec": {
-    "associations": "**/*.rs",
-    "rustfmt": "rustfmt --config imports_granularity=item"
+    "commands": [{
+      "command": "rustfmt --config imports_granularity=item",
+      "exts": ["rs"]
+    }]
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
-  ],
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
-    "cli/bench/testdata/npm/*",
+    "cli/bench/testdata/npm/",
     "cli/tsc/dts/lib.d.ts",
     "cli/tsc/dts/lib.scripthost.d.ts",
     "cli/tsc/dts/lib.decorators*.d.ts",
@@ -34,10 +32,13 @@
     "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
-    "cli/tests/testdata/fmt/*",
+    "cli/tests/testdata/fmt/",
+    "cli/tests/testdata/lint/glob/",
+    "cli/tests/testdata/test/glob/",
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
+    "cli/tests/testdata/run/error_syntax_empty_trailing_line.mjs",
     "cli/tests/testdata/run/inline_js_source_map*",
-    "cli/tests/testdata/malformed_config/*",
+    "cli/tests/testdata/malformed_config/",
     "cli/tests/testdata/npm/registry/",
     "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
@@ -48,16 +49,16 @@
     "test_util/wpt",
     "third_party",
     "tools/node_compat/TODO.md",
-    "tools/node_compat/versions",
+    "tools/node_compat/node",
     "tools/wpt/expectation.json",
     "tools/wpt/manifest.json",
     "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.84.4.wasm",
-    "https://plugins.dprint.dev/json-0.17.2.wasm",
-    "https://plugins.dprint.dev/markdown-0.15.2.wasm",
+    "https://plugins.dprint.dev/typescript-0.85.1.wasm",
+    "https://plugins.dprint.dev/json-0.17.4.wasm",
+    "https://plugins.dprint.dev/markdown-0.15.3.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
-    "https://plugins.dprint.dev/exec-0.3.5.json@d687dda57be0fe9a0088ccdaefa5147649ff24127d8b3ea227536c68ee7abeab"
+    "https://plugins.dprint.dev/exec-0.4.3.json@42343548b8022c99b1d750be6b894fe6b6c7ee25f72ae9f9082226dd2e515072"
   ]
 }

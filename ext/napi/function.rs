@@ -37,13 +37,13 @@ extern "C" fn call_fn(info: *const v8::FunctionCallbackInfo) {
   };
 
   // SAFETY: pointer from Box::into_raw.
-  let mut info = unsafe { &mut *info_ptr };
+  let info = unsafe { &mut *info_ptr };
   info.args = &args as *const _ as *const c_void;
 
   if let Some(f) = info.cb {
     // SAFETY: calling user provided function pointer.
     let value = unsafe { f(info.env, info_ptr as *mut _) };
-    // SAFETY: napi_value is reprsented as v8::Local<v8::Value> internally.
+    // SAFETY: napi_value is represented as v8::Local<v8::Value> internally.
     rv.set(unsafe { transmute::<napi_value, v8::Local<v8::Value>>(value) });
   }
 }

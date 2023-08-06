@@ -37,6 +37,7 @@ const {
   Error,
   ErrorCaptureStackTrace,
   ErrorPrototype,
+  ErrorPrototypeToString,
   FunctionPrototypeBind,
   FunctionPrototypeCall,
   FunctionPrototypeToString,
@@ -146,6 +147,12 @@ function getNoColor() {
   return noColor;
 }
 
+function assert(cond, msg = "Assertion failed.") {
+  if (!cond) {
+    throw new AssertionError(msg);
+  }
+}
+
 // Don't use 'blue' not visible on cmd.exe
 const styles = {
   special: "cyan",
@@ -161,6 +168,7 @@ const styles = {
   // TODO(BridgeAR): Highlight regular expressions properly.
   regexp: "red",
   module: "underline",
+  internalError: "red",
 };
 
 const defaultFG = 39;
@@ -245,6 +253,17 @@ defineColorAlias("doubleunderline", "doubleUnderline");
 
 // https://tc39.es/ecma262/#sec-get-sharedarraybuffer.prototype.bytelength
 let _getSharedArrayBufferByteLength;
+
+function getSharedArrayBufferByteLength(value) {
+  // TODO(kt3k): add SharedArrayBuffer to primordials
+  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
+    // deno-lint-ignore prefer-primordials
+    SharedArrayBuffer.prototype,
+    "byteLength",
+  ).get;
+
+  return FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+}
 
 function isObjectLike(value) {
   return value !== null && typeof value === "object";
@@ -426,15 +445,8 @@ export function isSetIterator(
 export function isSharedArrayBuffer(
   value,
 ) {
-  // TODO(kt3k): add SharedArrayBuffer to primordials
-  _getSharedArrayBufferByteLength ??= ObjectGetOwnPropertyDescriptor(
-    // deno-lint-ignore prefer-primordials
-    SharedArrayBuffer.prototype,
-    "byteLength",
-  ).get;
-
   try {
-    FunctionPrototypeCall(_getSharedArrayBufferByteLength, value);
+    getSharedArrayBufferByteLength(value);
     return true;
   } catch {
     return false;
@@ -1022,7 +1034,6 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
   ArrayPrototypePush(ctx.seen, value);
   ctx.currentDepth = recurseTimes;
   let output;
-  const indentationLvl = ctx.indentationLvl;
   try {
     output = formatter(ctx, value, recurseTimes);
     for (i = 0; i < keys.length; i++) {
@@ -1034,13 +1045,12 @@ function formatRaw(ctx, value, recurseTimes, typedArray, proxyDetails) {
     if (protoProps !== undefined) {
       ArrayPrototypePushApply(output, protoProps);
     }
-  } catch (err) {
-    const constructorName = StringPrototypeSlice(
-      getCtxStyle(value, constructor, tag),
-      0,
-      -1,
+  } catch (error) {
+    // TODO(wafuwafu13): Implement stack overflow check
+    return ctx.stylize(
+      `[Internal Formatting Error] ${error.stack}`,
+      "internalError",
     );
-    return handleMaxCallStackSize(ctx, err, constructorName, indentationLvl);
   }
 
   if (ctx.circular !== undefined) {
@@ -1398,7 +1408,7 @@ function formatSet(value, ctx, _ignored, recurseTimes) {
   return output;
 }
 
-function formatMap(value, ctx, _gnored, recurseTimes) {
+function formatMap(value, ctx, _ignored, recurseTimes) {
   ctx.indentationLvl += 2;
 
   const values = [...new SafeMapIterator(value)];
@@ -1579,7 +1589,7 @@ function inspectError(value, ctx) {
     if (stack?.includes("\n    at")) {
       finalMessage += stack;
     } else {
-      finalMessage += `[${stack || value.toString()}]`;
+      finalMessage += `[${stack || ErrorPrototypeToString(value)}]`;
     }
   }
   finalMessage += ArrayPrototypeJoin(
@@ -1608,7 +1618,7 @@ const hexSliceLookupTable = function () {
 }();
 
 function hexSlice(buf, start, end) {
-  const len = buf.length;
+  const len = TypedArrayPrototypeGetLength(buf);
   if (!start || start < 0) {
     start = 0;
   }
@@ -1624,21 +1634,24 @@ function hexSlice(buf, start, end) {
 
 const arrayBufferRegExp = new SafeRegExp("(.{2})", "g");
 function formatArrayBuffer(ctx, value) {
+  let valLen;
+  try {
+    valLen = ArrayBufferPrototypeGetByteLength(value);
+  } catch {
+    valLen = getSharedArrayBufferByteLength(value);
+  }
+  const len = MathMin(MathMax(0, ctx.maxArrayLength), valLen);
   let buffer;
   try {
-    buffer = new Uint8Array(value);
+    buffer = new Uint8Array(value, 0, len);
   } catch {
     return [ctx.stylize("(detached)", "special")];
   }
   let str = StringPrototypeTrim(
-    StringPrototypeReplace(
-      hexSlice(buffer, 0, MathMin(ctx.maxArrayLength, buffer.length)),
-      arrayBufferRegExp,
-      "$1 ",
-    ),
+    StringPrototypeReplace(hexSlice(buffer), arrayBufferRegExp, "$1 "),
   );
 
-  const remaining = buffer.length - ctx.maxArrayLength;
+  const remaining = valLen - len;
   if (remaining > 0) {
     str += ` ... ${remaining} more byte${remaining > 1 ? "s" : ""}`;
   }
@@ -1658,8 +1671,14 @@ const PromiseState = {
 
 function formatPromise(ctx, value, recurseTimes) {
   let output;
-  // TODO(wafuwafu13): Implement
-  const { 0: state, 1: result } = core.getPromiseDetails(value);
+  let opResult;
+  // This op will fail for non-promises, but we get here for some promise-likes.
+  try {
+    opResult = core.getPromiseDetails(value);
+  } catch {
+    return [ctx.stylize("<unknown>", "special")];
+  }
+  const { 0: state, 1: result } = opResult;
   if (state === PromiseState.Pending) {
     output = [ctx.stylize("<pending>", "special")];
   } else {
@@ -1768,26 +1787,6 @@ function formatProperty(
     name = ctx.stylize(quoteString(key, ctx), "string");
   }
   return `${name}:${extra}${str}`;
-}
-
-function handleMaxCallStackSize(
-  _ctx,
-  _err,
-  _constructorName,
-  _indentationLvl,
-) {
-  // TODO(wafuwafu13): Implement
-  // if (isStackOverflowError(err)) {
-  //   ctx.seen.pop();
-  //   ctx.indentationLvl = indentationLvl;
-  //   return ctx.stylize(
-  //     `[${constructorName}: Inspection interrupted ` +
-  //       'prematurely. Maximum call stack size exceeded.]',
-  //     'special'
-  //   );
-  // }
-  // /* c8 ignore next */
-  // assert.fail(err.stack);
 }
 
 const colorRegExp = new SafeRegExp("\u001b\\[\\d\\d?m", "g");
@@ -2442,6 +2441,7 @@ const denoInspectDefaultOptions = {
   colors: false,
   showProxy: false,
   breakLength: 80,
+  escapeSequences: true,
   compact: 3,
   sorted: false,
   getters: false,
@@ -2515,7 +2515,9 @@ function quoteString(string, ctx) {
     ctx.quotes[0];
   const escapePattern = new SafeRegExp(`(?=[${quote}\\\\])`, "g");
   string = StringPrototypeReplace(string, escapePattern, "\\");
-  string = replaceEscapeSequences(string);
+  if (ctx.escapeSequences) {
+    string = replaceEscapeSequences(string);
+  }
   return `${quote}${string}${quote}`;
 }
 
@@ -2539,7 +2541,7 @@ function replaceEscapeSequences(string) {
       ESCAPE_PATTERN,
       (c) => ESCAPE_MAP[c],
     ),
-    new SafeRegExp(ESCAPE_PATTERN2),
+    ESCAPE_PATTERN2,
     (c) =>
       "\\x" +
       StringPrototypePadStart(
@@ -2751,9 +2753,9 @@ function parseCssColor(colorString) {
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
   if (smallHashMatch != null) {
     return [
-      Number(`0x${smallHashMatch[1]}0`),
-      Number(`0x${smallHashMatch[2]}0`),
-      Number(`0x${smallHashMatch[3]}0`),
+      Number(`0x${smallHashMatch[1]}${smallHashMatch[1]}`),
+      Number(`0x${smallHashMatch[2]}${smallHashMatch[2]}`),
+      Number(`0x${smallHashMatch[3]}${smallHashMatch[3]}`),
     ];
   }
   // deno-fmt-ignore
@@ -3327,7 +3329,7 @@ class Console {
     if (properties !== undefined && !ArrayIsArray(properties)) {
       throw new Error(
         "The 'properties' argument must be of type Array. " +
-          "Received type string",
+          "Received type " + typeof properties,
       );
     }
 
@@ -3434,7 +3436,7 @@ class Console {
     label = String(label);
 
     if (!MapPrototypeHas(timerMap, label)) {
-      this.warn(`Timer '${label}' does not exists`);
+      this.warn(`Timer '${label}' does not exist`);
       return;
     }
 

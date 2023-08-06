@@ -132,12 +132,12 @@ impl CoverageCollector {
 
       let mut out = BufWriter::new(File::create(filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formated_coverage = format_json(&coverage, &Default::default())
+      let formatted_coverage = format_json(&coverage, &Default::default())
         .ok()
         .flatten()
         .unwrap_or(coverage);
 
-      out.write_all(formated_coverage.as_bytes())?;
+      out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
     }
 
@@ -533,20 +533,20 @@ impl CoverageReporter for PrettyCoverageReporter {
     let mut last_line = None;
     for line_index in missed_lines {
       const WIDTH: usize = 4;
-      const SEPERATOR: &str = "|";
+      const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
       if let Some(last_line) = last_line {
         if last_line + 1 != line_index {
           let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
         }
       }
 
       println!(
         "{:width$} {} {}",
         line_index + 1,
-        colors::gray(SEPERATOR),
+        colors::gray(SEPARATOR),
         colors::red(&lines[line_index]),
         width = WIDTH
       );
@@ -571,6 +571,7 @@ fn collect_coverages(
   })
   .ignore_git_folder()
   .ignore_node_modules()
+  .ignore_deno_modules()
   .add_ignore_paths(&files.ignore)
   .collect_files(&files.include)?;
 
@@ -703,7 +704,7 @@ pub async fn cover_files(
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        match emitter.maybed_cached_emit(&file.specifier, &file.source) {
+        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
           Some(code) => code.into(),
           None => {
             return Err(anyhow!(

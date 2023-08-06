@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// This file contains C++ node globals accesed in internal binding calls
+// This file contains C++ node globals accessed in internal binding calls
 
 /**
  * Adapted from

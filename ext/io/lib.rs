@@ -2,6 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::task::spawn_blocking;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -9,9 +10,12 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::Op;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_core::ResourceHandle;
+use deno_core::ResourceHandleFd;
 use deno_core::TaskQueue;
 use fs::FileResource;
 use fs::FsError;
@@ -88,7 +92,7 @@ deno_core::extension!(deno_io,
     stdio: Option<Stdio>,
   },
   middleware = |op| match op.name {
-    "op_print" => op_print::decl(),
+    "op_print" => op_print::DECL,
     _ => op,
   },
   state = |state, options| {
@@ -306,6 +310,7 @@ pub struct StdFileResourceInner {
   // Used to keep async actions in order and only allow one
   // to occur at a time
   cell_async_task_queue: TaskQueue,
+  handle: ResourceHandleFd,
 }
 
 impl StdFileResourceInner {
@@ -314,8 +319,11 @@ impl StdFileResourceInner {
   }
 
   fn new(kind: StdFileResourceKind, fs_file: StdFile) -> Self {
+    // We know this will be an fd
+    let handle = ResourceHandle::from_fd_like(&fs_file).as_fd_like().unwrap();
     StdFileResourceInner {
       kind,
+      handle,
       cell: RefCell::new(Some(fs_file)),
       cell_async_task_queue: Default::default(),
     }
@@ -350,7 +358,7 @@ impl StdFileResourceInner {
         }
       }
     };
-    let (cell_value, result) = tokio::task::spawn_blocking(move || {
+    let (cell_value, result) = spawn_blocking(move || {
       let result = action(&mut cell_value);
       (cell_value, result)
     })
@@ -372,7 +380,7 @@ impl StdFileResourceInner {
     // we want to restrict this to one async action at a time
     let _permit = self.cell_async_task_queue.acquire().await;
 
-    tokio::task::spawn_blocking(action).await.unwrap()
+    spawn_blocking(action).await.unwrap()
   }
 }
 
@@ -703,6 +711,7 @@ impl crate::fs::File for StdFileResourceInner {
         kind: self.kind,
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
+        handle: self.handle,
       })),
       None => Err(FsError::FileBusy),
     }
@@ -718,16 +727,8 @@ impl crate::fs::File for StdFileResourceInner {
     }
   }
 
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    use std::os::unix::io::AsRawFd;
-    self.with_sync(|file| Ok(file.as_raw_fd())).ok()
-  }
-
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
-    use std::os::windows::prelude::AsRawHandle;
-    self.with_sync(|file| Ok(file.as_raw_handle())).ok()
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
+    Some(self.handle)
   }
 }
 

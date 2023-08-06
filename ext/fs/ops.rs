@@ -14,9 +14,10 @@ use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -293,9 +294,16 @@ where
 
   let fs = {
     let mut state = state.borrow_mut();
-    state
-      .borrow_mut::<P>()
-      .check_write(&path, "Deno.remove()")?;
+    if recursive {
+      state
+        .borrow_mut::<P>()
+        .check_write(&path, "Deno.remove()")?;
+    } else {
+      state
+        .borrow_mut::<P>()
+        .check_write_partial(&path, "Deno.remove()")?;
+    }
+
     state.borrow::<FileSystemRc>().clone()
   };
 
@@ -1077,7 +1085,7 @@ fn op_fs_write_file_sync<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
 ) -> Result<(), AnyError>
 where
   P: FsPermissions + 'static,
@@ -1104,7 +1112,7 @@ async fn op_fs_write_file_async<P>(
   append: bool,
   create: bool,
   create_new: bool,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
   cancel_rid: Option<ResourceId>,
 ) -> Result<(), AnyError>
 where
@@ -1144,7 +1152,7 @@ where
 fn op_fs_read_file_sync<P>(
   state: &mut OpState,
   path: String,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -1154,7 +1162,7 @@ where
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context("readfile")?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   Ok(buf.into())
 }
@@ -1164,7 +1172,7 @@ async fn op_fs_read_file_async<P>(
   state: Rc<RefCell<OpState>>,
   path: String,
   cancel_rid: Option<ResourceId>,
-) -> Result<ZeroCopyBuf, AnyError>
+) -> Result<ToJsBuffer, AnyError>
 where
   P: FsPermissions + 'static,
 {
@@ -1210,7 +1218,7 @@ where
   permissions.check_read(&path, "Deno.readFileSync()")?;
 
   let fs = state.borrow::<FileSystemRc>();
-  let buf = fs.read_file_sync(&path).context("readfile")?;
+  let buf = fs.read_file_sync(&path).context_path("readfile", &path)?;
 
   Ok(string_from_utf8_lossy(buf))
 }
@@ -1596,6 +1604,10 @@ create_struct_writer! {
     rdev: u64,
     blksize: u64,
     blocks: u64,
+    is_block_device: bool,
+    is_char_device: bool,
+    is_fifo: bool,
+    is_socket: bool,
   }
 }
 
@@ -1623,6 +1635,10 @@ impl From<FsStat> for SerializableStat {
       rdev: stat.rdev,
       blksize: stat.blksize,
       blocks: stat.blocks,
+      is_block_device: stat.is_block_device,
+      is_char_device: stat.is_char_device,
+      is_fifo: stat.is_fifo,
+      is_socket: stat.is_socket,
     }
   }
 }

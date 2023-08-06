@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
@@ -832,6 +836,15 @@ export class ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY extends NodeError {
     super(
       "ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY",
       "Public key is not valid for specified curve",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_DH_GROUP",
+      "Unknown DH group",
     );
   }
 }
@@ -2477,6 +2490,19 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
       message: "not a directory",
       path,
       syscall: "rmdir",
+      code,
+      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
+    };
+    super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
+  constructor() {
+    const code = isWindows ? "ENOENT" : "ENOTDIR";
+    const ctx: NodeSystemErrorCtx = {
+      message: "not a directory",
+      syscall: "home",
       code,
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };

@@ -129,7 +129,7 @@ class AbortSignal extends EventTarget {
     }
   }
 
-  // `addEventListener` and `removeEventListener` have to be overriden in
+  // `addEventListener` and `removeEventListener` have to be overridden in
   // order to have the timer block the event loop while there are listeners.
   // `[add]` and `[remove]` don't ref and unref the timer because they can
   // only be used by Deno internals, which use it to essentially cancel async
@@ -203,4 +203,5 @@ export {
   newSignal,
   remove,
   signalAbort,
+  timerId,
 };

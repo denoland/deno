@@ -121,7 +121,7 @@ function type(V) {
     case "function":
     // Falls through
     default:
-      // Per ES spec, typeof returns an implemention-defined value that is not any of the existing ones for
+      // Per ES spec, typeof returns an implementation-defined value that is not any of the existing ones for
       // uncallable non-standard exotic objects. Yet Type() which the Web IDL spec depends on returns Object for
       // such cases. So treat the default case as an object.
       return "Object";
@@ -402,11 +402,19 @@ converters.DOMString = function (V, prefix, context, opts = {}) {
   return String(V);
 };
 
-// deno-lint-ignore no-control-regex
-const IS_BYTE_STRING = new SafeRegExp(/^[\x00-\xFF]*$/);
+function isByteString(input) {
+  for (let i = 0; i < input.length; i++) {
+    if (StringPrototypeCharCodeAt(input, i) > 255) {
+      // If a character code is greater than 255, it means the string is not a byte string.
+      return false;
+    }
+  }
+  return true;
+}
+
 converters.ByteString = (V, prefix, context, opts) => {
   const x = converters.DOMString(V, prefix, context, opts);
-  if (!RegExpPrototypeTest(IS_BYTE_STRING, x)) {
+  if (!isByteString(x)) {
     throw makeException(
       TypeError,
       "is not a valid ByteString",
@@ -948,10 +956,12 @@ function createRecordConverter(keyConverter, valueConverter) {
 
 function createPromiseConverter(converter) {
   return (V, prefix, context, opts) =>
-    PromisePrototypeThen(
-      PromiseResolve(V),
-      (V) => converter(V, prefix, context, opts),
-    );
+    // should be able to handle thenables
+    // see: https://github.com/web-platform-tests/wpt/blob/a31d3ba53a79412793642366f3816c9a63f0cf57/streams/writable-streams/close.any.js#L207
+    typeof V?.then === "function"
+      ? PromisePrototypeThen(PromiseResolve(V), (V) =>
+        converter(V, prefix, context, opts))
+      : PromiseResolve(converter(V, prefix, context, opts));
 }
 
 function invokeCallbackFunction(

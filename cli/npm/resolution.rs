@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -14,19 +15,19 @@ use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::NpmResolutionSnapshotCreateOptions;
+use deno_npm::resolution::NpmResolutionSnapshotPendingResolver;
+use deno_npm::resolution::NpmResolutionSnapshotPendingResolverOptions;
+use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNotFoundFromReferrerError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
@@ -49,7 +50,7 @@ impl std::fmt::Debug for NpmResolution {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let snapshot = self.snapshot.read();
     f.debug_struct("NpmResolution")
-      .field("snapshot", &snapshot.as_serialized())
+      .field("snapshot", &snapshot.as_valid_serialized().as_serialized())
       .finish()
   }
 }
@@ -61,15 +62,7 @@ impl NpmResolution {
     maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   ) -> Self {
     let snapshot =
-      NpmResolutionSnapshot::new(NpmResolutionSnapshotCreateOptions {
-        api: api.clone(),
-        snapshot: initial_snapshot.unwrap_or_default(),
-        // WARNING: When bumping this version, check if anything needs to be
-        // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
-        types_node_version_req: Some(
-          VersionReq::parse_from_npm("18.0.0 - 18.11.18").unwrap(),
-        ),
-      });
+      NpmResolutionSnapshot::new(initial_snapshot.unwrap_or_default());
     Self::new(api, snapshot, maybe_lockfile)
   }
 
@@ -88,7 +81,7 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -106,12 +99,12 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: Vec<NpmPackageReq>,
+    package_reqs: &[NpmPackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
 
-    let reqs_set = package_reqs.iter().cloned().collect::<HashSet<_>>();
+    let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
       package_reqs,
@@ -143,7 +136,7 @@ impl NpmResolution {
 
     let snapshot = add_package_reqs_to_snapshot(
       &self.api,
-      Vec::new(),
+      &Vec::new(),
       self.maybe_lockfile.clone(),
       || self.snapshot.read().clone(),
     )
@@ -154,18 +147,7 @@ impl NpmResolution {
     Ok(())
   }
 
-  pub fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    let node_id = self.resolve_pkg_id_from_pkg_req(&req_ref.req)?;
-    Ok(NpmPackageNvReference {
-      nv: node_id.nv,
-      sub_path: req_ref.sub_path.clone(),
-    })
-  }
-
-  pub fn resolve_package_cache_folder_id_from_id(
+  pub fn resolve_pkg_cache_folder_id_from_pkg_id(
     &self,
     id: &NpmPackageId,
   ) -> Option<NpmPackageCacheFolderId> {
@@ -174,6 +156,17 @@ impl NpmResolution {
       .read()
       .package_from_id(id)
       .map(|p| p.get_package_cache_folder_id())
+  }
+
+  pub fn resolve_pkg_id_from_pkg_cache_folder_id(
+    &self,
+    id: &NpmPackageCacheFolderId,
+  ) -> Result<NpmPackageId, PackageCacheFolderIdNotFoundError> {
+    self
+      .snapshot
+      .read()
+      .resolve_pkg_from_pkg_cache_folder_id(id)
+      .map(|pkg| pkg.id.clone())
   }
 
   pub fn resolve_package_from_package(
@@ -197,7 +190,22 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_pkg_from_pkg_req(req)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
+  }
+
+  pub fn resolve_pkg_reqs_from_pkg_id(
+    &self,
+    id: &NpmPackageId,
+  ) -> Vec<NpmPackageReq> {
+    let snapshot = self.snapshot.read();
+    let mut pkg_reqs = snapshot
+      .package_reqs()
+      .iter()
+      .filter(|(_, nv)| *nv == &id.nv)
+      .map(|(req, _)| req.clone())
+      .collect::<Vec<_>>();
+    pkg_reqs.sort(); // be deterministic
+    pkg_reqs
   }
 
   pub fn resolve_pkg_id_from_deno_module(
@@ -208,7 +216,7 @@ impl NpmResolution {
       .snapshot
       .read()
       .resolve_package_from_deno_module(id)
-      .map(|pkg| pkg.pkg_id.clone())
+      .map(|pkg| pkg.id.clone())
   }
 
   /// Resolves a package requirement for deno graph. This should only be
@@ -233,12 +241,34 @@ impl NpmResolution {
   ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
     let mut snapshot = self.snapshot.write();
-    let nv = snapshot.resolve_package_req_as_pending(pkg_req, package_info)?;
+    let pending_resolver = get_npm_pending_resolver(&self.api);
+    let nv = pending_resolver.resolve_package_req_as_pending(
+      &mut snapshot,
+      pkg_req,
+      package_info,
+    )?;
     Ok(nv)
   }
 
-  pub fn all_packages_partitioned(&self) -> NpmPackagesPartitioned {
-    self.snapshot.read().all_packages_partitioned()
+  pub fn package_reqs(&self) -> HashMap<NpmPackageReq, NpmPackageNv> {
+    self.snapshot.read().package_reqs().clone()
+  }
+
+  pub fn all_system_packages(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> Vec<NpmResolutionPackage> {
+    self.snapshot.read().all_system_packages(system_info)
+  }
+
+  pub fn all_system_packages_partitioned(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> NpmPackagesPartitioned {
+    self
+      .snapshot
+      .read()
+      .all_system_packages_partitioned(system_info)
   }
 
   pub fn has_packages(&self) -> bool {
@@ -249,8 +279,20 @@ impl NpmResolution {
     self.snapshot.read().clone()
   }
 
-  pub fn serialized_snapshot(&self) -> SerializedNpmResolutionSnapshot {
-    self.snapshot.read().as_serialized()
+  pub fn serialized_valid_snapshot(
+    &self,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self.snapshot.read().as_valid_serialized()
+  }
+
+  pub fn serialized_valid_snapshot_for_system(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self
+      .snapshot
+      .read()
+      .as_valid_serialized_for_system(system_info)
   }
 
   pub fn lock(&self, lockfile: &mut Lockfile) -> Result<(), AnyError> {
@@ -261,47 +303,64 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
-  // todo(18079): it should be possible to pass &[NpmPackageReq] in here
-  // and avoid all these clones, but the LSP complains because of its
-  // `Send` requirement
-  package_reqs: Vec<NpmPackageReq>,
+  package_reqs: &[NpmPackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
   let snapshot = get_new_snapshot();
-  if !snapshot.has_pending()
+  let snapshot = if !snapshot.has_pending()
     && package_reqs
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
-    return Ok(snapshot); // already up to date
-  }
+    log::debug!("Snapshot already up to date. Skipping pending resolution.");
+    snapshot
+  } else {
+    let pending_resolver = get_npm_pending_resolver(api);
+    let result = pending_resolver
+      .resolve_pending(snapshot, package_reqs)
+      .await;
+    api.clear_memory_cache();
+    match result {
+      Ok(snapshot) => snapshot,
+      Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+        log::debug!("{err:#}");
+        log::debug!("npm resolution failed. Trying again...");
 
-  let result = snapshot.resolve_pending(package_reqs.clone()).await;
-  api.clear_memory_cache();
-  let snapshot = match result {
-    Ok(snapshot) => snapshot,
-    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
-      log::debug!("{err:#}");
-      log::debug!("npm resolution failed. Trying again...");
-
-      // try again
-      let snapshot = get_new_snapshot();
-      let result = snapshot.resolve_pending(package_reqs).await;
-      api.clear_memory_cache();
-      // now surface the result after clearing the cache
-      result?
+        // try again
+        let snapshot = get_new_snapshot();
+        let result = pending_resolver
+          .resolve_pending(snapshot, package_reqs)
+          .await;
+        api.clear_memory_cache();
+        // now surface the result after clearing the cache
+        result?
+      }
+      Err(err) => return Err(err.into()),
     }
-    Err(err) => return Err(err.into()),
   };
 
   if let Some(lockfile_mutex) = maybe_lockfile {
     let mut lockfile = lockfile_mutex.lock();
     populate_lockfile_from_snapshot(&mut lockfile, &snapshot)?;
-    Ok(snapshot)
-  } else {
-    Ok(snapshot)
   }
+
+  Ok(snapshot)
+}
+
+fn get_npm_pending_resolver(
+  api: &CliNpmRegistryApi,
+) -> NpmResolutionSnapshotPendingResolver<CliNpmRegistryApi> {
+  NpmResolutionSnapshotPendingResolver::new(
+    NpmResolutionSnapshotPendingResolverOptions {
+      api,
+      // WARNING: When bumping this version, check if anything needs to be
+      // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
+      types_node_version_req: Some(
+        VersionReq::parse_from_npm("18.0.0 - 18.16.19").unwrap(),
+      ),
+    },
+  )
 }
 
 fn populate_lockfile_from_snapshot(
@@ -314,11 +373,11 @@ fn populate_lockfile_from_snapshot(
       snapshot
         .resolve_package_from_deno_module(nv)
         .unwrap()
-        .pkg_id
+        .id
         .as_serialized(),
     );
   }
-  for package in snapshot.all_packages() {
+  for package in snapshot.all_packages_for_every_system() {
     lockfile
       .check_or_insert_npm_package(npm_package_to_lockfile_info(package))?;
   }
@@ -326,20 +385,20 @@ fn populate_lockfile_from_snapshot(
 }
 
 fn npm_package_to_lockfile_info(
-  pkg: NpmResolutionPackage,
+  pkg: &NpmResolutionPackage,
 ) -> NpmPackageLockfileInfo {
   let dependencies = pkg
     .dependencies
-    .into_iter()
+    .iter()
     .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-      name,
+      name: name.clone(),
       id: id.as_serialized(),
     })
     .collect();
 
   NpmPackageLockfileInfo {
-    display_id: pkg.pkg_id.nv.to_string(),
-    serialized_id: pkg.pkg_id.as_serialized(),
+    display_id: pkg.id.nv.to_string(),
+    serialized_id: pkg.id.as_serialized(),
     integrity: pkg.dist.integrity().to_string(),
     dependencies,
   }

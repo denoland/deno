@@ -129,6 +129,7 @@ const denoNs = {
   PermissionStatus: permissions.PermissionStatus,
   // TODO(bartlomieju): why is this not in one of extensions?
   serveHttp: httpRuntime.serveHttp,
+  serve: http.serve,
   resolveDns: net.resolveDns,
   upgradeWebSocket: http.upgradeWebSocket,
   utime: fs.utime,
@@ -151,6 +152,7 @@ const denoNs = {
   ChildProcess: process.ChildProcess,
 };
 
+// when editing this list, also update unstableDenoProps in cli/tsc/99_main_compiler.js
 const denoNsUnstable = {
   listenDatagram: net.createListenDatagram(
     ops.op_net_listen_udp,
@@ -171,8 +173,8 @@ const denoNsUnstable = {
   funlock: fs.funlock,
   funlockSync: fs.funlockSync,
   upgradeHttp: http.upgradeHttp,
-  serve: http.serve,
   openKv: kv.openKv,
+  AtomicOperation: kv.AtomicOperation,
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,

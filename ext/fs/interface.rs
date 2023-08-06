@@ -96,11 +96,12 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>>;
 
-  fn mkdir_sync(&self, path: &Path, recusive: bool, mode: u32) -> FsResult<()>;
+  fn mkdir_sync(&self, path: &Path, recursive: bool, mode: u32)
+    -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
-    recusive: bool,
+    recursive: bool,
     mode: u32,
   ) -> FsResult<()>;
 

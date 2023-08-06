@@ -34,6 +34,12 @@
           "default": false,
           "markdownDescription": "Enable error reporting in type-checked JavaScript files.\n\nSee more: https://www.typescriptlang.org/tsconfig#checkJs"
         },
+        "exactOptionalPropertyTypes": {
+          "description": "Differentiate between undefined and not present when type checking",
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Differentiate between undefined and not present when type checking\n\nSee more: https://www.typescriptlang.org/tsconfig#exactOptionalPropertyTypes"
+        },
         "experimentalDecorators": {
           "description": "Enable experimental support for TC39 stage 2 draft decorators.",
           "type": "boolean",
@@ -223,20 +229,27 @@
         }
       }
     },
+    "exclude": {
+      "type": "array",
+      "description": "List of files, directories or globs that will be ignored by all other configurations. Requires Deno 1.34 or later.",
+      "items": {
+        "type": "string"
+      }
+    },
     "lint": {
       "description": "Configuration for linter",
       "type": "object",
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be linted.",
+          "description": "List of files, directories or globs that will be linted.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be linted.",
+          "description": "List of files, directories or globs that will not be linted.",
           "items": {
             "type": "string"
           }
@@ -246,14 +259,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be linted.",
+              "description": "List of files, directories or globs that will be linted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be linted.",
+              "description": "List of files, directories or globs that will not be linted.",
               "items": {
                 "type": "string"
               }
@@ -309,14 +322,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be formatted.",
+          "description": "List of files, directories or globs that will be formatted.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be formatted.",
+          "description": "List of files, directories or globs that will not be formatted.",
           "items": {
             "type": "string"
           }
@@ -326,14 +339,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be formatted.",
+              "description": "List of files, directories or globs that will be formatted.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be formatted.",
+              "description": "List of files, directories or globs that will not be formatted.",
               "items": {
                 "type": "string"
               }
@@ -415,6 +428,14 @@
         }
       }
     },
+    "nodeModulesDir": {
+      "description": "Enables or disables the use of a local node_modules folder for npm packages. Alternatively, use the `--node-modules-dir` or `--node-modules-dir=false` flag. Requires Deno 1.34 or later.",
+      "type": "boolean"
+    },
+    "denoModulesDir": {
+      "description": "UNSTABLE: Enables or disables the use of a local deno_modules folder as a local cache for remote modules. Alternatively, use the `--deno-modules-dir` or `--deno-modules-dir=false` flag. Requires Deno 1.36 or later.",
+      "type": "boolean"
+    },
     "tasks": {
       "description": "Configuration for deno task",
       "type": "object",
@@ -432,14 +453,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be searched for tests.",
+          "description": "List of files, directories or globs that will be searched for tests.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be searched for tests.",
+          "description": "List of files, directories or globs that will not be searched for tests.",
           "items": {
             "type": "string"
           }
@@ -449,14 +470,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for tests.",
+              "description": "List of files, directories or globs that will be searched for tests.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for tests.",
+              "description": "List of files, directories or globs that will not be searched for tests.",
               "items": {
                 "type": "string"
               }
@@ -471,14 +492,14 @@
       "properties": {
         "include": {
           "type": "array",
-          "description": "List of files or directories that will be searched for benchmarks.",
+          "description": "List of files, directories or globs that will be searched for benchmarks.",
           "items": {
             "type": "string"
           }
         },
         "exclude": {
           "type": "array",
-          "description": "List of files or directories that will not be searched for benchmarks.",
+          "description": "List of files, directories or globs that will not be searched for benchmarks.",
           "items": {
             "type": "string"
           }
@@ -488,14 +509,14 @@
           "properties": {
             "include": {
               "type": "array",
-              "description": "List of files or directories that will be searched for benchmarks.",
+              "description": "List of files, directories or globs that will be searched for benchmarks.",
               "items": {
                 "type": "string"
               }
             },
             "exclude": {
               "type": "array",
-              "description": "List of files or directories that will not be searched for benchmarks.",
+              "description": "List of files, directories or globs that will not be searched for benchmarks.",
               "items": {
                 "type": "string"
               }
