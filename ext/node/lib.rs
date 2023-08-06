@@ -132,12 +132,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 
 #[op]
 fn op_node_build_os() -> String {
-  std::env::var("TARGET")
-    .unwrap()
-    .split('-')
-    .nth(2)
-    .unwrap()
-    .to_string()
+  env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
 #[op(fast)]

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use std::io::Read;
@@ -4554,4 +4555,29 @@ console.log(returnsHi());"#,
   // now it should run
   deno_run_cmd.run().assert_matches_text("bye bye bye\n");
   assert!(lockfile.exists());
+
+  // ensure we can add and execute files in directories that have a hash in them
+  test_context
+    .new_command()
+    // http_localhost_4545/subdir/#capitals_c75d7/main.js
+    .args("cache http://localhost:4545/subdir/CAPITALS/main.js")
+    .run()
+    .skip_output_check();
+  assert_eq!(
+    deno_modules_dir.join("manifest.json").read_json_value(),
+    json!({
+      "folders": {
+        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
+      }
+    })
+  );
+  deno_modules_dir
+    .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
+    .write("console.log('hello there');");
+  test_context
+    .new_command()
+    // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
+    .args("run --deno-modules-dir http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .run()
+    .assert_matches_text("hello there\n");
 }
