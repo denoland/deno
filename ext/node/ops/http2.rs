@@ -10,6 +10,8 @@ use deno_core::op;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -19,9 +21,11 @@ use http;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use tokio::net::TcpStream;
+use url::Url;
 
 pub struct NodeHttp2Client {
   pub client: AsyncRefCell<h2::client::SendRequest<Bytes>>,
+  pub url: Url,
 }
 
 impl Resource for NodeHttp2Client {
@@ -32,12 +36,17 @@ impl Resource for NodeHttp2Client {
 
 #[derive(Debug)]
 pub struct NodeHttp2ClientConn {
-  pub conn: h2::client::Connection<TcpStream>,
+  pub conn: AsyncRefCell<h2::client::Connection<TcpStream>>,
+  cancel_handle: CancelHandle,
 }
 
 impl Resource for NodeHttp2ClientConn {
   fn name(&self) -> Cow<str> {
     "nodeHttp2ClientConnection".into()
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel()
   }
 }
 
@@ -67,18 +76,25 @@ impl Resource for NodeHttp2ClientResponseBody {
 #[op]
 pub async fn op_node_http2_client_connect<P>(
   state: Rc<RefCell<OpState>>,
+  url: String,
 ) -> Result<(ResourceId, ResourceId), AnyError>
 where
   P: crate::NodePermissions + 'static,
 {
   // TODO(bartlomieju): handle urls
-  let tcp = TcpStream::connect("localhost:8443").await?;
+  let url = Url::parse(&url)?;
+  let ip = format!("{}:{}", url.host_str().unwrap(), url.port().unwrap());
+  let tcp = TcpStream::connect(ip).await?;
   let (client, conn) = h2::client::handshake(tcp).await?;
   let mut state = state.borrow_mut();
   let client_rid = state.resource_table.add(NodeHttp2Client {
     client: AsyncRefCell::new(client),
+    url,
   });
-  let conn_rid = state.resource_table.add(NodeHttp2ClientConn { conn });
+  let conn_rid = state.resource_table.add(NodeHttp2ClientConn {
+    conn: AsyncRefCell::new(conn),
+    cancel_handle: CancelHandle::new(),
+  });
   Ok((client_rid, conn_rid))
 }
 
@@ -87,13 +103,21 @@ pub async fn op_node_http2_client_poll_connection(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let conn = {
-    let mut state = state.borrow_mut();
-    let conn = state.resource_table.take::<NodeHttp2ClientConn>(rid)?;
-    Rc::try_unwrap(conn).unwrap()
+  let resource = {
+    let state = state.borrow();
+    state.resource_table.get::<NodeHttp2ClientConn>(rid)?
   };
 
-  conn.conn.await?;
+  let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
+  let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
+
+  match (&mut *conn).or_cancel(cancel_handle).await {
+    Ok(result) => result?,
+    Err(_) => {
+      // TODO(bartlomieju): probably need a better mechanism for closing the connection
+      // cancelled
+    }
+  }
 
   Ok(())
 }
@@ -105,8 +129,12 @@ pub async fn op_node_http2_client_request(
   headers: Vec<(ByteString, ByteString)>,
   end_of_stream: bool,
 ) -> Result<ResourceId, AnyError> {
-  // TODO(bartlomieju): handle URL
-  let mut req = http::Request::builder().uri("http://localhost:8443");
+  let resource = {
+    let state = state.borrow();
+    state.resource_table.get::<NodeHttp2Client>(client_rid)?
+  };
+
+  let mut req = http::Request::builder().uri(resource.url.as_str());
 
   for (name, value) in headers {
     req.headers_mut().unwrap().append(

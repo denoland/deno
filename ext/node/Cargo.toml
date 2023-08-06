@@ -65,6 +65,7 @@ sha2.workspace = true
 signature.workspace = true
 tokio.workspace = true
 typenum = "1.15.0"
+url.workspace = true
 whoami = "1.4.0"
 winapi.workspace = true
 # https://github.com/dalek-cryptography/x25519-dalek/pull/89

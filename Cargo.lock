@@ -1328,6 +1328,7 @@ dependencies = [
  "signature 1.6.4",
  "tokio",
  "typenum",
+ "url",
  "whoami",
  "winapi",
  "x25519-dalek",
