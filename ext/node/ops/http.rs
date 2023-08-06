@@ -10,12 +10,12 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_fetch::get_or_create_client_from_state;
+use deno_fetch::FetchBodyStream;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
-use deno_fetch::MpscByteStream;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -64,12 +64,12 @@ where
 
   let request_body_rid = if has_body {
     // If no body is passed, we return a writer for streaming the body.
-    let (stream, tx) = MpscByteStream::new();
+    let (tx, stream) = tokio::sync::mpsc::channel(1);
 
-    request = request.body(Body::wrap_stream(stream));
+    request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
     let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
-      body: AsyncRefCell::new(tx),
+      body: AsyncRefCell::new(Some(tx)),
       cancel: CancelHandle::default(),
     });
 

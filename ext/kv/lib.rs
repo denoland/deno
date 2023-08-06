@@ -8,7 +8,6 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
-use std::vec;
 
 use codec::decode_key;
 use codec::encode_key;

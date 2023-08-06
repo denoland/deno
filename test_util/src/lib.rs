@@ -808,6 +808,11 @@ async fn main_server(
       *res.status_mut() = StatusCode::FOUND;
       Ok(res)
     }
+    (_, "/server_error") => {
+      let mut res = Response::new(Body::empty());
+      *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+      Ok(res)
+    }
     (_, "/x_deno_warning.js") => {
       let mut res = Response::new(Body::empty());
       *res.status_mut() = StatusCode::MOVED_PERMANENTLY;

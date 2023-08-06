@@ -364,6 +364,16 @@ class Process extends EventEmitter {
     return arch;
   }
 
+  get title() {
+    return "deno";
+  }
+
+  set title(_value) {
+    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
+    // process name will be properly set and visible from other tools anyway.
+    // Might revisit in the future.
+  }
+
   /**
    * https://nodejs.org/api/process.html#process_process_argv
    * Read permissions are required in order to get the executable route

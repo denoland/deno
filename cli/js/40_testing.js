@@ -5,6 +5,7 @@ const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -151,7 +152,6 @@ function assertOps(fn) {
       // Defer until next event loop turn - that way timeouts and intervals
       // cleared can actually be removed from resource table, otherwise
       // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
       await opSanitizerDelay();
     }
     const post = core.metrics();
@@ -677,11 +677,21 @@ function test(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
-  testDesc.location = {
-    fileName: jsError.frames[1].fileName,
-    lineNumber: jsError.frames[1].lineNumber,
-    columnNumber: jsError.frames[1].columnNumber,
-  };
+  let location;
+
+  for (let i = 0; i < jsError.frames.length; i++) {
+    const filename = jsError.frames[i].fileName;
+    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
+      continue;
+    }
+    location = {
+      fileName: jsError.frames[i].fileName,
+      lineNumber: jsError.frames[i].lineNumber,
+      columnNumber: jsError.frames[i].columnNumber,
+    };
+    break;
+  }
+  testDesc.location = location;
   testDesc.fn = wrapTest(testDesc);
 
   const { id, origin } = ops.op_register_test(testDesc);

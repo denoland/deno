@@ -4,6 +4,7 @@ use crate::args::CliOptions;
 use crate::args::FilesConfig;
 use crate::args::Flags;
 use crate::args::TestFlags;
+use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
@@ -80,8 +81,12 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::mpsc::WeakUnboundedSender;
 
+pub mod fmt;
 mod reporters;
+
+pub use fmt::format_test_error;
 use reporters::CompoundTestReporter;
+use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TestReporter;
@@ -355,6 +360,7 @@ struct TestSpecifiersOptions {
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
   specifier: TestSpecifierOptions,
+  reporter: TestReporterConfig,
   junit_path: Option<String>,
 }
 
@@ -388,79 +394,24 @@ impl TestSummary {
 }
 
 fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
-  let pretty = Box::new(PrettyTestReporter::new(
-    options.concurrent_jobs.get() > 1,
-    options.log_level != Some(Level::Error),
-  ));
+  let parallel = options.concurrent_jobs.get() > 1;
+  let reporter: Box<dyn TestReporter> = match &options.reporter {
+    TestReporterConfig::Dot => Box::new(DotTestReporter::new()),
+    TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
+      parallel,
+      options.log_level != Some(Level::Error),
+    )),
+    TestReporterConfig::Junit => {
+      Box::new(JunitTestReporter::new("-".to_string()))
+    }
+  };
+
   if let Some(junit_path) = &options.junit_path {
-    let junit = Box::new(JunitTestReporter::new(junit_path.clone()));
-    // If junit is writing to stdout, only enable the junit reporter
-    if junit_path == "-" {
-      junit
-    } else {
-      Box::new(CompoundTestReporter::new(vec![pretty, junit]))
-    }
-  } else {
-    pretty
-  }
-}
-
-fn abbreviate_test_error(js_error: &JsError) -> JsError {
-  let mut js_error = js_error.clone();
-  let frames = std::mem::take(&mut js_error.frames);
-
-  // check if there are any stack frames coming from user code
-  let should_filter = frames.iter().any(|f| {
-    if let Some(file_name) = &f.file_name {
-      !(file_name.starts_with("[ext:") || file_name.starts_with("ext:"))
-    } else {
-      true
-    }
-  });
-
-  if should_filter {
-    let mut frames = frames
-      .into_iter()
-      .rev()
-      .skip_while(|f| {
-        if let Some(file_name) = &f.file_name {
-          file_name.starts_with("[ext:") || file_name.starts_with("ext:")
-        } else {
-          false
-        }
-      })
-      .collect::<Vec<_>>();
-    frames.reverse();
-    js_error.frames = frames;
-  } else {
-    js_error.frames = frames;
+    let junit = Box::new(JunitTestReporter::new(junit_path.to_string()));
+    return Box::new(CompoundTestReporter::new(vec![reporter, junit]));
   }
 
-  js_error.cause = js_error
-    .cause
-    .as_ref()
-    .map(|e| Box::new(abbreviate_test_error(e)));
-  js_error.aggregated = js_error
-    .aggregated
-    .as_ref()
-    .map(|es| es.iter().map(abbreviate_test_error).collect());
-  js_error
-}
-
-// This function prettifies `JsError` and applies some changes specifically for
-// test runner purposes:
-//
-// - filter out stack frames:
-//   - if stack trace consists of mixed user and internal code, the frames
-//     below the first user code frame are filtered out
-//   - if stack trace consists only of internal code it is preserved as is
-pub fn format_test_error(js_error: &JsError) -> String {
-  let mut js_error = abbreviate_test_error(js_error);
-  js_error.exception_message = js_error
-    .exception_message
-    .trim_start_matches("Uncaught ")
-    .to_string();
-  format_js_error(&js_error)
+  reporter
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -1206,6 +1157,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      reporter: test_options.reporter,
       junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
         filter: TestFilter::from_flag(&test_options.filter),
@@ -1337,6 +1289,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            reporter: test_options.reporter,
             junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
               filter: TestFilter::from_flag(&test_options.filter),

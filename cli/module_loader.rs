@@ -782,11 +782,11 @@ impl NpmModuleLoader {
       // translate cjs to esm if it's cjs and inject node globals
       self.node_code_translator.translate_cjs_to_esm(
         specifier,
-        &code,
+        Some(code.as_str()),
         permissions,
       )?
     } else {
-      // esm code is untouched
+      // esm and json code is untouched
       code
     };
     Ok(ModuleCodeSource {
