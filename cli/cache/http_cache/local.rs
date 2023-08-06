@@ -51,11 +51,9 @@ impl LocalLspHttpCache {
   pub fn get_file_url(&self, url: &Url) -> Option<Url> {
     let sub_path = {
       let data = self.cache.manifest.data.read();
-      if let Some(data) = data.get(url) {
-        url_to_local_sub_path(url, &data.content_type_header_map()).ok()?
-      } else {
-        url_to_local_sub_path(url, &Default::default()).ok()?
-      }
+      let maybe_content_type =
+        data.get(url).and_then(|d| d.content_type_header());
+      url_to_local_sub_path(url, maybe_content_type).ok()?
     };
     let path = sub_path.as_path_from_root(&self.cache.path);
     if path.exists() {
@@ -192,14 +190,6 @@ impl LocalHttpCache {
     }
   }
 
-  fn get_cache_filepath(
-    &self,
-    url: &Url,
-    headers: &HeadersMap,
-  ) -> Result<PathBuf, AnyError> {
-    Ok(url_to_local_sub_path(url, headers)?.as_path_from_root(&self.path))
-  }
-
   /// Copies the file from the global cache to the local cache returning
   /// if the data was successfully copied to the local cache.
   fn check_copy_global_to_local(&self, url: &Url) -> Result<bool, AnyError> {
@@ -208,20 +198,22 @@ impl LocalHttpCache {
       return Ok(false);
     };
 
+    let local_path =
+      url_to_local_sub_path(url, headers_content_type(&metadata.headers))?;
+
     if !metadata.is_redirect() {
       let Some(cached_bytes) = self.global_cache.read_file_bytes(&global_key)? else {
         return Ok(false);
       };
 
-      let local_file_path = self.get_cache_filepath(url, &metadata.headers)?;
+      let local_file_path = local_path.as_path_from_root(&self.path);
       // if we're here, then this will be set
       atomic_write_file(&local_file_path, cached_bytes, CACHE_PERM)?;
     }
-    self.manifest.insert_data(
-      url_to_local_sub_path(url, &metadata.headers)?,
-      url.clone(),
-      metadata.headers,
-    );
+
+    self
+      .manifest
+      .insert_data(local_path, url.clone(), metadata.headers);
 
     Ok(true)
   }
@@ -277,13 +269,17 @@ impl HttpCache for LocalHttpCache {
     content: &[u8],
   ) -> Result<(), AnyError> {
     let is_redirect = headers.contains_key("location");
+    let sub_path = url_to_local_sub_path(url, headers_content_type(&headers))?;
+
     if !is_redirect {
-      let cache_filepath = self.get_cache_filepath(url, &headers)?;
       // Cache content
-      atomic_write_file(&cache_filepath, content, CACHE_PERM)?;
+      atomic_write_file(
+        &sub_path.as_path_from_root(&self.path),
+        content,
+        CACHE_PERM,
+      )?;
     }
 
-    let sub_path = url_to_local_sub_path(url, &headers)?;
     self.manifest.insert_data(sub_path, url.clone(), headers);
 
     Ok(())
@@ -304,9 +300,12 @@ impl HttpCache for LocalHttpCache {
           Ok(Some(Vec::new()))
         } else {
           // if it's not a redirect, then it should have a file path
-          let cache_filepath =
-            self.get_cache_filepath(key.url, &data.headers)?;
-          Ok(read_file_bytes(&cache_filepath)?)
+          let cache_file_path = url_to_local_sub_path(
+            key.url,
+            headers_content_type(&data.headers),
+          )?
+          .as_path_from_root(&self.path);
+          Ok(read_file_bytes(&cache_file_path)?)
         }
       }
       None => Ok(None),
@@ -347,9 +346,13 @@ impl LocalCacheSubPath {
   }
 }
 
+fn headers_content_type(headers: &HeadersMap) -> Option<&str> {
+  headers.get("content-type").map(|s| s.as_str())
+}
+
 fn url_to_local_sub_path(
   url: &Url,
-  headers: &HeadersMap,
+  content_type: Option<&str>,
 ) -> Result<LocalCacheSubPath, UrlToFilenameConversionError> {
   // https://stackoverflow.com/a/31976060/188246
   static FORBIDDEN_CHARS: Lazy<HashSet<char>> = Lazy::new(|| {
@@ -391,8 +394,9 @@ fn url_to_local_sub_path(
       || path.ends_with(".wasm")
   }
 
-  fn get_extension(url: &Url, headers: &HeadersMap) -> &'static str {
-    MediaType::from_specifier_and_headers(url, Some(headers)).as_ts_extension()
+  fn get_extension(url: &Url, content_type: Option<&str>) -> &'static str {
+    MediaType::from_specifier_and_content_type(url, content_type)
+      .as_ts_extension()
   }
 
   fn short_hash(data: &str, last_ext: Option<&str>) -> String {
@@ -483,7 +487,7 @@ fn url_to_local_sub_path(
     .map(|(i, part)| {
       let is_last = i == parts_len - 1;
       let last_ext = if is_last {
-        Some(get_extension(url, headers))
+        Some(get_extension(url, content_type))
       } else {
         None
       };
@@ -627,7 +631,8 @@ impl LocalCacheManifest {
         let sub_path = if headers.contains_key("location") {
           Cow::Borrowed(&self.file_path)
         } else {
-          let sub_path = url_to_local_sub_path(url, &headers).ok()?;
+          let sub_path =
+            url_to_local_sub_path(url, headers_content_type(&headers)).ok()?;
           let folder_path = self.file_path.parent().unwrap();
           Cow::Owned(sub_path.as_path_from_root(folder_path))
         };
@@ -644,7 +649,7 @@ impl LocalCacheManifest {
       }
       None => {
         let folder_path = self.file_path.parent().unwrap();
-        let sub_path = url_to_local_sub_path(url, &Default::default()).ok()?;
+        let sub_path = url_to_local_sub_path(url, None).ok()?;
         if sub_path
           .parts
           .last()
@@ -696,14 +701,8 @@ mod manifest {
   }
 
   impl SerializedLocalCacheManifestDataModule {
-    pub fn content_type_header_map(&self) -> HashMap<String, String> {
-      // todo(dsherret): remove this once https://github.com/denoland/deno_media_type/pull/1 is released
-      match self.headers.get("content-type") {
-        Some(content_type) => {
-          HashMap::from([("content-type".to_string(), content_type.clone())])
-        }
-        None => HashMap::new(),
-      }
+    pub fn content_type_header(&self) -> Option<&str> {
+      self.headers.get("content-type").map(|s| s.as_str())
     }
   }
 
@@ -748,7 +747,7 @@ mod manifest {
               if module.headers.contains_key("location") {
                 return None;
               }
-              url_to_local_sub_path(url, &module.content_type_header_map())
+              url_to_local_sub_path(url, module.content_type_header())
                 .ok()
                 .map(|local_path| {
                   let path = if cfg!(windows) {
@@ -960,7 +959,8 @@ mod test {
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
-      let result = url_to_local_sub_path(&url, &headers).unwrap();
+      let result =
+        url_to_local_sub_path(&url, headers_content_type(&headers)).unwrap();
       let parts = result.parts.join("/");
       assert_eq!(parts, expected);
       assert_eq!(
