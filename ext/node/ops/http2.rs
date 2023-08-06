@@ -134,9 +134,42 @@ pub async fn op_node_http2_client_request(
     state.resource_table.get::<NodeHttp2Client>(client_rid)?
   };
 
-  let mut req = http::Request::builder().uri(resource.url.as_str());
+  let url = resource.url.clone();
+
+  let mut seen_pseudo_path = false;
+  let mut seen_pseudo_method = false;
+  let mut pseudo_method = "GET".to_string();
+  let mut pseudo_path = "/".to_string();
+
+  // TODO: handle all pseudo-headers (:authority, :scheme)
+  // TODO: remove clone
+  for (name, value) in headers.clone() {
+    if name == ":path".into() {
+      seen_pseudo_path = true;
+      pseudo_path = String::from_utf8(value.to_vec())?;
+      continue;
+    }
+
+    if name == ":method".into() {
+      seen_pseudo_method = true;
+      pseudo_method = String::from_utf8(value.to_vec())?;
+      continue;
+    }
+
+    if seen_pseudo_method && seen_pseudo_path {
+      break;
+    }
+  }
+  let url = url.join(&pseudo_path)?;
+
+  let mut req = http::Request::builder()
+    .uri(url.as_str())
+    .method(pseudo_method.as_str());
 
   for (name, value) in headers {
+    if name == ":path".into() || name == ":method".into() {
+      continue;
+    }
     req.headers_mut().unwrap().append(
       HeaderName::from_lowercase(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
