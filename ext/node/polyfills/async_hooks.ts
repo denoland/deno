@@ -22,8 +22,9 @@ function pushAsyncFrame(frame: AsyncContextFrame) {
 }
 
 function popAsyncFrame() {
-  assert(asyncContextStack.length > 0);
-  asyncContextStack.pop();
+  if (asyncContextStack.length > 0) {
+    asyncContextStack.pop();
+  }
 }
 
 let rootAsyncFrame: AsyncContextFrame | undefined = undefined;
@@ -47,6 +48,7 @@ function setPromiseHooks() {
     }
   };
   const before = (promise: Promise<unknown>) => {
+    console.log("promiseHook before");
     const maybeFrame = promise[asyncContext];
     if (maybeFrame) {
       pushAsyncFrame(maybeFrame);
@@ -55,6 +57,7 @@ function setPromiseHooks() {
     }
   };
   const after = (promise: Promise<unknown>) => {
+    console.log("promiseHook after", promise);
     popAsyncFrame();
     if (!ops.op_node_is_promise_rejected(promise)) {
       // @ts-ignore promise async context
