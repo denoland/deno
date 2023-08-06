@@ -4564,20 +4564,20 @@ console.log(returnsHi());"#,
     .run()
     .skip_output_check();
   assert_eq!(
-    deno_modules_dir.join("manifest.json").read_json_value(),
+    vendor_dir.join("manifest.json").read_json_value(),
     json!({
       "folders": {
         "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
       }
     })
   );
-  deno_modules_dir
+  vendor_dir
     .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
     .write("console.log('hello there');");
   test_context
     .new_command()
     // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
-    .args("run --deno-modules-dir http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
     .run()
     .assert_matches_text("hello there\n");
 }
