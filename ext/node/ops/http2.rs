@@ -194,6 +194,32 @@ pub async fn op_node_http2_client_request(
   Ok(stream_rid)
 }
 
+#[op]
+pub async fn op_node_http2_client_send_trailers(
+  state: Rc<RefCell<OpState>>,
+  stream_rid: ResourceId,
+  trailers: Vec<(ByteString, ByteString)>,
+) -> Result<(), AnyError> {
+  let resource = {
+    let state = state.borrow();
+    state
+      .resource_table
+      .get::<NodeHttp2ClientStream>(stream_rid)?
+  };
+  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
+
+  let mut trailers_map = http::HeaderMap::new();
+  for (name, value) in trailers {
+    trailers_map.insert(
+      HeaderName::from_bytes(&name).unwrap(),
+      HeaderValue::from_bytes(&value).unwrap(),
+    );
+  }
+
+  stream.send_trailers(trailers_map)?;
+  Ok(())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeHttp2ClientResponse {
