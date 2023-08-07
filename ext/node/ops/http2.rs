@@ -208,6 +208,7 @@ pub async fn op_http2_client_send_trailers(
 pub struct Http2ClientResponse {
   headers: Vec<(ByteString, ByteString)>,
   body_rid: ResourceId,
+  status_code: u16,
 }
 
 #[op]
@@ -225,6 +226,7 @@ pub async fn op_http2_client_get_response(
   let response = (&mut *response_future).await?;
 
   let (parts, body) = response.into_parts();
+  let status = parts.status;
   let mut res_headers = Vec::new();
   for (key, val) in parts.headers.iter() {
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
@@ -240,6 +242,7 @@ pub async fn op_http2_client_get_response(
   Ok(Http2ClientResponse {
     headers: res_headers,
     body_rid,
+    status_code: status.into(),
   })
 }
 

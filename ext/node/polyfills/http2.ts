@@ -4,6 +4,7 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+const core = globalThis.Deno.core;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
@@ -24,6 +25,8 @@ type Http2Headers = Record<string, string | string[]>;
 export class Http2Session extends EventEmitter {
   constructor() {
     super();
+    this._connecting = false;
+    this._closed = false;
   }
 
   get alpnProtocol(): string | undefined {
@@ -32,16 +35,18 @@ export class Http2Session extends EventEmitter {
   }
 
   close(_callback?: () => void) {
-    warnNotImplemented("Http2Session.close");
+    // warnNotImplemented("Http2Session.close");
+    this._closed = true;
+    core.tryClose(this._connRid);
+    core.tryClose(this._clientRid);
   }
 
   get closed(): boolean {
-    return false;
+    return this._closed;
   }
 
   get connecting(): boolean {
-    notImplemented("Http2Session.connecting");
-    return false;
+    return this._connecting;
   }
 
   destroy(_error?: Error, _code?: number) {
@@ -146,68 +151,82 @@ export class ServerHttp2Session extends Http2Session {
 
 export class ClientHttp2Session extends Http2Session {
   constructor(
-    _authority: string | URL,
-    _options: Record<string, unknown>,
-    callback: (session: Http2Session) => void,
+    authority: string | URL,
+    options: Record<string, unknown>,
   ) {
     super();
-    if (callback) {
-      this.on("connect", callback);
-    }
-    nextTick(() => this.emit("connect", this));
+    this._connectPromise = (async () => {
+      this._connecting = true;
+      // console.log("before connect");
+      const [clientRid, connRid] = await core.opAsync(
+        "op_http2_connect",
+        authority,
+      );
+      // console.log("after connect");
+      this._connecting = false;
+      this._clientRid = clientRid;
+      this._connRid = connRid;
+      // TODO(bartlomieju): save so it can be unrefed
+      (async () => {
+        try {
+          await core.opAsync("op_http2_poll_client_connection", this._connRid);
+        } catch (e) {
+          console.error("Error in op_http2_poll_client_connection", e);
+          this.emit("error", e);
+        }
+      })();
+      this.emit("connect", this, {});
+    })();
   }
 
   request(
     headers: Http2Headers,
-    _options?: Record<string, unknown>,
+    options?: Record<string, unknown>,
   ): ClientHttp2Stream {
     const reqHeaders: string[][] = [];
-    const controllerPromise: Deferred<
-      ReadableStreamDefaultController<Uint8Array>
-    > = deferred();
-    const body = new ReadableStream({
-      start(controller) {
-        controllerPromise.resolve(controller);
-      },
-    });
-    const request: RequestInit = { headers: reqHeaders, body };
-    let authority = null;
-    let path = null;
+    let waitForTrailers = false;
+
+    if (options) {
+      if (options.waitForTrailers) {
+        waitForTrailers = true;
+      }
+
+      if (options.signal) {
+        notImplemented("http2.ClientHttp2Session.request.options.signal");
+      }
+    }
+
+    const pseudoHeaders = {};
+
     for (const [name, value] of Object.entries(headers)) {
       if (name == constants.HTTP2_HEADER_PATH) {
-        path = String(value);
+        pseudoHeaders[constants.HTTP2_HEADER_PATH] = String(value);
       } else if (name == constants.HTTP2_HEADER_METHOD) {
-        request.method = String(value);
+        pseudoHeaders[constants.HTTP2_HEADER_METHOD] = String(value);
       } else if (name == constants.HTTP2_HEADER_AUTHORITY) {
-        authority = String(value);
+        pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY] = String(value);
       } else {
         reqHeaders.push([name, String(value)]);
       }
     }
 
-    const client = createHttpClient({ http1: false, http2: true });
-    request.client = client;
-    console.log("request", request);
-    const fetchPromise = fetch(`http://${authority}${path}`, request);
-    const readerPromise = deferred();
-    const headersPromise = deferred();
-    (async () => {
-      const fetch = await fetchPromise;
-      readerPromise.resolve(fetch.body);
-
-      const headers: Http2Headers = {};
-      for (const [key, value] of fetch.headers) {
-        headers[key] = value;
-      }
-      headers[constants.HTTP2_HEADER_STATUS] = String(fetch.status);
-
-      headersPromise.resolve(headers);
+    const requestPromise = (async () => {
+      // console.log("waiting for connect promise");
+      await this._connectPromise;
+      // console.log("waited for connect promise");
+      return await core.opAsync(
+        "op_http2_client_request",
+        this._clientRid,
+        pseudoHeaders,
+        reqHeaders,
+        waitForTrailers,
+      );
     })();
+
     return new ClientHttp2Stream(
       this,
-      headersPromise,
-      controllerPromise,
-      readerPromise,
+      requestPromise,
+      waitForTrailers,
     );
   }
 }
@@ -357,14 +376,212 @@ export class Http2Stream extends EventEmitter {
   }
 }
 
-export class ClientHttp2Stream extends Http2Stream {
+export class ClientHttp2Stream extends EventEmitter {
+  #session: Http2Session;
+  #requestPromise: Promise<number>;
+  #closed: boolean;
+  #rid: number;
+  #bodyRid = 0;
+  _response: Response;
+  #sentTrailers = Object.create(null);
+  #waitForTrailers = false;
+  #encoding = "utf8";
+
   constructor(
     session: Http2Session,
-    headers: Promise<Http2Headers>,
-    controllerPromise: Deferred<ReadableStreamDefaultController<Uint8Array>>,
-    readerPromise: Deferred<ReadableStream<Uint8Array>>,
+    requestPromise: Promise<number>,
+    waitForTrailers: boolean,
   ) {
-    super(session, headers, controllerPromise, readerPromise);
+    super();
+    this.#session = session;
+    this.#rid = 0;
+    this.#closed = false;
+    this.#waitForTrailers = waitForTrailers;
+    // console.log("created clienthttp2stream");
+    nextTick(() => {
+      (async () => {
+        // console.log("before request promise");
+        this.#rid = await requestPromise;
+        // console.log("after request promise");
+        const response = await core.opAsync(
+          "op_http2_client_get_response",
+          this.#rid,
+        );
+        // console.log("after get response", response);
+        this.#bodyRid = response.bodyRid;
+        const headers = {
+          ":status": response.statusCode,
+          ...Object.fromEntries(response.headers),
+        };
+        this.emit("response", headers, 0);
+
+        let hasTrailersToRead = false;
+        while (true) {
+          const [chunk, finished] = await core.opAsync(
+            "op_http2_client_get_response_body_chunk",
+            response.bodyRid,
+          );
+          // console.log("chunk", chunk, finished);
+          if (chunk === null && !finished) {
+            hasTrailersToRead = true;
+            break;
+          }
+
+          if (this.#encoding === "utf8") {
+            this.emit("data", new TextDecoder().decode(new Uint8Array(chunk)));
+          } else {
+            this.emit("data", new Uint8Array(chunk));
+          }
+          // console.log(
+          //   "finished",
+          //   finished,
+          //   new TextDecoder().decode(new Uint8Array(chunk)),
+          // );
+          if (finished) {
+            // core.close(response.bodyRid);
+            // core.close(clientRid);
+            // core.tryClose(connRid);
+            break;
+          }
+        }
+
+        if (hasTrailersToRead) {
+          // console.log("before trailers to read");
+          const trailerList = await core.opAsync(
+            "op_http2_client_get_response_trailers",
+            response.bodyRid,
+          );
+          // console.log("after trailers to read");
+          // console.log("trailers", trailerList);
+          const trailers = Object.fromEntries(trailerList);
+          // core.close(response.bodyRid);
+          // core.close(clientRid);
+          // core.tryClose(connRid);
+          this.emit("trailers", trailers);
+        } else {
+          this.#closed = true;
+          // console.log(this.#bodyRid, this.#rid);
+          core.tryClose(this.#bodyRid);
+          core.tryClose(this.#rid);
+          this.emit("end");
+        }
+      })();
+    });
+  }
+
+  // TODO(mmastrac): Implement duplex
+  end() {
+    // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
+    // core.tryClose(this.#bodyRid);
+    // core.tryClose(this.#rid);
+    // core.tryClose(this.#session._connRid);
+  }
+
+  write(buffer, callback?: () => void) {
+    notImplemented("ClientHttp2Stream.end");
+  }
+
+  setEncoding(_encoding) {}
+
+  resume() {
+    notImplemented("ClientHttp2Stream.end");
+  }
+
+  pause() {
+    notImplemented("ClientHttp2Stream.end");
+  }
+
+  get aborted(): boolean {
+    notImplemented("Http2Stream.aborted");
+    return false;
+  }
+
+  get bufferSize(): number {
+    notImplemented("Http2Stream.bufferSize");
+    return 0;
+  }
+
+  close(_code: number, _callback: () => void) {
+    // notImplemented("ClientHttp2Stream.end");
+    this.#closed = true;
+    this.emit("close");
+  }
+
+  get closed(): boolean {
+    return this.#closed;
+  }
+
+  get destroyed(): boolean {
+    return false;
+  }
+
+  get endAfterHeaders(): boolean {
+    notImplemented("Http2Stream.endAfterHeaders");
+    return false;
+  }
+
+  get id(): number | undefined {
+    notImplemented("Http2Stream.id");
+    return undefined;
+  }
+
+  get pending(): boolean {
+    notImplemented("Http2Stream.pending");
+    return false;
+  }
+
+  priority(_options: Record<string, unknown>) {
+    notImplemented("Http2Stream.priority");
+  }
+
+  get rstCode(): number {
+    // notImplemented("Http2Stream.rstCode");
+    return 0;
+  }
+
+  get sentHeaders(): boolean {
+    notImplemented("Http2Stream.sentHeaders");
+    return false;
+  }
+
+  get sentInfoHeaders(): Record<string, unknown> {
+    notImplemented("Http2Stream.sentInfoHeaders");
+    return {};
+  }
+
+  get sentTrailers(): Record<string, unknown> {
+    return this.#sentTrailers;
+  }
+
+  get session(): Http2Session {
+    return this.#session;
+  }
+
+  setTimeout(msecs: number, callback?: () => void) {
+    // setStreamTimeout(this, msecs, callback);
+    notImplemented("ClientHttp2Stream.setTimeout");
+  }
+
+  get state(): Record<string, unknown> {
+    notImplemented("Http2Stream.state");
+    return {};
+  }
+
+  sendTrailers(trailers: Record<string, unknown>) {
+    // TODO: handle __proto__ null
+    this.#sentTrailers = { ...trailers, __proto__: null };
+    const trailerList = [];
+    for (const [key, value] of Object.entries(trailers)) {
+      trailerList.push([key, value]);
+    }
+
+    (async () => {
+      await core.opAsync(
+        "op_http2_client_send_trailers",
+        this.#rid,
+        trailerList,
+      );
+    })();
   }
 }
 
@@ -608,7 +825,27 @@ export function connect(
   options: Record<string, unknown>,
   callback: (session: ClientHttp2Session) => void,
 ): ClientHttp2Session {
-  return new ClientHttp2Session(authority, options, callback);
+  console.log("http2.connect", options, callback);
+
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+
+  options = { ...options };
+
+  // TODO: handle defaults
+  if (typeof options.createConnection === "function") {
+    console.error("Not implemented: http2.connect.options.createConnection");
+    notImplemented("http2.connect.options.createConnection");
+  }
+
+  const session = new ClientHttp2Session(authority, options);
+
+  if (typeof callback === "function") {
+    session.once("connect", callback);
+  }
+  return session;
 }
 
 export const constants = {
