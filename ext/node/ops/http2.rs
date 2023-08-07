@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use bytes::Bytes;
@@ -81,8 +82,9 @@ pub async fn op_http2_connect<P>(
 where
   P: crate::NodePermissions + 'static,
 {
-  // TODO(bartlomieju): handle urls
+  // TODO(bartlomieju): permission checks
   let url = Url::parse(&url)?;
+  // TODO(bartlomieju): handle urls gracefully
   let ip = format!("{}:{}", url.host_str().unwrap(), url.port().unwrap());
   let tcp = TcpStream::connect(ip).await?;
   let (client, conn) = h2::client::handshake(tcp).await?;
@@ -124,6 +126,9 @@ pub async fn op_http2_poll_client_connection(
 pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
   client_rid: ResourceId,
+  // TODO(bartlomieju): maybe use a vector with fixed layout to save sending
+  // 4 strings of keys?
+  mut pseudo_headers: HashMap<String, String>,
   headers: Vec<(ByteString, ByteString)>,
   end_of_stream: bool,
 ) -> Result<ResourceId, AnyError> {
@@ -134,31 +139,18 @@ pub async fn op_http2_client_request(
 
   let url = resource.url.clone();
 
-  let mut seen_pseudo_path = false;
-  let mut seen_pseudo_method = false;
-  let mut pseudo_method = "GET".to_string();
-  let mut pseudo_path = "/".to_string();
+  let pseudo_path = pseudo_headers.remove(":path").unwrap_or("/".to_string());
+  let pseudo_method = pseudo_headers
+    .remove(":method")
+    .unwrap_or("GET".to_string());
+  // TODO(bartlomieju): handle all pseudo-headers (:authority, :scheme)
+  let _pseudo_authority = pseudo_headers
+    .remove(":authority")
+    .unwrap_or("/".to_string());
+  let _pseudo_scheme = pseudo_headers
+    .remove(":scheme")
+    .unwrap_or("http".to_string());
 
-  // TODO: pseudo-headers should be passed as a separate argument
-  // TODO: handle all pseudo-headers (:authority, :scheme)
-  // TODO: remove clone
-  for (name, value) in headers.clone() {
-    if name == ":path".into() {
-      seen_pseudo_path = true;
-      pseudo_path = String::from_utf8(value.to_vec())?;
-      continue;
-    }
-
-    if name == ":method".into() {
-      seen_pseudo_method = true;
-      pseudo_method = String::from_utf8(value.to_vec())?;
-      continue;
-    }
-
-    if seen_pseudo_method && seen_pseudo_path {
-      break;
-    }
-  }
   let url = url.join(&pseudo_path)?;
 
   let mut req = http::Request::builder()
@@ -166,9 +158,6 @@ pub async fn op_http2_client_request(
     .method(pseudo_method.as_str());
 
   for (name, value) in headers {
-    if name == ":path".into() || name == ":method".into() {
-      continue;
-    }
     req.headers_mut().unwrap().append(
       HeaderName::from_lowercase(&name).unwrap(),
       HeaderValue::from_bytes(&value).unwrap(),
@@ -273,14 +262,7 @@ pub async fn op_http2_client_get_response_body_chunk(
     None => None,
   };
 
-  // TODO(bartlomieju): maybe this should be done from JS?
-  let mut finished = false;
-  if body.is_end_stream() {
-    let _ = state.borrow_mut().resource_table.close(body_rid);
-    finished = true;
-  }
-
-  Ok((maybe_data, finished))
+  Ok((maybe_data, body.is_end_stream()))
 }
 
 #[op]
