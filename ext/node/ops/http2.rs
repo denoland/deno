@@ -292,3 +292,31 @@ pub async fn op_node_http2_client_request_get_response_body_chunk(
 
   Ok((maybe_data, finished))
 }
+
+#[op]
+pub async fn op_node_http2_client_request_get_response_trailers(
+  state: Rc<RefCell<OpState>>,
+  body_rid: ResourceId,
+) -> Result<Option<Vec<(ByteString, ByteString)>>, AnyError> {
+  let resource = {
+    let state = state.borrow();
+    state
+      .resource_table
+      .get::<NodeHttp2ClientResponseBody>(body_rid)?
+  };
+  let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
+  let maybe_trailers = body.trailers().await?;
+  let trailers = if let Some(trailers) = maybe_trailers {
+    let mut v = Vec::with_capacity(trailers.len());
+    for (key, value) in trailers.iter() {
+      v.push((
+        ByteString::from(key.as_str()),
+        ByteString::from(value.as_bytes()),
+      ));
+    }
+    Some(v)
+  } else {
+    None
+  };
+  Ok(trailers)
+}
