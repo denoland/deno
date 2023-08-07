@@ -450,7 +450,7 @@ impl CliMainWorkerFactory {
         inspect: shared.options.is_inspecting,
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
@@ -638,7 +638,7 @@ fn create_web_worker_callback(
         inspect: shared.options.is_inspecting,
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -688,7 +688,7 @@ mod tests {
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()
     };
 

@@ -580,6 +580,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -968,9 +977,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.199.0"
+version = "0.200.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70fbd0cb620ac36fac08d708c5f01362280c5aa8149657a225db4932bd73758e"
+checksum = "a8ba264b90ceb6e95b39d82e674d8ecae86ca012f900338ea50d1a077d9d75fd"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1231,9 +1240,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63772a60d740a41d97fbffb4788fc3779e6df47289e01892c12be38f4a5beded"
+checksum = "001d69b833ed4d244b608bab9c07069bfb570f631b763b58e73f82a020bf84ef"
 dependencies = [
  "data-url",
  "serde",
@@ -1340,9 +1349,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.77.0"
+version = "0.78.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b345c096fd8433337ed8e1727f4732397c134e188e1739c88b0c077869020f3"
+checksum = "ffd1c83b1fd465ee0156f2917c9af9ca09fe2bf54052a2cae1a8dcbc7b89aefc"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -2070,6 +2079,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b9429470923de8e8cbd4d2dc513535400b4b3fef0319fb5c4e1f520a7bef743"
 dependencies = [
  "crc32fast",
+ "libz-ng-sys",
  "miniz_oxide",
 ]
 
@@ -2956,6 +2966,16 @@ dependencies = [
  "cc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "libz-ng-sys"
+version = "1.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3dd9f43e75536a46ee0f92b758f6b63846e594e86638c61a9251338a65baea63"
+dependencies = [
+ "cmake",
+ "libc",
 ]
 
 [[package]]
@@ -4432,9 +4452,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.110.0"
+version = "0.111.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3bafaee0eecbef6c47ad3e7e0a764e22eb35a229ff7d06b7801fcbeaa5364b8"
+checksum = "309b3060a9627882514f3a3ce3cc08ceb347a76aeeadc58f138c3f189cf88b71"
 dependencies = [
  "bytes",
  "derive_more",
