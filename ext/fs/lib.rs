@@ -19,12 +19,12 @@ use crate::ops::*;
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use std::cell::RefCell;
-use std::convert::From;
 use std::path::Path;
 use std::rc::Rc;
 
 pub trait FsPermissions {
-  fn check_read(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_read(&mut self, path: &Path, api_name: &str)
+    -> Result<(), AnyError>;
   fn check_read_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_read_blind(
     &mut self,
@@ -32,7 +32,16 @@ pub trait FsPermissions {
     display: &str,
     api_name: &str,
   ) -> Result<(), AnyError>;
-  fn check_write(&mut self, p: &Path, api_name: &str) -> Result<(), AnyError>;
+  fn check_write(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+  fn check_write_partial(
+    &mut self,
+    path: &Path,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
   fn check_write_all(&mut self, api_name: &str) -> Result<(), AnyError>;
   fn check_write_blind(
     &mut self,

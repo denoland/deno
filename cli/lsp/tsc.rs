@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::CodeActionData;
+use super::analysis::TsResponseImportMapper;
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
@@ -21,6 +22,9 @@ use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
 use crate::args::TsConfig;
+use crate::cache::HttpCache;
+use crate::lsp::cache::CacheMetadata;
+use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -95,10 +99,10 @@ type Request = (
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>) -> Self {
+  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance);
+      let mut ts_runtime = js_runtime(performance, cache);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -2326,6 +2330,7 @@ fn parse_code_actions(
             update_import_statement(
               tc.as_text_edit(asset_or_doc.line_index()),
               data,
+              Some(&language_server.get_ts_response_import_mapper()),
             )
           }));
         } else {
@@ -2521,6 +2526,7 @@ struct CompletionEntryDataImport {
 fn update_import_statement(
   mut text_edit: lsp::TextEdit,
   item_data: &CompletionItemData,
+  maybe_import_mapper: Option<&TsResponseImportMapper>,
 ) -> lsp::TextEdit {
   if let Some(data) = &item_data.data {
     if let Ok(import_data) =
@@ -2528,8 +2534,13 @@ fn update_import_statement(
     {
       if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
       {
-        if let Some(new_module_specifier) =
-          relative_specifier(&item_data.specifier, &import_specifier)
+        if let Some(new_module_specifier) = maybe_import_mapper
+          .and_then(|m| {
+            m.check_specifier(&import_specifier, &item_data.specifier)
+          })
+          .or_else(|| {
+            relative_specifier(&item_data.specifier, &import_specifier)
+          })
         {
           text_edit.new_text = text_edit
             .new_text
@@ -3203,9 +3214,13 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
         .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
     );
     for specifier in specifiers {
-      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
-        // only include dependencies we know to exist otherwise typescript will error
-        result.push(specifier.to_string());
+      if seen.insert(specifier.as_str()) {
+        if let Some(specifier) = documents.resolve_redirected(specifier) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(&specifier) {
+            result.push(specifier.to_string());
+          }
+        }
       }
     }
   }
@@ -3234,9 +3249,12 @@ fn op_script_version(
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+fn js_runtime(
+  performance: Arc<Performance>,
+  cache: Arc<dyn HttpCache>,
+) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance)],
+    extensions: vec![deno_tsc::init_ops(performance, cache)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -3253,11 +3271,19 @@ deno_core::extension!(deno_tsc,
     op_script_version,
   ],
   options = {
-    performance: Arc<Performance>
+    performance: Arc<Performance>,
+    cache: Arc<dyn HttpCache>,
   },
   state = |state, options| {
     state.put(State::new(
-      Arc::new(StateSnapshot::default()),
+      Arc::new(StateSnapshot {
+        assets: Default::default(),
+        cache_metadata: CacheMetadata::new(options.cache.clone()),
+        documents: Documents::new(options.cache.clone()),
+        maybe_import_map: None,
+        maybe_node_resolver: None,
+        maybe_npm_resolver: None,
+      }),
       options.performance,
     ));
   },
@@ -3887,8 +3913,10 @@ fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::http_util::HeadersMap;
+  use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -3903,7 +3931,8 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location.to_path_buf());
+    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
+    let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3916,7 +3945,11 @@ mod tests {
     }
     StateSnapshot {
       documents,
-      ..Default::default()
+      assets: Default::default(),
+      cache_metadata: CacheMetadata::new(cache),
+      maybe_import_map: None,
+      maybe_node_resolver: None,
+      maybe_npm_resolver: None,
     }
   }
 
@@ -3927,8 +3960,9 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
+    let cache = Arc::new(GlobalHttpCache::new(location.clone()));
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime(Default::default());
+    let mut runtime = js_runtime(Default::default(), cache);
     start(&mut runtime, debug).unwrap();
     let ts_config = TsConfig::new(config);
     assert_eq!(
@@ -4406,7 +4440,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(location);
+    let cache = Arc::new(GlobalHttpCache::new(location));
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
@@ -4716,6 +4750,7 @@ mod tests {
           new_text: orig_text.to_string(),
         },
         &item_data,
+        None,
       );
       assert_eq!(
         actual,

@@ -198,12 +198,17 @@ fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext)
     .ignore_git_folder()
     .ignore_node_modules()
+    .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
     .collect_files(&files.include)
 }
 
-pub fn print_rules_list(json: bool) {
-  let lint_rules = rules::get_recommended_rules();
+pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
+  let lint_rules = get_configured_rules(LintRulesConfig {
+    exclude: None,
+    include: None,
+    tags: maybe_rules_tags,
+  });
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules

@@ -8,7 +8,10 @@
 import { TextDecoder, TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import { encodings } from "ext:deno_node/internal_binding/string_decoder.ts";
-import { indexOfBuffer, indexOfNumber } from "ext:deno_node/internal_binding/buffer.ts";
+import {
+  indexOfBuffer,
+  indexOfNumber,
+} from "ext:deno_node/internal_binding/buffer.ts";
 import {
   asciiToBytes,
   base64ToBytes,
@@ -18,15 +21,21 @@ import {
   hexToBytes,
   utf16leToBytes,
 } from "ext:deno_node/internal_binding/_utils.ts";
-import { isAnyArrayBuffer, isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 import { normalizeEncoding } from "ext:deno_node/internal/util.mjs";
 import { validateBuffer } from "ext:deno_node/internal/validators.mjs";
 import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
-import { forgivingBase64Encode, forgivingBase64UrlEncode } from "ext:deno_web/00_infra.js";
+import {
+  forgivingBase64Encode,
+  forgivingBase64UrlEncode,
+} from "ext:deno_web/00_infra.js";
 import { atob, btoa } from "ext:deno_web/05_base64.js";
 import { Blob } from "ext:deno_web/09_file.js";
 
-export { atob, btoa, Blob };
+export { atob, Blob, btoa };
 
 const utf8Encoder = new TextEncoder();
 

@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 41;
+const cacheVersion = 48;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -27,19 +27,21 @@ const Runners = (() => {
 const prCacheKeyPrefix =
   `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
+// Note that you may need to add more version to the `apt-get remove` line below if you change this
+const llvmVersion = 16;
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15 clang-tools-15 clang-format-15 clang-tidy-15";
+  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
 # Remove older clang before we install
-sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'lld-12*' 'lld-13*' 'lld-14*'
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
-# Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+# Install clang-XXX, lld-XXX, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
@@ -78,8 +80,8 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -90,8 +92,8 @@ RUSTFLAGS<<__1
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -99,7 +101,7 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-15
+CC=clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
@@ -367,6 +369,14 @@ const ci = {
             os: Runners.ubuntu,
             job: "lint",
             profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "lint",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "lint",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -392,7 +402,7 @@ const ci = {
         },
         {
           ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -486,9 +496,8 @@ const ci = {
             "rustc --version",
             "cargo --version",
             "which dpkg && dpkg -l",
-            // Deno is installed when linting.
-            'if [ "${{ matrix.job }}" == "lint" ]',
-            "then",
+            // Deno is installed when linting or testing.
+            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
             "  deno --version",
             "fi",
             // Node is installed for benchmarks.
@@ -541,13 +550,14 @@ const ci = {
         },
         {
           name: "test_format.js",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
-          if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')",
           env: {
             PR_TITLE: "${{ github.event.pull_request.title }}",
           },
@@ -561,7 +571,7 @@ const ci = {
         },
         {
           name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },
@@ -697,7 +707,7 @@ const ci = {
         {
           name: "Test debug (fast)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
             "!startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
           run: [
@@ -705,6 +715,17 @@ const ci = {
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
             "cargo test --locked --test '*'",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test examples debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // Only regression tests here for now.
+            // Regression test for https://github.com/denoland/deno/pull/19615.
+            "cargo run -p deno_runtime --example extension_with_esm",
+            "cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },

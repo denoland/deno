@@ -6,7 +6,7 @@
 import {
   MAX_SIZE as kMaxUint32,
 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
 

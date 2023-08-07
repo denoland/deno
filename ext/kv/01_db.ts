@@ -657,4 +657,4 @@ class KvListIterator extends AsyncIterator
   }
 }
 
-export { Kv, KvListIterator, KvU64, openKv };
+export { AtomicOperation, Kv, KvListIterator, KvU64, openKv };

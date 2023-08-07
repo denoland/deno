@@ -2789,6 +2789,7 @@ Deno.test(
 
 // https://github.com/denoland/deno/issues/15858
 Deno.test(
+  "Clone should work",
   { permissions: { net: true } },
   async function httpServerCanCloneRequest() {
     const ac = new AbortController();
@@ -2798,6 +2799,20 @@ Deno.test(
       handler: async (req) => {
         const cloned = req.clone();
         assertEquals(req.headers, cloned.headers);
+
+        assertEquals(cloned.url, req.url);
+        assertEquals(cloned.cache, req.cache);
+        assertEquals(cloned.destination, req.destination);
+        assertEquals(cloned.headers, req.headers);
+        assertEquals(cloned.integrity, req.integrity);
+        assertEquals(cloned.isHistoryNavigation, req.isHistoryNavigation);
+        assertEquals(cloned.isReloadNavigation, req.isReloadNavigation);
+        assertEquals(cloned.keepalive, req.keepalive);
+        assertEquals(cloned.method, req.method);
+        assertEquals(cloned.mode, req.mode);
+        assertEquals(cloned.redirect, req.redirect);
+        assertEquals(cloned.referrer, req.referrer);
+        assertEquals(cloned.referrerPolicy, req.referrerPolicy);
 
         // both requests can read body
         await req.text();
@@ -2825,6 +2840,111 @@ Deno.test(
     }
   },
 );
+
+// https://fetch.spec.whatwg.org/#dom-request-clone
+Deno.test(
+  "Throw if disturbed",
+  { permissions: { net: true } },
+  async function shouldThrowIfBodyIsUnusableDisturbed() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        await req.text();
+
+        try {
+          req.clone();
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
+          assert(
+            cloneError.message.endsWith("Body is unusable."),
+          );
+
+          ac.abort();
+          await server.finished;
+        }
+
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
+    });
+
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}',
+      });
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// https://fetch.spec.whatwg.org/#dom-request-clone
+Deno.test({
+  name: "Throw if locked",
+  permissions: { net: true },
+  fn: async function shouldThrowIfBodyIsUnusableLocked() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        const _reader = req.body?.getReader();
+
+        try {
+          req.clone();
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
+          assert(
+            cloneError.message.endsWith("Body is unusable."),
+          );
+
+          ac.abort();
+          await server.finished;
+        }
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
+    });
+
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}',
+      });
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+});
 
 // Checks large streaming response
 // https://github.com/denoland/deno/issues/16567
@@ -3077,16 +3197,16 @@ Deno.test(
 
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k"]),
+      await curlRequest(["https://localhost:8000/path", "-k"]),
     );
     assertEquals(
       "hello world!",
-      await curlRequest(["https://localhost:9000/path", "-k", "--http2"]),
+      await curlRequest(["https://localhost:8000/path", "-k", "--http2"]),
     );
     assertEquals(
       "hello world!",
       await curlRequest([
-        "https://localhost:9000/path",
+        "https://localhost:8000/path",
         "-k",
         "--http2",
         "--http2-prior-knowledge",

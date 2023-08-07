@@ -81,6 +81,42 @@ itest!(cjs_this_in_exports {
   exit_code: 1,
 });
 
+itest!(cjs_invalid_name_exports {
+  args: "run --allow-read --quiet npm/cjs-invalid-name-exports/main.ts",
+  output: "npm/cjs-invalid-name-exports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(cjs_require_esm_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_error/main.ts",
+  output: "npm/cjs_require_esm_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(cjs_require_esm_mjs_error {
+  args: "run --allow-read --quiet npm/cjs_require_esm_mjs_error/main.ts",
+  output: "npm/cjs_require_esm_mjs_error/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(require_esm_error {
+  args: "run --allow-read --quiet node/require_esm_error/main.ts",
+  output: "node/require_esm_error/main.out",
+  exit_code: 1,
+});
+
+itest!(dynamic_import_deno_ts_from_npm {
+  args: "run --allow-read --quiet npm/dynamic_import_deno_ts_from_npm/main.ts",
+  output: "npm/dynamic_import_deno_ts_from_npm/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(translate_cjs_to_esm {
   args: "run -A --quiet npm/translate_cjs_to_esm/main.js",
   output: "npm/translate_cjs_to_esm/main.out",
@@ -103,13 +139,13 @@ itest!(conditional_exports {
 });
 
 itest!(conditional_exports_node_modules_dir {
-    args:
-      "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
-    output: "npm/conditional_exports/main_node_modules.out",
-    envs: env_vars_for_npm_tests(),
-    http_server: true,
-    temp_cwd: true,
-  });
+  args:
+    "run --allow-read --node-modules-dir $TESTDATA/npm/conditional_exports/main.js",
+  output: "npm/conditional_exports/main_node_modules.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+});
 
 itest!(dual_cjs_esm {
   args: "run -A --quiet npm/dual_cjs_esm/main.ts",
@@ -274,6 +310,16 @@ itest!(node_modules_deno_node_modules_local {
 itest!(nonexistent_file {
   args: "run -A --quiet npm/nonexistent_file/main.js",
   output: "npm/nonexistent_file/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(nonexistent_file_node_modules_dir {
+  // there was a bug where the message was different when using a node_modules dir
+  args: "run -A --quiet --node-modules-dir npm/nonexistent_file/main.js",
+  output: "npm/nonexistent_file/main.out",
+  copy_temp_dir: Some("npm/nonexistent_file/"),
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
@@ -729,6 +775,20 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_esm_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli.mjs this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli-cjs.js this is a test",
+  output: "npm/deno_run_cjs.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_special_chars {
   args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
   output: "npm/deno_run_special_chars_in_bin_name.out",
@@ -766,6 +826,38 @@ fn deno_run_bin_lockfile() {
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/esm-basic",
+  output: "npm/deno_run_no_bin_entrypoint.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint_non_existent_subpath {
+  args: "run -A --quiet npm:@denotest/esm-basic/non-existent.js",
+  output: "npm/deno_run_no_bin_entrypoint_non_existent_subpath.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_index_js {
+  args: "run npm/directory_import/folder_index_js.ts",
+  output: "npm/directory_import/folder_index_js.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(directory_import_folder_no_index {
+  args: "run npm/directory_import/folder_no_index.ts",
+  output: "npm/directory_import/folder_no_index.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
@@ -1462,7 +1554,6 @@ fn auto_discover_lock_file() {
 fn peer_deps_with_copied_folders_and_lockfile() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
     .cwd("npm/peer_deps_with_copied_folders")
     .build();
@@ -1844,7 +1935,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
 fn binary_package_with_optional_dependencies() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/binary_package")
     .cwd("npm/binary_package")
     .build();
@@ -1933,8 +2023,14 @@ pub fn node_modules_dir_config_file() {
 
   let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
   deno_cache_cmd.run();
-
   assert!(node_modules_dir.exists());
+
+  // now try adding a vendor flag, it should exist
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  deno_cache_cmd.run();
+  assert!(node_modules_dir.exists());
+
   rm_node_modules();
   temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
 
@@ -1950,6 +2046,14 @@ pub fn node_modules_dir_config_file() {
     .args("cache --quiet --node-modules-dir main.ts")
     .run();
   assert!(node_modules_dir.exists());
+
+  // should override the `--vendor` flag
+  rm_node_modules();
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir=false --vendor main.ts")
+    .run();
+  assert!(!node_modules_dir.exists());
 }
 
 #[test]
@@ -2021,3 +2125,32 @@ fn top_level_install_package_json_explicit_opt_in() {
 
   assert!(node_modules_dir.join("@denotest").exists());
 }
+
+itest!(reserved_word_exports {
+  args: "run npm/reserved_word_exports/main.ts",
+  output: "npm/reserved_word_exports/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(dynamic_import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(check_package_file_dts_dmts_dcts {
+  args: "check npm/file_dts_dmts_dcts/main.ts",
+  output: "npm/file_dts_dmts_dcts/main.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
+});

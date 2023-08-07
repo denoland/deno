@@ -26,7 +26,7 @@ import {
   validateString,
   validateUint32,
 } from "ext:deno_node/internal/validators.mjs";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 
 const { core } = globalThis.__bootstrap;
