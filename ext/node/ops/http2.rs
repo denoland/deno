@@ -13,6 +13,7 @@ use deno_core::AsyncRefCell;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
@@ -177,6 +178,23 @@ pub async fn op_http2_client_request(
     stream: AsyncRefCell::new(stream),
   });
   Ok(stream_rid)
+}
+
+#[op]
+pub async fn op_http2_client_send_data(
+  state: Rc<RefCell<OpState>>,
+  stream_rid: ResourceId,
+  data: JsBuffer,
+) -> Result<(), AnyError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientStream>(stream_rid)?;
+  let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
+
+  // TODO(bartlomieju): handle end of stream
+  stream.send_data(bytes::Bytes::from(data), false)?;
+  Ok(())
 }
 
 #[op]

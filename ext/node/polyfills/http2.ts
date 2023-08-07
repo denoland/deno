@@ -397,76 +397,75 @@ export class ClientHttp2Stream extends EventEmitter {
     this.#rid = 0;
     this.#closed = false;
     this.#waitForTrailers = waitForTrailers;
+    this.#requestPromise = requestPromise;
     // console.log("created clienthttp2stream");
-    nextTick(() => {
-      (async () => {
-        // console.log("before request promise");
-        this.#rid = await requestPromise;
-        // console.log("after request promise");
-        const response = await core.opAsync(
-          "op_http2_client_get_response",
-          this.#rid,
+    this.__promise = (async () => {
+      console.log("before request promise");
+      this.#rid = await requestPromise;
+      console.log("after request promise", this.#rid);
+      const response = await core.opAsync(
+        "op_http2_client_get_response",
+        this.#rid,
+      );
+      // console.log("after get response", response);
+      this.#bodyRid = response.bodyRid;
+      const headers = {
+        ":status": response.statusCode,
+        ...Object.fromEntries(response.headers),
+      };
+      this.emit("response", headers, 0);
+
+      let hasTrailersToRead = false;
+      while (true) {
+        const [chunk, finished] = await core.opAsync(
+          "op_http2_client_get_response_body_chunk",
+          response.bodyRid,
         );
-        // console.log("after get response", response);
-        this.#bodyRid = response.bodyRid;
-        const headers = {
-          ":status": response.statusCode,
-          ...Object.fromEntries(response.headers),
-        };
-        this.emit("response", headers, 0);
-
-        let hasTrailersToRead = false;
-        while (true) {
-          const [chunk, finished] = await core.opAsync(
-            "op_http2_client_get_response_body_chunk",
-            response.bodyRid,
-          );
-          // console.log("chunk", chunk, finished);
-          if (chunk === null && !finished) {
-            hasTrailersToRead = true;
-            break;
-          }
-
-          if (this.#encoding === "utf8") {
-            this.emit("data", new TextDecoder().decode(new Uint8Array(chunk)));
-          } else {
-            this.emit("data", new Uint8Array(chunk));
-          }
-          // console.log(
-          //   "finished",
-          //   finished,
-          //   new TextDecoder().decode(new Uint8Array(chunk)),
-          // );
-          if (finished) {
-            // core.close(response.bodyRid);
-            // core.close(clientRid);
-            // core.tryClose(connRid);
-            break;
-          }
+        // console.log("chunk", chunk, finished);
+        if (chunk === null && !finished) {
+          hasTrailersToRead = true;
+          break;
         }
 
-        if (hasTrailersToRead) {
-          // console.log("before trailers to read");
-          const trailerList = await core.opAsync(
-            "op_http2_client_get_response_trailers",
-            response.bodyRid,
-          );
-          // console.log("after trailers to read");
-          // console.log("trailers", trailerList);
-          const trailers = Object.fromEntries(trailerList);
+        if (this.#encoding === "utf8") {
+          this.emit("data", new TextDecoder().decode(new Uint8Array(chunk)));
+        } else {
+          this.emit("data", new Uint8Array(chunk));
+        }
+        // console.log(
+        //   "finished",
+        //   finished,
+        //   new TextDecoder().decode(new Uint8Array(chunk)),
+        // );
+        if (finished) {
           // core.close(response.bodyRid);
           // core.close(clientRid);
           // core.tryClose(connRid);
-          this.emit("trailers", trailers);
-        } else {
-          this.#closed = true;
-          // console.log(this.#bodyRid, this.#rid);
-          core.tryClose(this.#bodyRid);
-          core.tryClose(this.#rid);
-          this.emit("end");
+          break;
         }
-      })();
-    });
+      }
+
+      if (hasTrailersToRead) {
+        // console.log("before trailers to read");
+        const trailerList = await core.opAsync(
+          "op_http2_client_get_response_trailers",
+          response.bodyRid,
+        );
+        // console.log("after trailers to read");
+        // console.log("trailers", trailerList);
+        const trailers = Object.fromEntries(trailerList);
+        // core.close(response.bodyRid);
+        // core.close(clientRid);
+        // core.tryClose(connRid);
+        this.emit("trailers", trailers);
+      } else {
+        this.#closed = true;
+        // console.log(this.#bodyRid, this.#rid);
+        core.tryClose(this.#bodyRid);
+        core.tryClose(this.#rid);
+        this.emit("end");
+      }
+    })();
   }
 
   // TODO(mmastrac): Implement duplex
@@ -478,17 +477,36 @@ export class ClientHttp2Stream extends EventEmitter {
   }
 
   write(buffer, callback?: () => void) {
-    notImplemented("ClientHttp2Stream.end");
+    console.log("buffer", this.#rid, buffer, callback);
+    (async () => {
+      await this.#requestPromise;
+      console.log("buffer", this.#rid, buffer, callback);
+
+      let data;
+      if (typeof buffer === "string") {
+        data = ENCODER.encode(buffer);
+      } else {
+        data = buffer.buffer;
+      }
+
+      await core.opAsync(
+        "op_http2_client_send_data",
+        this.#rid,
+        data,
+      );
+      console.log("after write");
+      callback?.();
+    })();
   }
 
   setEncoding(_encoding) {}
 
   resume() {
-    notImplemented("ClientHttp2Stream.end");
+    warnNotImplemented("ClientHttp2Stream.resume");
   }
 
   pause() {
-    notImplemented("ClientHttp2Stream.end");
+    warnNotImplemented("ClientHttp2Stream.pause");
   }
 
   get aborted(): boolean {
@@ -825,7 +843,7 @@ export function connect(
   options: Record<string, unknown>,
   callback: (session: ClientHttp2Session) => void,
 ): ClientHttp2Session {
-  console.log("http2.connect", options, callback);
+  console.log("http2.connect", options);
 
   if (typeof options === "function") {
     callback = options;
@@ -837,7 +855,7 @@ export function connect(
   // TODO: handle defaults
   if (typeof options.createConnection === "function") {
     console.error("Not implemented: http2.connect.options.createConnection");
-    notImplemented("http2.connect.options.createConnection");
+    // notImplemented("http2.connect.options.createConnection");
   }
 
   const session = new ClientHttp2Session(authority, options);
