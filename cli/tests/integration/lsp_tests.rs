@@ -8989,8 +8989,8 @@ fn lsp_vendor_dir() {
     json!([
       {
         "range": {
-          "start": { "line": 1, "character": 26 },
-          "end": { "line": 1, "character": 51 }
+          "start": { "line": 0, "character": 26 },
+          "end": { "line": 0, "character": 51 }
         },
         "severity": 1,
         "code": "resolver-error",
