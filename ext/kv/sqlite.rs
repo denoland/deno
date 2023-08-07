@@ -21,6 +21,7 @@ use deno_core::task::spawn;
 use deno_core::task::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
+use rand::Rng;
 use rusqlite::params;
 use rusqlite::OpenFlags;
 use rusqlite::OptionalExtension;
@@ -55,7 +56,7 @@ const STATEMENT_KV_POINT_GET_VALUE_ONLY: &str =
 const STATEMENT_KV_POINT_GET_VERSION_ONLY: &str =
   "select version from kv where k = ?";
 const STATEMENT_KV_POINT_SET: &str =
-  "insert into kv (k, v, v_encoding, version) values (:k, :v, :v_encoding, :version) on conflict(k) do update set v = :v, v_encoding = :v_encoding, version = :version";
+  "insert into kv (k, v, v_encoding, version, expiration_ms) values (:k, :v, :v_encoding, :version, :expiration_ms) on conflict(k) do update set v = :v, v_encoding = :v_encoding, version = :version, expiration_ms = :expiration_ms";
 const STATEMENT_KV_POINT_DELETE: &str = "delete from kv where k = ?";
 
 const STATEMENT_QUEUE_ADD_READY: &str = "insert into queue (ts, id, data, backoff_schedule, keys_if_undelivered) values(?, ?, ?, ?, ?)";
@@ -77,7 +78,7 @@ create table if not exists migration_state(
 )
 ";
 
-const MIGRATIONS: [&str; 2] = [
+const MIGRATIONS: [&str; 3] = [
   "
 create table data_version (
   k integer primary key,
@@ -110,6 +111,12 @@ create table queue_running(
 
   primary key (deadline, id)
 );
+",
+  "
+alter table kv add column seq integer not null default 0;
+alter table data_version add column seq integer not null default 0;
+alter table kv add column expiration_ms integer not null default -1;
+create index kv_expiration_ms_idx on kv (expiration_ms);
 ",
 ];
 
@@ -211,9 +218,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
     .await
     .unwrap()?;
 
+    let conn = Rc::new(AsyncRefCell::new(Cell::new(Some(conn))));
+    let expiration_watcher = spawn(watch_expiration(conn.clone()));
+
     Ok(SqliteDb {
-      conn: Rc::new(AsyncRefCell::new(Cell::new(Some(conn)))),
+      conn,
       queue: OnceCell::new(),
+      expiration_watcher,
     })
   }
 }
@@ -221,6 +232,13 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 pub struct SqliteDb {
   conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
   queue: OnceCell<SqliteQueue>,
+  expiration_watcher: deno_core::task::JoinHandle<()>,
+}
+
+impl Drop for SqliteDb {
+  fn drop(&mut self) {
+    self.expiration_watcher.abort();
+  }
 }
 
 impl SqliteDb {
@@ -555,7 +573,7 @@ impl SqliteQueue {
       for key in keys_if_undelivered {
         let changed = tx
           .prepare_cached(STATEMENT_KV_POINT_SET)?
-          .execute(params![key, &data, &VALUE_ENCODING_V8, &version])?;
+          .execute(params![key, &data, &VALUE_ENCODING_V8, &version, -1i64])?;
         assert_eq!(changed, 1);
       }
     }
@@ -567,6 +585,33 @@ impl SqliteQueue {
     assert_eq!(changed, 1);
 
     Ok(requeued)
+  }
+}
+
+async fn watch_expiration(
+  db: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+) {
+  loop {
+    // Scan for expired keys
+    let res = SqliteDb::run_tx(db.clone(), move |tx| {
+      let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+      tx.prepare_cached(
+        "delete from kv where expiration_ms >= 0 and expiration_ms <= ?",
+      )?
+      .execute(params![now])?;
+      tx.commit()?;
+      Ok(())
+    })
+    .await;
+    if let Err(e) = res {
+      eprintln!("kv: Error in expiration watcher: {}", e);
+    }
+    let sleep_duration =
+      Duration::from_secs_f64(60.0 + rand::thread_rng().gen_range(0.0..30.0));
+    tokio::time::sleep(sleep_duration).await;
   }
 }
 
@@ -643,9 +688,14 @@ impl Database for SqliteDb {
           match mutation.kind {
             MutationKind::Set(value) => {
               let (value, encoding) = encode_value(&value);
-              let changed = tx
-                .prepare_cached(STATEMENT_KV_POINT_SET)?
-                .execute(params![mutation.key, &value, &encoding, &version])?;
+              let changed =
+                tx.prepare_cached(STATEMENT_KV_POINT_SET)?.execute(params![
+                  mutation.key,
+                  &value,
+                  &encoding,
+                  &version,
+                  mutation.expiration_ms
+                ])?;
               assert_eq!(changed, 1)
             }
             MutationKind::Delete => {
@@ -789,7 +839,8 @@ fn mutate_le64(
     key,
     &new_value[..],
     encoding,
-    new_version
+    new_version,
+    -1i64,
   ])?;
   assert_eq!(changed, 1);
 

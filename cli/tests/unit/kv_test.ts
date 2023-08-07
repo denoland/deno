@@ -1756,3 +1756,125 @@ dbTest("atomic operation is exposed", (db) => {
   const ao = db.atomic();
   assert(ao instanceof Deno.AtomicOperation);
 });
+
+Deno.test({
+  name: "kv expiration",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      const expiration = new Date(Date.now() + 1000);
+      await db.set(["a"], 1, { expiration });
+      await db.set(["b"], 2, { expiration });
+      assertEquals((await db.get(["a"])).value, 1);
+      assertEquals((await db.get(["b"])).value, 2);
+
+      // Re-open to trigger immediate cleanup
+      // Should not expire yet
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+      await sleep(100);
+      assertEquals((await db.get(["a"])).value, 1);
+      assertEquals((await db.get(["b"])).value, 2);
+
+      // Value overwrite should also reset expiration
+      await db.set(["b"], 2);
+
+      // Wait for expiration
+      await sleep(2000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+      await sleep(100);
+      assertEquals((await db.get(["a"])).value, null);
+      assertEquals((await db.get(["b"])).value, 2);
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "kv expiration with atomic",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      const expiration = new Date(Date.now() + 1000);
+      await db.atomic().set(["a"], 1, { expiration }).set(["b"], 2, {
+        expiration,
+      }).commit();
+      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
+        1,
+        2,
+      ]);
+
+      // Re-open to trigger immediate cleanup
+      // Should not expire yet
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+      await sleep(100);
+      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
+        1,
+        2,
+      ]);
+
+      // Wait for expiration
+      await sleep(2000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+      await sleep(100);
+      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
+        null,
+        null,
+      ]);
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});

@@ -1379,7 +1379,7 @@ declare namespace Deno {
   export type KvMutation =
     & { key: KvKey }
     & (
-      | { type: "set"; value: unknown }
+      | { type: "set"; value: unknown; expiration?: Date }
       | { type: "delete" }
       | { type: "sum"; value: KvU64 }
       | { type: "max"; value: KvU64 }
@@ -1592,7 +1592,7 @@ declare namespace Deno {
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.
      */
-    set(key: KvKey, value: unknown): this;
+    set(key: KvKey, value: unknown, options?: { expiration?: Date }): this;
     /**
      * Add to the operation a mutation that deletes the specified key if all
      * checks pass during the commit.
@@ -1722,7 +1722,11 @@ declare namespace Deno {
      * await db.set(["foo"], "bar");
      * ```
      */
-    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
+    set(
+      key: KvKey,
+      value: unknown,
+      options?: { expiration?: Date },
+    ): Promise<KvCommitResult>;
 
     /**
      * Delete the value for the given key from the database. If no value exists

@@ -237,6 +237,7 @@ pub struct KvCheck {
 pub struct KvMutation {
   pub key: Vec<u8>,
   pub kind: MutationKind,
+  pub expiration_ms: i64,
 }
 
 /// A request to enqueue a message to the database. This message is delivered
