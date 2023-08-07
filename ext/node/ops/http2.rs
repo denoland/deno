@@ -74,7 +74,7 @@ impl Resource for Http2ClientResponseBody {
 }
 
 #[op]
-pub async fn op_node_http2_client_connect<P>(
+pub async fn op_http2_connect<P>(
   state: Rc<RefCell<OpState>>,
   url: String,
 ) -> Result<(ResourceId, ResourceId), AnyError>
@@ -99,14 +99,11 @@ where
 }
 
 #[op]
-pub async fn op_node_http2_client_poll_connection(
+pub async fn op_http2_poll_client_connection(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<(), AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state.resource_table.get::<Http2ClientConn>(rid)?
-  };
+  let resource = state.borrow().resource_table.get::<Http2ClientConn>(rid)?;
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
   let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
@@ -124,16 +121,16 @@ pub async fn op_node_http2_client_poll_connection(
 }
 
 #[op]
-pub async fn op_node_http2_client_request(
+pub async fn op_http2_client_request(
   state: Rc<RefCell<OpState>>,
   client_rid: ResourceId,
   headers: Vec<(ByteString, ByteString)>,
   end_of_stream: bool,
 ) -> Result<ResourceId, AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state.resource_table.get::<Http2Client>(client_rid)?
-  };
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2Client>(client_rid)?;
 
   let url = resource.url.clone();
 
@@ -186,26 +183,23 @@ pub async fn op_node_http2_client_request(
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   let (response, stream) = client.send_request(request, end_of_stream).unwrap();
-  let stream_rid = {
-    let mut state = state.borrow_mut();
-    state.resource_table.add(Http2ClientStream {
-      response: AsyncRefCell::new(response),
-      stream: AsyncRefCell::new(stream),
-    })
-  };
+  let stream_rid = state.borrow_mut().resource_table.add(Http2ClientStream {
+    response: AsyncRefCell::new(response),
+    stream: AsyncRefCell::new(stream),
+  });
   Ok(stream_rid)
 }
 
 #[op]
-pub async fn op_node_http2_client_send_trailers(
+pub async fn op_http2_client_send_trailers(
   state: Rc<RefCell<OpState>>,
   stream_rid: ResourceId,
   trailers: Vec<(ByteString, ByteString)>,
 ) -> Result<(), AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state.resource_table.get::<Http2ClientStream>(stream_rid)?
-  };
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientStream>(stream_rid)?;
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
   let mut trailers_map = http::HeaderMap::new();
@@ -228,14 +222,14 @@ pub struct Http2ClientResponse {
 }
 
 #[op]
-pub async fn op_node_http2_client_request_get_response(
+pub async fn op_http2_client_get_response(
   state: Rc<RefCell<OpState>>,
   stream_rid: ResourceId,
 ) -> Result<Http2ClientResponse, AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state.resource_table.get::<Http2ClientStream>(stream_rid)?
-  };
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientStream>(stream_rid)?;
   let mut response_future =
     RcRef::map(&resource, |r| &r.response).borrow_mut().await;
 
@@ -247,12 +241,13 @@ pub async fn op_node_http2_client_request_get_response(
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
-  let body_rid = {
-    let mut state = state.borrow_mut();
-    state.resource_table.add(Http2ClientResponseBody {
-      body: AsyncRefCell::new(body),
-    })
-  };
+  let body_rid =
+    state
+      .borrow_mut()
+      .resource_table
+      .add(Http2ClientResponseBody {
+        body: AsyncRefCell::new(body),
+      });
   Ok(Http2ClientResponse {
     headers: res_headers,
     body_rid,
@@ -260,16 +255,14 @@ pub async fn op_node_http2_client_request_get_response(
 }
 
 #[op]
-pub async fn op_node_http2_client_request_get_response_body_chunk(
+pub async fn op_http2_client_get_response_body_chunk(
   state: Rc<RefCell<OpState>>,
   body_rid: ResourceId,
 ) -> Result<(Option<Vec<u8>>, bool), AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state
-      .resource_table
-      .get::<Http2ClientResponseBody>(body_rid)?
-  };
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientResponseBody>(body_rid)?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
   let maybe_data = match body.data().await {
@@ -283,8 +276,7 @@ pub async fn op_node_http2_client_request_get_response_body_chunk(
   // TODO(bartlomieju): maybe this should be done from JS?
   let mut finished = false;
   if body.is_end_stream() {
-    let mut state = state.borrow_mut();
-    let _ = state.resource_table.close(body_rid);
+    let _ = state.borrow_mut().resource_table.close(body_rid);
     finished = true;
   }
 
@@ -292,16 +284,14 @@ pub async fn op_node_http2_client_request_get_response_body_chunk(
 }
 
 #[op]
-pub async fn op_node_http2_client_request_get_response_trailers(
+pub async fn op_http2_client_get_response_trailers(
   state: Rc<RefCell<OpState>>,
   body_rid: ResourceId,
 ) -> Result<Option<Vec<(ByteString, ByteString)>>, AnyError> {
-  let resource = {
-    let state = state.borrow();
-    state
-      .resource_table
-      .get::<Http2ClientResponseBody>(body_rid)?
-  };
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ClientResponseBody>(body_rid)?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let maybe_trailers = body.trailers().await?;
   let trailers = if let Some(trailers) = maybe_trailers {
