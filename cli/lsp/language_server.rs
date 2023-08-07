@@ -555,7 +555,10 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = Arc::new(GlobalHttpCache::new(location));
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -904,7 +907,10 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
+    let global_cache = Arc::new(GlobalHttpCache::new(
+      dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     let maybe_local_cache =
       self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))

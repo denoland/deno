@@ -422,7 +422,10 @@ pub struct ModuleRegistry {
 impl ModuleRegistry {
   pub fn new(location: PathBuf, http_client: Arc<HttpClient>) -> Self {
     // the http cache should always be the global one for registry completions
-    let http_cache = Arc::new(GlobalHttpCache::new(location));
+    let http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
     let mut file_fetcher = FileFetcher::new(
       http_cache.clone(),
       CacheSetting::RespectHeaders,
