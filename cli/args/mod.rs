@@ -541,7 +541,7 @@ pub struct CliOptions {
   flags: Flags,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
-  maybe_deno_modules_folder: Option<PathBuf>,
+  maybe_vendor_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -577,11 +577,8 @@ impl CliOptions {
       maybe_package_json.as_ref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_deno_modules_folder = resolve_deno_modules_folder(
-      &initial_cwd,
-      &flags,
-      maybe_config_file.as_ref(),
-    );
+    let maybe_vendor_folder =
+      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
     Ok(Self {
       flags,
@@ -590,7 +587,7 @@ impl CliOptions {
       maybe_lockfile,
       maybe_package_json,
       maybe_node_modules_folder,
-      maybe_deno_modules_folder,
+      maybe_vendor_folder,
       overrides: Default::default(),
     })
   }
@@ -863,7 +860,7 @@ impl CliOptions {
       self
         .maybe_config_file
         .as_ref()
-        .and_then(|c| c.node_modules_dir())
+        .and_then(|c| c.node_modules_dir_flag())
     })
   }
 
@@ -874,8 +871,8 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
-  pub fn deno_modules_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_deno_modules_folder.as_ref()
+  pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
+    self.maybe_vendor_folder.as_ref()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -1188,7 +1185,9 @@ fn resolve_node_modules_folder(
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir()));
+    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir_flag()))
+    .or(flags.vendor)
+    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()));
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
@@ -1209,28 +1208,28 @@ fn resolve_node_modules_folder(
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
-fn resolve_deno_modules_folder(
+fn resolve_vendor_folder(
   cwd: &Path,
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
 ) -> Option<PathBuf> {
-  let use_deno_modules_dir = flags
-    .deno_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()))
+  let use_vendor_dir = flags
+    .vendor
+    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()))
     .unwrap_or(false);
   // Unlike the node_modules directory, there is no need to canonicalize
   // this directory because it's just used as a cache and the resolved
   // specifier is not based on the canonicalized path (unlike the modules
   // in the node_modules folder).
-  if !use_deno_modules_dir {
+  if !use_vendor_dir {
     None
   } else if let Some(config_path) = maybe_config_file
     .as_ref()
     .and_then(|c| c.specifier.to_file_path().ok())
   {
-    Some(config_path.parent().unwrap().join("deno_modules"))
+    Some(config_path.parent().unwrap().join("vendor"))
   } else {
-    Some(cwd.join("deno_modules"))
+    Some(cwd.join("vendor"))
   }
 }
 

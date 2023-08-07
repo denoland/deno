@@ -28,7 +28,7 @@ use super::CachedUrlMetadata;
 use super::HttpCache;
 use super::HttpCacheItemKey;
 
-/// A deno_modules http cache for the lsp that provides functionality
+/// A vendor/ folder http cache for the lsp that provides functionality
 /// for doing a reverse mapping.
 #[derive(Debug)]
 pub struct LocalLspHttpCache {

@@ -906,7 +906,7 @@ impl Inner {
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
     let maybe_local_cache =
-      self.config.maybe_deno_modules_dir_path().map(|local_path| {
+      self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
