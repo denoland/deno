@@ -23,26 +23,26 @@ use reqwest::header::HeaderValue;
 use tokio::net::TcpStream;
 use url::Url;
 
-pub struct NodeHttp2Client {
+pub struct Http2Client {
   pub client: AsyncRefCell<h2::client::SendRequest<Bytes>>,
   pub url: Url,
 }
 
-impl Resource for NodeHttp2Client {
+impl Resource for Http2Client {
   fn name(&self) -> Cow<str> {
-    "nodeHttp2Client".into()
+    "http2Client".into()
   }
 }
 
 #[derive(Debug)]
-pub struct NodeHttp2ClientConn {
+pub struct Http2ClientConn {
   pub conn: AsyncRefCell<h2::client::Connection<TcpStream>>,
   cancel_handle: CancelHandle,
 }
 
-impl Resource for NodeHttp2ClientConn {
+impl Resource for Http2ClientConn {
   fn name(&self) -> Cow<str> {
-    "nodeHttp2ClientConnection".into()
+    "http2ClientConnection".into()
   }
 
   fn close(self: Rc<Self>) {
@@ -51,25 +51,25 @@ impl Resource for NodeHttp2ClientConn {
 }
 
 #[derive(Debug)]
-pub struct NodeHttp2ClientStream {
+pub struct Http2ClientStream {
   pub response: AsyncRefCell<h2::client::ResponseFuture>,
   pub stream: AsyncRefCell<h2::SendStream<Bytes>>,
 }
 
-impl Resource for NodeHttp2ClientStream {
+impl Resource for Http2ClientStream {
   fn name(&self) -> Cow<str> {
-    "nodeHttp2ClientStream".into()
+    "http2ClientStream".into()
   }
 }
 
 #[derive(Debug)]
-pub struct NodeHttp2ClientResponseBody {
+pub struct Http2ClientResponseBody {
   pub body: AsyncRefCell<h2::RecvStream>,
 }
 
-impl Resource for NodeHttp2ClientResponseBody {
+impl Resource for Http2ClientResponseBody {
   fn name(&self) -> Cow<str> {
-    "nodeHttp2ClientResponseBody".into()
+    "http2ClientResponseBody".into()
   }
 }
 
@@ -87,11 +87,11 @@ where
   let tcp = TcpStream::connect(ip).await?;
   let (client, conn) = h2::client::handshake(tcp).await?;
   let mut state = state.borrow_mut();
-  let client_rid = state.resource_table.add(NodeHttp2Client {
+  let client_rid = state.resource_table.add(Http2Client {
     client: AsyncRefCell::new(client),
     url,
   });
-  let conn_rid = state.resource_table.add(NodeHttp2ClientConn {
+  let conn_rid = state.resource_table.add(Http2ClientConn {
     conn: AsyncRefCell::new(conn),
     cancel_handle: CancelHandle::new(),
   });
@@ -105,7 +105,7 @@ pub async fn op_node_http2_client_poll_connection(
 ) -> Result<(), AnyError> {
   let resource = {
     let state = state.borrow();
-    state.resource_table.get::<NodeHttp2ClientConn>(rid)?
+    state.resource_table.get::<Http2ClientConn>(rid)?
   };
 
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
@@ -115,6 +115,7 @@ pub async fn op_node_http2_client_poll_connection(
     Ok(result) => result?,
     Err(_) => {
       // TODO(bartlomieju): probably need a better mechanism for closing the connection
+
       // cancelled
     }
   }
@@ -131,7 +132,7 @@ pub async fn op_node_http2_client_request(
 ) -> Result<ResourceId, AnyError> {
   let resource = {
     let state = state.borrow();
-    state.resource_table.get::<NodeHttp2Client>(client_rid)?
+    state.resource_table.get::<Http2Client>(client_rid)?
   };
 
   let url = resource.url.clone();
@@ -141,6 +142,7 @@ pub async fn op_node_http2_client_request(
   let mut pseudo_method = "GET".to_string();
   let mut pseudo_path = "/".to_string();
 
+  // TODO: pseudo-headers should be passed as a separate argument
   // TODO: handle all pseudo-headers (:authority, :scheme)
   // TODO: remove clone
   for (name, value) in headers.clone() {
@@ -180,13 +182,13 @@ pub async fn op_node_http2_client_request(
 
   let resource = {
     let state = state.borrow();
-    state.resource_table.get::<NodeHttp2Client>(client_rid)?
+    state.resource_table.get::<Http2Client>(client_rid)?
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   let (response, stream) = client.send_request(request, end_of_stream).unwrap();
   let stream_rid = {
     let mut state = state.borrow_mut();
-    state.resource_table.add(NodeHttp2ClientStream {
+    state.resource_table.add(Http2ClientStream {
       response: AsyncRefCell::new(response),
       stream: AsyncRefCell::new(stream),
     })
@@ -202,9 +204,7 @@ pub async fn op_node_http2_client_send_trailers(
 ) -> Result<(), AnyError> {
   let resource = {
     let state = state.borrow();
-    state
-      .resource_table
-      .get::<NodeHttp2ClientStream>(stream_rid)?
+    state.resource_table.get::<Http2ClientStream>(stream_rid)?
   };
   let mut stream = RcRef::map(&resource, |r| &r.stream).borrow_mut().await;
 
@@ -222,7 +222,7 @@ pub async fn op_node_http2_client_send_trailers(
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct NodeHttp2ClientResponse {
+pub struct Http2ClientResponse {
   headers: Vec<(ByteString, ByteString)>,
   body_rid: ResourceId,
 }
@@ -231,12 +231,10 @@ pub struct NodeHttp2ClientResponse {
 pub async fn op_node_http2_client_request_get_response(
   state: Rc<RefCell<OpState>>,
   stream_rid: ResourceId,
-) -> Result<NodeHttp2ClientResponse, AnyError> {
+) -> Result<Http2ClientResponse, AnyError> {
   let resource = {
     let state = state.borrow();
-    state
-      .resource_table
-      .get::<NodeHttp2ClientStream>(stream_rid)?
+    state.resource_table.get::<Http2ClientStream>(stream_rid)?
   };
   let mut response_future =
     RcRef::map(&resource, |r| &r.response).borrow_mut().await;
@@ -251,11 +249,11 @@ pub async fn op_node_http2_client_request_get_response(
 
   let body_rid = {
     let mut state = state.borrow_mut();
-    state.resource_table.add(NodeHttp2ClientResponseBody {
+    state.resource_table.add(Http2ClientResponseBody {
       body: AsyncRefCell::new(body),
     })
   };
-  Ok(NodeHttp2ClientResponse {
+  Ok(Http2ClientResponse {
     headers: res_headers,
     body_rid,
   })
@@ -270,7 +268,7 @@ pub async fn op_node_http2_client_request_get_response_body_chunk(
     let state = state.borrow();
     state
       .resource_table
-      .get::<NodeHttp2ClientResponseBody>(body_rid)?
+      .get::<Http2ClientResponseBody>(body_rid)?
   };
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
@@ -302,7 +300,7 @@ pub async fn op_node_http2_client_request_get_response_trailers(
     let state = state.borrow();
     state
       .resource_table
-      .get::<NodeHttp2ClientResponseBody>(body_rid)?
+      .get::<Http2ClientResponseBody>(body_rid)?
   };
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
   let maybe_trailers = body.trailers().await?;
