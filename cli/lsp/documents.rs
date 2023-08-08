@@ -1851,6 +1851,7 @@ fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::npm::NpmResolution;
 
   use super::*;
@@ -1861,7 +1862,10 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
     let documents = Documents::new(cache);
     (documents, location)
   }
