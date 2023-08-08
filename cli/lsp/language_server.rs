@@ -12,8 +12,6 @@ use deno_core::task::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
-use deno_npm::resolution::incomplete_snapshot_from_lockfile;
-use deno_npm::resolution::snapshot_from_lockfile;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
@@ -77,6 +75,7 @@ use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
+use crate::args::snapshot_from_lockfile;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -926,19 +925,8 @@ impl Inner {
     &self,
   ) -> Option<ValidSerializedNpmResolutionSnapshot> {
     let lockfile = self.config.maybe_lockfile()?;
-    let incomplete_snapshot = {
-      let lock = lockfile.lock();
-      match incomplete_snapshot_from_lockfile(&lock) {
-        Ok(s) => s,
-        Err(err) => {
-          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-          return None;
-        }
-      }
-    };
-
     let snapshot =
-      match snapshot_from_lockfile(incomplete_snapshot, &*self.npm.api).await {
+      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
         Ok(snapshot) => snapshot,
         Err(err) => {
           lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);

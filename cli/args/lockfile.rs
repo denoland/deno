@@ -1,8 +1,12 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 
 use crate::args::ConfigFile;
 use crate::Flags;
@@ -44,4 +48,18 @@ pub fn discover(
 
   let lockfile = Lockfile::new(filename, flags.lock_write)?;
   Ok(Some(lockfile))
+}
+
+pub async fn snapshot_from_lockfile(
+  lockfile: Arc<Mutex<Lockfile>>,
+  api: &dyn NpmRegistryApi,
+) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
+  let incomplete_snapshot = {
+    let lock = lockfile.lock();
+    deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?
+  };
+  let snapshot =
+    deno_npm::resolution::snapshot_from_lockfile(incomplete_snapshot, api)
+      .await?;
+  Ok(snapshot)
 }

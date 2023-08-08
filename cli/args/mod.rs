@@ -8,11 +8,10 @@ mod lockfile;
 pub mod package_json;
 
 pub use self::import_map::resolve_import_map_from_specifier;
+pub use self::lockfile::snapshot_from_lockfile;
 use self::package_json::PackageJsonDeps;
 use ::import_map::ImportMap;
 use deno_core::resolve_url_or_path;
-use deno_npm::resolution::incomplete_snapshot_from_lockfile;
-use deno_npm::resolution::snapshot_from_lockfile;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -819,23 +818,14 @@ impl CliOptions {
 
     if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
-        let incomplete_snapshot = incomplete_snapshot_from_lockfile(
-          &lockfile.lock(),
-        )
-        .with_context(|| {
-          format!(
-            "failed reading lockfile '{}'",
-            lockfile.lock().filename.display()
-          )
-        })?;
-        let snapshot = snapshot_from_lockfile(incomplete_snapshot, api)
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
           .await
           .with_context(|| {
-          format!(
-            "failed reading lockfile '{}'",
-            lockfile.lock().filename.display()
-          )
-        })?;
+            format!(
+              "failed reading lockfile '{}'",
+              lockfile.lock().filename.display()
+            )
+          })?;
         // clear the memory cache to reduce memory usage
         api.clear_memory_cache();
         return Ok(Some(snapshot));
