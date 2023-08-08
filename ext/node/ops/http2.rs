@@ -132,7 +132,7 @@ pub async fn op_http2_client_request(
   mut pseudo_headers: HashMap<String, String>,
   headers: Vec<(ByteString, ByteString)>,
   end_of_stream: bool,
-) -> Result<ResourceId, AnyError> {
+) -> Result<(ResourceId, u32), AnyError> {
   let resource = state
     .borrow()
     .resource_table
@@ -173,11 +173,12 @@ pub async fn op_http2_client_request(
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
   let (response, stream) = client.send_request(request, end_of_stream).unwrap();
+  let stream_id = stream.stream_id();
   let stream_rid = state.borrow_mut().resource_table.add(Http2ClientStream {
     response: AsyncRefCell::new(response),
     stream: AsyncRefCell::new(stream),
   });
-  Ok(stream_rid)
+  Ok((stream_rid, stream_id.into()))
 }
 
 #[op]

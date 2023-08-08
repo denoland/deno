@@ -17,7 +17,7 @@ import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
 import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { Duplex } from "node:stream";
 
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
@@ -150,12 +150,15 @@ export class ServerHttp2Session extends Http2Session {
 }
 
 export class ClientHttp2Session extends Http2Session {
+  #connectPromise: Promise<void>;
+  _clientRid: number;
+
   constructor(
     authority: string | URL,
     options: Record<string, unknown>,
   ) {
     super();
-    this._connectPromise = (async () => {
+    this.#connectPromise = (async () => {
       this._connecting = true;
       // console.log("before connect");
       const [clientRid, connRid] = await core.opAsync(
@@ -186,14 +189,13 @@ export class ClientHttp2Session extends Http2Session {
     const reqHeaders: string[][] = [];
     let waitForTrailers = false;
 
-    if (options) {
-      if (options.waitForTrailers) {
-        waitForTrailers = true;
-      }
+    options ??= {};
+    if (options.waitForTrailers) {
+      waitForTrailers = true;
+    }
 
-      if (options.signal) {
-        notImplemented("http2.ClientHttp2Session.request.options.signal");
-      }
+    if (options.signal) {
+      notImplemented("http2.ClientHttp2Session.request.options.signal");
     }
 
     const pseudoHeaders = {};
@@ -210,23 +212,12 @@ export class ClientHttp2Session extends Http2Session {
       }
     }
 
-    const requestPromise = (async () => {
-      // console.log("waiting for connect promise");
-      await this._connectPromise;
-      // console.log("waited for connect promise");
-      return await core.opAsync(
-        "op_http2_client_request",
-        this._clientRid,
-        pseudoHeaders,
-        reqHeaders,
-        waitForTrailers,
-      );
-    })();
-
     return new ClientHttp2Stream(
+      options,
       this,
-      requestPromise,
-      waitForTrailers,
+      this.#connectPromise,
+      pseudoHeaders,
+      reqHeaders,
     );
   }
 }
@@ -376,32 +367,52 @@ export class Http2Stream extends EventEmitter {
   }
 }
 
-export class ClientHttp2Stream extends EventEmitter {
+export class ClientHttp2Stream extends Duplex {
   #session: Http2Session;
-  #requestPromise: Promise<number>;
-  #closed: boolean;
-  #rid: number;
+  #requestPromise: Promise<[number, number]>;
+  #responsePromise: Promise<void>;
+  #closed: boolean = false;
+  #rid: number | undefined = undefined;
+  #id: number | undefined = undefined;
   #bodyRid = 0;
-  _response: Response;
   #sentTrailers = Object.create(null);
   #waitForTrailers = false;
+  #hasTrailersToRead = false;
   #encoding = "utf8";
 
   constructor(
+    options: Record<string, unknown>,
     session: Http2Session,
-    requestPromise: Promise<number>,
-    waitForTrailers: boolean,
+    sessionConnectPromise: Promise<void>,
+    pseudoHeaders: Record<string, string>,
+    reqHeaders: string[][],
   ) {
-    super();
+    options.allowHalfOpen = true;
+    options.decodeString = false;
+    options.autoDestroy = false;
+    super(options);
+    this.cork();
+
+    this.#requestPromise = (async () => {
+      // console.log("waiting for connect promise");
+      await sessionConnectPromise;
+      // console.log("waited for connect promise");
+      return await core.opAsync(
+        "op_http2_client_request",
+        session._clientRid,
+        pseudoHeaders,
+        reqHeaders,
+        options.waitForTrailers,
+      );
+    })();
     this.#session = session;
-    this.#rid = 0;
-    this.#closed = false;
-    this.#waitForTrailers = waitForTrailers;
-    this.#requestPromise = requestPromise;
+    this.#waitForTrailers = !!options.waitForTrailers;
     // console.log("created clienthttp2stream");
-    this.__promise = (async () => {
+    this.#responsePromise = (async () => {
       console.log("before request promise");
-      this.#rid = await requestPromise;
+      const [streamRid, streamId] = await this.#requestPromise;
+      this.#rid = streamRid;
+      this.#id = streamId;
       console.log("after request promise", this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
@@ -414,38 +425,27 @@ export class ClientHttp2Stream extends EventEmitter {
         ...Object.fromEntries(response.headers),
       };
       this.emit("response", headers, 0);
+      this.__response = response;
+      this.emit("ready");
+    })();
+  }
 
-      let hasTrailersToRead = false;
-      while (true) {
-        const [chunk, finished] = await core.opAsync(
-          "op_http2_client_get_response_body_chunk",
-          response.bodyRid,
-        );
-        // console.log("chunk", chunk, finished);
-        if (chunk === null && !finished) {
-          hasTrailersToRead = true;
-          break;
-        }
+  // TODO(mmastrac): Implement duplex
+  // end() {
+  // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
+  // core.tryClose(this.#bodyRid);
+  // core.tryClose(this.#rid);
+  // core.tryClose(this.#session._connRid);
+  // }
 
-        if (this.#encoding === "utf8") {
-          this.emit("data", new TextDecoder().decode(new Uint8Array(chunk)));
-        } else {
-          this.emit("data", new Uint8Array(chunk));
-        }
-        // console.log(
-        //   "finished",
-        //   finished,
-        //   new TextDecoder().decode(new Uint8Array(chunk)),
-        // );
-        if (finished) {
-          // core.close(response.bodyRid);
-          // core.close(clientRid);
-          // core.tryClose(connRid);
-          break;
-        }
-      }
+  _read() {
+    if (!this.__response) {
+      this.once("ready", this._read);
+      return;
+    }
 
-      if (hasTrailersToRead) {
+    if (this.#hasTrailersToRead) {
+      (async () => {
         // console.log("before trailers to read");
         const trailerList = await core.opAsync(
           "op_http2_client_get_response_trailers",
@@ -458,56 +458,85 @@ export class ClientHttp2Stream extends EventEmitter {
         // core.close(clientRid);
         // core.tryClose(connRid);
         this.emit("trailers", trailers);
+      })();
+
+      // this.#closed = true;
+      // // console.log(this.#bodyRid, this.#rid);
+      // core.tryClose(this.#bodyRid);
+      // core.tryClose(this.#rid);
+      // this.emit("end");
+    }
+
+    (async () => {
+      const [chunk, finished] = await core.opAsync(
+        "op_http2_client_get_response_body_chunk",
+        this.__response.bodyRid,
+      );
+
+      console.log("chunk", chunk, finished);
+      if (chunk === null) {
+        if (!finished) {
+          this.#hasTrailersToRead = true;
+        }
+        this.push(null);
+        return;
+      }
+
+      if (this.#encoding === "utf8") {
+        this.push(new TextDecoder().decode(new Uint8Array(chunk)));
       } else {
-        this.#closed = true;
-        // console.log(this.#bodyRid, this.#rid);
-        core.tryClose(this.#bodyRid);
-        core.tryClose(this.#rid);
-        this.emit("end");
+        this.push(new Uint8Array(chunk));
       }
     })();
   }
 
-  // TODO(mmastrac): Implement duplex
-  end() {
-    // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
-    // core.tryClose(this.#bodyRid);
-    // core.tryClose(this.#rid);
-    // core.tryClose(this.#session._connRid);
-  }
-
-  write(buffer, callback?: () => void) {
-    console.log("buffer", this.#rid, buffer, callback);
+  _write(chunk, encoding, callback?: () => void) {
+    console.log("buffer", this.#rid, chunk, callback);
     (async () => {
       await this.#requestPromise;
-      console.log("buffer", this.#rid, buffer, callback);
+      console.log("buffer", this.#rid, chunk, callback);
 
       let data;
-      if (typeof buffer === "string") {
-        data = ENCODER.encode(buffer);
+      if (typeof encoding === "string") {
+        data = ENCODER.encode(chunk);
       } else {
-        data = buffer.buffer;
+        data = chunk.buffer;
       }
 
-      await core.opAsync(
-        "op_http2_client_send_data",
-        this.#rid,
-        data,
-      );
+      try {
+        await core.opAsync(
+          "op_http2_client_send_data",
+          this.#rid,
+          data,
+        );
+      } catch (e) {
+        callback?.(e);
+        return;
+      }
+
       console.log("after write");
       callback?.();
     })();
   }
 
-  setEncoding(_encoding) {}
-
-  resume() {
-    warnNotImplemented("ClientHttp2Stream.resume");
+  _writev(chunks, callback?: () => {}) {
+    notImplemented("ClientHttp2Stream._writev");
   }
 
-  pause() {
-    warnNotImplemented("ClientHttp2Stream.pause");
+  _final() {
+    console.error("Not implemented: ClientHttp2Stream._final");
+    // notImplemented("ClientHttp2Stream._final");
   }
+
+  // setEncoding(_encoding) {}
+
+  // resume() {
+  //   warnNotImplemented("ClientHttp2Stream.resume");
+  // }
+
+  // pause() {
+  //   warnNotImplemented("ClientHttp2Stream.pause");
+  // }
 
   get aborted(): boolean {
     notImplemented("Http2Stream.aborted");
@@ -519,11 +548,11 @@ export class ClientHttp2Stream extends EventEmitter {
     return 0;
   }
 
-  close(_code: number, _callback: () => void) {
-    // notImplemented("ClientHttp2Stream.end");
-    this.#closed = true;
-    this.emit("close");
-  }
+  // close(_code: number, _callback: () => void) {
+  //   // notImplemented("ClientHttp2Stream.end");
+  //   this.#closed = true;
+  //   this.emit("close");
+  // }
 
   get closed(): boolean {
     return this.#closed;
@@ -539,13 +568,11 @@ export class ClientHttp2Stream extends EventEmitter {
   }
 
   get id(): number | undefined {
-    notImplemented("Http2Stream.id");
-    return undefined;
+    return this.#id;
   }
 
   get pending(): boolean {
-    notImplemented("Http2Stream.pending");
-    return false;
+    return this.#id === undefined;
   }
 
   priority(_options: Record<string, unknown>) {
@@ -553,7 +580,7 @@ export class ClientHttp2Stream extends EventEmitter {
   }
 
   get rstCode(): number {
-    // notImplemented("Http2Stream.rstCode");
+    notImplemented("Http2Stream.rstCode");
     return 0;
   }
 
