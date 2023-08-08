@@ -1360,8 +1360,10 @@ declare namespace Deno {
    *   existing value. Optionally an `expireIn` option can be specified to
    *   set a time-to-live (TTL) for the key. The TTL is specified in
    *   milliseconds, and the key will be deleted from the database at earliest
-   *   after the specified number of milliseconds have elapsed. If the
-   *   `expireIn` option is not specified, the key will not expire.
+   *   after the specified number of milliseconds have elapsed. Once the
+   *   specified duration has passed, the key may still be visible for some
+   *   additional time. If the `expireIn` option is not specified, the key will
+   *   not expire.
    * - `delete` - Deletes the key from the database. The mutation is a no-op if
    *   the key does not exist.
    * - `sum` - Adds the given value to the existing value of the key. Both the
@@ -1599,8 +1601,9 @@ declare namespace Deno {
      * Optionally an `expireIn` option can be specified to set a time-to-live
      * (TTL) for the key. The TTL is specified in milliseconds, and the key will
      * be deleted from the database at earliest after the specified number of
-     * milliseconds have elapsed. If the `expireIn` option is not specified,
-     * the key will not expire.
+     * milliseconds have elapsed. Once the specified duration has passed, the
+     * key may still be visible for some additional time. If the `expireIn`
+     * option is not specified, the key will not expire.
      */
     set(key: KvKey, value: unknown, options?: { expireIn?: number }): this;
     /**
@@ -1735,8 +1738,9 @@ declare namespace Deno {
      * Optionally an `expireIn` option can be specified to set a time-to-live
      * (TTL) for the key. The TTL is specified in milliseconds, and the key will
      * be deleted from the database at earliest after the specified number of
-     * milliseconds have elapsed. If the `expireIn` option is not specified,
-     * the key will not expire.
+     * milliseconds have elapsed. Once the specified duration has passed, the
+     * key may still be visible for some additional time. If the `expireIn`
+     * option is not specified, the key will not expire.
      */
     set(
       key: KvKey,
