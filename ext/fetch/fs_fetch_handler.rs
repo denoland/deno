@@ -27,7 +27,6 @@ impl FetchHandler for FsFetchHandler {
     url: Url,
   ) -> (
     CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
     Option<Rc<CancelHandle>>,
   ) {
     let cancel_handle = CancelHandle::new_rc();
@@ -49,6 +48,6 @@ impl FetchHandler for FsFetchHandler {
     .or_cancel(&cancel_handle)
     .boxed_local();
 
-    (response_fut, None, Some(cancel_handle))
+    (response_fut, Some(cancel_handle))
   }
 }
