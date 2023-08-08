@@ -1357,7 +1357,11 @@ declare namespace Deno {
    * mutation is applied to the key.
    *
    * - `set` - Sets the value of the key to the given value, overwriting any
-   *   existing value.
+   *   existing value. Optionally an `expireIn` option can be specified to
+   *   set a time-to-live (TTL) for the key. The TTL is specified in
+   *   milliseconds, and the key will be deleted from the database after the
+   *   specified number of milliseconds have elapsed. If the `expireIn` option
+   *   is not specified, the key will not expire.
    * - `delete` - Deletes the key from the database. The mutation is a no-op if
    *   the key does not exist.
    * - `sum` - Adds the given value to the existing value of the key. Both the
@@ -1379,7 +1383,7 @@ declare namespace Deno {
   export type KvMutation =
     & { key: KvKey }
     & (
-      | { type: "set"; value: unknown; expiration?: Date }
+      | { type: "set"; value: unknown; expireIn?: number }
       | { type: "delete" }
       | { type: "sum"; value: KvU64 }
       | { type: "max"; value: KvU64 }
@@ -1591,8 +1595,14 @@ declare namespace Deno {
     /**
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.
+     *
+     * Optionally an `expireIn` option can be specified to set a time-to-live
+     * (TTL) for the key. The TTL is specified in milliseconds, and the key will
+     * be deleted from the database after the specified number of milliseconds
+     * have elapsed. If the `expireIn` option is not specified, the key will not
+     * expire.
      */
-    set(key: KvKey, value: unknown, options?: { expiration?: Date }): this;
+    set(key: KvKey, value: unknown, options?: { expireIn?: number }): this;
     /**
      * Add to the operation a mutation that deletes the specified key if all
      * checks pass during the commit.
@@ -1721,11 +1731,17 @@ declare namespace Deno {
      * const db = await Deno.openKv();
      * await db.set(["foo"], "bar");
      * ```
+     *
+     * Optionally an `expireIn` option can be specified to set a time-to-live
+     * (TTL) for the key. The TTL is specified in milliseconds, and the key will
+     * be deleted from the database after the specified number of milliseconds
+     * have elapsed. If the `expireIn` option is not specified, the key will not
+     * expire.
      */
     set(
       key: KvKey,
       value: unknown,
-      options?: { expiration?: Date },
+      options?: { expireIn?: number },
     ): Promise<KvCommitResult>;
 
     /**

@@ -694,7 +694,10 @@ impl Database for SqliteDb {
                   &value,
                   &encoding,
                   &version,
-                  mutation.expiration_ms
+                  mutation
+                    .expire_at
+                    .and_then(|x| i64::try_from(x).ok())
+                    .unwrap_or(-1i64)
                 ])?;
               assert_eq!(changed, 1)
             }

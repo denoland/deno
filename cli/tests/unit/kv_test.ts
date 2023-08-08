@@ -1771,9 +1771,8 @@ Deno.test({
     try {
       db = await Deno.openKv(filename);
 
-      const expiration = new Date(Date.now() + 1000);
-      await db.set(["a"], 1, { expiration });
-      await db.set(["b"], 2, { expiration });
+      await db.set(["a"], 1, { expireIn: 1000 });
+      await db.set(["b"], 2, { expireIn: 1000 });
       assertEquals((await db.get(["a"])).value, 1);
       assertEquals((await db.get(["b"])).value, 2);
 
@@ -1790,15 +1789,29 @@ Deno.test({
       await db.set(["b"], 2);
 
       // Wait for expiration
-      await sleep(2000);
+      await sleep(1000);
 
       // Re-open to trigger immediate cleanup
       db.close();
       db = null;
       db = await Deno.openKv(filename);
-      await sleep(100);
-      assertEquals((await db.get(["a"])).value, null);
-      assertEquals((await db.get(["b"])).value, 2);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,2]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
     } finally {
       if (db) {
         try {
@@ -1830,9 +1843,8 @@ Deno.test({
     try {
       db = await Deno.openKv(filename);
 
-      const expiration = new Date(Date.now() + 1000);
-      await db.atomic().set(["a"], 1, { expiration }).set(["b"], 2, {
-        expiration,
+      await db.atomic().set(["a"], 1, { expireIn: 1000 }).set(["b"], 2, {
+        expireIn: 1000,
       }).commit();
       assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
         1,
@@ -1851,17 +1863,29 @@ Deno.test({
       ]);
 
       // Wait for expiration
-      await sleep(2000);
+      await sleep(1000);
 
       // Re-open to trigger immediate cleanup
       db.close();
       db = null;
       db = await Deno.openKv(filename);
-      await sleep(100);
-      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
-        null,
-        null,
-      ]);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,null]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
     } finally {
       if (db) {
         try {
