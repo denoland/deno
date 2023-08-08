@@ -92,7 +92,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     let source = match source {
       Some(source) => Cow::Borrowed(source),
       None => {
-        Cow::Owned(self.fs.read_to_string(&specifier.to_file_path().unwrap())?)
+        Cow::Owned(self.fs.read_text_file_sync(&specifier.to_file_path().unwrap())?)
       }
     };
     let analysis = self.inner_cjs_analysis(specifier, &source)?;
