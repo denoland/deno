@@ -74,7 +74,7 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.4"
 dprint-plugin-markdown = "=0.15.3"
-dprint-plugin-typescript = "=0.85.0"
+dprint-plugin-typescript = "=0.86.1"
 encoding_rs.workspace = true
 env_logger = "=0.9.0"
 fancy-regex = "=0.10.0"
