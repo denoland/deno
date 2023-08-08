@@ -1338,8 +1338,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.10.1"
-source = "git+https://github.com/magurotuna/deno_npm.git?branch=snapshot_from_lockfile#cf3703a92a590ae9badbb62dafa0f66330cdb2e6"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "341f2c3935bee51c15203c587213c42d120f0dc56f0aca912a4bebbf038d1030"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1950,9 +1951,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.48.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58d2382a70396ccffd260adb879ed9f954c45457e8075830c7d4ec30c6dc8ad2"
+checksum = "0b32387a359104b88abe2583679e6dcb817aff5534204ade9e4c4528db8079f3"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
