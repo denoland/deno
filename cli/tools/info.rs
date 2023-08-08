@@ -40,7 +40,25 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let module_graph_builder = factory.module_graph_builder().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
-    let specifier = resolve_url_or_path(&specifier, cli_options.initial_cwd())?;
+    let maybe_imports_map = factory.maybe_import_map().await?;
+
+    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
+      if let Ok(imports_specifier) =
+        imports_map.resolve(&specifier, imports_map.base_url())
+      {
+        Some(imports_specifier)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+
+    let specifier = match maybe_import_specifier {
+      Some(specifier) => specifier,
+      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+    };
+
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_builder
@@ -77,7 +95,8 @@ fn print_cache_info(
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
-  let modules_cache = factory.file_fetcher()?.get_http_cache_location();
+  #[allow(deprecated)]
+  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
   let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();

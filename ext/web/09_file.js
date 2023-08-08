@@ -366,7 +366,11 @@ class Blob {
           const { value, done } = await AsyncGeneratorPrototypeNext(
             partIterator,
           );
-          if (done) return controller.close();
+          if (done) {
+            controller.close();
+            controller.byobRequest?.respond(0);
+            return;
+          }
           if (TypedArrayPrototypeGetByteLength(value) > 0) {
             return controller.enqueue(value);
           }

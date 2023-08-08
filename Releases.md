@@ -6,6 +6,71 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.36.0 / 2023.08.03
+
+- feat(bench): add BenchContext::start() and BenchContext::end() (#18734)
+- feat(bench): print iter/s in the report (#19994)
+- feat(cli): Add dot test reporter (#19804)
+- feat(cli): Adding JUnit test reports (#19747)
+- feat(compile): Add `--no-terminal` to compile command (#17991)
+- feat(ext/http): Upgrade to hyper1.0-rc4 (#19987)
+- feat(ext/websocket): allow HTTP(S) protocol in URL (#19862)
+- feat(node): add polyfill for node:test module (#20002)
+- feat(node/os): implement getPriority, setPriority & userInfo (#19370)
+- feat(npm): support running non-bin scripts in npm pkgs via `deno run` (#19975)
+- feat(permissions): add "--deny-*" flags (#19070)
+- feat(unstable): optional `deno_modules` directory (#19977)
+- feat(unstable/lsp): support navigating to deno_modules folder (#20030)
+- feat: Deno.createHttpClient allowHost (#19689)
+- fix(Deno.serve): accessing .url on cloned request throws (#19869)
+- fix(bench): iter/s calculation (#20016)
+- fix(check): should bust check cache when json module or npm resolution changes
+  (#19941)
+- fix(ext/compression): throw TypeError on corrupt input (#19979)
+- fix(ext/fs): fix MaybeArc when not sync_fs (#19950)
+- fix(ext/node): fix import json using npm specifier (#19723)
+- fix(lsp): handle import mapped `node:` specifier (#19956)
+- fix(node): node:test reports correct location (#20025)
+- fix(node): package path not exported error - add if types resolution was
+  occurring (#19963)
+- fix(npm): improve declaration resolution for filename with different
+  extensions (#19966)
+- fix(repl): highlight from ident in import from or export from (#20023)
+- fix(test): request cloning should throw if body stream is locked (#19990)
+- fix: call setIsTrusted for generated events (MessageEvent) (#19919)
+- fix: deno diagnostic - clarify where to put triple-slash directive (#20009)
+- fix: do not include jsx without `@ts-check` in tsc roots (#19964)
+- fix: error on invalid & unsupported jsx compiler options (#19954)
+- fix: make "suggest.autoImports" to switch completions from external modules
+  (#19845)
+- fix: regression in workers using dynamic imports (#20006)
+- fix: retry module download once if server errored (#17252)
+- perf(ext/ffi): Avoid receiving on FFI async work channel when no
+  UnsafeCallback exists (#19454)
+- perf: faster node globals access in cjs (#19997)
+
+### 1.35.3 / 2023.07.26
+
+- feat(runtime): sys_info.rs - Use KERN_OSRELEASE on {Free,Open}BSD (#19849)
+- fix(cli): build script panics on musl due to glibc_version check (#19913)
+- fix(cli): output file handling in deno upgrade (#18994)
+- fix(cli/init): update to `assert/mod.ts` (#19924)
+- fix(cli/test): fix clear screen behavior when run `deno test --watch` (#19888)
+- fix(ext/http): Error on deprecated/unavailable features (#19880)
+- fix(ext/http): Quietly ignore invalid status codes (#19936)
+- fix(ext/net): fix string port number handling in listen (#19921)
+- fix(ext/node): inspector with seggregated globals (#19917)
+- fix(lint): allow to use --rules with --rules-tags (#19754)
+- fix(lsp): auto-discover deno.json in more cases (#19894)
+- fix(lsp): handle watched files events from symlinked config files (#19898)
+- fix(node): add writable and readable fields to FakeSocket (#19931)
+- fix(node/http): add encrypted field to FakeSocket (#19886)
+- fix(node_compat): Wrap require resolve exports in try catch block (#19592)
+- fix(task): ensure quoted strings are maintained mid-word (#19944)
+- fix: deno info should respect import map (#19781)
+- perf(lsp): format in a blocking task (#19883)
+- perf: cache node resolution when accesing a global (#19930)
+
 ### 1.35.2 / 2023.07.20
 
 - fix(bench): run warmup benchmark to break JIT bias (#19844)

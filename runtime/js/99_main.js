@@ -154,6 +154,7 @@ async function pollForMessages() {
           ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
+    event.setIsTrusted(msgEvent, true);
 
     try {
       globalDispatchEvent(msgEvent);
@@ -167,6 +168,7 @@ async function pollForMessages() {
         error: e,
       });
 
+      event.setIsTrusted(errorEvent, true);
       globalDispatchEvent(errorEvent);
       if (!errorEvent.defaultPrevented) {
         throw e;

@@ -352,6 +352,8 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestBody, "hello world");
   });
   req.on("socket", (socket) => {
+    assert(socket.writable);
+    assert(socket.readable);
     socket.setKeepAlive();
     socket.destroy();
   });
@@ -637,7 +639,9 @@ Deno.test("[node/http] HTTPS server", async () => {
   const server = https.createServer({
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
-  }, (_req, res) => {
+  }, (req, res) => {
+    // @ts-ignore: It exists on TLSSocket
+    assert(req.socket.encrypted);
     res.end("success!");
   });
   server.listen(() => {
@@ -664,7 +668,9 @@ Deno.test(
   { permissions: { net: true } },
   async () => {
     const promise = deferred();
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
+      // @ts-ignore: It exists on TLSSocket
+      assert(!req.socket.encrypted);
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
     });

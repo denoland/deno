@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.120.0"
+version = "0.122.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,6 +23,9 @@ snapshot_from_snapshot = []
 include_js_files_for_snapshotting = [
   "deno_core/include_js_files_for_snapshotting",
 ]
+# A dev feature to disable creations and loading of snapshots in favor of
+# loading JS sources at runtime.
+__runtime_js_sources = ["dont_create_runtime_snapshot"]
 
 [lib]
 name = "deno_runtime"
@@ -64,6 +67,7 @@ winres.workspace = true
 winapi.workspace = true
 
 [dependencies]
+deno_ast.workspace = true
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_console.workspace = true

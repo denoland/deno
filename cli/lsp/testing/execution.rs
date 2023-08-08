@@ -700,7 +700,7 @@ impl LspTestReporter {
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
-      test::format_test_error(js_error)
+      test::fmt::format_test_error(js_error)
     );
     let messages = as_test_messages(err_string, false);
     for t in stack.iter().rev() {

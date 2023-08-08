@@ -85,7 +85,7 @@ pub fn get_local_package_json_version_reqs(
     match result {
       Ok(version_req) => Ok(NpmPackageReq {
         name: name.to_string(),
-        version_req: Some(version_req),
+        version_req,
       }),
       Err(err) => Err(PackageJsonDepValueParseError::Specifier(err)),
     }

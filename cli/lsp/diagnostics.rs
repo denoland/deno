@@ -12,6 +12,8 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::LspClientUrl;
+use super::urls::LspUrlMap;
 
 use crate::args::LintOptions;
 use crate::graph_util;
@@ -54,6 +56,7 @@ pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub config: Arc<ConfigSnapshot>,
   pub lint_options: LintOptions,
+  pub url_map: LspUrlMap,
 }
 
 struct DiagnosticRecord {
@@ -107,6 +110,7 @@ impl DiagnosticsPublisher {
     &self,
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
+    url_map: &LspUrlMap,
     token: &CancellationToken,
   ) -> usize {
     let mut diagnostics_by_specifier =
@@ -141,7 +145,9 @@ impl DiagnosticsPublisher {
         .client
         .when_outside_lsp_lock()
         .publish_diagnostics(
-          record.specifier,
+          url_map
+            .normalize_specifier(&record.specifier)
+            .unwrap_or(LspClientUrl::new(record.specifier)),
           all_specifier_diagnostics,
           version,
         )
@@ -169,7 +175,9 @@ impl DiagnosticsPublisher {
             .client
             .when_outside_lsp_lock()
             .publish_diagnostics(
-              specifier.clone(),
+              url_map
+                .normalize_specifier(specifier)
+                .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
               Vec::new(),
               removed_value.version,
             )
@@ -366,9 +374,11 @@ impl DiagnosticsServer {
                     snapshot,
                     config,
                     lint_options,
+                    url_map,
                   },
                 batch_index,
               } = message;
+              let url_map = Arc::new(url_map);
 
               // cancel the previous run
               token.cancel();
@@ -383,6 +393,7 @@ impl DiagnosticsServer {
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
                     // Wait on the previous run to complete in order to prevent
@@ -419,7 +430,12 @@ impl DiagnosticsServer {
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Ts, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Ts,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -447,6 +463,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
                     previous_handle.await;
@@ -463,7 +480,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Deno, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Deno,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -491,6 +513,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
@@ -514,7 +537,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Lint, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Lint,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -1082,13 +1110,11 @@ impl DenoDiagnostic {
 }
 
 fn diagnose_resolution(
-  lsp_diagnostics: &mut Vec<lsp::Diagnostic>,
   snapshot: &language_server::StateSnapshot,
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
-  ranges: Vec<lsp::Range>,
-) {
+) -> Vec<DenoDiagnostic> {
   let mut diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
@@ -1172,11 +1198,7 @@ fn diagnose_resolution(
     }
     _ => (),
   }
-  for range in ranges {
-    for diagnostic in &diagnostics {
-      lsp_diagnostics.push(diagnostic.to_lsp_diagnostic(&range));
-    }
-  }
+  diagnostics
 }
 
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
@@ -1210,21 +1232,30 @@ fn diagnose_dependency(
       }
     }
   }
-  diagnose_resolution(
-    diagnostics,
-    snapshot,
-    if dependency.maybe_code.is_none() {
-      &dependency.maybe_type
-    } else {
-      &dependency.maybe_code
-    },
-    dependency.is_dynamic,
-    dependency.maybe_assert_type.as_deref(),
-    dependency
-      .imports
-      .iter()
-      .map(|i| documents::to_lsp_range(&i.range))
-      .collect(),
+
+  let import_ranges: Vec<_> = dependency
+    .imports
+    .iter()
+    .map(|i| documents::to_lsp_range(&i.range))
+    .collect();
+
+  diagnostics.extend(
+    diagnose_resolution(
+      snapshot,
+      if dependency.maybe_code.is_none() {
+        &dependency.maybe_type
+      } else {
+        &dependency.maybe_code
+      },
+      dependency.is_dynamic,
+      dependency.maybe_assert_type.as_deref(),
+    )
+    .iter()
+    .flat_map(|diag| {
+      import_ranges
+        .iter()
+        .map(|range| diag.to_lsp_diagnostic(range))
+    }),
   );
   // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
   // a different specifier and therefore needs a separate call to
@@ -1241,13 +1272,15 @@ fn diagnose_dependency(
       Resolution::Err(error) => documents::to_lsp_range(error.range()),
       Resolution::None => unreachable!(),
     };
-    diagnose_resolution(
-      diagnostics,
-      snapshot,
-      &dependency.maybe_type,
-      dependency.is_dynamic,
-      dependency.maybe_assert_type.as_deref(),
-      vec![range],
+    diagnostics.extend(
+      diagnose_resolution(
+        snapshot,
+        &dependency.maybe_type,
+        dependency.is_dynamic,
+        dependency.maybe_assert_type.as_deref(),
+      )
+      .iter()
+      .map(|diag| diag.to_lsp_diagnostic(&range)),
     );
   }
 }
@@ -1297,7 +1330,8 @@ fn generate_deno_diagnostics(
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::cache::HttpCache;
+  use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::SpecifierSettings;
@@ -1316,7 +1350,10 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let cache = HttpCache::new(location.to_path_buf());
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -1340,8 +1377,8 @@ mod tests {
       documents,
       maybe_import_map,
       assets: Default::default(),
-      cache_metadata: cache::CacheMetadata::new(HttpCache::new(
-        location.to_path_buf(),
+      cache_metadata: cache::CacheMetadata::new(Arc::new(
+        GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
       maybe_node_resolver: None,
       maybe_npm_resolver: None,
@@ -1391,7 +1428,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = HttpCache::new(cache_location);
+    let cache =
+      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
 
     // test enabled
@@ -1484,7 +1522,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = HttpCache::new(cache_location);
+    let cache =
+      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
 
     let config = mock_config();

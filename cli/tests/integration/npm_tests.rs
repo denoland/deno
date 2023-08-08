@@ -775,6 +775,20 @@ itest!(deno_run_bin_esm {
   http_server: true,
 });
 
+itest!(deno_run_bin_esm_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli.mjs this is a test",
+  output: "npm/deno_run_esm.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(deno_run_bin_cjs_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/bin@0.6.0/cli-cjs.js this is a test",
+  output: "npm/deno_run_cjs.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
 itest!(deno_run_bin_special_chars {
   args: "run -A --quiet npm:@denotest/special-chars-in-bin-name/\\foo\" this is a test",
   output: "npm/deno_run_special_chars_in_bin_name.out",
@@ -812,6 +826,22 @@ fn deno_run_bin_lockfile() {
 itest!(deno_run_non_existent {
   args: "run npm:mkdirp@0.5.125",
   output: "npm/deno_run_non_existent.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint {
+  args: "run -A --quiet npm:@denotest/esm-basic",
+  output: "npm/deno_run_no_bin_entrypoint.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  exit_code: 1,
+});
+
+itest!(deno_run_no_bin_entrypoint_non_existent_subpath {
+  args: "run -A --quiet npm:@denotest/esm-basic/non-existent.js",
+  output: "npm/deno_run_no_bin_entrypoint_non_existent_subpath.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
@@ -1524,7 +1554,6 @@ fn auto_discover_lock_file() {
 fn peer_deps_with_copied_folders_and_lockfile() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
     .cwd("npm/peer_deps_with_copied_folders")
     .build();
@@ -1886,7 +1915,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
       "\n",
       "Caused by:\n",
-      "    Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n"
+      "    0: Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n",
+      "    1: Could not find version '1.0.0' for npm package '@denotest/esm-basic'.\n",
     ));
     output.assert_exit_code(1);
 
@@ -1906,7 +1936,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
 fn binary_package_with_optional_dependencies() {
   let context = TestContextBuilder::for_npm()
     .use_sync_npm_download()
-    .use_separate_deno_dir() // the "npm" folder means something in the deno dir, so use a separate folder
     .use_copy_temp_dir("npm/binary_package")
     .cwd("npm/binary_package")
     .build();
@@ -1995,8 +2024,14 @@ pub fn node_modules_dir_config_file() {
 
   let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
   deno_cache_cmd.run();
-
   assert!(node_modules_dir.exists());
+
+  // now try adding a vendor flag, it should exist
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  deno_cache_cmd.run();
+  assert!(node_modules_dir.exists());
+
   rm_node_modules();
   temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
 
@@ -2012,6 +2047,14 @@ pub fn node_modules_dir_config_file() {
     .args("cache --quiet --node-modules-dir main.ts")
     .run();
   assert!(node_modules_dir.exists());
+
+  // should override the `--vendor` flag
+  rm_node_modules();
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir=false --vendor main.ts")
+    .run();
+  assert!(!node_modules_dir.exists());
 }
 
 #[test]
@@ -2089,4 +2132,26 @@ itest!(reserved_word_exports {
   output: "npm/reserved_word_exports/main.out",
   envs: env_vars_for_npm_tests(),
   http_server: true,
+});
+
+itest!(import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(dynamic_import_json {
+  args: "run -A --quiet npm/import_json/main.js",
+  output: "npm/import_json/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+});
+
+itest!(check_package_file_dts_dmts_dcts {
+  args: "check npm/file_dts_dmts_dcts/main.ts",
+  output: "npm/file_dts_dmts_dcts/main.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 1,
 });

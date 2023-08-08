@@ -58,7 +58,8 @@ delete Object.prototype.__proto__;
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
-    'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.unstable" />';
+    "or add a triple-slash directive to the top of your entrypoint (main file): " +
+    '/// <reference lib="deno.unstable" />';
 
   /**
    * @param {unknown} value
@@ -344,7 +345,8 @@ delete Object.prototype.__proto__;
         if (msg === "Cannot find name 'Deno'.") {
           msg += " Do you need to change your target library? " +
             "Try changing the 'lib' compiler option to include 'deno.ns' " +
-            'or add a triple-slash directive to your entrypoint: /// <reference lib="deno.ns" />';
+            "or add a triple-slash directive to the top of your entrypoint " +
+            '(main file): /// <reference lib="deno.ns" />';
         }
         return msg;
       }

@@ -129,6 +129,7 @@ class InnerRequest {
   #streamRid;
   #body;
   #upgraded;
+  #urlValue;
 
   constructor(slabId, context) {
     this.#slabId = slabId;
@@ -236,6 +237,10 @@ class InnerRequest {
   }
 
   url() {
+    if (this.#urlValue !== undefined) {
+      return this.#urlValue;
+    }
+
     if (this.#methodAndUri === undefined) {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
@@ -249,27 +254,28 @@ class InnerRequest {
 
     // * is valid for OPTIONS
     if (path === "*") {
-      return "*";
+      return this.#urlValue = "*";
     }
 
     // If the path is empty, return the authority (valid for CONNECT)
     if (path == "") {
-      return this.#methodAndUri[1];
+      return this.#urlValue = this.#methodAndUri[1];
     }
 
     // CONNECT requires an authority
     if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#methodAndUri[1];
+      return this.#urlValue = this.#methodAndUri[1];
     }
 
     const hostname = this.#methodAndUri[1];
     if (hostname) {
       // Construct a URL from the scheme, the hostname, and the path
-      return this.#context.scheme + hostname + path;
+      return this.#urlValue = this.#context.scheme + hostname + path;
     }
 
     // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#context.scheme + this.#context.fallbackHost + path;
+    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
+      path;
   }
 
   get remoteAddr() {
@@ -720,7 +726,7 @@ function serveHttpOn(context, callback) {
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
+        while ((req = op_http_try_wait(rid)) !== -1) {
           PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
@@ -735,7 +741,7 @@ function serveHttpOn(context, callback) {
         }
         throw new Deno.errors.Http(error);
       }
-      if (req === 0xffffffff) {
+      if (req === -1) {
         break;
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);

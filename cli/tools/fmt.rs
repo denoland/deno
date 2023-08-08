@@ -151,6 +151,7 @@ fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext_fmt)
     .ignore_git_folder()
     .ignore_node_modules()
+    .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
     .collect_files(&files.include)
 }

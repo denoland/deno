@@ -12,7 +12,9 @@ use crate::cache::Caches;
 use crate::cache::DenoDir;
 use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::cache::LocalHttpCache;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
@@ -135,6 +137,8 @@ struct CliFactoryServices {
   deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   caches: Deferred<Arc<Caches>>,
   file_fetcher: Deferred<Arc<FileFetcher>>,
+  global_http_cache: Deferred<Arc<GlobalHttpCache>>,
+  http_cache: Deferred<Arc<dyn HttpCache>>,
   http_client: Deferred<Arc<HttpClient>>,
   emit_cache: Deferred<EmitCache>,
   emitter: Deferred<Arc<Emitter>>,
@@ -233,6 +237,29 @@ impl CliFactory {
       .get_or_init(|| ProgressBar::new(ProgressBarStyle::TextOnly))
   }
 
+  pub fn global_http_cache(&self) -> Result<&Arc<GlobalHttpCache>, AnyError> {
+    self.services.global_http_cache.get_or_try_init(|| {
+      Ok(Arc::new(GlobalHttpCache::new(
+        self.deno_dir()?.deps_folder_path(),
+        crate::cache::RealDenoCacheEnv,
+      )))
+    })
+  }
+
+  pub fn http_cache(&self) -> Result<&Arc<dyn HttpCache>, AnyError> {
+    self.services.http_cache.get_or_try_init(|| {
+      let global_cache = self.global_http_cache()?.clone();
+      match self.options.vendor_dir_path() {
+        Some(local_path) => {
+          let local_cache =
+            LocalHttpCache::new(local_path.clone(), global_cache);
+          Ok(Arc::new(local_cache))
+        }
+        None => Ok(global_cache),
+      }
+    })
+  }
+
   pub fn http_client(&self) -> &Arc<HttpClient> {
     self.services.http_client.get_or_init(|| {
       Arc::new(HttpClient::new(
@@ -245,7 +272,7 @@ impl CliFactory {
   pub fn file_fetcher(&self) -> Result<&Arc<FileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       Ok(Arc::new(FileFetcher::new(
-        HttpCache::new(self.deno_dir()?.deps_folder_path()),
+        self.http_cache()?.clone(),
         self.options.cache_setting(),
         !self.options.no_remote(),
         self.http_client().clone(),
@@ -398,7 +425,7 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.options.to_maybe_jsx_import_source_config(),
+          self.options.to_maybe_jsx_import_source_config()?,
           self.maybe_import_map().await?.clone(),
           self.options.no_npm(),
           self.npm_api()?.clone(),
@@ -475,7 +502,8 @@ impl CliFactory {
         let caches = self.caches()?;
         let node_analysis_cache =
           NodeAnalysisCache::new(caches.node_analysis_db());
-        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(node_analysis_cache);
+        let cjs_esm_analyzer =
+          CliCjsCodeAnalyzer::new(node_analysis_cache, self.fs().clone());
 
         Ok(Arc::new(NodeCodeTranslator::new(
           cjs_esm_analyzer,
@@ -518,6 +546,7 @@ impl CliFactory {
           self.maybe_file_watcher_reporter().clone(),
           self.emit_cache()?.clone(),
           self.file_fetcher()?.clone(),
+          self.global_http_cache()?.clone(),
           self.type_checker().await?.clone(),
         )))
       })

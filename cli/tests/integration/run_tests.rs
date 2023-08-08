@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
 use std::io::Read;
@@ -96,9 +97,16 @@ itest!(_017_import_redirect {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check run/017_import_redirect.ts",
+itest!(_017_import_redirect_check {
+  args: "run --quiet --reload --check run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_vendor_dir {
+  args:
+    "run --quiet --reload --vendor --check $TESTDATA/run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
+  temp_cwd: true,
 });
 
 itest!(_017_import_redirect_info {
@@ -156,6 +164,14 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
+itest!(_027_redirect_typescript_vendor_dir {
+  args:
+    "run --quiet --reload --vendor $TESTDATA/run/027_redirect_typescript.ts",
+  output: "run/027_redirect_typescript.ts.out",
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
@@ -184,6 +200,14 @@ itest!(_033_import_map_remote {
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
+});
+
+itest!(_033_import_map_vendor_dir_remote {
+  args:
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor --unstable $TESTDATA/import_maps/test_remote.ts",
+  output: "run/033_import_map_remote.out",
+  http_server: true,
+  temp_cwd: true,
 });
 
 itest!(_033_import_map_data_uri {
@@ -579,7 +603,7 @@ fn _090_run_permissions_request() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -587,7 +611,7 @@ fn _090_run_permissions_request() {
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -606,7 +630,7 @@ fn _090_run_permissions_request_sync() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -614,7 +638,7 @@ fn _090_run_permissions_request_sync() {
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -634,7 +658,7 @@ fn permissions_prompt_allow_all() {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -643,7 +667,7 @@ fn permissions_prompt_allow_all() {
       // "read" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests read access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-read to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
@@ -652,7 +676,7 @@ fn permissions_prompt_allow_all() {
       // "write" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests write access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-write to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
       ));
@@ -660,8 +684,8 @@ fn permissions_prompt_allow_all() {
       console.expect("✅ Granted all write access.");
       // "net" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests network access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "┌ ⚠️  Deno requests net access to \"foo\".\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-net to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
       ));
@@ -670,7 +694,7 @@ fn permissions_prompt_allow_all() {
       // "env" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
@@ -679,7 +703,7 @@ fn permissions_prompt_allow_all() {
       // "sys" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-sys to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
@@ -688,7 +712,7 @@ fn permissions_prompt_allow_all() {
       // "ffi" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-ffi to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
       ));
@@ -744,12 +768,42 @@ fn permissions_prompt_allow_all_lowercase_a() {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.write_line_raw("a");
       console.expect("Unrecognized option.");
+    });
+}
+
+itest!(deny_all_permission_args {
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  output: "run/deny_all_permission_args.out",
+});
+
+itest!(deny_some_permission_args {
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  output: "run/deny_some_permission_args.out",
+});
+
+#[test]
+fn permissions_cache() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_cache.ts"])
+    .with_pty(|mut console| {
+      console.expect(concat!(
+        "prompt\r\n",
+        "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
+        "├ Run again with --allow-read to bypass this prompt.\r\n",
+        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+      ));
+      console.write_line_raw("y");
+      console.expect("✅ Granted read access to \"foo\".");
+      console.expect("granted");
+      console.expect("prompt");
     });
 }
 
@@ -1653,6 +1707,14 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
+itest!(jsx_import_source_pragma_with_config_vendor_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --vendor $TESTDATA/run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
+  http_server: true,
+  temp_cwd: true,
+  copy_temp_dir: Some("jsx/"),
+});
+
 itest!(jsx_import_source_no_pragma_no_check {
   args:
     "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
@@ -1702,6 +1764,13 @@ itest!(references_types_remote {
 itest!(reference_types_error {
   args:
     "run --config run/checkjs.tsconfig.json --check run/reference_types_error.js",
+  output: "run/reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_vendor_dir {
+  args:
+    "run --config run/checkjs.tsconfig.json --check --vendor $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
@@ -2504,14 +2573,14 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2530,14 +2599,14 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2556,7 +2625,7 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2578,7 +2647,7 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2719,7 +2788,7 @@ fn issue9750() {
       console.write_line_raw("yy");
       console.expect(concat!(
         "┌ ⚠️  Deno requests env access.\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
@@ -3000,7 +3069,7 @@ itest!(
     args: "run -A main.js",
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
-    copy_temp_dir: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
   }
@@ -4424,3 +4493,91 @@ itest!(extension_dynamic_import {
   output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });
+
+#[test]
+pub fn vendor_dir_config_file() {
+  let test_context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  let vendor_dir = temp_dir.path().join("vendor");
+  let rm_vendor_dir = || std::fs::remove_dir_all(&vendor_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+
+  let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
+  temp_dir.write("deno.json", r#"{ "vendor": false }"#);
+
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+  assert!(!vendor_dir.exists());
+  test_context
+    .new_command()
+    .args("cache --quiet --vendor main.ts")
+    .run();
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
+
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  let cache_command = test_context.new_command().args("cache --quiet main.ts");
+  cache_command.run();
+
+  assert!(vendor_dir.exists());
+  let mod1_file = vendor_dir
+    .join("http_localhost_4545")
+    .join("subdir")
+    .join("mod1.ts");
+  mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
+
+  // won't match the lockfile now
+  deno_run_cmd
+    .run()
+    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
+  Specifier: http://localhost:4545/subdir/mod1.ts
+  Lock file: [WILDCARD]deno.lock
+"#)
+    .assert_exit_code(10);
+
+  // try updating by deleting the lockfile
+  let lockfile = temp_dir.path().join("deno.lock");
+  lockfile.remove_file();
+  cache_command.run();
+
+  // now it should run
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
+  assert!(lockfile.exists());
+
+  // ensure we can add and execute files in directories that have a hash in them
+  test_context
+    .new_command()
+    // http_localhost_4545/subdir/#capitals_c75d7/main.js
+    .args("cache http://localhost:4545/subdir/CAPITALS/main.js")
+    .run()
+    .skip_output_check();
+  assert_eq!(
+    vendor_dir.join("manifest.json").read_json_value(),
+    json!({
+      "folders": {
+        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
+      }
+    })
+  );
+  vendor_dir
+    .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
+    .write("console.log('hello there');");
+  test_context
+    .new_command()
+    // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
+    .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .run()
+    .assert_matches_text("hello there\n");
+}

@@ -5,6 +5,7 @@ const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -151,7 +152,6 @@ function assertOps(fn) {
       // Defer until next event loop turn - that way timeouts and intervals
       // cleared can actually be removed from resource table, otherwise
       // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
       await opSanitizerDelay();
     }
     const post = core.metrics();
@@ -574,6 +574,15 @@ function withPermissions(fn, permissions) {
 
 /** @type {Map<number, TestState | TestStepState>} */
 const testStates = new Map();
+/** @type {number | null} */
+let currentBenchId = null;
+// These local variables are used to track time measurements at
+// `BenchContext::{start,end}` calls. They are global instead of using a state
+// map to minimise the overhead of assigning them.
+/** @type {number | null} */
+let currentBenchUserExplicitStart = null;
+/** @type {number | null} */
+let currentBenchUserExplicitEnd = null;
 
 // Main test function provided by Deno.
 function test(
@@ -668,11 +677,21 @@ function test(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
-  testDesc.location = {
-    fileName: jsError.frames[1].fileName,
-    lineNumber: jsError.frames[1].lineNumber,
-    columnNumber: jsError.frames[1].columnNumber,
-  };
+  let location;
+
+  for (let i = 0; i < jsError.frames.length; i++) {
+    const filename = jsError.frames[i].fileName;
+    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
+      continue;
+    }
+    location = {
+      fileName: jsError.frames[i].fileName,
+      lineNumber: jsError.frames[i].lineNumber,
+      columnNumber: jsError.frames[i].columnNumber,
+    };
+    break;
+  }
+  testDesc.location = location;
   testDesc.fn = wrapTest(testDesc);
 
   const { id, origin } = ops.op_register_test(testDesc);
@@ -825,10 +844,11 @@ function benchStats(n, highPrecision, avg, min, max, all) {
   };
 }
 
-async function benchMeasure(timeBudget, fn, async) {
+async function benchMeasure(timeBudget, fn, async, context) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
+  let usedExplicitTimers = false;
   const all = [];
   let min = Infinity;
   let max = -Infinity;
@@ -842,61 +862,101 @@ async function benchMeasure(timeBudget, fn, async) {
   if (!async) {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
-
-      fn();
-      const iterationTime = benchNow() - t1;
+      fn(context);
+      const t2 = benchNow();
+      const totalTime = t2 - t1;
+      let measuredTime = totalTime;
+      if (currentBenchUserExplicitStart !== null) {
+        measuredTime -= currentBenchUserExplicitStart - t1;
+        currentBenchUserExplicitStart = null;
+        usedExplicitTimers = true;
+      }
+      if (currentBenchUserExplicitEnd !== null) {
+        measuredTime -= t2 - currentBenchUserExplicitEnd;
+        currentBenchUserExplicitEnd = null;
+        usedExplicitTimers = true;
+      }
 
       c++;
-      wavg += iterationTime;
-      budget -= iterationTime;
+      wavg += measuredTime;
+      budget -= totalTime;
     }
   } else {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
-
-      await fn();
-      const iterationTime = benchNow() - t1;
+      await fn(context);
+      const t2 = benchNow();
+      const totalTime = t2 - t1;
+      let measuredTime = totalTime;
+      if (currentBenchUserExplicitStart !== null) {
+        measuredTime -= currentBenchUserExplicitStart - t1;
+        currentBenchUserExplicitStart = null;
+        usedExplicitTimers = true;
+      }
+      if (currentBenchUserExplicitEnd !== null) {
+        measuredTime -= t2 - currentBenchUserExplicitEnd;
+        currentBenchUserExplicitEnd = null;
+        usedExplicitTimers = true;
+      }
 
       c++;
-      wavg += iterationTime;
-      budget -= iterationTime;
+      wavg += measuredTime;
+      budget -= totalTime;
     }
   }
 
   wavg /= c;
 
   // measure step
-  if (wavg > lowPrecisionThresholdInNs) {
+  if (wavg > lowPrecisionThresholdInNs || usedExplicitTimers) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
     if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-
-        fn();
-        const iterationTime = benchNow() - t1;
+        fn(context);
+        const t2 = benchNow();
+        const totalTime = t2 - t1;
+        let measuredTime = totalTime;
+        if (currentBenchUserExplicitStart !== null) {
+          measuredTime -= currentBenchUserExplicitStart - t1;
+          currentBenchUserExplicitStart = null;
+        }
+        if (currentBenchUserExplicitEnd !== null) {
+          measuredTime -= t2 - currentBenchUserExplicitEnd;
+          currentBenchUserExplicitEnd = null;
+        }
 
         n++;
-        avg += iterationTime;
-        budget -= iterationTime;
-        ArrayPrototypePush(all, iterationTime);
-        if (iterationTime < min) min = iterationTime;
-        if (iterationTime > max) max = iterationTime;
+        avg += measuredTime;
+        budget -= totalTime;
+        ArrayPrototypePush(all, measuredTime);
+        if (measuredTime < min) min = measuredTime;
+        if (measuredTime > max) max = measuredTime;
       }
     } else {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-
-        await fn();
-        const iterationTime = benchNow() - t1;
+        await fn(context);
+        const t2 = benchNow();
+        const totalTime = t2 - t1;
+        let measuredTime = totalTime;
+        if (currentBenchUserExplicitStart !== null) {
+          measuredTime -= currentBenchUserExplicitStart - t1;
+          currentBenchUserExplicitStart = null;
+        }
+        if (currentBenchUserExplicitEnd !== null) {
+          measuredTime -= t2 - currentBenchUserExplicitEnd;
+          currentBenchUserExplicitEnd = null;
+        }
 
         n++;
-        avg += iterationTime;
-        budget -= iterationTime;
-        ArrayPrototypePush(all, iterationTime);
-        if (iterationTime < min) min = iterationTime;
-        if (iterationTime > max) max = iterationTime;
+        avg += measuredTime;
+        budget -= totalTime;
+        ArrayPrototypePush(all, measuredTime);
+        if (measuredTime < min) min = measuredTime;
+        if (measuredTime > max) max = measuredTime;
       }
     }
   } else {
@@ -906,7 +966,11 @@ async function benchMeasure(timeBudget, fn, async) {
     if (!async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-        for (let c = 0; c < lowPrecisionThresholdInNs; c++) fn();
+        for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
+          fn(context);
+          currentBenchUserExplicitStart = null;
+          currentBenchUserExplicitEnd = null;
+        }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
         n++;
@@ -919,7 +983,11 @@ async function benchMeasure(timeBudget, fn, async) {
     } else {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
-        for (let c = 0; c < lowPrecisionThresholdInNs; c++) await fn();
+        for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
+          await fn(context);
+          currentBenchUserExplicitStart = null;
+          currentBenchUserExplicitEnd = null;
+        }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
         n++;
@@ -936,12 +1004,45 @@ async function benchMeasure(timeBudget, fn, async) {
   return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
 }
 
+/** @param desc {BenchDescription} */
+function createBenchContext(desc) {
+  return {
+    [SymbolToStringTag]: "BenchContext",
+    name: desc.name,
+    origin: desc.origin,
+    start() {
+      if (currentBenchId !== desc.id) {
+        throw new TypeError(
+          "The benchmark which this context belongs to is not being executed.",
+        );
+      }
+      if (currentBenchUserExplicitStart != null) {
+        throw new TypeError("BenchContext::start() has already been invoked.");
+      }
+      currentBenchUserExplicitStart = benchNow();
+    },
+    end() {
+      const end = benchNow();
+      if (currentBenchId !== desc.id) {
+        throw new TypeError(
+          "The benchmark which this context belongs to is not being executed.",
+        );
+      }
+      if (currentBenchUserExplicitEnd != null) {
+        throw new TypeError("BenchContext::end() has already been invoked.");
+      }
+      currentBenchUserExplicitEnd = end;
+    },
+  };
+}
+
 /** Wrap a user benchmark function in one which returns a structured result. */
 function wrapBenchmark(desc) {
   const fn = desc.fn;
   return async function outerWrapped() {
     let token = null;
     const originalConsole = globalThis.console;
+    currentBenchId = desc.id;
 
     try {
       globalThis.console = new Console((s) => {
@@ -962,13 +1063,17 @@ function wrapBenchmark(desc) {
       }
 
       const benchTimeInMs = 500;
-      const stats = await benchMeasure(benchTimeInMs, fn, desc.async);
+      const context = createBenchContext(desc);
+      const stats = await benchMeasure(benchTimeInMs, fn, desc.async, context);
 
       return { ok: stats };
     } catch (error) {
       return { failed: core.destructureError(error) };
     } finally {
       globalThis.console = originalConsole;
+      currentBenchId = null;
+      currentBenchUserExplicitStart = null;
+      currentBenchUserExplicitEnd = null;
       if (bench.sanitizeExit) setExitHandler(null);
       if (token !== null) restorePermissions(token);
     }

@@ -29,10 +29,15 @@ pub struct CjsAnalysis {
 pub trait CjsCodeAnalyzer {
   /// Analyzes CommonJs code for exports and reexports, which is
   /// then used to determine the wrapper ESM module exports.
+  ///
+  /// Note that the source is provided by the caller when the caller
+  /// already has it. If the source is needed by the implementation,
+  /// then it can use the provided source, or otherwise load it if
+  /// necessary.
   fn analyze_cjs(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    maybe_source: Option<&str>,
   ) -> Result<CjsAnalysis, AnyError>;
 }
 
@@ -67,7 +72,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
   pub fn translate_cjs_to_esm(
     &self,
     specifier: &ModuleSpecifier,
-    source: &str,
+    source: Option<&str>,
     permissions: &dyn NodePermissions,
   ) -> Result<String, AnyError> {
     let mut temp_var_count = 0;
@@ -100,7 +105,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
 
       handled_reexports.insert(reexport.to_string());
 
-      // First, resolve relate reexport specifier
+      // First, resolve the reexport specifier
       let resolved_reexport = self.resolve(
         &reexport,
         &referrer,
@@ -110,35 +115,30 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
         NodeResolutionMode::Execution,
         permissions,
       )?;
-      // Second, read the source code from disk
+
+      // Second, resolve its exports and re-exports
       let reexport_specifier =
         ModuleSpecifier::from_file_path(&resolved_reexport).unwrap();
-      let reexport_file_text = self
-        .fs
-        .read_to_string(&resolved_reexport)
-        .map_err(AnyError::from)
+      let analysis = self
+        .cjs_code_analyzer
+        .analyze_cjs(&reexport_specifier, None)
         .with_context(|| {
           format!(
-            "Could not find '{}' ({}) referenced from {}",
+            "Could not load '{}' ({}) referenced from {}",
             reexport, reexport_specifier, referrer
           )
         })?;
-      {
-        let analysis = self
-          .cjs_code_analyzer
-          .analyze_cjs(&reexport_specifier, &reexport_file_text)?;
 
-        for reexport in analysis.reexports {
-          reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
-        }
-
-        all_exports.extend(
-          analysis
-            .exports
-            .into_iter()
-            .filter(|e| e.as_str() != "default"),
-        );
+      for reexport in analysis.reexports {
+        reexports_to_handle.push_back((reexport, reexport_specifier.clone()));
       }
+
+      all_exports.extend(
+        analysis
+          .exports
+          .into_iter()
+          .filter(|e| e.as_str() != "default"),
+      );
     }
 
     source.push(format!(

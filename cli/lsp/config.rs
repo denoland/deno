@@ -425,12 +425,19 @@ pub struct Settings {
   pub workspace: WorkspaceSettings,
 }
 
+#[derive(Debug)]
+struct WithCanonicalizedSpecifier<T> {
+  /// Stored canonicalized specifier, which is used for file watcher events.
+  canonicalized_specifier: ModuleSpecifier,
+  file: T,
+}
+
 /// Contains the config file and dependent information.
 #[derive(Debug)]
 struct LspConfigFileInfo {
-  config_file: ConfigFile,
+  config_file: WithCanonicalizedSpecifier<ConfigFile>,
   /// An optional deno.lock file, which is resolved relative to the config file.
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_lockfile: Option<WithCanonicalizedSpecifier<Arc<Mutex<Lockfile>>>>,
   /// The canonicalized node_modules directory, which is found relative to the config file.
   maybe_node_modules_dir: Option<PathBuf>,
   excluded_paths: Vec<Url>,
@@ -468,15 +475,47 @@ impl Config {
       .and_then(|p| p.maybe_node_modules_dir.as_ref())
   }
 
+  pub fn maybe_vendor_dir_path(&self) -> Option<PathBuf> {
+    self.maybe_config_file().and_then(|c| c.vendor_dir_path())
+  }
+
   pub fn maybe_config_file(&self) -> Option<&ConfigFile> {
-    self.maybe_config_file_info.as_ref().map(|c| &c.config_file)
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .map(|c| &c.config_file.file)
+  }
+
+  /// Canonicalized specifier of the config file, which should only be used for
+  /// file watcher events. Otherwise, prefer using the non-canonicalized path
+  /// as the rest of the CLI does for config files.
+  pub fn maybe_config_file_canonicalized_specifier(
+    &self,
+  ) -> Option<&ModuleSpecifier> {
+    self
+      .maybe_config_file_info
+      .as_ref()
+      .map(|c| &c.config_file.canonicalized_specifier)
   }
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<Mutex<Lockfile>>> {
     self
       .maybe_config_file_info
       .as_ref()
-      .and_then(|c| c.maybe_lockfile.as_ref())
+      .and_then(|c| c.maybe_lockfile.as_ref().map(|l| &l.file))
+  }
+
+  /// Canonicalized specifier of the lockfile, which should only be used for
+  /// file watcher events. Otherwise, prefer using the non-canonicalized path
+  /// as the rest of the CLI does for config files.
+  pub fn maybe_lockfile_canonicalized_specifier(
+    &self,
+  ) -> Option<&ModuleSpecifier> {
+    self.maybe_config_file_info.as_ref().and_then(|c| {
+      c.maybe_lockfile
+        .as_ref()
+        .map(|l| &l.canonicalized_specifier)
+    })
   }
 
   pub fn clear_config_file(&mut self) {
@@ -485,7 +524,17 @@ impl Config {
 
   pub fn set_config_file(&mut self, config_file: ConfigFile) {
     self.maybe_config_file_info = Some(LspConfigFileInfo {
-      maybe_lockfile: resolve_lockfile_from_config(&config_file),
+      maybe_lockfile: resolve_lockfile_from_config(&config_file).map(
+        |lockfile| {
+          let path = canonicalize_path_maybe_not_exists(&lockfile.filename)
+            .unwrap_or_else(|_| lockfile.filename.clone());
+          WithCanonicalizedSpecifier {
+            canonicalized_specifier: ModuleSpecifier::from_file_path(path)
+              .unwrap(),
+            file: Arc::new(Mutex::new(lockfile)),
+          }
+        },
+      ),
       maybe_node_modules_dir: resolve_node_modules_dir(&config_file),
       excluded_paths: config_file
         .to_files_config()
@@ -496,7 +545,16 @@ impl Config {
         .into_iter()
         .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
         .collect(),
-      config_file,
+      config_file: WithCanonicalizedSpecifier {
+        canonicalized_specifier: config_file
+          .specifier
+          .to_file_path()
+          .ok()
+          .and_then(|p| canonicalize_path_maybe_not_exists(&p).ok())
+          .and_then(|p| ModuleSpecifier::from_file_path(p).ok())
+          .unwrap_or_else(|| config_file.specifier.clone()),
+        file: config_file,
+      },
     });
   }
 
@@ -739,9 +797,7 @@ fn specifier_enabled(
     .unwrap_or_else(|| settings.workspace.enable)
 }
 
-fn resolve_lockfile_from_config(
-  config_file: &ConfigFile,
-) -> Option<Arc<Mutex<Lockfile>>> {
+fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
   let lockfile_path = match config_file.resolve_lockfile_path() {
     Ok(Some(value)) => value,
     Ok(None) => return None,
@@ -758,7 +814,13 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  if config_file.node_modules_dir() != Some(true) {
+  let explicitly_disabled = config_file.node_modules_dir_flag() == Some(false);
+  if explicitly_disabled {
+    return None;
+  }
+  let enabled = config_file.node_modules_dir_flag() == Some(true)
+    || config_file.vendor_dir_flag() == Some(true);
+  if !enabled {
     return None;
   }
   if config_file.specifier.scheme() != "file" {
@@ -769,11 +831,14 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(
-  lockfile_path: PathBuf,
-) -> Option<Arc<Mutex<Lockfile>>> {
+fn resolve_lockfile_from_path(lockfile_path: PathBuf) -> Option<Lockfile> {
   match Lockfile::new(lockfile_path, false) {
-    Ok(value) => Some(Arc::new(Mutex::new(value))),
+    Ok(value) => {
+      if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename) {
+        lsp_log!("  Resolved lock file: \"{}\"", specifier);
+      }
+      Some(value)
+    }
     Err(err) => {
       lsp_warn!("Error loading lockfile: {:#}", err);
       None

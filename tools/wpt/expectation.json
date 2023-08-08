@@ -4414,8 +4414,16 @@
         "response-consume-empty.any.worker.html": [
           "Consume empty FormData response body as text"
         ],
-        "response-consume-stream.any.html": false,
-        "response-consume-stream.any.worker.html": false,
+        "response-consume-stream.any.html": [
+          "Read text response's body as readableStream with mode=byob",
+          "Read URLSearchParams response's body as readableStream with mode=byob",
+          "Read array buffer response's body as readableStream with mode=byob"
+        ],
+        "response-consume-stream.any.worker.html": [
+          "Read text response's body as readableStream with mode=byob",
+          "Read URLSearchParams response's body as readableStream with mode=byob",
+          "Read array buffer response's body as readableStream with mode=byob"
+        ],
         "response-init-contenttype.any.html": true,
         "response-init-contenttype.any.worker.html": true,
         "response-static-json.any.html": true,
@@ -4936,12 +4944,8 @@
       "abort": {
         "request.any.html": true,
         "request.any.worker.html": true,
-        "general.any.html": [
-          "Clone aborts with original controller"
-        ],
-        "general.any.worker.html": [
-          "Clone aborts with original controller"
-        ],
+        "general.any.html": true,
+        "general.any.worker.html": true,
         "cache.https.any.html": false,
         "cache.https.any.worker.html": false
       },
@@ -5770,8 +5774,8 @@
       "Blob-slice-overflow.any.worker.html": true,
       "Blob-slice.any.html": true,
       "Blob-slice.any.worker.html": true,
-      "Blob-stream.any.html": false,
-      "Blob-stream.any.worker.html": false,
+      "Blob-stream.any.html": true,
+      "Blob-stream.any.worker.html": true,
       "Blob-text.any.html": true,
       "Blob-text.any.worker.html": true,
       "Blob-in-worker.worker.html": true,
@@ -6399,8 +6403,8 @@
     "Channel_postMessage_with_transfer_incoming_messages.any.worker.html": true,
     "Channel_postMessage_with_transfer_outgoing_messages.any.html": true,
     "Channel_postMessage_with_transfer_outgoing_messages.any.worker.html": true,
-    "MessageEvent-trusted.any.html": false,
-    "MessageEvent-trusted.any.worker.html": false,
+    "MessageEvent-trusted.any.html": true,
+    "MessageEvent-trusted.any.worker.html": true,
     "MessageEvent-trusted.window.html": false,
     "MessageEvent.any.html": true,
     "MessageEvent.any.worker.html": true,
@@ -7229,7 +7233,10 @@
     "remove-own-iframe-during-onerror.window.html": false,
     "remove-own-iframe-during-onerror.window.html?wpt_flags=h2": false,
     "remove-own-iframe-during-onerror.window.html?wss": false,
-    "Create-on-worker-shutdown.any.worker.html": false
+    "Create-on-worker-shutdown.any.worker.html": false,
+    "Create-http-urls.any.html": true,
+    "Create-invalid-urls.any.html": true,
+    "Create-non-absolute-url.any.html": true
   },
   "workers": {
     "Worker-base64.any.worker.html": true,
@@ -7609,16 +7616,10 @@
     "decompression-correct-input.tentative.any.html": true,
     "decompression-correct-input.tentative.any.worker.html": true,
     "decompression-corrupt-input.tentative.any.html": [
-      "truncating the input for 'deflate' should give an error",
-      "trailing junk for 'deflate' should give an error",
-      "format 'deflate' field DATA should be error for 5",
-      "trailing junk for 'gzip' should give an error"
+      "truncating the input for 'deflate' should give an error"
     ],
     "decompression-corrupt-input.tentative.any.worker.html": [
-      "truncating the input for 'deflate' should give an error",
-      "trailing junk for 'deflate' should give an error",
-      "format 'deflate' field DATA should be error for 5",
-      "trailing junk for 'gzip' should give an error"
+      "truncating the input for 'deflate' should give an error"
     ],
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,

@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -111,15 +112,37 @@ pub type NodeResolverRc = deno_fs::sync::MaybeArc<NodeResolver>;
 pub struct NodeResolver {
   fs: FileSystemRc,
   npm_resolver: NpmResolverRc,
+  in_npm_package_cache: deno_fs::sync::MaybeArcMutex<HashMap<String, bool>>,
 }
 
 impl NodeResolver {
   pub fn new(fs: FileSystemRc, npm_resolver: NpmResolverRc) -> Self {
-    Self { fs, npm_resolver }
+    Self {
+      fs,
+      npm_resolver,
+      in_npm_package_cache: deno_fs::sync::MaybeArcMutex::new(HashMap::new()),
+    }
   }
 
   pub fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self.npm_resolver.in_npm_package(specifier)
+  }
+
+  pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
+    let mut cache = self.in_npm_package_cache.lock();
+
+    if let Some(result) = cache.get(&specifier) {
+      return *result;
+    }
+
+    let result =
+      if let Ok(specifier) = deno_core::ModuleSpecifier::parse(&specifier) {
+        self.npm_resolver.in_npm_package(&specifier)
+      } else {
+        false
+      };
+    cache.insert(specifier, result);
+    result
   }
 
   /// This function is an implementation of `defaultResolve` in
@@ -344,7 +367,7 @@ impl NodeResolver {
         permissions,
       )
       .with_context(|| {
-        format!("Error resolving package config for '{reference}'")
+        format!("Failed resolving package config for '{reference}'")
       })?;
     let resolved_path = match maybe_resolved_path {
       Some(resolved_path) => resolved_path,
@@ -423,7 +446,7 @@ impl NodeResolver {
     url: ModuleSpecifier,
   ) -> Result<NodeResolution, AnyError> {
     let url_str = url.as_str().to_lowercase();
-    if url_str.starts_with("http") {
+    if url_str.starts_with("http") || url_str.ends_with(".json") {
       Ok(NodeResolution::Esm(url))
     } else if url_str.ends_with(".js") || url_str.ends_with(".d.ts") {
       let maybe_package_config =
@@ -504,37 +527,67 @@ impl NodeResolver {
     fn probe_extensions(
       fs: &dyn deno_fs::FileSystem,
       path: &Path,
+      lowercase_path: &str,
       referrer_kind: NodeModuleKind,
     ) -> Option<PathBuf> {
-      let specific_dts_path = match referrer_kind {
-        NodeModuleKind::Cjs => with_known_extension(path, "d.cts"),
-        NodeModuleKind::Esm => with_known_extension(path, "d.mts"),
-      };
-      if fs.exists(&specific_dts_path) {
-        return Some(specific_dts_path);
+      let mut searched_for_d_mts = false;
+      let mut searched_for_d_cts = false;
+      if lowercase_path.ends_with(".mjs") {
+        let d_mts_path = with_known_extension(path, "d.mts");
+        if fs.exists(&d_mts_path) {
+          return Some(d_mts_path);
+        }
+        searched_for_d_mts = true;
+      } else if lowercase_path.ends_with(".cjs") {
+        let d_cts_path = with_known_extension(path, "d.cts");
+        if fs.exists(&d_cts_path) {
+          return Some(d_cts_path);
+        }
+        searched_for_d_cts = true;
       }
+
       let dts_path = with_known_extension(path, "d.ts");
       if fs.exists(&dts_path) {
-        Some(dts_path)
-      } else {
-        None
+        return Some(dts_path);
       }
+
+      let specific_dts_path = match referrer_kind {
+        NodeModuleKind::Cjs if !searched_for_d_cts => {
+          Some(with_known_extension(path, "d.cts"))
+        }
+        NodeModuleKind::Esm if !searched_for_d_mts => {
+          Some(with_known_extension(path, "d.mts"))
+        }
+        _ => None, // already searched above
+      };
+      if let Some(specific_dts_path) = specific_dts_path {
+        if fs.exists(&specific_dts_path) {
+          return Some(specific_dts_path);
+        }
+      }
+      None
     }
 
     let lowercase_path = path.to_string_lossy().to_lowercase();
     if lowercase_path.ends_with(".d.ts")
       || lowercase_path.ends_with(".d.cts")
-      || lowercase_path.ends_with(".d.ts")
+      || lowercase_path.ends_with(".d.mts")
     {
       return Some(path);
     }
-    if let Some(path) = probe_extensions(&*self.fs, &path, referrer_kind) {
+    if let Some(path) =
+      probe_extensions(&*self.fs, &path, &lowercase_path, referrer_kind)
+    {
       return Some(path);
     }
     if self.fs.is_dir(&path) {
-      if let Some(path) =
-        probe_extensions(&*self.fs, &path.join("index"), referrer_kind)
-      {
+      let index_path = path.join("index.js");
+      if let Some(path) = probe_extensions(
+        &*self.fs,
+        &index_path,
+        &index_path.to_string_lossy().to_lowercase(),
+        referrer_kind,
+      ) {
         return Some(path);
       }
     }
@@ -910,6 +963,7 @@ impl NodeResolver {
           package_subpath,
           package_json_path,
           referrer,
+          mode,
         ));
       }
       return Ok(resolved.unwrap());
@@ -971,6 +1025,7 @@ impl NodeResolver {
           package_subpath,
           package_json_path,
           referrer,
+          mode,
         ));
       }
     }
@@ -979,6 +1034,7 @@ impl NodeResolver {
       package_subpath,
       package_json_path,
       referrer,
+      mode,
     ))
   }
 
@@ -1424,11 +1480,13 @@ fn throw_exports_not_found(
   subpath: String,
   package_json_path: &Path,
   referrer: &ModuleSpecifier,
+  mode: NodeResolutionMode,
 ) -> AnyError {
   errors::err_package_path_not_exported(
     package_json_path.parent().unwrap().display().to_string(),
     subpath,
     Some(to_specifier_display_string(referrer)),
+    mode,
   )
 }
 
