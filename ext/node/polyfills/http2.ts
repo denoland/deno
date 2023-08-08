@@ -402,14 +402,14 @@ export class ClientHttp2Stream extends Duplex {
         session._clientRid,
         pseudoHeaders,
         reqHeaders,
-        options.waitForTrailers,
+        !!options.waitForTrailers,
       );
     })();
     this.#session = session;
     this.#waitForTrailers = !!options.waitForTrailers;
     // console.log("created clienthttp2stream");
     this.#responsePromise = (async () => {
-      console.log("before request promise");
+      // console.log("before request promise");
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
       this.#id = streamId;
@@ -426,6 +426,7 @@ export class ClientHttp2Stream extends Duplex {
       };
       this.emit("response", headers, 0);
       this.__response = response;
+      // this.uncork();
       this.emit("ready");
     })();
   }
@@ -444,6 +445,7 @@ export class ClientHttp2Stream extends Duplex {
       return;
     }
 
+    console.log("read");
     if (this.#hasTrailersToRead) {
       (async () => {
         // console.log("before trailers to read");
@@ -473,7 +475,7 @@ export class ClientHttp2Stream extends Duplex {
         this.__response.bodyRid,
       );
 
-      console.log("chunk", chunk, finished);
+      // console.log("chunk", chunk, finished);
       if (chunk === null) {
         if (!finished) {
           this.#hasTrailersToRead = true;
@@ -494,7 +496,7 @@ export class ClientHttp2Stream extends Duplex {
     console.log("buffer", this.#rid, chunk, callback);
     (async () => {
       await this.#requestPromise;
-      console.log("buffer", this.#rid, chunk, callback);
+      // console.log("buffer", this.#rid, chunk, callback);
 
       let data;
       if (typeof encoding === "string") {
@@ -514,7 +516,7 @@ export class ClientHttp2Stream extends Duplex {
         return;
       }
 
-      console.log("after write");
+      // console.log("after write");
       callback?.();
     })();
   }
@@ -526,17 +528,12 @@ export class ClientHttp2Stream extends Duplex {
   _final() {
     console.error("Not implemented: ClientHttp2Stream._final");
     // notImplemented("ClientHttp2Stream._final");
+    if (this.#waitForTrailers) {
+      if (!this.emit("wantTrailers")) {
+        this.sendTrailers({});
+      }
+    }
   }
-
-  // setEncoding(_encoding) {}
-
-  // resume() {
-  //   warnNotImplemented("ClientHttp2Stream.resume");
-  // }
-
-  // pause() {
-  //   warnNotImplemented("ClientHttp2Stream.pause");
-  // }
 
   get aborted(): boolean {
     notImplemented("Http2Stream.aborted");
