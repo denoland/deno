@@ -142,10 +142,7 @@ pub trait FetchHandler: dyn_clone::DynClone {
     &self,
     state: &mut OpState,
     url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<Rc<CancelHandle>>,
-  );
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
 
 dyn_clone::clone_trait_object!(FetchHandler);
@@ -159,10 +156,7 @@ impl FetchHandler for DefaultFileFetchHandler {
     &self,
     _state: &mut OpState,
     _url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<Rc<CancelHandle>>,
-  ) {
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
       Ok(Err(type_error(
         "NetworkError when attempting to fetch resource.",

@@ -25,10 +25,7 @@ impl FetchHandler for FsFetchHandler {
     &self,
     _state: &mut OpState,
     url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<Rc<CancelHandle>>,
-  ) {
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let cancel_handle = CancelHandle::new_rc();
     let response_fut = async move {
       let path = url.to_file_path()?;
