@@ -111,6 +111,7 @@ export class Http2Session extends EventEmitter {
   }
 
   get socket(): Socket /*| TlsSocket*/ {
+    console.error("NOT IMPLEMENTED: Http2Session.socket", new Error());
     return {};
   }
 
@@ -396,13 +397,14 @@ export class ClientHttp2Stream extends Duplex {
     this.#requestPromise = (async () => {
       // console.log("waiting for connect promise");
       await sessionConnectPromise;
-      // console.log("waited for connect promise");
+      // console.log("waited for connect promise", !!options.waitForTrailers);
       return await core.opAsync(
         "op_http2_client_request",
         session._clientRid,
         pseudoHeaders,
         reqHeaders,
-        !!options.waitForTrailers,
+        // TODO: waitForTrailers should be handled more gracefully
+        false,
       );
     })();
     this.#session = session;
@@ -418,12 +420,13 @@ export class ClientHttp2Stream extends Duplex {
         "op_http2_client_get_response",
         this.#rid,
       );
-      // console.log("after get response", response);
+      console.log("after get response", response);
       this.#bodyRid = response.bodyRid;
       const headers = {
         ":status": response.statusCode,
         ...Object.fromEntries(response.headers),
       };
+      console.log("emitting response", headers);
       this.emit("response", headers, 0);
       this.__response = response;
       // this.uncork();
@@ -432,11 +435,12 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   // TODO(mmastrac): Implement duplex
-  // end() {
-  // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
-  // core.tryClose(this.#bodyRid);
-  // core.tryClose(this.#rid);
-  // core.tryClose(this.#session._connRid);
+  // end(...args) {
+  //   console.log("stream end", args);
+  //   // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
+  //   // core.tryClose(this.#bodyRid);
+  //   // core.tryClose(this.#rid);
+  //   // core.tryClose(this.#session._connRid);
   // }
 
   _read() {
@@ -477,10 +481,26 @@ export class ClientHttp2Stream extends Duplex {
 
       // console.log("chunk", chunk, finished);
       if (chunk === null) {
-        if (!finished) {
+        if (finished) {
           this.#hasTrailersToRead = true;
+          this.push(null);
+          this.emit("end");
+          return;
         }
+        const trailerList = await core.opAsync(
+          "op_http2_client_get_response_trailers",
+          this.__response.bodyRid,
+        );
+        // console.log("after trailers to read");
+        // console.log("trailers", trailerList);
+        const trailers = Object.fromEntries(trailerList);
+        // core.close(response.bodyRid);
+        // core.close(clientRid);
+        // core.tryClose(connRid);
+        console.log("emitting trailers", trailers);
         this.push(null);
+        this.emit("trailers", trailers);
+        this.emit("end");
         return;
       }
 
@@ -492,11 +512,19 @@ export class ClientHttp2Stream extends Duplex {
     })();
   }
 
+  write(chunk, encoding, callback) {
+    this._write(chunk, encoding, callback);
+  }
+
   _write(chunk, encoding, callback?: () => void) {
-    console.log("buffer", this.#rid, chunk, callback);
+    if (typeof encoding === "function") {
+      callback = encoding;
+      encoding = "utf8";
+    }
+    console.log("buffer", this.#rid, chunk, encoding, callback);
     (async () => {
       await this.#requestPromise;
-      // console.log("buffer", this.#rid, chunk, callback);
+      console.log("buffer", this.#rid, chunk, callback);
 
       let data;
       if (typeof encoding === "string") {
@@ -525,7 +553,23 @@ export class ClientHttp2Stream extends Duplex {
     notImplemented("ClientHttp2Stream._writev");
   }
 
-  _final() {
+  _destroy(err, callback) {
+    // TODO: handle error
+    console.log("ClientHttp2Stream._destroy", err, callback);
+    (async () => {
+      await core.opAsync(
+        "op_http2_client_reset_stream",
+        this.#rid,
+      );
+      callback?.();
+    })();
+  }
+
+  // end(...args) {
+  //   console.log("end called", args);
+  // }
+
+  _final(cb) {
     console.error("Not implemented: ClientHttp2Stream._final");
     // notImplemented("ClientHttp2Stream._final");
     if (this.#waitForTrailers) {
@@ -533,6 +577,14 @@ export class ClientHttp2Stream extends Duplex {
         this.sendTrailers({});
       }
     }
+    (async () => {
+      await core.opAsync(
+        "op_http2_client_end_stream",
+        this.#rid,
+      );
+      cb();
+      // this._destroy();
+    })();
   }
 
   get aborted(): boolean {
@@ -545,11 +597,12 @@ export class ClientHttp2Stream extends Duplex {
     return 0;
   }
 
-  // close(_code: number, _callback: () => void) {
-  //   // notImplemented("ClientHttp2Stream.end");
-  //   this.#closed = true;
-  //   this.emit("close");
-  // }
+  close(_code: number, _callback: () => void) {
+    console.error("Stream close");
+    // notImplemented("ClientHttp2Stream.end");
+    this.#closed = true;
+    this.emit("close");
+  }
 
   get closed(): boolean {
     return this.#closed;
@@ -577,7 +630,8 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   get rstCode(): number {
-    notImplemented("Http2Stream.rstCode");
+    console.log("rstCode", new Error());
+    // notImplemented("Http2Stream.rstCode");
     return 0;
   }
 
