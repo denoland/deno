@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "1.35.3"
+version = "1.36.0"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -25,6 +25,11 @@ path = "./bench/main.rs"
 name = "lsp_bench_standalone"
 harness = false
 path = "./bench/lsp_bench_standalone.rs"
+
+[features]
+# A dev feature to disable creations and loading of snapshots in favor of
+# loading JS sources at runtime.
+__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["snapshot_from_snapshot", "include_js_files_for_snapshotting"] }

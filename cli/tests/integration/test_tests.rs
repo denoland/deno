@@ -333,6 +333,24 @@ itest!(steps_ignored_steps {
   output: "test/steps/ignored_steps.out",
 });
 
+itest!(steps_dot_passing_steps {
+  args: "test --reporter=dot test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.dot.out",
+});
+
+itest!(steps_dot_failing_steps {
+  args: "test --reporter=dot test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.dot.out",
+});
+
+itest!(steps_dot_ignored_steps {
+  args: "test --reporter=dot test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.dot.out",
+});
+
 itest!(steps_invalid_usage {
   args: "test test/steps/invalid_usage.ts",
   exit_code: 1,
@@ -509,6 +527,11 @@ itest!(test_no_lock {
   http_server: true,
   cwd: Some("lockfile/basic"),
   output: "lockfile/basic/test.nolock.out",
+});
+
+itest!(test_replace_timers {
+  args: "test test/replace_timers.js",
+  output: "test/replace_timers.js.out",
 });
 
 #[test]

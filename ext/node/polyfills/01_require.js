@@ -110,7 +110,7 @@ import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "ext:deno_node/readline/promises.ts";
-import repl from "ext:deno_node/repl.ts";
+import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";

@@ -47,8 +47,12 @@ impl PathRef {
     PathRef(self.as_path().parent().unwrap().to_path_buf())
   }
 
-  pub fn uri(&self) -> Url {
+  pub fn uri_dir(&self) -> Url {
     Url::from_directory_path(self.as_path()).unwrap()
+  }
+
+  pub fn uri_file(&self) -> Url {
+    Url::from_file_path(self.as_path()).unwrap()
   }
 
   pub fn as_path(&self) -> &Path {

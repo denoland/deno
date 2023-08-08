@@ -110,17 +110,8 @@ function prepareOptions(name, options, fn, overrides) {
   }
 
   const finalOptions = { ...options, ...overrides };
-  const { concurrency, timeout, signal } = finalOptions;
-
-  if (typeof concurrency !== "undefined") {
-    warnNotImplemented("test.options.concurrency");
-  }
-  if (typeof timeout !== "undefined") {
-    warnNotImplemented("test.options.timeout");
-  }
-  if (typeof signal !== "undefined") {
-    warnNotImplemented("test.options.signal");
-  }
+  // TODO(bartlomieju): these options are currently not handled
+  // const { concurrency, timeout, signal } = finalOptions;
 
   if (typeof fn !== "function") {
     fn = noop;

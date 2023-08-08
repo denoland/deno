@@ -89,7 +89,7 @@ use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
-use crate::cache::LocalHttpCache;
+use crate::cache::LocalLspHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
@@ -205,7 +205,7 @@ pub struct Inner {
   /// An abstraction that handles interactions with TypeScript.
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
-  pub url_map: Arc<urls::LspUrlMap>,
+  pub url_map: urls::LspUrlMap,
 }
 
 impl LanguageServer {
@@ -906,16 +906,18 @@ impl Inner {
     self.module_registries_location = module_registries_location;
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
-    let cache: Arc<dyn HttpCache> =
-      match self.config.maybe_deno_modules_dir_path() {
-        Some(local_path) => {
-          Arc::new(LocalHttpCache::new(local_path, global_cache))
-        }
-        None => global_cache,
-      };
+    let maybe_local_cache =
+      self.config.maybe_vendor_dir_path().map(|local_path| {
+        Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
+      });
+    let cache: Arc<dyn HttpCache> = maybe_local_cache
+      .clone()
+      .map(|c| c as Arc<dyn HttpCache>)
+      .unwrap_or(global_cache);
     self.deps_http_cache = cache.clone();
     self.documents.set_cache(cache.clone());
     self.cache_metadata.set_cache(cache);
+    self.url_map.set_cache(maybe_local_cache);
     self.maybe_global_cache_path = new_cache_path;
     Ok(())
   }
@@ -2383,10 +2385,10 @@ impl Inner {
                 tsc::ImportModuleSpecifierEnding::Index,
               ),
               include_automatic_optional_chain_completions: Some(true),
-              include_completions_for_import_statements: Some(
+              include_completions_for_import_statements: Some(true),
+              include_completions_for_module_exports: Some(
                 self.config.workspace_settings().suggest.auto_imports,
               ),
-              include_completions_for_module_exports: Some(true),
               include_completions_with_object_literal_method_snippets: Some(
                 use_snippets,
               ),
@@ -2966,6 +2968,7 @@ impl Inner {
       snapshot: self.snapshot(),
       config: self.config.snapshot(),
       lint_options: self.lint_options.clone(),
+      url_map: self.url_map.clone(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);

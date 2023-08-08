@@ -24,6 +24,7 @@ futures.workspace = true
 glob.workspace = true
 hyper = { workspace = true, features = ["server", "http1", "http2", "runtime"] }
 lazy-regex.workspace = true
+libc.workspace = true
 lsp-types.workspace = true
 nix.workspace = true
 once_cell.workspace = true
@@ -42,9 +43,6 @@ tempfile.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
 url.workspace = true
-
-[target.'cfg(unix)'.dependencies]
-pty2 = "0.1.0"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }

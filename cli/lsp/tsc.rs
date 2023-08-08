@@ -3214,9 +3214,13 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
         .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
     );
     for specifier in specifiers {
-      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
-        // only include dependencies we know to exist otherwise typescript will error
-        result.push(specifier.to_string());
+      if seen.insert(specifier.as_str()) {
+        if let Some(specifier) = documents.resolve_redirected(specifier) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(&specifier) {
+            result.push(specifier.to_string());
+          }
+        }
       }
     }
   }

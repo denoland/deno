@@ -573,7 +573,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   client.did_change_watched_files(json!({
     "changes": [{
       // the client will give a watched file changed event for the symlink's target
-      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri(),
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
       "type": 2
     }]
   }));
@@ -601,7 +601,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   client.did_change_watched_files(json!({
     "changes": [{
       // now still say that the target path has changed
-      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri(),
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
       "type": 2
     }]
   }));
@@ -8768,7 +8768,7 @@ fn lsp_node_modules_dir() {
 }
 
 #[test]
-fn lsp_deno_modules_dir() {
+fn lsp_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -8777,13 +8777,13 @@ fn lsp_deno_modules_dir() {
 
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let file_uri = temp_dir.uri().join("file.ts").unwrap();
+  let local_file_uri = temp_dir.uri().join("file.ts").unwrap();
   client.did_open(json!({
     "textDocument": {
-      "uri": file_uri,
+      "uri": local_file_uri,
       "languageId": "typescript",
       "version": 1,
-      "text": "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts'; console.log(returnsHi());",
+      "text": "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);",
     }
   }));
   let cache = |client: &mut LspClient| {
@@ -8791,7 +8791,7 @@ fn lsp_deno_modules_dir() {
       "deno/cache",
       json!({
         "referrer": {
-          "uri": file_uri,
+          "uri": local_file_uri,
         },
         "uris": [
           {
@@ -8804,11 +8804,11 @@ fn lsp_deno_modules_dir() {
 
   cache(&mut client);
 
-  assert!(!temp_dir.path().join("deno_modules").exists());
+  assert!(!temp_dir.path().join("vendor").exists());
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"denoModulesDir\": true, \"lock\": false }\n",
+    "{ \"vendor\": true, \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.write_notification(
@@ -8850,11 +8850,113 @@ fn lsp_deno_modules_dir() {
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
 
   // no caching necessary because it was already cached. It should exist now
-
   assert!(temp_dir
     .path()
-    .join("deno_modules/http_localhost_4545/subdir/mod1.ts")
+    .join("vendor/http_localhost_4545/subdir/mod1.ts")
     .exists());
+
+  // the declaration should be found in the vendor directory
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": local_file_uri,
+      },
+      "position": { "line": 0, "character": 9 }, // returnsHi
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // ensure that it's using the vendor directory
+  let references = res.as_array().unwrap();
+  assert_eq!(references.len(), 2, "references: {:#?}", references);
+  let uri = references[1]
+    .as_object()
+    .unwrap()
+    .get("uri")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  let file_path = temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts");
+  let remote_file_uri = file_path.uri_file();
+  assert_eq!(uri, remote_file_uri.as_str());
+
+  let file_text = file_path.read_to_string();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": remote_file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": file_text,
+    }
+  }));
+  assert_eq!(diagnostics.all(), Vec::new());
+
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": remote_file_uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 17, "character": 0 },
+          },
+          "text": "export function returnsHi(): number { return new Date(); }"
+        }
+      ]
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(remote_file_uri.as_str(), "deno-ts")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 38 },
+          "end": { "line": 0, "character": 44 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'Date' is not assignable to type 'number'."
+      }
+    ]),
+  );
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(local_file_uri.as_str(), "deno-ts")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 6 },
+          "end": { "line": 1, "character": 10 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'."
+      }
+    ]),
+  );
+  assert_eq!(diagnostics.all().len(), 2);
 
   client.shutdown();
 }
