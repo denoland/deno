@@ -484,6 +484,7 @@ export class ClientHttp2Stream extends Duplex {
         if (finished) {
           this.#hasTrailersToRead = true;
           this.push(null);
+          // TODO: remove, don't emit manually
           this.emit("end");
           return;
         }
@@ -500,6 +501,7 @@ export class ClientHttp2Stream extends Duplex {
         console.log("emitting trailers", trailers);
         this.push(null);
         this.emit("trailers", trailers);
+        // TODO: remove, don't emit manually
         this.emit("end");
         return;
       }
@@ -601,6 +603,7 @@ export class ClientHttp2Stream extends Duplex {
     console.error("Stream close");
     // notImplemented("ClientHttp2Stream.end");
     this.#closed = true;
+    // TODO: remove, don't emit manually
     this.emit("close");
   }
 
