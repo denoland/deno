@@ -818,16 +818,17 @@ impl CliOptions {
 
     if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
-        return Ok(Some(
-          snapshot_from_lockfile(lockfile.clone(), api)
-            .await
-            .with_context(|| {
-              format!(
-                "failed reading lockfile '{}'",
-                lockfile.lock().filename.display()
-              )
-            })?,
-        ));
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
+          .await
+          .with_context(|| {
+            format!(
+              "failed reading lockfile '{}'",
+              lockfile.lock().filename.display()
+            )
+          })?;
+        // clear the memory cache to reduce memory usage
+        api.clear_memory_cache();
+        return Ok(Some(snapshot));
       }
     }
 

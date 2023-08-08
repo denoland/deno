@@ -927,6 +927,25 @@ impl Inner {
     Ok(())
   }
 
+  async fn get_npm_snapshot(
+    &self,
+  ) -> Option<ValidSerializedNpmResolutionSnapshot> {
+    let lockfile = self.config.maybe_lockfile()?;
+    let snapshot =
+      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+          return None;
+        }
+      };
+
+    // clear the memory cache to reduce memory usage
+    self.npm.api.clear_memory_cache();
+
+    Some(snapshot)
+  }
+
   async fn recreate_npm_services_if_necessary(&mut self) {
     let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
       Ok(deno_dir) => deno_dir,
@@ -948,18 +967,7 @@ impl Inner {
       registry_url,
       &progress_bar,
     );
-    let maybe_snapshot = match self.config.maybe_lockfile() {
-      Some(lockfile) => {
-        match snapshot_from_lockfile(lockfile.clone(), &self.npm.api).await {
-          Ok(snapshot) => Some(snapshot),
-          Err(err) => {
-            lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-            None
-          }
-        }
-      }
-      None => None,
-    };
+    let maybe_snapshot = self.get_npm_snapshot().await;
     (self.npm.resolver, self.npm.resolution) =
       create_npm_resolver_and_resolution(
         registry_url,

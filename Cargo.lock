@@ -1248,9 +1248,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa35b176a415501662244f99846b3d0dd1a7792b2135bf7f80007f8eca8b24ac"
+checksum = "3e1fcc91fa4e18c3e0574965d7133709e76eda665cb589de703219f0819dfaec"
 dependencies = [
  "ring",
  "serde",
@@ -1353,12 +1353,13 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.10.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa5d1097de53e8ce3316d3e44095e253719ae367cf7478263f83082f44dddabf"
+checksum = "341f2c3935bee51c15203c587213c42d120f0dc56f0aca912a4bebbf038d1030"
 dependencies = [
  "anyhow",
  "async-trait",
+ "deno_lockfile",
  "deno_semver",
  "futures",
  "log",
@@ -1965,9 +1966,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.48.0"
+version = "0.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58d2382a70396ccffd260adb879ed9f954c45457e8075830c7d4ec30c6dc8ad2"
+checksum = "0b32387a359104b88abe2583679e6dcb817aff5534204ade9e4c4528db8079f3"
 dependencies = [
  "anyhow",
  "base64 0.21.0",
