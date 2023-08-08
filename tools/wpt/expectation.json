@@ -4944,12 +4944,8 @@
       "abort": {
         "request.any.html": true,
         "request.any.worker.html": true,
-        "general.any.html": [
-          "Clone aborts with original controller"
-        ],
-        "general.any.worker.html": [
-          "Clone aborts with original controller"
-        ],
+        "general.any.html": true,
+        "general.any.worker.html": true,
         "cache.https.any.html": false,
         "cache.https.any.worker.html": false
       },
