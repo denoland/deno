@@ -23,11 +23,20 @@ import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
 import {
+  AbortError,
+  ERR_HTTP2_CONNECT_AUTHORITY,
+  ERR_HTTP2_CONNECT_PATH,
+  ERR_HTTP2_CONNECT_SCHEME,
   ERR_HTTP2_GOAWAY_SESSION,
+  ERR_HTTP2_HEADER_SINGLE_VALUE,
+  ERR_HTTP2_INVALID_CONNECTION_HEADERS,
+  ERR_HTTP2_INVALID_PSEUDOHEADER,
   ERR_HTTP2_INVALID_SESSION,
   ERR_HTTP2_SESSION_ERROR,
   ERR_HTTP2_STREAM_CANCEL,
+  ERR_INVALID_HTTP_TOKEN,
 } from "ext:deno_node/internal/errors.ts";
+import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 
 const kAlpnProtocol = Symbol("alpnProtocol");
 const kAuthority = Symbol("authority");
@@ -51,6 +60,7 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kWriteGeneric = Symbol("write-generic");
 const kTimeout = Symbol("timeout");
+const kSensitiveHeaders = Symbol("nodejs.http2.sensitiveHeaders");
 
 const STREAM_FLAGS_PENDING = 0x0;
 const STREAM_FLAGS_READY = 0x1;
@@ -298,6 +308,19 @@ export class ServerHttp2Session extends Http2Session {
   }
 }
 
+function assertValidPseudoHeader(header: string) {
+  switch (header) {
+    case ":authority":
+    case ":path":
+    case ":method":
+    case ":scheme":
+    case ":status":
+      return;
+    default:
+      throw new ERR_HTTP2_INVALID_PSEUDOHEADER(header);
+  }
+}
+
 export class ClientHttp2Session extends Http2Session {
   #connectPromise: Promise<void>;
   _clientRid: number;
@@ -347,54 +370,68 @@ export class ClientHttp2Session extends Http2Session {
 
     this[kUpdateTimer]();
 
-    // TODO(bartlomieju): do proper header validation
-    const reqHeaders: string[][] = [];
-    let waitForTrailers = false;
-
-    options ??= {};
-    if (options.waitForTrailers) {
-      waitForTrailers = true;
+    if (headers !== null && headers !== undefined) {
+      const keys = Object.keys(headers);
+      for (let i = 0; i < keys.length; i++) {
+        const header = keys[i];
+        if (header[0] === ":") {
+          assertValidPseudoHeader(header);
+        } else if (header && !_checkIsHttpToken(header)) {
+          this.destroy(new ERR_INVALID_HTTP_TOKEN("Header name", header));
+        }
+      }
     }
 
-    if (options.signal) {
-      notImplemented("http2.ClientHttp2Session.request.options.signal");
+    headers = Object.assign({ __proto__: null }, headers);
+    options = { ...options };
+
+    if (headers[constants.HTTP2_HEADER_METHOD] === undefined) {
+      headers[constants.HTTP2_HEADER_METHOD] = constants.HTTP2_METHOD_GET;
     }
 
-    const pseudoHeaders = {};
+    const connect =
+      headers[constants.HTTP2_HEADER_METHOD] === constants.HTTP2_METHOD_CONNECT;
 
-    for (const [name, value] of Object.entries(headers)) {
-      if (name == constants.HTTP2_HEADER_PATH) {
-        pseudoHeaders[constants.HTTP2_HEADER_PATH] = String(value);
-      } else if (name == constants.HTTP2_HEADER_METHOD) {
-        pseudoHeaders[constants.HTTP2_HEADER_METHOD] = String(value);
-      } else if (name == constants.HTTP2_HEADER_AUTHORITY) {
-        pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY] = String(value);
-      } else {
-        reqHeaders.push([name, String(value)]);
+    if (!connect || headers[constants.HTTP2_HEADER_PROTOCOL] !== undefined) {
+      if (getAuthority(headers) === undefined) {
+        headers[constants.HTTP2_HEADER_AUTHORITY] = this[kAuthority];
+      }
+      if (headers[constants.HTTP2_HEADER_SCHEME] === undefined) {
+        headers[constants.HTTP2_HEADER_SCHEME] = this[kProtocol].slice(0, -1);
+      }
+      if (headers[constants.HTTP2_HEADER_PATH] === undefined) {
+        headers[constants.HTTP2_HEADER_PATH] = "/";
+      }
+    } else {
+      if (headers[constants.HTTP2_HEADER_AUTHORITY] === undefined) {
+        throw new ERR_HTTP2_CONNECT_AUTHORITY();
+      }
+      if (headers[constants.HTTP2_HEADER_SCHEME] === undefined) {
+        throw new ERR_HTTP2_CONNECT_SCHEME();
+      }
+      if (headers[constants.HTTP2_HEADER_PATH] === undefined) {
+        throw new ERR_HTTP2_CONNECT_PATH();
       }
     }
 
     if (options.endStream === undefined) {
-      const method = pseudoHeaders[constants.HTTP2_HEADER_METHOD];
+      const method = headers[constants.HTTP2_HEADER_METHOD];
       options.endStream = method === constants.HTTP2_METHOD_DELETE ||
         method === constants.HTTP2_METHOD_GET ||
         method === constants.HTTP2_METHOD_HEAD;
     } else {
       options.endStream = !!options.endStream;
     }
+
     const stream = new ClientHttp2Stream(
       options,
       this,
       this.#connectPromise,
-      pseudoHeaders,
-      reqHeaders,
+      headers,
     );
-    // TODO(bartlomieju): doesn't handle pseudo headers.
     stream[kSentHeaders] = headers;
-    stream[kOrigin] = `${pseudoHeaders[constants.HTTP2_HEADER_SCHEME]}://${
-      pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY]
-        ? pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY]
-        : headers[constants.HTTP2_HEADER_HOST]
+    stream[kOrigin] = `${headers[constants.HTTP2_HEADER_SCHEME]}://${
+      getAuthority(headers)
     }`;
 
     if (options.endStream) {
@@ -405,12 +442,49 @@ export class ClientHttp2Session extends Http2Session {
       stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
     }
 
-    // TODO(bartlomieju): handle abort signal
+    const { signal } = options;
+    if (signal) {
+      const aborter = () => {
+        stream.destroy(new AbortError(undefined, { cause: signal.reason }));
+      };
+      if (signal.aborted) {
+        aborter();
+      } else {
+        // TODO(bartlomieju): handle this
+        // const disposable = EventEmitter.addAbortListener(signal, aborter);
+        // stream.once("close", disposable[Symbol.dispose]);
+      }
+    }
 
-    // TODO(bartlomieju): handle on connect
+    // TODO(bartlomieju): handle this
+    // const onConnect = requestOnConnect.bind(stream, headerList, options);
+    const onConnect = () => {};
+    if (this.connecting) {
+      if (this[kPendingRequestCalls] !== null) {
+        this[kPendingRequestCalls].push(onConnect);
+      } else {
+        this[kPendingRequestCalls] = [onConnect];
+        this.once("connect", () => {
+          this[kPendingRequestCalls].forEach((f) => f());
+          this[kPendingRequestCalls] = null;
+        });
+      }
+    } else {
+      onConnect();
+    }
 
     return stream;
   }
+}
+
+function getAuthority(headers) {
+  if (headers[constants.HTTP2_HEADER_AUTHORITY] !== undefined) {
+    return headers[constants.HTTP2_HEADER_AUTHORITY];
+  }
+  if (headers[constants.HTTP2_HEADER_HOST] !== undefined) {
+    return headers[constants.HTTP2_HEADER_HOST];
+  }
+  return undefined;
 }
 
 export class Http2Stream extends EventEmitter {
@@ -1105,6 +1179,32 @@ export function connect(
 
   options = { ...options };
 
+  if (typeof authority === "string") {
+    authority = new URL(authority);
+  }
+
+  const protocol = authority.protocol || options.protocol || "https:";
+  let port = "";
+
+  if (authority.port !== "") {
+    port += authority.port;
+  } else if (protocol === "http:") {
+    port += 80;
+  } else {
+    port += 443;
+  }
+  let host = "localhost";
+
+  if (authority.hostname) {
+    host = authority.hostname;
+
+    if (host[0] === "[") {
+      host = host.slice(1, -1);
+    }
+  } else if (authority.host) {
+    host = authority.host;
+  }
+
   // TODO: handle defaults
   if (typeof options.createConnection === "function") {
     console.error("Not implemented: http2.connect.options.createConnection");
@@ -1112,6 +1212,8 @@ export function connect(
   }
 
   const session = new ClientHttp2Session(authority, options);
+  session[kAuthority] = `${options.servername || host}:${port}`;
+  session[kProtocol] = protocol;
 
   if (typeof callback === "function") {
     session.once("connect", callback);
@@ -1121,6 +1223,8 @@ export function connect(
 
 export const constants = {
   NGHTTP2_ERR_FRAME_SIZE_ERROR: -522,
+  NGHTTP2_NV_FLAG_NONE: 0,
+  NGHTTP2_NV_FLAG_NO_INDEX: 1,
   NGHTTP2_SESSION_SERVER: 0,
   NGHTTP2_SESSION_CLIENT: 1,
   NGHTTP2_STREAM_STATE_IDLE: 1,
@@ -1362,6 +1466,49 @@ export const constants = {
   HTTP_STATUS_NOT_EXTENDED: 510,
   HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED: 511,
 };
+
+const kSingleValueHeaders = new Set([
+  constants.HTTP2_HEADER_STATUS,
+  constants.HTTP2_HEADER_METHOD,
+  constants.HTTP2_HEADER_AUTHORITY,
+  constants.HTTP2_HEADER_SCHEME,
+  constants.HTTP2_HEADER_PATH,
+  constants.HTTP2_HEADER_PROTOCOL,
+  constants.HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
+  constants.HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
+  constants.HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
+  constants.HTTP2_HEADER_AGE,
+  constants.HTTP2_HEADER_AUTHORIZATION,
+  constants.HTTP2_HEADER_CONTENT_ENCODING,
+  constants.HTTP2_HEADER_CONTENT_LANGUAGE,
+  constants.HTTP2_HEADER_CONTENT_LENGTH,
+  constants.HTTP2_HEADER_CONTENT_LOCATION,
+  constants.HTTP2_HEADER_CONTENT_MD5,
+  constants.HTTP2_HEADER_CONTENT_RANGE,
+  constants.HTTP2_HEADER_CONTENT_TYPE,
+  constants.HTTP2_HEADER_DATE,
+  constants.HTTP2_HEADER_DNT,
+  constants.HTTP2_HEADER_ETAG,
+  constants.HTTP2_HEADER_EXPIRES,
+  constants.HTTP2_HEADER_FROM,
+  constants.HTTP2_HEADER_HOST,
+  constants.HTTP2_HEADER_IF_MATCH,
+  constants.HTTP2_HEADER_IF_MODIFIED_SINCE,
+  constants.HTTP2_HEADER_IF_NONE_MATCH,
+  constants.HTTP2_HEADER_IF_RANGE,
+  constants.HTTP2_HEADER_IF_UNMODIFIED_SINCE,
+  constants.HTTP2_HEADER_LAST_MODIFIED,
+  constants.HTTP2_HEADER_LOCATION,
+  constants.HTTP2_HEADER_MAX_FORWARDS,
+  constants.HTTP2_HEADER_PROXY_AUTHORIZATION,
+  constants.HTTP2_HEADER_RANGE,
+  constants.HTTP2_HEADER_REFERER,
+  constants.HTTP2_HEADER_RETRY_AFTER,
+  constants.HTTP2_HEADER_TK,
+  constants.HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS,
+  constants.HTTP2_HEADER_USER_AGENT,
+  constants.HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS,
+]);
 
 export function getDefaultSettings(): Record<string, unknown> {
   notImplemented("http2.getDefaultSettings");
