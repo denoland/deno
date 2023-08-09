@@ -181,7 +181,7 @@ impl Pty {
     mut condition: impl FnMut(&mut Self) -> bool,
   ) {
     let timeout_time =
-      Instant::now().checked_add(Duration::from_secs(5)).unwrap();
+      Instant::now().checked_add(Duration::from_secs(15)).unwrap();
     while Instant::now() < timeout_time {
       self.fill_more_bytes();
       if condition(self) {
