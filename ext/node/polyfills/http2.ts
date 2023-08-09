@@ -10,7 +10,11 @@ import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { Server, Socket, TCP } from "node:net";
 import { TypedArray } from "ext:deno_node/internal/util/types.ts";
-import { setStreamTimeout } from "ext:deno_node/internal/stream_base_commons.ts";
+import {
+  kMaybeDestroy,
+  kUpdateTimer,
+  setStreamTimeout,
+} from "ext:deno_node/internal/stream_base_commons.ts";
 import { FileHandle } from "node:fs/promises";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { addTrailers, serveHttpOnConnection } from "ext:deno_http/00_serve.js";
@@ -18,71 +22,121 @@ import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
+import {
+  ERR_HTTP2_GOAWAY_SESSION,
+  ERR_HTTP2_INVALID_SESSION,
+  ERR_HTTP2_SESSION_ERROR,
+  ERR_HTTP2_STREAM_CANCEL,
+} from "ext:deno_node/internal/errors.ts";
+
+const kAlpnProtocol = Symbol("alpnProtocol");
+const kAuthority = Symbol("authority");
+const kEncrypted = Symbol("encrypted");
+const kID = Symbol("id");
+const kInit = Symbol("init");
+const kInfoHeaders = Symbol("sent-info-headers");
+const kLocalSettings = Symbol("local-settings");
+const kNativeFields = Symbol("kNativeFields");
+const kOptions = Symbol("options");
+const kOrigin = Symbol("origin");
+const kPendingRequestCalls = Symbol("kPendingRequestCalls");
+const kProceed = Symbol("proceed");
+const kProtocol = Symbol("protocol");
+const kRemoteSettings = Symbol("remote-settings");
+const kSelectPadding = Symbol("select-padding");
+const kSentHeaders = Symbol("sent-headers");
+const kSentTrailers = Symbol("sent-trailers");
+const kServer = Symbol("server");
+const kState = Symbol("state");
+const kType = Symbol("type");
+const kWriteGeneric = Symbol("write-generic");
+const kTimeout = Symbol("timeout");
+
+const STREAM_FLAGS_PENDING = 0x0;
+const STREAM_FLAGS_READY = 0x1;
+const STREAM_FLAGS_CLOSED = 0x2;
+const STREAM_FLAGS_HEADERS_SENT = 0x4;
+const STREAM_FLAGS_HEAD_REQUEST = 0x8;
+const STREAM_FLAGS_ABORTED = 0x10;
+const STREAM_FLAGS_HAS_TRAILERS = 0x20;
+
+const SESSION_FLAGS_PENDING = 0x0;
+const SESSION_FLAGS_READY = 0x1;
+const SESSION_FLAGS_CLOSED = 0x2;
+const SESSION_FLAGS_DESTROYED = 0x4;
 
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
 export class Http2Session extends EventEmitter {
-  constructor() {
+  constructor(type, options /* socket */) {
     super();
-    this._connecting = false;
-    this._closed = false;
-  }
 
-  get alpnProtocol(): string | undefined {
-    notImplemented("Http2Session.alpnProtocol");
-    return undefined;
-  }
+    // TODO(bartlomieju): Handle sockets here
 
-  close(_callback?: () => void) {
-    // warnNotImplemented("Http2Session.close");
-    this._closed = true;
-    core.tryClose(this._connRid);
-    core.tryClose(this._clientRid);
-  }
+    this[kState] = {
+      destroyCode: constants.NGHTTP2_NO_ERROR,
+      flags: SESSION_FLAGS_PENDING,
+      goawayCode: null,
+      goawayLastStreamID: null,
+      streams: new Map(),
+      pendingStreams: new Set(),
+      pendingAck: 0,
+      shutdownWritableCalled: false,
+      writeQueueSize: 0,
+      originSet: undefined,
+    };
 
-  get closed(): boolean {
-    return this._closed;
-  }
+    this[kEncrypted] = undefined;
+    this[kAlpnProtocol] = undefined;
+    this[kType] = type;
+    this[kTimeout] = null;
+    // this[kProxySocket] = null;
+    // this[kSocket] = socket;
+    // this[kHandle] = undefined;
 
-  get connecting(): boolean {
-    return this._connecting;
-  }
-
-  destroy(_error?: Error, _code?: number) {
-    notImplemented("Http2Session.destroy");
-  }
-
-  get destroyed(): boolean {
-    return false;
+    // TODO(bartlomieju): connecting via socket
   }
 
   get encrypted(): boolean {
-    notImplemented("Http2Session.encrypted");
-    return false;
+    return this[kEncrypted];
   }
 
-  goaway(
-    _code: number,
-    _lastStreamID: number,
-    _opaqueData: Buffer | TypedArray | DataView,
-  ) {
-    notImplemented("Http2Session.goaway");
-  }
-
-  get localSettings(): Record<string, unknown> {
-    notImplemented("Http2Session.localSettings");
-    return {};
+  get alpnProtocol(): string | undefined {
+    return this[kAlpnProtocol];
   }
 
   get originSet(): string[] | undefined {
-    notImplemented("Http2Session.originSet");
-    return undefined;
+    if (!this.encrypted || this.destroyed) {
+      return undefined;
+    }
+    // TODO(bartlomieju):
+    return [];
   }
 
-  get pendingSettingsAck(): boolean {
-    notImplemented("Http2Session.pendingSettingsAck");
-    return false;
+  get connecting(): boolean {
+    return (this[kState].flags & SESSION_FLAGS_READY) === 0;
+  }
+
+  get closed(): boolean {
+    return !!(this[kState].flags & SESSION_FLAGS_CLOSED);
+  }
+
+  get destroyed(): boolean {
+    return !!(this[kState].flags & SESSION_FLAGS_DESTROYED);
+  }
+
+  [kUpdateTimer]() {
+    if (this.destroyed) {
+      return;
+    }
+    if (this[kTimeout]) {
+      this[kTimeout].refresh();
+    }
+  }
+
+  setLocalWindowSize(_windowSize: number) {
+    notImplemented("Http2Session.setLocalWindowSize");
   }
 
   ping(
@@ -93,8 +147,26 @@ export class Http2Session extends EventEmitter {
     return false;
   }
 
-  ref() {
-    warnNotImplemented("Http2Session.ref");
+  get socket(): Socket /*| TlsSocket*/ {
+    warnNotImplemented("Http2Session.socket");
+    return {};
+  }
+
+  get type(): number {
+    return this[kType];
+  }
+
+  get pendingSettingsAck() {
+    return this[kState].pendingAck > 0;
+  }
+
+  get state(): Record<string, unknown> {
+    return {};
+  }
+
+  get localSettings(): Record<string, unknown> {
+    notImplemented("Http2Session.localSettings");
+    return {};
   }
 
   get remoteSettings(): Record<string, unknown> {
@@ -102,40 +174,116 @@ export class Http2Session extends EventEmitter {
     return {};
   }
 
-  setLocalWindowSize(_windowSize: number) {
-    notImplemented("Http2Session.setLocalWindowSize");
-  }
-
-  setTimeout(msecs: number, callback?: () => void) {
-    setStreamTimeout(this, msecs, callback);
-  }
-
-  get socket(): Socket /*| TlsSocket*/ {
-    console.error("NOT IMPLEMENTED: Http2Session.socket", new Error());
-    return {};
-  }
-
-  get state(): Record<string, unknown> {
-    return {};
-  }
-
   settings(_settings: Record<string, unknown>, _callback: () => void) {
     notImplemented("Http2Session.settings");
   }
 
-  get type(): number {
-    notImplemented("Http2Session.type");
-    return 0;
+  goaway(
+    _code: number,
+    _lastStreamID: number,
+    _opaqueData: Buffer | TypedArray | DataView,
+  ) {
+    notImplemented("Http2Session.goaway");
+  }
+
+  destroy(error = constants.NGHTTP2_NO_ERROR, code?: number) {
+    if (this.destroyed) {
+      return;
+    }
+
+    if (typeof error === "number") {
+      code = error;
+      error = code !== constants.NGHTTP2_NO_ERROR
+        ? new ERR_HTTP2_SESSION_ERROR(code)
+        : undefined;
+    }
+    if (code === undefined && error != null) {
+      code = constants.NGHTTP2_INTERNAL_ERROR;
+    }
+
+    closeSession(this, code, error);
+  }
+
+  close(callback?: () => void) {
+    if (this.closed || this.destroyed) {
+      return;
+    }
+
+    this[kState].flags |= SESSION_FLAGS_CLOSED;
+    if (typeof callback === "function") {
+      this.once("close", callback);
+    }
+    this.goaway();
+    this[kMaybeDestroy]();
+  }
+
+  [kMaybeDestroy](error?: number) {
+    if (!error) {
+      const state = this[kState];
+      // Don't destroy if the session is not closed or there are pending or open
+      // streams.
+      if (
+        !this.closed || state.streams.size > 0 || state.pendingStreams.size >
+          0
+      ) {
+        return;
+      }
+    }
+    this.destroy(error);
+  }
+
+  ref() {
+    warnNotImplemented("Http2Session.ref");
   }
 
   unref() {
     warnNotImplemented("Http2Session.unref");
   }
+
+  setTimeout(msecs: number, callback?: () => void) {
+    setStreamTimeout(this, msecs, callback);
+  }
+}
+
+function emitClose(session: Http2Session, error?: Error) {
+  if (error) {
+    session.emit("error", error);
+  }
+  session.emit("close");
+}
+
+function finishSessionClose(session: Http2Session, error?: Error) {
+  // TODO(bartlomieju): handle sockets
+
+  nextTick(emitClose, session, error);
+}
+
+function closeSession(session: Http2Session, code?: number, error?: Error) {
+  const state = session[kState];
+  state.flags |= SESSION_FLAGS_DESTROYED;
+  state.destroyCode = code;
+
+  session.setTimeout(0);
+  session.removeAllListeners("timeout");
+
+  // Destroy open and pending streams
+  if (state.pendingStreams.size > 0 || state.streams.size > 0) {
+    const cancel = new ERR_HTTP2_STREAM_CANCEL(error);
+    state.pendingStreams.forEach((stream) => stream.destroy(cancel));
+    state.streams.forEach((stream) => stream.destroy(cancel));
+  }
+
+  // TODO(bartlomieju): handle sockets
+
+  core.tryClose(session._connRid);
+  core.tryClose(session._clientRid);
+
+  finishSessionClose(session, error);
 }
 
 export class ServerHttp2Session extends Http2Session {
   constructor() {
-    super();
+    super(constants.NGHTTP2_SESSION_SERVER, {});
   }
 
   altsvc(
@@ -153,21 +301,23 @@ export class ServerHttp2Session extends Http2Session {
 export class ClientHttp2Session extends Http2Session {
   #connectPromise: Promise<void>;
   _clientRid: number;
+  _connRid: number;
 
   constructor(
     authority: string | URL,
     options: Record<string, unknown>,
   ) {
-    super();
+    super(constants.NGHTTP2_SESSION_CLIENT, options);
+    this[kPendingRequestCalls] = null;
+
+    // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
-      this._connecting = true;
       // console.log("before connect");
       const [clientRid, connRid] = await core.opAsync(
         "op_http2_connect",
         authority,
       );
       // console.log("after connect");
-      this._connecting = false;
       this._clientRid = clientRid;
       this._connRid = connRid;
       // TODO(bartlomieju): save so it can be unrefed
@@ -187,6 +337,17 @@ export class ClientHttp2Session extends Http2Session {
     headers: Http2Headers,
     options?: Record<string, unknown>,
   ): ClientHttp2Stream {
+    if (this.destroyed) {
+      throw new ERR_HTTP2_INVALID_SESSION();
+    }
+
+    if (this.closed) {
+      throw new ERR_HTTP2_GOAWAY_SESSION();
+    }
+
+    this[kUpdateTimer]();
+
+    // TODO(bartlomieju): do proper header validation
     const reqHeaders: string[][] = [];
     let waitForTrailers = false;
 
@@ -213,13 +374,42 @@ export class ClientHttp2Session extends Http2Session {
       }
     }
 
-    return new ClientHttp2Stream(
+    if (options.endStream === undefined) {
+      const method = pseudoHeaders[constants.HTTP2_HEADER_METHOD];
+      options.endStream = method === constants.HTTP2_METHOD_DELETE ||
+        method === constants.HTTP2_METHOD_GET ||
+        method === constants.HTTP2_METHOD_HEAD;
+    } else {
+      options.endStream = !!options.endStream;
+    }
+    const stream = new ClientHttp2Stream(
       options,
       this,
       this.#connectPromise,
       pseudoHeaders,
       reqHeaders,
     );
+    // TODO(bartlomieju): doesn't handle pseudo headers.
+    stream[kSentHeaders] = headers;
+    stream[kOrigin] = `${pseudoHeaders[constants.HTTP2_HEADER_SCHEME]}://${
+      pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY]
+        ? pseudoHeaders[constants.HTTP2_HEADER_AUTHORITY]
+        : headers[constants.HTTP2_HEADER_HOST]
+    }`;
+
+    if (options.endStream) {
+      stream.end();
+    }
+
+    if (options.waitForTrailers) {
+      stream[kState].flags |= STREAM_FLAGS_HAS_TRAILERS;
+    }
+
+    // TODO(bartlomieju): handle abort signal
+
+    // TODO(bartlomieju): handle on connect
+
+    return stream;
   }
 }
 
@@ -524,31 +714,23 @@ export class ClientHttp2Stream extends Duplex {
       encoding = "utf8";
     }
     console.log("buffer", this.#rid, chunk, encoding, callback);
-    (async () => {
-      await this.#requestPromise;
-      console.log("buffer", this.#rid, chunk, callback);
+    let data;
+    if (typeof encoding === "string") {
+      data = ENCODER.encode(chunk);
+    } else {
+      data = chunk.buffer;
+    }
 
-      let data;
-      if (typeof encoding === "string") {
-        data = ENCODER.encode(chunk);
-      } else {
-        data = chunk.buffer;
-      }
-
-      try {
-        await core.opAsync(
+    this.#requestPromise
+      .then(() =>
+        core.opAsync(
           "op_http2_client_send_data",
           this.#rid,
           data,
-        );
-      } catch (e) {
-        callback?.(e);
-        return;
-      }
-
-      // console.log("after write");
-      callback?.();
-    })();
+        )
+      )
+      .then(() => callback?.())
+      .catch((e) => callback?.(e));
   }
 
   _writev(chunks, callback?: () => {}) {
@@ -558,13 +740,10 @@ export class ClientHttp2Stream extends Duplex {
   _destroy(err, callback) {
     // TODO: handle error
     console.log("ClientHttp2Stream._destroy", err, callback);
-    (async () => {
-      await core.opAsync(
-        "op_http2_client_reset_stream",
-        this.#rid,
-      );
-      callback?.();
-    })();
+    core.opAsync(
+      "op_http2_client_reset_stream",
+      this.#rid,
+    ).then(() => callback?.());
   }
 
   // end(...args) {
@@ -579,14 +758,10 @@ export class ClientHttp2Stream extends Duplex {
         this.sendTrailers({});
       }
     }
-    (async () => {
-      await core.opAsync(
-        "op_http2_client_end_stream",
-        this.#rid,
-      );
-      cb();
-      // this._destroy();
-    })();
+    core.opAsync(
+      "op_http2_client_end_stream",
+      this.#rid,
+    ).then(() => cb());
   }
 
   get aborted(): boolean {
@@ -633,8 +808,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   get rstCode(): number {
-    console.log("rstCode", new Error());
-    // notImplemented("Http2Stream.rstCode");
+    warnNotImplemented("ClientHttp2Stream.rstCode");
     return 0;
   }
 
@@ -674,13 +848,11 @@ export class ClientHttp2Stream extends Duplex {
       trailerList.push([key, value]);
     }
 
-    (async () => {
-      await core.opAsync(
-        "op_http2_client_send_trailers",
-        this.#rid,
-        trailerList,
-      );
-    })();
+    core.opAsync(
+      "op_http2_client_send_trailers",
+      this.#rid,
+      trailerList,
+    );
   }
 }
 
