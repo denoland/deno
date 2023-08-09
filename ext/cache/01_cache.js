@@ -22,6 +22,7 @@ import { getHeader } from "ext:deno_fetch/20_headers.js";
 import { readableStreamForRid } from "ext:deno_web/06_streams.js";
 const {
   op_cache_delete,
+  op_cache_match,
   op_cache_put,
   op_cache_put_finish,
   op_cache_storage_delete,
