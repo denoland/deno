@@ -117,7 +117,7 @@ pub fn server_capabilities(
     rename_provider: Some(OneOf::Left(true)),
     document_link_provider: None,
     color_provider: None,
-    execute_command_provider: None,
+    execute_command_provider: Some(ExecuteCommandOptions { commands:vec!("deno.cache".into()), ..Default::default() }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
     semantic_tokens_provider: Some(
       SemanticTokensServerCapabilities::SemanticTokensOptions(

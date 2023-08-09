@@ -73,6 +73,7 @@ pub async fn start() -> Result<(), AnyError> {
 
   let (service, socket) = builder.finish();
 
+
   Server::new(stdin, stdout, socket).serve(service).await;
 
   Ok(())

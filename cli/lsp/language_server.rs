@@ -212,6 +212,8 @@ impl LanguageServer {
     Self(Arc::new(tokio::sync::RwLock::new(Inner::new(client))))
   }
 
+  
+
   /// Similar to `deno cache` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache_request(
@@ -2982,6 +2984,24 @@ impl Inner {
 
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
+  async fn execute_command(
+    &self,
+    params: ExecuteCommandParams
+  )-> LspResult<Option<Value>> {
+    if params.command=="deno.cache" {
+      // We're sending Vec<Vec<uris_to_cache>> in response to deno cache code action
+      let uris: Vec<Vec<String>> = params.arguments.into_iter().map(|v|serde_json::from_value::<Vec<String>>(v))
+      .map(|v|v.map_err(|e| tower_lsp::jsonrpc::Error::invalid_request())) // FIXME: handle the error
+        .collect::<LspResult<Vec<_>>>()?;
+      return self.cache_request(Some(json!({
+        // TODO: this is wrong, how to get the referrer
+        "referrer": TextDocumentIdentifier{ uri: Url::parse(&uris[0][0]).unwrap()},
+        "uris": uris[0].iter().map(|uri|TextDocumentIdentifier{uri: Url::parse(&uri).unwrap()}).collect::<Vec<_>>(),
+      }))).await
+    }
+    Ok(None)
+  }
+
   async fn initialize(
     &self,
     params: InitializeParams,
