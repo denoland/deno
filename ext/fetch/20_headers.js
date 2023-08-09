@@ -28,7 +28,6 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
-  ArrayPrototypeConcat,
   ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeExec,
@@ -262,8 +261,13 @@ class Headers {
       }
     }
 
+    const entries = ObjectEntries(headers);
+    for (let i = 0; i < cookies.length; ++i) {
+      ArrayPrototypePush(entries, cookies[i]);
+    }
+
     return ArrayPrototypeSort(
-      ArrayPrototypeConcat(ObjectEntries(headers), cookies),
+      entries,
       (a, b) => {
         const akey = a[0];
         const bkey = b[0];
