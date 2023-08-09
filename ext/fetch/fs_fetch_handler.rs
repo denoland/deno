@@ -3,7 +3,6 @@
 use crate::CancelHandle;
 use crate::CancelableResponseFuture;
 use crate::FetchHandler;
-use crate::FetchRequestBodyResource;
 
 use deno_core::error::type_error;
 use deno_core::futures::FutureExt;
