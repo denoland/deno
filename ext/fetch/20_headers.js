@@ -28,10 +28,10 @@ const {
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
   ArrayPrototypeFilter,
+  ArrayPrototypeConcat,
   ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeExec,
-  SafeArrayIterator,
   SafeMap,
   MapPrototypeGet,
   MapPrototypeHas,
@@ -263,10 +263,7 @@ class Headers {
     }
 
     return ArrayPrototypeSort(
-      [
-        ...new SafeArrayIterator(ObjectEntries(headers)),
-        ...new SafeArrayIterator(cookies),
-      ],
+      ArrayPrototypeConcat(ObjectEntries(headers), cookies),
       (a, b) => {
         const akey = a[0];
         const bkey = b[0];
