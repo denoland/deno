@@ -4158,26 +4158,26 @@ async fn websocketstream_ping() {
     tokio::spawn(async move {
       let mut ws = upgrade_fut.await.unwrap();
 
-      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
         .await
         .unwrap();
       ws.write_frame(fastwebsockets::Frame::new(
         true,
         fastwebsockets::OpCode::Ping,
         None,
-        vec![],
+        vec![].into(),
       ))
       .await
       .unwrap();
-      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
         .await
         .unwrap();
       let message = ws.read_frame().await.unwrap();
       assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
-      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
         .await
         .unwrap();
-      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
         .await
         .unwrap();
     });
@@ -4271,7 +4271,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
   assert!(message.payload.is_empty());
   socket
-    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
   assert!(child.wait().unwrap().success());
