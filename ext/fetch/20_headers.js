@@ -28,7 +28,7 @@ const {
   ArrayPrototypeSplice,
   ObjectEntries,
   ObjectHasOwn,
-  RegExpPrototypeExec,
+  RegExpPrototypeTest,
   SafeMap,
   MapPrototypeGet,
   MapPrototypeHas,
@@ -101,19 +101,23 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-const HEADER_NAME_CACHE = new SafeMap();
+let HEADER_NAME_CACHE = {};
+let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
-  if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
-    return MapPrototypeGet(HEADER_NAME_CACHE, name);
+  const fromCache = HEADER_NAME_CACHE[name];
+  if (fromCache !== undefined) {
+    return HEADER_NAME_CACHE[name];
   }
 
-  const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
+  const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
 
-  if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
-    MapPrototypeClear(HEADER_NAME_CACHE);
+  if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
+    HEADER_NAME_CACHE = {};
+    HEADER_CACHE_SIZE = 0;
   }
-  MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
+  HEADER_CACHE_SIZE++;
+  HEADER_NAME_CACHE[name] = valid;
 
   return valid;
 }
