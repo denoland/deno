@@ -21,6 +21,8 @@ export function loadTestLibrary() {
 
   // Internal, used in ext/node
   const module = {};
-  process.dlopen(module, specifier);
+  // Pass some flag, it should be ignored, but make sure it doesn't print
+  // warnings.
+  process.dlopen(module, specifier, 0);
   return module.exports;
 }
