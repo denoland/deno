@@ -338,7 +338,7 @@ export class ClientHttp2Session extends Http2Session {
       // console.log("before connect");
       const [clientRid, connRid] = await core.opAsync(
         "op_http2_connect",
-        authority,
+        authority.toString(),
       );
       // console.log("after connect");
       this._clientRid = clientRid;
@@ -649,6 +649,7 @@ export class ClientHttp2Stream extends Duplex {
     options: Record<string, unknown>,
     session: Http2Session,
     sessionConnectPromise: Promise<void>,
+    // TODO: fix pseudoHeaders and reqHeaders
     pseudoHeaders: Record<string, string>,
     reqHeaders: string[][],
   ) {
@@ -659,9 +660,15 @@ export class ClientHttp2Stream extends Duplex {
     this.cork();
 
     this.#requestPromise = (async () => {
-      // console.log("waiting for connect promise");
+      console.log("waiting for connect promise");
       await sessionConnectPromise;
-      // console.log("waited for connect promise", !!options.waitForTrailers);
+      console.log(
+        "waited for connect promise",
+        !!options.waitForTrailers,
+        pseudoHeaders,
+        reqHeaders,
+      );
+      // TODO: fix pseudoHeaders and reqHeaders
       return await core.opAsync(
         "op_http2_client_request",
         session._clientRid,
@@ -673,9 +680,9 @@ export class ClientHttp2Stream extends Duplex {
     })();
     this.#session = session;
     this.#waitForTrailers = !!options.waitForTrailers;
-    // console.log("created clienthttp2stream");
+    console.log("created clienthttp2stream");
     this.#responsePromise = (async () => {
-      // console.log("before request promise");
+      console.log("before request promise");
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
       this.#id = streamId;
@@ -716,13 +723,13 @@ export class ClientHttp2Stream extends Duplex {
     console.log("read");
     if (this.#hasTrailersToRead) {
       (async () => {
-        // console.log("before trailers to read");
+        console.log("before trailers to read");
         const trailerList = await core.opAsync(
           "op_http2_client_get_response_trailers",
           response.bodyRid,
         );
-        // console.log("after trailers to read");
-        // console.log("trailers", trailerList);
+        console.log("after trailers to read");
+        console.log("trailers", trailerList);
         const trailers = Object.fromEntries(trailerList);
         // core.close(response.bodyRid);
         // core.close(clientRid);
@@ -778,9 +785,9 @@ export class ClientHttp2Stream extends Duplex {
     })();
   }
 
-  write(chunk, encoding, callback) {
-    this._write(chunk, encoding, callback);
-  }
+  // write(chunk, encoding, callback) {
+  //   this._write(chunk, encoding, callback);
+  // }
 
   _write(chunk, encoding, callback?: () => void) {
     if (typeof encoding === "function") {
