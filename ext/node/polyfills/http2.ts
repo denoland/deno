@@ -193,7 +193,7 @@ export class Http2Session extends EventEmitter {
     _lastStreamID: number,
     _opaqueData: Buffer | TypedArray | DataView,
   ) {
-    notImplemented("Http2Session.goaway");
+    warnNotImplemented("Http2Session.goaway");
   }
 
   destroy(error = constants.NGHTTP2_NO_ERROR, code?: number) {
