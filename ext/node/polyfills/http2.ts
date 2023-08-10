@@ -649,9 +649,7 @@ export class ClientHttp2Stream extends Duplex {
     options: Record<string, unknown>,
     session: Http2Session,
     sessionConnectPromise: Promise<void>,
-    // TODO: fix pseudoHeaders and reqHeaders
-    pseudoHeaders: Record<string, string>,
-    reqHeaders: string[][],
+    headers: Record<string, string>,
   ) {
     options.allowHalfOpen = true;
     options.decodeString = false;
@@ -662,12 +660,24 @@ export class ClientHttp2Stream extends Duplex {
     this.#requestPromise = (async () => {
       console.log("waiting for connect promise");
       await sessionConnectPromise;
+
+      const reqHeaders: string[][] = [];
+      const pseudoHeaders = {};
+
+      for (const [key, value] of Object.entries(headers)) {
+        if (key[0] === ":") {
+          pseudoHeaders[key] = value;
+        } else {
+          reqHeaders.push([key, value]);
+        }
+      }
       console.log(
         "waited for connect promise",
         !!options.waitForTrailers,
         pseudoHeaders,
         reqHeaders,
       );
+
       // TODO: fix pseudoHeaders and reqHeaders
       return await core.opAsync(
         "op_http2_client_request",
@@ -794,7 +804,6 @@ export class ClientHttp2Stream extends Duplex {
       callback = encoding;
       encoding = "utf8";
     }
-    console.log("buffer", this.#rid, chunk, encoding, callback);
     let data;
     if (typeof encoding === "string") {
       data = ENCODER.encode(chunk);
@@ -803,13 +812,14 @@ export class ClientHttp2Stream extends Duplex {
     }
 
     this.#requestPromise
-      .then(() =>
-        core.opAsync(
+      .then(() => {
+        console.log("_write", this.#rid, data, encoding, callback);
+        return core.opAsync(
           "op_http2_client_send_data",
           this.#rid,
           data,
-        )
-      )
+        );
+      })
       .then(() => callback?.())
       .catch((e) => callback?.(e));
   }
