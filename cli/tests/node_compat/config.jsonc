@@ -373,6 +373,7 @@
       // "test-http-outgoing-message-inheritance.js",
       "test-http-outgoing-renderHeaders.js",
       "test-http-outgoing-settimeout.js",
+      "test-http-content-length.js",
       "test-net-access-byteswritten.js",
       "test-net-better-error-messages-listen-path.js",
       "test-net-better-error-messages-path.js",
