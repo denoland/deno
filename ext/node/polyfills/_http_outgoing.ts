@@ -14,14 +14,14 @@ import type { Socket } from "node:net";
 import {
   kNeedDrain,
   kOutHeaders,
-  // utcDate,
+  utcDate,
 } from "ext:deno_node/internal/http.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { Buffer } from "node:buffer";
 import {
   _checkInvalidHeaderChar as checkInvalidHeaderChar,
   _checkIsHttpToken as checkIsHttpToken,
-  // chunkExpression as RE_TE_CHUNKED,
+  chunkExpression as RE_TE_CHUNKED,
 } from "ext:deno_node/_http_common.ts";
 import {
   defaultTriggerAsyncIdScope,
@@ -32,8 +32,8 @@ const { async_id_symbol } = symbols;
 import {
   ERR_HTTP_HEADERS_SENT,
   ERR_HTTP_INVALID_HEADER_VALUE,
-  // ERR_HTTP_TRAILER_INVALID,
-  // ERR_INVALID_ARG_TYPE,
+  ERR_HTTP_TRAILER_INVALID,
+  ERR_INVALID_ARG_TYPE,
   // ERR_INVALID_ARG_VALUE,
   ERR_INVALID_CHAR,
   ERR_INVALID_HTTP_TOKEN,
@@ -41,12 +41,12 @@ import {
   // ERR_STREAM_ALREADY_FINISHED,
   ERR_STREAM_CANNOT_PIPE,
   // ERR_STREAM_DESTROYED,
-  // ERR_STREAM_NULL_VALUES,
+  ERR_STREAM_NULL_VALUES,
   // ERR_STREAM_WRITE_AFTER_END,
   hideStackFrames,
 } from "ext:deno_node/internal/errors.ts";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
-// import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
+import { isUint8Array } from "ext:deno_node/internal/util/types.ts";
 // import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
@@ -59,6 +59,8 @@ const HIGH_WATER_MARK = getDefaultHighWaterMark();
 const kCorked = Symbol("corked");
 
 const nop = () => {};
+
+const RE_CONN_CLOSE = /(?:^|\W)close(?:$|\W)/i;
 
 export class OutgoingMessage extends Stream {
   // deno-lint-ignore no-explicit-any
@@ -90,8 +92,7 @@ export class OutgoingMessage extends Stream {
 
   // TODO(crowlKats): use it
   socket: null;
-  // TODO(crowlKats): use it
-  _header: null;
+  _header: string | null;
   [kOutHeaders]: null | Record<string, [string, string]>;
 
   _keepAliveTimeout: number;
@@ -377,27 +378,39 @@ export class OutgoingMessage extends Stream {
     encoding: string | null,
     callback: () => void,
   ): boolean {
-    if (
-      (typeof chunk === "string" && chunk.length > 0) ||
-      ((chunk instanceof Buffer || chunk instanceof Uint8Array) &&
-        chunk.buffer.byteLength > 0)
-    ) {
-      if (typeof chunk === "string") {
-        chunk = Buffer.from(chunk, encoding);
-      }
-      if (chunk instanceof Buffer) {
-        chunk = new Uint8Array(chunk.buffer);
-      }
+    if (typeof encoding === 'function') {
+      callback = encoding;
+      encoding = null;
+    }
+    return this.write_(chunk, encoding, callback, false);
+  }
 
-      core.writeAll(this._bodyWriteRid, chunk).then(() => {
-        callback?.();
-        this.emit("drain");
-      }).catch((e) => {
-        this._requestSendError = e;
-      });
+  write_(
+    chunk: string | Uint8Array | Buffer,
+    encoding: string | null,
+    callback: () => void,
+    fromEnd: boolean
+  ): boolean {
+    const msg = this;
+
+    if (chunk === null) {
+      throw new ERR_STREAM_NULL_VALUES();
+    } else if (typeof chunk !== 'string' && !isUint8Array(chunk)) {
+      throw new ERR_INVALID_ARG_TYPE(
+        'chunk', ['string', 'Buffer', 'Uint8Array'], chunk);
     }
 
-    return false;
+    let len: number;
+
+    if (!msg._header) {
+      if (fromEnd) {
+        len ??= typeof chunk === 'string' ? Buffer.byteLength(chunk, encoding) : chunk.byteLength;
+        msg._contentLength = len;
+      }
+      msg._implicitHeader();
+    }
+
+    return msg._send(chunk, encoding, callback)
   }
 
   // deno-lint-ignore no-explicit-any
@@ -499,68 +512,40 @@ export class OutgoingMessage extends Stream {
     return ret;
   }
 
-  // This abstract either writing directly to the socket or buffering it.
   // deno-lint-ignore no-explicit-any
   _send(data: any, encoding?: string | null, callback?: () => void) {
-    // This is a shameful hack to get the headers and first body chunk onto
-    // the same packet. Future versions of Node are going to take care of
-    // this at a lower level and in a more general way.
     if (!this._headerSent && this._header !== null) {
-      // `this._header` can be null if OutgoingMessage is used without a proper Socket
-      // See: /test/parallel/test-http-outgoing-message-inheritance.js
-      if (
-        typeof data === "string" &&
-        (encoding === "utf8" || encoding === "latin1" || !encoding)
-      ) {
-        data = this._header + data;
-      } else {
-        const header = this._header;
-        this.outputData.unshift({
-          data: header,
-          encoding: "latin1",
-          callback: null,
-        });
-        this.outputSize += header.length;
-        this._onPendingData(header.length);
-      }
+      this._writeHeader();
       this._headerSent = true;
     }
     return this._writeRaw(data, encoding, callback);
   }
 
+  _writeHeader() {
+    throw new ERR_METHOD_NOT_IMPLEMENTED('_writeHeader()');
+  }
+
   _writeRaw(
-    // deno-lint-ignore no-explicit-any
-    this: any,
     // deno-lint-ignore no-explicit-any
     data: any,
     encoding?: string | null,
     callback?: () => void,
   ) {
-    const conn = this.socket;
-    if (conn && conn.destroyed) {
-      // The socket was destroyed. If we're still trying to write to it,
-      // then we haven't gotten the 'close' event yet.
-      return false;
+    if (typeof data === "string") {
+      data = Buffer.from(data, encoding);
     }
-
-    if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = null;
+    if (data instanceof Buffer) {
+      data = new Uint8Array(data.buffer);
     }
-
-    if (conn && conn._httpMessage === this && conn.writable) {
-      // There might be pending data in the this.output buffer.
-      if (this.outputData.length) {
-        this._flushOutput(conn);
-      }
-      // Directly write to socket.
-      return conn.write(data, encoding, callback);
+    if (data.buffer.byteLength > 0) {
+      core.writeAll(this._bodyWriteRid, data).then(() => {
+        callback?.();
+        this.emit("drain");
+      }).catch((e) => {
+        this._requestSendError = e;
+      });
     }
-    // Buffer, as long as we're not destroyed.
-    this.outputData.push({ data, encoding, callback });
-    this.outputSize += data.length;
-    this._onPendingData(data.length);
-    return this.outputSize < HIGH_WATER_MARK;
+    return false
   }
 
   _renderHeaders() {
@@ -582,6 +567,157 @@ export class OutgoingMessage extends Stream {
       }
     }
     return headers;
+  }
+
+  _storeHeader(firstLine: string, _headers: never) {
+    // firstLine in the case of request is: 'GET /index.html HTTP/1.1\r\n'
+    // in the case of response it is: 'HTTP/1.1 200 OK\r\n'
+    const state = {
+      connection: false,
+      contLen: false,
+      te: false,
+      date: false,
+      expect: false,
+      trailer: false,
+      header: firstLine,
+    };
+
+    const headers = this[kOutHeaders]
+    for (const key in headers) {
+      const entry = headers[key];
+      this._matchHeader(state, entry[0], entry[1]);
+    }
+
+
+    let { header } = state;
+
+    // Date header
+    if (this.sendDate && !state.date) {
+      this.setHeader('Date', utcDate());
+    }
+
+    // Force the connection to close when the response is a 204 No Content or
+    // a 304 Not Modified and the user has set a "Transfer-Encoding: chunked"
+    // header.
+    //
+    // RFC 2616 mandates that 204 and 304 responses MUST NOT have a body but
+    // node.js used to send out a zero chunk anyway to accommodate clients
+    // that don't have special handling for those responses.
+    //
+    // It was pointed out that this might confuse reverse proxies to the point
+    // of creating security liabilities, so suppress the zero chunk and force
+    // the connection to close.
+    if (this.chunkedEncoding && (this.statusCode === 204 ||
+                                this.statusCode === 304)) {
+      debug(this.statusCode + ' response should not use chunked encoding,' +
+            ' closing connection.');
+      this.chunkedEncoding = false;
+      this.shouldKeepAlive = false;
+    }
+
+    // TODO(osddeitf): this depends on agent and underlying socket
+    // keep-alive logic
+    // if (this._removedConnection) {
+    //   this._last = true;
+    //   this.shouldKeepAlive = false;
+    // } else if (!state.connection) {
+    //   const shouldSendKeepAlive = this.shouldKeepAlive &&
+    //       (state.contLen || this.useChunkedEncodingByDefault || this.agent);
+    //   if (shouldSendKeepAlive && this.maxRequestsOnConnectionReached) {
+    //     this.setHeader('Connection', 'close');
+    //   } else if (shouldSendKeepAlive) {
+    //     this.setHeader('Connection', 'keep-alive');
+    //     if (this._keepAliveTimeout && this._defaultKeepAlive) {
+    //       const timeoutSeconds = Math.floor(this._keepAliveTimeout / 1000);
+    //       let max = '';
+    //       if (~~this._maxRequestsPerSocket > 0) {
+    //         max = `, max=${this._maxRequestsPerSocket}`;
+    //       }
+    //       this.setHeader('Keep-Alive', `timeout=${timeoutSeconds}${max}`);
+    //     }
+    //   } else {
+    //     this._last = true;
+    //     this.setHeader('Connection', 'close');
+    //   }
+    // }
+
+    if (!state.contLen && !state.te) {
+      if (!this._hasBody) {
+        // Make sure we don't end the 0\r\n\r\n at the end of the message.
+        this.chunkedEncoding = false;
+      } else if (!this.useChunkedEncodingByDefault) {
+        this._last = true;
+      } else if (!state.trailer &&
+                 !this._removedContLen &&
+                 typeof this._contentLength === 'number') {
+        this.setHeader('Content-Length', this._contentLength);
+      } else if (!this._removedTE) {
+        this.setHeader('Transfer-Encoding', 'chunked');
+        this.chunkedEncoding = true;
+      } else {
+        // We should only be able to get here if both Content-Length and
+        // Transfer-Encoding are removed by the user.
+        // See: test/parallel/test-http-remove-header-stays-removed.js
+        debug('Both Content-Length and Transfer-Encoding are removed');
+      }
+    }
+
+    // Test non-chunked message does not have trailer header set,
+    // message will be terminated by the first empty line after the
+    // header fields, regardless of the header fields present in the
+    // message, and thus cannot contain a message body or 'trailers'.
+    if (this.chunkedEncoding !== true && state.trailer) {
+      throw new ERR_HTTP_TRAILER_INVALID();
+    }
+
+    this._header = header + '\r\n';
+    this._headerSent = false;
+    
+    // Wait until the first body chunk, or close(), is sent to flush,
+    // UNLESS we're sending Expect: 100-continue.
+    if (state.expect) this._send('');
+  }
+
+  _matchHeader(
+    // deno-lint-ignore no-explicit-any
+    state: any,
+    field: string,
+    // deno-lint-ignore no-explicit-any
+    value: any,
+  ) {
+    const self = this
+    if (field.length < 4 || field.length > 17)
+      return;
+    field = field.toLowerCase();
+    switch (field) {
+      case 'connection':
+        state.connection = true;
+        self._removedConnection = false;
+        if (RE_CONN_CLOSE.exec(value) !== null)
+          self._last = true;
+        else
+          self.shouldKeepAlive = true;
+        break;
+      case 'transfer-encoding':
+        state.te = true;
+        self._removedTE = false;
+        if (RE_TE_CHUNKED.exec(value) !== null)
+          self.chunkedEncoding = true;
+        break;
+      case 'content-length':
+        state.contLen = true;
+        self._contentLength = value;
+        self._removedContLen = false;
+        break;
+      case 'date':
+      case 'expect':
+      case 'trailer':
+        state[field] = true;
+        break;
+      case 'keep-alive':
+        self._defaultKeepAlive = false;
+        break;
+    }
   }
 
   // deno-lint-ignore no-explicit-any
