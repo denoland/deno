@@ -31,7 +31,6 @@ const {
   ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeExec,
-  SafeArrayIterator,
   SafeMap,
   MapPrototypeGet,
   MapPrototypeHas,
@@ -262,11 +261,13 @@ class Headers {
       }
     }
 
+    const entries = ObjectEntries(headers);
+    for (let i = 0; i < cookies.length; ++i) {
+      ArrayPrototypePush(entries, cookies[i]);
+    }
+
     return ArrayPrototypeSort(
-      [
-        ...new SafeArrayIterator(ObjectEntries(headers)),
-        ...new SafeArrayIterator(cookies),
-      ],
+      entries,
       (a, b) => {
         const akey = a[0];
         const bkey = b[0];

@@ -1915,7 +1915,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       "error: failed reading lockfile '[WILDCARD]deno.lock'\n",
       "\n",
       "Caused by:\n",
-      "    Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n"
+      "    0: Could not find '@denotest/esm-basic@1.0.0' specified in the lockfile.\n",
+      "    1: Could not find version '1.0.0' for npm package '@denotest/esm-basic'.\n",
     ));
     output.assert_exit_code(1);
 
@@ -2023,8 +2024,14 @@ pub fn node_modules_dir_config_file() {
 
   let deno_cache_cmd = test_context.new_command().args("cache --quiet main.ts");
   deno_cache_cmd.run();
-
   assert!(node_modules_dir.exists());
+
+  // now try adding a vendor flag, it should exist
+  rm_node_modules();
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  deno_cache_cmd.run();
+  assert!(node_modules_dir.exists());
+
   rm_node_modules();
   temp_dir.write("deno.json", r#"{ "nodeModulesDir": false }"#);
 
@@ -2040,6 +2047,14 @@ pub fn node_modules_dir_config_file() {
     .args("cache --quiet --node-modules-dir main.ts")
     .run();
   assert!(node_modules_dir.exists());
+
+  // should override the `--vendor` flag
+  rm_node_modules();
+  test_context
+    .new_command()
+    .args("cache --quiet --node-modules-dir=false --vendor main.ts")
+    .run();
+  assert!(!node_modules_dir.exists());
 }
 
 #[test]

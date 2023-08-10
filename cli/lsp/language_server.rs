@@ -555,7 +555,10 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = Arc::new(GlobalHttpCache::new(location));
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -904,9 +907,12 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
+    let global_cache = Arc::new(GlobalHttpCache::new(
+      dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     let maybe_local_cache =
-      self.config.maybe_deno_modules_dir_path().map(|local_path| {
+      self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
@@ -919,6 +925,25 @@ impl Inner {
     self.url_map.set_cache(maybe_local_cache);
     self.maybe_global_cache_path = new_cache_path;
     Ok(())
+  }
+
+  async fn get_npm_snapshot(
+    &self,
+  ) -> Option<ValidSerializedNpmResolutionSnapshot> {
+    let lockfile = self.config.maybe_lockfile()?;
+    let snapshot =
+      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+          return None;
+        }
+      };
+
+    // clear the memory cache to reduce memory usage
+    self.npm.api.clear_memory_cache();
+
+    Some(snapshot)
   }
 
   async fn recreate_npm_services_if_necessary(&mut self) {
@@ -942,18 +967,7 @@ impl Inner {
       registry_url,
       &progress_bar,
     );
-    let maybe_snapshot = match self.config.maybe_lockfile() {
-      Some(lockfile) => {
-        match snapshot_from_lockfile(lockfile.clone(), &self.npm.api).await {
-          Ok(snapshot) => Some(snapshot),
-          Err(err) => {
-            lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-            None
-          }
-        }
-      }
-      None => None,
-    };
+    let maybe_snapshot = self.get_npm_snapshot().await;
     (self.npm.resolver, self.npm.resolution) =
       create_npm_resolver_and_resolution(
         registry_url,
