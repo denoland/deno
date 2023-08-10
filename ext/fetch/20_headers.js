@@ -102,7 +102,7 @@ const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
   const fromCache = HEADER_NAME_CACHE[name];
   if (fromCache !== undefined) {
-    return HEADER_NAME_CACHE[name];
+    return fromCache;
   }
 
   const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
