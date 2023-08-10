@@ -330,7 +330,7 @@ export class LibuvStreamWrap extends HandleWrap {
       } else {
         nread = codeMap.get("UNKNOWN")!;
       }
-
+      
       buf = new Uint8Array(0);
     }
 

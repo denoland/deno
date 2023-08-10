@@ -26,6 +26,7 @@ import {
 import { EventEmitter } from "node:events";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { kHandle } from "ext:deno_node/internal/stream_base_commons.ts";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -71,7 +72,11 @@ export class TLSSocket extends net.Socket {
   [kPendingSession]: any;
   [kConnectOptions]: any;
   ssl: any;
-  _start: any;
+
+  _start() {
+    this[kHandle].afterConnect();
+  }
+
   constructor(socket: any, opts: any = kEmptyObject) {
     const tlsOptions = { ...opts };
 
@@ -139,9 +144,10 @@ export class TLSSocket extends net.Socket {
       handle.afterConnect = async (req: any, status: number) => {
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          console.log("Reassigning conn to TlsConn", conn)
+          handle[kStreamBaseField] = conn;
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-          handle[kStreamBaseField] = conn;
         } catch {
           // TODO(kt3k): Handle this
         }

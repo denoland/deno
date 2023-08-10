@@ -3651,6 +3651,7 @@ var require_readable = __commonJS({
           const autoDestroy = !wState || wState.autoDestroy && // We don't expect the writable to ever 'finish'
               // if writable is explicitly set to false.
               (wState.finished || wState.writable === false);
+
           if (autoDestroy) {
             stream.destroy();
           }

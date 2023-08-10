@@ -190,7 +190,6 @@ export function writeGeneric(
 ) {
   const req = createWriteWrap(owner[kHandle], cb);
   const err = handleWriteReq(req, data, encoding);
-
   afterWriteDispatched(req, err, cb);
 
   return req;
