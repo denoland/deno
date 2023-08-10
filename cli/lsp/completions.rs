@@ -8,6 +8,7 @@ use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
+use crate::file_fetcher::FileFetcher;
 use crate::util::path::is_supported_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -19,9 +20,14 @@ use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Position;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMap;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
@@ -160,6 +166,16 @@ pub async fn get_import_completions(
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete: false,
       items: get_local_completions(specifier, &text, &range)?,
+    }))
+  } else if text.starts_with("npm:") {
+    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+      is_incomplete: false,
+      items: get_npm_completions(
+        &text,
+        &range,
+        &module_registries.file_fetcher,
+      )
+      .await?,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -450,6 +466,127 @@ fn get_relative_specifiers(
       }
     })
     .collect()
+}
+
+/// Get completions for `npm:` specifiers.
+async fn get_npm_completions(
+  specifier: &str,
+  range: &lsp::Range,
+  file_fetcher: &FileFetcher,
+) -> Option<Vec<lsp::CompletionItem>> {
+  debug_assert!(specifier.starts_with("npm:"));
+  let bare_specifier = &specifier[4..];
+
+  // First try to match `npm:some-package@<version-to-complete>`.
+  let v_index = bare_specifier.rfind('@');
+  if let Some(v_index) = v_index {
+    if v_index != 0 {
+      #[derive(Debug, Deserialize)]
+      struct Response {
+        versions: IndexMap<String, serde_json::Value>,
+      }
+
+      let package_name = &bare_specifier[..v_index];
+      let v_prefix = &bare_specifier[(v_index + 1)..];
+      let endpoint =
+        Url::parse(&format!("https://registry.npmjs.org/{}", package_name))
+          .unwrap();
+      let file = file_fetcher
+        .fetch(&endpoint, PermissionsContainer::allow_all())
+        .await
+        .ok()?;
+      let response = serde_json::from_str::<Response>(&file.source).ok()?;
+      let items = response
+        .versions
+        .into_keys()
+        .rev()
+        .enumerate()
+        .filter_map(|(idx, version)| {
+          if !version.starts_with(v_prefix) {
+            return None;
+          }
+          let specifier = format!("npm:{}@{}", package_name, &version);
+          let command = Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!([&specifier])]),
+          });
+          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range: *range,
+            new_text: specifier.clone(),
+          }));
+          Some(lsp::CompletionItem {
+            label: specifier,
+            kind: Some(lsp::CompletionItemKind::FILE),
+            detail: Some("(npm)".to_string()),
+            sort_text: Some(format!("{:0>10}", idx + 1)),
+            text_edit,
+            command,
+            commit_characters: Some(
+              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+            ),
+            ..Default::default()
+          })
+        })
+        .collect();
+      return Some(items);
+    }
+  }
+
+  // Otherwise match `npm:<package-to-complete>`.
+  #[derive(Debug, Deserialize)]
+  struct Package {
+    name: String,
+  }
+  #[derive(Debug, Deserialize)]
+  struct Object {
+    package: Package,
+  }
+  #[derive(Debug, Deserialize)]
+  struct Response {
+    objects: Vec<Object>,
+  }
+
+  let mut endpoint =
+    Url::parse("https://registry.npmjs.org/-/v1/search").unwrap();
+  endpoint
+    .query_pairs_mut()
+    .append_pair("text", &format!("{} boost-exact:false", bare_specifier));
+  let file = file_fetcher
+    .fetch(&endpoint, PermissionsContainer::allow_all())
+    .await
+    .ok()?;
+  let response = serde_json::from_str::<Response>(&file.source).ok()?;
+  let items = response
+    .objects
+    .into_iter()
+    .enumerate()
+    .map(|(idx, object)| {
+      let specifier = format!("npm:{}", &object.package.name);
+      let command = Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([&specifier])]),
+      });
+      let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range: *range,
+        new_text: specifier.clone(),
+      }));
+      lsp::CompletionItem {
+        label: specifier,
+        kind: Some(lsp::CompletionItemKind::FILE),
+        detail: Some("(npm)".to_string()),
+        sort_text: Some(format!("{:0>10}", idx + 1)),
+        text_edit,
+        command,
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
+        ..Default::default()
+      }
+    })
+    .collect();
+  Some(items)
 }
 
 /// Get workspace completions that include modules in the Deno cache which match
