@@ -385,18 +385,23 @@ pub fn op_http_read_request_body(
   state.resource_table.add_rc(body_resource)
 }
 
-#[op2]
+#[op2(fast)]
 pub fn op_http_set_response_header(
   #[smi] slab_id: SlabId,
-  #[serde] name: ByteString,
-  #[serde] value: ByteString,
+  #[string(onebyte)] name: Cow<[u8]>,
+  #[string(onebyte)] value: Cow<[u8]>,
 ) {
   let mut http = slab_get(slab_id);
   let resp_headers = http.response().headers_mut();
   // These are valid latin-1 strings
   let name = HeaderName::from_bytes(&name).unwrap();
-  // SAFETY: These are valid latin-1 strings
-  let value = unsafe { HeaderValue::from_maybe_shared_unchecked(value) };
+  let value = match value {
+    Cow::Borrowed(bytes) => HeaderValue::from_bytes(&bytes).unwrap(),
+    // SAFETY: These are valid latin-1 strings
+    Cow::Owned(bytes_vec) => unsafe {
+      HeaderValue::from_maybe_shared_unchecked(bytes::Bytes::from(bytes_vec))
+    },
+  };
   resp_headers.append(name, value);
 }
 
