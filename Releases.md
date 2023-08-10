@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.36.1 / 2023.08.10
+
+- feat(unstable): rename `deno_modules` to `vendor` (#20065)
+- fix(ext/abort): trigger AbortSignal events in correct order (#20095)
+- fix(ext/file): resolve unresolved Promise in Blob.stream (#20039)
+- fix(ext/http): serveHttp brotli compression level should be fastest (#20058)
+- fix(ext/http): unify default gzip compression level (#20050)
+- fix(ext/timers): some timers are not resolved (#20055)
+- fix(fmt): do not insert expr stmt leading semi-colon in do while stmt body
+  (#20093)
+- fix(node): polyfill process.title (#20044)
+- fix(node): repl._builtinLibs (#20046)
+- fix(node/async_hooks): don't pop async context frame if stack if empty
+  (#20077)
+- fix(test): handle ASCII escape chars in test name (#20081)
+- fix(test): make test runner work when global setTimeout is replaced (#20052)
+- fix(test): use only a single timeout for op sanitizers (#20042)
+- fix(unstable): vendor cache override should handle forbidden windows directory
+  names (#20069)
+- fix(unstable): vendor cache should support adding files to hashed directories
+  (#20070)
+- perf(ext/headers): use .push loop instead of spread operator (#20108)
+
 ### 1.36.0 / 2023.08.03
 
 - feat(bench): add BenchContext::start() and BenchContext::end() (#18734)
