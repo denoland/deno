@@ -1394,7 +1394,7 @@ export class Socket extends Duplex {
     } else if (!this._handle.reading) {
       _tryReadStart(this);
     } else {
-      debug("_read nop")
+      debug("_read nop");
     }
   }
 
@@ -1520,7 +1520,7 @@ export class Socket extends Duplex {
     encoding: string,
     cb: (error?: Error | null) => void,
   ) {
-    console.log(data, encoding)
+    console.log(data, encoding);
     this._writeGeneric(false, data, encoding, cb);
   }
 

@@ -144,7 +144,7 @@ export class TLSSocket extends net.Socket {
       handle.afterConnect = async (req: any, status: number) => {
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
-          console.log("Reassigning conn to TlsConn", conn)
+          console.log("Reassigning conn to TlsConn", conn);
           handle[kStreamBaseField] = conn;
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);

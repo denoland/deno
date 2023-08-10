@@ -2,7 +2,7 @@ import { SMTPClient } from "https://deno.land/x/denomailer@1.0.1/mod.ts";
 
 const auth = {
   username: "renee.daugherty6@ethereal.email",
-  password: "dUTtJR2qD1rFG5BdUr"
+  password: "dUTtJR2qD1rFG5BdUr",
 };
 
 const client = new SMTPClient({
@@ -20,4 +20,4 @@ const s = await client.send({
   content: "Hi from Vuelancer!",
 });
 
-console.log(s)
+console.log(s);

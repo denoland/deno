@@ -106,7 +106,7 @@ export function debuglog(
   return logger;
 }
 
-let debugEnv = "net,tls,stream"
+let debugEnv = "";
 /* TODO(kt3k): enable initializing debugEnv.
 It's not possible to access env var when snapshotting.
 
