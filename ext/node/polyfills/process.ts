@@ -292,11 +292,10 @@ function _kill(pid: number, sig: number): number {
   }
 }
 
-// TODO(bartlomieju): flags is currently not supported.
-export function dlopen(module, filename, flags) {
-  if (typeof flags !== "undefined") {
-    warnNotImplemented("process.dlopen doesn't support 'flags' argument");
-  }
+export function dlopen(module, filename, _flags) {
+  // NOTE(bartlomieju): _flags is currently ignored, but we don't warn for it
+  // as it makes DX bad, even though it might not be needed:
+  // https://github.com/denoland/deno/issues/20075
   Module._extensions[".node"](module, filename);
   return module;
 }
