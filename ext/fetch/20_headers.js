@@ -22,12 +22,10 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
-  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
-  ArrayPrototypeFilter,
   ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeExec,
@@ -162,13 +160,13 @@ function appendHeader(headers, name, value) {
  */
 function getHeader(list, name) {
   const lowercaseName = byteLowerCase(name);
-  const entries = ArrayPrototypeMap(
-    ArrayPrototypeFilter(
-      list,
-      (entry) => byteLowerCase(entry[0]) === lowercaseName,
-    ),
-    (entry) => entry[1],
-  );
+  const entries = [];
+  for (let i = 0; i < list.length; i++) {
+    if (byteLowerCase(list[i][0]) === lowercaseName) {
+      ArrayPrototypePush(entries, list[i][1]);
+    }
+  }
+
   if (entries.length === 0) {
     return null;
   } else {
