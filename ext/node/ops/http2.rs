@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use deno_core::error::AnyError;
+use deno_core::futures::future::poll_fn;
 use deno_core::op;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
@@ -131,7 +132,6 @@ pub async fn op_http2_client_request(
   // 4 strings of keys?
   mut pseudo_headers: HashMap<String, String>,
   headers: Vec<(ByteString, ByteString)>,
-  end_of_stream: bool,
 ) -> Result<(ResourceId, u32), AnyError> {
   let resource = state
     .borrow()
@@ -172,7 +172,8 @@ pub async fn op_http2_client_request(
     state.resource_table.get::<Http2Client>(client_rid)?
   };
   let mut client = RcRef::map(&resource, |r| &r.client).borrow_mut().await;
-  let (response, stream) = client.send_request(request, end_of_stream).unwrap();
+  poll_fn(|cx| client.poll_ready(cx)).await?;
+  let (response, stream) = client.send_request(request, false).unwrap();
   let stream_id = stream.stream_id();
   let stream_rid = state.borrow_mut().resource_table.add(Http2ClientStream {
     response: AsyncRefCell::new(response),

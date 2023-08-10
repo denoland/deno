@@ -678,14 +678,11 @@ export class ClientHttp2Stream extends Duplex {
         reqHeaders,
       );
 
-      // TODO: fix pseudoHeaders and reqHeaders
       return await core.opAsync(
         "op_http2_client_request",
         session._clientRid,
         pseudoHeaders,
         reqHeaders,
-        // TODO: waitForTrailers should be handled more gracefully
-        false,
       );
     })();
     this.#session = session;
