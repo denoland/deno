@@ -1221,16 +1221,16 @@ dbTest("operation size limit", async (db) => {
   ) => ["a", i]);
 
   const res4 = await db.atomic()
-  .check(...lastValidKeys.map((key) => ({
-    key,
-    versionstamp: null,
-  })))
-  .mutate(...validMutateKeys.map((key) => ({
-    key,
-    type: "set",
-    value: 1,
-  } satisfies Deno.KvMutation)))
-  .commit();
+    .check(...lastValidKeys.map((key) => ({
+      key,
+      versionstamp: null,
+    })))
+    .mutate(...validMutateKeys.map((key) => ({
+      key,
+      type: "set",
+      value: 1,
+    } satisfies Deno.KvMutation)))
+    .commit();
   assert(res4);
 
   await assertRejects(
@@ -1268,7 +1268,7 @@ dbTest("total mutation size limit", async (db) => {
   // Use bigger values to trigger "total mutation size too large" error
   await assertRejects(
     async () => {
-      const value = new Array(3000).fill("a").join('');
+      const value = new Array(3000).fill("a").join("");
       const atomic = db.atomic();
       for (const key of keys) {
         atomic.set(key, value);
