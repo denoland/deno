@@ -1095,6 +1095,17 @@ async fn main_server(
       let res = Response::new(Body::from(query.unwrap_or_default()));
       Ok(res)
     }
+    // These responses only give the data currently used by the LSP's npm
+    // specifier completion. Not realistic.
+    (_, "/npm/registry/-/v1/search") => match req.uri().query() {
+      Some(q) if q.contains("text=puppe") => Ok(Response::new(Body::from(
+        r#"{"objects":[{"package":{"name":"puppeteer"}},{"package":{"name":"puppeteer-core"}},{"package":{"name":"puppeteer-extra-plugin-stealth"}},{"package":{"name":"puppeteer-extra-plugin"}}]}"#,
+      ))),
+      _ => Ok(Response::new(Body::from(r#"{"objects":[]}"#))),
+    },
+    (_, "/npm/registry/puppeteer") => Ok(Response::new(Body::from(
+      r#"{"versions":{"20.9.0":{},"21.0.0":{},"21.0.1":{},"21.0.2":{}}}"#,
+    ))),
     _ => {
       let mut file_path = testdata_path().to_path_buf();
       file_path.push(&req.uri().path()[1..]);

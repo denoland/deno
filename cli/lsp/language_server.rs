@@ -2343,6 +2343,7 @@ impl Inner {
       &self.config.snapshot(),
       &self.client,
       &self.module_registries,
+      self.npm.api.base_url(),
       &self.documents,
       self.maybe_import_map.clone(),
     )
