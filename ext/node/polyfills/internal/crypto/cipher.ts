@@ -13,13 +13,20 @@ import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "ext:deno_node/_stream.mjs";
-import { KeyObject } from "./keys.ts";
+import { KeyObject, getArrayBufferOrView  } from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+import { isArrayBufferView, isAnyArrayBuffer } from "ext:deno_node/internal/util/types.ts";
+
+function isStringOrBuffer(val) {
+  return typeof val === 'string' ||
+         isArrayBufferView(val) ||
+         isAnyArrayBuffer(val);
+}
 
 const { ops, encode } = globalThis.__bootstrap.core;
 
@@ -371,8 +378,29 @@ export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = preparePrivateKey(publicKey);
   const padding = publicKey.padding || 1;
-  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, 'buffer');
+  return ops.op_node_public_encrypt(data, buffer, padding);
+}
+
+function preparePrivateKey(key) {
+  // TODO(@littledivy): handle these cases 
+  // - node KeyObject
+  // - web CryptoKey
+  if (typeof key == 'object') {
+    const { key: data, encoding, format } = key;
+    if (!isStringOrBuffer(key)) {
+	throw new TypeError("Invalid key type");
+    }
+
+    return { data: getArrayBufferOrView(data, 'key', encoding) }
+  } else if (isStringOrBuffer(key)) {
+    return { data: getArrayBufferOrView(key, 'key') };
+  }
+
+  throw new TypeError("Invalid key type");
 }
 
 export function publicDecrypt() {
