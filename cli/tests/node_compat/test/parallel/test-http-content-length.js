@@ -32,31 +32,34 @@ const countdown = new Countdown(3, () => server.close());
 const server = http.createServer(function(req, res) {
   res.removeHeader('Date');
 
-  switch (req.url.substr(1)) {
-    case 'multiple-writes':
-      // assert.deepStrictEqual(req.headers, expectedHeadersMultipleWrites);
-      assert.equal(req.headers['transfer-encoding'], expectedHeadersMultipleWrites['transfer-encoding']);
-      assert.equal(req.headers['content-length'], expectedHeadersMultipleWrites['content-length']);
-      res.write('hello');
-      res.end('world');
-      break;
-    case 'end-with-data':
-      // assert.deepStrictEqual(req.headers, expectedHeadersEndWithData);
-      assert.equal(req.headers['transfer-encoding'], expectedHeadersEndWithData['transfer-encoding']);
-      assert.equal(req.headers['content-length'], expectedHeadersEndWithData['content-length']);
-      res.end('hello world');
-      break;
-    case 'empty':
-      // assert.deepStrictEqual(req.headers, expectedHeadersEndNoData);
-      assert.equal(req.headers['transfer-encoding'], expectedHeadersEndNoData['transfer-encoding']);
-      assert.equal(req.headers['content-length'], expectedHeadersEndNoData['content-length']);
-      res.end();
-      break;
-    default:
-      throw new Error('Unreachable');
+  try {
+    switch (req.url.substr(1)) {
+      case 'multiple-writes':
+        // assert.deepStrictEqual(req.headers, expectedHeadersMultipleWrites);
+        assert.equal(req.headers['transfer-encoding'], expectedHeadersMultipleWrites['transfer-encoding']);
+        assert.equal(req.headers['content-length'], expectedHeadersMultipleWrites['content-length']);
+        res.write('hello');
+        res.end('world');
+        break;
+      case 'end-with-data':
+        // assert.deepStrictEqual(req.headers, expectedHeadersEndWithData);
+        assert.equal(req.headers['transfer-encoding'], expectedHeadersEndWithData['transfer-encoding']);
+        assert.equal(req.headers['content-length'], expectedHeadersEndWithData['content-length']);
+        res.end('hello world');
+        break;
+      case 'empty':
+        // assert.deepStrictEqual(req.headers, expectedHeadersEndNoData);
+        assert.equal(req.headers['transfer-encoding'], expectedHeadersEndNoData['transfer-encoding']);
+        assert.equal(req.headers['content-length'], expectedHeadersEndNoData['content-length']);
+        res.end();
+        break;
+      default:
+        throw new Error('Unreachable');
+    }
   }
-
-  countdown.dec();
+  finally {
+    countdown.dec();
+  }
 });
 
 server.listen(0, function() {
