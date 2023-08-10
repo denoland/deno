@@ -78,6 +78,13 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
+let debugEnabled = true;
+function debug(...args) {
+  if (debugEnabled) {
+    console.log(...args);
+  }
+}
+
 export class Http2Session extends EventEmitter {
   constructor(type, options /* socket */) {
     super();
@@ -335,12 +342,12 @@ export class ClientHttp2Session extends Http2Session {
 
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
-      // console.log("before connect");
+      // debug("before connect");
       const [clientRid, connRid] = await core.opAsync(
         "op_http2_connect",
         authority.toString(),
       );
-      // console.log("after connect");
+      // debug("after connect");
       this._clientRid = clientRid;
       this._connRid = connRid;
       // TODO(bartlomieju): save so it can be unrefed
@@ -658,7 +665,7 @@ export class ClientHttp2Stream extends Duplex {
     this.cork();
 
     this.#requestPromise = (async () => {
-      console.log("waiting for connect promise");
+      debug("waiting for connect promise");
       await sessionConnectPromise;
 
       const reqHeaders: string[][] = [];
@@ -671,7 +678,7 @@ export class ClientHttp2Stream extends Duplex {
           reqHeaders.push([key, value]);
         }
       }
-      console.log(
+      debug(
         "waited for connect promise",
         !!options.waitForTrailers,
         pseudoHeaders,
@@ -687,24 +694,24 @@ export class ClientHttp2Stream extends Duplex {
     })();
     this.#session = session;
     this.#waitForTrailers = !!options.waitForTrailers;
-    console.log("created clienthttp2stream");
+    debug("created clienthttp2stream");
     this.#responsePromise = (async () => {
-      console.log("before request promise");
+      debug("before request promise");
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
       this.#id = streamId;
-      console.log("after request promise", this.#rid);
+      debug("after request promise", this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
         this.#rid,
       );
-      console.log("after get response", response);
+      debug("after get response", response);
       this.#bodyRid = response.bodyRid;
       const headers = {
         ":status": response.statusCode,
         ...Object.fromEntries(response.headers),
       };
-      console.log("emitting response", headers);
+      debug("emitting response", headers);
       this.emit("response", headers, 0);
       this.__response = response;
       // this.uncork();
@@ -714,8 +721,8 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(mmastrac): Implement duplex
   // end(...args) {
-  //   console.log("stream end", args);
-  //   // console.log(this.#bodyRid, this.#rid, this.#session._connRid);
+  //   debug("stream end", args);
+  //   // debug(this.#bodyRid, this.#rid, this.#session._connRid);
   //   // core.tryClose(this.#bodyRid);
   //   // core.tryClose(this.#rid);
   //   // core.tryClose(this.#session._connRid);
@@ -727,16 +734,16 @@ export class ClientHttp2Stream extends Duplex {
       return;
     }
 
-    console.log("read");
+    debug("read");
     if (this.#hasTrailersToRead) {
       (async () => {
-        console.log("before trailers to read");
+        debug("before trailers to read");
         const trailerList = await core.opAsync(
           "op_http2_client_get_response_trailers",
           response.bodyRid,
         );
-        console.log("after trailers to read");
-        console.log("trailers", trailerList);
+        debug("after trailers to read");
+        debug("trailers", trailerList);
         const trailers = Object.fromEntries(trailerList);
         // core.close(response.bodyRid);
         // core.close(clientRid);
@@ -745,7 +752,7 @@ export class ClientHttp2Stream extends Duplex {
       })();
 
       // this.#closed = true;
-      // // console.log(this.#bodyRid, this.#rid);
+      // // debug(this.#bodyRid, this.#rid);
       // core.tryClose(this.#bodyRid);
       // core.tryClose(this.#rid);
       // this.emit("end");
@@ -757,7 +764,7 @@ export class ClientHttp2Stream extends Duplex {
         this.__response.bodyRid,
       );
 
-      // console.log("chunk", chunk, finished);
+      // debug("chunk", chunk, finished);
       if (chunk === null) {
         if (finished) {
           this.#hasTrailersToRead = true;
@@ -770,13 +777,13 @@ export class ClientHttp2Stream extends Duplex {
           "op_http2_client_get_response_trailers",
           this.__response.bodyRid,
         );
-        // console.log("after trailers to read");
-        // console.log("trailers", trailerList);
+        // debug("after trailers to read");
+        // debug("trailers", trailerList);
         const trailers = Object.fromEntries(trailerList);
         // core.close(response.bodyRid);
         // core.close(clientRid);
         // core.tryClose(connRid);
-        console.log("emitting trailers", trailers);
+        debug("emitting trailers", trailers);
         this.push(null);
         this.emit("trailers", trailers);
         // TODO: remove, don't emit manually
@@ -810,7 +817,7 @@ export class ClientHttp2Stream extends Duplex {
 
     this.#requestPromise
       .then(() => {
-        console.log("_write", this.#rid, data, encoding, callback);
+        debug("_write", this.#rid, data, encoding, callback);
         return core.opAsync(
           "op_http2_client_send_data",
           this.#rid,
@@ -827,7 +834,7 @@ export class ClientHttp2Stream extends Duplex {
 
   _destroy(err, callback) {
     // TODO: handle error
-    console.log("ClientHttp2Stream._destroy", err, callback);
+    debug("ClientHttp2Stream._destroy", err, callback);
     core.opAsync(
       "op_http2_client_reset_stream",
       this.#rid,
@@ -835,7 +842,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   // end(...args) {
-  //   console.log("end called", args);
+  //   debug("end called", args);
   // }
 
   _final(cb) {
