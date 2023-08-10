@@ -1393,8 +1393,6 @@ export class Socket extends Duplex {
       this.once("connect", () => this._read(size));
     } else if (!this._handle.reading) {
       _tryReadStart(this);
-    } else {
-      debug("_read nop");
     }
   }
 
@@ -1501,7 +1499,6 @@ export class Socket extends Duplex {
     }
     if (req.async) {
       this[kLastWriteQueueSize] = req.bytes;
-      console.log(req.bytes);
     }
   }
 
@@ -1520,7 +1517,6 @@ export class Socket extends Duplex {
     encoding: string,
     cb: (error?: Error | null) => void,
   ) {
-    console.log(data, encoding);
     this._writeGeneric(false, data, encoding, cb);
   }
 
