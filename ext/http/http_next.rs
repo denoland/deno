@@ -396,7 +396,7 @@ pub fn op_http_set_response_header(
   // These are valid latin-1 strings
   let name = HeaderName::from_bytes(&name).unwrap();
   let value = match value {
-    Cow::Borrowed(bytes) => HeaderValue::from_bytes(&bytes).unwrap(),
+    Cow::Borrowed(bytes) => HeaderValue::from_bytes(bytes).unwrap(),
     // SAFETY: These are valid latin-1 strings
     Cow::Owned(bytes_vec) => unsafe {
       HeaderValue::from_maybe_shared_unchecked(bytes::Bytes::from(bytes_vec))
