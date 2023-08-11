@@ -2403,7 +2403,7 @@
   "hr-time": {
     "monotonic-clock.any.html": true,
     "monotonic-clock.any.worker.html": true,
-    "basic.any.html": true,
+    "basic.any.html": false,
     "basic.any.worker.html": true,
     "idlharness.any.html": [
       "Window interface: attribute performance"
@@ -6201,7 +6201,7 @@
             "taintEnabled",
             "oscpu"
           ],
-          "navigator.any.worker.html": false,
+          "navigator.any.worker.html": true,
           "per-global.window.html": false
         }
       }
@@ -7251,7 +7251,7 @@
     "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
     "WorkerLocation-origin.sub.window.html": false,
     "WorkerNavigator-hardware-concurrency.any.worker.html": true,
-    "WorkerNavigator.any.worker.html": false,
+    "WorkerNavigator.any.worker.html": true,
     "constructors": {
       "Worker": {
         "DedicatedWorkerGlobalScope-members.worker.html": [
