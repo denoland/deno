@@ -26,7 +26,7 @@ const expectedHeadersEndNoData = {
   'content-length': '0',
 };
 
-
+let error;
 const countdown = new Countdown(3, () => server.close());
 
 const server = http.createServer(function(req, res) {
@@ -56,11 +56,17 @@ const server = http.createServer(function(req, res) {
       default:
         throw new Error('Unreachable');
     }
-  }
-  finally {
     countdown.dec();
   }
+  catch (e) {
+    error = e;
+    server.close();
+  }
 });
+
+server.on('close', () => {
+  if (error) throw error
+})
 
 server.listen(0, function() {
   let req;
