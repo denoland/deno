@@ -200,7 +200,7 @@ pub struct FileCollector<TFilter: Fn(&Path) -> bool> {
   file_filter: TFilter,
   ignore_git_folder: bool,
   ignore_node_modules: bool,
-  ignore_deno_modules: bool,
+  ignore_vendor_folder: bool,
 }
 
 impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
@@ -210,7 +210,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
       file_filter,
       ignore_git_folder: false,
       ignore_node_modules: false,
-      ignore_deno_modules: false,
+      ignore_vendor_folder: false,
     }
   }
 
@@ -227,8 +227,8 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
     self
   }
 
-  pub fn ignore_deno_modules(mut self) -> Self {
-    self.ignore_deno_modules = true;
+  pub fn ignore_vendor_folder(mut self) -> Self {
+    self.ignore_vendor_folder = true;
     self
   }
 
@@ -272,7 +272,7 @@ impl<TFilter: Fn(&Path) -> bool> FileCollector<TFilter> {
                   let dir_name = dir_name.to_string_lossy().to_lowercase();
                   let is_ignored_file = match dir_name.as_str() {
                     "node_modules" => self.ignore_node_modules,
-                    "deno_modules" => self.ignore_deno_modules,
+                    "vendor" => self.ignore_vendor_folder,
                     ".git" => self.ignore_git_folder,
                     _ => false,
                   };
@@ -309,7 +309,7 @@ pub fn collect_specifiers(
     .add_ignore_paths(&files.exclude)
     .ignore_git_folder()
     .ignore_node_modules()
-    .ignore_deno_modules();
+    .ignore_vendor_folder();
 
   let root_path = current_dir()?;
   let include_files = if files.include.is_empty() {
@@ -728,12 +728,12 @@ mod tests {
     // ├── a.ts
     // ├── b.js
     // ├── child
-    // |   ├── deno_modules
-    // |   |   └── deno_modules.js
     // |   ├── git
     // |   |   └── git.js
     // |   ├── node_modules
     // |   |   └── node_modules.js
+    // |   ├── vendor
+    // |   |   └── vendor.js
     // │   ├── e.mjs
     // │   ├── f.mjsx
     // │   ├── .foo.TS
@@ -758,8 +758,8 @@ mod tests {
     t.write("dir.ts/child/node_modules/node_modules.js", "");
     t.create_dir_all("dir.ts/child/.git");
     t.write("dir.ts/child/.git/git.js", "");
-    t.create_dir_all("dir.ts/child/deno_modules");
-    t.write("dir.ts/child/deno_modules/deno_modules.js", "");
+    t.create_dir_all("dir.ts/child/vendor");
+    t.write("dir.ts/child/vendor/vendor.js", "");
 
     let ignore_dir_path = root_dir_path.join("ignore");
     let ignore_dir_files = ["g.d.ts", ".gitignore"];
@@ -784,11 +784,11 @@ mod tests {
       "b.js",
       "c.tsx",
       "d.jsx",
-      "deno_modules.js",
       "e.mjs",
       "f.mjsx",
       "git.js",
       "node_modules.js",
+      "vendor.js",
     ];
     let mut file_names = result
       .into_iter()
@@ -801,7 +801,7 @@ mod tests {
     let file_collector = file_collector
       .ignore_git_folder()
       .ignore_node_modules()
-      .ignore_deno_modules();
+      .ignore_vendor_folder();
     let result = file_collector
       .collect_files(&[root_dir_path.to_path_buf()])
       .unwrap();

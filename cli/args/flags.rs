@@ -389,7 +389,7 @@ pub struct Flags {
   pub type_check_mode: TypeCheckMode,
   pub config_flag: ConfigFlag,
   pub node_modules_dir: Option<bool>,
-  pub deno_modules_dir: Option<bool>,
+  pub vendor: Option<bool>,
   pub enable_testing_features: bool,
   pub ext: Option<String>,
   pub ignore: Vec<PathBuf>,
@@ -1560,7 +1560,7 @@ TypeScript compiler cache: Subdirectory containing TS compiler output.",
       .arg(config_arg())
       .arg(import_map_arg())
       .arg(node_modules_dir_arg())
-      .arg(deno_modules_dir_arg())
+      .arg(vendor_arg())
       .arg(
         Arg::new("json")
           .long("json")
@@ -2107,7 +2107,7 @@ Remote modules and multiple modules may also be specified:
       .arg(import_map_arg())
       .arg(lock_arg())
       .arg(node_modules_dir_arg())
-      .arg(deno_modules_dir_arg())
+      .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg()))
 }
@@ -2122,7 +2122,7 @@ fn compile_args_without_check_args(app: Command) -> Command {
     .arg(no_remote_arg())
     .arg(no_npm_arg())
     .arg(node_modules_dir_arg())
-    .arg(deno_modules_dir_arg())
+    .arg(vendor_arg())
     .arg(config_arg())
     .arg(no_config_arg())
     .arg(reload_arg())
@@ -2846,14 +2846,14 @@ fn node_modules_dir_arg() -> Arg {
     .help("Enables or disables the use of a local node_modules folder for npm packages")
 }
 
-fn deno_modules_dir_arg() -> Arg {
-  Arg::new("deno-modules-dir")
-    .long("deno-modules-dir")
+fn vendor_arg() -> Arg {
+  Arg::new("vendor")
+    .long("vendor")
     .num_args(0..=1)
     .value_parser(value_parser!(bool))
     .default_missing_value("true")
     .require_equals(true)
-    .help("UNSTABLE: Enables or disables the use of a local deno_modules folder for remote modules")
+    .help("UNSTABLE: Enables or disables the use of a local vendor folder for remote modules and node_modules folder for npm packages")
 }
 
 fn unsafely_ignore_certificate_errors_arg() -> Arg {
@@ -3143,7 +3143,7 @@ fn info_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   import_map_arg_parse(flags, matches);
   location_arg_parse(flags, matches);
   ca_file_arg_parse(flags, matches);
-  node_and_deno_modules_dir_arg_parse(flags, matches);
+  node_modules_and_vendor_dir_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
   no_lock_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
@@ -3420,7 +3420,7 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   config_args_parse(flags, matches);
   import_map_arg_parse(flags, matches);
   lock_arg_parse(flags, matches);
-  node_and_deno_modules_dir_arg_parse(flags, matches);
+  node_modules_and_vendor_dir_arg_parse(flags, matches);
   reload_arg_parse(flags, matches);
 
   flags.subcommand = DenoSubcommand::Vendor(VendorFlags {
@@ -3446,7 +3446,7 @@ fn compile_args_without_check_parse(
   import_map_arg_parse(flags, matches);
   no_remote_arg_parse(flags, matches);
   no_npm_arg_parse(flags, matches);
-  node_and_deno_modules_dir_arg_parse(flags, matches);
+  node_modules_and_vendor_dir_arg_parse(flags, matches);
   config_args_parse(flags, matches);
   reload_arg_parse(flags, matches);
   lock_args_parse(flags, matches);
@@ -3739,12 +3739,12 @@ fn no_npm_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   }
 }
 
-fn node_and_deno_modules_dir_arg_parse(
+fn node_modules_and_vendor_dir_arg_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) {
   flags.node_modules_dir = matches.remove_one::<bool>("node-modules-dir");
-  flags.deno_modules_dir = matches.remove_one::<bool>("deno-modules-dir");
+  flags.vendor = matches.remove_one::<bool>("vendor");
 }
 
 fn reload_arg_validate(urlstr: &str) -> Result<String, String> {
@@ -6315,9 +6315,8 @@ mod tests {
   }
 
   #[test]
-  fn deno_modules_dir() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--deno-modules-dir", "script.ts"]);
+  fn vendor_flag() {
+    let r = flags_from_vec(svec!["deno", "run", "--vendor", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6325,17 +6324,12 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Default::default(),
         }),
-        deno_modules_dir: Some(true),
+        vendor: Some(true),
         ..Flags::default()
       }
     );
 
-    let r = flags_from_vec(svec![
-      "deno",
-      "run",
-      "--deno-modules-dir=false",
-      "script.ts"
-    ]);
+    let r = flags_from_vec(svec!["deno", "run", "--vendor=false", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6343,7 +6337,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Default::default(),
         }),
-        deno_modules_dir: Some(false),
+        vendor: Some(false),
         ..Flags::default()
       }
     );

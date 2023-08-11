@@ -673,7 +673,7 @@ pub struct ConfigFileJson {
   pub lock: Option<Value>,
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
-  pub deno_modules_dir: Option<bool>,
+  pub vendor: Option<bool>,
 }
 
 #[derive(Clone, Debug)]
@@ -855,16 +855,16 @@ impl ConfigFile {
     self.json.import_map.clone()
   }
 
-  pub fn node_modules_dir(&self) -> Option<bool> {
+  pub fn node_modules_dir_flag(&self) -> Option<bool> {
     self.json.node_modules_dir
   }
 
-  pub fn deno_modules_dir(&self) -> Option<bool> {
-    self.json.deno_modules_dir
+  pub fn vendor_dir_flag(&self) -> Option<bool> {
+    self.json.vendor
   }
 
-  pub fn deno_modules_dir_path(&self) -> Option<PathBuf> {
-    if self.json.deno_modules_dir == Some(true) {
+  pub fn vendor_dir_path(&self) -> Option<PathBuf> {
+    if self.json.vendor == Some(true) {
       Some(
         self
           .specifier
@@ -872,7 +872,7 @@ impl ConfigFile {
           .unwrap()
           .parent()
           .unwrap()
-          .join("deno_modules"),
+          .join("vendor"),
       )
     } else {
       None
@@ -903,8 +903,8 @@ impl ConfigFile {
         Vec::new()
       };
 
-    if self.deno_modules_dir() == Some(true) {
-      exclude.push("deno_modules".to_string());
+    if self.vendor_dir_flag() == Some(true) {
+      exclude.push("vendor".to_string());
     }
 
     let raw_files_config = SerializedFilesConfig {

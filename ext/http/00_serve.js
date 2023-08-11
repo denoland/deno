@@ -369,6 +369,16 @@ class CallbackContext {
   }
 }
 
+class ServeHandlerInfo {
+  #inner = null;
+  constructor(inner) {
+    this.#inner = inner;
+  }
+  get remoteAddr() {
+    return this.#inner.remoteAddr;
+  }
+}
+
 function fastSyncResponseOrStream(req, respBody) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
@@ -535,11 +545,10 @@ function mapToCallback(context, callback, onError) {
         if (hasOneCallback) {
           response = await callback(request);
         } else {
-          response = await callback(request, {
-            get remoteAddr() {
-              return innerRequest.remoteAddr;
-            },
-          });
+          response = await callback(
+            request,
+            new ServeHandlerInfo(innerRequest),
+          );
         }
       } else {
         response = await callback();
