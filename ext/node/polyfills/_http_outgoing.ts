@@ -391,6 +391,8 @@ export class OutgoingMessage extends Stream {
     callback: () => void,
     fromEnd: boolean
   ): boolean {
+    // Ignore lint to keep the code as similar to Nodejs as possible
+    // deno-lint-ignore no-this-alias
     const msg = this;
 
     if (chunk === null) {
@@ -583,13 +585,15 @@ export class OutgoingMessage extends Stream {
     };
 
     const headers = this[kOutHeaders]
-    for (const key in headers) {
-      const entry = headers[key];
-      this._matchHeader(state, entry[0], entry[1]);
+    if (headers) {
+      // headers is null-prototype object, so ignore the guard lint
+      // deno-lint-ignore guard-for-in
+      for (const key in headers) {
+        const entry = headers[key];
+        this._matchHeader(state, entry[0], entry[1]);
+      }
     }
 
-
-    let { header } = state;
 
     // Date header
     if (this.sendDate && !state.date) {
@@ -670,6 +674,7 @@ export class OutgoingMessage extends Stream {
       throw new ERR_HTTP_TRAILER_INVALID();
     }
 
+    const { header } = state;
     this._header = header + '\r\n';
     this._headerSent = false;
     
@@ -685,6 +690,8 @@ export class OutgoingMessage extends Stream {
     // deno-lint-ignore no-explicit-any
     value: any,
   ) {
+    // Ignore lint to keep the code as similar to Nodejs as possible
+    // deno-lint-ignore no-this-alias
     const self = this
     if (field.length < 4 || field.length > 17)
       return;
