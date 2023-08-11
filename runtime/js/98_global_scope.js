@@ -225,21 +225,29 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       return numCpus;
     },
-    language: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return language;
-      },
+  },
+  userAgent: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return userAgent;
     },
-    languages: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return [language];
-      },
+  },
+  language: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return language;
+    },
+  },
+  languages: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return [language];
     },
   },
 });
