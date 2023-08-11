@@ -404,7 +404,7 @@ function prepareKey(key) {
   if (isStringOrBuffer(key)) {
     return { data: getArrayBufferOrView(key, "key") };
   } else if (typeof key == "object") {
-    const { key: data, encoding, format } = key;
+    const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");
     }
