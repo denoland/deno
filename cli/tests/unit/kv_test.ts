@@ -1276,7 +1276,7 @@ dbTest("total mutation size limit", async (db) => {
       await atomic.commit();
     },
     TypeError,
-    "total mutation size too large (max 2097152 bytes)",
+    "total mutation size too large (max 819200 bytes)",
   );
 });
 

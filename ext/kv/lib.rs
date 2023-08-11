@@ -36,7 +36,7 @@ const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
 const MAX_CHECKS: usize = 10;
 const MAX_MUTATIONS: usize = 1000;
-const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 2097152;
+const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 819200;
 
 struct UnstableChecker {
   pub unstable: bool,
