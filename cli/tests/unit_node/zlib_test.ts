@@ -11,6 +11,7 @@ import {
   brotliDecompressSync,
   createBrotliCompress,
   createBrotliDecompress,
+  createDeflate,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -59,4 +60,10 @@ Deno.test("brotli compression", async () => {
   } catch {
     // pass
   }
+});
+
+Deno.test("zlib create deflate with dictionary", () => {
+  createDeflate({
+    dictionary: Buffer.alloc(0),
+  });
 });
