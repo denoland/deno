@@ -6201,7 +6201,14 @@
             "taintEnabled",
             "oscpu"
           ],
-          "navigator.any.worker.html": true,
+          "navigator.any.worker.html": [
+            "productSub",
+            "userAgent type",
+            "vendor",
+            "vendorSub",
+            "taintEnabled",
+            "oscpu"
+          ],
           "per-global.window.html": false
         }
       }
@@ -7251,7 +7258,7 @@
     "WorkerGlobalScope_requestAnimationFrame.tentative.worker.html": false,
     "WorkerLocation-origin.sub.window.html": false,
     "WorkerNavigator-hardware-concurrency.any.worker.html": true,
-    "WorkerNavigator.any.worker.html": true,
+    "WorkerNavigator.any.worker.html": false,
     "constructors": {
       "Worker": {
         "DedicatedWorkerGlobalScope-members.worker.html": [
