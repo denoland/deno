@@ -14,7 +14,6 @@ import {
   createDeflate,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
-import { PassThrough } from "node:stream";
 import { createReadStream, createWriteStream } from "node:fs";
 
 Deno.test("brotli compression sync", () => {
