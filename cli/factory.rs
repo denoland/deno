@@ -241,6 +241,7 @@ impl CliFactory {
     self.services.global_http_cache.get_or_try_init(|| {
       Ok(Arc::new(GlobalHttpCache::new(
         self.deno_dir()?.deps_folder_path(),
+        crate::cache::RealDenoCacheEnv,
       )))
     })
   }

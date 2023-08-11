@@ -11,6 +11,7 @@ use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;

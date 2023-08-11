@@ -243,6 +243,7 @@ function runAfterTimeout(task, millis, timerInfo) {
     resolved: false,
     prev: scheduledTimers.tail,
     next: null,
+    task,
   };
 
   // Add timerObject to the end of the list.
@@ -286,7 +287,7 @@ function runAfterTimeout(task, millis, timerInfo) {
       while (currentEntry !== null) {
         if (currentEntry.millis <= timerObject.millis) {
           currentEntry.resolved = true;
-          ArrayPrototypePush(timerTasks, task);
+          ArrayPrototypePush(timerTasks, currentEntry.task);
           removeFromScheduledTimers(currentEntry);
 
           if (currentEntry === timerObject) {
