@@ -79,7 +79,7 @@ Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
 
   conn.setEncoding("utf8");
   conn.write(`GET / HTTP/1.1\nHost: www.google.com\n\n`);
-  const promise = deferred();
+
   conn.on("data", (_) => {
     conn.destroy();
     ctl.abort();
