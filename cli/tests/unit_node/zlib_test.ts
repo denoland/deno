@@ -14,6 +14,7 @@ import {
   createDeflate,
 } from "node:zlib";
 import { Buffer } from "node:buffer";
+import { PassThrough } from "node:stream";
 import { createReadStream, createWriteStream } from "node:fs";
 
 Deno.test("brotli compression sync", () => {
@@ -62,8 +63,19 @@ Deno.test("brotli compression", async () => {
   }
 });
 
-Deno.test("zlib create deflate with dictionary", () => {
-  createDeflate({
-    dictionary: Buffer.alloc(0),
-  });
-});
+Deno.test(
+  "zlib create deflate with dictionary",
+  { sanitizeResources: false },
+  async () => {
+    const promise = deferred();
+    const handle = createDeflate({
+      dictionary: Buffer.alloc(0),
+    });
+
+    handle.on("close", () => promise.resolve());
+    handle.end();
+    handle.destroy();
+
+    await promise;
+  },
+);
