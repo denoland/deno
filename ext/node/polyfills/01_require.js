@@ -891,7 +891,7 @@ Module.prototype.load = function (filename) {
     );
   }
 
-  Module._extensions[extension](this, filename);
+  Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
   // TODO: do caching
@@ -959,6 +959,7 @@ function wrapSafe(
   cjsModuleInstance,
 ) {
   const wrapper = Module.wrap(content);
+  console.log("wrapSafe", filename);
   const [f, err] = core.evalContext(wrapper, `file://${filename}`);
   if (err) {
     if (process.mainModule === cjsModuleInstance) {
