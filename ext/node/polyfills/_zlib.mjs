@@ -11,6 +11,10 @@ import util from "node:util";
 import { ok as assert } from "node:assert";
 import { zlib as zlibConstants } from "ext:deno_node/internal_binding/constants.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 
 var kRangeErrorMessage = "Cannot create final Buffer. It would be larger " +
   "than 0x" + kMaxLength.toString(16) + " bytes";
@@ -321,9 +325,12 @@ function Zlib(opts, mode) {
     }
   }
 
-  if (opts.dictionary) {
-    if (!Buffer.isBuffer(opts.dictionary)) {
-      throw new Error("Invalid dictionary: it should be a Buffer instance");
+  let dictionary = opts.dictionary;
+  if (dictionary !== undefined && !isArrayBufferView(dictionary)) {
+    if (isAnyArrayBuffer(dictionary)) {
+      dictionary = Buffer.from(dictionary);
+    } else {
+      throw new TypeError("Invalid dictionary");
     }
   }
 
@@ -354,7 +361,7 @@ function Zlib(opts, mode) {
     level,
     opts.memLevel || zlibConstants.Z_DEFAULT_MEMLEVEL,
     strategy,
-    opts.dictionary,
+    dictionary,
   );
 
   this._buffer = Buffer.allocUnsafe(this._chunkSize);
