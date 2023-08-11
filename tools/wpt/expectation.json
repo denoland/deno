@@ -2403,7 +2403,7 @@
   "hr-time": {
     "monotonic-clock.any.html": true,
     "monotonic-clock.any.worker.html": true,
-    "basic.any.html": false,
+    "basic.any.html": true,
     "basic.any.worker.html": true,
     "idlharness.any.html": [
       "Window interface: attribute performance"
