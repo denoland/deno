@@ -378,7 +378,7 @@ export class OutgoingMessage extends Stream {
     encoding: string | null,
     callback: () => void,
   ): boolean {
-    if (typeof encoding === 'function') {
+    if (typeof encoding === "function") {
       callback = encoding;
       encoding = null;
     }
@@ -389,7 +389,7 @@ export class OutgoingMessage extends Stream {
     chunk: string | Uint8Array | Buffer,
     encoding: string | null,
     callback: () => void,
-    fromEnd: boolean
+    fromEnd: boolean,
   ): boolean {
     // Ignore lint to keep the code as similar to Nodejs as possible
     // deno-lint-ignore no-this-alias
@@ -397,22 +397,27 @@ export class OutgoingMessage extends Stream {
 
     if (chunk === null) {
       throw new ERR_STREAM_NULL_VALUES();
-    } else if (typeof chunk !== 'string' && !isUint8Array(chunk)) {
+    } else if (typeof chunk !== "string" && !isUint8Array(chunk)) {
       throw new ERR_INVALID_ARG_TYPE(
-        'chunk', ['string', 'Buffer', 'Uint8Array'], chunk);
+        "chunk",
+        ["string", "Buffer", "Uint8Array"],
+        chunk,
+      );
     }
 
     let len: number;
 
     if (!msg._header) {
       if (fromEnd) {
-        len ??= typeof chunk === 'string' ? Buffer.byteLength(chunk, encoding) : chunk.byteLength;
+        len ??= typeof chunk === "string"
+          ? Buffer.byteLength(chunk, encoding)
+          : chunk.byteLength;
         msg._contentLength = len;
       }
       msg._implicitHeader();
     }
 
-    return msg._send(chunk, encoding, callback)
+    return msg._send(chunk, encoding, callback);
   }
 
   // deno-lint-ignore no-explicit-any
@@ -524,7 +529,7 @@ export class OutgoingMessage extends Stream {
   }
 
   _writeHeader() {
-    throw new ERR_METHOD_NOT_IMPLEMENTED('_writeHeader()');
+    throw new ERR_METHOD_NOT_IMPLEMENTED("_writeHeader()");
   }
 
   _writeRaw(
@@ -547,7 +552,7 @@ export class OutgoingMessage extends Stream {
         this._requestSendError = e;
       });
     }
-    return false
+    return false;
   }
 
   _renderHeaders() {
@@ -584,7 +589,7 @@ export class OutgoingMessage extends Stream {
       header: firstLine,
     };
 
-    const headers = this[kOutHeaders]
+    const headers = this[kOutHeaders];
     if (headers) {
       // headers is null-prototype object, so ignore the guard lint
       // deno-lint-ignore guard-for-in
@@ -594,10 +599,9 @@ export class OutgoingMessage extends Stream {
       }
     }
 
-
     // Date header
     if (this.sendDate && !state.date) {
-      this.setHeader('Date', utcDate());
+      this.setHeader("Date", utcDate());
     }
 
     // Force the connection to close when the response is a 204 No Content or
@@ -611,10 +615,14 @@ export class OutgoingMessage extends Stream {
     // It was pointed out that this might confuse reverse proxies to the point
     // of creating security liabilities, so suppress the zero chunk and force
     // the connection to close.
-    if (this.chunkedEncoding && (this.statusCode === 204 ||
-                                this.statusCode === 304)) {
-      debug(this.statusCode + ' response should not use chunked encoding,' +
-            ' closing connection.');
+    if (
+      this.chunkedEncoding && (this.statusCode === 204 ||
+        this.statusCode === 304)
+    ) {
+      debug(
+        this.statusCode + " response should not use chunked encoding," +
+          " closing connection.",
+      );
       this.chunkedEncoding = false;
       this.shouldKeepAlive = false;
     }
@@ -651,18 +659,20 @@ export class OutgoingMessage extends Stream {
         this.chunkedEncoding = false;
       } else if (!this.useChunkedEncodingByDefault) {
         this._last = true;
-      } else if (!state.trailer &&
-                 !this._removedContLen &&
-                 typeof this._contentLength === 'number') {
-        this.setHeader('Content-Length', this._contentLength);
+      } else if (
+        !state.trailer &&
+        !this._removedContLen &&
+        typeof this._contentLength === "number"
+      ) {
+        this.setHeader("Content-Length", this._contentLength);
       } else if (!this._removedTE) {
-        this.setHeader('Transfer-Encoding', 'chunked');
+        this.setHeader("Transfer-Encoding", "chunked");
         this.chunkedEncoding = true;
       } else {
         // We should only be able to get here if both Content-Length and
         // Transfer-Encoding are removed by the user.
         // See: test/parallel/test-http-remove-header-stays-removed.js
-        debug('Both Content-Length and Transfer-Encoding are removed');
+        debug("Both Content-Length and Transfer-Encoding are removed");
       }
     }
 
@@ -675,12 +685,12 @@ export class OutgoingMessage extends Stream {
     }
 
     const { header } = state;
-    this._header = header + '\r\n';
+    this._header = header + "\r\n";
     this._headerSent = false;
-    
+
     // Wait until the first body chunk, or close(), is sent to flush,
     // UNLESS we're sending Expect: 100-continue.
-    if (state.expect) this._send('');
+    if (state.expect) this._send("");
   }
 
   _matchHeader(
@@ -692,36 +702,39 @@ export class OutgoingMessage extends Stream {
   ) {
     // Ignore lint to keep the code as similar to Nodejs as possible
     // deno-lint-ignore no-this-alias
-    const self = this
-    if (field.length < 4 || field.length > 17)
+    const self = this;
+    if (field.length < 4 || field.length > 17) {
       return;
+    }
     field = field.toLowerCase();
     switch (field) {
-      case 'connection':
+      case "connection":
         state.connection = true;
         self._removedConnection = false;
-        if (RE_CONN_CLOSE.exec(value) !== null)
+        if (RE_CONN_CLOSE.exec(value) !== null) {
           self._last = true;
-        else
+        } else {
           self.shouldKeepAlive = true;
+        }
         break;
-      case 'transfer-encoding':
+      case "transfer-encoding":
         state.te = true;
         self._removedTE = false;
-        if (RE_TE_CHUNKED.exec(value) !== null)
+        if (RE_TE_CHUNKED.exec(value) !== null) {
           self.chunkedEncoding = true;
+        }
         break;
-      case 'content-length':
+      case "content-length":
         state.contLen = true;
         self._contentLength = value;
         self._removedContLen = false;
         break;
-      case 'date':
-      case 'expect':
-      case 'trailer':
+      case "date":
+      case "expect":
+      case "trailer":
         state[field] = true;
         break;
-      case 'keep-alive':
+      case "keep-alive":
         self._defaultKeepAlive = false;
         break;
     }

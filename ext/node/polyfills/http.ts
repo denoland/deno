@@ -594,10 +594,12 @@ class ClientRequest extends OutgoingMessage {
 
   _implicitHeader() {
     if (this._header) {
-      throw new ERR_HTTP_HEADERS_SENT('render');
+      throw new ERR_HTTP_HEADERS_SENT("render");
     }
-    this._storeHeader(this.method + ' ' + this.path + ' HTTP/1.1\r\n',
-                      this[kOutHeaders]);
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -626,11 +628,10 @@ class ClientRequest extends OutgoingMessage {
     this.finished = true;
     if (chunk) {
       this.write_(chunk, encoding, null, true);
-    }
-    else if (!this._headerSent) {
+    } else if (!this._headerSent) {
       this._contentLength = 0;
       this._implicitHeader();
-      this._send('', 'latin1');
+      this._send("", "latin1");
     }
 
     (async () => {
