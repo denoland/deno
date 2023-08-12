@@ -44,6 +44,7 @@ const {
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
+const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
 
 /**
@@ -229,6 +230,13 @@ class Headers {
   get [_iterableHeaders]() {
     const list = this[_headerList];
 
+    if (
+      this[_guard] === "immutable" &&
+      this[_iterableHeadersCache] !== undefined
+    ) {
+      return this[_iterableHeadersCache];
+    }
+
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
     const headers = {};
@@ -264,7 +272,7 @@ class Headers {
       ArrayPrototypePush(entries, cookies[i]);
     }
 
-    return ArrayPrototypeSort(
+    ArrayPrototypeSort(
       entries,
       (a, b) => {
         const akey = a[0];
@@ -274,6 +282,10 @@ class Headers {
         return 0;
       },
     );
+
+    this[_iterableHeadersCache] = entries;
+
+    return entries;
   }
 
   /** @param {HeadersInit} [init] */
