@@ -38,10 +38,9 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-v8 = { version = "0.74.1", default-features = false }
 deno_ast = { version = "0.27.0", features = ["transpiling"] }
 
-deno_core = "0.200.0"
+deno_core = "0.202.0"
 
 deno_runtime = { version = "0.122.0", path = "./runtime" }
 napi_sym = { version = "0.44.0", path = "./cli/napi/sym" }
