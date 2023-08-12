@@ -366,20 +366,16 @@ class Request {
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
     // 32.
-    if (ObjectKeys(init).length > 0) {
-      let headers = ArrayPrototypeSlice(
-        headerListFromHeaders(this[_headers]),
+    if (init.headers || ObjectKeys(init).length > 0) {
+      const headerList = headerListFromHeaders(this[_headers]);
+      const headers = init.headers ?? ArrayPrototypeSlice(
+        headerList,
         0,
-        headerListFromHeaders(this[_headers]).length,
+        headerList.length,
       );
-      if (init.headers !== undefined) {
-        headers = init.headers;
+      if (headerList.length !== 0) {
+        ArrayPrototypeSplice(headerList, 0, headerList.length);
       }
-      ArrayPrototypeSplice(
-        headerListFromHeaders(this[_headers]),
-        0,
-        headerListFromHeaders(this[_headers]).length,
-      );
       fillHeaders(this[_headers], headers);
     }
 
