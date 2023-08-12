@@ -34,10 +34,18 @@ declare var CloseEvent: {
 };
 
 /** @category Web Sockets */
+declare interface WebSocketMessageEvent
+  extends MessageEvent<string | ArrayBuffer | Blob & { type: "" }> {
+  lastEventId: "";
+  source: null;
+  ports: [];
+}
+
+/** @category Web Sockets */
 declare interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
-  message: MessageEvent;
+  message: WebSocketMessageEvent;
   open: Event;
 }
 
@@ -70,7 +78,7 @@ declare interface WebSocket extends EventTarget {
   readonly extensions: string;
   onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
   onerror: ((this: WebSocket, ev: Event | ErrorEvent) => any) | null;
-  onmessage: ((this: WebSocket, ev: MessageEvent) => any) | null;
+  onmessage: ((this: WebSocket, ev: WebSocketMessageEvent) => any) | null;
   onopen: ((this: WebSocket, ev: Event) => any) | null;
   /**
    * Returns the subprotocol selected by the server, if any. It can be used in conjunction with the array form of the constructor's second argument to perform subprotocol negotiation.
