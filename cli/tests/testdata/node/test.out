@@ -147,7 +147,7 @@ error: Error: rejected from reject fail
     at [WILDCARD]
 
 ./node/test.js (uncaught error)
-error: Error: rejected from unhandled rejection fail
+error: (in promise) Error: rejected from unhandled rejection fail
   Promise.reject(new Error("rejected from unhandled rejection fail"));
                  ^
     at [WILDCARD]

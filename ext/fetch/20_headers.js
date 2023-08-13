@@ -28,12 +28,7 @@ const {
   ArrayPrototypeSplice,
   ObjectEntries,
   ObjectHasOwn,
-  RegExpPrototypeExec,
-  SafeMap,
-  MapPrototypeGet,
-  MapPrototypeHas,
-  MapPrototypeSet,
-  MapPrototypeClear,
+  RegExpPrototypeTest,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -44,6 +39,7 @@ const {
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
+const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
 
 /**
@@ -101,19 +97,23 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-const HEADER_NAME_CACHE = new SafeMap();
+let HEADER_NAME_CACHE = {};
+let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
-  if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
-    return MapPrototypeGet(HEADER_NAME_CACHE, name);
+  const fromCache = HEADER_NAME_CACHE[name];
+  if (fromCache !== undefined) {
+    return fromCache;
   }
 
-  const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
+  const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
 
-  if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
-    MapPrototypeClear(HEADER_NAME_CACHE);
+  if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
+    HEADER_NAME_CACHE = {};
+    HEADER_CACHE_SIZE = 0;
   }
-  MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
+  HEADER_CACHE_SIZE++;
+  HEADER_NAME_CACHE[name] = valid;
 
   return valid;
 }
@@ -229,6 +229,13 @@ class Headers {
   get [_iterableHeaders]() {
     const list = this[_headerList];
 
+    if (
+      this[_guard] === "immutable" &&
+      this[_iterableHeadersCache] !== undefined
+    ) {
+      return this[_iterableHeadersCache];
+    }
+
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
     const headers = {};
@@ -264,7 +271,7 @@ class Headers {
       ArrayPrototypePush(entries, cookies[i]);
     }
 
-    return ArrayPrototypeSort(
+    ArrayPrototypeSort(
       entries,
       (a, b) => {
         const akey = a[0];
@@ -274,6 +281,10 @@ class Headers {
         return 0;
       },
     );
+
+    this[_iterableHeadersCache] = entries;
+
+    return entries;
   }
 
   /** @param {HeadersInit} [init] */
