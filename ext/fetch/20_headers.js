@@ -26,7 +26,6 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
-  ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeTest,
   Symbol,
