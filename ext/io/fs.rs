@@ -170,14 +170,10 @@ impl FsStat {
 pub trait File {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
-    let vec = vec![0; limit];
-    let buf = BufMutView::from(vec);
-    let (nread, buf) = self.read_byob(buf).await?;
-    let mut vec = buf.unwrap_vec();
-    if vec.len() != nread {
-      vec.truncate(nread);
-    }
-    Ok(BufView::from(vec))
+    let buf = BufMutView::new(limit);
+    let (nread, mut buf) = self.read_byob(buf).await?;
+    buf.truncate(nread);
+    Ok(buf.into_view())
   }
   async fn read_byob(
     self: Rc<Self>,

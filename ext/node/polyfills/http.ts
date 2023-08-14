@@ -1438,6 +1438,7 @@ export class ServerResponse extends NodeWritable {
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
+  #headers: Record<string, string>;
   url: string;
   method: string;
   // Polyfills part of net.Socket object.
@@ -1484,7 +1485,10 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get headers() {
-    return Object.fromEntries(this.#req.headers.entries());
+    if (!this.#headers) {
+      this.#headers = Object.fromEntries(this.#req.headers.entries());
+    }
+    return this.#headers;
   }
 
   get upgrade(): boolean {
