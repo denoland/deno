@@ -1055,8 +1055,13 @@ where
     .with_safe_defaults()
     .with_no_client_auth()
     .with_single_cert(cert_chain, key_der)
-    .map_err(|e| custom_error("InvalidData", format!("Error creating TLS certificate: {:?}", e)))?;
-  
+    .map_err(|e| {
+      custom_error(
+        "InvalidData",
+        format!("Error creating TLS certificate: {:?}", e),
+      )
+    })?;
+
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
