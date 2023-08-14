@@ -314,7 +314,6 @@ impl MainWorker {
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
-          file_fetch_handler: Rc::new(deno_fetch::FsFetchHandler),
           ..Default::default()
         },
       ),

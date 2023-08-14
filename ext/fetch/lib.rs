@@ -1,7 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod fs_fetch_handler;
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
@@ -68,8 +66,6 @@ use tokio::sync::mpsc;
 pub use data_url;
 pub use reqwest;
 
-pub use fs_fetch_handler::FsFetchHandler;
-
 #[derive(Clone)]
 pub struct Options {
   pub user_agent: String,
@@ -79,7 +75,6 @@ pub struct Options {
     Option<fn(RequestBuilder) -> Result<RequestBuilder, AnyError>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: Option<(String, String)>,
-  pub file_fetch_handler: Rc<dyn FetchHandler>,
 }
 
 impl Options {
@@ -100,7 +95,6 @@ impl Default for Options {
       request_builder_hook: None,
       unsafely_ignore_certificate_errors: None,
       client_cert_chain_and_key: None,
-      file_fetch_handler: Rc::new(DefaultFileFetchHandler),
     }
   }
 }
@@ -241,31 +235,6 @@ where
   // Check scheme before asking for net permission
   let scheme = url.scheme();
   let (request_rid, request_body_rid, cancel_handle_rid) = match scheme {
-    "file" => {
-      let path = url.to_file_path().map_err(|_| {
-        type_error("NetworkError when attempting to fetch resource.")
-      })?;
-      let permissions = state.borrow_mut::<FP>();
-      permissions.check_read(&path, "fetch()")?;
-
-      if method != Method::GET {
-        return Err(type_error(format!(
-          "Fetching files only supports the GET method. Received {method}."
-        )));
-      }
-
-      let Options {
-        file_fetch_handler, ..
-      } = state.borrow_mut::<Options>();
-      let file_fetch_handler = file_fetch_handler.clone();
-      let (request, maybe_cancel_handle) =
-        file_fetch_handler.fetch_file(state, url);
-      let request_rid = state.resource_table.add(FetchRequestResource(request));
-      let maybe_cancel_handle_rid = maybe_cancel_handle
-        .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
-
-      (request_rid, None, maybe_cancel_handle_rid)
-    }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
       permissions.check_net_url(&url, "fetch()")?;

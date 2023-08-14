@@ -1588,65 +1588,6 @@ Deno.test(
   },
 );
 
-Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
-  await assertRejects(async () => {
-    await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
-  }, Deno.errors.PermissionDenied);
-});
-
-Deno.test(
-  { permissions: { read: false } },
-  async function fetchFilePermDoesNotExist() {
-    await assertRejects(async () => {
-      await fetch(import.meta.resolve("./bad.json"));
-    }, Deno.errors.PermissionDenied);
-  },
-);
-
-Deno.test(
-  { permissions: { read: true } },
-  async function fetchFileBadMethod() {
-    await assertRejects(
-      async () => {
-        await fetch(
-          import.meta.resolve("../testdata/subdir/json_1.json"),
-          {
-            method: "POST",
-          },
-        );
-      },
-      TypeError,
-      "Fetching files only supports the GET method. Received POST.",
-    );
-  },
-);
-
-Deno.test(
-  { permissions: { read: true } },
-  async function fetchFileDoesNotExist() {
-    await assertRejects(
-      async () => {
-        await fetch(import.meta.resolve("./bad.json"));
-      },
-      TypeError,
-    );
-  },
-);
-
-Deno.test(
-  { permissions: { read: true } },
-  async function fetchFile() {
-    const res = await fetch(
-      import.meta.resolve("../testdata/subdir/json_1.json"),
-    );
-    assert(res.ok);
-    const fixture = await Deno.readTextFile(
-      "cli/tests/testdata/subdir/json_1.json",
-    );
-    assertEquals(await res.text(), fixture);
-  },
-);
-
 Deno.test(
   { permissions: { net: true } },
   async function fetchContentLengthPost() {
