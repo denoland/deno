@@ -1493,7 +1493,7 @@ Deno.test({
 });
 
 Deno.test(
-  { permissions: { net: true, read: false } },
+  { permissions: { net: true, read: true } },
   function listenTLSInvalidCert() {
     assertThrows(() => {
       Deno.listenTls({
@@ -1507,7 +1507,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true, read: false } },
+  { permissions: { net: true, read: true } },
   function listenTLSInvalidKey() {
     assertThrows(() => {
       Deno.listenTls({
