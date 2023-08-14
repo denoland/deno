@@ -60,7 +60,6 @@ let stdin = null as any;
 // deno-lint-ignore no-explicit-any
 let stdout = null as any;
 
-export { stderr, stdin, stdout };
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
@@ -691,6 +690,12 @@ if (isWindows) {
 /** https://nodejs.org/api/process.html#process_process */
 const process = new Process();
 
+Object.defineProperties(process, {
+  "stdin": { get: getStdin },
+  "stdout": { get: getStdout },
+  "stderr": { get: getStderr },
+});
+
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
   writable: true,
@@ -791,25 +796,39 @@ internals.__bootstrapNodeProcess = function (
     }
   });
 
-  // Initializes stdin
-  stdin = process.stdin = initStdin();
-
-  /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = process.stderr = createWritableStdioStream(
-    io.stderr,
-    "stderr",
-  );
-
-  /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = process.stdout = createWritableStdioStream(
-    io.stdout,
-    "stdout",
-  );
-
   process.setStartTime(Date.now());
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
+
+function getStdin() {
+  if (!stdin) {
+    stdin = initStdin();
+  };
+  return stdin;
+}
+
+/** https://nodejs.org/api/process.html#process_process_stdout */
+function getStdout() {
+  if (!stdout) {
+    stdout = createWritableStdioStream(
+      io.stdout,
+      "stdout",
+    );
+  }
+  return stdout;
+}
+
+/** https://nodejs.org/api/process.html#process_process_stderr */
+function getStderr() {
+  if (!stderr) {
+    stderr = createWritableStdioStream(
+      io.stderr,
+      "stderr",
+    );
+  }
+  return stderr;
+}
 
 export default process;

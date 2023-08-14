@@ -2,6 +2,8 @@
 
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
+use serde::Serialize;
+use std::cell::RefCell;
 use std::thread;
 
 use crate::colors;
@@ -55,6 +57,8 @@ pub struct BootstrapOptions {
   pub unstable: bool,
   pub user_agent: String,
   pub inspect: bool,
+  pub has_node_modules_dir: bool,
+  pub maybe_binary_npm_command_name: Option<String>,
 }
 
 impl Default for BootstrapOptions {
@@ -80,135 +84,81 @@ impl Default for BootstrapOptions {
       unstable: Default::default(),
       inspect: Default::default(),
       args: Default::default(),
+      has_node_modules_dir: Default::default(),
+      maybe_binary_npm_command_name: None,
     }
   }
 }
+
+#[derive(Serialize)]
+struct BootstrapV8<'a>(
+  // args
+  &'a Vec<String>,
+  // cpu_count
+  i32,
+  // log_level
+  i32,
+  // runtime_version
+  &'a str,
+  // locale
+  &'a str,
+  // location
+  Option<&'a str>,
+  // no_color
+  bool,
+  // is_tty
+  bool,
+  // ts_version
+  &'a str,
+  // unstable
+  bool,
+  // process_id
+  i32,
+  // env!("TARGET")
+  &'a str,
+  // v8_version
+  &'a str,
+  // user_agent
+  &'a str,
+  // inspect
+  bool,
+  // enable_testing_features
+  bool,
+  // has_node_modules_dir
+  bool,
+  // maybe_binary_npm_command_name
+  Option<&'a str>,
+);
 
 impl BootstrapOptions {
   pub fn as_v8<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
-  ) -> v8::Local<'s, v8::Array> {
-    let array = v8::Array::new(scope, 16);
+  ) -> v8::Local<'s, v8::Value> {
+    let scope = RefCell::new(scope);
+    let ser = deno_core::serde_v8::Serializer::new(&scope);
 
-    {
-      let args = v8::Array::new(scope, self.args.len() as i32);
-      for (idx, arg) in self.args.iter().enumerate() {
-        let arg_str = v8::String::new(scope, arg).unwrap();
-        args.set_index(scope, idx as u32, arg_str.into());
-      }
-      array.set_index(scope, 0, args.into());
-    }
+    let bootstrap = BootstrapV8(
+      &self.args,
+      self.cpu_count as _,
+      self.log_level as _,
+      &self.runtime_version,
+      &self.locale,
+      self.location.as_ref().map(|l| l.as_str()),
+      self.no_color,
+      self.is_tty,
+      &self.ts_version,
+      self.unstable,
+      std::process::id() as _,
+      env!("TARGET"),
+      deno_core::v8_version(),
+      &self.user_agent,
+      self.inspect,
+      self.enable_testing_features,
+      self.has_node_modules_dir,
+      self.maybe_binary_npm_command_name.as_deref(),
+    );
 
-    {
-      let val = v8::Integer::new(scope, self.cpu_count as i32);
-      array.set_index(scope, 1, val.into());
-    }
-
-    {
-      let val = v8::Integer::new(scope, self.log_level as i32);
-      array.set_index(scope, 2, val.into());
-    }
-
-    {
-      let val = v8::String::new_from_one_byte(
-        scope,
-        self.runtime_version.as_bytes(),
-        v8::NewStringType::Internalized,
-      )
-      .unwrap();
-      array.set_index(scope, 3, val.into());
-    }
-
-    {
-      let val = v8::String::new_from_one_byte(
-        scope,
-        self.locale.as_bytes(),
-        v8::NewStringType::Normal,
-      )
-      .unwrap();
-      array.set_index(scope, 4, val.into());
-    }
-
-    {
-      let val: v8::Local<v8::Value> = if let Some(location) = &self.location {
-        v8::String::new(scope, location.as_str()).unwrap().into()
-      } else {
-        v8::undefined(scope).into()
-      };
-
-      array.set_index(scope, 5, val);
-    }
-
-    {
-      let val = v8::Boolean::new(scope, self.no_color);
-      array.set_index(scope, 6, val.into());
-    }
-
-    {
-      let val = v8::Boolean::new(scope, self.is_tty);
-      array.set_index(scope, 7, val.into());
-    }
-
-    {
-      let val = v8::String::new_from_one_byte(
-        scope,
-        self.ts_version.as_bytes(),
-        v8::NewStringType::Normal,
-      )
-      .unwrap();
-      array.set_index(scope, 8, val.into());
-    }
-
-    {
-      let val = v8::Boolean::new(scope, self.unstable);
-      array.set_index(scope, 9, val.into());
-    }
-
-    {
-      let val = v8::Integer::new(scope, std::process::id() as i32);
-      array.set_index(scope, 10, val.into());
-    }
-
-    {
-      let val = v8::String::new_external_onebyte_static(
-        scope,
-        env!("TARGET").as_bytes(),
-      )
-      .unwrap();
-      array.set_index(scope, 11, val.into());
-    }
-
-    {
-      let val = v8::String::new_from_one_byte(
-        scope,
-        deno_core::v8_version().as_bytes(),
-        v8::NewStringType::Normal,
-      )
-      .unwrap();
-      array.set_index(scope, 12, val.into());
-    }
-
-    {
-      let val = v8::String::new_from_one_byte(
-        scope,
-        self.user_agent.as_bytes(),
-        v8::NewStringType::Normal,
-      )
-      .unwrap();
-      array.set_index(scope, 13, val.into());
-    }
-
-    {
-      let val = v8::Boolean::new(scope, self.inspect);
-      array.set_index(scope, 14, val.into());
-    }
-
-    {
-      let val = v8::Boolean::new(scope, self.enable_testing_features);
-      array.set_index(scope, 15, val.into());
-    }
-
-    array
+    bootstrap.serialize(ser).unwrap()
   }
 }
