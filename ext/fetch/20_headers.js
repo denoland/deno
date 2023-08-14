@@ -256,7 +256,7 @@ class Headers {
         // at the end of loop. But it avoids looping through the entire
         // list to combine multiple values with same header name. It
         // instead gradually combines them as they are found.
-        let seenHeaderIndex = seenHeaders[name];
+        const seenHeaderIndex = seenHeaders[name];
         if (seenHeaderIndex !== undefined) {
           const entryValue = entries[seenHeaderIndex][1];
           entries[seenHeaderIndex][1] = entryValue.length > 0
