@@ -805,7 +805,7 @@ internals.__bootstrapNodeProcess = function (
 function getStdin() {
   if (!stdin) {
     stdin = initStdin();
-  };
+  }
   return stdin;
 }
 
