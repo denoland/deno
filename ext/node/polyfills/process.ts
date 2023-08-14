@@ -782,6 +782,9 @@ internals.__bootstrapNodeProcess = function (
   });
 
   globalThis.addEventListener("beforeunload", (e) => {
+    if (process.listenerCount("beforeExit") === 0) {
+      return;
+    }
     process.emit("beforeExit", process.exitCode || 0);
     processTicksAndRejections();
     if (core.eventLoopHasMoreWork()) {
