@@ -1056,7 +1056,7 @@ where
     .with_no_client_auth()
     .with_single_cert(cert_chain, key_der);
   
-  match tsl_config_result {
+  match tls_config_result {
     Ok(config) => {
       let tsl_config = Arc::new(config);
     },
