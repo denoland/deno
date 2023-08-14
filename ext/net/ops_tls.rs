@@ -1051,20 +1051,14 @@ where
     return Err(generic_error("`key` is not specified."));
   };
 
-  let mut tls_config_result = ServerConfig::builder()
+  let mut tls_config = ServerConfig::builder()
     .with_safe_defaults()
     .with_no_client_auth()
-    .with_single_cert(cert_chain, key_der);
-  
-  match tls_config_result {
-    Ok(config) => {
-      let tsl_config = Arc::new(config);
-    },
-    Err(e) => {
+    .with_single_cert(cert_chain, key_der)
+    .map_err(|e| {
       eprintln!("Error creating TSL configuration: {:?}, e");
-      return Err(e.into());
-    }
-  }
+      e.into();
+    })?;
   
   if let Some(alpn_protocols) = args.alpn_protocols {
     tls_config.alpn_protocols =
