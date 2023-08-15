@@ -8,7 +8,6 @@ use std::rc::Rc;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 #[allow(unused_imports)]
@@ -557,29 +556,6 @@ deno_core::extension!(deno_node,
     ext.external_references.to_mut().extend(external_references);
   },
 );
-
-pub fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<&str>,
-) -> Result<(), AnyError> {
-  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name)?
-  } else {
-    "undefined".to_string()
-  };
-  let source_code = format!(
-    r#"(function loadBuiltinNodeModules(usesLocalNodeModulesDir, argv0) {{
-      Deno[Deno.internal].node.initialize(
-        usesLocalNodeModulesDir,
-        argv0
-      );
-    }})({uses_local_node_modules_dir}, {argv0});"#,
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code.into())?;
-  Ok(())
-}
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,

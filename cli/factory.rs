@@ -44,7 +44,6 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::HasNodeSpecifierChecker;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -623,7 +622,6 @@ impl CliFactory {
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver().await?.clone(),
       node_resolver.clone(),
-      Box::new(CliHasNodeSpecifierChecker(self.graph_container().clone())),
       self.blob_store().clone(),
       Box::new(CliModuleLoaderFactory::new(
         &self.options,
@@ -681,13 +679,5 @@ impl CliFactory {
         .clone(),
       unstable: self.options.unstable(),
     })
-  }
-}
-
-struct CliHasNodeSpecifierChecker(Arc<ModuleGraphContainer>);
-
-impl HasNodeSpecifierChecker for CliHasNodeSpecifierChecker {
-  fn has_node_specifier(&self) -> bool {
-    self.0.graph().has_node_specifier
   }
 }
