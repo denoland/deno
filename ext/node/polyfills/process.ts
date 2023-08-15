@@ -33,6 +33,8 @@ export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
+  Readable,
+  Writable,
 } from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
@@ -52,35 +54,40 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
+// We want streams to be as lazy as possible, but we cannot export a getter in a module. To
+// work around this we make these proxies that eagerly instantiate the underlying object on
+// first access of any property/method.
 function makeLazyStream<T>(objectFactory: () => T): T {
   return new Proxy({}, {
     get: function (_, prop, receiver) {
-      return Reflect.get(objectFactory() as object, prop, receiver);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.get(objectFactory() as any, prop, receiver);
     },
     has: function (_, prop) {
-      return Reflect.has(objectFactory() as object, prop);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.has(objectFactory() as any, prop);
     },
     ownKeys: function (_) {
-      return Reflect.ownKeys(objectFactory() as object);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.ownKeys(objectFactory() as any);
     },
     set: function (_, prop, value, receiver) {
-      return Reflect.set(objectFactory() as object, prop, value, receiver);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.set(objectFactory() as any, prop, value, receiver);
     },
     getPrototypeOf: function (_) {
-      return Reflect.getPrototypeOf(objectFactory() as object);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.getPrototypeOf(objectFactory() as any);
     },
     getOwnPropertyDescriptor(_, prop) {
-      return Reflect.getOwnPropertyDescriptor(objectFactory() as object, prop);
+      // deno-lint-ignore no-explicit-any
+      return Reflect.getOwnPropertyDescriptor(objectFactory() as any, prop);
     },
   }) as T;
 }
 
-// TODO(kt3k): Give better types to stdio objects
-// deno-lint-ignore no-explicit-any
 export let stderr = makeLazyStream(getStderr);
-// deno-lint-ignore no-explicit-any
 export let stdin = makeLazyStream(getStdin);
-// deno-lint-ignore no-explicit-any
 export let stdout = makeLazyStream(getStdout);
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
@@ -627,17 +634,17 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  get stderr() {
+  get stderr(): Writable {
     return getStderr();
   }
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  get stdin() {
+  get stdin(): Readable {
     return getStdin();
   }
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  get stdout() {
+  get stdout(): Writable {
     return getStdout();
   }
 
@@ -896,7 +903,7 @@ let stdin_ = null as any;
 // deno-lint-ignore no-explicit-any
 let stdout_ = null as any;
 
-function getStdin() {
+function getStdin(): Readable {
   if (!stdin_) {
     stdin_ = initStdin();
     stdin = stdin_;
@@ -906,7 +913,7 @@ function getStdin() {
 }
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
-function getStdout() {
+function getStdout(): Writable {
   if (!stdout_) {
     stdout_ = createWritableStdioStream(
       io.stdout,
@@ -919,7 +926,7 @@ function getStdout() {
 }
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
-function getStderr() {
+function getStderr(): Writable {
   if (!stderr_) {
     stderr_ = createWritableStdioStream(
       io.stderr,
