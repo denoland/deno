@@ -4382,36 +4382,8 @@
         "response-from-stream.any.worker.html": true,
         "response-cancel-stream.any.html": true,
         "response-cancel-stream.any.worker.html": true,
-        "response-clone.any.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
-        ],
-        "response-clone.any.worker.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
-        ],
+        "response-clone.any.html": true,
+        "response-clone.any.worker.html": true,
         "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],
