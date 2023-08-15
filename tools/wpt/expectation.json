@@ -6202,12 +6202,12 @@
             "oscpu"
           ],
           "navigator.any.worker.html": [
-            "productSub",
-            "userAgent type",
-            "vendor",
-            "vendorSub",
-            "taintEnabled",
-            "oscpu"
+            "appCodeName",
+            "appName",
+            "appVersion",
+            "platform",
+            "product",
+            "userAgent value"
           ],
           "per-global.window.html": false
         }
