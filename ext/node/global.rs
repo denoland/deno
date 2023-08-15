@@ -273,7 +273,7 @@ fn current_mode(scope: &mut v8::HandleScope) -> Mode {
     return Mode::Deno;
   };
   let mut buffer = [MaybeUninit::uninit(); 2048];
-  let str = deno_core::_ops::to_str(scope, &v8_string, &mut buffer);
+  let str = v8_string.to_rust_cow_lossy(scope, &mut buffer);
   if node_resolver.in_npm_package_with_cache(str) {
     Mode::Node
   } else {

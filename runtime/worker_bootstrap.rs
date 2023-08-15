@@ -90,6 +90,15 @@ impl Default for BootstrapOptions {
   }
 }
 
+/// This is a struct that we use to serialize the contents of the `BootstrapOptions`
+/// struct above to a V8 form. While `serde_v8` is not as fast as hand-coding this,
+/// it's "fast enough" while serializing a large tuple like this that it doesn't appear
+/// on flamegraphs.
+/// 
+/// Note that a few fields in here are derived from the process and environment and
+/// are not sourced from the underlying `BootstrapOptions`.
+/// 
+/// Keep this in sync with `99_main.js`.
 #[derive(Serialize)]
 struct BootstrapV8<'a>(
   // args
@@ -131,6 +140,7 @@ struct BootstrapV8<'a>(
 );
 
 impl BootstrapOptions {
+  /// Return the v8 equivalent of this structure.
   pub fn as_v8<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
