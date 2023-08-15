@@ -6177,7 +6177,14 @@
             "taintEnabled",
             "oscpu"
           ],
-          "navigator.any.worker.html": false,
+          "navigator.any.worker.html": [
+            "appCodeName",
+            "appName",
+            "appVersion",
+            "platform",
+            "product",
+            "userAgent value"
+          ],
           "per-global.window.html": false
         }
       }
