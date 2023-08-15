@@ -1104,7 +1104,7 @@ async fn main_server(
       _ => Ok(Response::new(Body::from(r#"{"objects":[]}"#))),
     },
     (_, "/npm/registry/puppeteer") => Ok(Response::new(Body::from(
-      r#"{"versions":{"20.9.0":{},"21.0.0":{},"21.0.1":{},"21.0.2":{}}}"#,
+      r#"{"name":"puppeteer","dist-tags":{"latest":"21.0.2"},"versions":{"20.9.0":{"version":"20.9.0","dist":{"shasum":"","tarball":"","integrity":"","signatures":[]}},"21.0.0":{"version":"21.0.0","dist":{"shasum":"","tarball":"","integrity":"","signatures":[]}},"21.0.1":{"version":"21.0.1","dist":{"shasum":"","tarball":"","integrity":"","signatures":[]}},"21.0.2":{"version":"21.0.2","dist":{"shasum":"","tarball":"","integrity":"","signatures":[]}}}}"#,
     ))),
     _ => {
       let mut file_path = testdata_path().to_path_buf();

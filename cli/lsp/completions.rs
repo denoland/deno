@@ -8,7 +8,7 @@ use super::lsp_custom;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmRegistryApi;
 use crate::util::path::is_supported_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -20,14 +20,11 @@ use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
-use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
-use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_runtime::permissions::PermissionsContainer;
+use deno_npm::registry::NpmRegistryApi;
 use import_map::ImportMap;
-use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::sync::Arc;
@@ -147,7 +144,7 @@ pub async fn get_import_completions(
   config: &ConfigSnapshot,
   client: &Client,
   module_registries: &ModuleRegistry,
-  npm_registry_url: &Url,
+  npm_api: &CliNpmRegistryApi,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
 ) -> Option<lsp::CompletionResponse> {
@@ -172,13 +169,7 @@ pub async fn get_import_completions(
   } else if text.starts_with("npm:") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete: false,
-      items: get_npm_completions(
-        &text,
-        &range,
-        npm_registry_url,
-        &module_registries.file_fetcher,
-      )
-      .await?,
+      items: get_npm_completions(&text, &range, npm_api).await?,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -475,19 +466,8 @@ fn get_relative_specifiers(
 async fn get_npm_completions(
   specifier: &str,
   range: &lsp::Range,
-  npm_registry_url: &Url,
-  file_fetcher: &FileFetcher,
+  npm_api: &CliNpmRegistryApi,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  let get_endpoint = |suffix: &str| {
-    let mut url = npm_registry_url.clone();
-    url
-      .path_segments_mut()
-      .ok()?
-      .pop_if_empty()
-      .extend(suffix.split('/'));
-    Some(url)
-  };
-
   debug_assert!(specifier.starts_with("npm:"));
   let bare_specifier = &specifier[4..];
 
@@ -511,25 +491,17 @@ async fn get_npm_completions(
 
   // First try to match `npm:some-package@<version-to-complete>`.
   if let Some(v_index) = v_index {
-    #[derive(Debug, Deserialize)]
-    struct Response {
-      versions: IndexMap<String, serde_json::Value>,
-    }
-
     let package_name = &bare_specifier[..v_index];
     let v_prefix = &bare_specifier[(v_index + 1)..];
-    let endpoint = get_endpoint(package_name)?;
-    let file = file_fetcher
-      .fetch(&endpoint, PermissionsContainer::allow_all())
-      .await
-      .ok()?;
-    let response = serde_json::from_str::<Response>(&file.source).ok()?;
-    let items = response
-      .versions
-      .into_keys()
+    let versions = &npm_api.package_info(package_name).await.ok()?.versions;
+    let mut versions = versions.keys().collect::<Vec<_>>();
+    versions.sort();
+    let items = versions
+      .into_iter()
       .rev()
       .enumerate()
       .filter_map(|(idx, version)| {
+        let version = version.to_string();
         if !version.starts_with(v_prefix) {
           return None;
         }
@@ -561,34 +533,12 @@ async fn get_npm_completions(
   }
 
   // Otherwise match `npm:<package-to-complete>`.
-  #[derive(Debug, Deserialize)]
-  struct Package {
-    name: String,
-  }
-  #[derive(Debug, Deserialize)]
-  struct Object {
-    package: Package,
-  }
-  #[derive(Debug, Deserialize)]
-  struct Response {
-    objects: Vec<Object>,
-  }
-
-  let mut endpoint = get_endpoint("-/v1/search")?;
-  endpoint
-    .query_pairs_mut()
-    .append_pair("text", &format!("{} boost-exact:false", bare_specifier));
-  let file = file_fetcher
-    .fetch(&endpoint, PermissionsContainer::allow_all())
-    .await
-    .ok()?;
-  let response = serde_json::from_str::<Response>(&file.source).ok()?;
-  let items = response
-    .objects
-    .into_iter()
+  let names = npm_api.search(bare_specifier).await.ok()?;
+  let items = names
+    .iter()
     .enumerate()
-    .map(|(idx, object)| {
-      let specifier = format!("npm:{}", &object.package.name);
+    .map(|(idx, name)| {
+      let specifier = format!("npm:{}", name);
       let command = Some(lsp::Command {
         title: "".to_string(),
         command: "deno.cache".to_string(),
@@ -668,11 +618,15 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::args::CacheSetting;
+  use crate::cache::DenoDir;
   use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::http_util::HttpClient;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::language_server::create_npm_api_and_cache;
+  use crate::util::progress_bar::ProgressBar;
   use deno_core::resolve_url;
   use deno_graph::Range;
   use std::collections::HashMap;
@@ -850,17 +804,18 @@ mod tests {
   async fn test_get_npm_completions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let file_fetcher = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(
-        temp_dir.path().join("deps").to_path_buf(),
-        crate::cache::RealDenoCacheEnv,
-      )),
-      crate::args::CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
+    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf())).unwrap();
+    let http_client = Arc::new(HttpClient::new(None, None));
+    let progress_bar =
+      ProgressBar::new(crate::util::progress_bar::ProgressBarStyle::TextOnly);
+    let npm_api = create_npm_api_and_cache(
+      &deno_dir,
+      http_client,
+      &resolve_url(&test_util::npm_registry_url()).unwrap(),
+      CacheSetting::Use,
+      &progress_bar,
+    )
+    .0;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -871,14 +826,9 @@ mod tests {
         character: 32,
       },
     };
-    let actual = get_npm_completions(
-      "npm:puppe",
-      &range,
-      &Url::parse(&test_util::npm_registry_url()).unwrap(),
-      &file_fetcher,
-    )
-    .await
-    .unwrap();
+    let actual = get_npm_completions("npm:puppe", &range, &npm_api)
+      .await
+      .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -968,17 +918,18 @@ mod tests {
   async fn test_get_npm_completions_for_versions() {
     let _g = test_util::http_server();
     let temp_dir = TempDir::new();
-    let file_fetcher = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(
-        temp_dir.path().join("deps").to_path_buf(),
-        crate::cache::RealDenoCacheEnv,
-      )),
-      crate::args::CacheSetting::Use,
-      true,
-      Arc::new(HttpClient::new(None, None)),
-      Default::default(),
-      None,
-    );
+    let deno_dir = DenoDir::new(Some(temp_dir.path().to_path_buf())).unwrap();
+    let http_client = Arc::new(HttpClient::new(None, None));
+    let progress_bar =
+      ProgressBar::new(crate::util::progress_bar::ProgressBarStyle::TextOnly);
+    let npm_api = create_npm_api_and_cache(
+      &deno_dir,
+      http_client,
+      &resolve_url(&test_util::npm_registry_url()).unwrap(),
+      CacheSetting::Use,
+      &progress_bar,
+    )
+    .0;
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -989,14 +940,9 @@ mod tests {
         character: 37,
       },
     };
-    let actual = get_npm_completions(
-      "npm:puppeteer@",
-      &range,
-      &Url::parse(&test_util::npm_registry_url()).unwrap(),
-      &file_fetcher,
-    )
-    .await
-    .unwrap();
+    let actual = get_npm_completions("npm:puppeteer@", &range, &npm_api)
+      .await
+      .unwrap();
     assert_eq!(
       actual,
       vec![

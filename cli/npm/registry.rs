@@ -23,6 +23,7 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
@@ -71,6 +72,7 @@ impl CliNpmRegistryApi {
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
+      search_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
       http_client,
       progress_bar,
@@ -93,6 +95,14 @@ impl CliNpmRegistryApi {
     name: &str,
   ) -> Option<Arc<NpmPackageInfo>> {
     self.inner().get_cached_package_info(name)
+  }
+
+  // TODO(nayeemrmn): Maybe declare in `NpmRegistryApi`.
+  pub async fn search(
+    &self,
+    query: &str,
+  ) -> Result<Arc<Vec<String>>, AnyError> {
+    self.inner().search(query).await
   }
 
   pub fn base_url(&self) -> &Url {
@@ -167,6 +177,7 @@ struct CliNpmRegistryApiInner {
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
+  search_cache: Mutex<HashMap<String, Arc<Vec<String>>>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
@@ -384,6 +395,7 @@ impl CliNpmRegistryApiInner {
 
   fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
+    self.search_cache.lock().clear();
   }
 
   pub fn get_cached_package_info(
@@ -396,5 +408,53 @@ impl CliNpmRegistryApiInner {
     } else {
       None
     }
+  }
+
+  // Search is only used by lsp import completion, so caching etc. is simpler.
+  pub async fn search(
+    &self,
+    query: &str,
+  ) -> Result<Arc<Vec<String>>, AnyError> {
+    if let Some(names) = self.search_cache.lock().get(query) {
+      return Ok(names.clone());
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct Package {
+      name: String,
+    }
+    #[derive(Debug, Deserialize)]
+    struct Object {
+      package: Package,
+    }
+    #[derive(Debug, Deserialize)]
+    struct Response {
+      objects: Vec<Object>,
+    }
+
+    let mut search_url = self.base_url.clone();
+    search_url
+      .path_segments_mut()
+      .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
+      .pop_if_empty()
+      .extend("-/v1/search".split('/'));
+    search_url
+      .query_pairs_mut()
+      .append_pair("text", &format!("{} boost-exact:false", query));
+
+    let bytes = self.http_client.download(search_url).await?;
+    let response = serde_json::from_slice::<Response>(&bytes)?;
+    let names = Arc::new(
+      response
+        .objects
+        .into_iter()
+        .map(|o| o.package.name)
+        .collect::<Vec<_>>(),
+    );
+    self
+      .search_cache
+      .lock()
+      .insert(query.to_string(), names.clone());
+    Ok(names)
   }
 }
