@@ -888,6 +888,8 @@ internals.__bootstrapNodeProcess = function (
     versions[key] = value;
   }
 
+  core.setNextTickCallback(processTicksAndRejections);
+  core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
   process.setStartTime(Date.now());
@@ -937,8 +939,5 @@ function getStderr(): Writable {
   }
   return stderr_;
 }
-
-core.setNextTickCallback(processTicksAndRejections);
-core.setMacrotaskCallback(runNextTicks);
 
 export default process;
