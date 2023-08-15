@@ -639,6 +639,40 @@ export class Http2Stream extends EventEmitter {
   }
 }
 
+async function clientHttp2Request(
+  clientRid,
+  sessionConnectPromise,
+  headers,
+  options,
+) {
+  debug("waiting for connect promise");
+  await sessionConnectPromise;
+
+  const reqHeaders: string[][] = [];
+  const pseudoHeaders = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (key[0] === ":") {
+      pseudoHeaders[key] = value;
+    } else {
+      reqHeaders.push([key, value]);
+    }
+  }
+  debug(
+    "waited for connect promise",
+    !!options.waitForTrailers,
+    pseudoHeaders,
+    reqHeaders,
+  );
+
+  return await core.opAsync(
+    "op_http2_client_request",
+    clientRid,
+    pseudoHeaders,
+    reqHeaders,
+  );
+}
+
 export class ClientHttp2Stream extends Duplex {
   #session: Http2Session;
   #requestPromise: Promise<[number, number]>;
@@ -664,34 +698,12 @@ export class ClientHttp2Stream extends Duplex {
     super(options);
     this.cork();
 
-    this.#requestPromise = (async () => {
-      debug("waiting for connect promise");
-      await sessionConnectPromise;
-
-      const reqHeaders: string[][] = [];
-      const pseudoHeaders = {};
-
-      for (const [key, value] of Object.entries(headers)) {
-        if (key[0] === ":") {
-          pseudoHeaders[key] = value;
-        } else {
-          reqHeaders.push([key, value]);
-        }
-      }
-      debug(
-        "waited for connect promise",
-        !!options.waitForTrailers,
-        pseudoHeaders,
-        reqHeaders,
-      );
-
-      return await core.opAsync(
-        "op_http2_client_request",
-        session._clientRid,
-        pseudoHeaders,
-        reqHeaders,
-      );
-    })();
+    this.#requestPromise = clientHttp2Request(
+      session._clientRid,
+      sessionConnectPromise,
+      headers,
+      options,
+    );
     this.#session = session;
     this.#waitForTrailers = !!options.waitForTrailers;
     debug("created clienthttp2stream");
