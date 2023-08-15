@@ -12,9 +12,7 @@ const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  ArrayPrototypeMap,
   ArrayPrototypePop,
-  ObjectFromEntries,
   ObjectKeys,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
@@ -24,6 +22,7 @@ const {
   TypeError,
 } = primordials;
 
+const EMPTY_MATCH = [""];
 const _components = Symbol("components");
 
 /**
@@ -46,6 +45,7 @@ const _components = Symbol("components");
  */
 
 class URLPattern {
+  #keys;
   /** @type {Components} */
   [_components];
 
@@ -64,19 +64,21 @@ class URLPattern {
 
     const components = ops.op_urlpattern_parse(input, baseURL);
 
-    const keys = ObjectKeys(components);
-    for (let i = 0; i < keys.length; ++i) {
-      const key = keys[i];
+    this.#keys = ObjectKeys(components);
+    for (let i = 0; i < this.#keys.length; ++i) {
+      const key = this.#keys[i];
       try {
         components[key].regexp = new SafeRegExp(
           components[key].regexpString,
           "u",
         );
+        // used for fast path
+        components[key].matchOnEmptyInput =
+          components[key].regexpString === "^$";
       } catch (e) {
         throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
       }
     }
-
     this[_components] = components;
   }
 
@@ -144,9 +146,8 @@ class URLPattern {
 
     const values = res[0];
 
-    const keys = ObjectKeys(values);
-    for (let i = 0; i < keys.length; ++i) {
-      const key = keys[i];
+    for (let i = 0; i < this.#keys.length; ++i) {
+      const key = this.#keys[i];
       if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
         return false;
       }
@@ -185,21 +186,26 @@ class URLPattern {
     /** @type {URLPatternResult} */
     const result = { inputs };
 
-    const keys = ObjectKeys(values);
-    for (let i = 0; i < keys.length; ++i) {
-      const key = keys[i];
+    for (let i = 0; i < this.#keys.length; ++i) {
+      const key = this.#keys[i];
       /** @type {Component} */
       const component = this[_components][key];
       const input = values[key];
-      const match = RegExpPrototypeExec(component.regexp, input);
+
+      const match = component.matchOnEmptyInput && input === ""
+        ? EMPTY_MATCH // fast path
+        : RegExpPrototypeExec(component.regexp, input);
+
       if (match === null) {
         return null;
       }
-      const groupEntries = ArrayPrototypeMap(
-        component.groupNameList,
-        (name, i) => [name, match[i + 1] ?? ""],
-      );
-      const groups = ObjectFromEntries(groupEntries);
+
+      const groups = {};
+      const groupList = component.groupNameList;
+      for (let i = 0; i < groupList.length; ++i) {
+        groups[groupList[i]] = match[i + 1] ?? "";
+      }
+
       result[key] = {
         input,
         groups,
