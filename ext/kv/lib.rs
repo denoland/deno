@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod codec;
+pub mod dynamic;
 mod interface;
+mod proto;
+pub mod remote;
 pub mod sqlite;
 
 use std::borrow::Cow;
