@@ -179,11 +179,6 @@ impl CliNpmResolver {
     specifier.as_ref().starts_with(root_dir_url.as_str())
   }
 
-  /// If the resolver has resolved any npm packages.
-  pub fn has_packages(&self) -> bool {
-    self.resolution.has_packages()
-  }
-
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
