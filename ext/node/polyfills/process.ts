@@ -52,13 +52,36 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
+function makeLazyStream(objectFactory: () => any): any {
+  return new Proxy({}, {
+    get: function (_, prop, receiver) {
+      return Reflect.get(objectFactory(), prop, receiver);
+    },
+    has: function (_, prop) {
+      return Reflect.has(objectFactory(), prop);
+    },
+    ownKeys: function(_) {
+      return Reflect.ownKeys(objectFactory());
+    },
+    set: function (_, prop, value, receiver) {
+      return Reflect.set(objectFactory(), prop, value, receiver);
+    },
+    getPrototypeOf: function (_) {
+      return Reflect.getPrototypeOf(objectFactory());
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      return Reflect.getOwnPropertyDescriptor(objectFactory(), prop);
+    }
+  });
+}
+
 // TODO(kt3k): Give better types to stdio objects
 // deno-lint-ignore no-explicit-any
-let stderr = null as any;
+export let stderr = makeLazyStream(getStderr);
 // deno-lint-ignore no-explicit-any
-let stdin = null as any;
+export let stdin = makeLazyStream(getStdin);
 // deno-lint-ignore no-explicit-any
-let stdout = null as any;
+export let stdout = makeLazyStream(getStdout);
 
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
@@ -604,13 +627,13 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stderr;
+  get stderr() { return getStderr() }
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  stdin = stdin;
+  get stdin() { return getStdin() }
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdout;
+  get stdout() { return getStdout() }
 
   /** https://nodejs.org/api/process.html#process_process_version */
   version = version;
@@ -689,12 +712,6 @@ if (isWindows) {
 
 /** https://nodejs.org/api/process.html#process_process */
 const process = new Process();
-
-Object.defineProperties(process, {
-  "stdin": { get: getStdin },
-  "stdout": { get: getStdout },
-  "stderr": { get: getStderr },
-});
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
@@ -858,8 +875,6 @@ internals.__bootstrapNodeProcess = function (
     versions[key] = value;
   }
 
-  core.setNextTickCallback(processTicksAndRejections);
-  core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
   process.setStartTime(Date.now());
@@ -868,33 +883,49 @@ internals.__bootstrapNodeProcess = function (
   delete internals.__bootstrapNodeProcess;
 };
 
+// deno-lint-ignore no-explicit-any
+let stderr_ = null as any;
+// deno-lint-ignore no-explicit-any
+let stdin_ = null as any;
+// deno-lint-ignore no-explicit-any
+let stdout_ = null as any;
+
 function getStdin() {
-  if (!stdin) {
-    stdin = initStdin();
+  if (!stdin_) {
+    stdin_ = initStdin();
+    stdin = stdin_;
+    Object.defineProperty(process, "stdin", { get: () => stdin_ });
   }
-  return stdin;
+  return stdin_;
 }
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
 function getStdout() {
-  if (!stdout) {
-    stdout = createWritableStdioStream(
+  if (!stdout_) {
+    stdout_ = createWritableStdioStream(
       io.stdout,
       "stdout",
     );
+    stdout = stdout_;
+    Object.defineProperty(process, "stdout", { get: () => stdout_ });
   }
-  return stdout;
+  return stdout_;
 }
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
 function getStderr() {
-  if (!stderr) {
-    stderr = createWritableStdioStream(
+  if (!stderr_) {
+    stderr_ = createWritableStdioStream(
       io.stderr,
       "stderr",
     );
+    stderr = stderr_;
+    Object.defineProperty(process, "stderr", { get: () => stderr_ });
   }
-  return stderr;
+  return stderr_;
 }
+
+core.setNextTickCallback(processTicksAndRejections);
+core.setMacrotaskCallback(runNextTicks);
 
 export default process;
