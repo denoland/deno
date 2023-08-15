@@ -508,6 +508,14 @@ function guardFromHeaders(headers) {
   return headers[_guard];
 }
 
+/**
+ * @param {Headers} headers
+ * @returns {[string, string][]}
+ */
+function headersEntries(headers) {
+  return headers[_iterableHeaders];
+}
+
 export {
   fillHeaders,
   getDecodeSplitHeader,
@@ -515,5 +523,6 @@ export {
   guardFromHeaders,
   headerListFromHeaders,
   Headers,
+  headersEntries,
   headersFromHeaderList,
 };

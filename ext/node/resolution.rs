@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -128,10 +129,10 @@ impl NodeResolver {
     self.npm_resolver.in_npm_package(specifier)
   }
 
-  pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
+  pub fn in_npm_package_with_cache(&self, specifier: Cow<str>) -> bool {
     let mut cache = self.in_npm_package_cache.lock();
 
-    if let Some(result) = cache.get(&specifier) {
+    if let Some(result) = cache.get(specifier.as_ref()) {
       return *result;
     }
 
@@ -141,7 +142,7 @@ impl NodeResolver {
       } else {
         false
       };
-    cache.insert(specifier, result);
+    cache.insert(specifier.into_owned(), result);
     result
   }
 
