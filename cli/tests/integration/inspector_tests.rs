@@ -9,6 +9,8 @@ use deno_runtime::deno_fetch::reqwest;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
+use http::header::HOST;
+use hyper::header::HeaderValue;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
@@ -704,14 +706,34 @@ async fn inspector_json() {
   let mut url = ws_url.clone();
   let _ = url.set_scheme("http");
   url.set_path("/json");
-  let resp = reqwest::get(url).await.unwrap();
-  assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
-    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
-  let matching_endpoint = endpoint_list
-    .iter()
-    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
-  assert!(matching_endpoint.is_some());
+  let client = reqwest::Client::new();
+
+  // Ensure that the webSocketDebuggerUrl matches the host header
+  for (host, expected) in [
+    (None, ws_url.as_str()),
+    (Some("some.random.host"), "ws://some.random.host/"),
+    (Some("some.random.host:1234"), "ws://some.random.host:1234/"),
+    (Some("[::1]:1234"), "ws://[::1]:1234/"),
+  ] {
+    let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+    if let Some(host) = host {
+      req
+        .headers_mut()
+        .insert(HOST, HeaderValue::from_static(host));
+    }
+    let resp = client.execute(req).await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let endpoint_list: Vec<deno_core::serde_json::Value> =
+      serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    let matching_endpoint = endpoint_list.iter().find(|e| {
+      e["webSocketDebuggerUrl"]
+        .as_str()
+        .unwrap()
+        .contains(expected)
+    });
+    assert!(matching_endpoint.is_some());
+  }
+
   child.kill().unwrap();
 }
 
