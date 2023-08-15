@@ -26,14 +26,8 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
-  ObjectEntries,
   ObjectHasOwn,
-  RegExpPrototypeExec,
-  SafeMap,
-  MapPrototypeGet,
-  MapPrototypeHas,
-  MapPrototypeSet,
-  MapPrototypeClear,
+  RegExpPrototypeTest,
   Symbol,
   SymbolFor,
   SymbolIterator,
@@ -44,6 +38,7 @@ const {
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
+const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
 
 /**
@@ -101,19 +96,23 @@ function checkForInvalidValueChars(value) {
   return true;
 }
 
-const HEADER_NAME_CACHE = new SafeMap();
+let HEADER_NAME_CACHE = {};
+let HEADER_CACHE_SIZE = 0;
 const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
 function checkHeaderNameForHttpTokenCodePoint(name) {
-  if (MapPrototypeHas(HEADER_NAME_CACHE, name)) {
-    return MapPrototypeGet(HEADER_NAME_CACHE, name);
+  const fromCache = HEADER_NAME_CACHE[name];
+  if (fromCache !== undefined) {
+    return fromCache;
   }
 
-  const valid = RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, name) !== null;
+  const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
 
-  if (HEADER_NAME_CACHE.size > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
-    MapPrototypeClear(HEADER_NAME_CACHE);
+  if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
+    HEADER_NAME_CACHE = {};
+    HEADER_CACHE_SIZE = 0;
   }
-  MapPrototypeSet(HEADER_NAME_CACHE, name, valid);
+  HEADER_CACHE_SIZE++;
+  HEADER_NAME_CACHE[name] = valid;
 
   return valid;
 }
@@ -229,10 +228,17 @@ class Headers {
   get [_iterableHeaders]() {
     const list = this[_headerList];
 
+    if (
+      this[_guard] === "immutable" &&
+      this[_iterableHeadersCache] !== undefined
+    ) {
+      return this[_iterableHeadersCache];
+    }
+
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
-    const headers = {};
-    const cookies = [];
+    const seenHeaders = {};
+    const entries = [];
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];
       const name = byteLowerCase(entry[0]);
@@ -243,28 +249,26 @@ class Headers {
       // so must be given to the user as multiple headers.
       // The else block of the if statement is spec compliant again.
       if (name === "set-cookie") {
-        ArrayPrototypePush(cookies, [name, value]);
+        ArrayPrototypePush(entries, [name, value]);
       } else {
         // The following code has the same behaviour as getHeader()
         // at the end of loop. But it avoids looping through the entire
         // list to combine multiple values with same header name. It
         // instead gradually combines them as they are found.
-        let header = headers[name];
-        if (header && header.length > 0) {
-          header += "\x2C\x20" + value;
+        const seenHeaderIndex = seenHeaders[name];
+        if (seenHeaderIndex !== undefined) {
+          const entryValue = entries[seenHeaderIndex][1];
+          entries[seenHeaderIndex][1] = entryValue.length > 0
+            ? entryValue + "\x2C\x20" + value
+            : value;
         } else {
-          header = value;
+          seenHeaders[name] = entries.length; // store header index in entries array
+          ArrayPrototypePush(entries, [name, value]);
         }
-        headers[name] = header;
       }
     }
 
-    const entries = ObjectEntries(headers);
-    for (let i = 0; i < cookies.length; ++i) {
-      ArrayPrototypePush(entries, cookies[i]);
-    }
-
-    return ArrayPrototypeSort(
+    ArrayPrototypeSort(
       entries,
       (a, b) => {
         const akey = a[0];
@@ -274,6 +278,10 @@ class Headers {
         return 0;
       },
     );
+
+    this[_iterableHeadersCache] = entries;
+
+    return entries;
   }
 
   /** @param {HeadersInit} [init] */

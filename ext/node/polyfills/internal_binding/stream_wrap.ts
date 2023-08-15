@@ -314,9 +314,16 @@ export class LibuvStreamWrap extends HandleWrap {
     let buf = BUF;
 
     let nread: number | null;
+    const ridBefore = this[kStreamBaseField]!.rid;
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#read();
+      }
+
       if (
         e instanceof Deno.errors.Interrupted ||
         e instanceof Deno.errors.BadResource
@@ -365,15 +372,23 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
+    const ridBefore = this[kStreamBaseField]!.rid;
+
+    let nwritten = 0;
     try {
       // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
-      let nwritten = 0;
       while (nwritten < data.length) {
         nwritten += await this[kStreamBaseField]!.write(
           data.subarray(nwritten),
         );
       }
     } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#write(req, data.subarray(nwritten));
+      }
+
       let status: number;
 
       // TODO(cmorten): map err to status codes
