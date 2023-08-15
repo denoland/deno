@@ -709,6 +709,115 @@ addReadOnlyProcessAlias("throwDeprecation", "--throw-deprecation");
 export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
+let unhandledRejectionListenerCount = 0;
+let uncaughtExceptionListenerCount = 0;
+let beforeExitListenerCount = 0;
+let exitListenerCount = 0;
+
+process.on("newListener", (event: string) => {
+  switch (event) {
+    case "unhandledRejection":
+      unhandledRejectionListenerCount++;
+      break;
+    case "uncaughtException":
+      uncaughtExceptionListenerCount++;
+      break;
+    case "beforeExit":
+      beforeExitListenerCount++;
+      break;
+    case "exit":
+      exitListenerCount++;
+      break;
+    default:
+      return;
+  }
+  synchronizeListeners();
+});
+
+process.on("removeListener", (event: string) => {
+  switch (event) {
+    case "unhandledRejection":
+      unhandledRejectionListenerCount--;
+      break;
+    case "uncaughtException":
+      uncaughtExceptionListenerCount--;
+      break;
+    case "beforeExit":
+      beforeExitListenerCount--;
+      break;
+    case "exit":
+      exitListenerCount--;
+      break;
+    default:
+      return;
+  }
+  synchronizeListeners();
+});
+
+function processOnError(event: ErrorEvent) {
+  if (process.listenerCount("uncaughtException") > 0) {
+    event.preventDefault();
+  }
+
+  uncaughtExceptionHandler(event.error, "uncaughtException");
+}
+
+function processOnBeforeUnload(event: Event) {
+  process.emit("beforeExit", process.exitCode || 0);
+  processTicksAndRejections();
+  if (core.eventLoopHasMoreWork()) {
+    event.preventDefault();
+  }
+}
+
+function processOnUnload() {
+  if (!process._exiting) {
+    process._exiting = true;
+    process.emit("exit", process.exitCode || 0);
+  }
+}
+
+function synchronizeListeners() {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  if (
+    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+  ) {
+    internals.nodeProcessUnhandledRejectionCallback = (event) => {
+      if (process.listenerCount("unhandledRejection") === 0) {
+        // The Node.js default behavior is to raise an uncaught exception if
+        // an unhandled rejection occurs and there are no unhandledRejection
+        // listeners.
+
+        event.preventDefault();
+        uncaughtExceptionHandler(event.reason, "unhandledRejection");
+        return;
+      }
+
+      event.preventDefault();
+      process.emit("unhandledRejection", event.reason, event.promise);
+    };
+  } else {
+    internals.nodeProcessUnhandledRejectionCallback = undefined;
+  }
+
+  if (uncaughtExceptionListenerCount > 0) {
+    globalThis.addEventListener("error", processOnError);
+  } else {
+    globalThis.removeEventListener("error", processOnError);
+  }
+  if (beforeExitListenerCount > 0) {
+    globalThis.addEventListener("beforeunload", processOnBeforeUnload);
+  } else {
+    globalThis.removeEventListener("beforeunload", processOnBeforeUnload);
+  }
+  if (exitListenerCount > 0) {
+    globalThis.addEventListener("unload", processOnUnload);
+  } else {
+    globalThis.removeEventListener("unload", processOnUnload);
+  }
+}
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
@@ -752,56 +861,6 @@ internals.__bootstrapNodeProcess = function (
   core.setNextTickCallback(processTicksAndRejections);
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
-
-  // Install special "unhandledrejection" handler, that will be called
-  // last.
-  internals.nodeProcessUnhandledRejectionCallback = (event) => {
-    if (process.listenerCount("unhandledRejection") === 0) {
-      // The Node.js default behavior is to raise an uncaught exception if
-      // an unhandled rejection occurs and there are no unhandledRejection
-      // listeners.
-
-      // If nobody cares about the uncaughtException, we allow Deno to process
-      // the exception as usual.
-      if (process.listenerCount("uncaughtException") === 0) {
-        return;
-      }
-
-      event.preventDefault();
-      uncaughtExceptionHandler(event.reason, "unhandledRejection");
-      return;
-    }
-
-    event.preventDefault();
-    process.emit("unhandledRejection", event.reason, event.promise);
-  };
-
-  globalThis.addEventListener("error", (event) => {
-    if (process.listenerCount("uncaughtException") > 0) {
-      event.preventDefault();
-    }
-
-    uncaughtExceptionHandler(event.error, "uncaughtException");
-  });
-
-  globalThis.addEventListener("beforeunload", (e) => {
-    // Fast exit
-    if (process.listenerCount("beforeExit") === 0) {
-      return;
-    }
-    process.emit("beforeExit", process.exitCode || 0);
-    processTicksAndRejections();
-    if (core.eventLoopHasMoreWork()) {
-      e.preventDefault();
-    }
-  });
-
-  globalThis.addEventListener("unload", () => {
-    if (!process._exiting) {
-      process._exiting = true;
-      process.emit("exit", process.exitCode || 0);
-    }
-  });
 
   process.setStartTime(Date.now());
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
