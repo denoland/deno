@@ -52,27 +52,27 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-function makeLazyStream(objectFactory: () => any): any {
+function makeLazyStream<T>(objectFactory: () => T): T {
   return new Proxy({}, {
     get: function (_, prop, receiver) {
-      return Reflect.get(objectFactory(), prop, receiver);
+      return Reflect.get(objectFactory() as object, prop, receiver);
     },
     has: function (_, prop) {
-      return Reflect.has(objectFactory(), prop);
+      return Reflect.has(objectFactory() as object, prop);
     },
     ownKeys: function (_) {
-      return Reflect.ownKeys(objectFactory());
+      return Reflect.ownKeys(objectFactory() as object);
     },
     set: function (_, prop, value, receiver) {
-      return Reflect.set(objectFactory(), prop, value, receiver);
+      return Reflect.set(objectFactory() as object, prop, value, receiver);
     },
     getPrototypeOf: function (_) {
-      return Reflect.getPrototypeOf(objectFactory());
+      return Reflect.getPrototypeOf(objectFactory() as object);
     },
     getOwnPropertyDescriptor(_, prop) {
-      return Reflect.getOwnPropertyDescriptor(objectFactory(), prop);
+      return Reflect.getOwnPropertyDescriptor(objectFactory() as object, prop);
     },
-  });
+  }) as T;
 }
 
 // TODO(kt3k): Give better types to stdio objects
