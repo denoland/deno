@@ -26,7 +26,6 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
-  ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeTest,
   Symbol,
@@ -238,8 +237,8 @@ class Headers {
 
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
-    const headers = {};
-    const cookies = [];
+    const seenHeaders = {};
+    const entries = [];
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];
       const name = byteLowerCase(entry[0]);
@@ -250,25 +249,23 @@ class Headers {
       // so must be given to the user as multiple headers.
       // The else block of the if statement is spec compliant again.
       if (name === "set-cookie") {
-        ArrayPrototypePush(cookies, [name, value]);
+        ArrayPrototypePush(entries, [name, value]);
       } else {
         // The following code has the same behaviour as getHeader()
         // at the end of loop. But it avoids looping through the entire
         // list to combine multiple values with same header name. It
         // instead gradually combines them as they are found.
-        let header = headers[name];
-        if (header && header.length > 0) {
-          header += "\x2C\x20" + value;
+        const seenHeaderIndex = seenHeaders[name];
+        if (seenHeaderIndex !== undefined) {
+          const entryValue = entries[seenHeaderIndex][1];
+          entries[seenHeaderIndex][1] = entryValue.length > 0
+            ? entryValue + "\x2C\x20" + value
+            : value;
         } else {
-          header = value;
+          seenHeaders[name] = entries.length; // store header index in entries array
+          ArrayPrototypePush(entries, [name, value]);
         }
-        headers[name] = header;
       }
-    }
-
-    const entries = ObjectEntries(headers);
-    for (let i = 0; i < cookies.length; ++i) {
-      ArrayPrototypePush(entries, cookies[i]);
     }
 
     ArrayPrototypeSort(
@@ -511,6 +508,14 @@ function guardFromHeaders(headers) {
   return headers[_guard];
 }
 
+/**
+ * @param {Headers} headers
+ * @returns {[string, string][]}
+ */
+function headersEntries(headers) {
+  return headers[_iterableHeaders];
+}
+
 export {
   fillHeaders,
   getDecodeSplitHeader,
@@ -518,5 +523,6 @@ export {
   guardFromHeaders,
   headerListFromHeaders,
   Headers,
+  headersEntries,
   headersFromHeaderList,
 };

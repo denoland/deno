@@ -9,6 +9,7 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
 import {
   AbortSignalPrototype,
   add,
@@ -2847,9 +2848,24 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
         queueMicrotask(() => {
           readAgain = false;
           const value1 = value;
-          const value2 = value;
+          let value2 = value;
 
-          // TODO(lucacasonato): respect clonedForBranch2.
+          if (canceled2 === false && cloneForBranch2 === true) {
+            try {
+              value2 = structuredClone(value2);
+            } catch (cloneError) {
+              readableStreamDefaultControllerError(
+                branch1[_controller],
+                cloneError,
+              );
+              readableStreamDefaultControllerError(
+                branch2[_controller],
+                cloneError,
+              );
+              cancelPromise.resolve(readableStreamCancel(stream, cloneError));
+              return;
+            }
+          }
 
           if (canceled1 === false) {
             readableStreamDefaultControllerEnqueue(
@@ -6464,6 +6480,7 @@ export {
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
+  readableStreamTee,
   readableStreamThrowIfErrored,
   TransformStream,
   TransformStreamDefaultController,
