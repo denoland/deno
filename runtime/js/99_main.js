@@ -567,7 +567,7 @@ function bootstrapWorkerRuntime(
     10: pid,
     11: target,
     12: v8Version,
-    // 13: userAgent,
+    13: userAgent,
     // 14: inspectFlag,
     15: enableTestingFeaturesFlag,
   } = runtimeOptions;
@@ -633,6 +633,7 @@ function bootstrapWorkerRuntime(
   location.setLocationHref(location_);
 
   setNumCpus(cpuCount);
+  setUserAgent(userAgent);
   setLanguage(locale);
 
   globalThis.pollForMessages = pollForMessages;
