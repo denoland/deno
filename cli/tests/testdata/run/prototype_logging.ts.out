@@ -1,0 +1,23 @@
+URL {
+  href: [Getter/Setter],
+  origin: [Getter],
+  protocol: [Getter/Setter],
+  username: [Getter/Setter],
+  password: [Getter/Setter],
+  host: [Getter/Setter],
+  hostname: [Getter/Setter],
+  port: [Getter/Setter],
+  pathname: [Getter/Setter],
+  hash: [Getter/Setter],
+  search: [Getter/Setter]
+}
+URLPattern {
+  protocol: [Getter],
+  username: [Getter],
+  password: [Getter],
+  hostname: [Getter],
+  port: [Getter],
+  pathname: [Getter],
+  search: [Getter],
+  hash: [Getter]
+}

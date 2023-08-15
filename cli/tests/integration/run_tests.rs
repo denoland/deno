@@ -1982,6 +1982,11 @@ itest!(shebang_with_json_imports_swc {
   exit_code: 1,
 });
 
+itest!(prototype_logging {
+  args: "run run/prototype_logging.ts",
+  output: "run/prototype_logging.ts.out",
+});
+
 #[test]
 fn no_validate_asm() {
   let output = util::deno_cmd()

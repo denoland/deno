@@ -7,6 +7,7 @@
 
 const core = globalThis.Deno.core;
 const ops = core.ops;
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -17,6 +18,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSplice,
   ObjectKeys,
+  ObjectPrototypeIsPrototypeOf,
   SafeArrayIterator,
   StringPrototypeSlice,
   StringPrototypeStartsWith,
@@ -410,20 +412,26 @@ class URL {
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    const object = {
-      href: this.href,
-      origin: this.origin,
-      protocol: this.protocol,
-      username: this.username,
-      password: this.password,
-      host: this.host,
-      hostname: this.hostname,
-      port: this.port,
-      pathname: this.pathname,
-      hash: this.hash,
-      search: this.search,
-    };
-    return `${this.constructor.name} ${inspect(object, inspectOptions)}`;
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(URL.prototype, this),
+        keys: [
+          "href",
+          "origin",
+          "protocol",
+          "username",
+          "password",
+          "host",
+          "hostname",
+          "port",
+          "pathname",
+          "hash",
+          "search",
+        ],
+      }),
+      inspectOptions,
+    );
   }
 
   #updateSearchParams() {
