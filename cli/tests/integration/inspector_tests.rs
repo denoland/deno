@@ -708,6 +708,7 @@ async fn inspector_json() {
   url.set_path("/json");
   let client = reqwest::Client::new();
 
+  // Ensure that the webSocketDebuggerUrl matches the host header
   for (host, expected) in [
     (None, ws_url.as_str()),
     (Some("some.random.host"), "ws://some.random.host/"),

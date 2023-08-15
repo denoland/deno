@@ -260,7 +260,7 @@ async fn server(
     future::ok::<_, Infallible>(hyper::service::service_fn(
       move |req: http::Request<hyper::Body>| {
         future::ready({
-          // If the host is a valid URL, use it
+          // If the host header can make a valid URL, use it
           let host = req
             .headers()
             .get("host")
@@ -399,13 +399,13 @@ impl InspectorInfo {
     let host = host.as_ref().unwrap_or(&host_listen);
     json!({
       "description": "deno",
-      "devtoolsFrontendUrl": self.get_frontend_url(&host),
+      "devtoolsFrontendUrl": self.get_frontend_url(host),
       "faviconUrl": "https://deno.land/favicon.ico",
       "id": self.uuid.to_string(),
       "title": self.get_title(),
       "type": "node",
       "url": self.url.to_string(),
-      "webSocketDebuggerUrl": self.get_websocket_debugger_url(&host),
+      "webSocketDebuggerUrl": self.get_websocket_debugger_url(host),
     })
   }
 
