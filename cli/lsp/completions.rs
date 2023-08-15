@@ -478,8 +478,6 @@ async fn get_npm_completions(
   npm_registry_url: &Url,
   file_fetcher: &FileFetcher,
 ) -> Option<Vec<lsp::CompletionItem>> {
-  debug_assert!(specifier.starts_with("npm:"));
-  let bare_specifier = &specifier[4..];
   let get_endpoint = |suffix: &str| {
     let mut url = npm_registry_url.clone();
     url
@@ -490,58 +488,76 @@ async fn get_npm_completions(
     Some(url)
   };
 
-  // First try to match `npm:some-package@<version-to-complete>`.
-  let v_index = bare_specifier.rfind('@');
-  if let Some(v_index) = v_index {
-    if v_index != 0 {
-      #[derive(Debug, Deserialize)]
-      struct Response {
-        versions: IndexMap<String, serde_json::Value>,
-      }
+  debug_assert!(specifier.starts_with("npm:"));
+  let bare_specifier = &specifier[4..];
 
-      let package_name = &bare_specifier[..v_index];
-      let v_prefix = &bare_specifier[(v_index + 1)..];
-      let endpoint = get_endpoint(package_name)?;
-      let file = file_fetcher
-        .fetch(&endpoint, PermissionsContainer::allow_all())
-        .await
-        .ok()?;
-      let response = serde_json::from_str::<Response>(&file.source).ok()?;
-      let items = response
-        .versions
-        .into_keys()
-        .rev()
-        .enumerate()
-        .filter_map(|(idx, version)| {
-          if !version.starts_with(v_prefix) {
-            return None;
-          }
-          let specifier = format!("npm:{}@{}", package_name, &version);
-          let command = Some(lsp::Command {
-            title: "".to_string(),
-            command: "deno.cache".to_string(),
-            arguments: Some(vec![json!([&specifier])]),
-          });
-          let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
-            range: *range,
-            new_text: specifier.clone(),
-          }));
-          Some(lsp::CompletionItem {
-            label: specifier,
-            kind: Some(lsp::CompletionItemKind::FILE),
-            detail: Some("(npm)".to_string()),
-            sort_text: Some(format!("{:0>10}", idx + 1)),
-            text_edit,
-            command,
-            commit_characters: Some(
-              IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
-            ),
-            ..Default::default()
-          })
-        })
-        .collect();
-      return Some(items);
+  // Find the index of the '@' delimiting the package name and version, if any.
+  let v_index = if bare_specifier.starts_with('@') {
+    bare_specifier
+      .find('/')
+      .filter(|idx| !bare_specifier[1..*idx].is_empty())
+      .and_then(|idx| {
+        bare_specifier[idx..]
+          .find('@')
+          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].is_empty())
+          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].contains('/'))
+      })
+  } else {
+    bare_specifier
+      .find('@')
+      .filter(|idx| !bare_specifier[..*idx].is_empty())
+      .filter(|idx| !bare_specifier[..*idx].contains('/'))
+  };
+
+  // First try to match `npm:some-package@<version-to-complete>`.
+  if let Some(v_index) = v_index {
+    #[derive(Debug, Deserialize)]
+    struct Response {
+      versions: IndexMap<String, serde_json::Value>,
     }
+
+    let package_name = &bare_specifier[..v_index];
+    let v_prefix = &bare_specifier[(v_index + 1)..];
+    let endpoint = get_endpoint(package_name)?;
+    let file = file_fetcher
+      .fetch(&endpoint, PermissionsContainer::allow_all())
+      .await
+      .ok()?;
+    let response = serde_json::from_str::<Response>(&file.source).ok()?;
+    let items = response
+      .versions
+      .into_keys()
+      .rev()
+      .enumerate()
+      .filter_map(|(idx, version)| {
+        if !version.starts_with(v_prefix) {
+          return None;
+        }
+        let specifier = format!("npm:{}@{}", package_name, &version);
+        let command = Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![json!([&specifier])]),
+        });
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: specifier.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label: specifier,
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some(format!("{:0>10}", idx + 1)),
+          text_edit,
+          command,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+      })
+      .collect();
+    return Some(items);
   }
 
   // Otherwise match `npm:<package-to-complete>`.
