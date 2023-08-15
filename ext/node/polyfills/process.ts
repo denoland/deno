@@ -760,8 +760,11 @@ internals.__bootstrapNodeProcess = function (
       // The Node.js default behavior is to raise an uncaught exception if
       // an unhandled rejection occurs and there are no unhandledRejection
       // listeners.
+
+      // If nobody cares about the uncaughtException, we allow Deno to process
+      // the exception as usual.
       if (process.listenerCount("uncaughtException") === 0) {
-        throw event.reason;
+        return;
       }
 
       event.preventDefault();
@@ -782,6 +785,7 @@ internals.__bootstrapNodeProcess = function (
   });
 
   globalThis.addEventListener("beforeunload", (e) => {
+    // Fast exit
     if (process.listenerCount("beforeExit") === 0) {
       return;
     }
