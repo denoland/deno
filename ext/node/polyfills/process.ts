@@ -60,7 +60,7 @@ function makeLazyStream(objectFactory: () => any): any {
     has: function (_, prop) {
       return Reflect.has(objectFactory(), prop);
     },
-    ownKeys: function(_) {
+    ownKeys: function (_) {
       return Reflect.ownKeys(objectFactory());
     },
     set: function (_, prop, value, receiver) {
@@ -71,7 +71,7 @@ function makeLazyStream(objectFactory: () => any): any {
     },
     getOwnPropertyDescriptor(_, prop) {
       return Reflect.getOwnPropertyDescriptor(objectFactory(), prop);
-    }
+    },
   });
 }
 
@@ -627,13 +627,19 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  get stderr() { return getStderr() }
+  get stderr() {
+    return getStderr();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  get stdin() { return getStdin() }
+  get stdin() {
+    return getStdin();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  get stdout() { return getStdout() }
+  get stdout() {
+    return getStdout();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_version */
   version = version;
