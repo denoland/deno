@@ -414,8 +414,7 @@ impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<ResponseStreamResult> {
     let res = match ready!(self.poll_recv(cx)) {
-      Some(Ok(buf)) => ResponseStreamResult::NonEmptyBuf(buf),
-      Some(Err(err)) => ResponseStreamResult::Error(err),
+      Some(buf) => ResponseStreamResult::NonEmptyBuf(buf),
       None => ResponseStreamResult::EndOfStream,
     };
     std::task::Poll::Ready(res)
@@ -845,7 +844,7 @@ mod tests {
     let mut resp = GZipResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
-        tx.send(Ok(chunk.into())).await.ok().unwrap();
+        tx.send(chunk.into()).await.ok().unwrap();
       }
     });
     // Limit how many times we'll loop
@@ -887,7 +886,7 @@ mod tests {
     let mut resp = BrotliResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
-        tx.send(Ok(chunk.into())).await.ok().unwrap();
+        tx.send(chunk.into()).await.ok().unwrap();
       }
     });
     // Limit how many times we'll loop

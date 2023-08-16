@@ -1,36 +1,24 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::anyhow::Error;
 use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::RcLike;
-use deno_core::RcRef;
-use deno_core::Resource;
+use deno_core::ResourceBuilder;
+use deno_core::ResourceBuilderImpl;
 use deno_core::ResourceId;
-use futures::stream::Peekable;
-use futures::Stream;
-use futures::StreamExt;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
 use std::task::Waker;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::Sender;
 
 type SenderCell = RefCell<Option<Sender<Result<BufView, Error>>>>;
-
 
 static READABLE_STREAM_RESOURCE: ResourceBuilder<
   Receiver<Result<BufView, Error>>,
@@ -38,89 +26,6 @@ static READABLE_STREAM_RESOURCE: ResourceBuilder<
 > = ResourceBuilderImpl::new_with_data("readableStream")
   .with_read_channel()
   .build();
-
-
-// This indirection allows us to more easily integrate the fast streams work at a later date
-#[repr(transparent)]
-struct ChannelStreamAdapter<C>(C);
-
-impl<C> Stream for ChannelStreamAdapter<C>
-where
-  C: ChannelBytesRead,
-{
-  type Item = Result<BufView, AnyError>;
-  fn poll_next(
-    mut self: Pin<&mut Self>,
-    cx: &mut Context<'_>,
-  ) -> Poll<Option<Self::Item>> {
-    self.0.poll_recv(cx)
-  }
-}
-
-pub trait ChannelBytesRead: Unpin + 'static {
-  fn poll_recv(
-    &mut self,
-    cx: &mut Context<'_>,
-  ) -> Poll<Option<Result<BufView, AnyError>>>;
-}
-
-impl ChannelBytesRead for tokio::sync::mpsc::Receiver<Result<BufView, Error>> {
-  fn poll_recv(
-    &mut self,
-    cx: &mut Context<'_>,
-  ) -> Poll<Option<Result<BufView, AnyError>>> {
-    self.poll_recv(cx)
-  }
-}
-
-#[allow(clippy::type_complexity)]
-struct ReadableStreamResource {
-  reader: AsyncRefCell<
-    Peekable<ChannelStreamAdapter<Receiver<Result<BufView, Error>>>>,
-  >,
-  cancel_handle: CancelHandle,
-  data: ReadableStreamResourceData,
-}
-
-impl ReadableStreamResource {
-  pub fn cancel_handle(self: &Rc<Self>) -> impl RcLike<CancelHandle> {
-    RcRef::map(self, |s| &s.cancel_handle).clone()
-  }
-
-  async fn read(self: Rc<Self>, limit: usize) -> Result<BufView, AnyError> {
-    let cancel_handle = self.cancel_handle();
-    let peekable = RcRef::map(self, |this| &this.reader);
-    let mut peekable = peekable.borrow_mut().await;
-    match Pin::new(&mut *peekable)
-      .peek_mut()
-      .or_cancel(cancel_handle)
-      .await?
-    {
-      None => Ok(BufView::empty()),
-      // Take the actual error since we only have a reference to it
-      Some(Err(_)) => Err(peekable.next().await.unwrap().err().unwrap()),
-      Some(Ok(bytes)) => {
-        if bytes.len() <= limit {
-          // We can safely take the next item since we peeked it
-          return peekable.next().await.unwrap();
-        }
-        // The remainder of the bytes after we split it is still left in the peek buffer
-        let ret = bytes.split_to(limit);
-        Ok(ret)
-      }
-    }
-  }
-}
-
-impl Resource for ReadableStreamResource {
-  fn name(&self) -> Cow<str> {
-    Cow::Borrowed("readableStream")
-  }
-
-  fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(ReadableStreamResource::read(self, limit))
-  }
-}
 
 // TODO(mmastrac): Move this to deno_core
 #[derive(Clone, Debug, Default)]
@@ -188,7 +93,10 @@ pub fn op_readable_stream_resource_allocate(state: &mut OpState) -> ResourceId {
 }
 
 #[op2(fast)]
-pub fn op_readable_stream_resource_get_sink(state: &mut OpState, #[smi] rid: ResourceId) -> *const c_void {
+pub fn op_readable_stream_resource_get_sink(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> *const c_void {
   let Ok(resource) = state.resource_table.get_any(rid) else {
     return std::ptr::null();
   };
@@ -258,11 +166,11 @@ pub fn op_readable_stream_resource_await_close(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> impl Future<Output = ()> {
-  let completion = state
-    .resource_table
-    .get::<ReadableStreamResource>(rid)
-    .ok()
-    .map(|r| r.data.completion.clone());
+  let completion = state.resource_table.get_any(rid).ok().and_then(|d| {
+    READABLE_STREAM_RESOURCE
+      .data(&d)
+      .map(|d| d.completion.clone())
+  });
 
   async move {
     if let Some(completion) = completion {

@@ -721,7 +721,7 @@ function createStreamTest(count: number, delay: number, action: string) {
 }
 
 for (const count of [0, 1, 2, 3]) {
-  for (const delay of [0, 1, 1000]) {
+  for (const delay of [0, 1, 25]) {
     // Creating a stream that errors in start will throw
     if (delay > 0) {
       createStreamTest(count, delay, "Throw");
