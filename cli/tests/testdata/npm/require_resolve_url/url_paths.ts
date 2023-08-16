@@ -3,7 +3,7 @@ const require = createRequire(import.meta.url);
 
 console.log(getParentUrl());
 console.log(require.resolve("@denotest/esm-basic", {
-  paths: [getParentUrl],
+  paths: [getParentUrl()],
 }));
 
 function getParentUrl() {
