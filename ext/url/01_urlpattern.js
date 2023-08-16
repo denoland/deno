@@ -36,6 +36,16 @@ const _components = Symbol("components");
  * @property {Component} search
  * @property {Component} hash
  */
+const COMPONENTS_KEYS = [
+  "protocol",
+  "username",
+  "password",
+  "hostname",
+  "port",
+  "pathname",
+  "search",
+  "hash",
+];
 
 /**
  * @typedef Component
@@ -45,7 +55,6 @@ const _components = Symbol("components");
  */
 
 class URLPattern {
-  #keys;
   /** @type {Components} */
   [_components];
 
@@ -64,9 +73,8 @@ class URLPattern {
 
     const components = ops.op_urlpattern_parse(input, baseURL);
 
-    this.#keys = ObjectKeys(components);
-    for (let i = 0; i < this.#keys.length; ++i) {
-      const key = this.#keys[i];
+    for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
+      const key = COMPONENTS_KEYS[i];
       try {
         components[key].regexp = new SafeRegExp(
           components[key].regexpString,
@@ -146,8 +154,8 @@ class URLPattern {
 
     const values = res[0];
 
-    for (let i = 0; i < this.#keys.length; ++i) {
-      const key = this.#keys[i];
+    for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
+      const key = COMPONENTS_KEYS[i];
       if (!RegExpPrototypeTest(this[_components][key].regexp, values[key])) {
         return false;
       }
@@ -186,8 +194,8 @@ class URLPattern {
     /** @type {URLPatternResult} */
     const result = { inputs };
 
-    for (let i = 0; i < this.#keys.length; ++i) {
-      const key = this.#keys[i];
+    for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
+      const key = COMPONENTS_KEYS[i];
       /** @type {Component} */
       const component = this[_components][key];
       const input = values[key];
