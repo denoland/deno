@@ -2257,7 +2257,6 @@
     },
     "idlharness-shadowrealm.window.html": false,
     "idlharness.any.worker.html": [
-      "Event interface object length",
       "Event interface: attribute srcElement",
       "Event interface: operation composedPath()",
       "Event interface: constant NONE on interface object",

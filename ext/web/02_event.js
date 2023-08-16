@@ -150,7 +150,7 @@ const _path = Symbol("[[path]]");
 const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
-  constructor(type, eventInitDict) {
+  constructor(type, eventInitDict = undefined) {
     // TODO(lucacasonato): remove when this interface is spec aligned
     this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
