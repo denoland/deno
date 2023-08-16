@@ -13,7 +13,6 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePop,
-  ObjectKeys,
   RegExpPrototypeExec,
   RegExpPrototypeTest,
   SafeRegExp,
