@@ -150,7 +150,7 @@ const _path = Symbol("[[path]]");
 const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
-  constructor(type, eventInitDict = {}) {
+  constructor(type, eventInitDict) {
     // TODO(lucacasonato): remove when this interface is spec aligned
     this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
@@ -161,36 +161,8 @@ class Event {
     this[_isTrusted] = false;
     this[_path] = [];
 
-    if (!eventInitDict[_skipInternalInit]) {
-      webidl.requiredArguments(
-        arguments.length,
-        1,
-        "Failed to construct 'Event'",
-      );
-      type = webidl.converters.DOMString(
-        type,
-        "Failed to construct 'Event'",
-        "Argument 1",
-      );
-      const eventInit = webidl.converters.EventInit(
-        eventInitDict,
-        "Failed to construct 'Event'",
-        "Argument 2",
-      );
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      // [LegacyUnforgeable]
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
-    } else {
+    if (eventInitDict?.[_skipInternalInit]) {
+      eventInitDict = eventInitDict ?? {};
       this[_attributes] = {
         type,
         data: eventInitDict.data ?? null,
@@ -202,10 +174,49 @@ class Event {
         target: null,
         timeStamp: 0,
       };
-      // TODO(@littledivy): Not spec compliant but performance is hurt badly
-      // for users of `_skipInternalInit`.
-      this.isTrusted = false;
+      return;
     }
+
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'Event'",
+    );
+    type = webidl.converters.DOMString(
+      type,
+      "Failed to construct 'Event'",
+      "Argument 1",
+    );
+
+    if (!eventInitDict) {
+      // fast path
+      this[_attributes] = {
+        type,
+        currentTarget: null,
+        eventPhase: Event.NONE,
+        target: null,
+        timeStamp: DateNow(),
+        // inline default eventInit
+        bubbles: false,
+        cancelable: false,
+        composed: false,
+      };
+      return;
+    }
+
+    const eventInit = webidl.converters.EventInit(
+      eventInitDict,
+      "Failed to construct 'Event'",
+      "Argument 2",
+    );
+    this[_attributes] = {
+      type,
+      ...eventInit,
+      currentTarget: null,
+      eventPhase: Event.NONE,
+      target: null,
+      timeStamp: DateNow(),
+    };
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -434,6 +445,13 @@ class Event {
     return this[_attributes].timeStamp;
   }
 }
+
+// Not spec compliant. The spec defines it as [LegacyUnforgeable]
+// but doing so has a big performance hit
+ReflectDefineProperty(Event.prototype, "isTrusted", {
+  enumerable: true,
+  get: isTrusted,
+});
 
 function defineEnumerableProps(
   Ctor,
