@@ -122,20 +122,6 @@ const isTrusted = ObjectGetOwnPropertyDescriptor({
   },
 }, "isTrusted").get;
 
-webidl.converters.EventInit = webidl.createDictionaryConverter("EventInit", [{
-  key: "bubbles",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "cancelable",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "composed",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}]);
-
 const _attributes = Symbol("[[attributes]]");
 const _canceledFlag = Symbol("[[canceledFlag]]");
 const _stopPropagationFlag = Symbol("[[stopPropagationFlag]]");
@@ -150,7 +136,7 @@ const _path = Symbol("[[path]]");
 const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
-  constructor(type, eventInitDict = undefined) {
+  constructor(type, eventInitDict = {}) {
     // TODO(lucacasonato): remove when this interface is spec aligned
     this[SymbolToStringTag] = "Event";
     this[_canceledFlag] = false;
@@ -162,7 +148,6 @@ class Event {
     this[_path] = [];
 
     if (eventInitDict?.[_skipInternalInit]) {
-      eventInitDict = eventInitDict ?? {};
       this[_attributes] = {
         type,
         data: eventInitDict.data ?? null,
@@ -188,30 +173,11 @@ class Event {
       "Argument 1",
     );
 
-    if (!eventInitDict) {
-      // fast path
-      this[_attributes] = {
-        type,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-        // inline default eventInit
-        bubbles: false,
-        cancelable: false,
-        composed: false,
-      };
-      return;
-    }
-
-    const eventInit = webidl.converters.EventInit(
-      eventInitDict,
-      "Failed to construct 'Event'",
-      "Argument 2",
-    );
     this[_attributes] = {
       type,
-      ...eventInit,
+      bubbles: !!eventInitDict.bubbles,
+      cancelable: !!eventInitDict.cancelable,
+      composed: !!eventInitDict.composed,
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
