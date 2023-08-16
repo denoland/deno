@@ -25,6 +25,12 @@ To connect to a KV Connect service, the user provides an HTTP or HTTPS URL to
 `Deno.openKv`. A background task is then spawned to periodically make HTTP POST
 requests to the provided URL to refresh database metadata.
 
+The HTTP `Authorization` header is included and have the format
+`Bearer <access-token>`. The `<access-token>` is a static token issued by the
+service provider. For Deno Deploy, this is the personal access token generated
+from the dashboard. You can specify the access token with the environment
+variable `DENO_ACCESS_TOKEN`.
+
 Request body is currently unused. The response is a JSON message that satisfies
 the following [JSON Schema](https://json-schema.org/) definition:
 
@@ -111,6 +117,10 @@ Two sub-endpoints are available under a data plane endpoint URL:
   `kv.atomic().commit()`.
   - **Request type**: `AtomicWrite`
   - **Response type**: `AtomicWriteOutput`
+
+An HTTP `Authorization` header in the format `Bearer <ephemeral-token>` must be
+included in all requests to the data plane. The value of `<ephemeral-token>` is
+the `token` field from the metadata exchange response.
 
 ### Error handling
 
