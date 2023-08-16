@@ -40,13 +40,25 @@ impl JunitTestReporter {
 
 impl TestReporter for JunitTestReporter {
   fn report_register(&mut self, description: &TestDescription) {
-    self.cases.insert(
-      description.id,
-      quick_junit::TestCase::new(
-        description.name.clone(),
-        quick_junit::TestCaseStatus::skipped(),
-      ),
+    let mut case = quick_junit::TestCase::new(
+      description.name.clone(),
+      quick_junit::TestCaseStatus::skipped(),
     );
+    case.add_properties(vec![
+      quick_junit::Property::new(
+        "filename",
+        description.location.file_name.clone(),
+      ),
+      quick_junit::Property::new(
+        "line",
+        description.location.line_number.to_string(),
+      ),
+      quick_junit::Property::new(
+        "col",
+        description.location.column_number.to_string(),
+      ),
+    ]);
+    self.cases.insert(description.id, case);
   }
 
   fn report_plan(&mut self, _plan: &TestPlan) {}
