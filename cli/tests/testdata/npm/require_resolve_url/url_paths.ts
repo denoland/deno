@@ -2,13 +2,9 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 console.log(getParentUrl());
-console.log(resolveWithPath(getParentUrl()));
-
-function resolveWithPath(rootUrl) {
-  return require.resolve("@denotest/esm-basic", {
-    paths: [rootUrl],
-  });
-}
+console.log(require.resolve("@denotest/esm-basic", {
+  paths: [getParentUrl],
+}));
 
 function getParentUrl() {
   const fileUrl = import.meta.url;
