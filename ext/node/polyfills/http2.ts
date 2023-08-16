@@ -22,6 +22,7 @@ import { type Deferred, deferred } from "ext:deno_node/_util/async.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Duplex } from "node:stream";
+import { setImmediate } from "node:timers";
 import {
   AbortError,
   ERR_HTTP2_CONNECT_AUTHORITY,
@@ -32,12 +33,16 @@ import {
   ERR_HTTP2_INVALID_CONNECTION_HEADERS,
   ERR_HTTP2_INVALID_PSEUDOHEADER,
   ERR_HTTP2_INVALID_SESSION,
+  ERR_HTTP2_INVALID_STREAM,
   ERR_HTTP2_SESSION_ERROR,
   ERR_HTTP2_STREAM_CANCEL,
+  ERR_HTTP2_TRAILERS_ALREADY_SENT,
+  ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_INVALID_HTTP_TOKEN,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
 
+const kSession = Symbol("session");
 const kAlpnProtocol = Symbol("alpnProtocol");
 const kAuthority = Symbol("authority");
 const kEncrypted = Symbol("encrypted");
@@ -674,14 +679,10 @@ async function clientHttp2Request(
 }
 
 export class ClientHttp2Stream extends Duplex {
-  #session: Http2Session;
   #requestPromise: Promise<[number, number]>;
   #responsePromise: Promise<void>;
-  #closed: boolean = false;
   #rid: number | undefined = undefined;
-  #id: number | undefined = undefined;
   #bodyRid = 0;
-  #sentTrailers = Object.create(null);
   #waitForTrailers = false;
   #hasTrailersToRead = false;
   #encoding = "utf8";
@@ -697,6 +698,19 @@ export class ClientHttp2Stream extends Duplex {
     options.autoDestroy = false;
     super(options);
     this.cork();
+    this[kSession] = session;
+    session[kState].pendingStreams.add(this);
+
+    this._readableState.readingMore = true;
+
+    this[kState] = {
+      didRead: false,
+      flags: STREAM_FLAGS_PENDING,
+      rstCode: constants.NGHTTP2_NO_ERROR,
+      writeQueueSize: 0,
+      trailersReady: false,
+      endAfterHeaders: false,
+    };
 
     this.#requestPromise = clientHttp2Request(
       session._clientRid,
@@ -731,15 +745,143 @@ export class ClientHttp2Stream extends Duplex {
     })();
   }
 
-  // TODO(mmastrac): Implement duplex
-  // end(...args) {
-  //   debug("stream end", args);
-  //   // debug(this.#bodyRid, this.#rid, this.#session._connRid);
-  //   // core.tryClose(this.#bodyRid);
-  //   // core.tryClose(this.#rid);
-  //   // core.tryClose(this.#session._connRid);
-  // }
+  [kUpdateTimer]() {
+    if (this.destroyed) {
+      return;
+    }
+    if (this[kTimeout]) {
+      this[kTimeout].refresh();
+    }
+    if (this[kSession]) {
+      this[kSession][kUpdateTimer]();
+    }
+  }
 
+  [kInit](id) {
+    const state = this[kState];
+    state.flags |= STREAM_FLAGS_READY;
+
+    const session = this[kSession];
+    session[kState].pendingStreams.delete(this);
+    session[kState].streams.set(id, this);
+
+    // TODO(bartlomieju): handle socket handle
+
+    this[kID] = id;
+    this.uncork();
+    this.emit("ready");
+  }
+
+  get bufferSize() {
+    return this[kState].writeQueueSize + this.writableLength;
+  }
+
+  get endAfterHeaders() {
+    return this[kState].endAfterHeaders;
+  }
+
+  get sentHeaders() {
+    return this[kSentHeaders];
+  }
+
+  get sentTrailers() {
+    return this[kSentTrailers];
+  }
+
+  get sendInfoHeaders() {
+    return this[kInfoHeaders];
+  }
+
+  get pending(): boolean {
+    return this[kID] === undefined;
+  }
+
+  get id(): number | undefined {
+    return this[kID];
+  }
+
+  get session(): Http2Session {
+    return this[kSession];
+  }
+
+  _onTimeout() {
+    callTimeout(this, kSession);
+  }
+
+  get headersSent() {
+    return !!(this[kState].flags & STREAM_FLAGS_HEADERS_SENT);
+  }
+
+  get aborted() {
+    return !!(this[kState].flags & STREAM_FLAGS_ABORTED);
+  }
+
+  get headRequest() {
+    return !!(this[kState].flags & STREAM_FLAGS_HEAD_REQUEST);
+  }
+
+  get rstCode() {
+    return this[kState].rstCode;
+  }
+
+  get state(): Record<string, unknown> {
+    notImplemented("Http2Stream.state");
+    return {};
+  }
+
+  // [kProceed]() {}
+
+  // [kAfterAsyncWrite]() {}
+
+  // [kWriteGeneric]() {}
+
+  // TODO:
+  _write(chunk, encoding, callback?: () => void) {
+    if (typeof encoding === "function") {
+      callback = encoding;
+      encoding = "utf8";
+    }
+    let data;
+    if (typeof encoding === "string") {
+      data = ENCODER.encode(chunk);
+    } else {
+      data = chunk.buffer;
+    }
+
+    this.#requestPromise
+      .then(() => {
+        debug("_write", this.#rid, data, encoding, callback);
+        return core.opAsync(
+          "op_http2_client_send_data",
+          this.#rid,
+          data,
+        );
+      })
+      .then(() => callback?.())
+      .catch((e) => callback?.(e));
+  }
+
+  // TODO:
+  _writev(chunks, callback?: () => {}) {
+    notImplemented("ClientHttp2Stream._writev");
+  }
+
+  // TODO:
+  _final(cb) {
+    console.error("Not implemented: ClientHttp2Stream._final");
+    // notImplemented("ClientHttp2Stream._final");
+    if (this.#waitForTrailers) {
+      if (!this.emit("wantTrailers")) {
+        this.sendTrailers({});
+      }
+    }
+    core.opAsync(
+      "op_http2_client_end_stream",
+      this.#rid,
+    ).then(() => cb());
+  }
+
+  // TODO:
   _read() {
     if (!this.__response) {
       this.once("ready", this._read);
@@ -811,39 +953,68 @@ export class ClientHttp2Stream extends Duplex {
     })();
   }
 
-  // write(chunk, encoding, callback) {
-  //   this._write(chunk, encoding, callback);
-  // }
-
-  _write(chunk, encoding, callback?: () => void) {
-    if (typeof encoding === "function") {
-      callback = encoding;
-      encoding = "utf8";
-    }
-    let data;
-    if (typeof encoding === "string") {
-      data = ENCODER.encode(chunk);
-    } else {
-      data = chunk.buffer;
-    }
-
-    this.#requestPromise
-      .then(() => {
-        debug("_write", this.#rid, data, encoding, callback);
-        return core.opAsync(
-          "op_http2_client_send_data",
-          this.#rid,
-          data,
-        );
-      })
-      .then(() => callback?.())
-      .catch((e) => callback?.(e));
+  // TODO:
+  priority(_options: Record<string, unknown>) {
+    notImplemented("Http2Stream.priority");
   }
 
-  _writev(chunks, callback?: () => {}) {
-    notImplemented("ClientHttp2Stream._writev");
+  sendTrailers(trailers: Record<string, unknown>) {
+    if (this.destroyed || this.closed) {
+      throw new ERR_HTTP2_INVALID_STREAM();
+    }
+    if (this[kSentTrailers]) {
+      throw new ERR_HTTP2_TRAILERS_ALREADY_SENT();
+    }
+    if (!this[kState].trailersReady) {
+      throw new ERR_HTTP2_TRAILERS_NOT_READY();
+    }
+
+    trailers = Object.assign({ __proto__: null }, headers);
+    const trailerList = [];
+    for (const [key, value] of Object.entries(trailers)) {
+      trailerList.push([key, value]);
+    }
+    this[kSentTrailers] = trailers;
+
+    const stream = this;
+    const rid = this.#rid;
+    setImmediate(() => {
+      if (stream.destroyed) {
+        return;
+      }
+
+      stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
+
+      core.opAsync(
+        "op_http2_client_send_trailers",
+        rid,
+        trailerList,
+      ).then(() => {
+        stream[kMaybeDestroy]();
+      }).catch(() => {
+        stream._destroy(new Error("boom!"));
+      });
+    });
   }
 
+  get closed(): boolean {
+    return !!(this[kState].flags & STREAM_FLAGS_CLOSED);
+  }
+
+  // TODO:
+  close(code: number = constants.NGHTTP2_NO_ERROR, callback?: () => void) {
+    console.error("Stream close");
+
+    if (this.closed) {
+      return;
+    }
+    if (typeof callback !== undefined) {
+      this.once("close", callback);
+    }
+    closeStream(this, code);
+  }
+
+  // TODO:
   _destroy(err, callback) {
     // TODO: handle error
     debug("ClientHttp2Stream._destroy", err, callback);
@@ -853,114 +1024,47 @@ export class ClientHttp2Stream extends Duplex {
     ).then(() => callback?.());
   }
 
-  // end(...args) {
-  //   debug("end called", args);
-  // }
-
-  _final(cb) {
-    console.error("Not implemented: ClientHttp2Stream._final");
-    // notImplemented("ClientHttp2Stream._final");
-    if (this.#waitForTrailers) {
-      if (!this.emit("wantTrailers")) {
-        this.sendTrailers({});
-      }
-    }
-    core.opAsync(
-      "op_http2_client_end_stream",
-      this.#rid,
-    ).then(() => cb());
-  }
-
-  get aborted(): boolean {
-    notImplemented("Http2Stream.aborted");
-    return false;
-  }
-
-  get bufferSize(): number {
-    notImplemented("Http2Stream.bufferSize");
-    return 0;
-  }
-
-  close(_code: number, _callback: () => void) {
-    console.error("Stream close");
-    // notImplemented("ClientHttp2Stream.end");
-    this.#closed = true;
-    // TODO: remove, don't emit manually
-    this.emit("close");
-  }
-
-  get closed(): boolean {
-    return this.#closed;
-  }
-
-  get destroyed(): boolean {
-    return false;
-  }
-
-  get endAfterHeaders(): boolean {
-    notImplemented("Http2Stream.endAfterHeaders");
-    return false;
-  }
-
-  get id(): number | undefined {
-    return this.#id;
-  }
-
-  get pending(): boolean {
-    return this.#id === undefined;
-  }
-
-  priority(_options: Record<string, unknown>) {
-    notImplemented("Http2Stream.priority");
-  }
-
-  get rstCode(): number {
-    warnNotImplemented("ClientHttp2Stream.rstCode");
-    return 0;
-  }
-
-  get sentHeaders(): boolean {
-    notImplemented("Http2Stream.sentHeaders");
-    return false;
-  }
-
-  get sentInfoHeaders(): Record<string, unknown> {
-    notImplemented("Http2Stream.sentInfoHeaders");
-    return {};
-  }
-
-  get sentTrailers(): Record<string, unknown> {
-    return this.#sentTrailers;
-  }
-
-  get session(): Http2Session {
-    return this.#session;
+  // TODO:
+  [kMaybeDestroy]() {
+    notImplemented("ClientHttp2Stream[kMaybeDestroy]");
   }
 
   setTimeout(msecs: number, callback?: () => void) {
     // setStreamTimeout(this, msecs, callback);
     notImplemented("ClientHttp2Stream.setTimeout");
   }
+}
 
-  get state(): Record<string, unknown> {
-    notImplemented("Http2Stream.state");
-    return {};
-  }
+const kNoRstStream = 0;
+const kSubmitRstStream = 1;
+const kForceRstStream = 2;
 
-  sendTrailers(trailers: Record<string, unknown>) {
-    // TODO: handle __proto__ null
-    this.#sentTrailers = { ...trailers, __proto__: null };
-    const trailerList = [];
-    for (const [key, value] of Object.entries(trailers)) {
-      trailerList.push([key, value]);
+function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
+  const state = stream[kState];
+  state.flags |= STREAM_FLAGS_CLOSED;
+  state.rstCode = code;
+
+  stream.setTimeout(0);
+  stream.removeAllListeners("timeout");
+
+  const { ending } = stream._writableState;
+
+  if (!ending) {
+    if (!stream.aborted) {
+      state.flags |= STREAM_FLAGS_ABORTED;
+      stream.emit("aborted");
     }
 
-    core.opAsync(
-      "op_http2_client_send_trailers",
-      this.#rid,
-      trailerList,
-    );
+    stream.end();
   }
+
+  if (rstStreamStatus != kNoRstStream) {
+    notImplemented("finish close stream");
+  }
+}
+
+function callTimeout() {
+  notImplemented("callTimeout");
 }
 
 export class ServerHttp2Stream extends Http2Stream {
