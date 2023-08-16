@@ -173,6 +173,11 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          version: '21.12'
+        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.profile == 'release' &&
           matrix.job == 'test' &&
