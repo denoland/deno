@@ -1795,7 +1795,7 @@ Deno.test({
           );
         }
         assertEquals(
-          ((await dbs[0].get(["counter"])).value as any).value,
+          ((await dbs[0].get(["counter"])).value as Deno.KvU64).value,
           BigInt(concurrency * iterations),
         );
       } finally {
