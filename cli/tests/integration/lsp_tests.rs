@@ -8958,5 +8958,47 @@ fn lsp_vendor_dir() {
   );
   assert_eq!(diagnostics.all().len(), 2);
 
+  // now try doing a relative import into the vendor directory
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": local_file_uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "text": "import { returnsHi } from './vendor/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);"
+        }
+      ]
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(local_file_uri.as_str(), "deno")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 26 },
+          "end": { "line": 0, "character": 51 }
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring."
+      }
+    ]),
+  );
+
   client.shutdown();
 }
