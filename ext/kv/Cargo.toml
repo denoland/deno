@@ -29,6 +29,7 @@ rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+url.workspace = true
 uuid.workspace = true
 
 [build-dependencies]

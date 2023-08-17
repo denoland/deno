@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,13 +30,25 @@ use prost::Message;
 use rand::Rng;
 use serde::Deserialize;
 use tokio::sync::watch;
+use url::Url;
 use uuid::Uuid;
 
-pub struct RemoteDbHandler {}
+pub trait RemoteDbHandlerPermissions {
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError>;
+  fn check_net_url(
+    &mut self,
+    url: &Url,
+    api_name: &str,
+  ) -> Result<(), AnyError>;
+}
 
-impl RemoteDbHandler {
+pub struct RemoteDbHandler<P: RemoteDbHandlerPermissions + 'static> {
+  _p: std::marker::PhantomData<P>,
+}
+
+impl<P: RemoteDbHandlerPermissions> RemoteDbHandler<P> {
   pub fn new() -> Self {
-    Self {}
+    Self { _p: PhantomData }
   }
 }
 
@@ -66,19 +79,32 @@ pub struct EndpointInfo {
 }
 
 #[async_trait(?Send)]
-impl DatabaseHandler for RemoteDbHandler {
-  type DB = RemoteDb;
+impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
+  type DB = RemoteDb<P>;
 
   async fn open(
     &self,
-    _state: Rc<RefCell<OpState>>,
+    state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
+    const ENV_VAR_NAME: &str = "DENO_ACCESS_TOKEN";
+
     let Some(url) = path else {
       return Err(type_error("Missing database url"));
     };
 
-    let access_token = std::env::var("DENO_ACCESS_TOKEN")
+    let Ok(parsed_url) = Url::parse(&url) else {
+      return Err(type_error(format!("Invalid database url: {}", url)));
+    };
+
+    {
+      let mut state = state.borrow_mut();
+      let permissions = state.borrow_mut::<P>();
+      permissions.check_env(ENV_VAR_NAME)?;
+      permissions.check_net_url(&parsed_url, "Deno.openKv")?;
+    }
+
+    let access_token = std::env::var(ENV_VAR_NAME)
       .map_err(anyhow::Error::from)
       .with_context(|| {
         "Missing DENO_ACCESS_TOKEN environment variable. Please set it to your access token from https://dash.deno.com/account."
@@ -89,14 +115,16 @@ impl DatabaseHandler for RemoteDbHandler {
     let db = RemoteDb {
       client: reqwest::Client::new(),
       refresher,
+      _p: PhantomData,
     };
     Ok(db)
   }
 }
 
-pub struct RemoteDb {
+pub struct RemoteDb<P: RemoteDbHandlerPermissions + 'static> {
   client: reqwest::Client,
   refresher: MetadataRefresher,
+  _p: std::marker::PhantomData<P>,
 }
 
 pub struct DummyQueueMessageHandle {}
@@ -113,11 +141,12 @@ impl QueueMessageHandle for DummyQueueMessageHandle {
 }
 
 #[async_trait(?Send)]
-impl Database for RemoteDb {
+impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
   type QMH = DummyQueueMessageHandle;
 
   async fn snapshot_read(
     &self,
+    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
@@ -133,8 +162,14 @@ impl Database for RemoteDb {
         .collect(),
     };
 
-    let res: pb::SnapshotReadOutput =
-      call_remote(&self.refresher, &self.client, "snapshot_read", &req).await?;
+    let res: pb::SnapshotReadOutput = call_remote::<P, _, _>(
+      &state,
+      &self.refresher,
+      &self.client,
+      "snapshot_read",
+      &req,
+    )
+    .await?;
 
     if res.read_disabled {
       return Err(type_error("Reads are disabled for this database."));
@@ -165,6 +200,7 @@ impl Database for RemoteDb {
 
   async fn atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
     if !write.enqueues.is_empty() {
@@ -190,8 +226,14 @@ impl Database for RemoteDb {
       enqueues: vec![],
     };
 
-    let res: pb::AtomicWriteOutput =
-      call_remote(&self.refresher, &self.client, "atomic_write", &req).await?;
+    let res: pb::AtomicWriteOutput = call_remote::<P, _, _>(
+      &state,
+      &self.refresher,
+      &self.client,
+      "atomic_write",
+      &req,
+    )
+    .await?;
     match res.status() {
       pb::AtomicWriteStatus::AwSuccess => Ok(Some(CommitResult {
         versionstamp: if res.versionstamp.is_empty() {
@@ -220,7 +262,10 @@ impl Database for RemoteDb {
     }
   }
 
-  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError> {
+  async fn dequeue_next_message(
+    &self,
+    _state: Rc<RefCell<OpState>>,
+  ) -> Result<Self::QMH, AnyError> {
     deno_core::futures::future::pending().await
   }
 
@@ -385,7 +430,12 @@ async fn randomized_exponential_backoff(base: Duration, attempt: u64) {
   tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
 }
 
-async fn call_remote<T: Message, R: Message + Default>(
+async fn call_remote<
+  P: RemoteDbHandlerPermissions + 'static,
+  T: Message,
+  R: Message + Default,
+>(
+  state: &RefCell<OpState>,
   refresher: &MetadataRefresher,
   client: &reqwest::Client,
   method: &str,
@@ -405,8 +455,16 @@ async fn call_remote<T: Message, R: Message + Default>(
         return Err(type_error("No strong consistency endpoint is available for this database"));
       };
 
+    let full_url = format!("{}/{}", sc_endpoint.url, method);
+    {
+      let parsed_url = Url::parse(&full_url)?;
+      let mut state = state.borrow_mut();
+      let permissions = state.borrow_mut::<P>();
+      permissions.check_net_url(&parsed_url, "Deno.Kv")?;
+    }
+
     let res = client
-      .post(&format!("{}/{}", sc_endpoint.url, method))
+      .post(&full_url)
       .header("x-transaction-domain-id", metadata.database_id.to_string())
       .header("authorization", format!("Bearer {}", metadata.token))
       .body(req.encode_to_vec())

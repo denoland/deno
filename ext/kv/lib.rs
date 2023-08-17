@@ -288,7 +288,8 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
+  let output_ranges =
+    db.snapshot_read(state.clone(), read_ranges, opts).await?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -326,7 +327,7 @@ where
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message().await?;
+  let mut handle = db.dequeue_next_message(state.clone()).await?;
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
@@ -663,7 +664,7 @@ where
     enqueues,
   };
 
-  let result = db.atomic_write(atomic_write).await?;
+  let result = db.atomic_write(state.clone(), atomic_write).await?;
 
   Ok(result.map(|res| hex::encode(res.versionstamp)))
 }

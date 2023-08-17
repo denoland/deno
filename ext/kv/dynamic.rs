@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::remote::RemoteDbHandlerPermissions;
 use crate::sqlite::SqliteDbHandler;
 use crate::sqlite::SqliteDbHandlerPermissions;
 use crate::AtomicWrite;
@@ -29,13 +30,15 @@ impl MultiBackendDbHandler {
     Self { backends }
   }
 
-  pub fn remote_or_sqlite<P: SqliteDbHandlerPermissions + 'static>(
+  pub fn remote_or_sqlite<
+    P: SqliteDbHandlerPermissions + RemoteDbHandlerPermissions + 'static,
+  >(
     default_storage_dir: Option<std::path::PathBuf>,
   ) -> Self {
     Self::new(vec![
       (
         &["https://", "http://"],
-        Box::new(crate::remote::RemoteDbHandler::new()),
+        Box::new(crate::remote::RemoteDbHandler::<P>::new()),
       ),
       (
         &[""],
@@ -115,17 +118,20 @@ where
 pub trait DynamicDb {
   async fn dyn_snapshot_read(
     &self,
+    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError>;
 
   async fn dyn_atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError>;
 
   async fn dyn_dequeue_next_message(
     &self,
+    state: Rc<RefCell<OpState>>,
   ) -> Result<Box<dyn QueueMessageHandle>, AnyError>;
 
   fn dyn_close(&self);
@@ -137,23 +143,26 @@ impl Database for Box<dyn DynamicDb> {
 
   async fn snapshot_read(
     &self,
+    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
-    (**self).dyn_snapshot_read(requests, options).await
+    (**self).dyn_snapshot_read(state, requests, options).await
   }
 
   async fn atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
-    (**self).dyn_atomic_write(write).await
+    (**self).dyn_atomic_write(state, write).await
   }
 
   async fn dequeue_next_message(
     &self,
+    state: Rc<RefCell<OpState>>,
   ) -> Result<Box<dyn QueueMessageHandle>, AnyError> {
-    (**self).dyn_dequeue_next_message().await
+    (**self).dyn_dequeue_next_message(state).await
   }
 
   fn close(&self) {
@@ -169,23 +178,26 @@ where
 {
   async fn dyn_snapshot_read(
     &self,
+    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
-    Ok(self.snapshot_read(requests, options).await?)
+    Ok(self.snapshot_read(state, requests, options).await?)
   }
 
   async fn dyn_atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
-    Ok(self.atomic_write(write).await?)
+    Ok(self.atomic_write(state, write).await?)
   }
 
   async fn dyn_dequeue_next_message(
     &self,
+    state: Rc<RefCell<OpState>>,
   ) -> Result<Box<dyn QueueMessageHandle>, AnyError> {
-    Ok(Box::new(self.dequeue_next_message().await?))
+    Ok(Box::new(self.dequeue_next_message(state).await?))
   }
 
   fn dyn_close(&self) {
