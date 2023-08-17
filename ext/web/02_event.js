@@ -181,7 +181,7 @@ class Event {
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
-      timeStamp: DateNow(),
+      timeStamp: 0,
     };
   }
 
