@@ -616,7 +616,7 @@ impl<'a> GraphDisplayContext<'a> {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
       let mut child = TreeNode::from_text(format!(
-        "npm:{} {}",
+        "npm:/{} {}",
         dep_id.as_serialized(),
         size_str
       ));

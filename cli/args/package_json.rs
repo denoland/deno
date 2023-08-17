@@ -243,7 +243,7 @@ mod test {
         "test".to_string(),
         Err(
           concat!(
-            "Invalid npm specifier version requirement. Unexpected character.\n",
+            "Invalid specifier version requirement. Unexpected character.\n",
             "   - 1.3\n",
             "  ~"
           )
