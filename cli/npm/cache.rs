@@ -341,10 +341,10 @@ impl NpmCache {
       .cache_dir
       .package_folder_for_name_and_version(package, registry_url);
     if self.should_use_global_cache_for_package(package)
-      && self.fs.exists(&package_folder)
+      && self.fs.exists_sync(&package_folder)
       // if this file exists, then the package didn't successfully extract
       // the first time, or another process is currently extracting the zip file
-      && !self.fs.exists(&package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME))
+      && !self.fs.exists_sync(&package_folder.join(NPM_PACKAGE_SYNC_LOCK_FILENAME))
     {
       return Ok(());
     } else if self.cache_setting == CacheSetting::Only {

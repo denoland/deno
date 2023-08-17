@@ -2229,8 +2229,8 @@
       ],
       "AddEventListenerOptions-signal.any.html": true,
       "AddEventListenerOptions-signal.any.worker.html": true,
-      "Event-isTrusted.any.html": true,
-      "Event-isTrusted.any.worker.html": true,
+      "Event-isTrusted.any.html": false,
+      "Event-isTrusted.any.worker.html": false,
       "EventTarget-add-remove-listener.any.html": true,
       "EventTarget-add-remove-listener.any.worker.html": true,
       "EventTarget-addEventListener.any.html": true,
@@ -2807,8 +2807,12 @@
       },
       "class-string-interface.any.html": true,
       "class-string-interface.any.worker.html": true,
-      "class-string-iterator-prototype-object.any.html": true,
-      "class-string-iterator-prototype-object.any.worker.html": true,
+      "class-string-iterator-prototype-object.any.html": [
+        "Object.prototype.toString applied after deleting @@toStringTag"
+      ],
+      "class-string-iterator-prototype-object.any.worker.html": [
+        "Object.prototype.toString applied after deleting @@toStringTag"
+      ],
       "class-string-named-properties-object.window.html": false,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
@@ -4378,36 +4382,8 @@
         "response-from-stream.any.worker.html": true,
         "response-cancel-stream.any.html": true,
         "response-cancel-stream.any.worker.html": true,
-        "response-clone.any.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
-        ],
-        "response-clone.any.worker.html": [
-          "Check response clone use structureClone for teed ReadableStreams (Int8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Int32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (ArrayBufferchunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint8ClampedArraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint16Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Uint32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigInt64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (BigUint64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float32Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (Float64Arraychunk)",
-          "Check response clone use structureClone for teed ReadableStreams (DataViewchunk)"
-        ],
+        "response-clone.any.html": true,
+        "response-clone.any.worker.html": true,
         "response-consume-empty.any.html": [
           "Consume empty FormData response body as text"
         ],
@@ -4944,12 +4920,8 @@
       "abort": {
         "request.any.html": true,
         "request.any.worker.html": true,
-        "general.any.html": [
-          "Clone aborts with original controller"
-        ],
-        "general.any.worker.html": [
-          "Clone aborts with original controller"
-        ],
+        "general.any.html": true,
+        "general.any.worker.html": true,
         "cache.https.any.html": false,
         "cache.https.any.worker.html": false
       },
@@ -6205,7 +6177,14 @@
             "taintEnabled",
             "oscpu"
           ],
-          "navigator.any.worker.html": false,
+          "navigator.any.worker.html": [
+            "appCodeName",
+            "appName",
+            "appVersion",
+            "platform",
+            "product",
+            "userAgent value"
+          ],
           "per-global.window.html": false
         }
       }
@@ -7619,8 +7598,12 @@
     "decompression-constructor-error.tentative.any.worker.html": true,
     "decompression-correct-input.tentative.any.html": true,
     "decompression-correct-input.tentative.any.worker.html": true,
-    "decompression-corrupt-input.tentative.any.html": true,
-    "decompression-corrupt-input.tentative.any.worker.html": true,
+    "decompression-corrupt-input.tentative.any.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
+    "decompression-corrupt-input.tentative.any.worker.html": [
+      "truncating the input for 'deflate' should give an error"
+    ],
     "decompression-empty-input.tentative.any.html": true,
     "decompression-empty-input.tentative.any.worker.html": true,
     "decompression-split-chunk.tentative.any.html": true,

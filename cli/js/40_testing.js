@@ -27,6 +27,7 @@ const {
   Promise,
   SafeArrayIterator,
   Set,
+  StringPrototypeReplaceAll,
   SymbolToStringTag,
   TypeError,
 } = primordials;
@@ -516,6 +517,21 @@ function withPermissions(fn, permissions) {
   };
 }
 
+const ESCAPE_ASCII_CHARS = [
+  ["\b", "\\b"],
+  ["\f", "\\f"],
+  ["\t", "\\t"],
+  ["\n", "\\n"],
+  ["\r", "\\r"],
+  ["\v", "\\v"],
+];
+
+function escapeName(name) {
+  for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+    name = StringPrototypeReplaceAll(name, escape, replaceWith);
+  }
+  return name;
+}
 /**
  * @typedef {{
  *   id: number,
@@ -693,6 +709,7 @@ function test(
   }
   testDesc.location = location;
   testDesc.fn = wrapTest(testDesc);
+  testDesc.name = escapeName(testDesc.name);
 
   const { id, origin } = ops.op_register_test(testDesc);
   testDesc.id = id;
@@ -818,6 +835,7 @@ function bench(
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
   benchDesc.fn = wrapBenchmark(benchDesc);
   benchDesc.warmup = false;
+  benchDesc.name = escapeName(benchDesc.name);
 
   const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;
@@ -1190,7 +1208,8 @@ function createTestContext(desc) {
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
-      stepDesc.rootName = rootName;
+      stepDesc.name = escapeName(stepDesc.name);
+      stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
       const { id, origin } = ops.op_register_test_step(stepDesc);
       stepDesc.id = id;

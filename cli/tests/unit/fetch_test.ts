@@ -1951,6 +1951,33 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchRequestBodyEmptyStream() {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([]));
+        controller.close();
+      },
+    });
+
+    await assertRejects(
+      async () => {
+        const controller = new AbortController();
+        const promise = fetch("http://localhost:4545/echo_server", {
+          body,
+          method: "POST",
+          signal: controller.signal,
+        });
+        controller.abort();
+        await promise;
+      },
+      DOMException,
+      "The signal has been aborted",
+    );
+  },
+);
+
 Deno.test("Request with subarray TypedArray body", async () => {
   const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
   const req = new Request("https://example.com", { method: "POST", body });

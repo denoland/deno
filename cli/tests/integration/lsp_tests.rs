@@ -8768,7 +8768,7 @@ fn lsp_node_modules_dir() {
 }
 
 #[test]
-fn lsp_deno_modules_dir() {
+fn lsp_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
@@ -8804,11 +8804,11 @@ fn lsp_deno_modules_dir() {
 
   cache(&mut client);
 
-  assert!(!temp_dir.path().join("deno_modules").exists());
+  assert!(!temp_dir.path().join("vendor").exists());
 
   temp_dir.write(
     temp_dir.path().join("deno.json"),
-    "{ \"denoModulesDir\": true, \"lock\": false }\n",
+    "{ \"vendor\": true, \"lock\": false }\n",
   );
   let refresh_config = |client: &mut LspClient| {
     client.write_notification(
@@ -8852,10 +8852,10 @@ fn lsp_deno_modules_dir() {
   // no caching necessary because it was already cached. It should exist now
   assert!(temp_dir
     .path()
-    .join("deno_modules/http_localhost_4545/subdir/mod1.ts")
+    .join("vendor/http_localhost_4545/subdir/mod1.ts")
     .exists());
 
-  // the declaration should be found in the deno_modules directory
+  // the declaration should be found in the vendor directory
   let res = client.write_request(
     "textDocument/references",
     json!({
@@ -8869,7 +8869,7 @@ fn lsp_deno_modules_dir() {
     }),
   );
 
-  // ensure that it's using the deno_modules directory
+  // ensure that it's using the vendor directory
   let references = res.as_array().unwrap();
   assert_eq!(references.len(), 2, "references: {:#?}", references);
   let uri = references[1]
@@ -8881,7 +8881,7 @@ fn lsp_deno_modules_dir() {
     .unwrap();
   let file_path = temp_dir
     .path()
-    .join("deno_modules/http_localhost_4545/subdir/mod1.ts");
+    .join("vendor/http_localhost_4545/subdir/mod1.ts");
   let remote_file_uri = file_path.uri_file();
   assert_eq!(uri, remote_file_uri.as_str());
 
@@ -8957,6 +8957,48 @@ fn lsp_deno_modules_dir() {
     ]),
   );
   assert_eq!(diagnostics.all().len(), 2);
+
+  // now try doing a relative import into the vendor directory
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": local_file_uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "text": "import { returnsHi } from './vendor/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);"
+        }
+      ]
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(local_file_uri.as_str(), "deno")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 26 },
+          "end": { "line": 0, "character": 51 }
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring."
+      }
+    ]),
+  );
 
   client.shutdown();
 }

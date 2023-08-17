@@ -99,27 +99,6 @@ impl CliNpmRegistryApi {
     &self.inner().base_url
   }
 
-  /// Marks that new requests for package information should retrieve it
-  /// from the npm registry
-  ///
-  /// Returns true if it was successfully set for the first time.
-  pub fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading
-    // is disabled or if we're already reloading
-    if matches!(
-      self.inner().cache.cache_setting(),
-      CacheSetting::Only | CacheSetting::ReloadAll
-    ) {
-      return false;
-    }
-    if self.inner().force_reload_flag.raise() {
-      self.clear_memory_cache(); // clear the memory cache to force reloading
-      true
-    } else {
-      false
-    }
-  }
-
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
@@ -152,6 +131,23 @@ impl NpmRegistryApi for CliNpmRegistryApi {
       Err(err) => {
         Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(err)))
       }
+    }
+  }
+
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.inner().cache.cache_setting(),
+      CacheSetting::Only | CacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.inner().force_reload_flag.raise() {
+      self.clear_memory_cache(); // clear the cache to force reloading
+      true
+    } else {
+      false
     }
   }
 }
@@ -386,7 +382,7 @@ impl CliNpmRegistryApiInner {
     name_folder_path.join("registry.json")
   }
 
-  pub fn clear_memory_cache(&self) {
+  fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
   }
 
