@@ -169,7 +169,7 @@ const installNodeStep = {
 const installProtocStep = {
   name: "Install protoc",
   uses: "arduino/setup-protoc@v2",
-  with: { "version": "21.12" },
+  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
