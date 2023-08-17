@@ -59,7 +59,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
   ) -> Result<Self::DB, AnyError> {
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
-        if prefix == "" {
+        if prefix.is_empty() {
           return handler.dyn_open(state.clone(), path.clone()).await;
         }
         let Some(path) = &path else {

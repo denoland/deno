@@ -52,6 +52,12 @@ impl<P: RemoteDbHandlerPermissions> RemoteDbHandler<P> {
   }
 }
 
+impl<P: RemoteDbHandlerPermissions> Default for RemoteDbHandler<P> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 #[derive(Deserialize)]
 struct VersionInfo {
   version: u64,
@@ -425,7 +431,7 @@ async fn fetch_metadata(
 
 async fn randomized_exponential_backoff(base: Duration, attempt: u64) {
   let attempt = attempt.min(12);
-  let delay = base.as_millis() as u64 + 2 << attempt;
+  let delay = base.as_millis() as u64 + (2 << attempt);
   let delay = delay + rand::thread_rng().gen_range(0..(delay / 2) + 1);
   tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
 }
