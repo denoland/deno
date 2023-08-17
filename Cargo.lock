@@ -1220,6 +1220,7 @@ dependencies = [
  "base64 0.13.1",
  "deno_core",
  "hex",
+ "log",
  "num-bigint",
  "rand",
  "rusqlite",
@@ -1504,6 +1505,7 @@ version = "0.146.0"
 dependencies = [
  "async-trait",
  "base64-simd",
+ "bytes",
  "deno_bench_util",
  "deno_console",
  "deno_core",
@@ -1511,6 +1513,7 @@ dependencies = [
  "deno_webidl",
  "encoding_rs",
  "flate2",
+ "futures",
  "serde",
  "tokio",
  "uuid",
