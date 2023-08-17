@@ -36,6 +36,7 @@ import {
   ERR_HTTP2_INVALID_STREAM,
   ERR_HTTP2_SESSION_ERROR,
   ERR_HTTP2_STREAM_CANCEL,
+  ERR_HTTP2_STREAM_ERROR,
   ERR_HTTP2_TRAILERS_ALREADY_SENT,
   ERR_HTTP2_TRAILERS_NOT_READY,
   ERR_INVALID_HTTP_TOKEN,
@@ -381,7 +382,6 @@ export class ClientHttp2Session extends Http2Session {
     }
 
     this[kUpdateTimer]();
-
     if (headers !== null && headers !== undefined) {
       const keys = Object.keys(headers);
       for (let i = 0; i < keys.length; i++) {
@@ -660,7 +660,7 @@ async function clientHttp2Request(
     if (key[0] === ":") {
       pseudoHeaders[key] = value;
     } else {
-      reqHeaders.push([key, value]);
+      reqHeaders.push([key, Array.isArray(value) ? value[0] : value]);
     }
   }
   debug(
@@ -718,14 +718,15 @@ export class ClientHttp2Stream extends Duplex {
       headers,
       options,
     );
-    this.#session = session;
     this.#waitForTrailers = !!options.waitForTrailers;
     debug("created clienthttp2stream");
     this.#responsePromise = (async () => {
       debug("before request promise");
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
-      this.#id = streamId;
+      // TODO(bartlomieju): clean this up
+      this.__rid = streamRid;
+      this[kID] = streamId;
       debug("after request promise", this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
@@ -1014,19 +1015,74 @@ export class ClientHttp2Stream extends Duplex {
     closeStream(this, code);
   }
 
-  // TODO:
   _destroy(err, callback) {
-    // TODO: handle error
     debug("ClientHttp2Stream._destroy", err, callback);
-    core.opAsync(
-      "op_http2_client_reset_stream",
-      this.#rid,
-    ).then(() => callback?.());
+    const session = this[kSession];
+    const id = this[kID];
+
+    const state = this[kState];
+    const sessionState = session[kState];
+    const sessionCode = sessionState.goawayCode || sessionState.destroyCode;
+
+    let code = this.closed ? this.rstCode : sessionCode;
+    if (err != null) {
+      if (sessionCode) {
+        code = sessionCode;
+      } else if (err instanceof AbortError) {
+        code = constants.NGHTTP2_CANCEL;
+      } else {
+        code = constants.NGHTTP2_INTERNAL_ERROR;
+      }
+    }
+
+    if (!this.closed) {
+      // TODO: this not handle `socket handle`
+      closeStream(this, code, kNoRstStream);
+    }
+
+    sessionState.streams.delete(id);
+    sessionState.pendingStreams.delete(this);
+
+    sessionState.writeQueueSize -= state.writeQueueSize;
+    state.writeQueueSize = 0;
+
+    const nameForErrorCode = {};
+    if (
+      err == null && code !== constants.NGHTTP2_NO_ERROR &&
+      code !== constants.NGHTTP2_CANCEL
+    ) {
+      err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
+    }
+
+    this[kSession] = undefined;
+
+    session[kMaybeDestroy]();
+    callback(err);
   }
 
-  // TODO:
-  [kMaybeDestroy]() {
-    notImplemented("ClientHttp2Stream[kMaybeDestroy]");
+  [kMaybeDestroy](code = constants.NGHTTP2_NO_ERROR) {
+    debug("ClientHttp2Stream[kMaybeDestroy]");
+    if (code !== constants.NGHTTP2_NO_ERROR) {
+      this._destroy();
+      return;
+    }
+
+    if (this.writableFinished) {
+      if (!this.readable && this.closed) {
+        this._destroy();
+        return;
+      }
+
+      const state = this[kState];
+      if (
+        this.headersSent && !(state.flags & STREAM_FLAGS_HAS_TRAILERS) &&
+        !state.didRead && this.readableFlowing === null
+      ) {
+        setImmediate(() => {
+          this.close();
+        });
+      }
+    }
   }
 
   setTimeout(msecs: number, callback?: () => void) {
@@ -1059,7 +1115,33 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
   }
 
   if (rstStreamStatus != kNoRstStream) {
-    notImplemented("finish close stream");
+    if (
+      !ending || stream.writableFinished ||
+      code !== constants.NGHTTP2_NO_ERROR || rstStreamStatus === kForceRstStream
+    ) {
+      finishCloseStream(stream, code);
+    } else {
+      stream.once("finish", () => finishCloseStream(stream, code));
+    }
+  }
+}
+
+function finishCloseStream(stream, code) {
+  if (stream.pending) {
+    this.push(null);
+    this.once("ready", () => {
+      core.opAsync(
+        "op_http2_client_reset_stream",
+        this.__rid,
+        code,
+      );
+    });
+  } else {
+    core.opAsync(
+      "op_http2_client_reset_stream",
+      this.__rid,
+      code,
+    );
   }
 }
 
