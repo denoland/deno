@@ -267,6 +267,11 @@ itest!(exit_sanitizer {
   exit_code: 1,
 });
 
+itest!(junit {
+  args: "test --reporter junit test/pass.ts",
+  output: "test/pass.junit.out",
+});
+
 itest!(clear_timeout {
   args: "test test/clear_timeout.ts",
   exit_code: 0,
