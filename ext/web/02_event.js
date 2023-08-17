@@ -21,7 +21,6 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   Boolean,
-  DateNow,
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
