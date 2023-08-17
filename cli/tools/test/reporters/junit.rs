@@ -45,9 +45,7 @@ impl TestReporter for JunitTestReporter {
       quick_junit::TestCaseStatus::skipped(),
     );
     let file_name = description.location.file_name.clone();
-    let file_name = file_name
-      .strip_prefix("file://")
-      .unwrap_or(&file_name);
+    let file_name = file_name.strip_prefix("file://").unwrap_or(&file_name);
     case
       .extra
       .insert(String::from("filename"), String::from(file_name));
