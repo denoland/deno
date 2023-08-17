@@ -248,7 +248,7 @@ async fn sqlite_retry_loop<R, Fut: Future<Output = Result<R, AnyError>>>(
       Err(e) => {
         if let Some(x) = e.downcast_ref::<rusqlite::Error>() {
           if x.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy) {
-            log::warn!("kv: Database is busy, retrying");
+            log::debug!("kv: Database is busy, retrying");
             tokio::time::sleep(Duration::from_millis(
               rand::thread_rng().gen_range(5..20),
             ))
