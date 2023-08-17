@@ -44,20 +44,18 @@ impl TestReporter for JunitTestReporter {
       description.name.clone(),
       quick_junit::TestCaseStatus::skipped(),
     );
-    case.add_properties(vec![
-      quick_junit::Property::new(
-        "filename",
-        description.location.file_name.clone(),
-      ),
-      quick_junit::Property::new(
-        "line",
-        description.location.line_number.to_string(),
-      ),
-      quick_junit::Property::new(
-        "col",
-        description.location.column_number.to_string(),
-      ),
-    ]);
+    case.extra.insert(
+      String::from("filename"),
+      description.location.file_name.clone(),
+    );
+    case.extra.insert(
+      String::from("line"),
+      description.location.line_number.to_string(),
+    );
+    case.extra.insert(
+      String::from("col"),
+      description.location.column_number.to_string(),
+    );
     self.cases.insert(description.id, case);
   }
 

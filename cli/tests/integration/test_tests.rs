@@ -268,8 +268,8 @@ itest!(exit_sanitizer {
 });
 
 itest!(junit {
-  args: "test --reporter junit test/junit.ts",
-  output: "test/junit.out",
+  args: "test --reporter junit test/pass.ts",
+  output: "test/pass.junit.out",
 });
 
 itest!(clear_timeout {
