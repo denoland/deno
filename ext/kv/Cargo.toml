@@ -19,6 +19,7 @@ async-trait.workspace = true
 base64.workspace = true
 deno_core.workspace = true
 hex.workspace = true
+log.workspace = true
 num-bigint.workspace = true
 rand.workspace = true
 rusqlite.workspace = true
