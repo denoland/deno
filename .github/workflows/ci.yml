@@ -177,6 +177,7 @@ jobs:
         uses: arduino/setup-protoc@v2
         with:
           version: '21.12'
+          repo-token: '${{ secrets.GITHUB_TOKEN }}'
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.profile == 'release' &&
