@@ -2155,3 +2155,13 @@ itest!(check_package_file_dts_dmts_dcts {
   http_server: true,
   exit_code: 1,
 });
+
+itest!(require_resolve_url_paths {
+  args: "run -A --quiet --node-modules-dir url_paths.ts",
+  output: "npm/require_resolve_url/url_paths.out",
+  envs: env_vars_for_npm_tests_no_sync_download(),
+  http_server: true,
+  exit_code: 0,
+  cwd: Some("npm/require_resolve_url/"),
+  copy_temp_dir: Some("npm/require_resolve_url/"),
+});
