@@ -10,7 +10,6 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
-use crate::response_body::V8StreamHttpResponseBody;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
@@ -30,6 +29,7 @@ use deno_core::task::JoinHandle;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
+use deno_core::BufView;
 use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -573,6 +573,7 @@ fn ensure_vary_accept_encoding(hmap: &mut HeaderMap) {
 fn set_response(
   slab_id: SlabId,
   length: Option<usize>,
+  status: u16,
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
   let mut http = slab_get(slab_id);
@@ -583,7 +584,14 @@ fn set_response(
     length,
     response.headers_mut(),
   );
-  response.body_mut().initialize(response_fn(compression))
+  response.body_mut().initialize(response_fn(compression));
+
+  // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
+  // will quitely ignore invalid values.
+  if let Ok(code) = StatusCode::from_u16(status) {
+    *response.status_mut() = code;
+  }
+  http.complete();
 }
 
 #[op2(fast)]
@@ -592,6 +600,7 @@ pub fn op_http_set_response_body_resource(
   #[smi] slab_id: SlabId,
   #[smi] stream_rid: ResourceId,
   auto_close: bool,
+  status: u16,
 ) -> Result<(), AnyError> {
   // If the stream is auto_close, we will hold the last ref to it until the response is complete.
   let resource = if auto_close {
@@ -603,6 +612,7 @@ pub fn op_http_set_response_body_resource(
   set_response(
     slab_id,
     resource.size_hint().1.map(|s| s as usize),
+    status,
     move |compression| {
       ResponseBytesInner::from_resource(compression, resource, auto_close)
     },
@@ -612,42 +622,34 @@ pub fn op_http_set_response_body_resource(
 }
 
 #[op2(fast)]
-#[smi]
-pub fn op_http_set_response_body_stream(
-  state: &mut OpState,
-  #[smi] slab_id: SlabId,
-) -> Result<ResourceId, AnyError> {
-  // TODO(mmastrac): what should this channel size be?
-  let (tx, rx) = tokio::sync::mpsc::channel(1);
-  set_response(slab_id, None, |compression| {
-    ResponseBytesInner::from_v8(compression, rx)
-  });
-
-  Ok(state.resource_table.add(V8StreamHttpResponseBody::new(tx)))
-}
-
-#[op2(fast)]
 pub fn op_http_set_response_body_text(
   #[smi] slab_id: SlabId,
   #[string] text: String,
+  status: u16,
 ) {
   if !text.is_empty() {
-    set_response(slab_id, Some(text.len()), |compression| {
+    set_response(slab_id, Some(text.len()), status, |compression| {
       ResponseBytesInner::from_vec(compression, text.into_bytes())
     });
+  } else {
+    op_http_set_promise_complete::call(slab_id, status);
   }
 }
 
-#[op2(fast)]
+// Skipping `fast` because we prefer an owned buffer here.
+#[op2]
 pub fn op_http_set_response_body_bytes(
   #[smi] slab_id: SlabId,
-  #[buffer] buffer: &[u8],
+  #[buffer] buffer: JsBuffer,
+  status: u16,
 ) {
   if !buffer.is_empty() {
-    set_response(slab_id, Some(buffer.len()), |compression| {
-      ResponseBytesInner::from_slice(compression, buffer)
+    set_response(slab_id, Some(buffer.len()), status, |compression| {
+      ResponseBytesInner::from_bufview(compression, BufView::from(buffer))
     });
-  };
+  } else {
+    op_http_set_promise_complete::call(slab_id, status);
+  }
 }
 
 #[op2(async)]

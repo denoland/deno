@@ -693,24 +693,30 @@ function createStreamTest(count: number, delay: number, action: string) {
       onError: createOnErrorCb(ac),
     });
 
-    await listeningPromise;
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
-    const text = await resp.text();
+    try {
+      await listeningPromise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`);
+      if (action == "Throw") {
+        try {
+          await resp.text();
+          fail();
+        } catch (_) {
+          // expected
+        }
+      } else {
+        const text = await resp.text();
 
-    ac.abort();
-    await server.finished;
-    let expected = "";
-    if (action == "Throw" && count < 2 && delay < 1000) {
-      // NOTE: This is specific to the current implementation. In some cases where a stream errors, we
-      // don't send the first packet.
-      expected = "";
-    } else {
-      for (let i = 0; i < count; i++) {
-        expected += `a${i}`;
+        let expected = "";
+        for (let i = 0; i < count; i++) {
+          expected += `a${i}`;
+        }
+
+        assertEquals(text, expected);
       }
+    } finally {
+      ac.abort();
+      await server.finished;
     }
-
-    assertEquals(text, expected);
   });
 }
 
