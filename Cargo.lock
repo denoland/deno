@@ -1505,6 +1505,7 @@ version = "0.145.0"
 dependencies = [
  "async-trait",
  "base64-simd",
+ "bytes",
  "deno_bench_util",
  "deno_console",
  "deno_core",
@@ -1512,6 +1513,7 @@ dependencies = [
  "deno_webidl",
  "encoding_rs",
  "flate2",
+ "futures",
  "serde",
  "tokio",
  "uuid",

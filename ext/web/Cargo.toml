@@ -16,9 +16,11 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 base64-simd = "0.8"
+bytes.workspace = true
 deno_core.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
+futures.workspace = true
 serde = "1.0.149"
 tokio.workspace = true
 uuid = { workspace = true, features = ["serde"] }
