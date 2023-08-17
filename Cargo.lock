@@ -1220,6 +1220,7 @@ dependencies = [
  "base64 0.13.1",
  "deno_core",
  "hex",
+ "log",
  "num-bigint",
  "rand",
  "rusqlite",
