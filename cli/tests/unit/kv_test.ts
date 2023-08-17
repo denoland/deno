@@ -1756,3 +1756,53 @@ dbTest("atomic operation is exposed", (db) => {
   const ao = db.atomic();
   assert(ao instanceof Deno.AtomicOperation);
 });
+
+Deno.test({
+  name: "racy open",
+  async fn() {
+    for (let i = 0; i < 100; i++) {
+      const filename = await Deno.makeTempFile({ prefix: "racy_open_db" });
+      try {
+        const [db1, db2, db3] = await Promise.all([
+          Deno.openKv(filename),
+          Deno.openKv(filename),
+          Deno.openKv(filename),
+        ]);
+        db1.close();
+        db2.close();
+        db3.close();
+      } finally {
+        await Deno.remove(filename);
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "racy write",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "racy_write_db" });
+    const concurrency = 20;
+    const iterations = 5;
+    try {
+      const dbs = await Promise.all(
+        Array(concurrency).fill(0).map(() => Deno.openKv(filename)),
+      );
+      try {
+        for (let i = 0; i < iterations; i++) {
+          await Promise.all(
+            dbs.map((db) => db.atomic().sum(["counter"], 1n).commit()),
+          );
+        }
+        assertEquals(
+          ((await dbs[0].get(["counter"])).value as Deno.KvU64).value,
+          BigInt(concurrency * iterations),
+        );
+      } finally {
+        dbs.forEach((db) => db.close());
+      }
+    } finally {
+      await Deno.remove(filename);
+    }
+  },
+});
