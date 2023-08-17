@@ -1035,10 +1035,8 @@ delete Object.prototype.__proto__;
           languageService.getEditsForRefactor(
             request.specifier,
             {
-              indentSize: 2,
+              ...request.formatCodeSettings,
               indentStyle: ts.IndentStyle.Smart,
-              semicolons: ts.SemicolonPreference.Insert,
-              convertTabsToSpaces: true,
               insertSpaceBeforeAndAfterBinaryOperators: true,
               insertSpaceAfterCommaDelimiter: true,
             },
@@ -1060,9 +1058,8 @@ delete Object.prototype.__proto__;
             request.endPosition,
             request.errorCodes.map((v) => Number(v)),
             {
-              indentSize: 2,
+              ...request.formatCodeSettings,
               indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
             },
             {
               quotePreference: "double",
@@ -1080,9 +1077,8 @@ delete Object.prototype.__proto__;
             },
             request.fixId,
             {
-              indentSize: 2,
+              ...request.formatCodeSettings,
               indentStyle: ts.IndentStyle.Block,
-              semicolons: ts.SemicolonPreference.Insert,
             },
             {
               quotePreference: "double",
@@ -1100,7 +1096,7 @@ delete Object.prototype.__proto__;
             request.args.specifier,
             request.args.position,
             request.args.name,
-            {},
+            request.args.formatCodeSettings ?? {},
             request.args.source,
             request.args.preferences,
             request.args.data,
@@ -1114,6 +1110,7 @@ delete Object.prototype.__proto__;
             request.specifier,
             request.position,
             request.preferences,
+            request.formatCodeSettings,
           ),
         );
       }

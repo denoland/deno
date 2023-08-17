@@ -4,6 +4,7 @@ mod blob;
 mod compression;
 mod hr_timer_lock;
 mod message_port;
+mod stream_resource;
 mod timers;
 
 use deno_core::error::range_error;
@@ -90,6 +91,12 @@ deno_core::extension!(deno_web,
     op_cancel_handle,
     op_sleep,
     op_transfer_arraybuffer,
+    stream_resource::op_readable_stream_resource_allocate,
+    stream_resource::op_readable_stream_resource_get_sink,
+    stream_resource::op_readable_stream_resource_write_error,
+    stream_resource::op_readable_stream_resource_write_buf,
+    stream_resource::op_readable_stream_resource_close,
+    stream_resource::op_readable_stream_resource_await_close,
   ],
   esm = [
     "00_infra.js",

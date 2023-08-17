@@ -26,7 +26,6 @@ use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::v8::construct_v8_flags;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::HasNodeSpecifierChecker;
 use crate::worker::ModuleLoaderFactory;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -266,14 +265,6 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
   }
 }
 
-struct StandaloneHasNodeSpecifierChecker;
-
-impl HasNodeSpecifierChecker for StandaloneHasNodeSpecifierChecker {
-  fn has_node_specifier(&self) -> bool {
-    false
-  }
-}
-
 struct StandaloneRootCertStoreProvider {
   ca_stores: Option<Vec<String>>,
   ca_data: Option<CaData>,
@@ -438,7 +429,6 @@ pub async fn run(
     StorageKeyResolver::empty(),
     npm_resolver.clone(),
     node_resolver,
-    Box::new(StandaloneHasNodeSpecifierChecker),
     Default::default(),
     Box::new(module_loader_factory),
     root_cert_store_provider,
