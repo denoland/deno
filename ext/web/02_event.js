@@ -107,14 +107,6 @@ function setStopImmediatePropagation(
   event[_stopImmediatePropagationFlag] = value;
 }
 
-// Type guards that widen the event type
-
-function hasRelatedTarget(
-  event,
-) {
-  return !!event.relatedTarget;
-}
-
 const isTrusted = ObjectGetOwnPropertyDescriptor({
   get isTrusted() {
     return this[_isTrusted];
@@ -548,9 +540,7 @@ function dispatch(
   setDispatched(eventImpl, true);
 
   targetOverride = targetOverride ?? targetImpl;
-  const eventRelatedTarget = hasRelatedTarget(eventImpl)
-    ? eventImpl.relatedTarget
-    : null;
+  const eventRelatedTarget = eventImpl.relatedTarget;
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
