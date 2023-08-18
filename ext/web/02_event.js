@@ -903,9 +903,10 @@ function addEventListenerOptionsConverter(V, prefix) {
     passive: !!V?.passive,
   };
 
-  if (V?.signal !== undefined) {
+  const signal = V?.signal;
+  if (signal !== undefined) {
     options.signal = webidl.converters.AbortSignal(
-      V.signal,
+      signal,
       prefix,
       "'signal' of 'AddEventListenerOptions' (Argument 3)",
     );
