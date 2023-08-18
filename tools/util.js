@@ -113,7 +113,7 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await Deno.stat(toolPath);
-  } catch (e) {
+  } catch {
     await downloadPrebuilt(toolName);
   }
   return toolPath;
