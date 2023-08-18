@@ -12,6 +12,12 @@ export { existsSync, walk } from "../test_util/std/fs/mod.ts";
 export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
 export { delay } from "../test_util/std/async/delay.ts";
 
+// [toolName] --version output
+const versions = {
+  "dprint": "dprint 0.40.0",
+  "dlint": "dlint 0.47.0",
+};
+
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function getFilesFromGit(baseDir, args) {
@@ -113,9 +119,14 @@ export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
     await Deno.stat(toolPath);
+    const versionOk = await verifyVersion(toolName);
+    if (!versionOk) {
+      throw new Error("Version mismatch");
+    }
   } catch {
     await downloadPrebuilt(toolName);
   }
+
   return toolPath;
 }
 
@@ -155,4 +166,26 @@ export async function downloadPrebuilt(toolName) {
   }
 
   spinner.succeed();
+}
+
+export async function verifyVersion(toolName) {
+  const requiredVersion = versions[toolName];
+  if (!requiredVersion) {
+    return true;
+  }
+
+  try {
+    const toolPath = getPrebuiltToolPath(toolName);
+    const cmd = new Deno.Command(toolPath, {
+      args: ["--version"],
+      stdout: "piped",
+      stderr: "inherit",
+    });
+    const output = await cmd.output();
+    const version = new TextDecoder().decode(output.stdout).trim();
+    return version == requiredVersion;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }
