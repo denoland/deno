@@ -31,7 +31,6 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
-  ReflectHas,
   SafeArrayIterator,
   SafeMap,
   StringPrototypeStartsWith,
@@ -106,14 +105,6 @@ function setStopImmediatePropagation(
   value,
 ) {
   event[_stopImmediatePropagationFlag] = value;
-}
-
-// Type guards that widen the event type
-
-function hasRelatedTarget(
-  event,
-) {
-  return ReflectHas(event, "relatedTarget");
 }
 
 const isTrusted = ObjectGetOwnPropertyDescriptor({
@@ -501,9 +492,12 @@ function isShadowRoot(nodeImpl) {
 }
 
 function isSlottable(
-  nodeImpl,
+  /* nodeImpl, */
 ) {
-  return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
+  // TODO(marcosc90) currently there aren't any slottables nodes
+  // https://dom.spec.whatwg.org/#concept-slotable
+  // return isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot");
+  return false;
 }
 
 // DOM Logic functions
@@ -546,9 +540,7 @@ function dispatch(
   setDispatched(eventImpl, true);
 
   targetOverride = targetOverride ?? targetImpl;
-  const eventRelatedTarget = hasRelatedTarget(eventImpl)
-    ? eventImpl.relatedTarget
-    : null;
+  const eventRelatedTarget = eventImpl.relatedTarget;
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
@@ -972,7 +964,7 @@ class EventTarget {
 
     const { listeners } = self[eventTargetData];
 
-    if (!(ReflectHas(listeners, type))) {
+    if (!listeners[type]) {
       listeners[type] = [];
     }
 
@@ -1020,7 +1012,7 @@ class EventTarget {
     );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && ReflectHas(listeners, type)) {
+    if (callback !== null && listeners[type]) {
       listeners[type] = ArrayPrototypeFilter(
         listeners[type],
         (listener) => listener.callback !== callback,
@@ -1069,7 +1061,7 @@ class EventTarget {
     }
 
     const { listeners } = self[eventTargetData];
-    if (!ReflectHas(listeners, event.type)) {
+    if (!listeners[event.type]) {
       setTarget(event, this);
       return true;
     }
