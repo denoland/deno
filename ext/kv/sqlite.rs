@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cell::RefCell;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -10,6 +9,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 use std::time::SystemTime;
 
@@ -124,6 +124,42 @@ create index kv_expiration_ms_idx on kv (expiration_ms);
 const DISPATCH_CONCURRENCY_LIMIT: usize = 100;
 const DEFAULT_BACKOFF_SCHEDULE: [u32; 5] = [100, 1000, 5000, 30000, 60000];
 
+#[derive(Clone)]
+struct ProtectedConn {
+  guard: Rc<AsyncRefCell<()>>,
+  conn: Arc<Mutex<Option<rusqlite::Connection>>>,
+}
+
+#[derive(Clone)]
+struct WeakProtectedConn {
+  guard: Weak<AsyncRefCell<()>>,
+  conn: std::sync::Weak<Mutex<Option<rusqlite::Connection>>>,
+}
+
+impl ProtectedConn {
+  fn new(conn: rusqlite::Connection) -> Self {
+    Self {
+      guard: Rc::new(AsyncRefCell::new(())),
+      conn: Arc::new(Mutex::new(Some(conn))),
+    }
+  }
+
+  fn downgrade(&self) -> WeakProtectedConn {
+    WeakProtectedConn {
+      guard: Rc::downgrade(&self.guard),
+      conn: Arc::downgrade(&self.conn),
+    }
+  }
+}
+
+impl WeakProtectedConn {
+  fn upgrade(&self) -> Option<ProtectedConn> {
+    let guard = self.guard.upgrade()?;
+    let conn = self.conn.upgrade()?;
+    Some(ProtectedConn { guard, conn })
+  }
+}
+
 pub struct SqliteDbHandler<P: SqliteDbHandlerPermissions + 'static> {
   pub default_storage_dir: Option<PathBuf>,
   _permissions: PhantomData<P>,
@@ -203,7 +239,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
       }
     })
     .await?;
-    let conn = Rc::new(AsyncRefCell::new(Cell::new(Some(conn))));
+    let conn = ProtectedConn::new(conn);
     SqliteDb::run_tx(conn.clone(), |tx| {
       tx.execute(STATEMENT_CREATE_MIGRATION_TABLE, [])?;
 
@@ -244,7 +280,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 }
 
 pub struct SqliteDb {
-  conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+  conn: ProtectedConn,
   queue: OnceCell<SqliteQueue>,
   expiration_watcher: deno_core::task::JoinHandle<()>,
 }
@@ -252,6 +288,15 @@ pub struct SqliteDb {
 impl Drop for SqliteDb {
   fn drop(&mut self) {
     self.expiration_watcher.abort();
+
+    // The above `abort()` operation is asynchronous. It's not
+    // guaranteed that the sqlite connection will be closed immediately.
+    // So here we synchronously take the conn mutex and drop the connection.
+    //
+    // This blocks the event loop if the connection is still being used,
+    // but ensures correctness - deleting the database file after calling
+    // the `close` method will always work.
+    self.conn.conn.lock().unwrap().take();
   }
 }
 
@@ -279,10 +324,7 @@ async fn sqlite_retry_loop<R, Fut: Future<Output = Result<R, AnyError>>>(
 }
 
 impl SqliteDb {
-  async fn run_tx<F, R>(
-    conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
-    f: F,
-  ) -> Result<R, AnyError>
+  async fn run_tx<F, R>(conn: ProtectedConn, f: F) -> Result<R, AnyError>
   where
     F: (FnOnce(rusqlite::Transaction<'_>) -> Result<R, AnyError>)
       + Clone
@@ -293,42 +335,38 @@ impl SqliteDb {
     sqlite_retry_loop(|| Self::run_tx_inner(conn.clone(), f.clone())).await
   }
 
-  async fn run_tx_inner<F, R>(
-    conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
-    f: F,
-  ) -> Result<R, AnyError>
+  async fn run_tx_inner<F, R>(conn: ProtectedConn, f: F) -> Result<R, AnyError>
   where
     F: (FnOnce(rusqlite::Transaction<'_>) -> Result<R, AnyError>)
       + Send
       + 'static,
     R: Send + 'static,
   {
-    // Transactions need exclusive access to the connection. Wait until
-    // we can borrow_mut the connection.
-    let cell = conn.borrow_mut().await;
+    // `run_tx` runs in an asynchronous context. First acquire the async lock to
+    // coordinate with other async invocations.
+    let _guard_holder = conn.guard.borrow_mut().await;
 
-    // Take the db out of the cell and run the transaction via spawn_blocking.
-    let mut db = cell.take().unwrap();
-    let (result, db) = spawn_blocking(move || {
-      let result = {
-        match db.transaction() {
-          Ok(tx) => f(tx),
-          Err(e) => Err(e.into()),
-        }
+    // Then, take the synchronous lock. This operation is guaranteed to success without waiting,
+    // unless the database is being closed.
+    let db = conn.conn.clone();
+    spawn_blocking(move || {
+      let mut db = db.try_lock().ok();
+      let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
+        return Err(type_error("Attempted to use a closed database"))
       };
-      (result, db)
+      let result = match db.transaction() {
+        Ok(tx) => f(tx),
+        Err(e) => Err(e.into()),
+      };
+      result
     })
     .await
-    .unwrap();
-
-    // Put the db back into the cell.
-    cell.set(Some(db));
-    result
+    .unwrap()
   }
 }
 
 pub struct DequeuedMessage {
-  conn: Weak<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+  conn: WeakProtectedConn,
   id: String,
   payload: Option<Vec<u8>>,
   waker_tx: mpsc::Sender<()>,
@@ -376,7 +414,7 @@ impl QueueMessageHandle for DequeuedMessage {
 type DequeueReceiver = mpsc::Receiver<(Vec<u8>, String)>;
 
 struct SqliteQueue {
-  conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+  conn: ProtectedConn,
   dequeue_rx: Rc<AsyncRefCell<DequeueReceiver>>,
   concurrency_limiter: Arc<Semaphore>,
   waker_tx: mpsc::Sender<()>,
@@ -384,7 +422,7 @@ struct SqliteQueue {
 }
 
 impl SqliteQueue {
-  fn new(conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>) -> Self {
+  fn new(conn: ProtectedConn) -> Self {
     let conn_clone = conn.clone();
     let (shutdown_tx, shutdown_rx) = watch::channel::<()>(());
     let (waker_tx, waker_rx) = mpsc::channel::<()>(1);
@@ -422,7 +460,7 @@ impl SqliteQueue {
     let permit = self.concurrency_limiter.clone().acquire_owned().await?;
 
     Ok(DequeuedMessage {
-      conn: Rc::downgrade(&self.conn),
+      conn: self.conn.downgrade(),
       id,
       payload: Some(payload),
       waker_tx: self.waker_tx.clone(),
@@ -440,7 +478,7 @@ impl SqliteQueue {
   }
 
   async fn dequeue_loop(
-    conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+    conn: ProtectedConn,
     dequeue_tx: mpsc::Sender<(Vec<u8>, String)>,
     mut shutdown_rx: watch::Receiver<()>,
     mut waker_rx: mpsc::Receiver<()>,
@@ -527,7 +565,7 @@ impl SqliteQueue {
   }
 
   async fn get_earliest_ready_ts(
-    conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+    conn: ProtectedConn,
   ) -> Result<Option<u64>, AnyError> {
     SqliteDb::run_tx(conn.clone(), move |tx| {
       let ts = tx
@@ -543,7 +581,7 @@ impl SqliteQueue {
   }
 
   async fn requeue_inflight_messages(
-    conn: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
+    conn: ProtectedConn,
   ) -> Result<(), AnyError> {
     loop {
       let done = SqliteDb::run_tx(conn.clone(), move |tx| {
@@ -639,9 +677,7 @@ impl SqliteQueue {
   }
 }
 
-async fn watch_expiration(
-  db: Rc<AsyncRefCell<Cell<Option<rusqlite::Connection>>>>,
-) {
+async fn watch_expiration(db: ProtectedConn) {
   loop {
     // Scan for expired keys
     let res = SqliteDb::run_tx(db.clone(), move |tx| {
