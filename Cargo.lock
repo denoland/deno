@@ -5378,6 +5378,8 @@ dependencies = [
  "os_pipe",
  "parking_lot 0.12.1",
  "pretty_assertions",
+ "prost",
+ "prost-build",
  "regex",
  "reqwest",
  "ring",
