@@ -1806,3 +1806,129 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "kv expiration",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      await db.set(["a"], 1, { expireIn: 1000 });
+      await db.set(["b"], 2, { expireIn: 1000 });
+      assertEquals((await db.get(["a"])).value, 1);
+      assertEquals((await db.get(["b"])).value, 2);
+
+      // Value overwrite should also reset expiration
+      await db.set(["b"], 2, { expireIn: 3600 * 1000 });
+
+      // Wait for expiration
+      await sleep(1000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,2]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "kv expiration with atomic",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      await db.atomic().set(["a"], 1, { expireIn: 1000 }).set(["b"], 2, {
+        expireIn: 1000,
+      }).commit();
+      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
+        1,
+        2,
+      ]);
+
+      // Wait for expiration
+      await sleep(1000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,null]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
