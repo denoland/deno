@@ -23,6 +23,8 @@ use hyper1::body::Frame;
 use hyper1::body::SizeHint;
 use pin_project::pin_project;
 
+use crate::slab::HttpRequestBodyAutocloser;
+
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
 enum ResponseStreamResult {
@@ -156,34 +158,40 @@ impl std::fmt::Debug for ResponseBytesInner {
 /// This represents the union of possible response types in Deno with the stream-style [`Body`] interface
 /// required by hyper. As the API requires information about request completion (including a success/fail
 /// flag), we include a very lightweight [`CompletionHandle`] for interested parties to listen on.
-#[derive(Debug, Default)]
-pub struct ResponseBytes(
-  ResponseBytesInner,
-  CompletionHandle,
-  Rc<RefCell<Option<HeaderMap>>>,
-);
+#[derive(Default)]
+pub struct ResponseBytes {
+  inner: ResponseBytesInner,
+  completion_handle: CompletionHandle,
+  headers: Rc<RefCell<Option<HeaderMap>>>,
+  res: Option<HttpRequestBodyAutocloser>,
+}
 
 impl ResponseBytes {
-  pub fn initialize(&mut self, inner: ResponseBytesInner) {
-    debug_assert!(matches!(self.0, ResponseBytesInner::Empty));
-    self.0 = inner;
+  pub fn initialize(
+    &mut self,
+    inner: ResponseBytesInner,
+    req_body_resource: Option<HttpRequestBodyAutocloser>,
+  ) {
+    debug_assert!(matches!(self.inner, ResponseBytesInner::Empty));
+    self.inner = inner;
+    self.res = req_body_resource;
   }
 
   pub fn completion_handle(&self) -> CompletionHandle {
-    self.1.clone()
+    self.completion_handle.clone()
   }
 
   pub fn trailers(&self) -> Rc<RefCell<Option<HeaderMap>>> {
-    self.2.clone()
+    self.headers.clone()
   }
 
   fn complete(&mut self, success: bool) -> ResponseBytesInner {
-    if matches!(self.0, ResponseBytesInner::Done) {
+    if matches!(self.inner, ResponseBytesInner::Done) {
       return ResponseBytesInner::Done;
     }
 
-    let current = std::mem::replace(&mut self.0, ResponseBytesInner::Done);
-    self.1.complete(success);
+    let current = std::mem::replace(&mut self.inner, ResponseBytesInner::Done);
+    self.completion_handle.complete(success);
     current
   }
 }
@@ -274,9 +282,9 @@ impl Body for ResponseBytes {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     let res = loop {
-      let res = match &mut self.0 {
+      let res = match &mut self.inner {
         ResponseBytesInner::Done | ResponseBytesInner::Empty => {
-          if let Some(trailers) = self.2.borrow_mut().take() {
+          if let Some(trailers) = self.headers.borrow_mut().take() {
             return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
           unreachable!()
@@ -303,7 +311,7 @@ impl Body for ResponseBytes {
     };
 
     if matches!(res, ResponseStreamResult::EndOfStream) {
-      if let Some(trailers) = self.2.borrow_mut().take() {
+      if let Some(trailers) = self.headers.borrow_mut().take() {
         return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
       }
       self.complete(true);
@@ -312,21 +320,23 @@ impl Body for ResponseBytes {
   }
 
   fn is_end_stream(&self) -> bool {
-    matches!(self.0, ResponseBytesInner::Done | ResponseBytesInner::Empty)
-      && self.2.borrow_mut().is_none()
+    matches!(
+      self.inner,
+      ResponseBytesInner::Done | ResponseBytesInner::Empty
+    ) && self.headers.borrow_mut().is_none()
   }
 
   fn size_hint(&self) -> SizeHint {
     // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
     // anyways just in case hyper needs it.
-    self.0.size_hint()
+    self.inner.size_hint()
   }
 }
 
 impl Drop for ResponseBytes {
   fn drop(&mut self) {
     // We won't actually poll_frame for Empty responses so this is where we return success
-    self.complete(matches!(self.0, ResponseBytesInner::Empty));
+    self.complete(matches!(self.inner, ResponseBytesInner::Empty));
   }
 }
 
