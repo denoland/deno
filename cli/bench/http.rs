@@ -38,7 +38,6 @@ pub fn benchmark(
     if path.ends_with(".lua") {
       continue;
     }
-    let name = entry.file_name().into_string().unwrap();
     let file_stem = pathbuf.file_stem().unwrap().to_str().unwrap();
 
     let lua_script = http_dir.join(format!("{file_stem}.lua"));
