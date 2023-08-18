@@ -1037,19 +1037,8 @@ class EventTarget {
 
     const { listeners } = self[eventTargetData];
     if (callback !== null && ReflectHas(listeners, type)) {
-      listeners[type].capture = ArrayPrototypeFilter(
-        listeners[type].capture,
-        (listener) =>
-          !(
-            ((typeof listener.options === "boolean" &&
-              listener.options === options.capture) ||
-              (typeof listener.options === "object" &&
-                listener.options.capture === options.capture)) &&
-            listener.callback === callback
-          )
-      );
-      listeners[type].bubble = ArrayPrototypeFilter(
-        listeners[type].bubble,
+      listeners[type] = ArrayPrototypeFilter(
+        listeners[type],
         (listener) =>
           !(
             ((typeof listener.options === "boolean" &&
