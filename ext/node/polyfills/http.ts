@@ -1610,19 +1610,25 @@ export class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    this.#server = serve(
-      {
-        handler: handler as Deno.ServeHandler,
-        ...this.#addr,
-        signal: ac.signal,
-        // @ts-ignore Might be any without `--unstable` flag
-        onListen: ({ port }) => {
-          this.#addr!.port = port;
-          this.emit("listening");
+    try {
+      this.#server = serve(
+        {
+          handler: handler as Deno.ServeHandler,
+          ...this.#addr,
+          signal: ac.signal,
+          // @ts-ignore Might be any without `--unstable` flag
+          onListen: ({ port }) => {
+            this.#addr!.port = port;
+            this.emit("listening");
+          },
+          ...this._additionalServeOptions?.(),
         },
-        ...this._additionalServeOptions?.(),
-      },
-    );
+      );
+    } catch (e) {
+      this.emit("error", e);
+      return;
+    }
+
     if (this.#unref) {
       this.#server.unref();
     }
