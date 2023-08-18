@@ -341,14 +341,21 @@ fn encode_mutation(key: Vec<u8>, mutation: MutationKind) -> pb::KvMutation {
   }
 }
 
+#[derive(Clone)]
+enum MetadataState {
+  Ready(Arc<DatabaseMetadata>),
+  Invalid(String),
+  Pending,
+}
+
 struct MetadataRefresher {
-  metadata_rx: watch::Receiver<Option<Arc<DatabaseMetadata>>>,
+  metadata_rx: watch::Receiver<MetadataState>,
   handle: JoinHandle<()>,
 }
 
 impl MetadataRefresher {
   pub fn new(url: String, access_token: String) -> Self {
-    let (tx, rx) = watch::channel(None);
+    let (tx, rx) = watch::channel(MetadataState::Pending);
     let handle =
       deno_core::task::spawn(metadata_refresh_task(url, access_token, tx));
     Self {
@@ -367,20 +374,25 @@ impl Drop for MetadataRefresher {
 async fn metadata_refresh_task(
   metadata_url: String,
   access_token: String,
-  tx: watch::Sender<Option<Arc<DatabaseMetadata>>>,
+  tx: watch::Sender<MetadataState>,
 ) {
   let client = reqwest::Client::new();
   loop {
     let mut attempt = 0u64;
     let metadata = loop {
       match fetch_metadata(&client, &metadata_url, &access_token).await {
-        Ok(x) => break x,
+        Ok(Ok(x)) => break x,
+        Ok(Err(e)) => {
+          if tx.send(MetadataState::Invalid(e)).is_err() {
+            return;
+          }
+        }
         Err(e) => {
           log::error!("Failed to fetch database metadata: {}", e);
-          randomized_exponential_backoff(Duration::from_secs(5), attempt).await;
-          attempt += 1;
         }
       }
+      randomized_exponential_backoff(Duration::from_secs(5), attempt).await;
+      attempt += 1;
     };
 
     let ms_until_expire = u64::try_from(
@@ -397,7 +409,7 @@ async fn metadata_refresh_task(
       .saturating_sub(Duration::from_secs(600))
       .max(Duration::from_secs(60));
 
-    if tx.send(Some(Arc::new(metadata))).is_err() {
+    if tx.send(MetadataState::Ready(Arc::new(metadata))).is_err() {
       return;
     }
 
@@ -409,7 +421,7 @@ async fn fetch_metadata(
   client: &reqwest::Client,
   metadata_url: &str,
   access_token: &str,
-) -> anyhow::Result<DatabaseMetadata> {
+) -> anyhow::Result<Result<DatabaseMetadata, String>> {
   let res = client
     .post(metadata_url)
     .header("authorization", format!("Bearer {}", access_token))
@@ -417,16 +429,37 @@ async fn fetch_metadata(
     .await?;
 
   if !res.status().is_success() {
-    anyhow::bail!("remote returned error: {}", res.text().await?);
+    if res.status().is_client_error() {
+      return Ok(Err(format!(
+        "Client error while fetching metadata: {:?} {}",
+        res.status(),
+        res.text().await?
+      )));
+    } else {
+      anyhow::bail!(
+        "remote returned error: {:?} {}",
+        res.status(),
+        res.text().await?
+      );
+    }
   }
 
   let res = res.bytes().await?;
-  let version_info: VersionInfo = serde_json::from_slice(&res)?;
+  let version_info: VersionInfo = match serde_json::from_slice(&res) {
+    Ok(x) => x,
+    Err(e) => return Ok(Err(format!("Failed to decode version info: {}", e))),
+  };
   if version_info.version > 1 {
-    anyhow::bail!("Unsupported metadata version: {}", version_info.version);
+    return Ok(Err(format!(
+      "Unsupported metadata version: {}",
+      version_info.version
+    )));
   }
 
-  Ok(serde_json::from_slice(&res)?)
+  Ok(
+    serde_json::from_slice(&res)
+      .map_err(|e| format!("Failed to decode metadata: {}", e)),
+  )
 }
 
 async fn randomized_exponential_backoff(base: Duration, attempt: u64) {
@@ -451,8 +484,12 @@ async fn call_remote<
   let res = loop {
     let mut metadata_rx = refresher.metadata_rx.clone();
     let metadata = loop {
-      if let Some(x) = &*metadata_rx.borrow() {
-        break x.clone();
+      match &*metadata_rx.borrow() {
+        MetadataState::Pending => {}
+        MetadataState::Ready(x) => break x.clone(),
+        MetadataState::Invalid(e) => {
+          return Err(type_error(format!("Metadata error: {}", e)))
+        }
       }
       // `unwrap()` never fails because `tx` is owned by the task held by `refresher`.
       metadata_rx.changed().await.unwrap();
