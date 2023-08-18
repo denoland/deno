@@ -2,6 +2,7 @@
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
+use async_compression::Level;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -20,6 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
+use deno_core::task::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -27,13 +29,13 @@ use deno_core::ByteString;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
-use deno_core::WriteOutcome;
-use deno_core::ZeroCopyBuf;
+use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -49,6 +51,7 @@ use hyper::Body;
 use hyper::HeaderMap;
 use hyper::Request;
 use hyper::Response;
+use hyper_util_tokioio::TokioIo;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -66,34 +69,65 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
-use tokio::task::spawn_local;
-use websocket_upgrade::WebSocketUpgrade;
 
+use crate::network_buffered_stream::NetworkBufferedStream;
 use crate::reader_stream::ExternallyAbortableReaderStream;
 use crate::reader_stream::ShutdownHandle;
 
 pub mod compressible;
+mod http_next;
+mod hyper_util_tokioio;
+mod network_buffered_stream;
 mod reader_stream;
+mod request_body;
+mod request_properties;
+mod response_body;
+mod slab;
 mod websocket_upgrade;
+
+pub use request_properties::DefaultHttpPropertyExtractor;
+pub use request_properties::HttpConnectionProperties;
+pub use request_properties::HttpListenProperties;
+pub use request_properties::HttpPropertyExtractor;
+pub use request_properties::HttpRequestProperties;
 
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  parameters = [ HTTP: HttpPropertyExtractor ],
   ops = [
     op_http_accept,
-    op_http_write_headers,
     op_http_headers,
-    op_http_write,
-    op_http_write_resource,
     op_http_shutdown,
-    op_http_websocket_accept_header,
-    op_http_upgrade_early,
     op_http_upgrade_websocket,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_get_request_method_and_url<HTTP>,
+    http_next::op_http_read_request_body,
+    http_next::op_http_serve_on<HTTP>,
+    http_next::op_http_serve<HTTP>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
+    http_next::op_http_track,
+    http_next::op_http_upgrade_websocket_next,
+    http_next::op_http_upgrade_raw,
+    http_next::op_raw_write_vectored,
+    http_next::op_can_write_vectored,
+    http_next::op_http_try_wait,
+    http_next::op_http_wait,
   ],
-  esm = ["01_http.js"],
+  esm = ["00_serve.js", "01_http.js"],
 );
 
 pub enum HttpSocketAddr {
@@ -157,7 +191,7 @@ impl HttpConnResource {
     };
     let (task_fut, closed_fut) = task_fut.remote_handle();
     let closed_fut = closed_fut.shared();
-    spawn_local(task_fut);
+    spawn(task_fut);
 
     Self {
       addr,
@@ -668,6 +702,11 @@ fn http_response(
   compressing: bool,
   encoding: Encoding,
 ) -> Result<(HttpResponseWriter, hyper::Body), AnyError> {
+  // Gzip, after level 1, doesn't produce significant size difference.
+  // This default matches nginx default gzip compression level (1):
+  // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+  const GZIP_DEFAULT_COMPRESSION_LEVEL: u8 = 1;
+
   match data {
     Some(data) if compressing => match encoding {
       Encoding::Brotli => {
@@ -681,11 +720,10 @@ fn http_response(
         Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
       }
       Encoding::Gzip => {
-        // Gzip, after level 1, doesn't produce significant size difference.
-        // Probably the reason why nginx's default gzip compression level is
-        // 1.
-        // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
-        let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
+        let mut writer = GzEncoder::new(
+          Vec::new(),
+          Compression::new(GZIP_DEFAULT_COMPRESSION_LEVEL.into()),
+        );
         writer.write_all(&data)?;
         Ok((HttpResponseWriter::Closed, writer.finish()?.into()))
       }
@@ -704,8 +742,13 @@ fn http_response(
       let (reader, _) = tokio::io::split(a);
       let (_, writer) = tokio::io::split(b);
       let writer: Pin<Box<dyn tokio::io::AsyncWrite>> = match encoding {
-        Encoding::Brotli => Box::pin(BrotliEncoder::new(writer)),
-        Encoding::Gzip => Box::pin(GzipEncoder::new(writer)),
+        Encoding::Brotli => {
+          Box::pin(BrotliEncoder::with_quality(writer, Level::Fastest))
+        }
+        Encoding::Gzip => Box::pin(GzipEncoder::with_quality(
+          writer,
+          Level::Precise(GZIP_DEFAULT_COMPRESSION_LEVEL.into()),
+        )),
         _ => unreachable!(), // forbidden by accepts_compression
       };
       let (stream, shutdown_handle) =
@@ -850,7 +893,7 @@ async fn op_http_write_resource(
 async fn op_http_write(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
-  buf: ZeroCopyBuf,
+  buf: JsBuffer,
 ) -> Result<(), AnyError> {
   let stream = state
     .borrow()
@@ -943,227 +986,6 @@ fn op_http_websocket_accept_header(key: String) -> Result<String, AnyError> {
   Ok(base64::encode(digest))
 }
 
-struct EarlyUpgradeSocket(AsyncRefCell<EarlyUpgradeSocketInner>, CancelHandle);
-
-enum EarlyUpgradeSocketInner {
-  PreResponse(
-    Rc<HttpStreamResource>,
-    WebSocketUpgrade,
-    // Readers need to block in this state, so they can wait here for the broadcast.
-    tokio::sync::broadcast::Sender<
-      Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
-    >,
-  ),
-  PostResponse(
-    Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
-    Rc<AsyncRefCell<tokio::io::WriteHalf<hyper::upgrade::Upgraded>>>,
-  ),
-}
-
-impl EarlyUpgradeSocket {
-  /// Gets a reader without holding the lock.
-  async fn get_reader(
-    self: Rc<Self>,
-  ) -> Result<
-    Rc<AsyncRefCell<tokio::io::ReadHalf<hyper::upgrade::Upgraded>>>,
-    AnyError,
-  > {
-    let mut borrow = RcRef::map(self.clone(), |x| &x.0).borrow_mut().await;
-    let cancel = RcRef::map(self, |x| &x.1);
-    let inner = &mut *borrow;
-    match inner {
-      EarlyUpgradeSocketInner::PreResponse(_, _, tx) => {
-        let mut rx = tx.subscribe();
-        // Ensure we're not borrowing self here
-        drop(borrow);
-        Ok(
-          rx.recv()
-            .map_err(AnyError::from)
-            .try_or_cancel(&cancel)
-            .await?,
-        )
-      }
-      EarlyUpgradeSocketInner::PostResponse(rx, _) => Ok(rx.clone()),
-    }
-  }
-
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
-    let reader = self.clone().get_reader().await?;
-    let cancel = RcRef::map(self, |x| &x.1);
-    Ok(
-      reader
-        .borrow_mut()
-        .await
-        .read(data)
-        .try_or_cancel(&cancel)
-        .await?,
-    )
-  }
-
-  /// Write all the data provided, only holding the lock while we see if the connection needs to be
-  /// upgraded.
-  async fn write_all(self: Rc<Self>, buf: &[u8]) -> Result<(), AnyError> {
-    let mut borrow = RcRef::map(self.clone(), |x| &x.0).borrow_mut().await;
-    let cancel = RcRef::map(self, |x| &x.1);
-    let inner = &mut *borrow;
-    match inner {
-      EarlyUpgradeSocketInner::PreResponse(stream, upgrade, rx_tx) => {
-        if let Some((resp, extra)) = upgrade.write(buf)? {
-          let new_wr = HttpResponseWriter::Closed;
-          let mut old_wr =
-            RcRef::map(stream.clone(), |r| &r.wr).borrow_mut().await;
-          let response_tx = match replace(&mut *old_wr, new_wr) {
-            HttpResponseWriter::Headers(response_tx) => response_tx,
-            _ => return Err(http_error("response headers already sent")),
-          };
-
-          if response_tx.send(resp).is_err() {
-            stream.conn.closed().await?;
-            return Err(http_error("connection closed while sending response"));
-          };
-
-          let mut old_rd =
-            RcRef::map(stream.clone(), |r| &r.rd).borrow_mut().await;
-          let new_rd = HttpRequestReader::Closed;
-          let upgraded = match replace(&mut *old_rd, new_rd) {
-            HttpRequestReader::Headers(request) => {
-              hyper::upgrade::on(request)
-                .map_err(AnyError::from)
-                .try_or_cancel(&cancel)
-                .await?
-            }
-            _ => {
-              return Err(http_error("response already started"));
-            }
-          };
-
-          let (rx, tx) = tokio::io::split(upgraded);
-          let rx = Rc::new(AsyncRefCell::new(rx));
-          let tx = Rc::new(AsyncRefCell::new(tx));
-
-          // Take the tx and rx lock before we allow anything else to happen because we want to control
-          // the order of reads and writes.
-          let mut tx_lock = tx.clone().borrow_mut().await;
-          let rx_lock = rx.clone().borrow_mut().await;
-
-          // Allow all the pending readers to go now. We still have the lock on inner, so no more
-          // pending readers can show up. We intentionally ignore errors here, as there may be
-          // nobody waiting on a read.
-          _ = rx_tx.send(rx.clone());
-
-          // We swap out inner here, so once the lock is gone, readers will acquire rx directly.
-          // We also fully release our lock.
-          *inner = EarlyUpgradeSocketInner::PostResponse(rx, tx);
-          drop(borrow);
-
-          // We've updated inner and unlocked it, reads are free to go in-order.
-          drop(rx_lock);
-
-          // If we had extra data after the response, write that to the upgraded connection
-          if !extra.is_empty() {
-            tx_lock.write_all(&extra).try_or_cancel(&cancel).await?;
-          }
-        }
-      }
-      EarlyUpgradeSocketInner::PostResponse(_, tx) => {
-        let tx = tx.clone();
-        drop(borrow);
-        tx.borrow_mut()
-          .await
-          .write_all(buf)
-          .try_or_cancel(&cancel)
-          .await?;
-      }
-    };
-    Ok(())
-  }
-}
-
-impl Resource for EarlyUpgradeSocket {
-  fn name(&self) -> Cow<str> {
-    "upgradedHttpConnection".into()
-  }
-
-  deno_core::impl_readable_byob!();
-
-  fn write(
-    self: Rc<Self>,
-    buf: BufView,
-  ) -> AsyncResult<deno_core::WriteOutcome> {
-    Box::pin(async move {
-      let nwritten = buf.len();
-      Self::write_all(self, &buf).await?;
-      Ok(WriteOutcome::Full { nwritten })
-    })
-  }
-
-  fn write_all(self: Rc<Self>, buf: BufView) -> AsyncResult<()> {
-    Box::pin(async move { Self::write_all(self, &buf).await })
-  }
-
-  fn close(self: Rc<Self>) {
-    self.1.cancel()
-  }
-}
-
-#[op]
-async fn op_http_upgrade_early(
-  state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-) -> Result<ResourceId, AnyError> {
-  let stream = state
-    .borrow_mut()
-    .resource_table
-    .get::<HttpStreamResource>(rid)?;
-  let resources = &mut state.borrow_mut().resource_table;
-  let (tx, _rx) = tokio::sync::broadcast::channel(1);
-  let socket = EarlyUpgradeSocketInner::PreResponse(
-    stream,
-    WebSocketUpgrade::default(),
-    tx,
-  );
-  let rid = resources.add(EarlyUpgradeSocket(
-    AsyncRefCell::new(socket),
-    CancelHandle::new(),
-  ));
-  Ok(rid)
-}
-
-struct UpgradedStream(hyper::upgrade::Upgraded);
-impl tokio::io::AsyncRead for UpgradedStream {
-  fn poll_read(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &mut tokio::io::ReadBuf,
-  ) -> std::task::Poll<std::result::Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
-  }
-}
-
-impl tokio::io::AsyncWrite for UpgradedStream {
-  fn poll_write(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-    buf: &[u8],
-  ) -> std::task::Poll<Result<usize, std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_write(cx, buf)
-  }
-  fn poll_flush(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_flush(cx)
-  }
-  fn poll_shutdown(
-    self: Pin<&mut Self>,
-    cx: &mut Context,
-  ) -> std::task::Poll<Result<(), std::io::Error>> {
-    Pin::new(&mut self.get_mut().0).poll_shutdown(cx)
-  }
-}
-
-impl deno_websocket::Upgraded for UpgradedStream {}
-
 #[op]
 async fn op_http_upgrade_websocket(
   state: Rc<RefCell<OpState>>,
@@ -1182,10 +1004,10 @@ async fn op_http_upgrade_websocket(
     }
   };
 
-  let transport = hyper::upgrade::on(request).await?;
+  let (transport, bytes) =
+    extract_network_stream(hyper::upgrade::on(request).await?);
   let ws_rid =
-    ws_create_server_stream(&state, Box::pin(UpgradedStream(transport)))
-      .await?;
+    ws_create_server_stream(&mut state.borrow_mut(), transport, bytes)?;
   Ok(ws_rid)
 }
 
@@ -1199,7 +1021,17 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    spawn_local(fut);
+    deno_core::task::spawn(fut);
+  }
+}
+
+impl<Fut> hyper1::rt::Executor<Fut> for LocalExecutor
+where
+  Fut: Future + 'static,
+  Fut::Output: 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::task::spawn(fut);
   }
 }
 
@@ -1228,4 +1060,93 @@ fn filter_enotconn(
 /// Create a future that is forever pending.
 fn never() -> Pending<Never> {
   pending()
+}
+
+trait CanDowncastUpgrade: Sized {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self>;
+}
+
+impl CanDowncastUpgrade for hyper1::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper1::upgrade::Parts { io, read_buf, .. } =
+      self.downcast::<TokioIo<T>>()?;
+    Ok((io.into_inner(), read_buf))
+  }
+}
+
+impl CanDowncastUpgrade for hyper::upgrade::Upgraded {
+  fn downcast<T: AsyncRead + AsyncWrite + Unpin + 'static>(
+    self,
+  ) -> Result<(T, Bytes), Self> {
+    let hyper::upgrade::Parts { io, read_buf, .. } = self.downcast()?;
+    Ok((io, read_buf))
+  }
+}
+
+fn maybe_extract_network_stream<
+  T: Into<NetworkStream> + AsyncRead + AsyncWrite + Unpin + 'static,
+  U: CanDowncastUpgrade,
+>(
+  upgraded: U,
+) -> Result<(NetworkStream, Bytes), U> {
+  let upgraded = match upgraded.downcast::<T>() {
+    Ok((stream, bytes)) => return Ok((stream.into(), bytes)),
+    Err(x) => x,
+  };
+
+  match upgraded.downcast::<NetworkBufferedStream<T>>() {
+    Ok((stream, upgraded_bytes)) => {
+      // Both the upgrade and the stream might have unread bytes
+      let (io, stream_bytes) = stream.into_inner();
+      let bytes = match (stream_bytes.is_empty(), upgraded_bytes.is_empty()) {
+        (false, false) => Bytes::default(),
+        (true, false) => upgraded_bytes,
+        (false, true) => stream_bytes,
+        (true, true) => {
+          // The upgraded bytes come first as they have already been read
+          let mut v = upgraded_bytes.to_vec();
+          v.append(&mut stream_bytes.to_vec());
+          Bytes::from(v)
+        }
+      };
+      Ok((io.into(), bytes))
+    }
+    Err(x) => Err(x),
+  }
+}
+
+fn extract_network_stream<U: CanDowncastUpgrade>(
+  upgraded: U,
+) -> (NetworkStream, Bytes) {
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::TcpStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<deno_net::ops_tls::TlsStream, _>(
+      upgraded,
+    ) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  #[cfg(unix)]
+  let upgraded =
+    match maybe_extract_network_stream::<tokio::net::UnixStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+  let upgraded =
+    match maybe_extract_network_stream::<NetworkStream, _>(upgraded) {
+      Ok(res) => return res,
+      Err(x) => x,
+    };
+
+  // TODO(mmastrac): HTTP/2 websockets may yield an un-downgradable type
+  drop(upgraded);
+  unreachable!("unexpected stream type");
 }

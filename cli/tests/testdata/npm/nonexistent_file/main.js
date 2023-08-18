@@ -1,1 +1,2 @@
-import hmacSHA512 from "npm:crypto-js/hmac-sha512";
+import hmacSHA512 from "npm:crypto-js/non-existent";
+console.log(hmacSHA512);

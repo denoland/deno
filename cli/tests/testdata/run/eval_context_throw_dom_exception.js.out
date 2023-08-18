@@ -1,1 +1,5 @@
-{ thrown: DOMException: foo, isNativeError: true, isCompileError: false }
+[Object: null prototype] {
+  thrown: DOMException: foo,
+  isNativeError: true,
+  isCompileError: false
+}

@@ -2,35 +2,40 @@
 
 use crate::args::CliOptions;
 use crate::args::Lockfile;
-use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
-use crate::args::TypeCheckMode;
 use crate::cache;
-use crate::cache::TypeCheckCache;
+use crate::cache::GlobalHttpCache;
+use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
-use crate::npm::NpmPackageResolver;
-use crate::proc_state::ProcState;
+use crate::file_fetcher::FileFetcher;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
+use crate::tools::check::TypeChecker;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
 use deno_core::TaskQueuePermit;
+use deno_graph::source::Loader;
+use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -53,7 +58,7 @@ pub fn graph_valid_with_cli_options(
     roots,
     GraphValidOptions {
       is_vendoring: false,
-      follow_type_only: options.type_check_mode() != TypeCheckMode::None,
+      follow_type_only: options.type_check_mode().is_true(),
       check_js: options.check_js(),
     },
   )
@@ -140,6 +145,7 @@ pub fn graph_valid(
 pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   for module in graph.modules() {
     let source = match module {
+      Module::Esm(module) if module.media_type.is_declaration() => continue, // skip declaration files
       Module::Esm(module) => &module.source,
       Module::Json(module) => &module.source,
       Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
@@ -160,107 +166,205 @@ pub fn graph_lock_or_exit(graph: &ModuleGraph, lockfile: &mut Lockfile) {
   }
 }
 
-pub async fn create_graph_and_maybe_check(
-  roots: Vec<ModuleSpecifier>,
-  ps: &ProcState,
-) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
-  let mut cache = cache::FetchCacher::new(
-    ps.emit_cache.clone(),
-    ps.file_fetcher.clone(),
-    ps.options.resolve_file_header_overrides(),
-    PermissionsContainer::allow_all(),
-    PermissionsContainer::allow_all(),
-    ps.options.node_modules_dir_specifier(),
-  );
-  let maybe_imports = ps.options.to_maybe_imports()?;
-  let cli_resolver = CliGraphResolver::new(
-    ps.options.to_maybe_jsx_import_source_config(),
-    ps.maybe_import_map.clone(),
-    ps.options.no_npm(),
-    ps.npm_api.clone(),
-    ps.npm_resolution.clone(),
-    ps.package_json_deps_installer.clone(),
-  );
-  let graph_resolver = cli_resolver.as_graph_resolver();
-  let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
-  let analyzer = ps.parsed_source_cache.as_analyzer();
-  let mut graph = ModuleGraph::default();
-  build_graph_with_npm_resolution(
-    &mut graph,
-    &ps.npm_resolver,
-    roots,
-    &mut cache,
-    deno_graph::BuildOptions {
-      is_dynamic: false,
-      imports: maybe_imports,
-      resolver: Some(graph_resolver),
-      npm_resolver: Some(graph_npm_resolver),
-      module_analyzer: Some(&*analyzer),
-      reporter: None,
-    },
-  )
-  .await?;
+pub struct ModuleGraphBuilder {
+  options: Arc<CliOptions>,
+  resolver: Arc<CliGraphResolver>,
+  npm_resolver: Arc<CliNpmResolver>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
+  lockfile: Option<Arc<Mutex<Lockfile>>>,
+  maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+  emit_cache: cache::EmitCache,
+  file_fetcher: Arc<FileFetcher>,
+  global_http_cache: Arc<GlobalHttpCache>,
+  type_checker: Arc<TypeChecker>,
+}
 
-  graph_valid_with_cli_options(&graph, &graph.roots, &ps.options)?;
-  let graph = Arc::new(graph);
-  if let Some(lockfile) = &ps.lockfile {
-    graph_lock_or_exit(&graph, &mut lockfile.lock());
+impl ModuleGraphBuilder {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    options: Arc<CliOptions>,
+    resolver: Arc<CliGraphResolver>,
+    npm_resolver: Arc<CliNpmResolver>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
+    lockfile: Option<Arc<Mutex<Lockfile>>>,
+    maybe_file_watcher_reporter: Option<FileWatcherReporter>,
+    emit_cache: cache::EmitCache,
+    file_fetcher: Arc<FileFetcher>,
+    global_http_cache: Arc<GlobalHttpCache>,
+    type_checker: Arc<TypeChecker>,
+  ) -> Self {
+    Self {
+      options,
+      resolver,
+      npm_resolver,
+      parsed_source_cache,
+      lockfile,
+      maybe_file_watcher_reporter,
+      emit_cache,
+      file_fetcher,
+      global_http_cache,
+      type_checker,
+    }
   }
 
-  if ps.options.type_check_mode() != TypeCheckMode::None {
-    // node built-in specifiers use the @types/node package to determine
-    // types, so inject that now after the lockfile has been written
-    if graph.has_node_specifier {
-      ps.npm_resolver
+  pub async fn create_graph_with_loader(
+    &self,
+    graph_kind: GraphKind,
+    roots: Vec<ModuleSpecifier>,
+    loader: &mut dyn Loader,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let maybe_imports = self.options.to_maybe_imports()?;
+
+    let cli_resolver = self.resolver.clone();
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let analyzer = self.parsed_source_cache.as_analyzer();
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
+
+    let mut graph = ModuleGraph::new(graph_kind);
+    self
+      .build_graph_with_npm_resolution(
+        &mut graph,
+        roots,
+        loader,
+        deno_graph::BuildOptions {
+          is_dynamic: false,
+          imports: maybe_imports,
+          resolver: Some(graph_resolver),
+          npm_resolver: Some(graph_npm_resolver),
+          module_analyzer: Some(&*analyzer),
+          reporter: maybe_file_watcher_reporter,
+        },
+      )
+      .await?;
+
+    if graph.has_node_specifier && self.options.type_check_mode().is_true() {
+      self
+        .npm_resolver
         .inject_synthetic_types_node_package()
         .await?;
     }
 
-    let ts_config_result =
-      ps.options.resolve_ts_config_for_emit(TsConfigType::Check {
-        lib: ps.options.ts_type_lib_window(),
-      })?;
-    if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
-      log::warn!("{}", ignored_options);
-    }
-    let maybe_config_specifier = ps.options.maybe_config_file_specifier();
-    let cache = TypeCheckCache::new(ps.caches.type_checking_cache_db(&ps.dir));
-    let check_result = check::check(
-      graph.clone(),
-      &cache,
-      &ps.npm_resolver,
-      check::CheckOptions {
-        type_check_mode: ps.options.type_check_mode(),
-        debug: ps.options.log_level() == Some(log::Level::Debug),
-        maybe_config_specifier,
-        ts_config: ts_config_result.ts_config,
-        log_checks: true,
-        reload: ps.options.reload_flag(),
-      },
-    )?;
-    log::debug!("{}", check_result.stats);
-    if !check_result.diagnostics.is_empty() {
-      return Err(check_result.diagnostics.into());
-    }
+    Ok(graph)
   }
 
-  Ok(graph)
-}
+  pub async fn create_graph_and_maybe_check(
+    &self,
+    roots: Vec<ModuleSpecifier>,
+  ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
+    let mut cache = self.create_graph_loader();
+    let maybe_imports = self.options.to_maybe_imports()?;
+    let cli_resolver = self.resolver.clone();
+    let graph_resolver = cli_resolver.as_graph_resolver();
+    let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
+    let analyzer = self.parsed_source_cache.as_analyzer();
+    let graph_kind = self.options.type_check_mode().as_graph_kind();
+    let mut graph = ModuleGraph::new(graph_kind);
+    let maybe_file_watcher_reporter = self
+      .maybe_file_watcher_reporter
+      .as_ref()
+      .map(|r| r.as_reporter());
 
-pub async fn build_graph_with_npm_resolution<'a>(
-  graph: &mut ModuleGraph,
-  npm_resolver: &NpmPackageResolver,
-  roots: Vec<ModuleSpecifier>,
-  loader: &mut dyn deno_graph::source::Loader,
-  options: deno_graph::BuildOptions<'a>,
-) -> Result<(), AnyError> {
-  graph.build(roots, loader, options).await;
+    self
+      .build_graph_with_npm_resolution(
+        &mut graph,
+        roots,
+        &mut cache,
+        deno_graph::BuildOptions {
+          is_dynamic: false,
+          imports: maybe_imports,
+          resolver: Some(graph_resolver),
+          npm_resolver: Some(graph_npm_resolver),
+          module_analyzer: Some(&*analyzer),
+          reporter: maybe_file_watcher_reporter,
+        },
+      )
+      .await?;
 
-  // resolve the dependencies of any pending dependencies
-  // that were inserted by building the graph
-  npm_resolver.resolve_pending().await?;
+    let graph = Arc::new(graph);
+    graph_valid_with_cli_options(&graph, &graph.roots, &self.options)?;
+    if let Some(lockfile) = &self.lockfile {
+      graph_lock_or_exit(&graph, &mut lockfile.lock());
+    }
 
-  Ok(())
+    if self.options.type_check_mode().is_true() {
+      self
+        .type_checker
+        .check(
+          graph.clone(),
+          check::CheckOptions {
+            lib: self.options.ts_type_lib_window(),
+            log_ignored_options: true,
+            reload: self.options.reload_flag(),
+          },
+        )
+        .await?;
+    }
+
+    Ok(graph)
+  }
+
+  pub async fn build_graph_with_npm_resolution<'a>(
+    &self,
+    graph: &mut ModuleGraph,
+    roots: Vec<ModuleSpecifier>,
+    loader: &mut dyn deno_graph::source::Loader,
+    options: deno_graph::BuildOptions<'a>,
+  ) -> Result<(), AnyError> {
+    // ensure an "npm install" is done if the user has explicitly
+    // opted into using a node_modules directory
+    if self.options.node_modules_dir_enablement() == Some(true) {
+      self.resolver.force_top_level_package_json_install().await?;
+    }
+
+    graph.build(roots, loader, options).await;
+
+    // ensure that the top level package.json is installed if a
+    // specifier was matched in the package.json
+    self
+      .resolver
+      .top_level_package_json_install_if_necessary()
+      .await?;
+
+    // resolve the dependencies of any pending dependencies
+    // that were inserted by building the graph
+    self.npm_resolver.resolve_pending().await?;
+
+    Ok(())
+  }
+
+  /// Creates the default loader used for creating a graph.
+  pub fn create_graph_loader(&self) -> cache::FetchCacher {
+    self.create_fetch_cacher(PermissionsContainer::allow_all())
+  }
+
+  pub fn create_fetch_cacher(
+    &self,
+    permissions: PermissionsContainer,
+  ) -> cache::FetchCacher {
+    cache::FetchCacher::new(
+      self.emit_cache.clone(),
+      self.file_fetcher.clone(),
+      self.options.resolve_file_header_overrides(),
+      self.global_http_cache.clone(),
+      permissions,
+      self.options.node_modules_dir_specifier(),
+    )
+  }
+
+  pub async fn create_graph(
+    &self,
+    graph_kind: GraphKind,
+    roots: Vec<ModuleSpecifier>,
+  ) -> Result<deno_graph::ModuleGraph, AnyError> {
+    let mut cache = self.create_graph_loader();
+    self
+      .create_graph_with_loader(graph_kind, roots, &mut cache)
+      .await
+  }
 }
 
 pub fn error_for_any_npm_specifier(
@@ -269,10 +373,10 @@ pub fn error_for_any_npm_specifier(
   for module in graph.modules() {
     match module {
       Module::Npm(module) => {
-        bail!("npm specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
+        bail!("npm specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: {}", module.specifier)
       }
       Module::Node(module) => {
-        bail!("Node specifiers have not yet been implemented for this sub command (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
+        bail!("Node specifiers have not yet been implemented for this subcommand (https://github.com/denoland/deno/issues/15960). Found: node:{}", module.module_name)
       }
       Module::Esm(_) | Module::Json(_) | Module::External(_) => {}
     }
@@ -296,9 +400,8 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
 pub fn get_resolution_error_bare_node_specifier(
   error: &ResolutionError,
 ) -> Option<&str> {
-  get_resolution_error_bare_specifier(error).filter(|specifier| {
-    crate::node::resolve_builtin_node_module(specifier).is_ok()
-  })
+  get_resolution_error_bare_specifier(error)
+    .filter(|specifier| deno_node::is_builtin_node_module(specifier))
 }
 
 fn get_resolution_error_bare_specifier(
@@ -323,14 +426,13 @@ fn get_resolution_error_bare_specifier(
   }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct GraphData {
   graph: Arc<ModuleGraph>,
   checked_libs: HashMap<TsTypeLib, HashSet<ModuleSpecifier>>,
 }
 
 /// Holds the `ModuleGraph` and what parts of it are type checked.
-#[derive(Clone, Default)]
 pub struct ModuleGraphContainer {
   // Allow only one request to update the graph data at a time,
   // but allow other requests to read from it at any time even
@@ -340,6 +442,16 @@ pub struct ModuleGraphContainer {
 }
 
 impl ModuleGraphContainer {
+  pub fn new(graph_kind: GraphKind) -> Self {
+    Self {
+      update_queue: Default::default(),
+      graph_data: Arc::new(RwLock::new(GraphData {
+        graph: Arc::new(ModuleGraph::new(graph_kind)),
+        checked_libs: Default::default(),
+      })),
+    }
+  }
+
   /// Acquires a permit to modify the module graph without other code
   /// having the chance to modify it. In the meantime, other code may
   /// still read from the existing module graph.
@@ -397,6 +509,33 @@ impl ModuleGraphContainer {
   }
 }
 
+/// Gets if any of the specified root's "file:" dependents are in the
+/// provided changed set.
+pub fn has_graph_root_local_dependent_changed(
+  graph: &ModuleGraph,
+  root: &ModuleSpecifier,
+  changed_specifiers: &HashSet<ModuleSpecifier>,
+) -> bool {
+  let roots = vec![root.clone()];
+  let mut dependent_specifiers = graph.walk(
+    &roots,
+    deno_graph::WalkOptions {
+      follow_dynamic: true,
+      follow_type_only: true,
+      check_js: true,
+    },
+  );
+  while let Some((s, _)) = dependent_specifiers.next() {
+    if s.scheme() != "file" {
+      // skip walking this remote module's dependencies
+      dependent_specifiers.skip_previous_dependencies();
+    } else if changed_specifiers.contains(s) {
+      return true;
+    }
+  }
+  false
+}
+
 /// A permit for updating the module graph. When complete and
 /// everything looks fine, calling `.commit()` will store the
 /// new graph in the ModuleGraphContainer.
@@ -419,6 +558,43 @@ impl<'a> ModuleGraphUpdatePermit<'a> {
     self.graph_data.write().graph = graph.clone();
     drop(self.permit); // explicit drop for clarity
     graph
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileWatcherReporter {
+  sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl FileWatcherReporter {
+  pub fn new(sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>) -> Self {
+    Self {
+      sender,
+      file_paths: Default::default(),
+    }
+  }
+
+  pub fn as_reporter(&self) -> &dyn deno_graph::source::Reporter {
+    self
+  }
+}
+
+impl deno_graph::source::Reporter for FileWatcherReporter {
+  fn on_load(
+    &self,
+    specifier: &ModuleSpecifier,
+    modules_done: usize,
+    modules_total: usize,
+  ) {
+    let mut file_paths = self.file_paths.lock();
+    if specifier.scheme() == "file" {
+      file_paths.push(specifier.to_file_path().unwrap());
+    }
+
+    if modules_done == modules_total {
+      self.sender.send(file_paths.drain(..).collect()).unwrap();
+    }
   }
 }
 

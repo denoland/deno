@@ -1,5 +1,5 @@
 [WILDCARD]
-error: TS2339 [ERROR]: Property 'umask' does not exist on type 'typeof Deno'. 'Deno.umask' is an unstable API. Did you forget to run with the '--unstable' flag?
+error: TS2339 [ERROR]: Property 'umask' does not exist on type 'typeof Deno'. 'Deno.umask' is an unstable API. Did you forget to run with the '--unstable' flag? If not, try changing the 'lib' compiler option to include 'deno.unstable' or add a triple-slash directive to the top of your entrypoint (main file): /// <reference lib="deno.unstable" />
 console.log(Deno.umask);
                  ~~~~~
     at [WILDCARD]/unstable.ts:1:18

@@ -3,7 +3,7 @@
 
 // Forked from https://github.com/DefinitelyTyped/DefinitelyTyped/blob/4f538975138678878fed5b2555c0672aa578ab7d/types/node/stream.d.ts
 
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { Abortable, EventEmitter } from "ext:deno_node/_events.d.ts";
 import {
   Buffered,
@@ -1190,7 +1190,7 @@ type PipelineDestinationPromiseFunction<T, P> = (
   source: AsyncIterable<T>,
 ) => Promise<P>;
 type PipelineDestination<S extends PipelineTransformSource<any>, P> = S extends
-  PipelineTransformSource<infer ST> ? 
+  PipelineTransformSource<infer ST> ?
     | WritableStream
     | PipelineDestinationIterableFunction<ST>
     | PipelineDestinationPromiseFunction<ST, P>

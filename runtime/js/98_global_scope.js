@@ -13,7 +13,7 @@ import * as event from "ext:deno_web/02_event.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import * as base64 from "ext:deno_web/05_base64.js";
 import * as encoding from "ext:deno_web/08_text_encoding.js";
-import * as console from "ext:deno_console/02_console.js";
+import * as console from "ext:deno_console/01_console.js";
 import * as caches from "ext:deno_cache/01_cache.js";
 import * as compression from "ext:deno_web/14_compression.js";
 import * as worker from "ext:runtime/11_workers.js";
@@ -225,21 +225,29 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       return numCpus;
     },
-    language: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return language;
-      },
+  },
+  userAgent: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return userAgent;
     },
-    languages: {
-      configurable: true,
-      enumerable: true,
-      get() {
-        webidl.assertBranded(this, WorkerNavigatorPrototype);
-        return [language];
-      },
+  },
+  language: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return language;
+    },
+  },
+  languages: {
+    configurable: true,
+    enumerable: true,
+    get() {
+      webidl.assertBranded(this, WorkerNavigatorPrototype);
+      return [language];
     },
   },
 });

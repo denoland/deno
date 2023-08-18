@@ -157,6 +157,12 @@ declare namespace Deno {
     keyFile?: string;
 
     transport?: "tcp";
+
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Listen announces on the local transport address over TLS (transport layer
@@ -239,6 +245,11 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
+    /** Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Establishes a secure connection over TLS (transport layer security) using
@@ -272,6 +283,11 @@ declare namespace Deno {
      *
      * Must be in PEM format. */
     caCerts?: string[];
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. If not specified, no ALPN extension will be included in the
+     * TLS handshake.
+     */
+    alpnProtocols?: string[];
   }
 
   /** Start TLS handshake from an existing connection using an optional list of

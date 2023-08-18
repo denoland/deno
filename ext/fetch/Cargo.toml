@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_fetch"
-version = "0.121.0"
+version = "0.139.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,5 +23,4 @@ http.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 tokio.workspace = true
-tokio-stream = "0.1.8"
 tokio-util = { workspace = true, features = ["io"] }

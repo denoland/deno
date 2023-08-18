@@ -135,11 +135,11 @@ Deno.test({ permissions: { read: true } }, function lstatSyncSuccess() {
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
-  const coreInfo = Deno.lstatSync("core");
+  const coreInfo = Deno.lstatSync("cli");
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("core"));
+  const coreInfoByUrl = Deno.lstatSync(pathToAbsoluteFileUrl("cli"));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
@@ -261,11 +261,11 @@ Deno.test({ permissions: { read: true } }, async function lstatSuccess() {
   assert(!modulesInfoByUrl.isDirectory);
   assert(modulesInfoByUrl.isSymlink);
 
-  const coreInfo = await Deno.lstat("core");
+  const coreInfo = await Deno.lstat("cli");
   assert(coreInfo.isDirectory);
   assert(!coreInfo.isSymlink);
 
-  const coreInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("core"));
+  const coreInfoByUrl = await Deno.lstat(pathToAbsoluteFileUrl("cli"));
   assert(coreInfoByUrl.isDirectory);
   assert(!coreInfoByUrl.isSymlink);
 });
@@ -307,6 +307,10 @@ Deno.test(
     assert(s.rdev === null);
     assert(s.blksize === null);
     assert(s.blocks === null);
+    assert(s.isBlockDevice === null);
+    assert(s.isCharDevice === null);
+    assert(s.isFifo === null);
+    assert(s.isSocket === null);
   },
 );
 
@@ -334,5 +338,9 @@ Deno.test(
     assert(s.rdev !== null);
     assert(s.blksize !== null);
     assert(s.blocks !== null);
+    assert(!s.isBlockDevice);
+    assert(!s.isCharDevice);
+    assert(!s.isFifo);
+    assert(!s.isSocket);
   },
 );

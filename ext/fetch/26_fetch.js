@@ -42,13 +42,13 @@ const {
   PromisePrototypeThen,
   PromisePrototypeCatch,
   SafeArrayIterator,
+  SafeWeakMap,
   String,
   StringPrototypeStartsWith,
   StringPrototypeToLowerCase,
   TypeError,
   Uint8Array,
   Uint8ArrayPrototype,
-  WeakMap,
   WeakMapPrototypeDelete,
   WeakMapPrototypeGet,
   WeakMapPrototypeHas,
@@ -62,7 +62,7 @@ const REQUEST_BODY_HEADER_NAMES = [
   "content-type",
 ];
 
-const requestBodyReaders = new WeakMap();
+const requestBodyReaders = new SafeWeakMap();
 
 /**
  * @param {{ method: string, url: string, headers: [string, string][], clientRid: number | null, hasBody: boolean }} args
@@ -201,6 +201,23 @@ async function mainFetch(req, recursive, terminator) {
 
   let requestSendError;
   let requestSendErrorSet = false;
+
+  async function propagateError(err, message) {
+    // TODO(lucacasonato): propagate error into response body stream
+    try {
+      await core.writeTypeError(requestBodyRid, message);
+    } catch (err) {
+      if (!requestSendErrorSet) {
+        requestSendErrorSet = true;
+        requestSendError = err;
+      }
+    }
+    if (!requestSendErrorSet) {
+      requestSendErrorSet = true;
+      requestSendError = err;
+    }
+  }
+
   if (requestBodyRid !== null) {
     if (
       reqBody === null ||
@@ -220,9 +237,7 @@ async function mainFetch(req, recursive, terminator) {
           val = res.value;
         } catch (err) {
           if (terminator.aborted) break;
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
+          await propagateError(err, "failed to read");
           break;
         }
         if (done) break;
@@ -231,9 +246,7 @@ async function mainFetch(req, recursive, terminator) {
             "Item in request body ReadableStream is not a Uint8Array",
           );
           await reader.cancel(error);
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = error;
-          requestSendErrorSet = true;
+          await propagateError(error, error.message);
           break;
         }
         try {
@@ -241,9 +254,7 @@ async function mainFetch(req, recursive, terminator) {
         } catch (err) {
           if (terminator.aborted) break;
           await reader.cancel(err);
-          // TODO(lucacasonato): propagate error into response body stream
-          requestSendError = err;
-          requestSendErrorSet = true;
+          await propagateError(err, "failed to write");
           break;
         }
       }
@@ -252,12 +263,12 @@ async function mainFetch(req, recursive, terminator) {
           await core.shutdown(requestBodyRid);
         } catch (err) {
           if (!terminator.aborted) {
-            requestSendError = err;
-            requestSendErrorSet = true;
+            await propagateError(err, "failed to flush");
           }
         }
       }
       WeakMapPrototypeDelete(requestBodyReaders, req);
+      reader.releaseLock();
       core.tryClose(requestBodyRid);
     })();
   }
@@ -413,7 +424,7 @@ function fetch(input, init = {}) {
   // 1.
   const result = new Promise((resolve, reject) => {
     const prefix = "Failed to call 'fetch'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     // 2.
     const requestObject = new Request(input, init);
     // 3.
@@ -523,10 +534,11 @@ function handleWasmStreaming(source, rid) {
   // This implements part of
   // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
   try {
-    const res = webidl.converters["Response"](source, {
-      prefix: "Failed to call 'WebAssembly.compileStreaming'",
-      context: "Argument 1",
-    });
+    const res = webidl.converters["Response"](
+      source,
+      "Failed to call 'WebAssembly.compileStreaming'",
+      "Argument 1",
+    );
 
     // 2.3.
     // The spec is ambiguous here, see

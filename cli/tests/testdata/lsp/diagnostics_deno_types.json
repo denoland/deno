@@ -15,7 +15,7 @@
       "severity": 1,
       "code": "no-cache",
       "source": "deno",
-      "message": "Uncached or missing remote URL: \"https://example.com/a/b.d.ts\".",
+      "message": "Uncached or missing remote URL: https://example.com/a/b.d.ts",
       "data": {
         "specifier": "https://example.com/a/b.d.ts"
       }
@@ -34,7 +34,7 @@
       "severity": 1,
       "code": "no-cache",
       "source": "deno",
-      "message": "Uncached or missing remote URL: \"https://example.com/a/e.js\".",
+      "message": "Uncached or missing remote URL: https://example.com/a/e.js",
       "data": {
         "specifier": "https://example.com/a/e.js"
       }
@@ -53,7 +53,7 @@
       "severity": 1,
       "code": "no-cache",
       "source": "deno",
-      "message": "Uncached or missing remote URL: \"https://example.com/a/e.d.ts\".",
+      "message": "Uncached or missing remote URL: https://example.com/a/e.d.ts",
       "data": {
         "specifier": "https://example.com/a/e.d.ts"
       }
@@ -72,7 +72,7 @@
       "severity": 1,
       "code": "no-cache",
       "source": "deno",
-      "message": "Uncached or missing remote URL: \"https://example.com/a/d.js\".",
+      "message": "Uncached or missing remote URL: https://example.com/a/d.js",
       "data": {
         "specifier": "https://example.com/a/d.js"
       }
@@ -91,7 +91,7 @@
       "severity": 1,
       "code": "no-cache",
       "source": "deno",
-      "message": "Uncached or missing remote URL: \"https://example.com/a/d.d.ts\".",
+      "message": "Uncached or missing remote URL: https://example.com/a/d.d.ts",
       "data": {
         "specifier": "https://example.com/a/d.d.ts"
       }

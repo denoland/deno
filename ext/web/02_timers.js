@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
@@ -7,17 +9,15 @@ const {
   ArrayPrototypePush,
   ArrayPrototypeShift,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeDelete,
   MapPrototypeGet,
   MapPrototypeHas,
   MapPrototypeSet,
   Uint8Array,
   Uint32Array,
-  // deno-lint-ignore camelcase
-  NumberPOSITIVE_INFINITY,
   PromisePrototypeThen,
   SafeArrayIterator,
+  SafeMap,
   SymbolFor,
   TypedArrayPrototypeGetBuffer,
   TypeError,
@@ -26,6 +26,7 @@ const {
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
 import { assert } from "ext:deno_web/00_infra.js";
+const { op_sleep, op_void_async_deferred } = core.ensureFastOps();
 
 const hrU8 = new Uint8Array(8);
 const hr = new Uint32Array(TypedArrayPrototypeGetBuffer(hrU8));
@@ -52,8 +53,10 @@ const timerTasks = [];
 let timerNestingLevel = 0;
 
 function handleTimerMacrotask() {
+  // We have no work to do, tell the runtime that we don't
+  // need to perform microtask checkpoint.
   if (timerTasks.length === 0) {
-    return true;
+    return undefined;
   }
 
   const task = ArrayPrototypeShift(timerTasks);
@@ -76,7 +79,7 @@ function handleTimerMacrotask() {
  *
  * @type {Map<number, { cancelRid: number, isRef: boolean, promiseId: number }>}
  */
-const activeTimers = new Map();
+const activeTimers = new SafeMap();
 
 let nextId = 1;
 
@@ -94,6 +97,9 @@ function initializeTimer(
   args,
   repeat,
   prevId,
+  // TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+  // in Node compat are cleaned up
+  respectNesting = true,
 ) {
   // 2. If previousId was given, let id be previousId; otherwise, let
   // previousId be an implementation-defined integer than is greater than zero
@@ -126,7 +132,7 @@ function initializeTimer(
   // The nesting level of 5 and minimum of 4 ms are spec-mandated magic
   // constants.
   if (timeout < 0) timeout = 0;
-  if (timerNestingLevel > 5 && timeout < 4) timeout = 4;
+  if (timerNestingLevel > 5 && timeout < 4 && respectNesting) timeout = 4;
 
   // 9. Let task be a task that runs the following steps:
   const task = {
@@ -183,7 +189,7 @@ function initializeTimer(
   // 13. Run steps after a timeout given global, "setTimeout/setInterval",
   // timeout, completionStep, and id.
   runAfterTimeout(
-    () => ArrayPrototypePush(timerTasks, task),
+    task,
     timeout,
     timerInfo,
   );
@@ -196,7 +202,7 @@ function initializeTimer(
 /**
  * @typedef ScheduledTimer
  * @property {number} millis
- * @property {() => void} cb
+ * @property { {action: () => void, nestingLevel: number}[] } task
  * @property {boolean} resolved
  * @property {ScheduledTimer | null} prev
  * @property {ScheduledTimer | null} next
@@ -209,14 +215,23 @@ function initializeTimer(
 const scheduledTimers = { head: null, tail: null };
 
 /**
- * @param {() => void} cb Will be run after the timeout, if it hasn't been
- * cancelled.
+ * @param { {action: () => void, nestingLevel: number}[] } task Will be run
+ * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
  */
-function runAfterTimeout(cb, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  const sleepPromise = core.opAsync2("op_sleep", millis, cancelRid);
+  let sleepPromise;
+  // If this timeout is scheduled for 0ms it means we want it to run at the
+  // end of the event loop turn. There's no point in setting up a Tokio timer,
+  // since its lowest resolution is 1ms. Firing of a "void async" op is better
+  // in this case, because the timer will take closer to 0ms instead of >1ms.
+  if (millis === 0) {
+    sleepPromise = op_void_async_deferred();
+  } else {
+    sleepPromise = op_sleep(millis, cancelRid);
+  }
   timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
   if (!timerInfo.isRef) {
     core.unrefOp(timerInfo.promiseId);
@@ -225,10 +240,10 @@ function runAfterTimeout(cb, millis, timerInfo) {
   /** @type {ScheduledTimer} */
   const timerObject = {
     millis,
-    cb,
     resolved: false,
     prev: scheduledTimers.tail,
     next: null,
+    task,
   };
 
   // Add timerObject to the end of the list.
@@ -244,7 +259,12 @@ function runAfterTimeout(cb, millis, timerInfo) {
   PromisePrototypeThen(
     sleepPromise,
     (cancelled) => {
-      if (!cancelled) {
+      if (timerObject.resolved) {
+        return;
+      }
+
+      // "op_void_async_deferred" returns null
+      if (cancelled !== null && !cancelled) {
         // The timer was cancelled.
         removeFromScheduledTimers(timerObject);
         return;
@@ -263,18 +283,15 @@ function runAfterTimeout(cb, millis, timerInfo) {
       //   b) its timeout is lower than the lowest unresolved timeout found so
       //      far in the list.
 
-      timerObject.resolved = true;
-
-      let lowestUnresolvedTimeout = NumberPOSITIVE_INFINITY;
-
       let currentEntry = scheduledTimers.head;
       while (currentEntry !== null) {
-        if (currentEntry.millis < lowestUnresolvedTimeout) {
-          if (currentEntry.resolved) {
-            currentEntry.cb();
-            removeFromScheduledTimers(currentEntry);
-          } else {
-            lowestUnresolvedTimeout = currentEntry.millis;
+        if (currentEntry.millis <= timerObject.millis) {
+          currentEntry.resolved = true;
+          ArrayPrototypePush(timerTasks, currentEntry.task);
+          removeFromScheduledTimers(currentEntry);
+
+          if (currentEntry === timerObject) {
+            break;
           }
         }
 
@@ -328,6 +345,18 @@ function setInterval(callback, timeout = 0, ...args) {
   return initializeTimer(callback, timeout, args, true);
 }
 
+// TODO(bartlomieju): remove this option, once `nextTick` and `setImmediate`
+// in Node compat are cleaned up
+function setTimeoutUnclamped(callback, timeout = 0, ...args) {
+  checkThis(this);
+  if (typeof callback !== "function") {
+    callback = webidl.converters.DOMString(callback);
+  }
+  timeout = webidl.converters.long(timeout);
+
+  return initializeTimer(callback, timeout, args, false, undefined, false);
+}
+
 function clearTimeout(id = 0) {
   checkThis(this);
   id = webidl.converters.long(id);
@@ -369,5 +398,6 @@ export {
   refTimer,
   setInterval,
   setTimeout,
+  setTimeoutUnclamped,
   unrefTimer,
 };

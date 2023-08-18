@@ -18,6 +18,8 @@ use deno_core::futures::Future;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
+#[cfg(feature = "__runtime_js_sources")]
+use deno_core::ExtensionFileSource;
 use deno_core::FsModuleLoader;
 use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
@@ -30,10 +32,12 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_core::Snapshot;
 use deno_core::SourceMapGetter;
+use deno_fs::FileSystem;
+use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::sqlite::SqliteDbHandler;
-use deno_node::RequireNpmResolver;
-use deno_tls::rustls::RootCertStore;
+use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
+use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
 use log::debug;
 
@@ -56,6 +60,79 @@ impl ExitCode {
     self.0.store(code, Relaxed);
   }
 }
+
+// Duplicated in `build.rs`. Keep in sync!
+deno_core::extension!(
+  runtime,
+  esm_entry_point = "ext:runtime/90_deno_ns.js",
+  esm = [
+    dir "js",
+    "01_errors.js",
+    "01_version.ts",
+    "06_util.js",
+    "10_permissions.js",
+    "11_workers.js",
+    "13_buffer.js",
+    "30_os.js",
+    "40_fs_events.js",
+    "40_http.js",
+    "40_process.js",
+    "40_signals.js",
+    "40_tty.js",
+    "41_prompt.js",
+    "90_deno_ns.js",
+    "98_global_scope.js"
+  ],
+);
+
+// Duplicated in `build.rs`. Keep in sync!
+#[cfg(feature = "__runtime_js_sources")]
+pub fn maybe_transpile_source(
+  source: &mut ExtensionFileSource,
+) -> Result<(), AnyError> {
+  use deno_ast::MediaType;
+  use deno_ast::ParseParams;
+  use deno_ast::SourceTextInfo;
+  use deno_core::ExtensionFileSourceCode;
+  use std::path::Path;
+
+  // Always transpile `node:` built-in modules, since they might be TypeScript.
+  let media_type = if source.specifier.starts_with("node:") {
+    MediaType::TypeScript
+  } else {
+    MediaType::from_path(Path::new(&source.specifier))
+  };
+
+  match media_type {
+    MediaType::TypeScript => {}
+    MediaType::JavaScript => return Ok(()),
+    MediaType::Mjs => return Ok(()),
+    _ => panic!(
+      "Unsupported media type for snapshotting {media_type:?} for file {}",
+      source.specifier
+    ),
+  }
+  let code = source.load()?;
+
+  let parsed = deno_ast::parse_module(ParseParams {
+    specifier: source.specifier.to_string(),
+    text_info: SourceTextInfo::from_string(code.as_str().to_owned()),
+    media_type,
+    capture_tokens: false,
+    scope_analysis: false,
+    maybe_syntax: None,
+  })?;
+  let transpiled_source = parsed.transpile(&deno_ast::EmitOptions {
+    imports_not_used_as_values: deno_ast::ImportsNotUsedAsValues::Remove,
+    inline_source_map: false,
+    ..Default::default()
+  })?;
+
+  source.code =
+    ExtensionFileSourceCode::Computed(transpiled_source.text.into());
+  Ok(())
+}
+
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -83,21 +160,24 @@ pub struct WorkerOptions {
 
   /// V8 snapshot that should be loaded on startup.
   pub startup_snapshot: Option<Snapshot>,
+
+  /// Optional isolate creation parameters, such as heap limits.
+  pub create_params: Option<v8::CreateParams>,
+
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub root_cert_store: Option<RootCertStore>,
+  pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
 
+  pub fs: Arc<dyn FileSystem>,
   /// Implementation of `ModuleLoader` which will be
   /// called when V8 requests to load ES modules.
   ///
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub npm_resolver: Option<Rc<dyn RequireNpmResolver>>,
+  pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
@@ -116,7 +196,7 @@ pub struct WorkerOptions {
   pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
-  pub blob_store: BlobStore,
+  pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
 
   /// The store to use for transferring SharedArrayBuffers between isolates.
@@ -139,15 +219,10 @@ pub struct WorkerOptions {
 impl Default for WorkerOptions {
   fn default() -> Self {
     Self {
-      web_worker_preload_module_cb: Arc::new(|_| {
-        unimplemented!("web workers are not supported")
-      }),
-      web_worker_pre_execute_module_cb: Arc::new(|_| {
-        unimplemented!("web workers are not supported")
-      }),
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
+      fs: Arc::new(deno_fs::RealFs),
       module_loader: Rc::new(FsModuleLoader),
       seed: None,
       unsafely_ignore_certificate_errors: Default::default(),
@@ -162,11 +237,12 @@ impl Default for WorkerOptions {
       cache_storage_dir: Default::default(),
       broadcast_channel: Default::default(),
       source_map_getter: Default::default(),
-      root_cert_store: Default::default(),
+      root_cert_store_provider: Default::default(),
       npm_resolver: Default::default(),
       blob_store: Default::default(),
       extensions: Default::default(),
       startup_snapshot: Default::default(),
+      create_params: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
     }
@@ -216,17 +292,17 @@ impl MainWorker {
     // `runtime/build.rs`, `runtime/web_worker.rs` and `cli/build.rs`!
     let mut extensions = vec![
       // Web APIs
-      deno_webidl::deno_webidl::init_ops(),
-      deno_console::deno_console::init_ops(),
-      deno_url::deno_url::init_ops(),
-      deno_web::deno_web::init_ops::<PermissionsContainer>(
+      deno_webidl::deno_webidl::init_ops_and_esm(),
+      deno_console::deno_console::init_ops_and_esm(),
+      deno_url::deno_url::init_ops_and_esm(),
+      deno_web::deno_web::init_ops_and_esm::<PermissionsContainer>(
         options.blob_store.clone(),
         options.bootstrap.location.clone(),
       ),
-      deno_fetch::deno_fetch::init_ops::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
-          root_cert_store: options.root_cert_store.clone(),
+          root_cert_store_provider: options.root_cert_store_provider.clone(),
           unsafely_ignore_certificate_errors: options
             .unsafely_ignore_certificate_errors
             .clone(),
@@ -234,80 +310,107 @@ impl MainWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops::<SqliteBackedCache>(create_cache),
-      deno_websocket::deno_websocket::init_ops::<PermissionsContainer>(
+      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
+        create_cache,
+      ),
+      deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
-        options.root_cert_store.clone(),
+        options.root_cert_store_provider.clone(),
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_webstorage::deno_webstorage::init_ops(
+      deno_webstorage::deno_webstorage::init_ops_and_esm(
         options.origin_storage_dir.clone(),
       ),
-      deno_crypto::deno_crypto::init_ops(options.seed),
-      deno_broadcast_channel::deno_broadcast_channel::init_ops(
+      deno_crypto::deno_crypto::init_ops_and_esm(options.seed),
+      deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
         options.broadcast_channel.clone(),
         unstable,
       ),
-      deno_ffi::deno_ffi::init_ops::<PermissionsContainer>(unstable),
-      deno_net::deno_net::init_ops::<PermissionsContainer>(
-        options.root_cert_store.clone(),
+      deno_ffi::deno_ffi::init_ops_and_esm::<PermissionsContainer>(unstable),
+      deno_net::deno_net::init_ops_and_esm::<PermissionsContainer>(
+        options.root_cert_store_provider.clone(),
         unstable,
         options.unsafely_ignore_certificate_errors.clone(),
       ),
-      deno_tls::deno_tls::init_ops(),
-      deno_kv::deno_kv::init_ops(
+      deno_tls::deno_tls::init_ops_and_esm(),
+      deno_kv::deno_kv::init_ops_and_esm(
         SqliteDbHandler::<PermissionsContainer>::new(
           options.origin_storage_dir.clone(),
         ),
         unstable,
       ),
-      deno_napi::deno_napi::init_ops::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops(),
-      deno_io::deno_io::init_ops(Some(options.stdio)),
-      deno_fs::deno_fs::init_ops::<PermissionsContainer>(unstable),
-      deno_node::deno_node::init_ops::<crate::RuntimeNodeEnv>(
+      deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
+      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(),
+      deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
+      deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
+        unstable,
+        options.fs.clone(),
+      ),
+      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
         options.npm_resolver,
+        options.fs,
       ),
       // Ops from this crate
-      ops::runtime::deno_runtime::init_ops(main_module.clone()),
-      ops::worker_host::deno_worker_host::init_ops(
+      ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
+      ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
-        options.web_worker_preload_module_cb.clone(),
-        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
-      ops::fs_events::deno_fs_events::init_ops(),
-      ops::os::deno_os::init_ops(exit_code.clone()),
-      ops::permissions::deno_permissions::init_ops(),
-      ops::process::deno_process::init_ops(),
-      ops::signal::deno_signal::init_ops(),
-      ops::tty::deno_tty::init_ops(),
-      ops::http::deno_http_runtime::init_ops(),
-      deno_permissions_worker::init_ops(
+      ops::fs_events::deno_fs_events::init_ops_and_esm(),
+      ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
+      ops::permissions::deno_permissions::init_ops_and_esm(),
+      ops::process::deno_process::init_ops_and_esm(),
+      ops::signal::deno_signal::init_ops_and_esm(),
+      ops::tty::deno_tty::init_ops_and_esm(),
+      ops::http::deno_http_runtime::init_ops_and_esm(),
+      deno_permissions_worker::init_ops_and_esm(
         permissions,
         unstable,
         enable_testing_features,
       ),
+      runtime::init_ops_and_esm(),
     ];
+
+    for extension in &mut extensions {
+      #[cfg(not(feature = "__runtime_js_sources"))]
+      {
+        extension.js_files = std::borrow::Cow::Borrowed(&[]);
+        extension.esm_files = std::borrow::Cow::Borrowed(&[]);
+        extension.esm_entry_point = None;
+      }
+      #[cfg(feature = "__runtime_js_sources")]
+      {
+        for source in extension.esm_files.to_mut() {
+          maybe_transpile_source(source).unwrap();
+        }
+        for source in extension.js_files.to_mut() {
+          maybe_transpile_source(source).unwrap();
+        }
+      }
+    }
 
     extensions.extend(std::mem::take(&mut options.extensions));
 
-    #[cfg(not(feature = "dont_create_runtime_snapshot"))]
-    let startup_snapshot = options
-      .startup_snapshot
-      .unwrap_or_else(crate::js::deno_isolate_init);
-    #[cfg(feature = "dont_create_runtime_snapshot")]
-    let startup_snapshot = options.startup_snapshot
-      .expect("deno_runtime startup snapshot is not available with 'create_runtime_snapshot' Cargo feature.");
+    #[cfg(all(feature = "include_js_files_for_snapshotting", feature = "dont_create_runtime_snapshot", not(feature = "__runtime_js_sources")))]
+    options.startup_snapshot.as_ref().expect("Sources are not embedded, snapshotting was disabled and a user snapshot was not provided.");
+
+    // Clear extension modules from the module map, except preserve `node:*`
+    // modules.
+    let preserve_snapshotted_modules =
+      Some(SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX);
 
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
       module_loader: Some(options.module_loader.clone()),
-      startup_snapshot: Some(startup_snapshot),
+      startup_snapshot: options
+        .startup_snapshot
+        .or_else(crate::js::deno_isolate_init),
+      create_params: options.create_params,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: options.compiled_wasm_module_store.clone(),
       extensions,
+      preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
       ..Default::default()
@@ -329,7 +432,7 @@ impl MainWorker {
     }
 
     let bootstrap_fn_global = {
-      let context = js_runtime.global_context();
+      let context = js_runtime.main_context();
       let scope = &mut js_runtime.handle_scope();
       let context_local = v8::Local::new(scope, context);
       let global_obj = context_local.global(scope);
@@ -365,9 +468,7 @@ impl MainWorker {
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
-    bootstrap_fn
-      .call(scope, undefined.into(), &[args.into()])
-      .unwrap();
+    bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

@@ -8,6 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
+use deno_core::task::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -24,13 +25,6 @@ pub enum TestingNotification {
   Module(testing_lsp_custom::TestModuleNotificationParams),
   DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),
   Progress(testing_lsp_custom::TestRunProgressParams),
-}
-
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
-pub enum LspClientKind {
-  #[default]
-  CodeEditor,
-  Repl,
 }
 
 #[derive(Clone)]
@@ -51,10 +45,6 @@ impl Client {
     Self(Arc::new(ReplClient))
   }
 
-  pub fn kind(&self) -> LspClientKind {
-    self.0.kind()
-  }
-
   /// Gets additional methods that should only be called outside
   /// the LSP's lock to prevent deadlocking scenarios.
   pub fn when_outside_lsp_lock(&self) -> OutsideLockClient {
@@ -67,15 +57,29 @@ impl Client {
   ) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.send_registry_state_notification(params).await;
+    });
+  }
+
+  /// This notification is sent to the client during internal testing
+  /// purposes only in order to let the test client know when the latest
+  /// diagnostics have been published.
+  pub fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    // do on a task in case the caller currently is in the lsp lock
+    let client = self.0.clone();
+    spawn(async move {
+      client.send_diagnostic_batch_notification(params).await;
     });
   }
 
   pub fn send_test_notification(&self, params: TestingNotification) {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.send_test_notification(params).await;
     });
   }
@@ -88,7 +92,7 @@ impl Client {
     // do on a task in case the caller currently is in the lsp lock
     let client = self.0.clone();
     let message = message.to_string();
-    tokio::task::spawn(async move {
+    spawn(async move {
       client.show_message(message_type, message).await;
     });
   }
@@ -150,17 +154,19 @@ impl OutsideLockClient {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: LspClientUrl,
     diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
-    self.0.publish_diagnostics(uri, diags, version).await;
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
   }
 }
 
 #[async_trait]
 trait ClientTrait: Send + Sync {
-  fn kind(&self) -> LspClientKind;
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -170,6 +176,10 @@ trait ClientTrait: Send + Sync {
   async fn send_registry_state_notification(
     &self,
     params: lsp_custom::RegistryStateNotificationParams,
+  );
+  async fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
   );
   async fn send_test_notification(&self, params: TestingNotification);
   async fn specifier_configurations(
@@ -189,10 +199,6 @@ struct TowerClient(tower_lsp::Client);
 
 #[async_trait]
 impl ClientTrait for TowerClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::CodeEditor
-  }
-
   async fn publish_diagnostics(
     &self,
     uri: lsp::Url,
@@ -209,6 +215,16 @@ impl ClientTrait for TowerClient {
     self
       .0
       .send_notification::<lsp_custom::RegistryStateNotification>(params)
+      .await
+  }
+
+  async fn send_diagnostic_batch_notification(
+    &self,
+    params: lsp_custom::DiagnosticBatchNotificationParams,
+  ) {
+    self
+      .0
+      .send_notification::<lsp_custom::DiagnosticBatchNotification>(params)
       .await
   }
 
@@ -312,10 +328,6 @@ struct ReplClient;
 
 #[async_trait]
 impl ClientTrait for ReplClient {
-  fn kind(&self) -> LspClientKind {
-    LspClientKind::Repl
-  }
-
   async fn publish_diagnostics(
     &self,
     _uri: lsp::Url,
@@ -327,6 +339,12 @@ impl ClientTrait for ReplClient {
   async fn send_registry_state_notification(
     &self,
     _params: lsp_custom::RegistryStateNotificationParams,
+  ) {
+  }
+
+  async fn send_diagnostic_batch_notification(
+    &self,
+    _params: lsp_custom::DiagnosticBatchNotificationParams,
   ) {
   }
 

@@ -9,7 +9,7 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeFilter,
@@ -24,7 +24,6 @@ const {
   DateNow,
   Error,
   FunctionPrototypeCall,
-  Map,
   MapPrototypeGet,
   MapPrototypeSet,
   ObjectCreate,
@@ -32,8 +31,8 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
-  ReflectHas,
   SafeArrayIterator,
+  SafeMap,
   StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
@@ -108,33 +107,11 @@ function setStopImmediatePropagation(
   event[_stopImmediatePropagationFlag] = value;
 }
 
-// Type guards that widen the event type
-
-function hasRelatedTarget(
-  event,
-) {
-  return ReflectHas(event, "relatedTarget");
-}
-
 const isTrusted = ObjectGetOwnPropertyDescriptor({
   get isTrusted() {
     return this[_isTrusted];
   },
 }, "isTrusted").get;
-
-const eventInitConverter = webidl.createDictionaryConverter("EventInit", [{
-  key: "bubbles",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "cancelable",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "composed",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}]);
 
 const _attributes = Symbol("[[attributes]]");
 const _canceledFlag = Symbol("[[canceledFlag]]");
@@ -161,32 +138,7 @@ class Event {
     this[_isTrusted] = false;
     this[_path] = [];
 
-    if (!eventInitDict[_skipInternalInit]) {
-      webidl.requiredArguments(arguments.length, 1, {
-        prefix: "Failed to construct 'Event'",
-      });
-      type = webidl.converters.DOMString(type, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 1",
-      });
-      const eventInit = eventInitConverter(eventInitDict, {
-        prefix: "Failed to construct 'Event'",
-        context: "Argument 2",
-      });
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      // [LegacyUnforgeable]
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
-    } else {
+    if (eventInitDict?.[_skipInternalInit]) {
       this[_attributes] = {
         type,
         data: eventInitDict.data ?? null,
@@ -196,12 +148,32 @@ class Event {
         currentTarget: null,
         eventPhase: Event.NONE,
         target: null,
-        timeStamp: DateNow(),
+        timeStamp: 0,
       };
-      // TODO(@littledivy): Not spec compliant but performance is hurt badly
-      // for users of `_skipInternalInit`.
-      this.isTrusted = false;
+      return;
     }
+
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'Event'",
+    );
+    type = webidl.converters.DOMString(
+      type,
+      "Failed to construct 'Event'",
+      "Argument 1",
+    );
+
+    this[_attributes] = {
+      type,
+      bubbles: !!eventInitDict.bubbles,
+      cancelable: !!eventInitDict.cancelable,
+      composed: !!eventInitDict.composed,
+      currentTarget: null,
+      eventPhase: Event.NONE,
+      target: null,
+      timeStamp: DateNow(),
+    };
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -431,6 +403,13 @@ class Event {
   }
 }
 
+// Not spec compliant. The spec defines it as [LegacyUnforgeable]
+// but doing so has a big performance hit
+ReflectDefineProperty(Event.prototype, "isTrusted", {
+  enumerable: true,
+  get: isTrusted,
+});
+
 function defineEnumerableProps(
   Ctor,
   props,
@@ -480,7 +459,7 @@ function getRoot(eventTarget) {
 function isNode(
   eventTarget,
 ) {
-  return Boolean(eventTarget && ReflectHas(eventTarget, "nodeType"));
+  return eventTarget?.nodeType !== undefined;
 }
 
 // https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
@@ -512,10 +491,13 @@ function isShadowRoot(nodeImpl) {
   );
 }
 
-function isSlotable(
-  nodeImpl,
+function isSlottable(
+  /* nodeImpl, */
 ) {
-  return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
+  // TODO(marcosc90) currently there aren't any slottables nodes
+  // https://dom.spec.whatwg.org/#concept-slotable
+  // return isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot");
+  return false;
 }
 
 // DOM Logic functions
@@ -558,9 +540,7 @@ function dispatch(
   setDispatched(eventImpl, true);
 
   targetOverride = targetOverride ?? targetImpl;
-  const eventRelatedTarget = hasRelatedTarget(eventImpl)
-    ? eventImpl.relatedTarget
-    : null;
+  const eventRelatedTarget = eventImpl.relatedTarget;
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
@@ -582,7 +562,7 @@ function dispatch(
     }
 
     let slotInClosedTree = false;
-    let slotable = isSlotable(targetImpl) && getAssignedSlot(targetImpl)
+    let slottable = isSlottable(targetImpl) && getAssignedSlot(targetImpl)
       ? targetImpl
       : null;
     let parent = getParent(targetImpl);
@@ -590,8 +570,8 @@ function dispatch(
     // Populate event path
     // https://dom.spec.whatwg.org/#event-path
     while (parent !== null) {
-      if (slotable !== null) {
-        slotable = null;
+      if (slottable !== null) {
+        slottable = null;
 
         const parentRoot = getRoot(parent);
         if (
@@ -732,10 +712,15 @@ function innerInvokeEventListeners(
     return found;
   }
 
-  // Copy event listeners before iterating since the list can be modified during the iteration.
-  const handlers = ArrayPrototypeSlice(targetListeners[type]);
+  let handlers = targetListeners[type];
+  const handlersLength = handlers.length;
 
-  for (let i = 0; i < handlers.length; i++) {
+  // Copy event listeners before iterating since the list can be modified during the iteration.
+  if (handlersLength > 1) {
+    handlers = ArrayPrototypeSlice(targetListeners[type]);
+  }
+
+  for (let i = 0; i < handlersLength; i++) {
     const listener = handlers[i];
 
     let capture, once, passive;
@@ -802,12 +787,19 @@ function innerInvokeEventListeners(
  * Ref: https://dom.spec.whatwg.org/#concept-event-listener-invoke */
 function invokeEventListeners(tuple, eventImpl) {
   const path = getPath(eventImpl);
-  const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
-  for (let i = tupleIndex; i >= 0; i--) {
-    const t = path[i];
+  if (path.length === 1) {
+    const t = path[0];
     if (t.target) {
       setTarget(eventImpl, t.target);
-      break;
+    }
+  } else {
+    const tupleIndex = ArrayPrototypeIndexOf(path, tuple);
+    for (let i = tupleIndex; i >= 0; i--) {
+      const t = path[i];
+      if (t.target) {
+        setTarget(eventImpl, t.target);
+        break;
+      }
     }
   }
 
@@ -934,13 +926,13 @@ function lazyAddEventListenerOptionsConverter() {
   );
 }
 
-webidl.converters.AddEventListenerOptions = (V, opts) => {
+webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
   if (webidl.type(V) !== "Object" || V === null) {
     V = { capture: Boolean(V) };
   }
 
   lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, opts);
+  return addEventListenerOptionsConverter(V, prefix, context, opts);
 };
 
 class EventTarget {
@@ -958,14 +950,13 @@ class EventTarget {
     webidl.assertBranded(self, EventTargetPrototype);
     const prefix = "Failed to execute 'addEventListener' on 'EventTarget'";
 
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(options, {
+    options = webidl.converters.AddEventListenerOptions(
+      options,
       prefix,
-      context: "Argument 3",
-    });
+      "Argument 3",
+    );
 
     if (callback === null) {
       return;
@@ -973,7 +964,7 @@ class EventTarget {
 
     const { listeners } = self[eventTargetData];
 
-    if (!(ReflectHas(listeners, type))) {
+    if (!listeners[type]) {
       listeners[type] = [];
     }
 
@@ -1014,12 +1005,14 @@ class EventTarget {
   ) {
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 2, {
-      prefix: "Failed to execute 'removeEventListener' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      2,
+      "Failed to execute 'removeEventListener' on 'EventTarget'",
+    );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && ReflectHas(listeners, type)) {
+    if (callback !== null && listeners[type]) {
       listeners[type] = ArrayPrototypeFilter(
         listeners[type],
         (listener) => listener.callback !== callback,
@@ -1052,9 +1045,11 @@ class EventTarget {
     // executed.
     const self = this ?? globalThis_;
     webidl.assertBranded(self, EventTargetPrototype);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to execute 'dispatchEvent' on 'EventTarget'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to execute 'dispatchEvent' on 'EventTarget'",
+    );
 
     // This is an optimization to avoid creating an event listener
     // on each startup.
@@ -1066,7 +1061,7 @@ class EventTarget {
     }
 
     const { listeners } = self[eventTargetData];
-    if (!ReflectHas(listeners, event.type)) {
+    if (!listeners[event.type]) {
       setTarget(event, this);
       return true;
     }
@@ -1261,9 +1256,11 @@ class CustomEvent extends Event {
 
   constructor(type, eventInitDict = {}) {
     super(type, eventInitDict);
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix: "Failed to construct 'CustomEvent'",
-    });
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'CustomEvent'",
+    );
     const { detail } = eventInitDict;
     this.#detail = detail;
   }
@@ -1437,7 +1434,7 @@ function defineEventHandler(
       }
 
       if (!this[_eventHandlers]) {
-        this[_eventHandlers] = new Map();
+        this[_eventHandlers] = new SafeMap();
       }
       let handlerWrapper = MapPrototypeGet(this[_eventHandlers], name);
       if (handlerWrapper) {
@@ -1512,7 +1509,7 @@ function checkThis(thisArg) {
 function reportError(error) {
   checkThis(this);
   const prefix = "Failed to call 'reportError'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
+  webidl.requiredArguments(arguments.length, 1, prefix);
   reportException(error);
 }
 
@@ -1521,6 +1518,7 @@ export {
   CloseEvent,
   CustomEvent,
   defineEventHandler,
+  dispatch,
   ErrorEvent,
   Event,
   EventTarget,

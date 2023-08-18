@@ -26,3 +26,8 @@ gclient_config.py_entries
 # WPT generated cert files
 /tools/wpt/certs/index.txt*
 /tools/wpt/certs/serial*
+
+/ext/websocket/autobahn/reports
+
+# JUnit files produced by deno test --junit
+junit.xml
