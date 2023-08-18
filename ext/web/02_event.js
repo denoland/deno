@@ -898,7 +898,7 @@ function getDefaultTargetData() {
 
 function addEventListenerOptionsConverter(V, prefix) {
   if (webidl.type(V) !== "Object") {
-    return { capture: true, passive: false, once: false, signal: undefined };
+    return { capture: !!V, once: false, passive: false };
   }
 
   const options = {
