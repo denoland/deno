@@ -998,6 +998,7 @@ impl CollectedDiagnostics {
       .unwrap()
   }
 
+  #[track_caller]
   pub fn messages_with_file_and_source(
     &self,
     specifier: &str,

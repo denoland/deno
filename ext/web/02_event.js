@@ -31,7 +31,6 @@ const {
   ObjectGetOwnPropertyDescriptor,
   ObjectPrototypeIsPrototypeOf,
   ReflectDefineProperty,
-  ReflectHas,
   SafeArrayIterator,
   SafeMap,
   StringPrototypeStartsWith,
@@ -108,33 +107,11 @@ function setStopImmediatePropagation(
   event[_stopImmediatePropagationFlag] = value;
 }
 
-// Type guards that widen the event type
-
-function hasRelatedTarget(
-  event,
-) {
-  return ReflectHas(event, "relatedTarget");
-}
-
 const isTrusted = ObjectGetOwnPropertyDescriptor({
   get isTrusted() {
     return this[_isTrusted];
   },
 }, "isTrusted").get;
-
-webidl.converters.EventInit = webidl.createDictionaryConverter("EventInit", [{
-  key: "bubbles",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "cancelable",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}, {
-  key: "composed",
-  defaultValue: false,
-  converter: webidl.converters.boolean,
-}]);
 
 const _attributes = Symbol("[[attributes]]");
 const _canceledFlag = Symbol("[[canceledFlag]]");
@@ -161,36 +138,7 @@ class Event {
     this[_isTrusted] = false;
     this[_path] = [];
 
-    if (!eventInitDict[_skipInternalInit]) {
-      webidl.requiredArguments(
-        arguments.length,
-        1,
-        "Failed to construct 'Event'",
-      );
-      type = webidl.converters.DOMString(
-        type,
-        "Failed to construct 'Event'",
-        "Argument 1",
-      );
-      const eventInit = webidl.converters.EventInit(
-        eventInitDict,
-        "Failed to construct 'Event'",
-        "Argument 2",
-      );
-      this[_attributes] = {
-        type,
-        ...eventInit,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: DateNow(),
-      };
-      // [LegacyUnforgeable]
-      ReflectDefineProperty(this, "isTrusted", {
-        enumerable: true,
-        get: isTrusted,
-      });
-    } else {
+    if (eventInitDict?.[_skipInternalInit]) {
       this[_attributes] = {
         type,
         data: eventInitDict.data ?? null,
@@ -202,10 +150,30 @@ class Event {
         target: null,
         timeStamp: 0,
       };
-      // TODO(@littledivy): Not spec compliant but performance is hurt badly
-      // for users of `_skipInternalInit`.
-      this.isTrusted = false;
+      return;
     }
+
+    webidl.requiredArguments(
+      arguments.length,
+      1,
+      "Failed to construct 'Event'",
+    );
+    type = webidl.converters.DOMString(
+      type,
+      "Failed to construct 'Event'",
+      "Argument 1",
+    );
+
+    this[_attributes] = {
+      type,
+      bubbles: !!eventInitDict.bubbles,
+      cancelable: !!eventInitDict.cancelable,
+      composed: !!eventInitDict.composed,
+      currentTarget: null,
+      eventPhase: Event.NONE,
+      target: null,
+      timeStamp: DateNow(),
+    };
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect) {
@@ -435,6 +403,13 @@ class Event {
   }
 }
 
+// Not spec compliant. The spec defines it as [LegacyUnforgeable]
+// but doing so has a big performance hit
+ReflectDefineProperty(Event.prototype, "isTrusted", {
+  enumerable: true,
+  get: isTrusted,
+});
+
 function defineEnumerableProps(
   Ctor,
   props,
@@ -517,9 +492,12 @@ function isShadowRoot(nodeImpl) {
 }
 
 function isSlottable(
-  nodeImpl,
+  /* nodeImpl, */
 ) {
-  return Boolean(isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot"));
+  // TODO(marcosc90) currently there aren't any slottables nodes
+  // https://dom.spec.whatwg.org/#concept-slotable
+  // return isNode(nodeImpl) && ReflectHas(nodeImpl, "assignedSlot");
+  return false;
 }
 
 // DOM Logic functions
@@ -562,9 +540,7 @@ function dispatch(
   setDispatched(eventImpl, true);
 
   targetOverride = targetOverride ?? targetImpl;
-  const eventRelatedTarget = hasRelatedTarget(eventImpl)
-    ? eventImpl.relatedTarget
-    : null;
+  const eventRelatedTarget = eventImpl.relatedTarget;
   let relatedTarget = retarget(eventRelatedTarget, targetImpl);
 
   if (targetImpl !== relatedTarget || targetImpl === eventRelatedTarget) {
@@ -988,7 +964,7 @@ class EventTarget {
 
     const { listeners } = self[eventTargetData];
 
-    if (!(ReflectHas(listeners, type))) {
+    if (!listeners[type]) {
       listeners[type] = [];
     }
 
@@ -1036,7 +1012,7 @@ class EventTarget {
     );
 
     const { listeners } = self[eventTargetData];
-    if (callback !== null && ReflectHas(listeners, type)) {
+    if (callback !== null && listeners[type]) {
       listeners[type] = ArrayPrototypeFilter(
         listeners[type],
         (listener) => listener.callback !== callback,
@@ -1085,7 +1061,7 @@ class EventTarget {
     }
 
     const { listeners } = self[eventTargetData];
-    if (!ReflectHas(listeners, event.type)) {
+    if (!listeners[event.type]) {
       setTarget(event, this);
       return true;
     }
