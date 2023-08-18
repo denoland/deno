@@ -769,5 +769,8 @@ Deno.test("[node/http] server emits error if addr in use", async () => {
   server.close(() => promise.resolve());
   server2.close();
   await promise;
-  assert(err.message.startsWith("Address already in use"));
+  assert(
+    err.message.startsWith("Address already in use"),
+    `Wrong error: ${err.message}`,
+  );
 });
