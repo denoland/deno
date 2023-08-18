@@ -121,6 +121,7 @@ declare global {
   interface GetEditsForRefactor extends BaseLanguageServerRequest {
     method: "getEditsForRefactor";
     specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
@@ -132,6 +133,7 @@ declare global {
     startPosition: number;
     endPosition: number;
     errorCodes: string[];
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
@@ -139,6 +141,7 @@ declare global {
     specifier: string;
     // deno-lint-ignore ban-types
     fixId: {};
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCompletionDetails extends BaseLanguageServerRequest {
@@ -147,6 +150,7 @@ declare global {
       specifier: string;
       position: number;
       name: string;
+      formatCodeSettings: ts.FormatCodeSettings;
       source?: string;
       preferences?: ts.UserPreferences;
       data?: ts.CompletionEntryData;
@@ -158,6 +162,7 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.GetCompletionsAtPositionOptions;
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {

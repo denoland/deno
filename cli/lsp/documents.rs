@@ -21,6 +21,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -1241,13 +1242,19 @@ impl Documents {
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
-      maybe_jsx_config,
-      options.maybe_import_map,
-      false,
       options.npm_registry_api,
       options.npm_resolution,
       deps_provider,
       deps_installer,
+      CliGraphResolverOptions {
+        maybe_jsx_import_source_config: maybe_jsx_config,
+        maybe_import_map: options.maybe_import_map,
+        maybe_vendor_dir: options
+          .maybe_config_file
+          .and_then(|c| c.vendor_dir_path())
+          .as_ref(),
+        no_npm: false,
+      },
     ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
