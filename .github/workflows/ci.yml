@@ -128,9 +128,6 @@ jobs:
       - name: Clone submodule ./test_util/std
         run: git submodule update --init --recursive --depth=1 -- ./test_util/std
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
-      - name: Clone submodule ./third_party
-        run: git submodule update --init --recursive --depth=1 -- ./third_party
-        if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Clone submodule ./test_util/wpt
         run: git submodule update --init --recursive --depth=1 -- ./test_util/wpt
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.wpt)'
@@ -252,8 +249,8 @@ jobs:
           sudo mount --rbind /home /sysroot/home
           sudo mount -t proc /proc /sysroot/proc
 
-          cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
-          cp third_party/prebuilt/linux64/libdl/libdl.a .
+          wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
+          wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
 
           sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
           sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
@@ -303,6 +300,7 @@ jobs:
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
+          ./tools/install_prebuilt.js wrk hyperfine
           fi
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Cache Cargo home

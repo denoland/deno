@@ -6,6 +6,7 @@ import {
   resolve,
   toFileUrl,
 } from "../test_util/std/path/mod.ts";
+import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, walk } from "../test_util/std/fs/mod.ts";
 export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
@@ -100,14 +101,58 @@ export function buildPath() {
   return join(ROOT_PATH, "target", buildMode());
 }
 
-export function getPrebuiltToolPath(toolName) {
-  const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const platformDirName = {
+  "windows": "win",
+  "darwin": "mac",
+  "linux": "linux64",
+}[Deno.build.os];
 
-  const platformDirName = {
-    "windows": "win",
-    "darwin": "mac",
-    "linux": "linux64",
-  }[Deno.build.os];
-  const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
+const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
+
+export async function getPrebuilt(toolName) {
+  const toolPath = getPrebuiltToolPath(toolName);
+  try {
+    await Deno.stat(toolPath);
+  } catch (e) {
+    await downloadPrebuilt(toolName);
+  }
+  return toolPath;
+}
+
+const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+
+export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_PATH, platformDirName, toolName + executableSuffix);
+}
+
+const downloadUrl =
+  `https://raw.githubusercontent.com/denoland/deno_third_party/master/prebuilt/${platformDirName}`;
+
+export async function downloadPrebuilt(toolName) {
+  const spinner = wait("Downloading prebuilt tool: " + toolName).start();
+  const toolPath = join(
+    PREBUILT_PATH,
+    platformDirName,
+    toolName + executableSuffix,
+  );
+
+  try {
+    await Deno.mkdir(join(PREBUILT_PATH, platformDirName), { recursive: true });
+
+    const url = `${downloadUrl}/${toolName}${executableSuffix}`;
+
+    const resp = await fetch(url);
+    const file = await Deno.open(toolPath, {
+      create: true,
+      write: true,
+      mode: 0o755,
+    });
+
+    await resp.body.pipeTo(file.writable);
+  } catch (e) {
+    spinner.fail();
+    throw e;
+  }
+
+  spinner.succeed();
 }
