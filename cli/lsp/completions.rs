@@ -630,7 +630,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::AnyError;
   use async_trait::async_trait;
-  use deno_core::anyhow::anyhow;
   use deno_core::resolve_url;
   use deno_graph::Range;
   use deno_npm::registry::TestNpmRegistryApi;
@@ -646,7 +645,7 @@ mod tests {
     async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
       match self.0.get(query) {
         Some(names) => Ok(names.clone()),
-        None => Err(anyhow!("Not found")),
+        None => Ok(Arc::new(vec![])),
       }
     }
   }
