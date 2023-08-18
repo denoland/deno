@@ -404,10 +404,10 @@ impl QueueMessageHandle for DequeuedMessage {
       Err(e) => {
         // Silently ignore the error if the database has been closed
         // This message will be delivered on the next run
-        if get_custom_error_class(&e) == Some("TypeError") {
-          if e.to_string() == ERROR_USING_CLOSED_DATABASE {
-            return Ok(());
-          }
+        if get_custom_error_class(&e) == Some("TypeError")
+          && e.to_string() == ERROR_USING_CLOSED_DATABASE
+        {
+          return Ok(());
         }
         return Err(e);
       }
