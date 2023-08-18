@@ -415,7 +415,7 @@ enum VariableItems {
 #[derive(Debug, Clone)]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
-  pub file_fetcher: FileFetcher,
+  file_fetcher: FileFetcher,
   http_cache: Arc<GlobalHttpCache>,
 }
 

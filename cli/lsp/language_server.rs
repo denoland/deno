@@ -482,11 +482,10 @@ impl LanguageServer {
   }
 }
 
-pub fn create_npm_api_and_cache(
+fn create_npm_api_and_cache(
   dir: &DenoDir,
   http_client: Arc<HttpClient>,
   registry_url: &ModuleSpecifier,
-  cache_setting: CacheSetting,
   progress_bar: &ProgressBar,
 ) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
   let npm_cache = Arc::new(NpmCache::new(
@@ -495,7 +494,7 @@ pub fn create_npm_api_and_cache(
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
     // the user is typing.
-    cache_setting,
+    CacheSetting::Only,
     Arc::new(deno_fs::RealFs),
     http_client.clone(),
     progress_bar.clone(),
@@ -580,11 +579,6 @@ impl Inner {
       &dir,
       http_client.clone(),
       registry_url,
-      // Use an "only" cache setting in order to make the
-      // user do an explicit "cache" command and prevent
-      // the cache from being filled with lots of packages while
-      // the user is typing.
-      CacheSetting::Only,
       &progress_bar,
     );
     let (npm_resolver, npm_resolution) = create_npm_resolver_and_resolution(
@@ -972,7 +966,6 @@ impl Inner {
       &deno_dir,
       self.http_client.clone(),
       registry_url,
-      CacheSetting::Only,
       &progress_bar,
     );
     let maybe_snapshot = self.get_npm_snapshot().await;

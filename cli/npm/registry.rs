@@ -53,6 +53,11 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
   Url::parse("https://registry.npmjs.org").unwrap()
 });
 
+#[async_trait::async_trait]
+pub trait NpmSearchApi {
+  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
+}
+
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
@@ -97,14 +102,6 @@ impl CliNpmRegistryApi {
     self.inner().get_cached_package_info(name)
   }
 
-  // TODO(nayeemrmn): Maybe declare in `NpmRegistryApi`.
-  pub async fn search(
-    &self,
-    query: &str,
-  ) -> Result<Arc<Vec<String>>, AnyError> {
-    self.inner().search(query).await
-  }
-
   pub fn base_url(&self) -> &Url {
     &self.inner().base_url
   }
@@ -113,6 +110,13 @@ impl CliNpmRegistryApi {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
     self.0.as_ref().unwrap()
+  }
+}
+
+#[async_trait]
+impl NpmSearchApi for CliNpmRegistryApi {
+  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
+    self.inner().search(query).await
   }
 }
 
@@ -418,20 +422,6 @@ impl CliNpmRegistryApiInner {
     if let Some(names) = self.search_cache.lock().get(query) {
       return Ok(names.clone());
     }
-
-    #[derive(Debug, Deserialize)]
-    struct Package {
-      name: String,
-    }
-    #[derive(Debug, Deserialize)]
-    struct Object {
-      package: Package,
-    }
-    #[derive(Debug, Deserialize)]
-    struct Response {
-      objects: Vec<Object>,
-    }
-
     let mut search_url = self.base_url.clone();
     search_url
       .path_segments_mut()
@@ -441,20 +431,50 @@ impl CliNpmRegistryApiInner {
     search_url
       .query_pairs_mut()
       .append_pair("text", &format!("{} boost-exact:false", query));
-
     let bytes = self.http_client.download(search_url).await?;
-    let response = serde_json::from_slice::<Response>(&bytes)?;
-    let names = Arc::new(
-      response
-        .objects
-        .into_iter()
-        .map(|o| o.package.name)
-        .collect::<Vec<_>>(),
-    );
+    let names = Arc::new(parse_npm_search_response(&bytes)?);
     self
       .search_cache
       .lock()
       .insert(query.to_string(), names.clone());
     Ok(names)
+  }
+}
+
+fn parse_npm_search_response(bytes: &[u8]) -> Result<Vec<String>, AnyError> {
+  #[derive(Debug, Deserialize)]
+  struct Package {
+    name: String,
+  }
+  #[derive(Debug, Deserialize)]
+  struct Object {
+    package: Package,
+  }
+  #[derive(Debug, Deserialize)]
+  struct Response {
+    objects: Vec<Object>,
+  }
+  let objects = serde_json::from_slice::<Response>(bytes)?.objects;
+  Ok(objects.into_iter().map(|o| o.package.name).collect())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_npm_search_response() {
+    // This is a subset of a realistic response only containing data currently
+    // used by our parser. It's enough to catch regressions.
+    let names = parse_npm_search_response(r#"{"objects":[{"package":{"name":"puppeteer"}},{"package":{"name":"puppeteer-core"}},{"package":{"name":"puppeteer-extra-plugin-stealth"}},{"package":{"name":"puppeteer-extra-plugin"}}]}"#.as_bytes()).unwrap();
+    assert_eq!(
+      names,
+      vec![
+        "puppeteer".to_string(),
+        "puppeteer-core".to_string(),
+        "puppeteer-extra-plugin-stealth".to_string(),
+        "puppeteer-extra-plugin".to_string()
+      ]
+    );
   }
 }
