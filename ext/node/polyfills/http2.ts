@@ -105,7 +105,6 @@ export class Http2Session extends EventEmitter {
       streams: new Map(),
       pendingStreams: new Set(),
       pendingAck: 0,
-      shutdownWritableCalled: false,
       writeQueueSize: 0,
       originSet: undefined,
     };
@@ -645,12 +644,17 @@ export class Http2Stream extends EventEmitter {
 }
 
 async function clientHttp2Request(
-  clientRid,
+  session,
   sessionConnectPromise,
   headers,
   options,
 ) {
-  debug("waiting for connect promise");
+  debug(
+    "waiting for connect promise",
+    sessionConnectPromise,
+    headers,
+    options,
+  );
   await sessionConnectPromise;
 
   const reqHeaders: string[][] = [];
@@ -672,7 +676,7 @@ async function clientHttp2Request(
 
   return await core.opAsync(
     "op_http2_client_request",
-    clientRid,
+    session._clientRid,
     pseudoHeaders,
     reqHeaders,
   );
@@ -710,10 +714,11 @@ export class ClientHttp2Stream extends Duplex {
       writeQueueSize: 0,
       trailersReady: false,
       endAfterHeaders: false,
+      shutdownWritableCalled: false,
     };
 
     this.#requestPromise = clientHttp2Request(
-      session._clientRid,
+      session,
       sessionConnectPromise,
       headers,
       options,
@@ -721,13 +726,13 @@ export class ClientHttp2Stream extends Duplex {
     this.#waitForTrailers = !!options.waitForTrailers;
     debug("created clienthttp2stream");
     this.#responsePromise = (async () => {
-      debug("before request promise");
+      debug("before request promise", session._clientRid);
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
       // TODO(bartlomieju): clean this up
       this.__rid = streamRid;
       this[kID] = streamId;
-      debug("after request promise", this.#rid);
+      debug("after request promise", session._clientRid, this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
         this.#rid,
@@ -830,14 +835,13 @@ export class ClientHttp2Stream extends Duplex {
     return {};
   }
 
-  // [kProceed]() {}
-
   // [kAfterAsyncWrite]() {}
 
   // [kWriteGeneric]() {}
 
   // TODO:
   _write(chunk, encoding, callback?: () => void) {
+    console.log("_write", callback);
     if (typeof encoding === "function") {
       callback = encoding;
       encoding = "utf8";
@@ -867,23 +871,32 @@ export class ClientHttp2Stream extends Duplex {
     notImplemented("ClientHttp2Stream._writev");
   }
 
-  // TODO:
   _final(cb) {
-    console.error("Not implemented: ClientHttp2Stream._final");
-    // notImplemented("ClientHttp2Stream._final");
-    if (this.#waitForTrailers) {
-      if (!this.emit("wantTrailers")) {
-        this.sendTrailers({});
-      }
+    if (this.pending) {
+      this.once("ready", () => this._final(cb));
+      return;
     }
-    core.opAsync(
-      "op_http2_client_end_stream",
-      this.#rid,
-    ).then(() => cb());
+
+    shutdownWritable(this, cb);
   }
 
   // TODO:
   _read() {
+    if (this.destroyed) {
+      this.push(null);
+      return;
+    }
+
+    if (!this[kState].didRead) {
+      this._readableState.readingMore = false;
+      this[kState].didRead = true;
+    }
+    // if (!this.pending) {
+    //   streamOnResume(this);
+    // } else {
+    //   this.once("ready", () => streamOnResume(this));
+    // }
+
     if (!this.__response) {
       this.once("ready", this._read);
       return;
@@ -1004,6 +1017,7 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO:
   close(code: number = constants.NGHTTP2_NO_ERROR, callback?: () => void) {
+    console.log("close", callback);
     console.error("Stream close");
 
     if (this.closed) {
@@ -1089,6 +1103,22 @@ export class ClientHttp2Stream extends Duplex {
     // setStreamTimeout(this, msecs, callback);
     notImplemented("ClientHttp2Stream.setTimeout");
   }
+}
+
+function shutdownWritable(stream, callback) {
+  console.log("shutdownWritable", callback);
+  const state = stream[kState];
+  if (state.shutdownWritableCalled) {
+    return callback();
+  }
+  state.shutdownWritableCalled = true;
+  core.opAsync(
+    "op_http2_client_end_stream",
+    // TODO(bartlomieju): cleanup
+    stream.__rid,
+  ).then(() => callback());
+  // TODO(bartlomieju): might have to add "finish" event listener here,
+  // check it.
 }
 
 const kNoRstStream = 0;
