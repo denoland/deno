@@ -29,66 +29,13 @@ The HTTP `Authorization` header is included and have the format
 `Bearer <access-token>`. The `<access-token>` is a static token issued by the
 service provider. For Deno Deploy, this is the personal access token generated
 from the dashboard. You can specify the access token with the environment
-variable `DENO_ACCESS_TOKEN`.
+variable `DENO_KV_ACCESS_TOKEN`.
 
 Request body is currently unused. The response is a JSON message that satisfies
-the following [JSON Schema](https://json-schema.org/) definition:
+the [JSON Schema](https://json-schema.org/) definition in
+`cli/schemas/kv-metadata-exchange-response.v1.json`.
 
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "definitions": {
-    "Uuid": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    },
-    "DateTime": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "EndpointInfo": {
-      "type": "object",
-      "properties": {
-        "url": {
-          "type": "string"
-        },
-        "consistency": {
-          "type": "string"
-        }
-      },
-      "required": ["url", "consistency"],
-      "additionalProperties": false
-    },
-    "DatabaseMetadata": {
-      "type": "object",
-      "properties": {
-        "version": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "databaseId": {
-          "$ref": "#/definitions/Uuid"
-        },
-        "endpoints": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/EndpointInfo"
-          }
-        },
-        "token": {
-          "type": "string"
-        },
-        "expiresAt": {
-          "$ref": "#/definitions/DateTime"
-        }
-      },
-      "required": ["version", "databaseId", "endpoints", "token", "expiresAt"],
-      "additionalProperties": false
-    }
-  },
-  "$ref": "#/definitions/DatabaseMetadata"
-}
-```
+Semantics of the response fields:
 
 - `version`: Protocol version. The only supported value is `1`.
 - `databaseId`: UUID of the database.

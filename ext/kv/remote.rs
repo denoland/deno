@@ -93,7 +93,7 @@ impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
   ) -> Result<Self::DB, AnyError> {
-    const ENV_VAR_NAME: &str = "DENO_ACCESS_TOKEN";
+    const ENV_VAR_NAME: &str = "DENO_KV_ACCESS_TOKEN";
 
     let Some(url) = path else {
       return Err(type_error("Missing database url"));
@@ -113,7 +113,7 @@ impl<P: RemoteDbHandlerPermissions> DatabaseHandler for RemoteDbHandler<P> {
     let access_token = std::env::var(ENV_VAR_NAME)
       .map_err(anyhow::Error::from)
       .with_context(|| {
-        "Missing DENO_ACCESS_TOKEN environment variable. Please set it to your access token from https://dash.deno.com/account."
+        "Missing DENO_KV_ACCESS_TOKEN environment variable. Please set it to your access token from https://dash.deno.com/account."
       })?;
 
     let refresher = MetadataRefresher::new(url, access_token);
