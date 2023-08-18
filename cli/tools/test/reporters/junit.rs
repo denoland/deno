@@ -40,13 +40,24 @@ impl JunitTestReporter {
 
 impl TestReporter for JunitTestReporter {
   fn report_register(&mut self, description: &TestDescription) {
-    self.cases.insert(
-      description.id,
-      quick_junit::TestCase::new(
-        description.name.clone(),
-        quick_junit::TestCaseStatus::skipped(),
-      ),
+    let mut case = quick_junit::TestCase::new(
+      description.name.clone(),
+      quick_junit::TestCaseStatus::skipped(),
     );
+    let file_name = description.location.file_name.clone();
+    let file_name = file_name.strip_prefix("file://").unwrap_or(&file_name);
+    case
+      .extra
+      .insert(String::from("filename"), String::from(file_name));
+    case.extra.insert(
+      String::from("line"),
+      description.location.line_number.to_string(),
+    );
+    case.extra.insert(
+      String::from("col"),
+      description.location.column_number.to_string(),
+    );
+    self.cases.insert(description.id, case);
   }
 
   fn report_plan(&mut self, _plan: &TestPlan) {}

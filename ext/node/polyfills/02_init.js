@@ -7,6 +7,10 @@ const requireImpl = internals.requireImpl;
 import { nodeGlobals } from "ext:deno_node/00_globals.js";
 import "node:module";
 
+globalThis.nodeBootstrap = function (usesLocalNodeModulesDir, argv0) {
+  initialize(usesLocalNodeModulesDir, argv0);
+};
+
 let initialized = false;
 
 function initialize(

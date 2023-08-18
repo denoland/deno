@@ -4158,26 +4158,26 @@ async fn websocketstream_ping() {
     tokio::spawn(async move {
       let mut ws = upgrade_fut.await.unwrap();
 
-      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
         .await
         .unwrap();
       ws.write_frame(fastwebsockets::Frame::new(
         true,
         fastwebsockets::OpCode::Ping,
         None,
-        vec![],
+        vec![].into(),
       ))
       .await
       .unwrap();
-      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
         .await
         .unwrap();
       let message = ws.read_frame().await.unwrap();
       assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
-      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
         .await
         .unwrap();
-      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
         .await
         .unwrap();
     });
@@ -4271,7 +4271,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
   assert!(message.payload.is_empty());
   socket
-    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
   assert!(child.wait().unwrap().success());
@@ -4580,4 +4580,17 @@ console.log(returnsHi());"#,
     .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
     .run()
     .assert_matches_text("hello there\n");
+
+  // now try importing directly from the vendor folder
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from './vendor/http_localhost_4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+  deno_run_cmd
+    .run()
+    .assert_matches_text("error: Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.
+    at [WILDCARD]/main.ts:1:27
+")
+    .assert_exit_code(1);
 }

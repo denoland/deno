@@ -55,6 +55,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
@@ -1438,6 +1439,7 @@ export class ServerResponse extends NodeWritable {
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
+  #headers: Record<string, string>;
   url: string;
   method: string;
   // Polyfills part of net.Socket object.
@@ -1484,7 +1486,15 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get headers() {
-    return Object.fromEntries(this.#req.headers.entries());
+    if (!this.#headers) {
+      this.#headers = {};
+      const entries = headersEntries(this.#req.headers);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        this.#headers[entry[0]] = entry[1];
+      }
+    }
+    return this.#headers;
   }
 
   get upgrade(): boolean {

@@ -181,7 +181,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
         Cow::Owned(current_folder.join("node_modules"))
       };
       let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.fs.is_dir(&sub_dir) {
+      if self.fs.is_dir_sync(&sub_dir) {
         // if doing types resolution, only resolve the package if it specifies a types property
         if mode.is_types() && !name.starts_with("@types/") {
           let package_json = PackageJson::load_skip_read_permission(
@@ -200,7 +200,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       if mode.is_types() && !name.starts_with("@types/") {
         let sub_dir =
           join_package_name(&node_modules_folder, &types_package_name(name));
-        if self.fs.is_dir(&sub_dir) {
+        if self.fs.is_dir_sync(&sub_dir) {
           return Ok(sub_dir);
         }
       }
