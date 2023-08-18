@@ -13,6 +13,8 @@ Deno KV has a pluggable storage interface that supports multiple backends:
   [KV Connect](#kv-connect) protocol, for example
   [Deno Deploy](https://deno.com/deploy).
 
+Additional backends can be added by implementing the `DatabaseHandler` trait.
+
 ## KV Connect
 
 The KV Connect protocol has separate control and data planes to maximize
