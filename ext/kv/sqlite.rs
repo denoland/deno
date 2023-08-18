@@ -14,6 +14,7 @@ use std::time::Duration;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
+use deno_core::error::get_custom_error_class;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -123,6 +124,8 @@ create index kv_expiration_ms_idx on kv (expiration_ms);
 
 const DISPATCH_CONCURRENCY_LIMIT: usize = 100;
 const DEFAULT_BACKOFF_SCHEDULE: [u32; 5] = [100, 1000, 5000, 30000, 60000];
+
+const ERROR_USING_CLOSED_DATABASE: &str = "Attempted to use a closed database";
 
 #[derive(Clone)]
 struct ProtectedConn {
@@ -352,7 +355,7 @@ impl SqliteDb {
     spawn_blocking(move || {
       let mut db = db.try_lock().ok();
       let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
-        return Err(type_error("Attempted to use a closed database"))
+        return Err(type_error(ERROR_USING_CLOSED_DATABASE))
       };
       let result = match db.transaction() {
         Ok(tx) => f(tx),
@@ -395,7 +398,20 @@ impl QueueMessageHandle for DequeuedMessage {
       tx.commit()?;
       Ok(requeued)
     })
-    .await?;
+    .await;
+    let requeued = match requeued {
+      Ok(x) => x,
+      Err(e) => {
+        // Silently ignore the error if the database has been closed
+        // This message will be delivered on the next run
+        if get_custom_error_class(&e) == Some("TypeError") {
+          if e.to_string() == ERROR_USING_CLOSED_DATABASE {
+            return Ok(());
+          }
+        }
+        return Err(e);
+      }
+    };
     if requeued {
       // If the message was requeued, wake up the dequeue loop.
       self.waker_tx.send(()).await?;
