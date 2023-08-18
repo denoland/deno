@@ -20,6 +20,9 @@ try {
   isCI = true;
 }
 
+// Defined in test_util/src/lib.rs
+Deno.env.set("DENO_KV_ACCESS_TOKEN", "578528e20364923229b08f94386b236f");
+
 Deno.test({
   name: "openKv :memory: no permissions",
   permissions: {},
@@ -1929,6 +1932,21 @@ Deno.test({
       } catch {
         // pass
       }
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend",
+  async fn() {
+    const db = await Deno.openKv("http://localhost:4545/kv_remote_authorize");
+    try {
+      await db.set(["some-key"], 1);
+      const entry = await db.get(["some-key"]);
+      assertEquals(entry.value, null);
+      assertEquals(entry.versionstamp, null);
+    } finally {
+      db.close();
     }
   },
 });
