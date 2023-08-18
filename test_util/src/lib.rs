@@ -80,9 +80,9 @@ const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
 const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
-const KV_DATABASE_ID: &str = "55bd5c48-58c2-4eb4-8adb-995c0763622a";
-const KV_ACCESS_TOKEN: &str = "578528e20364923229b08f94386b236f";
-const KV_DATABASE_TOKEN: &str = "iFOw5tcudKE2Cy4MKNuWZjxGkg4";
+const KV_DATABASE_ID: &str = "11111111-1111-1111-1111-111111111111";
+const KV_ACCESS_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const KV_DATABASE_TOKEN: &str = "MOCKMOCKMOCKMOCKMOCKMOCKMOCK";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
@@ -1128,6 +1128,72 @@ async fn main_server(
           .body(Body::from(
             serde_json::json!({
               "version": 1,
+              "databaseId": KV_DATABASE_ID,
+              "endpoints": [
+                {
+                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                  "consistency": "strong",
+                }
+              ],
+              "token": KV_DATABASE_TOKEN,
+              "expiresAt": "2099-01-01T00:00:00Z",
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_remote_authorize_invalid_format") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1,
+              "databaseId": KV_DATABASE_ID,
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_remote_authorize_invalid_version") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 2,
               "databaseId": KV_DATABASE_ID,
               "endpoints": [
                 {
