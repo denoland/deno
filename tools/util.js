@@ -131,9 +131,10 @@ export async function getPrebuilt(toolName) {
 }
 
 const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
 
 export function getPrebuiltToolPath(toolName) {
-  return join(PREBUILT_PATH, platformDirName, toolName + executableSuffix);
+  return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
 const downloadUrl =
@@ -141,14 +142,10 @@ const downloadUrl =
 
 export async function downloadPrebuilt(toolName) {
   const spinner = wait("Downloading prebuilt tool: " + toolName).start();
-  const toolPath = join(
-    PREBUILT_PATH,
-    platformDirName,
-    toolName + executableSuffix,
-  );
+  const toolPath = getPrebuiltToolPath(toolName);
 
   try {
-    await Deno.mkdir(join(PREBUILT_PATH, platformDirName), { recursive: true });
+    await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
 
     const url = `${downloadUrl}/${toolName}${executableSuffix}`;
 
