@@ -506,7 +506,7 @@ const ci = {
             "then",
             "  node -v",
             // Install benchmark tools.
-            installBenchTools,
+            "  " + installBenchTools,
             "fi",
           ].join("\n"),
         },

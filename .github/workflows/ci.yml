@@ -300,7 +300,7 @@ jobs:
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
-          ./tools/install_prebuilt.js wrk hyperfine
+            ./tools/install_prebuilt.js wrk hyperfine
           fi
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
       - name: Cache Cargo home
