@@ -323,6 +323,14 @@ fn op_fs_copy_file_sync<P>(
 where
   P: FsPermissions + 'static,
 {
+  if from == to {
+    return Err(FsError::Io(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "Source and destination cannot be the same",
+    )))
+    .context("copyfilesync");
+  }
+
   let from = PathBuf::from(from);
   let to = PathBuf::from(to);
 
@@ -346,6 +354,14 @@ async fn op_fs_copy_file_async<P>(
 where
   P: FsPermissions + 'static,
 {
+  if from == to {
+    return Err(FsError::Io(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "Source and destination cannot be the same",
+    )))
+    .context("copyfileasync");
+  }
+
   let from = PathBuf::from(from);
   let to = PathBuf::from(to);
 
