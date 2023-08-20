@@ -709,7 +709,7 @@ export class ClientHttp2Stream extends Duplex {
 
     this[kState] = {
       didRead: false,
-      flags: STREAM_FLAGS_PENDING,
+      flags: STREAM_FLAGS_PENDING | STREAM_FLAGS_HEADERS_SENT,
       rstCode: constants.NGHTTP2_NO_ERROR,
       writeQueueSize: 0,
       trailersReady: false,
@@ -903,28 +903,28 @@ export class ClientHttp2Stream extends Duplex {
     }
 
     debug(">>> read");
-    if (this.#hasTrailersToRead) {
-      (async () => {
-        debug(">>> before trailers to read");
-        const trailerList = await core.opAsync(
-          "op_http2_client_get_response_trailers",
-          response.bodyRid,
-        );
-        debug(">>> after trailers to read");
-        debug(">>> trailers", trailerList);
-        const trailers = Object.fromEntries(trailerList);
-        // core.close(response.bodyRid);
-        // core.close(clientRid);
-        // core.tryClose(connRid);
-        this.emit("trailers", trailers);
-      })();
+    // if (this.#hasTrailersToRead) {
+    //   (async () => {
+    //     debug(">>> before trailers to read");
+    //     const trailerList = await core.opAsync(
+    //       "op_http2_client_get_response_trailers",
+    //       response.bodyRid,
+    //     );
+    //     debug(">>> after trailers to read");
+    //     debug(">>> trailers", trailerList);
+    //     const trailers = Object.fromEntries(trailerList);
+    //     // core.close(response.bodyRid);
+    //     // core.close(clientRid);
+    //     // core.tryClose(connRid);
+    //     this.emit("trailers", trailers);
+    //   })();
 
-      // this.#closed = true;
-      // // debug(this.#bodyRid, this.#rid);
-      // core.tryClose(this.#bodyRid);
-      // core.tryClose(this.#rid);
-      // this.emit("end");
-    }
+    //   // this.#closed = true;
+    //   // // debug(this.#bodyRid, this.#rid);
+    //   // core.tryClose(this.#bodyRid);
+    //   // core.tryClose(this.#rid);
+    //   // this.emit("end");
+    // }
 
     (async () => {
       const [chunk, finished] = await core.opAsync(
@@ -932,38 +932,48 @@ export class ClientHttp2Stream extends Duplex {
         this.__response.bodyRid,
       );
 
-      // debug(">>> chunk", chunk, finished);
+      debug(">>> chunk", chunk, finished);
       if (chunk === null) {
-        if (finished) {
-          this.#hasTrailersToRead = true;
-          this.push(null);
-          // TODO: remove, don't emit manually
-          this.emit("end");
-          return;
-        }
-        const trailerList = await core.opAsync(
-          "op_http2_client_get_response_trailers",
-          this.__response.bodyRid,
-        );
-        // debug(">>> after trailers to read");
-        // debug(">>> trailers", trailerList);
-        const trailers = Object.fromEntries(trailerList);
-        // core.close(response.bodyRid);
-        // core.close(clientRid);
-        // core.tryClose(connRid);
-        debug(">>> emitting trailers", trailers);
+        // if (finished) {
+        //   this.#hasTrailersToRead = true;
+        //   const result = this.push(null);
+        //   debug(">>> read result1", result);
+        //   // TODO: remove, don't emit manually
+        //   this.emit("end");
+        //   return;
+        // }
+        // const trailerList = await core.opAsync(
+        //   "op_http2_client_get_response_trailers",
+        //   this.__response.bodyRid,
+        // );
+        // // debug(">>> after trailers to read");
+        // // debug(">>> trailers", trailerList);
+        // const trailers = Object.fromEntries(trailerList);
+        // // core.close(response.bodyRid);
+        // // core.close(clientRid);
+        // // core.tryClose(connRid);
+        // debug(">>> emitting trailers", trailers);
+        // const result = this.push(null);
+        // debug(">>> read result2", result);
+        // this.emit("trailers", trailers);
+        // // TODO: remove, don't emit manually
+        // this.emit("end");
         this.push(null);
-        this.emit("trailers", trailers);
-        // TODO: remove, don't emit manually
-        this.emit("end");
+        if (!finished) {
+          onStreamTrailers(this);
+        }
+        debug(">>> read null chunk");
+        this[kMaybeDestroy]();
         return;
       }
 
+      let result;
       if (this.#encoding === "utf8") {
-        this.push(new TextDecoder().decode(new Uint8Array(chunk)));
+        result = this.push(new TextDecoder().decode(new Uint8Array(chunk)));
       } else {
-        this.push(new Uint8Array(chunk));
+        result = this.push(new Uint8Array(chunk));
       }
+      debug(">>> read result", result);
     })();
   }
 
@@ -973,6 +983,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   sendTrailers(trailers: Record<string, unknown>) {
+    console.log("sendTrailers", trailers);
     if (this.destroyed || this.closed) {
       throw new ERR_HTTP2_INVALID_STREAM();
     }
@@ -998,6 +1009,7 @@ export class ClientHttp2Stream extends Duplex {
       }
 
       stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
+      console.log("sending trailers", trailers);
 
       core.opAsync(
         "op_http2_client_send_trailers",
@@ -1075,7 +1087,13 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   [kMaybeDestroy](code = constants.NGHTTP2_NO_ERROR) {
-    debug(">>> ClientHttp2Stream[kMaybeDestroy]");
+    debug(
+      ">>> ClientHttp2Stream[kMaybeDestroy]",
+      code,
+      this.writableFinished,
+      this.readable,
+      this.closed,
+    );
     if (code !== constants.NGHTTP2_NO_ERROR) {
       this._destroy();
       return;
@@ -1083,11 +1101,22 @@ export class ClientHttp2Stream extends Duplex {
 
     if (this.writableFinished) {
       if (!this.readable && this.closed) {
+        console.log("going into _destroy");
         this._destroy();
         return;
       }
 
       const state = this[kState];
+      console.log(
+        "state here, sent headers",
+        this.headersSent,
+        "has trailers",
+        !(state.flags & STREAM_FLAGS_HAS_TRAILERS),
+        "didRead",
+        state.didRead,
+        "readableFlowing",
+        this.readableFlowing,
+      );
       if (
         this.headersSent && !(state.flags & STREAM_FLAGS_HAS_TRAILERS) &&
         !state.didRead && this.readableFlowing === null
@@ -1122,6 +1151,19 @@ function shutdownWritable(stream, callback) {
   });
   // TODO(bartlomieju): might have to add "finish" event listener here,
   // check it.
+}
+
+function onStreamTrailers(stream) {
+  stream[kState].trailersReady = true;
+  debug(">>> onStreamTrailers", stream.destroyed, stream.closed);
+  if (stream.destroyed || stream.closed) {
+    return;
+  }
+  if (!stream.emit("wantTrailers")) {
+    debug(">>> onStreamTrailers no wantTrailers");
+    stream.sendTrailers({});
+  }
+  debug(">>> onStreamTrailers wantTrailers");
 }
 
 const kNoRstStream = 0;
@@ -1168,14 +1210,20 @@ function finishCloseStream(stream, code) {
         "op_http2_client_reset_stream",
         this.__rid,
         code,
-      ).then(() => core.tryClose(this.__rid));
+      ).then(() => {
+        core.tryClose(this.__rid);
+        core.tryClose(this.__response.bodyRid);
+      });
     });
   } else {
     core.opAsync(
       "op_http2_client_reset_stream",
       this.__rid,
       code,
-    ).then(() => core.tryClose(this.__rid));
+    ).then(() => {
+      core.tryClose(this.__rid);
+      core.tryClose(this.__response.bodyRid);
+    });
   }
 }
 
