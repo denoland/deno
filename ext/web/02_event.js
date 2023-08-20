@@ -896,44 +896,28 @@ function getDefaultTargetData() {
   };
 }
 
-// This is lazy loaded because there is a circular dependency with AbortSignal.
-let addEventListenerOptionsConverter;
-
-function lazyAddEventListenerOptionsConverter() {
-  addEventListenerOptionsConverter ??= webidl.createDictionaryConverter(
-    "AddEventListenerOptions",
-    [
-      {
-        key: "capture",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "passive",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "once",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "signal",
-        converter: webidl.converters.AbortSignal,
-      },
-    ],
-  );
-}
-
-webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
-  if (webidl.type(V) !== "Object" || V === null) {
-    V = { capture: Boolean(V) };
+function addEventListenerOptionsConverter(V, prefix) {
+  if (webidl.type(V) !== "Object") {
+    return { capture: !!V, once: false, passive: false };
   }
 
-  lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, prefix, context, opts);
-};
+  const options = {
+    capture: !!V.capture,
+    once: !!V.once,
+    passive: !!V.passive,
+  };
+
+  const signal = V.signal;
+  if (signal !== undefined) {
+    options.signal = webidl.converters.AbortSignal(
+      signal,
+      prefix,
+      "'signal' of 'AddEventListenerOptions' (Argument 3)",
+    );
+  }
+
+  return options;
+}
 
 class EventTarget {
   constructor() {
@@ -952,11 +936,7 @@ class EventTarget {
 
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(
-      options,
-      prefix,
-      "Argument 3",
-    );
+    options = addEventListenerOptionsConverter(options, prefix);
 
     if (callback === null) {
       return;
