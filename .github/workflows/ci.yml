@@ -300,9 +300,6 @@ jobs:
           if [ "${{ matrix.job }}" == "bench" ]
           then
             node -v
-          fi
-          if [ "${{ matrix.job }}" == "bench" ]
-          then
             ./tools/install_prebuilt.js wrk hyperfine
           fi
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr)'
