@@ -422,7 +422,8 @@ const ci = {
         },
         installRustStep,
         {
-          if: "matrix.job == 'lint' || matrix.job == 'test'",
+          if:
+            "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
