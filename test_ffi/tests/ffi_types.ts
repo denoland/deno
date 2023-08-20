@@ -358,6 +358,13 @@ type AssertNotEqual<
   $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
 > = never;
 
+declare const brand: unique symbol;
+const enum Enum {
+  Foo,
+  Bar,
+}
+type U8Enum = "u8" & { [brand]: Enum };
+
 type __Tests__ = [
   empty: AssertEqual<
     { symbols: Record<never, never>; close(): void },
@@ -440,6 +447,17 @@ type __Tests__ = [
     },
     Deno.DynamicLibrary<
       { foo: { parameters: []; result: "i32" } }
+    >
+  >,
+  extended_params: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: number) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [U8Enum]; result: "void" } }
     >
   >,
 ];

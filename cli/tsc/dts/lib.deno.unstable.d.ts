@@ -126,21 +126,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type conversion for foreign symbol parameters and unsafe callback
-   * return types.
-   *
-   * @category FFI
-   */
-  type ToNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>
-    & Record<NativeBufferType, BufferSource | null>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol parameters and unsafe callback return
    * types.
    *
@@ -148,15 +133,13 @@ declare namespace Deno {
    */
   type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
-    : ToNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for unsafe callback return types.
-   *
-   * @category FFI
-   */
-  type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType ? PointerValue
+    : T extends NativeFunctionType ? PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -166,7 +149,14 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType ? PointerValue
+      : T extends NativeFunctionType ? PointerValue
+      : T extends NativeBufferType ? BufferSource | null
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -186,21 +176,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type for conversion of foreign symbol return types and unsafe
-   * callback parameters.
-   *
-   * @category FFI
-   */
-  type FromNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeBufferType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol return types and unsafe callback
    * parameters.
    *
@@ -208,17 +183,13 @@ declare namespace Deno {
    */
   type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
-    : FromNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for foreign symbol return types.
-   *
-   * @category FFI
-   */
-  type FromNativeResultTypeMap =
-    & FromNativeTypeMap
-    & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType ? PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType ? PointerValue
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -228,7 +199,14 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType ? PointerValue
+      : T extends NativeBufferType ? PointerValue
+      : T extends NativeFunctionType ? PointerValue
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -356,16 +334,27 @@ declare namespace Deno {
 
   /** @category FFI */
   const brand: unique symbol;
-  /** @category FFI */
-  type PointerObject = { [brand]: unknown };
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A non-null pointer, represented as an object
+   * at runtime. The object's prototype is `null`
+   * and cannot be changed. The object cannot be
+   * assigned to either and is thus entirely read-only.
+   *
+   * To interact with memory through a pointer use the
+   * {@linkcode UnsafePointerView} class. To create a
+   * pointer from an address or the get the address of
+   * a pointer use the static methods of the
+   * {@linkcode UnsafePointer} class.
+   *
+   * @category FFI
+   */
+  export type PointerObject = { [brand]: unknown };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Pointer type depends on the architecture and actual pointer value.
-   *
-   * On a 32 bit host system all pointer values are plain numbers. On a 64 bit
-   * host system pointer values are represented as numbers if the value is below
-   * `Number.MAX_SAFE_INTEGER`, otherwise they are provided as bigints.
+   * Pointers are represented either with a {@linkcode PointerObject}
+   * object or a `null` if the pointer is null.
    *
    * @category FFI
    */
@@ -373,8 +362,7 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe pointer to a memory location for passing and returning pointers
-   * to and from the FFI.
+   * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
    */
