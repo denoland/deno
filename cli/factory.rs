@@ -63,21 +63,30 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::broadcast::Receiver;
 
 pub struct CliFactoryBuilder {
-  maybe_sender: Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
+  maybe_watch_path_sender:
+    Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>,
+  maybe_changed_path_receiver:
+    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
 }
 
 impl CliFactoryBuilder {
   pub fn new() -> Self {
-    Self { maybe_sender: None }
+    Self {
+      maybe_watch_path_sender: None,
+      maybe_changed_path_receiver: None,
+    }
   }
 
   pub fn with_watcher(
     mut self,
     sender: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+    receiver: Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
   ) -> Self {
-    self.maybe_sender = Some(sender);
+    self.maybe_watch_path_sender = Some(sender);
+    self.maybe_changed_path_receiver = receiver;
     self
   }
 
@@ -90,7 +99,8 @@ impl CliFactoryBuilder {
 
   pub fn build_from_cli_options(self, options: Arc<CliOptions>) -> CliFactory {
     CliFactory {
-      maybe_sender: RefCell::new(self.maybe_sender),
+      maybe_watch_path_sender: RefCell::new(self.maybe_watch_path_sender),
+      maybe_changed_path_receiver: self.maybe_changed_path_receiver,
       options,
       services: Default::default(),
     }
@@ -168,8 +178,10 @@ struct CliFactoryServices {
 }
 
 pub struct CliFactory {
-  maybe_sender:
+  maybe_watch_path_sender:
     RefCell<Option<tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>>>,
+  maybe_changed_path_receiver:
+    Option<tokio::sync::broadcast::Receiver<Vec<PathBuf>>>,
   options: Arc<CliOptions>,
   services: CliFactoryServices,
 }
@@ -443,7 +455,7 @@ impl CliFactory {
   }
 
   pub fn maybe_file_watcher_reporter(&self) -> &Option<FileWatcherReporter> {
-    let maybe_sender = self.maybe_sender.borrow_mut().take();
+    let maybe_sender = self.maybe_watch_path_sender.borrow_mut().take();
     self
       .services
       .maybe_file_watcher_reporter
@@ -645,6 +657,10 @@ impl CliFactory {
       )),
       self.root_cert_store_provider().clone(),
       self.fs().clone(),
+      self
+        .maybe_changed_path_receiver
+        .as_ref()
+        .map(Receiver::resubscribe),
       self.maybe_inspector_server().clone(),
       self.maybe_lockfile().clone(),
       self.create_cli_main_worker_options()?,
@@ -660,6 +676,7 @@ impl CliFactory {
       coverage_dir: self.options.coverage_dir(),
       enable_testing_features: self.options.enable_testing_features(),
       has_node_modules_dir: self.options.has_node_modules_dir(),
+      hot_reload: self.options.has_hot_reload(),
       inspect_brk: self.options.inspect_brk().is_some(),
       inspect_wait: self.options.inspect_wait().is_some(),
       is_inspecting: self.options.is_inspecting(),

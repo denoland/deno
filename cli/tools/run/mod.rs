@@ -16,6 +16,8 @@ use crate::factory::CliFactoryBuilder;
 use crate::file_fetcher::File;
 use crate::util;
 
+pub mod hot_reload;
+
 pub async fn run_script(
   flags: Flags,
   run_flags: RunFlags,
@@ -104,42 +106,80 @@ async fn run_with_watch(
   flags: Flags,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
-  util::file_watcher::watch_func(
-    flags,
-    util::file_watcher::PrintConfig {
-      job_name: "Process".to_string(),
-      clear_screen: !watch_flags.no_clear_screen,
-    },
-    move |flags, sender, _changed_paths| {
-      Ok(async move {
-        let factory = CliFactoryBuilder::new()
-          .with_watcher(sender.clone())
-          .build_from_flags(flags)
-          .await?;
-        let cli_options = factory.cli_options();
-        let main_module = cli_options.resolve_main_module()?;
+  if watch_flags.hot_reload {
+    util::file_watcher::watch_recv(
+      util::file_watcher::PrintConfig {
+        job_name: "Process".to_string(),
+        clear_screen: false,
+      },
+      move |watch_path_sender, changed_path_receiver| {
+        Ok(async move {
+          let factory = CliFactoryBuilder::new()
+            .with_watcher(
+              watch_path_sender.clone(),
+              Some(changed_path_receiver),
+            )
+            .build_from_flags(flags)
+            .await?;
+          let cli_options = factory.cli_options();
+          let main_module = cli_options.resolve_main_module()?;
 
-        maybe_npm_install(&factory).await?;
+          maybe_npm_install(&factory).await?;
 
-        let _ = sender.send(cli_options.watch_paths());
+          let _ = watch_path_sender.send(cli_options.watch_paths());
 
-        let permissions = PermissionsContainer::new(Permissions::from_options(
-          &cli_options.permissions_options(),
-        )?);
-        let worker = factory
-          .create_cli_main_worker_factory()
-          .await?
-          .create_main_worker(main_module, permissions)
-          .await?;
-        worker.run_for_watcher().await?;
+          let permissions = PermissionsContainer::new(
+            Permissions::from_options(&cli_options.permissions_options())?,
+          );
+          let mut worker = factory
+            .create_cli_main_worker_factory()
+            .await?
+            .create_main_worker(main_module, permissions)
+            .await?;
 
-        Ok(())
-      })
-    },
-  )
-  .await?;
+          worker.run().await
+        })
+      },
+    )
+    .await
+  } else {
+    util::file_watcher::watch_func(
+      flags,
+      util::file_watcher::PrintConfig {
+        job_name: "Process".to_string(),
+        clear_screen: !watch_flags.no_clear_screen,
+      },
+      move |flags, sender, _changed_paths| {
+        Ok(async move {
+          let factory = CliFactoryBuilder::new()
+            .with_watcher(sender.clone(), None)
+            .build_from_flags(flags)
+            .await?;
+          let cli_options = factory.cli_options();
+          let main_module = cli_options.resolve_main_module()?;
 
-  Ok(0)
+          maybe_npm_install(&factory).await?;
+
+          let _ = sender.send(cli_options.watch_paths());
+
+          let permissions = PermissionsContainer::new(
+            Permissions::from_options(&cli_options.permissions_options())?,
+          );
+          let worker = factory
+            .create_cli_main_worker_factory()
+            .await?
+            .create_main_worker(main_module, permissions)
+            .await?;
+          worker.run_for_watcher().await?;
+
+          Ok(())
+        })
+      },
+    )
+    .await?;
+
+    Ok(0)
+  }
 }
 
 pub async fn eval_command(

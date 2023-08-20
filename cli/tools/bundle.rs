@@ -39,7 +39,7 @@ pub async fn bundle(
         let bundle_flags = bundle_flags.clone();
         Ok(async move {
           let factory = CliFactoryBuilder::new()
-            .with_watcher(sender.clone())
+            .with_watcher(sender.clone(), None)
             .build_from_flags(flags)
             .await?;
           let cli_options = factory.cli_options();

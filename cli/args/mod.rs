@@ -1054,6 +1054,18 @@ impl CliOptions {
     &self.flags.ext
   }
 
+  pub fn has_hot_reload(&self) -> bool {
+    if let DenoSubcommand::Run(RunFlags {
+      watch: Some(WatchFlagsWithPaths { hot_reload, .. }),
+      ..
+    }) = &self.flags.subcommand
+    {
+      *hot_reload
+    } else {
+      false
+    }
+  }
+
   /// If the --inspect or --inspect-brk flags are used.
   pub fn is_inspecting(&self) -> bool {
     self.flags.inspect.is_some()

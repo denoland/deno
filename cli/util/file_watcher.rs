@@ -227,6 +227,77 @@ where
   }
 }
 
+/// Creates a file watcher.
+///
+/// - `operation` is the actual operation we want to run and notify every time
+/// the watcher detects file changes.
+pub async fn watch_recv<O, F>(
+  print_config: PrintConfig,
+  operation: O,
+) -> Result<i32, AnyError>
+where
+  O: FnOnce(
+    UnboundedSender<Vec<PathBuf>>,
+    tokio::sync::broadcast::Receiver<Vec<PathBuf>>,
+  ) -> Result<F, AnyError>,
+  F: Future<Output = Result<i32, AnyError>>,
+{
+  let (paths_to_watch_sender, mut paths_to_watch_receiver) =
+    tokio::sync::mpsc::unbounded_channel();
+  let (changed_paths_sender, changed_paths_receiver) =
+    tokio::sync::broadcast::channel(4);
+  let (watcher_sender, mut watcher_receiver) =
+    DebouncedReceiver::new_with_sender();
+
+  let PrintConfig { job_name, .. } = print_config;
+
+  info!("{} {} started.", colors::intense_blue("Watcher"), job_name,);
+
+  fn consume_paths_to_watch(
+    watcher: &mut RecommendedWatcher,
+    receiver: &mut UnboundedReceiver<Vec<PathBuf>>,
+  ) {
+    loop {
+      match receiver.try_recv() {
+        Ok(paths) => {
+          add_paths_to_watcher(watcher, &paths);
+        }
+        Err(e) => match e {
+          mpsc::error::TryRecvError::Empty => {
+            break;
+          }
+          // there must be at least one receiver alive
+          _ => unreachable!(),
+        },
+      }
+    }
+  }
+
+  let mut watcher = new_watcher(watcher_sender.clone())?;
+  consume_paths_to_watch(&mut watcher, &mut paths_to_watch_receiver);
+
+  let operation_future =
+    operation(paths_to_watch_sender, changed_paths_receiver)?;
+  tokio::pin!(operation_future);
+
+  loop {
+    select! {
+      maybe_paths = paths_to_watch_receiver.recv() => {
+        add_paths_to_watcher(&mut watcher, &maybe_paths.unwrap());
+      },
+      received_changed_paths = watcher_receiver.recv() => {
+        if let Some(changed_paths) = received_changed_paths {
+          changed_paths_sender.send(changed_paths)?;
+        }
+      },
+      exit_code = &mut operation_future => {
+        // TODO(SyrupThinker) Exit code
+        return exit_code;
+      },
+    };
+  }
+}
+
 fn new_watcher(
   sender: Arc<mpsc::UnboundedSender<Vec<PathBuf>>>,
 ) -> Result<RecommendedWatcher, AnyError> {
