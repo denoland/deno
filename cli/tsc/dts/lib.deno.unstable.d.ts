@@ -103,6 +103,31 @@ declare namespace Deno {
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
+  /** @category FFI */
+  const brand: unique symbol;
+
+  /** @category FFI */
+  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
+    [brand]: T;
+  };
+  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
+    & "function"
+    & {
+      [brand]: T;
+    };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * All supported types for interfacing with foreign functions.
@@ -133,11 +158,20 @@ declare namespace Deno {
    */
   type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
-    : T extends NativeNumberType ? number
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? number | bigint
     : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType ? PointerValue
-    : T extends NativeFunctionType ? PointerValue
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
     : T extends NativeBufferType ? BufferSource | null
     : never;
 
@@ -149,11 +183,20 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-      : T extends NativeNumberType ? number
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
       : T extends NativeBigIntType ? number | bigint
       : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType ? PointerValue
-      : T extends NativeFunctionType ? PointerValue
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
       : T extends NativeBufferType ? BufferSource | null
       : T extends NativeVoidType ? void
       : never;
@@ -183,12 +226,21 @@ declare namespace Deno {
    */
   type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? number
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
     : T extends NativeBigIntType ? number | bigint
     : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType ? PointerValue
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
     : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
     : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
@@ -199,12 +251,21 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-      : T extends NativeNumberType ? number
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
       : T extends NativeBigIntType ? number | bigint
       : T extends NativeBooleanType ? boolean
-      : T extends NativePointerType ? PointerValue
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
       : T extends NativeBufferType ? PointerValue
-      : T extends NativeFunctionType ? PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
       : T extends NativeVoidType ? void
       : never;
 
@@ -332,8 +393,6 @@ declare namespace Deno {
       : StaticForeignSymbol<T[K]>;
   };
 
-  /** @category FFI */
-  const brand: unique symbol;
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * A non-null pointer, represented as an object
@@ -349,7 +408,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerObject = { [brand]: unknown };
+  export type PointerObject<T = unknown> = { [brand]: T };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -358,7 +417,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type PointerValue = null | PointerObject;
+  export type PointerValue<T = unknown> = null | PointerObject<T>;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -368,16 +427,18 @@ declare namespace Deno {
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create(value: number | bigint): PointerValue;
+    static create<T = unknown>(value: number | bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
-    static equals(a: PointerValue, b: PointerValue): boolean;
+    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
-    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    static of<T = unknown>(
+      value: Deno.UnsafeCallback | BufferSource,
+    ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset(
-      value: NonNullable<PointerValue>,
+    static offset<T = unknown>(
+      value: PointerObject,
       offset: number,
-    ): PointerValue;
+    ): PointerValue<T>;
     /** Get the numeric value of a pointer */
     static value(value: PointerValue): number | bigint;
   }
@@ -392,9 +453,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: NonNullable<PointerValue>);
+    constructor(pointer: PointerObject);
 
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -429,14 +490,14 @@ declare namespace Deno {
      * pointer. */
     getFloat64(offset?: number): number;
     /** Gets a pointer at the specified byte offset from the pointer */
-    getPointer(offset?: number): PointerValue;
+    getPointer<T = unknown>(offset?: number): PointerValue<T>;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
     static getCString(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       offset?: number,
     ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
@@ -445,7 +506,7 @@ declare namespace Deno {
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -461,7 +522,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -476,11 +537,13 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -550,7 +613,7 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    readonly pointer: NonNullable<PointerValue>;
+    readonly pointer: PointerObject<Definition>;
     /** The definition of the unsafe callback. */
     readonly definition: Definition;
     /** The callback function. */

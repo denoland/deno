@@ -173,7 +173,7 @@ result4.then((_0: Deno.BufferSource) => {});
 result4.then((_1: null | Deno.UnsafePointer) => {});
 
 const fnptr = new Deno.UnsafeFnPointer(
-  {} as NonNullable<Deno.PointerValue>,
+  {} as Deno.PointerObject,
   {
     parameters: ["u32", "pointer"],
     result: "void",
@@ -358,12 +358,23 @@ type AssertNotEqual<
   $ = [Equal<Expected, Got>] extends [true] ? never : Expected,
 > = never;
 
-declare const brand: unique symbol;
-const enum Enum {
+const enum FooEnum {
   Foo,
   Bar,
 }
-type U8Enum = "u8" & { [brand]: Enum };
+const foo = "u8" as Deno.NativeU8Enum<FooEnum>;
+
+declare const brand: unique symbol;
+class MyPointerClass {}
+type MyPointer = Deno.PointerObject & { [brand]: MyPointerClass };
+const myPointer = "pointer" as Deno.NativeTypedPointer<MyPointer>;
+type MyFunctionDefinition = Deno.UnsafeCallbackDefinition<
+  [typeof foo, "u32"],
+  typeof myPointer
+>;
+const myFunction = "function" as Deno.NativeTypedFunction<
+  MyFunctionDefinition
+>;
 
 type __Tests__ = [
   empty: AssertEqual<
@@ -449,15 +460,70 @@ type __Tests__ = [
       { foo: { parameters: []; result: "i32" } }
     >
   >,
-  extended_params: AssertEqual<
+  enum_param: AssertEqual<
     {
       symbols: {
-        foo: (arg: number) => void;
+        foo: (arg: FooEnum) => void;
       };
       close(): void;
     },
     Deno.DynamicLibrary<
-      { foo: { parameters: [U8Enum]; result: "void" } }
+      { foo: { parameters: [typeof foo]; result: "void" } }
+    >
+  >,
+  enum_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => FooEnum;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof foo } }
+    >
+  >,
+  typed_pointer_param: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: MyPointer | null) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [typeof myPointer]; result: "void" } }
+    >
+  >,
+  typed_pointer_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => MyPointer | null;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof myPointer } }
+    >
+  >,
+  typed_function_param: AssertEqual<
+    {
+      symbols: {
+        foo: (arg: Deno.PointerObject<MyFunctionDefinition> | null) => void;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: [typeof myFunction]; result: "void" } }
+    >
+  >,
+  typed_function_return: AssertEqual<
+    {
+      symbols: {
+        foo: () => Deno.PointerObject<MyFunctionDefinition> | null;
+      };
+      close(): void;
+    },
+    Deno.DynamicLibrary<
+      { foo: { parameters: []; result: typeof myFunction } }
     >
   >,
 ];
