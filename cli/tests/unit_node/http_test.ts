@@ -751,3 +751,29 @@ Deno.test(
     assertEquals(body, "hello");
   },
 );
+
+Deno.test("[node/http] server emits error if addr in use", async () => {
+  const promise = deferred<void>();
+  const promise2 = deferred<Error>();
+
+  const server = http.createServer();
+  server.listen(9001);
+
+  const server2 = http.createServer();
+  server2.on("error", (e) => {
+    promise2.resolve(e);
+  });
+  server2.listen(9001);
+
+  const err = await promise2;
+  server.close(() => promise.resolve());
+  server2.close();
+  await promise;
+  const expectedMsg = Deno.build.os === "windows"
+    ? "Only one usage of each socket address"
+    : "Address already in use";
+  assert(
+    err.message.startsWith(expectedMsg),
+    `Wrong error: ${err.message}`,
+  );
+});
