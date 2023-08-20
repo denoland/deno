@@ -21,7 +21,6 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   Boolean,
-  DateNow,
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
@@ -123,8 +122,6 @@ const _inPassiveListener = Symbol("[[inPassiveListener]]");
 const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
-// internal.
-const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
   constructor(type, eventInitDict = {}) {
@@ -137,21 +134,6 @@ class Event {
     this[_dispatched] = false;
     this[_isTrusted] = false;
     this[_path] = [];
-
-    if (eventInitDict?.[_skipInternalInit]) {
-      this[_attributes] = {
-        type,
-        data: eventInitDict.data ?? null,
-        bubbles: eventInitDict.bubbles ?? false,
-        cancelable: eventInitDict.cancelable ?? false,
-        composed: eventInitDict.composed ?? false,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: 0,
-      };
-      return;
-    }
 
     webidl.requiredArguments(
       arguments.length,
@@ -172,7 +154,7 @@ class Event {
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
-      timeStamp: DateNow(),
+      timeStamp: 0,
     };
   }
 
@@ -1205,7 +1187,6 @@ class MessageEvent extends Event {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
       composed: eventInitDict?.composed ?? false,
-      [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
     });
 
     this.data = eventInitDict?.data ?? null;
@@ -1494,7 +1475,6 @@ function reportError(error) {
 }
 
 export {
-  _skipInternalInit,
   CloseEvent,
   CustomEvent,
   defineEventHandler,
