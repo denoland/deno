@@ -296,7 +296,7 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
   }
 
   // TODO(bartlomieju): handle sockets
-
+  debug(">>> closeSession", session._connRid, session._clientRid);
   core.tryClose(session._connRid);
   core.tryClose(session._clientRid);
 
@@ -959,9 +959,7 @@ export class ClientHttp2Stream extends Duplex {
         // // TODO: remove, don't emit manually
         // this.emit("end");
         this.push(null);
-        if (!finished) {
-          onStreamTrailers(this);
-        }
+        onStreamTrailers(this);
         debug(">>> read null chunk");
         this[kMaybeDestroy]();
         return;
@@ -994,7 +992,7 @@ export class ClientHttp2Stream extends Duplex {
       throw new ERR_HTTP2_TRAILERS_NOT_READY();
     }
 
-    trailers = Object.assign({ __proto__: null }, headers);
+    trailers = Object.assign({ __proto__: null }, trailers);
     const trailerList = [];
     for (const [key, value] of Object.entries(trailers)) {
       trailerList.push([key, value]);
@@ -1009,7 +1007,7 @@ export class ClientHttp2Stream extends Duplex {
       }
 
       stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
-      console.log("sending trailers", trailers);
+      console.log("sending trailers", rid, trailers);
 
       core.opAsync(
         "op_http2_client_send_trailers",
@@ -1017,7 +1015,8 @@ export class ClientHttp2Stream extends Duplex {
         trailerList,
       ).then(() => {
         stream[kMaybeDestroy]();
-      }).catch(() => {
+      }).catch((e) => {
+        debug(">>> send trailers error", e);
         stream._destroy(new Error("boom!"));
       });
     });
@@ -1146,6 +1145,7 @@ function shutdownWritable(stream, callback) {
     // TODO(bartlomieju): cleanup
     stream.__rid,
   ).then(() => {
+    debug(">>> endstream close", stream.__rid);
     core.tryClose(stream.__rid);
     callback();
   });
@@ -1211,6 +1211,11 @@ function finishCloseStream(stream, code) {
         this.__rid,
         code,
       ).then(() => {
+        debug(
+          ">>> finishCloseStream close",
+          this.__rid,
+          this.__response.bodyRid,
+        );
         core.tryClose(this.__rid);
         core.tryClose(this.__response.bodyRid);
       });
@@ -1221,6 +1226,11 @@ function finishCloseStream(stream, code) {
       this.__rid,
       code,
     ).then(() => {
+      debug(
+        ">>> finishCloseStream close2",
+        this.__rid,
+        this.__response.bodyRid,
+      );
       core.tryClose(this.__rid);
       core.tryClose(this.__response.bodyRid);
     });
