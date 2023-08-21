@@ -35,3 +35,9 @@ Deno.test("test\r", () => {
 Deno.test("test\v", () => {
   console.error("console.error");
 });
+
+const testFn = () => {
+  throw new Error("boom!")
+};
+testFn[Symbol.for("Deno.test.location")] = "foo/bar/fizz.ts:100:200";
+Deno.test("denoTestLocation", testFn);

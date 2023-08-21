@@ -56,6 +56,23 @@ function opSanitizerDelay() {
   });
 }
 
+function getTestCaseLocation (){
+  let location;
+
+  for (let i = 0; i < jsError.frames.length; i++) {
+    const filename = jsError.frames[i].fileName;
+    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
+      continue;
+    }
+    location = {
+      fileName: jsError.frames[i].fileName,
+      lineNumber: jsError.frames[i].lineNumber,
+      columnNumber: jsError.frames[i].columnNumber,
+    };
+    break;
+  }
+}
+
 function handleOpSanitizerDelayMacrotask() {
   ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
   return opSanitizerDelayResolveQueue.length === 0;
@@ -693,21 +710,8 @@ function test(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
-  let location;
-
-  for (let i = 0; i < jsError.frames.length; i++) {
-    const filename = jsError.frames[i].fileName;
-    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
-      continue;
-    }
-    location = {
-      fileName: jsError.frames[i].fileName,
-      lineNumber: jsError.frames[i].lineNumber,
-      columnNumber: jsError.frames[i].columnNumber,
-    };
-    break;
-  }
-  testDesc.location = location;
+ 
+  testDesc.location = testDesc[Symbol.for("Deno.test.location")] || getTestCaseLocation();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
