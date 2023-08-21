@@ -140,6 +140,7 @@ pub async fn infer_name_from_url(url: &Url) -> Option<String> {
   }
 
   if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&url) {
+    let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
         return Some(sub_path);

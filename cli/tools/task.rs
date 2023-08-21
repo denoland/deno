@@ -13,7 +13,7 @@ use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_runtime::deno_node::NodeResolver;
-use deno_semver::npm::NpmPackageNv;
+use deno_semver::package::PackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
@@ -237,7 +237,7 @@ impl ShellCommand for NpxCommand {
 #[derive(Clone)]
 struct NpmPackageBinCommand {
   name: String,
-  npm_package: NpmPackageNv,
+  npm_package: PackageNv,
 }
 
 impl ShellCommand for NpmPackageBinCommand {
