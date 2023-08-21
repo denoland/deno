@@ -11,8 +11,8 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_runtime::colors;
 use deno_runtime::deno_node::NodeResolver;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -194,7 +194,7 @@ enum CheckHashResult {
 /// be used to tell
 fn get_check_hash(
   graph: &ModuleGraph,
-  package_reqs: HashMap<NpmPackageReq, NpmPackageNv>,
+  package_reqs: HashMap<PackageReq, PackageNv>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> CheckHashResult {

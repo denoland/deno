@@ -37,7 +37,7 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::PackageJson;
-use deno_semver::npm::NpmPackageNv;
+use deno_semver::package::PackageNv;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -657,7 +657,7 @@ fn get_package_folder_id_from_folder_name(
   };
   let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
   Some(NpmPackageCacheFolderId {
-    nv: NpmPackageNv { name, version },
+    nv: PackageNv { name, version },
     copy_index,
   })
 }
@@ -726,7 +726,7 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
 #[cfg(test)]
 mod test {
   use deno_npm::NpmPackageCacheFolderId;
-  use deno_semver::npm::NpmPackageNv;
+  use deno_semver::package::PackageNv;
   use test_util::TempDir;
 
   use super::*;
@@ -736,20 +736,14 @@ mod test {
     let cases = vec![
       (
         NpmPackageCacheFolderId {
-          nv: NpmPackageNv {
-            name: "@types/foo".to_string(),
-            version: deno_semver::Version::parse_standard("1.2.3").unwrap(),
-          },
+          nv: PackageNv::from_str("@types/foo@1.2.3").unwrap(),
           copy_index: 1,
         },
         "@types+foo@1.2.3_1".to_string(),
       ),
       (
         NpmPackageCacheFolderId {
-          nv: NpmPackageNv {
-            name: "JSON".to_string(),
-            version: deno_semver::Version::parse_standard("3.2.1").unwrap(),
-          },
+          nv: PackageNv::from_str("JSON@3.2.1").unwrap(),
           copy_index: 0,
         },
         "_jjju6tq@3.2.1".to_string(),

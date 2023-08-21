@@ -75,6 +75,12 @@ struct InspectorTester {
   stdout_lines: Box<dyn Iterator<Item = String>>,
 }
 
+impl Drop for InspectorTester {
+  fn drop(&mut self) {
+    _ = self.child.kill();
+  }
+}
+
 fn ignore_script_parsed(msg: &str) -> bool {
   !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
 }
@@ -953,7 +959,7 @@ async fn inspector_with_ts_files() {
   tester.assert_received_messages(
       &[
         r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-        r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n  hello() {\n    return \"hello\";\n  }\n}\nexport function foo() {\n  const f = new Foo();\n  return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
         r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
       ],
       &[],
