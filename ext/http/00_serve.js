@@ -133,10 +133,6 @@ class InnerRequest {
   }
 
   close() {
-    if (this.#streamRid !== undefined) {
-      core.close(this.#streamRid);
-      this.#streamRid = undefined;
-    }
     this.#slabId = undefined;
   }
 
