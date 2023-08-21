@@ -721,7 +721,7 @@ function createStreamTest(count: number, delay: number, action: string) {
 }
 
 for (const count of [0, 1, 2, 3]) {
-  for (const delay of [0, 1, 1000]) {
+  for (const delay of [0, 1, 25]) {
     // Creating a stream that errors in start will throw
     if (delay > 0) {
       createStreamTest(count, delay, "Throw");
@@ -1288,45 +1288,91 @@ Deno.test(
   },
 );
 
+async function testDuplex(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  writable: WritableStreamDefaultWriter<Uint8Array>,
+) {
+  await writable.write(new Uint8Array([1]));
+  const chunk1 = await reader.read();
+  assert(!chunk1.done);
+  assertEquals(chunk1.value, new Uint8Array([1]));
+  await writable.write(new Uint8Array([2]));
+  const chunk2 = await reader.read();
+  assert(!chunk2.done);
+  assertEquals(chunk2.value, new Uint8Array([2]));
+  await writable.close();
+  const chunk3 = await reader.read();
+  assert(chunk3.done);
+}
+
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerStreamDuplex() {
+  async function httpServerStreamDuplexDirect() {
     const promise = deferred();
     const ac = new AbortController();
 
     const server = Deno.serve(
       { port: servePort, signal: ac.signal },
-      (request) => {
+      (request: Request) => {
         assert(request.body);
-
         promise.resolve();
         return new Response(request.body);
       },
     );
 
-    const ts = new TransformStream();
-    const writable = ts.writable.getWriter();
-
+    const { readable, writable } = new TransformStream();
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
-      body: ts.readable,
+      body: readable,
     });
 
     await promise;
     assert(resp.body);
-    const reader = resp.body.getReader();
-    await writable.write(new Uint8Array([1]));
-    const chunk1 = await reader.read();
-    assert(!chunk1.done);
-    assertEquals(chunk1.value, new Uint8Array([1]));
-    await writable.write(new Uint8Array([2]));
-    const chunk2 = await reader.read();
-    assert(!chunk2.done);
-    assertEquals(chunk2.value, new Uint8Array([2]));
-    await writable.close();
-    const chunk3 = await reader.read();
-    assert(chunk3.done);
+    await testDuplex(resp.body.getReader(), writable.getWriter());
+    ac.abort();
+    await server.finished;
+  },
+);
 
+// Test that a duplex stream passing through JavaScript also works (ie: that the request body resource
+// is still alive). https://github.com/denoland/deno/pull/20206
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerStreamDuplexJavascript() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      { port: servePort, signal: ac.signal },
+      (request: Request) => {
+        assert(request.body);
+        promise.resolve();
+        const reader = request.body.getReader();
+        return new Response(
+          new ReadableStream({
+            async pull(controller) {
+              await new Promise((r) => setTimeout(r, 100));
+              const { done, value } = await reader.read();
+              if (done) {
+                controller.close();
+              } else {
+                controller.enqueue(value);
+              }
+            },
+          }),
+        );
+      },
+    );
+
+    const { readable, writable } = new TransformStream();
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      method: "POST",
+      body: readable,
+    });
+
+    await promise;
+    assert(resp.body);
+    await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
   },
