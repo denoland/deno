@@ -9,7 +9,6 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { HTTP_TOKEN_CODE_POINT_RE } from "ext:deno_web/00_infra.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 import {
-  _skipInternalInit,
   CloseEvent,
   defineEventHandler,
   dispatch,
@@ -450,7 +449,6 @@ class WebSocket extends EventTarget {
           const event = new MessageEvent("message", {
             data,
             origin: this[_url],
-            [_skipInternalInit]: true,
           });
           setIsTrusted(event, true);
           dispatch(this, event);

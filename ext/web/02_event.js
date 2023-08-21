@@ -21,7 +21,6 @@ const {
   ArrayPrototypeSplice,
   ArrayPrototypeUnshift,
   Boolean,
-  DateNow,
   Error,
   FunctionPrototypeCall,
   MapPrototypeGet,
@@ -123,8 +122,6 @@ const _inPassiveListener = Symbol("[[inPassiveListener]]");
 const _dispatched = Symbol("[[dispatched]]");
 const _isTrusted = Symbol("[[isTrusted]]");
 const _path = Symbol("[[path]]");
-// internal.
-const _skipInternalInit = Symbol("[[skipSlowInit]]");
 
 class Event {
   constructor(type, eventInitDict = {}) {
@@ -137,21 +134,6 @@ class Event {
     this[_dispatched] = false;
     this[_isTrusted] = false;
     this[_path] = [];
-
-    if (eventInitDict?.[_skipInternalInit]) {
-      this[_attributes] = {
-        type,
-        data: eventInitDict.data ?? null,
-        bubbles: eventInitDict.bubbles ?? false,
-        cancelable: eventInitDict.cancelable ?? false,
-        composed: eventInitDict.composed ?? false,
-        currentTarget: null,
-        eventPhase: Event.NONE,
-        target: null,
-        timeStamp: 0,
-      };
-      return;
-    }
 
     webidl.requiredArguments(
       arguments.length,
@@ -172,7 +154,7 @@ class Event {
       currentTarget: null,
       eventPhase: Event.NONE,
       target: null,
-      timeStamp: DateNow(),
+      timeStamp: 0,
     };
   }
 
@@ -896,44 +878,28 @@ function getDefaultTargetData() {
   };
 }
 
-// This is lazy loaded because there is a circular dependency with AbortSignal.
-let addEventListenerOptionsConverter;
-
-function lazyAddEventListenerOptionsConverter() {
-  addEventListenerOptionsConverter ??= webidl.createDictionaryConverter(
-    "AddEventListenerOptions",
-    [
-      {
-        key: "capture",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "passive",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "once",
-        defaultValue: false,
-        converter: webidl.converters.boolean,
-      },
-      {
-        key: "signal",
-        converter: webidl.converters.AbortSignal,
-      },
-    ],
-  );
-}
-
-webidl.converters.AddEventListenerOptions = (V, prefix, context, opts) => {
-  if (webidl.type(V) !== "Object" || V === null) {
-    V = { capture: Boolean(V) };
+function addEventListenerOptionsConverter(V, prefix) {
+  if (webidl.type(V) !== "Object") {
+    return { capture: !!V, once: false, passive: false };
   }
 
-  lazyAddEventListenerOptionsConverter();
-  return addEventListenerOptionsConverter(V, prefix, context, opts);
-};
+  const options = {
+    capture: !!V.capture,
+    once: !!V.once,
+    passive: !!V.passive,
+  };
+
+  const signal = V.signal;
+  if (signal !== undefined) {
+    options.signal = webidl.converters.AbortSignal(
+      signal,
+      prefix,
+      "'signal' of 'AddEventListenerOptions' (Argument 3)",
+    );
+  }
+
+  return options;
+}
 
 class EventTarget {
   constructor() {
@@ -952,11 +918,7 @@ class EventTarget {
 
     webidl.requiredArguments(arguments.length, 2, prefix);
 
-    options = webidl.converters.AddEventListenerOptions(
-      options,
-      prefix,
-      "Argument 3",
-    );
+    options = addEventListenerOptionsConverter(options, prefix);
 
     if (callback === null) {
       return;
@@ -1225,7 +1187,6 @@ class MessageEvent extends Event {
       bubbles: eventInitDict?.bubbles ?? false,
       cancelable: eventInitDict?.cancelable ?? false,
       composed: eventInitDict?.composed ?? false,
-      [_skipInternalInit]: eventInitDict?.[_skipInternalInit],
     });
 
     this.data = eventInitDict?.data ?? null;
@@ -1514,7 +1475,6 @@ function reportError(error) {
 }
 
 export {
-  _skipInternalInit,
   CloseEvent,
   CustomEvent,
   defineEventHandler,
