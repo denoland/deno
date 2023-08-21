@@ -36,8 +36,10 @@ Deno.test("test\v", () => {
   console.error("console.error");
 });
 
-const testFn = () => {
-  throw new Error("boom!")
+const testFn: () => never = () => {
+  throw new Error("boom!");
 };
-testFn[Symbol.for("Deno.test.location")] = "foo/bar/fizz.ts:100:200";
+
+(testFn as any)[Symbol.for("Deno.test.location")] = "foo/bar/fizz.ts:100:200";
+
 Deno.test("denoTestLocation", testFn);
