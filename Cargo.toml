@@ -126,7 +126,7 @@ sha2 = { version = "0.10.6", features = ["oid"] }
 signature = "=1.6.4"
 slab = "0.4"
 smallvec = "1.8"
-socket2 = "0.4.7"
+socket2 = { version = "0.4.7", features = ["all"] }
 tar = "=0.4.38"
 tempfile = "3.4.0"
 thiserror = "1.0.40"
