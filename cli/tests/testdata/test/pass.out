@@ -48,8 +48,12 @@ test\v ...
 console.error
 ----- output end -----
 test\v ... ok ([WILDCARD])
-test\denoTestLocation ...
-assertEquals(filename, "foo/bar/fizz.ts");
+----- output end -----
+denoTestLocation => /foo/bar/fizz.ts:100:200
+error: boom!
+  throw new Error();
+        ^
+    at [WILDCARD]/test/fail.ts:29:9
 
 ok | 17 passed | 0 failed ([WILDCARD])
 
