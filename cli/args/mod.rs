@@ -1383,10 +1383,7 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
 ) -> String {
-  let binary_name = req_ref
-    .sub_path
-    .as_deref()
-    .unwrap_or(req_ref.req.name.as_str());
+  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
 }
 

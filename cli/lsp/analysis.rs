@@ -23,7 +23,7 @@ use deno_core::ModuleSpecifier;
 use deno_lint::rules::LintRule;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_node::PathClean;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -187,7 +187,7 @@ impl<'a> TsResponseImportMapper<'a> {
   ) -> Option<String> {
     fn concat_npm_specifier(
       prefix: &str,
-      pkg_req: &NpmPackageReq,
+      pkg_req: &PackageReq,
       sub_path: Option<&str>,
     ) -> String {
       let result = format!("{}{}", prefix, pkg_req);
