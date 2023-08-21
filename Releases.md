@@ -10,7 +10,6 @@ https://github.com/denoland/deno_install
 
 - feat(ext/kv): key expiration (#20091)
 - feat(ext/node): eagerly bootstrap node (#20153)
-- feat(ext/web): resourceForReadableStream (#20180)
 - feat(unstable): Improve FFI types (#20215)
 - feat(unstable): rename `deno_modules` to `vendor` (#20065)
 - fix(cli) error gracefully when script arg is not present and `--v8-flags` is present in `deno run` (#20145)
