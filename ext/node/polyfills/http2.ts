@@ -206,6 +206,8 @@ export class Http2Session extends EventEmitter {
     _opaqueData: Buffer | TypedArray | DataView,
   ) {
     warnNotImplemented("Http2Session.goaway");
+    core.tryClose(this._connRid);
+    core.tryClose(this._clientRid);
   }
 
   destroy(error = constants.NGHTTP2_NO_ERROR, code?: number) {
@@ -862,8 +864,18 @@ export class ClientHttp2Stream extends Duplex {
           data,
         );
       })
-      .then(() => callback?.())
-      .catch((e) => callback?.(e));
+      .then(() => {
+        callback?.();
+        console.log(
+          "this.writableFinished",
+          this.pending,
+          this.destroyed,
+          this.writableFinished,
+        );
+      })
+      .catch((e) => {
+        callback?.(e);
+      });
   }
 
   // TODO:
@@ -872,6 +884,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   _final(cb) {
+    console.log("_final", new Error());
     if (this.pending) {
       this.once("ready", () => this._final(cb));
       return;
@@ -934,6 +947,7 @@ export class ClientHttp2Stream extends Duplex {
 
       debug(">>> chunk", chunk, finished);
       if (chunk === null) {
+        core.tryClose(this.__response.bodyRid);
         // if (finished) {
         //   this.#hasTrailersToRead = true;
         //   const result = this.push(null);
@@ -959,7 +973,6 @@ export class ClientHttp2Stream extends Duplex {
         // // TODO: remove, don't emit manually
         // this.emit("end");
         this.push(null);
-        onStreamTrailers(this);
         debug(">>> read null chunk");
         this[kMaybeDestroy]();
         return;
@@ -1000,25 +1013,20 @@ export class ClientHttp2Stream extends Duplex {
     this[kSentTrailers] = trailers;
 
     const stream = this;
-    const rid = this.#rid;
-    setImmediate(() => {
-      if (stream.destroyed) {
-        return;
-      }
+    stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
+    console.log("sending trailers", this.#rid, trailers);
 
-      stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
-      console.log("sending trailers", rid, trailers);
-
-      core.opAsync(
-        "op_http2_client_send_trailers",
-        rid,
-        trailerList,
-      ).then(() => {
-        stream[kMaybeDestroy]();
-      }).catch((e) => {
-        debug(">>> send trailers error", e);
-        stream._destroy(new Error("boom!"));
-      });
+    core.opAsync(
+      "op_http2_client_send_trailers",
+      this.#rid,
+      trailerList,
+    ).then(() => {
+      stream[kMaybeDestroy]();
+      core.tryClose(this.#rid);
+    }).catch((e) => {
+      debug(">>> send trailers error", e);
+      core.tryClose(this.#rid);
+      stream._destroy(e);
     });
   }
 
@@ -1140,15 +1148,17 @@ function shutdownWritable(stream, callback) {
     return callback();
   }
   state.shutdownWritableCalled = true;
-  core.opAsync(
-    "op_http2_client_end_stream",
-    // TODO(bartlomieju): cleanup
-    stream.__rid,
-  ).then(() => {
-    debug(">>> endstream close", stream.__rid);
-    core.tryClose(stream.__rid);
-    callback();
-  });
+  onStreamTrailers(stream);
+  // core.opAsync(
+  //   "op_http2_client_end_stream",
+  //   // TODO(bartlomieju): cleanup
+  //   stream.__rid,
+  // ).then(() => {
+  //   debug(">>> endstream close", stream.__rid);
+  //   core.tryClose(stream.__rid);
+  //   callback();
+  // });
+  callback();
   // TODO(bartlomieju): might have to add "finish" event listener here,
   // check it.
 }
