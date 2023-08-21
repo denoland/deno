@@ -13,7 +13,6 @@ https://github.com/denoland/deno_install
 - feat(ext/web): resourceForReadableStream (#20180)
 - feat(unstable): Improve FFI types (#20215)
 - feat(unstable): rename `deno_modules` to `vendor` (#20065)
-- fix(build): socket2 compiler error
 - fix(cli) error gracefully when script arg is not present and `--v8-flags` is present in `deno run` (#20145)
 - fix(cli): handle missing `now` field in cache (#20192)
 - fix(ext/abort): trigger AbortSignal events in correct order (#20095)
