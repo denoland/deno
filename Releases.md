@@ -6,6 +6,48 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.36.2 / 2023.08.21
+
+- feat(ext/kv): key expiration (#20091)
+- feat(ext/node): eagerly bootstrap node (#20153)
+- feat(ext/web): resourceForReadableStream (#20180)
+- feat(unstable): Improve FFI types (#20215)
+- fix(cli) error gracefully when script arg is not present and `--v8-flags` is present in `deno run` (#20145)
+- fix(cli): handle missing `now` field in cache (#20192)
+- fix(ext/fetch): clone second branch chunks in Body.clone() (#20057)
+- fix(ext/http): ensure request body resource lives as long as response is alive (#20206)
+- fix(ext/kv): retry transaction on `SQLITE_BUSY` errors (#20189)
+- fix(ext/net): implement a graceful error on an invalid SSL certificate (#20157)
+- fix(ext/node): allow for the reassignment of userInfo() on Windows (#20165)
+- fix(ext/node): support dictionary option in zlib init (#20035)
+- fix(lsp): pass fmt options to completion requests (#20184)
+- fix(node): don't print warning on process.dlopen.flags (#20124)
+- fix(node): implement TLSSocket._start (#20120)
+- fix(node): object keys in publicEncrypt (#20128)
+- fix(node/http): emit error when addr in use (#20200)
+- fix(npm): do not panic providing file url to require.resolve paths (#20182)
+- fix(require): use canonicalized path for loading content (#20133)
+- fix(runtime): navigator.userAgent in web worker (#20129)
+- fix(runtime): use host header for inspector websocket URL (#20171)
+- fix(test): JUnit reporter includes file, line and column attributes (#20174)
+- fix(unstable): disable importing from the vendor directory (#20067)
+- fix: release ReadeableStream in fetch (#17365)
+- perf(ext/event): always set timeStamp to 0 (#20191)
+- perf(ext/event): optimize Event constructor (#20181)
+- perf(ext/event): optimize addEventListener options converter (#20203)
+- perf(ext/event): replace ReflectHas with object lookup (#20190)
+- perf(ext/headers): cache iterableHeaders for immutable Headers (#20132)
+- perf(ext/headers): optimize getHeader using for loop (#20115)
+- perf(ext/headers): optimize headers iterable (#20155)
+- perf(ext/headers): use regex.test instead of .exec (#20125)
+- perf(ext/http): use ServeHandlerInfo class instead of object literal (#20122)
+- perf(ext/node): cache `IncomingMessageForServer.headers` (#20147)
+- perf(ext/node): optimize http headers (#20163)
+- perf(ext/request): optimize Request constructor (#20141)
+- perf(ext/request): optimize validate and normalize HTTP method (#20143)
+- perf(ext/urlpattern): optimize URLPattern.exec (#20170)
+- perf(http): use Cow<[u8]> for setting header (#20112)
+
 ### 1.36.1 / 2023.08.10
 
 - feat(unstable): rename `deno_modules` to `vendor` (#20065)
