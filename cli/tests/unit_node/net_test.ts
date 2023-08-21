@@ -130,3 +130,46 @@ Deno.test("[node/net] connection event has socket value", async () => {
 
   await Promise.all([p, p2]);
 });
+
+function setupServerSocketPair(port: number): {
+  socket: net.Socket;
+  res: string[];
+} {
+  const server = Deno.listen({ port, transport: "tcp" });
+  const socket = net.createConnection({ port });
+  const res: string[] = [];
+
+  (async () => {
+    for await (const conn of server) {
+      conn.readable.pipeTo(conn.writable);
+    }
+  })();
+
+  socket.on("data", (data: Uint8Array) => {
+    res.push(new TextDecoder().decode(data));
+  });
+
+  return {
+    socket,
+    res,
+  };
+}
+
+// https://github.com/denoland/deno/issues/20188
+Deno.test({
+  name: "[node/net] multiple Sockets should get correct server data",
+  sanitizeResources: false,
+  sanitizeOps: false,
+}, async () => {
+  const setup1 = setupServerSocketPair(10001);
+  const setup2 = setupServerSocketPair(20002);
+
+  assertEquals(setup1.socket.write("111-111-111"), true);
+  assertEquals(setup2.socket.write("222-222-222"), true);
+
+  // hacky way to wait for socket to receive the data back
+  await new Promise((r) => setTimeout(r, 200));
+
+  assertEquals(setup1.res, ["111-111-111"]);
+  assertEquals(setup2.res, ["222-222-222"]);
+});
