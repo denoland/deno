@@ -1351,7 +1351,7 @@ Deno.test(
         return new Response(
           new ReadableStream({
             async pull(controller) {
-              await new Promise(r => setTimeout(r, 100));
+              await new Promise((r) => setTimeout(r, 100));
               const { done, value } = await reader.read();
               if (done) {
                 controller.close();
