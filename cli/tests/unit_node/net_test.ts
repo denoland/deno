@@ -131,45 +131,59 @@ Deno.test("[node/net] connection event has socket value", async () => {
   await Promise.all([p, p2]);
 });
 
-function setupServerSocketPair(port: number): {
-  socket: net.Socket;
-  res: string[];
-} {
-  const server = Deno.listen({ port, transport: "tcp" });
-  const socket = net.createConnection({ port });
-  const res: string[] = [];
+// https://github.com/denoland/deno/issues/20188
+Deno.test("[node/net] multiple Sockets should get correct server data", async () => {
+  const p = deferred();
+  const p2 = deferred();
 
-  (async () => {
-    for await (const conn of server) {
-      conn.readable.pipeTo(conn.writable);
-    }
-  })();
+  const dataReceived1 = deferred();
+  const dataReceived2 = deferred();
 
-  socket.on("data", (data: Uint8Array) => {
-    res.push(new TextDecoder().decode(data));
+  const events1: string[] = [];
+  const events2: string[] = [];
+
+  const server = net.createServer();
+  server.on("connection", (socket) => {
+    assert(socket !== undefined);
+    socket.on("data", (data) => {
+      socket.write(new TextDecoder().decode(data));
+    });
   });
 
-  return {
-    socket,
-    res,
-  };
-}
+  server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
 
-// https://github.com/denoland/deno/issues/20188
-Deno.test({
-  name: "[node/net] multiple Sockets should get correct server data",
-  sanitizeResources: false,
-  sanitizeOps: false,
-}, async () => {
-  const setup1 = setupServerSocketPair(10001);
-  const setup2 = setupServerSocketPair(20002);
+    const socket1 = net.createConnection(port);
+    const socket2 = net.createConnection(port);
 
-  assertEquals(setup1.socket.write("111-111-111"), true);
-  assertEquals(setup2.socket.write("222-222-222"), true);
+    socket1.on("data", (data) => {
+      events1.push(new TextDecoder().decode(data));
+      dataReceived1.resolve();
+    });
 
-  // hacky way to wait for socket to receive the data back
-  await new Promise((r) => setTimeout(r, 200));
+    socket2.on("data", (data) => {
+      events2.push(new TextDecoder().decode(data));
+      dataReceived2.resolve();
+    });
 
-  assertEquals(setup1.res, ["111-111-111"]);
-  assertEquals(setup2.res, ["222-222-222"]);
+    socket1.write("111");
+    socket2.write("222");
+
+    await Promise.all([ dataReceived1, dataReceived2 ]);
+
+    socket1.end();
+    socket2.end();
+
+    server.close(() => {
+      p.resolve();
+    });
+
+    p2.resolve();
+  });
+
+  await Promise.all([ p, p2 ]);
+
+  assertEquals(events1, [ "111" ]);
+  assertEquals(events2, [ "222" ]);
 });
