@@ -208,7 +208,7 @@ for (
     let nread;
     try {
       nread = await core.ops.op_read(rid, new Uint8Array(16));
-    } catch (e) {
+    } catch (_) {
       fail("Should not have thrown");
     }
     assertEquals(12, nread);
