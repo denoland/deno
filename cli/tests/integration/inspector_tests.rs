@@ -16,9 +16,11 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use std::io::BufRead;
+use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use url::Url;
 use util::assert_starts_with;
 use util::http_server;
@@ -154,7 +156,11 @@ impl InspectorTester {
 
   async fn recv(&mut self) -> String {
     loop {
-      let result = self.socket.read_frame().await.map_err(|e| anyhow!(e));
+      // In the rare case this locks up, don't wait longer than one minute
+      let result = timeout(Duration::from_secs(60), self.socket.read_frame())
+        .await
+        .expect("recv() timeout")
+        .map_err(|e| anyhow!(e));
       let message =
         String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
       if (self.notification_filter)(&message) {
