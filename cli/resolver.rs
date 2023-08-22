@@ -8,14 +8,14 @@ use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
-use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
+use deno_graph::source::PackageReqResolution;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
 use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -333,12 +333,9 @@ impl NpmResolver for CliGraphResolver {
     .boxed()
   }
 
-  fn resolve_npm(
-    &self,
-    package_req: &NpmPackageReq,
-  ) -> NpmPackageReqResolution {
+  fn resolve_npm(&self, package_req: &PackageReq) -> PackageReqResolution {
     if self.no_npm {
-      return NpmPackageReqResolution::Err(anyhow!(
+      return PackageReqResolution::Err(anyhow!(
         "npm specifiers were requested; but --no-npm is specified"
       ));
     }
@@ -347,13 +344,13 @@ impl NpmResolver for CliGraphResolver {
       .npm_resolution
       .resolve_package_req_as_pending(package_req);
     match result {
-      Ok(nv) => NpmPackageReqResolution::Ok(nv),
+      Ok(nv) => PackageReqResolution::Ok(nv),
       Err(err) => {
         if self.npm_registry_api.mark_force_reload() {
           log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
+          PackageReqResolution::ReloadRegistryInfo(err.into())
         } else {
-          NpmPackageReqResolution::Err(err.into())
+          PackageReqResolution::Err(err.into())
         }
       }
     }
@@ -370,7 +367,7 @@ mod test {
   fn test_resolve_package_json_dep() {
     fn resolve(
       specifier: &str,
-      deps: &BTreeMap<String, NpmPackageReq>,
+      deps: &BTreeMap<String, PackageReq>,
     ) -> Result<Option<String>, String> {
       let deps = deps
         .iter()
@@ -384,15 +381,15 @@ mod test {
     let deps = BTreeMap::from([
       (
         "package".to_string(),
-        NpmPackageReq::from_str("package@1.0").unwrap(),
+        PackageReq::from_str("package@1.0").unwrap(),
       ),
       (
         "package-alias".to_string(),
-        NpmPackageReq::from_str("package@^1.2").unwrap(),
+        PackageReq::from_str("package@^1.2").unwrap(),
       ),
       (
         "@deno/test".to_string(),
-        NpmPackageReq::from_str("@deno/test@~0.2").unwrap(),
+        PackageReq::from_str("@deno/test@~0.2").unwrap(),
       ),
     ]);
 

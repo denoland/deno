@@ -29,16 +29,21 @@ pub trait Database {
 
   async fn snapshot_read(
     &self,
+    state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError>;
 
   async fn atomic_write(
     &self,
+    state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError>;
 
-  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError>;
+  async fn dequeue_next_message(
+    &self,
+    state: Rc<RefCell<OpState>>,
+  ) -> Result<Self::QMH, AnyError>;
 
   fn close(&self);
 }

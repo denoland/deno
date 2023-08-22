@@ -35,7 +35,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
@@ -334,7 +334,7 @@ impl MainWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
         ),
         unstable,
