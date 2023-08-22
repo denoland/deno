@@ -170,7 +170,7 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
     socket1.write("111");
     socket2.write("222");
 
-    await Promise.all([ dataReceived1, dataReceived2 ]);
+    await Promise.all([dataReceived1, dataReceived2]);
 
     socket1.end();
     socket2.end();
@@ -182,8 +182,8 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
     p2.resolve();
   });
 
-  await Promise.all([ p, p2 ]);
+  await Promise.all([p, p2]);
 
-  assertEquals(events1, [ "111" ]);
-  assertEquals(events2, [ "222" ]);
+  assertEquals(events1, ["111"]);
+  assertEquals(events2, ["222"]);
 });
