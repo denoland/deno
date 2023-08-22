@@ -350,6 +350,7 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
+      self.parsed_source_cache.clone(),
       permissions,
       self.options.node_modules_dir_specifier(),
     )

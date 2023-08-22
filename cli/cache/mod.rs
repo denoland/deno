@@ -4,6 +4,7 @@ use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::atomic_write_file;
 
+use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
@@ -96,6 +97,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
@@ -107,6 +109,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     permissions: PermissionsContainer,
     maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
@@ -115,6 +118,7 @@ impl FetchCacher {
       file_fetcher,
       file_header_overrides,
       global_http_cache,
+      parsed_source_cache,
       permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
@@ -235,5 +239,44 @@ impl Loader for FetchCacher {
         })
     }
     .boxed()
+  }
+
+  fn load_no_cache(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> deno_emit::LoadFuture {
+    // todo: actually implement this
+    self.load(specifier, is_dynamic)
+  }
+
+  fn load_from_cache(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> deno_emit::LoadFuture {
+    // todo: actually implement this
+    self.load(specifier, is_dynamic)
+  }
+
+  fn cache_module_info(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    let result = self.parsed_source_cache.cache_module_info(
+      specifier,
+      MediaType::from_specifier(specifier),
+      source,
+      module_info,
+    );
+    if let Err(err) = result {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
   }
 }
