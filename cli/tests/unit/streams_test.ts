@@ -142,7 +142,7 @@ Deno.test(async function readableStreamClose() {
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 12);
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
 });
 
 // Close the stream without reading everything
@@ -153,7 +153,7 @@ Deno.test(async function readableStreamClosePartialRead() {
   const nread = await core.ops.op_read(rid, buffer);
   assertEquals(nread, 5);
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
 });
 
 // Close the stream without reading anything
@@ -161,7 +161,7 @@ Deno.test(async function readableStreamCloseWithoutRead() {
   const cancel = deferred();
   const rid = resourceForReadableStream(helloWorldStream(false, cancel));
   core.ops.op_close(rid);
-  assertEquals(await cancel, undefined);
+  assertEquals(await cancel, "resource closed");
 });
 
 Deno.test(async function readableStreamPartial() {
@@ -205,7 +205,13 @@ for (
 ) {
   Deno.test(`readableStreamError_${type}`, async function () {
     const rid = resourceForReadableStream(errorStream(type));
-    assertEquals(12, await core.ops.op_read(rid, new Uint8Array(16)));
+    let nread;
+    try {
+      nread = await core.ops.op_read(rid, new Uint8Array(16));
+    } catch (_) {
+      fail("Should not have thrown");
+    }
+    assertEquals(12, nread);
     try {
       await core.ops.op_read(rid, new Uint8Array(1));
       fail();
@@ -297,3 +303,32 @@ function createStreamTest(
     }
   });
 }
+
+Deno.test(async function readableStreamWithAggressiveResourceClose() {
+  let first = true;
+  const reasonPromise = deferred();
+  const rid = resourceForReadableStream(
+    new ReadableStream({
+      pull(controller) {
+        if (first) {
+          // We queue this up and then immediately close the resource (not the reader)
+          controller.enqueue(new Uint8Array(1));
+          core.close(rid);
+          // This doesn't throw, even though the resource is closed
+          controller.enqueue(new Uint8Array(1));
+          first = false;
+        }
+      },
+      cancel(reason) {
+        reasonPromise.resolve(reason);
+      },
+    }),
+  );
+  try {
+    await core.ops.op_read(rid, new Uint8Array(1));
+    fail();
+  } catch (e) {
+    assertEquals(e.message, "operation canceled");
+  }
+  assertEquals(await reasonPromise, "resource closed");
+});
