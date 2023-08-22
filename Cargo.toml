@@ -82,6 +82,7 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
+chrono = { version = "=0.4.26", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.2.0"
 dlopen = "0.1.8"
@@ -115,7 +116,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "2.5.0"
-reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks"] }
+reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.0"

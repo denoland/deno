@@ -724,6 +724,7 @@ impl Database for SqliteDb {
 
   async fn snapshot_read(
     &self,
+    _state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
@@ -769,6 +770,7 @@ impl Database for SqliteDb {
 
   async fn atomic_write(
     &self,
+    _state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
     let write = Arc::new(write);
@@ -894,7 +896,10 @@ impl Database for SqliteDb {
     Ok(commit_result)
   }
 
-  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError> {
+  async fn dequeue_next_message(
+    &self,
+    _state: Rc<RefCell<OpState>>,
+  ) -> Result<Self::QMH, AnyError> {
     let queue = self
       .queue
       .get_or_init(|| async move { SqliteQueue::new(self.conn.clone()) })
