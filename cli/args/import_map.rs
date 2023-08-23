@@ -36,7 +36,7 @@ pub async fn resolve_import_map_from_specifier(
   import_map_from_value(specifier, value)
 }
 
-fn import_map_from_value(
+pub fn import_map_from_value(
   specifier: &Url,
   json_value: serde_json::Value,
 ) -> Result<ImportMap, AnyError> {

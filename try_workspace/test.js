@@ -1,5 +1,5 @@
-import { foo } from "deno:@foo/foo/foo.js";
-import { bar } from "deno:@foo/bar/bar.js";
+import { foo } from "./foo/foo.js";
+import { bar } from "./bar/bar.js";
 
 console.log("foo", foo);
 console.log("bar", bar);

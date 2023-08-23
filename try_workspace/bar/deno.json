@@ -2,9 +2,9 @@
   "name": "@foo/bar",
   "version": "0.0.1",
   "imports": {
-    "@std/": "deno:@std/",
-    "puppeteer": "deno:puppeteer",
-    "foo/": "deno:@foo/foo/"
+    "codeBlockWriter": "deno:@foo/code_block_writer",
+    "chain/": "deno:/@foo/chain/",
+    "foo/": "deno:/@foo/foo/"
   },
   "scopes": {
     "/nested/": {

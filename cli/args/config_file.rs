@@ -673,7 +673,7 @@ impl WorkspaceConfig {
           member_scope_obj.insert(key.to_string(), value.to_owned());
         }
         synthetic_import_map_scopes
-          .insert(format!("/{}/", member_name), member_scope);
+          .insert(format!("./{}/", member_name), member_scope);
       }
 
       if let Some(scopes) = import_map_value.get("scopes") {
@@ -681,7 +681,7 @@ impl WorkspaceConfig {
           // Keys for scopes need to be processed - they might look like
           // "/foo/" and coming from "bar" workspace member. So we need to
           // prepend the member name to the scope.
-          let new_key = format!("/{}{}", member_name, key);
+          let new_key = format!("./{}{}", member_name, key);
           synthetic_import_map_scopes.insert(new_key, value.to_owned());
         }
       }
