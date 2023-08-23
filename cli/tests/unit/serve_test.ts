@@ -1483,6 +1483,48 @@ Deno.test(
   },
 );
 
+// Make sure that the chunks of a large response aren't repeated or corrupted in some other way by
+// scatterning sentinels throughout.
+// https://github.com/denoland/fresh/issues/1699
+Deno.test(
+  { permissions: { net: true } },
+  async function httpLargeReadableStreamChunk() {
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler() {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const buffer = new Uint8Array(1024 * 1024);
+              // Mark the buffer with sentinels
+              for (let i = 0; i < 256; i++) {
+                buffer[i * 4096] = i;
+              }
+              controller.enqueue(buffer);
+              controller.close();
+            },
+          }),
+        );
+      },
+      port: servePort,
+      signal: ac.signal,
+    });
+    const response = await fetch(`http://localhost:${servePort}/`);
+    const body = await response.arrayBuffer();
+    assertEquals(1024 * 1024, body.byteLength);
+    const buffer = new Uint8Array(body);
+    for (let i = 0; i < 256; i++) {
+      assertEquals(
+        i,
+        buffer[i * 4096],
+        `sentinel mismatch at index ${i * 4096}`,
+      );
+    }
+    ac.abort();
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpRequestLatin1Headers() {
