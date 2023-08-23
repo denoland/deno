@@ -412,7 +412,7 @@ pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
       .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
@@ -430,7 +430,7 @@ pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
       .write_frame(
         lock,
@@ -719,6 +719,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }

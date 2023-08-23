@@ -19,8 +19,8 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
 use rand::Rng;
@@ -285,7 +285,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 pub struct SqliteDb {
   conn: ProtectedConn,
   queue: OnceCell<SqliteQueue>,
-  expiration_watcher: deno_core::task::JoinHandle<()>,
+  expiration_watcher: deno_core::unsync::JoinHandle<()>,
 }
 
 impl Drop for SqliteDb {

@@ -2,7 +2,7 @@
 
 use console_static_text::ConsoleStaticText;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::ops::tty::ConsoleSize;
 use once_cell::sync::Lazy;
 use std::sync::Arc;

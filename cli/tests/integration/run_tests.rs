@@ -4220,7 +4220,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
