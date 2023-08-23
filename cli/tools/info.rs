@@ -662,6 +662,12 @@ impl<'a> GraphDisplayContext<'a> {
         ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
           self.build_error_msg(specifier, "(missing)")
         }
+        ModuleError::UnknownPackage { .. } => {
+          self.build_error_msg(specifier, "(unknown package)")
+        }
+        ModuleError::UnknownPackageReq { .. } => {
+          self.build_error_msg(specifier, "(unknown package constraint)")
+        }
       },
       ModuleGraphError::ResolutionError(_) => {
         self.build_error_msg(specifier, "(resolution error)")

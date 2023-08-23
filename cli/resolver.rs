@@ -8,8 +8,8 @@ use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_core::TaskQueue;
+use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
-use deno_graph::source::PackageReqResolution;
 use deno_graph::source::Resolver;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE;
@@ -333,9 +333,9 @@ impl NpmResolver for CliGraphResolver {
     .boxed()
   }
 
-  fn resolve_npm(&self, package_req: &PackageReq) -> PackageReqResolution {
+  fn resolve_npm(&self, package_req: &PackageReq) -> NpmPackageReqResolution {
     if self.no_npm {
-      return PackageReqResolution::Err(anyhow!(
+      return NpmPackageReqResolution::Err(anyhow!(
         "npm specifiers were requested; but --no-npm is specified"
       ));
     }
@@ -344,13 +344,13 @@ impl NpmResolver for CliGraphResolver {
       .npm_resolution
       .resolve_package_req_as_pending(package_req);
     match result {
-      Ok(nv) => PackageReqResolution::Ok(nv),
+      Ok(nv) => NpmPackageReqResolution::Ok(nv),
       Err(err) => {
         if self.npm_registry_api.mark_force_reload() {
           log::debug!("Restarting npm specifier resolution to check for new registry information. Error: {:#}", err);
-          PackageReqResolution::ReloadRegistryInfo(err.into())
+          NpmPackageReqResolution::ReloadRegistryInfo(err.into())
         } else {
-          PackageReqResolution::Err(err.into())
+          NpmPackageReqResolution::Err(err.into())
         }
       }
     }
