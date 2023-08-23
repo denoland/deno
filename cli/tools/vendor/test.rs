@@ -112,10 +112,11 @@ impl TestLoader {
 }
 
 impl Loader for TestLoader {
-  fn load(
+  fn load_with_cache_setting(
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    _cache_setting: deno_graph::source::LoaderCacheSetting,
   ) -> LoadFuture {
     let specifier = self.redirects.get(specifier).unwrap_or(specifier);
     let result = self.files.get(specifier).map(|result| match result {

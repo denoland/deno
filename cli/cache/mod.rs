@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::atomic_write_file;
 
@@ -180,11 +182,14 @@ impl Loader for FetchCacher {
     }
   }
 
-  fn load(
+  fn load_with_cache_setting(
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    cache_setting: deno_graph::source::LoaderCacheSetting,
   ) -> LoadFuture {
+    use deno_graph::source::LoaderCacheSetting;
+
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       // The specifier might be in a completely different symlinked tree than
       // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
@@ -202,14 +207,25 @@ impl Loader for FetchCacher {
       }
     }
 
-    let permissions = self.permissions.clone();
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
+    let permissions = self.permissions.clone();
     let specifier = specifier.clone();
 
     async move {
+      let maybe_cache_setting = match cache_setting {
+        LoaderCacheSetting::Prefer => None,
+        // todo: error if cache setting is currently `Only`
+        LoaderCacheSetting::Reload => Some(CacheSetting::ReloadAll),
+        LoaderCacheSetting::Only => Some(CacheSetting::Only),
+      };
       file_fetcher
-        .fetch(&specifier, permissions)
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions,
+          maybe_accept: None,
+          maybe_cache_setting: maybe_cache_setting.as_ref(),
+        })
         .await
         .map(|file| {
           let maybe_headers =
@@ -239,24 +255,6 @@ impl Loader for FetchCacher {
         })
     }
     .boxed()
-  }
-
-  fn load_no_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    // todo: actually implement this
-    self.load(specifier, is_dynamic)
-  }
-
-  fn load_from_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    // todo: actually implement this
-    self.load(specifier, is_dynamic)
   }
 
   fn cache_module_info(

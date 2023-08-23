@@ -866,10 +866,11 @@ mod tests {
   }
 
   impl deno_graph::source::Loader for MockLoader {
-    fn load(
+    fn load_with_cache_setting(
       &mut self,
       specifier: &ModuleSpecifier,
       _is_dynamic: bool,
+      _cache_setting: deno_graph::source::LoaderCacheSetting,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()
