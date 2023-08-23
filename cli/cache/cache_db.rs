@@ -3,7 +3,7 @@
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
