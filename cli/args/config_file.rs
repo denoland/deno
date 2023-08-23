@@ -640,6 +640,71 @@ impl SerializedBenchConfig {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct WorkspaceConfig {
+  enabled: bool,
+  members: Vec<(String, PathBuf)>,
+}
+
+impl WorkspaceConfig {
+  pub fn to_import_map(&self) -> Result<Option<Value>, AnyError> {
+    let mut import_map_imports = json!({});
+    let mut import_map_scopes = json!({});
+    let synthetic_import_map_imports =
+      import_map_imports.as_object_mut().unwrap();
+    let synthetic_import_map_scopes =
+      import_map_scopes.as_object_mut().unwrap();
+
+    for (member_name, member_path) in self.members.iter() {
+      let member_config_file_path = member_path.join("deno.json");
+      let member_config_file = ConfigFile::from_specifier_and_path(
+        ModuleSpecifier::from_file_path(&member_config_file_path).unwrap(),
+        &member_config_file_path,
+      )?;
+      let import_map_value = member_config_file.to_import_map_value();
+
+      let mut member_scope = json!({});
+
+      if let Some(imports) = import_map_value.get("imports") {
+        let member_scope_obj = member_scope.as_object_mut().unwrap();
+        for (key, value) in imports.as_object().unwrap() {
+          member_scope_obj.insert(key.to_string(), value.to_owned());
+        }
+        synthetic_import_map_scopes
+          .insert(format!("/{}/", member_name), member_scope);
+      }
+
+      if let Some(scopes) = import_map_value.get("scopes") {
+        for (key, value) in scopes.as_object().unwrap() {
+          // Keys for scopes need to be processed - they might look like
+          // "/foo/" and coming from "bar" workspace member. So we need to
+          // prepend the member name to the scope.
+          let new_key = format!("/{}{}", member_name, key);
+          synthetic_import_map_scopes.insert(new_key, value.to_owned());
+        }
+      }
+    }
+
+    let mut import_map = json!({});
+    let mut has_import_map = false;
+
+    if !synthetic_import_map_imports.is_empty() {
+      import_map["imports"] = import_map_imports;
+      has_import_map = true;
+    }
+    if !synthetic_import_map_scopes.is_empty() {
+      import_map["scopes"] = import_map_scopes;
+      has_import_map = true;
+    }
+
+    if has_import_map {
+      Ok(Some(import_map))
+    } else {
+      Ok(None)
+    }
+  }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct BenchConfig {
   pub files: FilesConfig,
 }
@@ -674,6 +739,11 @@ pub struct ConfigFileJson {
   pub exclude: Option<Value>,
   pub node_modules_dir: Option<bool>,
   pub vendor: Option<bool>,
+
+  #[serde(default)]
+  pub workspace: bool,
+  #[serde(default)]
+  pub members: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -975,6 +1045,35 @@ impl ConfigFile {
     let files_config = files_config.unwrap_or_default();
 
     Ok(Some(test_config.with_files(files_config)))
+  }
+
+  pub fn to_workspace_config(
+    &self,
+  ) -> Result<Option<WorkspaceConfig>, AnyError> {
+    let Ok(config_file_path) = self.specifier.to_file_path() else {
+      return Ok(None);
+    };
+
+    let config_file_directory = config_file_path.parent().unwrap();
+    let mut members = Vec::with_capacity(self.json.members.len());
+
+    for member in self.json.members.iter() {
+      let member_path = config_file_directory.join(member);
+      let member_deno_json = member_path.as_path().join("deno.json");
+      if !member_deno_json.exists() {
+        bail!(
+          "Workspace member '{}' has no deno.json file ('{}')",
+          member,
+          member_deno_json.display()
+        );
+      }
+      members.push((member.to_string(), member_path));
+    }
+
+    Ok(Some(WorkspaceConfig {
+      enabled: self.json.workspace,
+      members,
+    }))
   }
 
   pub fn to_bench_config(&self) -> Result<Option<BenchConfig>, AnyError> {

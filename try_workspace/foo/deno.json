@@ -1,0 +1,8 @@
+{
+  "name": "@foo/foo",
+  "version": "0.0.1",
+  "imports": {
+    "@std/": "deno:@std/",
+    "dax": "deno:@dsherret/dax"
+  }
+}

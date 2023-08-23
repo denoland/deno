@@ -31,6 +31,7 @@ pub use config_file::TsConfig;
 pub use config_file::TsConfigForEmit;
 pub use config_file::TsConfigType;
 pub use config_file::TsTypeLib;
+pub use config_file::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -546,6 +547,7 @@ pub struct CliOptions {
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   overrides: CliOptionOverrides,
+  maybe_workspace_config: Option<WorkspaceConfig>,
 }
 
 impl CliOptions {
@@ -579,6 +581,21 @@ impl CliOptions {
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder =
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+    let maybe_workspace_config =
+      if let Some(config_file) = maybe_config_file.as_ref() {
+        config_file.to_workspace_config()?
+      } else {
+        None
+      };
+
+    eprintln!("maybe workspace config {:#?}", maybe_workspace_config);
+
+    if let Some(workspace_config) = maybe_workspace_config.as_ref() {
+      eprintln!(
+        "import map from workspace config {:#?}",
+        workspace_config.to_import_map()
+      );
+    }
 
     Ok(Self {
       flags,
@@ -589,6 +606,7 @@ impl CliOptions {
       maybe_node_modules_folder,
       maybe_vendor_folder,
       overrides: Default::default(),
+      maybe_workspace_config,
     })
   }
 
