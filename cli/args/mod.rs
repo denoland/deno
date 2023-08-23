@@ -588,8 +588,6 @@ impl CliOptions {
         None
       };
 
-    eprintln!("maybe workspace config {:#?}", maybe_workspace_config);
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -737,7 +735,10 @@ impl CliOptions {
     if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
       let maybe_import_map = workspace_config.to_import_map_value()?;
       if let Some(import_map) = maybe_import_map {
-        eprintln!("import map from workspace config {:#?}", import_map);
+        eprintln!(
+          "import map from workspace config {}",
+          serde_json::to_string_pretty(&import_map).unwrap()
+        );
         return import_map::import_map_from_value(
           // TODO(bartlomieju): maybe should be stored on the workspace config?
           &self.maybe_config_file.as_ref().unwrap().specifier,
