@@ -204,11 +204,15 @@ fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let lint_rules = get_configured_rules(LintRulesConfig {
-    exclude: None,
-    include: None,
-    tags: maybe_rules_tags,
-  });
+  let lint_rules = if maybe_rules_tags.is_none() {
+    rules::get_all_rules()
+  } else {
+    rules::get_filtered_rules(
+      maybe_rules_tags.or_else(|| Some(vec!["recommended".to_string()])),
+      None,
+      None,
+    )
+  };
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules
@@ -228,7 +232,12 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
     for rule in lint_rules.iter() {
-      println!(" - {}", rule.code());
+      print!(" - {}", rule.code());
+      if rule.tags().is_empty() {
+        println!();
+      } else {
+        println!(" [{}]", rule.tags().join(", "))
+      }
       println!("   help: https://lint.deno.land/#{}", rule.code());
       println!();
     }
