@@ -2,9 +2,16 @@ import codeBlockWriter from "codeBlockWriter";
 import * as tsMorph from "tsMorph";
 import * as assert from "@std/assert/mod.ts";
 
-console.log(">> FOO > codeBlockWriter > ", codeBlockWriter);
-console.log(">> FOO > tsMorph > ", tsMorph.SetAccessorDeclaration);
-console.log(">> FOO > @std/assert > ", assert.assertEquals);
+console.log(">> FOO > codeBlockWriter >");
+console.log(codeBlockWriter);
+console.log();
+console.log(">> FOO > tsMorph >");
+console.log(tsMorph.SetAccessorDeclaration);
+console.log();
+console.log(">> FOO > @std/assert >");
+console.log(assert.assertEquals);
+console.log();
 
 export function foo() {
 }
+foo.name = "fooFn";
