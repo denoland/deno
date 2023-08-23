@@ -643,13 +643,11 @@ impl SerializedBenchConfig {
 pub struct WorkspaceConfig {
   enabled: bool,
   members: Vec<(String, PathBuf)>,
+  base_import_map_value: Value,
 }
 
 impl WorkspaceConfig {
-  pub fn to_import_map(
-    &self,
-    base_import_map: Value,
-  ) -> Result<Option<Value>, AnyError> {
+  pub fn to_import_map_value(&self) -> Result<Option<Value>, AnyError> {
     let mut import_map_imports = json!({});
     let mut import_map_scopes = json!({});
     let synthetic_import_map_imports =
@@ -672,6 +670,8 @@ impl WorkspaceConfig {
         for (key, value) in imports.as_object().unwrap() {
           member_scope_obj.insert(key.to_string(), value.to_owned());
         }
+        // TODO(bartlomieju): this need to resolve values in member_scope based
+        // on the "base URL" of the member import map filepath
         synthetic_import_map_scopes
           .insert(format!("./{}/", member_name), member_scope);
       }
@@ -682,18 +682,20 @@ impl WorkspaceConfig {
           // "/foo/" and coming from "bar" workspace member. So we need to
           // prepend the member name to the scope.
           let new_key = format!("./{}{}", member_name, key);
+          // TODO(bartlomieju): this need to resolve value based on the "base URL"
+          // of the member import map filepath
           synthetic_import_map_scopes.insert(new_key, value.to_owned());
         }
       }
     }
 
-    if let Some(base_imports) = base_import_map.get("imports") {
+    if let Some(base_imports) = self.base_import_map_value.get("imports") {
       let base_imports_obj = base_imports.as_object().unwrap();
       for (key, value) in base_imports_obj.iter() {
         synthetic_import_map_imports.insert(key.to_owned(), value.to_owned());
       }
     }
-    if let Some(base_scopes) = base_import_map.get("scopes") {
+    if let Some(base_scopes) = self.base_import_map_value.get("scopes") {
       let base_scopes_obj = base_scopes.as_object().unwrap();
       for (key, value) in base_scopes_obj.iter() {
         synthetic_import_map_scopes.insert(key.to_owned(), value.to_owned());
@@ -701,18 +703,15 @@ impl WorkspaceConfig {
     }
 
     let mut import_map = json!({});
-    let mut has_import_map = false;
 
     if !synthetic_import_map_imports.is_empty() {
       import_map["imports"] = import_map_imports;
-      has_import_map = true;
     }
     if !synthetic_import_map_scopes.is_empty() {
       import_map["scopes"] = import_map_scopes;
-      has_import_map = true;
     }
 
-    if has_import_map {
+    if !import_map.as_object().unwrap().is_empty() {
       Ok(Some(import_map))
     } else {
       Ok(None)
@@ -1086,9 +1085,12 @@ impl ConfigFile {
       members.push((member.to_string(), member_path));
     }
 
+    let base_import_map_value = self.to_import_map_value();
+
     Ok(Some(WorkspaceConfig {
       enabled: self.json.workspace,
       members,
+      base_import_map_value,
     }))
   }
 

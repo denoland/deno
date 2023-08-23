@@ -590,17 +590,6 @@ impl CliOptions {
 
     eprintln!("maybe workspace config {:#?}", maybe_workspace_config);
 
-    // if let Some(workspace_config) = maybe_workspace_config.as_ref() {
-    //   let base_import_map = maybe_config_file
-    //     .as_ref()
-    //     .map(|cf| cf.to_import_map_value())
-    //     .unwrap_or_else(|| serde_json::json!({}));
-    //   eprintln!(
-    //     "import map from workspace config {:#?}",
-    //     workspace_config.to_import_map(base_import_map)
-    //   );
-    // }
-
     Ok(Self {
       flags,
       initial_cwd,
@@ -746,16 +735,11 @@ impl CliOptions {
     file_fetcher: &FileFetcher,
   ) -> Result<Option<ImportMap>, AnyError> {
     if let Some(workspace_config) = self.maybe_workspace_config.as_ref() {
-      let base_import_map = self
-        .maybe_config_file
-        .as_ref()
-        .map(|cf| cf.to_import_map_value())
-        .unwrap_or_else(|| serde_json::json!({}));
-
-      let maybe_import_map = workspace_config.to_import_map(base_import_map)?;
+      let maybe_import_map = workspace_config.to_import_map_value()?;
       if let Some(import_map) = maybe_import_map {
         eprintln!("import map from workspace config {:#?}", import_map);
         return import_map::import_map_from_value(
+          // TODO(bartlomieju): maybe should be stored on the workspace config?
           &self.maybe_config_file.as_ref().unwrap().specifier,
           import_map,
         )
