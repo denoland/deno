@@ -3,5 +3,13 @@
   "members": [
     "foo",
     "bar"
-  ]
+  ],
+  "imports": {
+    "dax": "deno:dax"
+  },
+  "scopes": {
+    "/not_member/": {
+      "@std/": "deno:@std@0.199.0/"
+    }
+  }
 }

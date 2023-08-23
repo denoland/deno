@@ -3,6 +3,12 @@
   "version": "0.0.1",
   "imports": {
     "@std/": "deno:@std/",
-    "puppeteer": "deno:puppeteer"
+    "puppeteer": "deno:puppeteer",
+    "foo/": "deno:@foo/foo/"
+  },
+  "scopes": {
+    "/nested/": {
+      "fizzbuzz": "deno:fizzbuzz@1"
+    }
   }
 }

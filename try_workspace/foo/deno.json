@@ -4,5 +4,10 @@
   "imports": {
     "@std/": "deno:@std/",
     "dax": "deno:@dsherret/dax"
+  },
+  "scopes": {
+    "/nested/": {
+      "fizzbuzz": "deno:fizzbuzz@1"
+    }
   }
 }

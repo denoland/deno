@@ -591,9 +591,13 @@ impl CliOptions {
     eprintln!("maybe workspace config {:#?}", maybe_workspace_config);
 
     if let Some(workspace_config) = maybe_workspace_config.as_ref() {
+      let base_import_map = maybe_config_file
+        .as_ref()
+        .map(|cf| cf.to_import_map_value())
+        .unwrap_or_else(|| serde_json::json!({}));
       eprintln!(
         "import map from workspace config {:#?}",
-        workspace_config.to_import_map()
+        workspace_config.to_import_map(base_import_map)
       );
     }
 

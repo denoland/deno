@@ -646,7 +646,10 @@ pub struct WorkspaceConfig {
 }
 
 impl WorkspaceConfig {
-  pub fn to_import_map(&self) -> Result<Option<Value>, AnyError> {
+  pub fn to_import_map(
+    &self,
+    base_import_map: Value,
+  ) -> Result<Option<Value>, AnyError> {
     let mut import_map_imports = json!({});
     let mut import_map_scopes = json!({});
     let synthetic_import_map_imports =
@@ -681,6 +684,19 @@ impl WorkspaceConfig {
           let new_key = format!("/{}{}", member_name, key);
           synthetic_import_map_scopes.insert(new_key, value.to_owned());
         }
+      }
+    }
+
+    if let Some(base_imports) = base_import_map.get("imports") {
+      let base_imports_obj = base_imports.as_object().unwrap();
+      for (key, value) in base_imports_obj.iter() {
+        synthetic_import_map_imports.insert(key.to_owned(), value.to_owned());
+      }
+    }
+    if let Some(base_scopes) = base_import_map.get("scopes") {
+      let base_scopes_obj = base_scopes.as_object().unwrap();
+      for (key, value) in base_scopes_obj.iter() {
+        synthetic_import_map_scopes.insert(key.to_owned(), value.to_owned());
       }
     }
 
