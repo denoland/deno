@@ -4,7 +4,8 @@
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
     "chain/": "deno:/@foo/chain/",
-    "foo/": "deno:/@foo/foo/"
+    "foo/": "deno:/@foo/foo/",
+    "@std/fmt/": "deno:/@std/fmt/"
   },
   "scopes": {
     "/nested/": {
