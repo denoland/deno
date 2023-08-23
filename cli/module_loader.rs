@@ -113,6 +113,12 @@ impl ModuleLoadPreparer {
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      wc.get_graph_workspace_members()?
+    } else {
+      vec![]
+    };
     let graph_resolver = self.resolver.as_graph_resolver();
     let graph_npm_resolver = self.resolver.as_graph_npm_resolver();
     let maybe_file_watcher_reporter = self
@@ -145,8 +151,7 @@ impl ModuleLoadPreparer {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo: workspace members
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;

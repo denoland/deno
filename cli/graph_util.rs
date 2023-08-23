@@ -214,6 +214,12 @@ impl ModuleGraphBuilder {
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      wc.get_graph_workspace_members()?
+    } else {
+      vec![]
+    };
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -237,8 +243,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo: workspace members
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;
@@ -259,6 +264,12 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      wc.get_graph_workspace_members()?
+    } else {
+      vec![]
+    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -282,8 +293,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
-          // todo: workspace members
-          workspace_members: vec![],
+          workspace_members,
         },
       )
       .await?;

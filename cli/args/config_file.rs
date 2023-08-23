@@ -639,11 +639,47 @@ impl SerializedBenchConfig {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Debug, Default)]
 pub struct WorkspaceConfig {
   enabled: bool,
-  members: Vec<(String, PathBuf)>,
+  members: Vec<WorkspaceMemberConfig>,
   base_import_map_value: Value,
+}
+
+impl WorkspaceConfig {
+  pub fn get_graph_workspace_members(
+    &self,
+  ) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+    self
+      .members
+      .iter()
+      .map(|m| m.try_into_graph_workspace_member())
+      .collect()
+  }
+}
+#[derive(Debug)]
+pub struct WorkspaceMemberConfig {
+  // As defined in `member` setting of the workspace deno.json.
+  member_name: String,
+  path: PathBuf,
+  package_name: String,
+  package_version: String,
+  config_file: ConfigFile,
+}
+
+impl WorkspaceMemberConfig {
+  pub fn try_into_graph_workspace_member(
+    &self,
+  ) -> Result<deno_graph::WorkspaceMember, AnyError> {
+    let nv = deno_semver::package::PackageNv {
+      name: self.package_name.clone(),
+      version: deno_semver::Version::parse_standard(&self.package_version)?,
+    };
+    Ok(deno_graph::WorkspaceMember {
+      base: ModuleSpecifier::from_directory_path(&self.path).unwrap(),
+      nv,
+    })
+  }
 }
 
 impl WorkspaceConfig {
@@ -655,13 +691,8 @@ impl WorkspaceConfig {
     let synthetic_import_map_scopes =
       import_map_scopes.as_object_mut().unwrap();
 
-    for (member_name, member_path) in self.members.iter() {
-      let member_config_file_path = member_path.join("deno.json");
-      let member_config_file = ConfigFile::from_specifier_and_path(
-        ModuleSpecifier::from_file_path(&member_config_file_path).unwrap(),
-        &member_config_file_path,
-      )?;
-      let import_map_value = member_config_file.to_import_map_value();
+    for member_config in self.members.iter() {
+      let import_map_value = member_config.config_file.to_import_map_value();
 
       let mut member_scope = json!({});
 
@@ -673,7 +704,7 @@ impl WorkspaceConfig {
         // TODO(bartlomieju): this need to resolve values in member_scope based
         // on the "base URL" of the member import map filepath
         synthetic_import_map_scopes
-          .insert(format!("./{}/", member_name), member_scope);
+          .insert(format!("./{}/", member_config.member_name), member_scope);
       }
 
       if let Some(scopes) = import_map_value.get("scopes") {
@@ -681,7 +712,7 @@ impl WorkspaceConfig {
           // Keys for scopes need to be processed - they might look like
           // "/foo/" and coming from "bar" workspace member. So we need to
           // prepend the member name to the scope.
-          let new_key = format!("./{}{}", member_name, key);
+          let new_key = format!("./{}{}", member_config.member_name, key);
           // TODO(bartlomieju): this need to resolve value based on the "base URL"
           // of the member import map filepath
           synthetic_import_map_scopes.insert(new_key, value.to_owned());
@@ -755,6 +786,8 @@ pub struct ConfigFileJson {
   pub node_modules_dir: Option<bool>,
   pub vendor: Option<bool>,
 
+  pub name: Option<String>,
+  pub version: Option<String>,
   #[serde(default)]
   pub workspace: bool,
   #[serde(default)]
@@ -1082,7 +1115,23 @@ impl ConfigFile {
           member_deno_json.display()
         );
       }
-      members.push((member.to_string(), member_path));
+      let member_config_file = ConfigFile::from_specifier_and_path(
+        ModuleSpecifier::from_file_path(&member_deno_json).unwrap(),
+        &member_deno_json,
+      )?;
+      let Some(package_name) = &member_config_file.json.name else {
+        bail!("Missing 'name' for workspace member {}", member);
+      };
+      let Some(package_version) = &member_config_file.json.version else {
+        bail!("Missing 'version' for workspace member {}", member);
+      };
+      members.push(WorkspaceMemberConfig {
+        member_name: member.to_string(),
+        path: member_path,
+        package_name: package_name.to_string(),
+        package_version: package_version.to_string(),
+        config_file: member_config_file,
+      });
     }
 
     let base_import_map_value = self.to_import_map_value();

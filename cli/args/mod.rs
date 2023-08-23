@@ -971,6 +971,10 @@ impl CliOptions {
     &self.maybe_config_file
   }
 
+  pub fn maybe_workspace_config(&self) -> &Option<WorkspaceConfig> {
+    &self.maybe_workspace_config
+  }
+
   pub fn maybe_package_json(&self) -> &Option<PackageJson> {
     &self.maybe_package_json
   }

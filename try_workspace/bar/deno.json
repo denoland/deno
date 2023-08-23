@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
-    "foo/": "deno:/@foo/foo/",
     "@std/fmt/": "deno:/@std/fmt/"
   },
   "scopes": {
