@@ -207,11 +207,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let lint_rules = if maybe_rules_tags.is_none() {
     rules::get_all_rules()
   } else {
-    rules::get_filtered_rules(
-      maybe_rules_tags.or_else(|| Some(vec!["recommended".to_string()])),
-      None,
-      None,
-    )
+    rules::get_filtered_rules(maybe_rules_tags, None, None)
   };
 
   if json {
