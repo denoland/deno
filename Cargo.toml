@@ -329,4 +329,3 @@ opt-level = 3
 
 [patch.crates-io]
 deno_graph = { path = "../deno_graph" }
-import_map = { path = "../import_map" }
