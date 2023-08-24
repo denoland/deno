@@ -8,7 +8,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;

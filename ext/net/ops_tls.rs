@@ -26,7 +26,7 @@ use deno_core::futures::task::Waker;
 use deno_core::op;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;

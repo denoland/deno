@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod config_file;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -18,20 +17,20 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
-pub use config_file::BenchConfig;
-pub use config_file::CompilerOptions;
-pub use config_file::ConfigFile;
-pub use config_file::EmitConfigOptions;
-pub use config_file::FilesConfig;
-pub use config_file::FmtOptionsConfig;
-pub use config_file::JsxImportSourceConfig;
-pub use config_file::LintRulesConfig;
-pub use config_file::ProseWrap;
-pub use config_file::TsConfig;
-pub use config_file::TsConfigForEmit;
-pub use config_file::TsConfigType;
-pub use config_file::TsTypeLib;
-pub use config_file::WorkspaceConfig;
+pub use deno_config::BenchConfig;
+pub use deno_config::CompilerOptions;
+pub use deno_config::ConfigFile;
+pub use deno_config::EmitConfigOptions;
+pub use deno_config::FilesConfig;
+pub use deno_config::FmtOptionsConfig;
+pub use deno_config::JsxImportSourceConfig;
+pub use deno_config::LintRulesConfig;
+pub use deno_config::ProseWrap;
+pub use deno_config::TsConfig;
+pub use deno_config::TsConfigForEmit;
+pub use deno_config::TsConfigType;
+pub use deno_config::TsTypeLib;
+pub use deno_config::WorkspaceConfig;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -75,10 +74,43 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
 use crate::version;
 
-use self::config_file::FmtConfig;
-use self::config_file::LintConfig;
-use self::config_file::MaybeImportsResult;
-use self::config_file::TestConfig;
+use deno_config::FmtConfig;
+use deno_config::LintConfig;
+use deno_config::TestConfig;
+
+pub fn ts_config_to_emit_options(
+  config: deno_config::TsConfig,
+) -> deno_ast::EmitOptions {
+  let options: deno_config::EmitConfigOptions =
+    serde_json::from_value(config.0).unwrap();
+  let imports_not_used_as_values =
+    match options.imports_not_used_as_values.as_str() {
+      "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
+      "error" => deno_ast::ImportsNotUsedAsValues::Error,
+      _ => deno_ast::ImportsNotUsedAsValues::Remove,
+    };
+  let (transform_jsx, jsx_automatic, jsx_development) =
+    match options.jsx.as_str() {
+      "react" => (true, false, false),
+      "react-jsx" => (true, true, false),
+      "react-jsxdev" => (true, true, true),
+      _ => (false, false, false),
+    };
+  deno_ast::EmitOptions {
+    emit_metadata: options.emit_decorator_metadata,
+    imports_not_used_as_values,
+    inline_source_map: options.inline_source_map,
+    inline_sources: options.inline_sources,
+    source_map: options.source_map,
+    jsx_automatic,
+    jsx_development,
+    jsx_factory: options.jsx_factory,
+    jsx_fragment_factory: options.jsx_fragment_factory,
+    jsx_import_source: options.jsx_import_source,
+    transform_jsx,
+    var_decl_imports: false,
+  }
+}
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -604,10 +636,14 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
+    let maybe_config_file = ConfigFile::discover(
+      &flags.config_flag,
+      flags.config_path_args(&initial_cwd),
+      &initial_cwd,
+    )?;
 
     let mut maybe_package_json = None;
-    if flags.config_flag == ConfigFlag::Disabled
+    if flags.config_flag == deno_config::ConfigFlag::Disabled
       || flags.no_npm
       || has_flag_env_var("DENO_NO_PACKAGE_JSON")
     {
@@ -915,7 +951,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    config_file::get_ts_config_for_emit(
+    deno_config::get_ts_config_for_emit(
       config_type,
       self.maybe_config_file.as_ref(),
     )
@@ -959,9 +995,19 @@ impl CliOptions {
 
   /// Return any imports that should be brought into the scope of the module
   /// graph.
-  pub fn to_maybe_imports(&self) -> MaybeImportsResult {
+  pub fn to_maybe_imports(
+    &self,
+  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_maybe_imports()
+      config_file.to_maybe_imports().map(|maybe_imports| {
+        maybe_imports
+          .into_iter()
+          .map(|(referrer, imports)| deno_graph::ReferrerImports {
+            referrer,
+            imports,
+          })
+          .collect()
+      })
     } else {
       Ok(Vec::new())
     }
