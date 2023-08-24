@@ -327,7 +327,11 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              graph.redirects.insert(from, to);
+              if matches!(from.scheme(), "http" | "https")
+                && matches!(to.scheme(), "http" | "https")
+              {
+                graph.redirects.insert(from, to);
+              }
             }
           }
         }

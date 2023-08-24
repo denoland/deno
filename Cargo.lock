@@ -1274,9 +1274,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cd6625b2ba9d288117ed67a130a6e3db294884835defd3f7dcbe18788538e9d"
+checksum = "8380d288d0c4eb28a3b7b95c3fbdde11aa549d31b682a599f24a196dfaf496fd"
 dependencies = [
  "ring",
  "serde",

@@ -979,6 +979,7 @@ fn lock_redirects() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
     .use_http_server()
+    .add_npm_env_vars()
     .build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.json", "{}"); // cause a lockfile to be created
@@ -993,11 +994,11 @@ fn lock_redirects() {
     .skip_output_check();
   let initial_lockfile_text = r#"{
   "version": "2",
-  "remote": {
-    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
-  },
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
   }
 }
 "#;
@@ -1012,34 +1013,58 @@ fn lock_redirects() {
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
   "version": "2",
-  "remote": {
-    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
-  },
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
   }
 }
 "#);
+
+  // also, add some npm dependency to ensure it doesn't end up in
+  // the redirects as they're currently stored separately
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';\n import 'npm:@denotest/esm-basic';\n",
+  );
 
   // it should use the echo script instead
   context
     .new_command()
     .args("run main.ts Hi there")
     .run()
-    .assert_matches_text("Download http://localhost:4545/echo.ts\nHi, there");
-  assert_eq!(
-    temp_dir.read_to_string("deno.lock"),
+    .assert_matches_text(
+      concat!(
+        "Download http://localhost:4545/echo.ts\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "Hi, there",
+    ));
+  util::assertions::assert_wildcard_match(
+    &temp_dir.read_to_string("deno.lock"),
     r#"{
   "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
   "remote": {
     "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
     "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
   },
-  "redirects": {
-    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  "npm": {
+    "specifiers": {
+      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
+    },
+    "packages": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
   }
 }
-"#
+"#,
   );
 }
 
