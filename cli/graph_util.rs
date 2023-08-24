@@ -320,8 +320,7 @@ impl ModuleGraphBuilder {
       self.resolver.force_top_level_package_json_install().await?;
     }
 
-    // add the lockfile redirects to the graph if it's the first time
-    // executing
+    // add the lockfile redirects to the graph if it's the first time executing
     if graph.redirects.is_empty() {
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
