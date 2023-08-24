@@ -1977,6 +1977,13 @@ Directory arguments are expanded to all contained files matching the glob
         .help("Write a JUnit XML test report to PATH. Use '-' to write to stdout which is the default when PATH is not provided.")
     )
     .arg(
+      Arg::new("junit-step-mode")
+      .long("junit-step-mode")
+      .default_value("property")
+      .help("Controls how steps are represented in the JUnit report")
+      .value_parser(["property", "testcase", "testcase-ignore-parent-results", "testcase-exclude-parents"])
+    )
+    .arg(
       Arg::new("reporter")
         .long("reporter")
         .help("Select reporter to use. Default to 'pretty'.")

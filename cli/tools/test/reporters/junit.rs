@@ -2,6 +2,13 @@
 
 use super::*;
 
+pub enum JunitStepMode {
+  Property, // Represent tests as testcases and steps as testcase properties using the Jenkins syntax
+  Testcase, // Represents all tests and steps as testcases
+  TestcaseIgnoreParentResults, // Same as Testcase, but sets the status of non-leaf testcases to always pass
+  TestcaseExcludeParents,      // Only outputs testcases for the leaf steps
+}
+
 pub struct JunitTestReporter {
   path: String,
   // Stores TestCases (i.e. Tests) by the Test ID
