@@ -32,6 +32,8 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -331,11 +333,24 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm")
-                && !matches!(to.scheme(), "file" | "npm")
+              if !matches!(from.scheme(), "file" | "npm" | "deno")
+                && !matches!(to.scheme(), "file" | "npm" | "deno")
               {
                 graph.redirects.insert(from, to);
               }
+            }
+          }
+        }
+      }
+    }
+
+    if graph.deno_specifiers.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let lockfile = lockfile.lock();
+        for (key, value) in &lockfile.content.deno.specifiers {
+          if let Ok(key) = PackageReq::from_str(key) {
+            if let Ok(value) = PackageNv::from_str(value) {
+              graph.deno_specifiers.add(key, value);
             }
           }
         }
@@ -347,13 +362,23 @@ impl ModuleGraphBuilder {
     // add the redirects in the graph to the lockfile
     if !graph.redirects.is_empty() {
       if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph
-          .redirects
-          .iter()
-          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"));
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
         let mut lockfile = lockfile.lock();
         for (from, to) in graph_redirects {
           lockfile.insert_redirect(from.to_string(), to.to_string());
+        }
+      }
+    }
+
+    // add the deno specifiers in the graph to the lockfile
+    if !graph.deno_specifiers.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let mappings = graph.deno_specifiers.mappings();
+        let mut lockfile = lockfile.lock();
+        for (from, to) in mappings {
+          lockfile.insert_deno_specifier(from.to_string(), to.to_string());
         }
       }
     }
