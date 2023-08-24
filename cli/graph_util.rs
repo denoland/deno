@@ -216,7 +216,7 @@ impl ModuleGraphBuilder {
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_workspace_config = self.options.maybe_workspace_config();
     let workspace_members = if let Some(wc) = maybe_workspace_config {
-      wc.get_graph_workspace_members()?
+      workspace_config_to_workspace_members(wc)?
     } else {
       vec![]
     };
@@ -266,7 +266,7 @@ impl ModuleGraphBuilder {
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_workspace_config = self.options.maybe_workspace_config();
     let workspace_members = if let Some(wc) = maybe_workspace_config {
-      wc.get_graph_workspace_members()?
+      workspace_config_to_workspace_members(wc)?
     } else {
       vec![]
     };
@@ -611,6 +611,29 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
     }
   }
+}
+
+pub fn workspace_config_to_workspace_members(
+  workspace_config: &deno_config::WorkspaceConfig,
+) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+  workspace_config
+    .members
+    .iter()
+    .map(|m| workspace_member_config_try_into_workspace_member(m))
+    .collect()
+}
+
+fn workspace_member_config_try_into_workspace_member(
+  config: &deno_config::WorkspaceMemberConfig,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: config.package_name.clone(),
+    version: deno_semver::Version::parse_standard(&config.package_version)?,
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    nv,
+  })
 }
 
 #[cfg(test)]

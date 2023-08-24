@@ -7,6 +7,7 @@ use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
 use crate::graph_util::graph_lock_or_exit;
 use crate::graph_util::graph_valid_with_cli_options;
+use crate::graph_util::workspace_config_to_workspace_members;
 use crate::graph_util::FileWatcherReporter;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphContainer;
@@ -115,7 +116,7 @@ impl ModuleLoadPreparer {
     let maybe_imports = self.options.to_maybe_imports()?;
     let maybe_workspace_config = self.options.maybe_workspace_config();
     let workspace_members = if let Some(wc) = maybe_workspace_config {
-      wc.get_graph_workspace_members()?
+      workspace_config_to_workspace_members(wc)?
     } else {
       vec![]
     };
