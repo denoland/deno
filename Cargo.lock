@@ -721,16 +721,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctor"
-version = "0.1.26"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d2301688392eb071b0bf1a37be05c469d3cc4dbbd95df672fe28ab021e6a096"
-dependencies = [
- "quote 1.0.32",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "ctr"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -809,6 +799,7 @@ dependencies = [
  "deno_ast",
  "deno_bench_util",
  "deno_cache_dir",
+ "deno_config",
  "deno_core",
  "deno_doc",
  "deno_emit",
@@ -994,6 +985,24 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "url",
+]
+
+[[package]]
+name = "deno_config"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a42ff2a01961c72ef883375399677ccf046dba607dc14169b313e4a95bd26da2"
+dependencies = [
+ "anyhow",
+ "deno_semver",
+ "indexmap 1.9.3",
+ "jsonc-parser",
+ "log",
+ "percent-encoding",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
  "url",
 ]
 
@@ -2995,9 +3004,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.19"
+version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
+checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 dependencies = [
  "serde",
 ]
@@ -3348,15 +3357,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "output_vt100"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "628223faebab4e3e40667ee0b2336d34a5b960ff60ea743ddfdbcf7770bcfb66"
-dependencies = [
- "winapi",
-]
-
-[[package]]
 name = "outref"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3695,13 +3695,11 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "pretty_assertions"
-version = "1.3.0"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a25e9bcb20aa780fd0bb16b72403a9064d6b3f22f026946029acb941a50af755"
+checksum = "af7cee1a6c8a5b9208b3cb1061f10c0cb689087b3d8ce85fb9d2dd7a29b6ba66"
 dependencies = [
- "ctor",
  "diff",
- "output_vt100",
  "yansi",
 ]
 
