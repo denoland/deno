@@ -6,6 +6,16 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.36.3 / 2023.08.24
+
+- fix(build): socket2 compile error
+- fix(cli): add timeout on inspector tests (#20225)
+- fix(ext/node): simultaneous reads can leak into each other (#20223)
+- fix(ext/web): add stream tests to detect v8slice split bug (#20253)
+- fix(ext/web): better handling of errors in resourceForReadableStream (#20238)
+- fix(lint): erroneous remove await in async (#20235)
+- fix: add missing `URL.canParse()` types (#20244)
+
 ### 1.36.2 / 2023.08.21
 
 - feat(ext/kv): key expiration (#20091)
