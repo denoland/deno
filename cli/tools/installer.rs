@@ -2,7 +2,6 @@
 
 use crate::args::resolve_no_prompt;
 use crate::args::CaData;
-use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
 use crate::args::TypeCheckMode;
@@ -10,6 +9,7 @@ use crate::factory::CliFactory;
 use crate::http_util::HttpClient;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+use deno_config::ConfigFlag;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;

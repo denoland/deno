@@ -1262,13 +1262,10 @@ impl Documents {
       {
         imports
           .into_iter()
-          .map(|import| {
-            let graph_import = GraphImport::new(
-              &import.referrer,
-              import.imports,
-              Some(self.get_resolver()),
-            );
-            (import.referrer, graph_import)
+          .map(|(referrer, imports)| {
+            let graph_import =
+              GraphImport::new(&referrer, imports, Some(self.get_resolver()));
+            (referrer, graph_import)
           })
           .collect()
       } else {

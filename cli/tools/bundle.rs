@@ -150,7 +150,9 @@ fn bundle_module_graph(
     graph,
     deno_emit::BundleOptions {
       bundle_type: deno_emit::BundleType::Module,
-      emit_options: ts_config_result.ts_config.into(),
+      emit_options: crate::args::ts_config_to_emit_options(
+        ts_config_result.ts_config,
+      ),
       emit_ignore_directives: true,
     },
   )
