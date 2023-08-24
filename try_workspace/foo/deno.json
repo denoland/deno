@@ -1,10 +1,11 @@
 {
   "name": "@foo/foo",
-  "version": "0.0.1",
+  "version": "0.0.7",
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
     "tsMorph": "deno:@foo/ts_morph",
-    "@std/assert/": "deno:/@std/assert/"
+    "@std/assert/": "deno:/@std/assert/",
+    "@std/path/": "deno:/@std/path/"
   },
   "scopes": {
     "/nested/": {

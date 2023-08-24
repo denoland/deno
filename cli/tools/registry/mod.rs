@@ -9,12 +9,15 @@ use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_runtime::deno_fetch::reqwest;
+use http::header::CONTENT_ENCODING;
 use serde::Deserialize;
 
 use crate::args::Flags;
 
 mod auth;
+mod tar;
 mod urls;
 
 pub async fn info(_flags: Flags) -> Result<(), AnyError> {
@@ -113,12 +116,15 @@ pub async fn publish(
   _flags: Flags,
   directory: PathBuf,
 ) -> Result<(), AnyError> {
+  let token = auth::ensure_token()?;
+
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
   // TODO: handle publishing without deno.json
 
+  let directory_path = initial_cwd.join(directory);
   // TODO: doesn't handle jsonc
-  let deno_json_path = initial_cwd.join(directory).join("deno.json");
+  let deno_json_path = directory_path.join("deno.json");
   let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
     format!(
       "Failed to read deno.json file at {}",
@@ -132,12 +138,83 @@ pub async fn publish(
       deno_json_path.display()
     );
   }
+  let name = deno_json.json.name.unwrap();
+  if !name.starts_with('@') || name.find('/').is_none() {
+    bail!("Invalid package name, user '@<scope_name>/<package_name> format");
+  }
+  let scope_and_package_name = name[1..].to_string();
+  let (scope, package_name) = scope_and_package_name.split_once('/').unwrap();
+  let version = deno_json.json.version.unwrap();
 
-  eprintln!(
-    "deno.json {}",
-    serde_json::to_string_pretty(&deno_json.json).unwrap()
+  let unfurler = tar::Unfurler::new(
+    Url::from_file_path(&deno_json_path).unwrap(),
+    std::fs::read_to_string(&deno_json_path).unwrap(),
+  )?;
+
+  let url = format!(
+    "{}/publish/{}/{}/{}",
+    urls::REGISTRY_URL,
+    scope,
+    package_name,
+    version
   );
-  eprintln!("deno reg publish is not yet implemented");
+  let tarball = tar::create_tarball(directory_path, unfurler)
+    .context("Failed to create a tarball")?;
+
+  let client = reqwest::Client::new();
+  let response = client
+    .post(url)
+    .bearer_auth(token.to_string())
+    .header(CONTENT_ENCODING, "gzip")
+    .body(tarball)
+    .send()
+    .await?;
+
+  let status = response.status();
+  let data: serde_json::Value = response.json().await?;
+  eprintln!("publish data {:#?}", data);
+  if !status.is_success() {
+    bail!("Failed to publish, status: {} {}", status, data);
+  }
+
+  let task_id = data["id"].as_str().unwrap();
+  eprintln!("task id {}", task_id);
+
+  loop {
+    let resp = client
+      .get(format!("{}/publish_status/{}", urls::REGISTRY_URL, task_id))
+      .bearer_auth(token.to_string())
+      .send()
+      .await?;
+
+    let status = resp.status();
+    let data: serde_json::Value = resp.json().await?;
+    eprintln!("publish data status {:#?}", data);
+    if !status.is_success() {
+      bail!("Failed to get publishing status {:?}", data);
+    }
+
+    let data_status = data["status"].as_str().unwrap();
+    if data_status == "success" {
+      println!("Successfully published");
+      println!(
+        "https://deno-registry-staging.net/@{}/{}/{}_meta.json",
+        data["packageScope"].as_str().unwrap(),
+        data["packageName"].as_str().unwrap(),
+        data["packageVersion"].as_str().unwrap()
+      );
+      break;
+    } else if data_status == "failure" {
+      bail!(
+        "Publishing failed {}",
+        serde_json::to_string_pretty(&data).unwrap()
+      );
+    } else {
+      println!("Waiting");
+      tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+  }
+
   Ok(())
 }
 
