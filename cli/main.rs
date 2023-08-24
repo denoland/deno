@@ -32,6 +32,7 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use args::DepsSubcommand;
 use args::RegistrySubcommand;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -207,6 +208,13 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
           tools::registry::publish(flags, directory).await
         }
         RegistrySubcommand::Scope => tools::registry::scope(flags).await,
+      }
+    }),
+    DenoSubcommand::Deps(deps_subcommand) => spawn_subcommand(async {
+      match deps_subcommand {
+        DepsSubcommand::Add(name) => {
+          tools::registry::deps_add(flags, name).await
+        }
       }
     }),
   };
