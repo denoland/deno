@@ -1,0 +1,14 @@
+{
+  "name": "@foo/bar",
+  "version": "0.0.1",
+  "imports": {
+    "codeBlockWriter": "deno:@foo/code_block_writer",
+    "@std/fmt/": "deno:/@std/fmt/",
+    "foo/": "deno:/@foo/foo/"
+  },
+  "scopes": {
+    "/nested/": {
+      "fizzbuzz": "deno:fizzbuzz@1"
+    }
+  }
+}

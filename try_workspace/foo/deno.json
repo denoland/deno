@@ -1,0 +1,14 @@
+{
+  "name": "@foo/foo",
+  "version": "0.0.1",
+  "imports": {
+    "codeBlockWriter": "deno:@foo/code_block_writer",
+    "tsMorph": "deno:@foo/ts_morph",
+    "@std/assert/": "deno:/@std/assert/"
+  },
+  "scopes": {
+    "/nested/": {
+      "fizzbuzz": "deno:fizzbuzz@1"
+    }
+  }
+}
