@@ -110,25 +110,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-/// Gets the parent of this module specifier.
-pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-  let mut specifier = specifier.clone();
-  // don't use specifier.segments() because it will strip the leading slash
-  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
-  if segments.iter().all(|s| s.is_empty()) {
-    return specifier;
-  }
-  if let Some(last) = segments.last() {
-    if last.is_empty() {
-      segments.pop();
-    }
-    segments.pop();
-    let new_path = format!("{}/", segments.join("/"));
-    specifier.set_path(&new_path);
-  }
-  specifier
-}
-
 /// `from.make_relative(to)` but with fixes.
 pub fn relative_specifier(
   from: &ModuleSpecifier,
