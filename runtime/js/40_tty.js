@@ -16,8 +16,7 @@ function consoleSize() {
 
 const isattyBuffer = new Uint8Array(1);
 function isatty(rid) {
-  ops.op_isatty(rid, isattyBuffer);
-  return !!isattyBuffer[0];
+  return ops.op_isatty(rid, isattyBuffer);
 }
 
 export { consoleSize, isatty };
