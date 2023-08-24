@@ -324,7 +324,38 @@ impl ModuleGraphBuilder {
       self.resolver.force_top_level_package_json_install().await?;
     }
 
+    // add the lockfile redirects to the graph if it's the first time executing
+    if graph.redirects.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let lockfile = lockfile.lock();
+        for (from, to) in &lockfile.content.redirects {
+          if let Ok(from) = ModuleSpecifier::parse(from) {
+            if let Ok(to) = ModuleSpecifier::parse(to) {
+              if matches!(from.scheme(), "http" | "https")
+                && matches!(to.scheme(), "http" | "https")
+              {
+                graph.redirects.insert(from, to);
+              }
+            }
+          }
+        }
+      }
+    }
+
     graph.build(roots, loader, options).await;
+
+    // add the redirects in the graph to the lockfile
+    if !graph.redirects.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let mut lockfile = lockfile.lock();
+        lockfile.content.redirects = graph
+          .redirects
+          .iter()
+          .filter(|(from, _)| matches!(from.scheme(), "http" | "https"))
+          .map(|(from, to)| (from.to_string(), to.to_string()))
+          .collect();
+      }
+    }
 
     // ensure that the top level package.json is installed if a
     // specifier was matched in the package.json
