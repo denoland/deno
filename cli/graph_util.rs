@@ -347,13 +347,14 @@ impl ModuleGraphBuilder {
     // add the redirects in the graph to the lockfile
     if !graph.redirects.is_empty() {
       if let Some(lockfile) = &self.lockfile {
-        let mut lockfile = lockfile.lock();
-        lockfile.content.redirects = graph
+        let graph_redirects = graph
           .redirects
           .iter()
-          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"))
-          .map(|(from, to)| (from.to_string(), to.to_string()))
-          .collect();
+          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"));
+        let mut lockfile = lockfile.lock();
+        for (from, to) in graph_redirects {
+          lockfile.insert_redirect(from.to_string(), to.to_string());
+        }
       }
     }
 
