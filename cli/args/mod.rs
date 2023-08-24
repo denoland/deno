@@ -773,36 +773,17 @@ impl CliOptions {
         base_url: self.maybe_config_file.as_ref().unwrap().specifier.clone(),
         // Use None here?
         scope_prefix: "".to_string(),
-        imports: workspace_config
-          .base_import_map_value
-          .get("imports")
-          .unwrap_or_else(|| serde_json::json!({}))
-          .clone(),
-        scopes: workspace_config
-          .base_import_map_value
-          .get("scopes")
-          .unwrap_or_else(|| serde_json::json!({}))
-          .clone(),
+        import_map_value: workspace_config.base_import_map_value.clone(),
       };
       let children_configs = workspace_config
         .members
         .iter()
         .map(|member| {
           let import_map_value = member.config_file.to_import_map_value();
-          let imports = import_map_value
-            .get("imports")
-            .unwrap_or_else(|| serde_json::json!({}))
-            .clone();
-          let scopes = import_map_value
-            .get("scopes")
-            .unwrap_or_else(|| serde_json::json!({}))
-            .clone();
-
           ::import_map::ext::ImportMapConfig {
             base_url: Url::from_directory_path(member.path.clone()).unwrap(),
             scope_prefix: member.member_name.to_string(),
-            imports,
-            scopes,
+            import_map_value,
           }
         })
         .collect();
