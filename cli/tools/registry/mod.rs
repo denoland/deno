@@ -10,6 +10,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::CONTENT_ENCODING;
 use serde::Deserialize;
@@ -69,9 +70,12 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
 
   let device_login: DeviceLoginResponse = device_login_response.json().await?;
 
-  println!("Copy the code {}", device_login.code);
-  println!("And enter it at {} to sign in", device_login.uri);
-  println!("\nWaiting for login to complete...");
+  println!("Copy the code {}", colors::cyan(device_login.code));
+  println!(
+    "And enter it at {} to sign in",
+    colors::cyan(device_login.uri)
+  );
+  println!("\n{}", colors::gray("Waiting for login to complete..."));
 
   let start = std::time::Instant::now();
 
@@ -93,7 +97,7 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
     if std::time::Instant::now() - start
       > std::time::Duration::from_secs(device_login.expires_in as u64)
     {
-      bail!("Login took too long, please try again");
+      bail!("{}", colors::red("Login took too long, please try again"));
     }
   };
 
@@ -108,7 +112,12 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
   };
 
   auth::save_token(token)?;
-  println!("Sign in successful. Authenticated as {}", user_info.name);
+  println!(
+    "{} {} {}",
+    colors::green("Sign in successful."),
+    colors::gray("Authenticated as"),
+    colors::cyan(user_info.name)
+  );
 
   Ok(())
 }
@@ -193,7 +202,8 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
     let data_status = data["status"].as_str().unwrap();
     if data_status == "success" {
       println!(
-        "Successfully published @{}/{}@{}",
+        "{} @{}/{}@{}",
+        colors::green("Successfully published"),
         data["packageScope"].as_str().unwrap(),
         data["packageName"].as_str().unwrap(),
         data["packageVersion"].as_str().unwrap()
@@ -207,11 +217,12 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
       break;
     } else if data_status == "failure" {
       bail!(
-        "Publishing failed {}",
+        "{} {}",
+        colors::red("Publishing failed"),
         serde_json::to_string_pretty(&data).unwrap()
       );
     } else {
-      println!("Waiting");
+      println!("{}", colors::gray("Waiting"));
       tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
   }
