@@ -14,30 +14,11 @@ use serde::Deserialize;
 
 use crate::args::Flags;
 
-fn save_token(token: String) -> Result<(), AnyError> {
-  let contents = vec![format!("deno-registry-token:{}", REGISTRY_URL), token];
-  std::fs::write("./deno.token", contents.join("\n"))?;
-  Ok(())
-}
-
-fn read_token() -> Result<Option<String>, AnyError> {
-  let contents = std::fs::read_to_string("./deno.token")?;
-  let Some((_url, token)) = contents.split_once('\n') else {
-    return Ok(None)
-  };
-  Ok(Some(token.to_string()))
-}
-
-fn ensure_token() -> Result<String, AnyError> {
-  let maybe_token = read_token()?;
-  let Some(token) = maybe_token else {
-        bail!("Not logged in. Use `deno reg login` and try again.");
-    };
-  Ok(token)
-}
+mod auth;
+mod urls;
 
 pub async fn info(_flags: Flags) -> Result<(), AnyError> {
-  let token = ensure_token()?;
+  let token = auth::ensure_token()?;
   let user_info = get_user_info(token).await?;
   eprintln!("{:#?}", user_info);
   Ok(())
@@ -58,7 +39,7 @@ pub struct UserInfo {
 async fn get_user_info(token: String) -> Result<UserInfo, AnyError> {
   let client = reqwest::Client::new();
   let user_info: UserInfo = client
-    .get(format!("{}/user", REGISTRY_URL))
+    .get(format!("{}/user", urls::REGISTRY_URL))
     .bearer_auth(token)
     .send()
     .await?
@@ -66,10 +47,6 @@ async fn get_user_info(token: String) -> Result<UserInfo, AnyError> {
     .await?;
   Ok(user_info)
 }
-
-// TODO(bartlomieju): support configuring these
-static REGISTRY_URL: &str = "https://api.deno-registry-staging.net";
-static AUTH_REGISTRY_URL: &str = "https://manage.deno-registry-staging.net";
 
 #[derive(Debug, Deserialize)]
 struct DeviceLoginResponse {
@@ -82,7 +59,7 @@ struct DeviceLoginResponse {
 
 pub async fn login(_flags: Flags) -> Result<(), AnyError> {
   let device_login_response =
-    reqwest::get(format!("{}/login/device", AUTH_REGISTRY_URL))
+    reqwest::get(format!("{}/login/device", urls::AUTH_REGISTRY_URL))
       .await
       .context("Failed to obtain device login info")?;
 
@@ -101,7 +78,8 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
     .await;
     let res = reqwest::get(format!(
       "{}/login/device/exchange?id={}",
-      AUTH_REGISTRY_URL, device_login.id
+      urls::AUTH_REGISTRY_URL,
+      device_login.id
     ))
     .await?;
     if res.status().is_success() {
@@ -125,7 +103,7 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
     }
   };
 
-  save_token(token)?;
+  auth::save_token(token)?;
   println!("Sign in successful. Authenticated as {}", user_info.name);
 
   Ok(())
