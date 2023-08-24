@@ -24,7 +24,7 @@ use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;

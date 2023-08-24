@@ -724,7 +724,7 @@ function resourceForReadableStream(stream) {
   PromisePrototypeCatch(
     PromisePrototypeThen(
       op_readable_stream_resource_await_close(rid),
-      () => reader.cancel(),
+      () => reader.cancel("resource closed"),
     ),
     () => {},
   );
@@ -745,17 +745,25 @@ function resourceForReadableStream(stream) {
               break;
             }
           } catch (err) {
-            const message = err.message;
-            if (message) {
-              await op_readable_stream_resource_write_error(sink, err.message);
-            } else {
-              await op_readable_stream_resource_write_error(sink, String(err));
+            const message = err?.message;
+            const success = (message && (typeof message == "string"))
+              ? await op_readable_stream_resource_write_error(sink, message)
+              : await op_readable_stream_resource_write_error(
+                sink,
+                String(err),
+              );
+            // We don't cancel the reader if there was an error reading. We'll let the downstream
+            // consumer close the resource after it receives the error.
+            if (!success) {
+              reader.cancel("resource closed");
             }
             break;
           }
           // If the chunk has non-zero length, write it
           if (value.length > 0) {
-            await op_readable_stream_resource_write_buf(sink, value);
+            if (!await op_readable_stream_resource_write_buf(sink, value)) {
+              reader.cancel("resource closed");
+            }
           }
         }
       } finally {
