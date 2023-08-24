@@ -1,6 +1,6 @@
 {
   "name": "@foo/bar",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
     "@std/fmt/": "deno:/@std/fmt/",

@@ -1,6 +1,6 @@
 {
   "name": "@foo/foo",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
     "tsMorph": "deno:@foo/ts_morph",

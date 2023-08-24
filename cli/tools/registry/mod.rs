@@ -15,6 +15,7 @@ use http::header::CONTENT_ENCODING;
 use serde::Deserialize;
 
 use crate::args::Flags;
+use crate::tools::registry::auth::ensure_token;
 
 mod auth;
 mod tar;
@@ -112,12 +113,8 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub async fn publish(
-  _flags: Flags,
-  directory: PathBuf,
-) -> Result<(), AnyError> {
-  let token = auth::ensure_token()?;
-
+async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
+  let token = ensure_token()?;
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
   // TODO: handle publishing without deno.json
@@ -139,6 +136,7 @@ pub async fn publish(
     );
   }
   let name = deno_json.json.name.unwrap();
+
   if !name.starts_with('@') || name.find('/').is_none() {
     bail!("Invalid package name, user '@<scope_name>/<package_name> format");
   }
@@ -172,13 +170,12 @@ pub async fn publish(
 
   let status = response.status();
   let data: serde_json::Value = response.json().await?;
-  eprintln!("publish data {:#?}", data);
+
   if !status.is_success() {
     bail!("Failed to publish, status: {} {}", status, data);
   }
 
   let task_id = data["id"].as_str().unwrap();
-  eprintln!("task id {}", task_id);
 
   loop {
     let resp = client
@@ -189,14 +186,18 @@ pub async fn publish(
 
     let status = resp.status();
     let data: serde_json::Value = resp.json().await?;
-    eprintln!("publish data status {:#?}", data);
     if !status.is_success() {
       bail!("Failed to get publishing status {:?}", data);
     }
 
     let data_status = data["status"].as_str().unwrap();
     if data_status == "success" {
-      println!("Successfully published");
+      println!(
+        "Successfully published @{}/{}@{}",
+        data["packageScope"].as_str().unwrap(),
+        data["packageName"].as_str().unwrap(),
+        data["packageVersion"].as_str().unwrap()
+      );
       println!(
         "https://deno-registry-staging.net/@{}/{}/{}_meta.json",
         data["packageScope"].as_str().unwrap(),
@@ -215,6 +216,44 @@ pub async fn publish(
     }
   }
 
+  Ok(())
+}
+
+pub async fn publish(
+  _flags: Flags,
+  directory: PathBuf,
+) -> Result<(), AnyError> {
+  let _token = auth::ensure_token()?;
+
+  let initial_cwd =
+    std::env::current_dir().with_context(|| "Failed getting cwd.")?;
+  // TODO: handle publishing without deno.json
+
+  let directory_path = initial_cwd.join(directory);
+  // TODO: doesn't handle jsonc
+  let deno_json_path = directory_path.join("deno.json");
+  let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
+    format!(
+      "Failed to read deno.json file at {}",
+      deno_json_path.display()
+    )
+  })?;
+
+  let members = deno_json.json.members.clone();
+  if !members.is_empty() {
+    // TODO(bartlomieju): this should be smart enough to figure out dependencies
+    // between workspace members and publish in correct order. Or error out
+    // if there are circular dependencies between the packages.
+    println!("Publishing a workspace...");
+    for member in members {
+      let member_dir = directory_path.join(member);
+      println!("Publishing {}", member_dir.display());
+      do_publish(member_dir).await?;
+    }
+    return Ok(());
+  }
+
+  do_publish(directory_path).await?;
   Ok(())
 }
 
