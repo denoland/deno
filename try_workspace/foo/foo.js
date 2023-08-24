@@ -14,4 +14,3 @@ console.log();
 
 export function foo() {
 }
-foo.name = "fooFn";
