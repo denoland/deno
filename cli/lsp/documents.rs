@@ -32,6 +32,7 @@ use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url;
 use deno_core::ModuleSpecifier;
@@ -1551,24 +1552,70 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Document>,
 }
 
+impl<'a> OpenDocumentsGraphLoader<'a> {
+  fn load_from_docs(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<deno_graph::source::LoadFuture> {
+    if specifier.scheme() == "file" {
+      if let Some(doc) = self.open_docs.get(specifier) {
+        return Some(
+          future::ready(Ok(Some(deno_graph::source::LoadResponse::Module {
+            content: doc.content(),
+            specifier: doc.specifier().clone(),
+            maybe_headers: None,
+          })))
+          .boxed_local(),
+        );
+      }
+    }
+    None
+  }
+}
+
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
   ) -> deno_graph::source::LoadFuture {
-    if specifier.scheme() == "file" {
-      if let Some(doc) = self.open_docs.get(specifier) {
-        return Box::pin(future::ready(Ok(Some(
-          deno_graph::source::LoadResponse::Module {
-            content: doc.content(),
-            specifier: doc.specifier().clone(),
-            maybe_headers: None,
-          },
-        ))));
-      }
+    match self.load_from_docs(specifier) {
+      Some(fut) => fut,
+      None => self.inner_loader.load(specifier, is_dynamic),
     }
-    self.inner_loader.load(specifier, is_dynamic)
+  }
+
+  fn load_no_cache(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> deno_emit::LoadFuture {
+    match self.load_from_docs(specifier) {
+      Some(fut) => fut,
+      None => self.inner_loader.load_no_cache(specifier, is_dynamic),
+    }
+  }
+
+  fn load_from_cache(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    is_dynamic: bool,
+  ) -> deno_emit::LoadFuture {
+    match self.load_from_docs(specifier) {
+      Some(fut) => fut,
+      None => self.inner_loader.load_from_cache(specifier, is_dynamic),
+    }
+  }
+
+  fn cache_module_info(
+    &mut self,
+    specifier: &deno_ast::ModuleSpecifier,
+    source: &str,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    self
+      .inner_loader
+      .cache_module_info(specifier, source, module_info)
   }
 }
 

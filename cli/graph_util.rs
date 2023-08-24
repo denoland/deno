@@ -214,6 +214,12 @@ impl ModuleGraphBuilder {
     loader: &mut dyn Loader,
   ) -> Result<deno_graph::ModuleGraph, AnyError> {
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
 
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
@@ -237,6 +243,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_members,
         },
       )
       .await?;
@@ -257,6 +264,12 @@ impl ModuleGraphBuilder {
   ) -> Result<Arc<deno_graph::ModuleGraph>, AnyError> {
     let mut cache = self.create_graph_loader();
     let maybe_imports = self.options.to_maybe_imports()?;
+    let maybe_workspace_config = self.options.maybe_workspace_config();
+    let workspace_members = if let Some(wc) = maybe_workspace_config {
+      workspace_config_to_workspace_members(wc)?
+    } else {
+      vec![]
+    };
     let cli_resolver = self.resolver.clone();
     let graph_resolver = cli_resolver.as_graph_resolver();
     let graph_npm_resolver = cli_resolver.as_graph_npm_resolver();
@@ -280,6 +293,7 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          workspace_members,
         },
       )
       .await?;
@@ -350,6 +364,7 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
+      self.parsed_source_cache.clone(),
       permissions,
       self.options.node_modules_dir_specifier(),
     )
@@ -596,6 +611,29 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
       self.sender.send(file_paths.drain(..).collect()).unwrap();
     }
   }
+}
+
+pub fn workspace_config_to_workspace_members(
+  workspace_config: &deno_config::WorkspaceConfig,
+) -> Result<Vec<deno_graph::WorkspaceMember>, AnyError> {
+  workspace_config
+    .members
+    .iter()
+    .map(|m| workspace_member_config_try_into_workspace_member(m))
+    .collect()
+}
+
+fn workspace_member_config_try_into_workspace_member(
+  config: &deno_config::WorkspaceMemberConfig,
+) -> Result<deno_graph::WorkspaceMember, AnyError> {
+  let nv = deno_semver::package::PackageNv {
+    name: config.package_name.clone(),
+    version: deno_semver::Version::parse_standard(&config.package_version)?,
+  };
+  Ok(deno_graph::WorkspaceMember {
+    base: ModuleSpecifier::from_directory_path(&config.path).unwrap(),
+    nv,
+  })
 }
 
 #[cfg(test)]
