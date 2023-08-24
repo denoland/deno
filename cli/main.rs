@@ -201,10 +201,12 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     // TODO:
     DenoSubcommand::Registry(registry_subcommand) => spawn_subcommand(async {
       match registry_subcommand {
+        RegistrySubcommand::Info => tools::registry::info(flags).await,
         RegistrySubcommand::Login => tools::registry::login(flags).await,
         RegistrySubcommand::Publish(directory) => {
           tools::registry::publish(flags, directory).await
         }
+        RegistrySubcommand::Scope => tools::registry::scope(flags).await,
       }
     }),
   };

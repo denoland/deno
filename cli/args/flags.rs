@@ -262,8 +262,10 @@ pub struct VendorFlags {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RegistrySubcommand {
+  Info,
   Login,
   Publish(PathBuf),
+  Scope,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2115,6 +2117,9 @@ Remote modules and multiple modules may also be specified:
 
 fn reg_subcommand() -> Command {
   let login_subcommand = Command::new("login").about("Login to the registry");
+  let info_subcommand =
+    Command::new("info").about("Show info about currently logged in user");
+  let scope_subcommand = Command::new("scope").about("Manage scopes");
 
   let publish_subcommand = Command::new("publish")
     .about("Publish a package to the registry")
@@ -2128,8 +2133,10 @@ fn reg_subcommand() -> Command {
   Command::new("reg")
     .about("Registry management tool")
     .long_about("")
+    .subcommand(info_subcommand)
     .subcommand(login_subcommand)
     .subcommand(publish_subcommand)
+    .subcommand(scope_subcommand)
 }
 
 fn compile_args(app: Command) -> Command {
@@ -3470,11 +3477,13 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 fn reg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let registry_subcommand = match matches.remove_subcommand() {
     Some((subcommand, mut m)) => match subcommand.as_str() {
+      "info" => RegistrySubcommand::Info,
       "login" => RegistrySubcommand::Login,
       "publish" => {
         let directory = m.remove_one::<PathBuf>("directory").unwrap();
         RegistrySubcommand::Publish(directory)
       }
+      "scope" => RegistrySubcommand::Scope,
       _ => unreachable!(),
     },
     None => unreachable!(),
