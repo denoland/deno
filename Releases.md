@@ -21,12 +21,15 @@ https://github.com/denoland/deno_install
 - feat(ext/kv): key expiration (#20091)
 - feat(ext/node): eagerly bootstrap node (#20153)
 - feat(unstable): Improve FFI types (#20215)
-- fix(cli) error gracefully when script arg is not present and `--v8-flags` is  present in `deno run` (#20145)
+- fix(cli) error gracefully when script arg is not present and `--v8-flags` is
+  present in `deno run` (#20145)
 - fix(cli): handle missing `now` field in cache (#20192)
 - fix(ext/fetch): clone second branch chunks in Body.clone() (#20057)
-- fix(ext/http): ensure request body resource lives as long as response is alive  (#20206)
+- fix(ext/http): ensure request body resource lives as long as response is alive
+  (#20206)
 - fix(ext/kv): retry transaction on `SQLITE_BUSY` errors (#20189)
-- fix(ext/net): implement a graceful error on an invalid SSL certificate (#20157)
+- fix(ext/net): implement a graceful error on an invalid SSL certificate
+  (#20157)
 - fix(ext/node): allow for the reassignment of userInfo() on Windows (#20165)
 - fix(ext/node): support dictionary option in zlib init (#20035)
 - fix(lsp): pass fmt options to completion requests (#20184)
