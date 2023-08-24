@@ -32,6 +32,7 @@ use crate::util::display;
 use crate::util::v8::get_v8_flags_from_env;
 use crate::util::v8::init_v8_flags;
 
+use args::RegistrySubcommand;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
@@ -196,6 +197,15 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Vendor(vendor_flags) => spawn_subcommand(async {
       tools::vendor::vendor(flags, vendor_flags).await
+    }),
+    // TODO:
+    DenoSubcommand::Registry(registry_subcommand) => spawn_subcommand(async {
+      match registry_subcommand {
+        RegistrySubcommand::Login => tools::registry::login(flags).await,
+        RegistrySubcommand::Publish(directory) => {
+          tools::registry::publish(flags, directory).await
+        }
+      }
     }),
   };
 

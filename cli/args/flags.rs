@@ -261,6 +261,12 @@ pub struct VendorFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RegistrySubcommand {
+  Login,
+  Publish(PathBuf),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Bench(BenchFlags),
   Bundle(BundleFlags),
@@ -285,6 +291,8 @@ pub enum DenoSubcommand {
   Types,
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
+  // TODO:
+  Registry(RegistrySubcommand),
 }
 
 impl Default for DenoSubcommand {
@@ -677,7 +685,8 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_)
+      | Registry(_) => None,
     }
   }
 
@@ -826,6 +835,8 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "uninstall" => uninstall_parse(&mut flags, &mut m),
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
+      // TODO:
+      "reg" => reg_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
   } else {
@@ -926,6 +937,8 @@ fn clap_root() -> Command {
         .subcommand(types_subcommand())
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand())
+        // TODO(bartlomieju):
+        .subcommand(reg_subcommand())
     })
     .long_about(DENO_HELP)
     .after_help(ENV_VARIABLES_HELP)
@@ -2098,6 +2111,25 @@ Remote modules and multiple modules may also be specified:
       .arg(vendor_arg())
       .arg(reload_arg())
       .arg(ca_file_arg()))
+}
+
+fn reg_subcommand() -> Command {
+  let login_subcommand = Command::new("login").about("Login to the registry");
+
+  let publish_subcommand = Command::new("publish")
+    .about("Publish a package to the registry")
+    .arg(
+      Arg::new("directory")
+        .required(true)
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::DirPath),
+    );
+
+  Command::new("reg")
+    .about("Registry management tool")
+    .long_about("")
+    .subcommand(login_subcommand)
+    .subcommand(publish_subcommand)
 }
 
 fn compile_args(app: Command) -> Command {
@@ -3433,6 +3465,21 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     output_path: matches.remove_one::<PathBuf>("output"),
     force: matches.get_flag("force"),
   });
+}
+
+fn reg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let registry_subcommand = match matches.remove_subcommand() {
+    Some((subcommand, mut m)) => match subcommand.as_str() {
+      "login" => RegistrySubcommand::Login,
+      "publish" => {
+        let directory = m.remove_one::<PathBuf>("directory").unwrap();
+        RegistrySubcommand::Publish(directory)
+      }
+      _ => unreachable!(),
+    },
+    None => unreachable!(),
+  };
+  flags.subcommand = DenoSubcommand::Registry(registry_subcommand);
 }
 
 fn compile_args_parse(flags: &mut Flags, matches: &mut ArgMatches) {

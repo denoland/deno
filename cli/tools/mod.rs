@@ -11,6 +11,7 @@ pub mod info;
 pub mod init;
 pub mod installer;
 pub mod lint;
+pub mod registry;
 pub mod repl;
 pub mod run;
 pub mod task;
