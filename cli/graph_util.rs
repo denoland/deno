@@ -327,8 +327,8 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if matches!(from.scheme(), "http" | "https")
-                && matches!(to.scheme(), "http" | "https")
+              if !matches!(from.scheme(), "file" | "npm")
+                && !matches!(to.scheme(), "file" | "npm")
               {
                 graph.redirects.insert(from, to);
               }
@@ -347,7 +347,7 @@ impl ModuleGraphBuilder {
         lockfile.content.redirects = graph
           .redirects
           .iter()
-          .filter(|(from, _)| matches!(from.scheme(), "http" | "https"))
+          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"))
           .map(|(from, to)| (from.to_string(), to.to_string()))
           .collect();
       }
