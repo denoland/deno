@@ -14,7 +14,7 @@ function consoleSize() {
 }
 
 function isatty(rid) {
-  return ops.op_isatty(rid, isattyBuffer);
+  return ops.op_isatty(rid);
 }
 
 export { consoleSize, isatty };
