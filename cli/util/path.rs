@@ -275,22 +275,6 @@ mod test {
   }
 
   #[test]
-  fn test_specifier_parent() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///");
-    run_test("file:///test/", "file:///");
-    run_test("file:///test/other", "file:///test/");
-    run_test("file:///test/other.txt", "file:///test/");
-    run_test("file:///test/other/", "file:///test/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
-    }
-  }
-
-  #[test]
   fn test_relative_specifier() {
     let fixtures: Vec<(&str, &str, Option<&str>)> = vec![
       ("file:///from", "file:///to", Some("./to")),

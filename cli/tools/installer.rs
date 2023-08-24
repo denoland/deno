@@ -491,8 +491,8 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use super::*;
 
-  use crate::args::ConfigFlag;
   use crate::util::fs::canonicalize_path;
+  use deno_config::ConfigFlag;
   use std::process::Command;
   use test_util::testdata_path;
   use test_util::TempDir;
