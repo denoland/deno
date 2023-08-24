@@ -242,7 +242,7 @@ fn pty_internal_repl() {
 fn pty_emoji() {
   // windows was having issues displaying this
   util::with_pty(&["repl"], |mut console| {
-    console.write_line(r#"console.log('\u{1F995}');"#);
+    console.write_line(r"console.log('\u{1F995}');");
     console.expect("🦕");
   });
 }

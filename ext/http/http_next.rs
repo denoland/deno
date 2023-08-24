@@ -962,14 +962,14 @@ where
 #[smi]
 pub fn op_http_try_wait(state: &mut OpState, #[smi] rid: ResourceId) -> SlabId {
   // The resource needs to exist.
-  let Ok(join_handle) = state
-    .resource_table
-    .get::<HttpJoinHandle>(rid) else {
-      return SlabId::MAX;
+  let Ok(join_handle) = state.resource_table.get::<HttpJoinHandle>(rid) else {
+    return SlabId::MAX;
   };
 
   // If join handle is somehow locked, just abort.
-  let Some(mut handle) = RcRef::map(&join_handle, |this| &this.2).try_borrow_mut() else {
+  let Some(mut handle) =
+    RcRef::map(&join_handle, |this| &this.2).try_borrow_mut()
+  else {
     return SlabId::MAX;
   };
 

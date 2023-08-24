@@ -476,7 +476,8 @@ impl FileFetcher {
         let Ok(cache_key) = self.http_cache.cache_item_key(specifier) else {
           return false;
         };
-        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key) else {
+        let Ok(Some(metadata)) = self.http_cache.read_metadata(&cache_key)
+        else {
           return false;
         };
         let cache_semantics = CacheSemantics::new(

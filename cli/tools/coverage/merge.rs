@@ -229,7 +229,7 @@ impl<'a> Iterator for StartEventQueue<'a> {
               let mut result = self.queue.next().unwrap();
               if pending_offset == queue_offset {
                 let pending_trees = self.pending.take().unwrap().trees;
-                result.trees.extend(pending_trees.into_iter())
+                result.trees.extend(pending_trees)
               }
               Some(result)
             }
@@ -338,7 +338,7 @@ fn merge_range_tree_children<'a>(
 
   let child_forests: Vec<Vec<&'a mut RangeTree<'a>>> = flat_children
     .into_iter()
-    .zip(wrapped_children.into_iter())
+    .zip(wrapped_children)
     .map(|(flat, wrapped)| merge_children_lists(flat, wrapped))
     .collect();
 
