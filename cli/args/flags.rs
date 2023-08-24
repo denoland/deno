@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::ConfigFlag;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -330,19 +331,6 @@ impl TypeCheckMode {
 impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConfigFlag {
-  Discover,
-  Path(String),
-  Disabled,
-}
-
-impl Default for ConfigFlag {
-  fn default() -> Self {
-    Self::Discover
   }
 }
 
