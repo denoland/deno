@@ -71,11 +71,7 @@ fn as_queue_and_filters(
         }
       }
     }
-  }
-
-  // if we didn't have any specific include filters, we assume that all modules
-  // will be tested
-  if queue.is_empty() {
+  } else {
     queue.extend(tests.keys().cloned());
   }
 
@@ -96,6 +92,8 @@ fn as_queue_and_filters(
       }
     }
   }
+
+  queue.retain(|s| !tests.get(s).unwrap().is_empty());
 
   (queue, filters)
 }
@@ -816,16 +814,28 @@ mod tests {
   #[test]
   fn test_as_queue_and_filters() {
     let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
+    // Regression test for https://github.com/denoland/vscode_deno/issues/890.
+    let non_test_specifier =
+      ModuleSpecifier::parse("file:///a/no_tests.ts").unwrap();
     let params = lsp_custom::TestRunRequestParams {
       id: 1,
       kind: lsp_custom::TestRunKind::Run,
-      include: Some(vec![lsp_custom::TestIdentifier {
-        text_document: lsp::TextDocumentIdentifier {
-          uri: specifier.clone(),
+      include: Some(vec![
+        lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: specifier.clone(),
+          },
+          id: None,
+          step_id: None,
         },
-        id: None,
-        step_id: None,
-      }]),
+        lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: non_test_specifier.clone(),
+          },
+          id: None,
+          step_id: None,
+        },
+      ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
           uri: specifier.clone(),
@@ -860,6 +870,7 @@ mod tests {
       script_version: "1".to_string(),
     };
     tests.insert(specifier.clone(), test_definitions.clone());
+    tests.insert(non_test_specifier, Default::default());
     let (queue, filters) = as_queue_and_filters(&params, &tests);
     assert_eq!(json!(queue), json!([specifier]));
     let mut exclude = HashMap::new();
