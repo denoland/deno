@@ -801,6 +801,46 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   await promise;
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerWebSocketStream() {
+    const promise = (async () => {
+      const listener = Deno.listen({ port: 4501 });
+      const conn = await listener.accept();
+      listener.close();
+      const httpConn = Deno.serveHttp(conn);
+      const reqEvent = await httpConn.nextRequest();
+      assert(reqEvent);
+      const { request, respondWith } = reqEvent;
+      const {
+        response,
+        stream,
+      } = Deno.upgradeWebSocket(request);
+      const wssPromise = (async () => {
+        const { readable, writable } = await stream.connection;
+        const reader = readable.getReader();
+        const writer = writable.getWriter();
+        const { value, done } = await reader.read();
+        assert(!done);
+        await writer.write(value);
+        stream.close({ code: 1001 });
+        await stream.closed;
+      })();
+      await respondWith(response);
+      await wssPromise;
+    })();
+
+    const def = deferred();
+    const ws = new WebSocket("ws://localhost:4501");
+    ws.onmessage = (m) => assertEquals(m.data, "foo");
+    ws.onerror = () => fail();
+    ws.onclose = () => def.resolve();
+    ws.onopen = () => ws.send("foo");
+    await def;
+    await promise;
+  },
+);
+
 Deno.test(function httpUpgradeWebSocket() {
   const request = new Request("https://deno.land/", {
     headers: {
