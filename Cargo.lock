@@ -786,7 +786,6 @@ name = "deno"
 version = "1.36.3"
 dependencies = [
  "async-trait",
- "atty",
  "base32",
  "base64 0.13.1",
  "bincode",
