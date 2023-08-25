@@ -8,7 +8,7 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -1706,7 +1706,7 @@ impl Inner {
     }
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let format_result = deno_core::task::spawn_blocking({
+    let format_result = deno_core::unsync::spawn_blocking({
       let fmt_options = self.fmt_options.options.clone();
       let document = document.clone();
       move || {
