@@ -157,7 +157,12 @@ pub fn create_tarball(
     }
 
     let path = file.path();
+
     let url = Url::from_file_path(path).unwrap();
+    if url.as_str().contains("_test") || url.as_str().contains("_bench") {
+      continue;
+    }
+
     let relative_path = dir_url.make_relative(&url).unwrap();
     let data = std::fs::read(path)?;
     let content = unfurler.unfurl(url.to_string(), data)?;
