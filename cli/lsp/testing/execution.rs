@@ -24,8 +24,8 @@ use deno_core::futures::stream;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::tokio_util::create_and_run_current_thread;
@@ -71,11 +71,7 @@ fn as_queue_and_filters(
         }
       }
     }
-  }
-
-  // if we didn't have any specific include filters, we assume that all modules
-  // will be tested
-  if queue.is_empty() {
+  } else {
     queue.extend(tests.keys().cloned());
   }
 
@@ -96,6 +92,8 @@ fn as_queue_and_filters(
       }
     }
   }
+
+  queue.retain(|s| !tests.get(s).unwrap().is_empty());
 
   (queue, filters)
 }
@@ -336,6 +334,7 @@ impl TestRun {
       spawn(async move {
         let earlier = Instant::now();
         let mut summary = test::TestSummary::new();
+        let mut tests_with_result = HashSet::new();
         let mut used_only = false;
 
         while let Some(event) = receiver.recv().await {
@@ -361,20 +360,21 @@ impl TestRun {
               reporter.report_output(&output);
             }
             test::TestEvent::Result(id, result, elapsed) => {
-              let description = tests.read().get(&id).unwrap().clone();
-              match &result {
-                test::TestResult::Ok => summary.passed += 1,
-                test::TestResult::Ignored => summary.ignored += 1,
-                test::TestResult::Failed(error) => {
-                  summary.failed += 1;
-                  summary.failures.push((description.clone(), error.clone()));
+              if tests_with_result.insert(id) {
+                let description = tests.read().get(&id).unwrap().clone();
+                match &result {
+                  test::TestResult::Ok => summary.passed += 1,
+                  test::TestResult::Ignored => summary.ignored += 1,
+                  test::TestResult::Failed(error) => {
+                    summary.failed += 1;
+                    summary.failures.push((description.clone(), error.clone()));
+                  }
+                  test::TestResult::Cancelled => {
+                    summary.failed += 1;
+                  }
                 }
-                test::TestResult::Cancelled => {
-                  summary.failed += 1;
-                }
+                reporter.report_result(&description, &result, elapsed);
               }
-
-              reporter.report_result(&description, &result, elapsed);
             }
             test::TestEvent::UncaughtError(origin, error) => {
               reporter.report_uncaught_error(&origin, &error);
@@ -389,22 +389,24 @@ impl TestRun {
               reporter.report_step_wait(test_steps.get(&id).unwrap());
             }
             test::TestEvent::StepResult(id, result, duration) => {
-              match &result {
-                test::TestStepResult::Ok => {
-                  summary.passed_steps += 1;
+              if tests_with_result.insert(id) {
+                match &result {
+                  test::TestStepResult::Ok => {
+                    summary.passed_steps += 1;
+                  }
+                  test::TestStepResult::Ignored => {
+                    summary.ignored_steps += 1;
+                  }
+                  test::TestStepResult::Failed(_) => {
+                    summary.failed_steps += 1;
+                  }
                 }
-                test::TestStepResult::Ignored => {
-                  summary.ignored_steps += 1;
-                }
-                test::TestStepResult::Failed(_) => {
-                  summary.failed_steps += 1;
-                }
+                reporter.report_step_result(
+                  test_steps.get(&id).unwrap(),
+                  &result,
+                  duration,
+                );
               }
-              reporter.report_step_result(
-                test_steps.get(&id).unwrap(),
-                &result,
-                duration,
-              );
             }
             test::TestEvent::Sigint => {}
           }
@@ -479,6 +481,15 @@ impl TestRun {
 enum TestOrTestStepDescription {
   TestDescription(test::TestDescription),
   TestStepDescription(test::TestStepDescription),
+}
+
+impl TestOrTestStepDescription {
+  fn origin(&self) -> &str {
+    match self {
+      TestOrTestStepDescription::TestDescription(d) => d.origin.as_str(),
+      TestOrTestStepDescription::TestStepDescription(d) => d.origin.as_str(),
+    }
+  }
 }
 
 impl From<&test::TestDescription> for TestOrTestStepDescription {
@@ -562,11 +573,11 @@ impl From<&test::TestStepDescription> for lsp_custom::TestIdentifier {
 
 struct LspTestReporter {
   client: Client,
-  current_origin: Option<String>,
-  maybe_root_uri: Option<ModuleSpecifier>,
   id: u32,
-  stack: HashMap<String, Vec<TestOrTestStepDescription>>,
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+  maybe_root_uri: Option<ModuleSpecifier>,
+  files: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+  tests: IndexMap<usize, TestOrTestStepDescription>,
+  current_test: Option<usize>,
 }
 
 impl LspTestReporter {
@@ -574,15 +585,15 @@ impl LspTestReporter {
     run: &TestRun,
     client: Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
-    tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+    files: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
   ) -> Self {
     Self {
       client,
-      current_origin: None,
-      maybe_root_uri: maybe_root_uri.cloned(),
       id: run.id,
-      stack: HashMap::new(),
-      tests,
+      maybe_root_uri: maybe_root_uri.cloned(),
+      files,
+      tests: Default::default(),
+      current_test: Default::default(),
     }
   }
 
@@ -600,8 +611,9 @@ impl LspTestReporter {
   fn report_plan(&mut self, _plan: &test::TestPlan) {}
 
   fn report_register(&mut self, desc: &test::TestDescription) {
-    let mut tests = self.tests.lock();
-    let tds = tests
+    self.tests.insert(desc.id, desc.into());
+    let mut files = self.files.lock();
+    let tds = files
       .entry(ModuleSpecifier::parse(&desc.location.file_name).unwrap())
       .or_default();
     if tds.inject(desc.into()) {
@@ -628,23 +640,17 @@ impl LspTestReporter {
   }
 
   fn report_wait(&mut self, desc: &test::TestDescription) {
-    self.current_origin = Some(desc.origin.clone());
-    let test: lsp_custom::TestIdentifier = desc.into();
-    let stack = self.stack.entry(desc.origin.clone()).or_default();
-    assert!(stack.is_empty());
-    stack.push(desc.into());
+    self.current_test = Some(desc.id);
+    let test = desc.into();
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
   fn report_output(&mut self, output: &[u8]) {
-    let test = self.current_origin.as_ref().and_then(|origin| {
-      self
-        .stack
-        .get(origin)
-        .and_then(|v| v.last().map(|td| td.into()))
-    });
+    let test = self
+      .current_test
+      .as_ref()
+      .map(|id| self.tests.get(id).unwrap().into());
     let value = String::from_utf8_lossy(output).replace('\n', "\r\n");
-
     self.progress(lsp_custom::TestRunProgressMessage::Output {
       value,
       test,
@@ -659,10 +665,7 @@ impl LspTestReporter {
     result: &test::TestResult,
     elapsed: u64,
   ) {
-    let stack = self.stack.entry(desc.origin.clone()).or_default();
-    assert_eq!(stack.len(), 1);
-    assert_eq!(stack.pop(), Some(desc.into()));
-    self.current_origin = None;
+    self.current_test = None;
     match result {
       test::TestResult::Ok => {
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
@@ -693,78 +696,69 @@ impl LspTestReporter {
   }
 
   fn report_uncaught_error(&mut self, origin: &str, js_error: &JsError) {
-    if self.current_origin == Some(origin.to_string()) {
-      self.current_origin = None;
-    }
-    let stack = self.stack.remove(origin).unwrap_or_default();
+    self.current_test = None;
     let err_string = format!(
       "Uncaught error from {}: {}\nThis error was not caught from a test and caused the test runner to fail on the referenced module.\nIt most likely originated from a dangling promise, event/timeout handler or top-level code.",
       origin,
       test::fmt::format_test_error(js_error)
     );
     let messages = as_test_messages(err_string, false);
-    for t in stack.iter().rev() {
-      match t {
-        TestOrTestStepDescription::TestDescription(desc) => {
-          self.progress(lsp_custom::TestRunProgressMessage::Failed {
-            test: desc.into(),
-            messages: messages.clone(),
-            duration: None,
-          });
-        }
-        TestOrTestStepDescription::TestStepDescription(desc) => {
-          self.progress(lsp_custom::TestRunProgressMessage::Failed {
-            test: desc.into(),
-            messages: messages.clone(),
-            duration: None,
-          });
-        }
-      }
+    for desc in self.tests.values().filter(|d| d.origin() == origin) {
+      self.progress(lsp_custom::TestRunProgressMessage::Failed {
+        test: desc.into(),
+        messages: messages.clone(),
+        duration: None,
+      });
     }
   }
 
   fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    let mut tests = self.tests.lock();
-    let tds = tests
+    self.tests.insert(desc.id, desc.into());
+    let mut files = self.files.lock();
+    let tds = files
       .entry(ModuleSpecifier::parse(&desc.location.file_name).unwrap())
       .or_default();
-    if tds.inject(desc.into()) {
-      let specifier = ModuleSpecifier::parse(&desc.origin).unwrap();
-      let mut prev: lsp_custom::TestData = desc.into();
-      if let Some(stack) = self.stack.get(&desc.origin) {
-        for item in stack.iter().rev() {
-          let mut data: lsp_custom::TestData = item.into();
-          data.steps = vec![prev];
-          prev = data;
+    let data: lsp_custom::TestData = desc.into();
+    if tds.inject(data.clone()) {
+      let mut step_desc = Some(desc);
+      let mut data = data;
+      while let Some(desc) = step_desc {
+        let parent_desc = self.tests.get(&desc.parent_id).unwrap();
+        let mut parent_data: lsp_custom::TestData = parent_desc.into();
+        parent_data.steps = vec![data];
+        data = parent_data;
+        step_desc = match parent_desc {
+          TestOrTestStepDescription::TestDescription(_) => None,
+          TestOrTestStepDescription::TestStepDescription(d) => Some(d),
         }
-        let label = if let Some(root) = &self.maybe_root_uri {
-          specifier.as_str().replace(root.as_str(), "")
-        } else {
-          specifier
-            .path_segments()
-            .and_then(|s| s.last().map(|s| s.to_string()))
-            .unwrap_or_else(|| "<unknown>".to_string())
-        };
-        self
-          .client
-          .send_test_notification(TestingNotification::Module(
-            lsp_custom::TestModuleNotificationParams {
-              text_document: lsp::TextDocumentIdentifier { uri: specifier },
-              kind: lsp_custom::TestModuleNotificationKind::Insert,
-              label,
-              tests: vec![prev],
-            },
-          ));
       }
+      let specifier = ModuleSpecifier::parse(&desc.origin).unwrap();
+      let label = if let Some(root) = &self.maybe_root_uri {
+        specifier.as_str().replace(root.as_str(), "")
+      } else {
+        specifier
+          .path_segments()
+          .and_then(|s| s.last().map(|s| s.to_string()))
+          .unwrap_or_else(|| "<unknown>".to_string())
+      };
+      self
+        .client
+        .send_test_notification(TestingNotification::Module(
+          lsp_custom::TestModuleNotificationParams {
+            text_document: lsp::TextDocumentIdentifier { uri: specifier },
+            kind: lsp_custom::TestModuleNotificationKind::Insert,
+            label,
+            tests: vec![data],
+          },
+        ));
     }
   }
 
   fn report_step_wait(&mut self, desc: &test::TestStepDescription) {
+    if self.current_test == Some(desc.parent_id) {
+      self.current_test = Some(desc.id);
+    }
     let test: lsp_custom::TestIdentifier = desc.into();
-    let stack = self.stack.entry(desc.origin.clone()).or_default();
-    self.current_origin = Some(desc.origin.clone());
-    assert!(!stack.is_empty());
-    stack.push(desc.into());
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
 
@@ -774,8 +768,9 @@ impl LspTestReporter {
     result: &test::TestStepResult,
     elapsed: u64,
   ) {
-    let stack = self.stack.entry(desc.origin.clone()).or_default();
-    assert_eq!(stack.pop(), Some(desc.into()));
+    if self.current_test == Some(desc.id) {
+      self.current_test = Some(desc.parent_id);
+    }
     match result {
       test::TestStepResult::Ok => {
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
@@ -816,16 +811,28 @@ mod tests {
   #[test]
   fn test_as_queue_and_filters() {
     let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
+    // Regression test for https://github.com/denoland/vscode_deno/issues/890.
+    let non_test_specifier =
+      ModuleSpecifier::parse("file:///a/no_tests.ts").unwrap();
     let params = lsp_custom::TestRunRequestParams {
       id: 1,
       kind: lsp_custom::TestRunKind::Run,
-      include: Some(vec![lsp_custom::TestIdentifier {
-        text_document: lsp::TextDocumentIdentifier {
-          uri: specifier.clone(),
+      include: Some(vec![
+        lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: specifier.clone(),
+          },
+          id: None,
+          step_id: None,
         },
-        id: None,
-        step_id: None,
-      }]),
+        lsp_custom::TestIdentifier {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: non_test_specifier.clone(),
+          },
+          id: None,
+          step_id: None,
+        },
+      ]),
       exclude: vec![lsp_custom::TestIdentifier {
         text_document: lsp::TextDocumentIdentifier {
           uri: specifier.clone(),
@@ -860,6 +867,7 @@ mod tests {
       script_version: "1".to_string(),
     };
     tests.insert(specifier.clone(), test_definitions.clone());
+    tests.insert(non_test_specifier, Default::default());
     let (queue, filters) = as_queue_and_filters(&params, &tests);
     assert_eq!(json!(queue), json!([specifier]));
     let mut exclude = HashMap::new();

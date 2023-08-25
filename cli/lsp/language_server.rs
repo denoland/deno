@@ -8,7 +8,7 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -69,6 +69,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use super::urls::LspClientUrl;
@@ -555,7 +556,10 @@ impl Inner {
       http_client.clone(),
     );
     let location = dir.deps_folder_path();
-    let deps_http_cache = Arc::new(GlobalHttpCache::new(location));
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
     let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
@@ -904,9 +908,12 @@ impl Inner {
     );
     self.module_registries_location = module_registries_location;
     // update the cache path
-    let global_cache = Arc::new(GlobalHttpCache::new(dir.deps_folder_path()));
+    let global_cache = Arc::new(GlobalHttpCache::new(
+      dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
     let maybe_local_cache =
-      self.config.maybe_deno_modules_dir_path().map(|local_path| {
+      self.config.maybe_vendor_dir_path().map(|local_path| {
         Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
       });
     let cache: Arc<dyn HttpCache> = maybe_local_cache
@@ -919,6 +926,25 @@ impl Inner {
     self.url_map.set_cache(maybe_local_cache);
     self.maybe_global_cache_path = new_cache_path;
     Ok(())
+  }
+
+  async fn get_npm_snapshot(
+    &self,
+  ) -> Option<ValidSerializedNpmResolutionSnapshot> {
+    let lockfile = self.config.maybe_lockfile()?;
+    let snapshot =
+      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+          return None;
+        }
+      };
+
+    // clear the memory cache to reduce memory usage
+    self.npm.api.clear_memory_cache();
+
+    Some(snapshot)
   }
 
   async fn recreate_npm_services_if_necessary(&mut self) {
@@ -942,18 +968,7 @@ impl Inner {
       registry_url,
       &progress_bar,
     );
-    let maybe_snapshot = match self.config.maybe_lockfile() {
-      Some(lockfile) => {
-        match snapshot_from_lockfile(lockfile.clone(), &self.npm.api).await {
-          Ok(snapshot) => Some(snapshot),
-          Err(err) => {
-            lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
-            None
-          }
-        }
-      }
-      None => None,
-    };
+    let maybe_snapshot = self.get_npm_snapshot().await;
     (self.npm.resolver, self.npm.resolution) =
       create_npm_resolver_and_resolution(
         registry_url,
@@ -1690,7 +1705,7 @@ impl Inner {
     }
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let format_result = deno_core::task::spawn_blocking({
+    let format_result = deno_core::unsync::spawn_blocking({
       let fmt_options = self.fmt_options.options.clone();
       let document = document.clone();
       move || {
@@ -1885,6 +1900,7 @@ impl Inner {
                 line_index.offset_tsc(diagnostic.range.start)?
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
+                (&self.fmt_options.options).into(),
               )
               .await;
             for action in actions {
@@ -1993,7 +2009,11 @@ impl Inner {
         })?;
       let combined_code_actions = self
         .ts_server
-        .get_combined_code_fix(self.snapshot(), &code_action_data)
+        .get_combined_code_fix(
+          self.snapshot(),
+          &code_action_data,
+          (&self.fmt_options.options).into(),
+        )
         .await?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
@@ -2033,6 +2053,7 @@ impl Inner {
         .get_edits_for_refactor(
           self.snapshot(),
           action_data.specifier,
+          (&self.fmt_options.options).into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
@@ -2388,6 +2409,7 @@ impl Inner {
             trigger_character,
             trigger_kind,
           },
+          (&self.fmt_options.options).into(),
         )
         .await;
 
@@ -2422,9 +2444,13 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let args = GetCompletionDetailsArgs {
+          format_code_settings: Some((&self.fmt_options.options).into()),
+          ..data.into()
+        };
         let result = self
           .ts_server
-          .get_completion_details(self.snapshot(), data.into())
+          .get_completion_details(self.snapshot(), args)
           .await;
         match result {
           Ok(maybe_completion_info) => {

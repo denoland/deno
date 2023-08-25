@@ -31,6 +31,7 @@ once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
 pretty_assertions.workspace = true
+prost.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 ring.workspace = true
@@ -46,3 +47,6 @@ url.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+
+[build-dependencies]
+prost-build.workspace = true

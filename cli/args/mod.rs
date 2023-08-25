@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod config_file;
 mod flags;
 mod flags_net;
 mod import_map;
@@ -18,19 +17,19 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
 use indexmap::IndexMap;
 
-pub use config_file::BenchConfig;
-pub use config_file::CompilerOptions;
-pub use config_file::ConfigFile;
-pub use config_file::EmitConfigOptions;
-pub use config_file::FilesConfig;
-pub use config_file::FmtOptionsConfig;
-pub use config_file::JsxImportSourceConfig;
-pub use config_file::LintRulesConfig;
-pub use config_file::ProseWrap;
-pub use config_file::TsConfig;
-pub use config_file::TsConfigForEmit;
-pub use config_file::TsConfigType;
-pub use config_file::TsTypeLib;
+pub use deno_config::BenchConfig;
+pub use deno_config::CompilerOptions;
+pub use deno_config::ConfigFile;
+pub use deno_config::EmitConfigOptions;
+pub use deno_config::FilesConfig;
+pub use deno_config::FmtOptionsConfig;
+pub use deno_config::JsxImportSourceConfig;
+pub use deno_config::LintRulesConfig;
+pub use deno_config::ProseWrap;
+pub use deno_config::TsConfig;
+pub use deno_config::TsConfigForEmit;
+pub use deno_config::TsConfigType;
+pub use deno_config::TsTypeLib;
 pub use flags::*;
 pub use lockfile::Lockfile;
 pub use lockfile::LockfileError;
@@ -74,10 +73,43 @@ use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::glob::expand_globs;
 use crate::version;
 
-use self::config_file::FmtConfig;
-use self::config_file::LintConfig;
-use self::config_file::MaybeImportsResult;
-use self::config_file::TestConfig;
+use deno_config::FmtConfig;
+use deno_config::LintConfig;
+use deno_config::TestConfig;
+
+pub fn ts_config_to_emit_options(
+  config: deno_config::TsConfig,
+) -> deno_ast::EmitOptions {
+  let options: deno_config::EmitConfigOptions =
+    serde_json::from_value(config.0).unwrap();
+  let imports_not_used_as_values =
+    match options.imports_not_used_as_values.as_str() {
+      "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
+      "error" => deno_ast::ImportsNotUsedAsValues::Error,
+      _ => deno_ast::ImportsNotUsedAsValues::Remove,
+    };
+  let (transform_jsx, jsx_automatic, jsx_development) =
+    match options.jsx.as_str() {
+      "react" => (true, false, false),
+      "react-jsx" => (true, true, false),
+      "react-jsxdev" => (true, true, true),
+      _ => (false, false, false),
+    };
+  deno_ast::EmitOptions {
+    emit_metadata: options.emit_decorator_metadata,
+    imports_not_used_as_values,
+    inline_source_map: options.inline_source_map,
+    inline_sources: options.inline_sources,
+    source_map: options.source_map,
+    jsx_automatic,
+    jsx_development,
+    jsx_factory: options.jsx_factory,
+    jsx_fragment_factory: options.jsx_fragment_factory,
+    jsx_import_source: options.jsx_import_source,
+    transform_jsx,
+    var_decl_imports: false,
+  }
+}
 
 /// Indicates how cached source files should be handled.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -454,8 +486,8 @@ pub fn get_root_cert_store(
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.add_server_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+        root_cert_store.add_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
               ta.subject,
               ta.spki,
@@ -541,7 +573,7 @@ pub struct CliOptions {
   flags: Flags,
   initial_cwd: PathBuf,
   maybe_node_modules_folder: Option<PathBuf>,
-  maybe_deno_modules_folder: Option<PathBuf>,
+  maybe_vendor_folder: Option<PathBuf>,
   maybe_config_file: Option<ConfigFile>,
   maybe_package_json: Option<PackageJson>,
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
@@ -577,11 +609,8 @@ impl CliOptions {
       maybe_package_json.as_ref(),
     )
     .with_context(|| "Resolving node_modules folder.")?;
-    let maybe_deno_modules_folder = resolve_deno_modules_folder(
-      &initial_cwd,
-      &flags,
-      maybe_config_file.as_ref(),
-    );
+    let maybe_vendor_folder =
+      resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
 
     Ok(Self {
       flags,
@@ -590,7 +619,7 @@ impl CliOptions {
       maybe_lockfile,
       maybe_package_json,
       maybe_node_modules_folder,
-      maybe_deno_modules_folder,
+      maybe_vendor_folder,
       overrides: Default::default(),
     })
   }
@@ -598,10 +627,14 @@ impl CliOptions {
   pub fn from_flags(flags: Flags) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let maybe_config_file = ConfigFile::discover(&flags, &initial_cwd)?;
+    let maybe_config_file = ConfigFile::discover(
+      &flags.config_flag,
+      flags.config_path_args(&initial_cwd),
+      &initial_cwd,
+    )?;
 
     let mut maybe_package_json = None;
-    if flags.config_flag == ConfigFlag::Disabled
+    if flags.config_flag == deno_config::ConfigFlag::Disabled
       || flags.no_npm
       || has_flag_env_var("DENO_NO_PACKAGE_JSON")
     {
@@ -821,16 +854,17 @@ impl CliOptions {
 
     if let Some(lockfile) = self.maybe_lockfile() {
       if !lockfile.lock().overwrite {
-        return Ok(Some(
-          snapshot_from_lockfile(lockfile.clone(), api)
-            .await
-            .with_context(|| {
-              format!(
-                "failed reading lockfile '{}'",
-                lockfile.lock().filename.display()
-              )
-            })?,
-        ));
+        let snapshot = snapshot_from_lockfile(lockfile.clone(), api)
+          .await
+          .with_context(|| {
+            format!(
+              "failed reading lockfile '{}'",
+              lockfile.lock().filename.display()
+            )
+          })?;
+        // clear the memory cache to reduce memory usage
+        api.clear_memory_cache();
+        return Ok(Some(snapshot));
       }
     }
 
@@ -863,7 +897,7 @@ impl CliOptions {
       self
         .maybe_config_file
         .as_ref()
-        .and_then(|c| c.node_modules_dir())
+        .and_then(|c| c.node_modules_dir_flag())
     })
   }
 
@@ -874,8 +908,8 @@ impl CliOptions {
       .map(|path| ModuleSpecifier::from_directory_path(path).unwrap())
   }
 
-  pub fn deno_modules_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_deno_modules_folder.as_ref()
+  pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
+    self.maybe_vendor_folder.as_ref()
   }
 
   pub fn resolve_root_cert_store_provider(
@@ -892,7 +926,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, AnyError> {
-    config_file::get_ts_config_for_emit(
+    deno_config::get_ts_config_for_emit(
       config_type,
       self.maybe_config_file.as_ref(),
     )
@@ -936,9 +970,19 @@ impl CliOptions {
 
   /// Return any imports that should be brought into the scope of the module
   /// graph.
-  pub fn to_maybe_imports(&self) -> MaybeImportsResult {
+  pub fn to_maybe_imports(
+    &self,
+  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
     if let Some(config_file) = &self.maybe_config_file {
-      config_file.to_maybe_imports()
+      config_file.to_maybe_imports().map(|maybe_imports| {
+        maybe_imports
+          .into_iter()
+          .map(|(referrer, imports)| deno_graph::ReferrerImports {
+            referrer,
+            imports,
+          })
+          .collect()
+      })
     } else {
       Ok(Vec::new())
     }
@@ -1188,7 +1232,9 @@ fn resolve_node_modules_folder(
 ) -> Result<Option<PathBuf>, AnyError> {
   let use_node_modules_dir = flags
     .node_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir()));
+    .or_else(|| maybe_config_file.and_then(|c| c.node_modules_dir_flag()))
+    .or(flags.vendor)
+    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()));
   let path = if use_node_modules_dir == Some(false) {
     return Ok(None);
   } else if let Some(state) = &*NPM_PROCESS_STATE {
@@ -1209,28 +1255,28 @@ fn resolve_node_modules_folder(
   Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
 }
 
-fn resolve_deno_modules_folder(
+fn resolve_vendor_folder(
   cwd: &Path,
   flags: &Flags,
   maybe_config_file: Option<&ConfigFile>,
 ) -> Option<PathBuf> {
-  let use_deno_modules_dir = flags
-    .deno_modules_dir
-    .or_else(|| maybe_config_file.and_then(|c| c.deno_modules_dir()))
+  let use_vendor_dir = flags
+    .vendor
+    .or_else(|| maybe_config_file.and_then(|c| c.vendor_dir_flag()))
     .unwrap_or(false);
   // Unlike the node_modules directory, there is no need to canonicalize
   // this directory because it's just used as a cache and the resolved
   // specifier is not based on the canonicalized path (unlike the modules
   // in the node_modules folder).
-  if !use_deno_modules_dir {
+  if !use_vendor_dir {
     None
   } else if let Some(config_path) = maybe_config_file
     .as_ref()
     .and_then(|c| c.specifier.to_file_path().ok())
   {
-    Some(config_path.parent().unwrap().join("deno_modules"))
+    Some(config_path.parent().unwrap().join("vendor"))
   } else {
-    Some(cwd.join("deno_modules"))
+    Some(cwd.join("vendor"))
   }
 }
 
@@ -1383,10 +1429,7 @@ pub fn has_flag_env_var(name: &str) -> bool {
 pub fn npm_pkg_req_ref_to_binary_command(
   req_ref: &NpmPackageReqReference,
 ) -> String {
-  let binary_name = req_ref
-    .sub_path
-    .as_deref()
-    .unwrap_or(req_ref.req.name.as_str());
+  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
   binary_name.to_string()
 }
 

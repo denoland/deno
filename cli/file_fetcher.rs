@@ -696,6 +696,7 @@ async fn fetch_once<'a>(
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HttpClient;
   use crate::version;
 
@@ -727,7 +728,7 @@ mod tests {
     let location = temp_dir.path().join("deps").to_path_buf();
     let blob_store: Arc<BlobStore> = Default::default();
     let file_fetcher = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location)),
+      Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       cache_setting,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1173,7 +1174,10 @@ mod tests {
     // invocation and indicates to "cache bust".
     let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location)),
+      Arc::new(GlobalHttpCache::new(
+        location,
+        crate::cache::RealDenoCacheEnv,
+      )),
       CacheSetting::ReloadAll,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1202,7 +1206,10 @@ mod tests {
 
     let file_modified_01 = {
       let file_fetcher = FileFetcher::new(
-        Arc::new(GlobalHttpCache::new(location.clone())),
+        Arc::new(GlobalHttpCache::new(
+          location.clone(),
+          crate::cache::RealDenoCacheEnv,
+        )),
         CacheSetting::Use,
         true,
         Arc::new(HttpClient::new(None, None)),
@@ -1231,7 +1238,10 @@ mod tests {
 
     let file_modified_02 = {
       let file_fetcher = FileFetcher::new(
-        Arc::new(GlobalHttpCache::new(location)),
+        Arc::new(GlobalHttpCache::new(
+          location,
+          crate::cache::RealDenoCacheEnv,
+        )),
         CacheSetting::Use,
         true,
         Arc::new(HttpClient::new(None, None)),
@@ -1362,7 +1372,10 @@ mod tests {
 
     let metadata_file_modified_01 = {
       let file_fetcher = FileFetcher::new(
-        Arc::new(GlobalHttpCache::new(location.clone())),
+        Arc::new(GlobalHttpCache::new(
+          location.clone(),
+          crate::cache::RealDenoCacheEnv,
+        )),
         CacheSetting::Use,
         true,
         Arc::new(HttpClient::new(None, None)),
@@ -1394,7 +1407,10 @@ mod tests {
 
     let metadata_file_modified_02 = {
       let file_fetcher = FileFetcher::new(
-        Arc::new(GlobalHttpCache::new(location)),
+        Arc::new(GlobalHttpCache::new(
+          location,
+          crate::cache::RealDenoCacheEnv,
+        )),
         CacheSetting::Use,
         true,
         Arc::new(HttpClient::new(None, None)),
@@ -1496,7 +1512,10 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location)),
+      Arc::new(GlobalHttpCache::new(
+        location,
+        crate::cache::RealDenoCacheEnv,
+      )),
       CacheSetting::Use,
       false,
       Arc::new(HttpClient::new(None, None)),
@@ -1521,7 +1540,7 @@ mod tests {
     let temp_dir = TempDir::new();
     let location = temp_dir.path().join("deps").to_path_buf();
     let file_fetcher_01 = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location.clone())),
+      Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv)),
       CacheSetting::Only,
       true,
       Arc::new(HttpClient::new(None, None)),
@@ -1529,7 +1548,7 @@ mod tests {
       None,
     );
     let file_fetcher_02 = FileFetcher::new(
-      Arc::new(GlobalHttpCache::new(location)),
+      Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv)),
       CacheSetting::Use,
       true,
       Arc::new(HttpClient::new(None, None)),

@@ -8,7 +8,6 @@ use std::rc::Rc;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 #[allow(unused_imports)]
@@ -20,8 +19,8 @@ use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
@@ -95,12 +94,12 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   /// Resolves an npm package folder path from a Deno module.
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_nv: &NpmPackageNv,
+    pkg_nv: &PackageNv,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
@@ -132,12 +131,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 
 #[op]
 fn op_node_build_os() -> String {
-  std::env::var("TARGET")
-    .unwrap()
-    .split('-')
-    .nth(2)
-    .unwrap()
-    .to_string()
+  env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
 #[op(fast)]
@@ -562,29 +556,6 @@ deno_core::extension!(deno_node,
     ext.external_references.to_mut().extend(external_references);
   },
 );
-
-pub fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<&str>,
-) -> Result<(), AnyError> {
-  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name)?
-  } else {
-    "undefined".to_string()
-  };
-  let source_code = format!(
-    r#"(function loadBuiltinNodeModules(usesLocalNodeModulesDir, argv0) {{
-      Deno[Deno.internal].node.initialize(
-        usesLocalNodeModulesDir,
-        argv0
-      );
-    }})({uses_local_node_modules_dir}, {argv0});"#,
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code.into())?;
-  Ok(())
-}
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,

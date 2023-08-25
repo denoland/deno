@@ -198,7 +198,7 @@ function timestamp(): string {
     pad(d.getMinutes()),
     pad(d.getSeconds()),
   ].join(":");
-  return `${(d.getDate())} ${months[(d).getMonth()]} ${t}`;
+  return `${(d.getDate())} ${months[d.getMonth()]} ${t}`;
 }
 
 /**

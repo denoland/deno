@@ -205,7 +205,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     )?;
 
     let package_json_path = module_dir.join("package.json");
-    if self.fs.exists(&package_json_path) {
+    if self.fs.exists_sync(&package_json_path) {
       let package_json = PackageJson::load(
         &*self.fs,
         &*self.npm_resolver,
@@ -229,10 +229,10 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.fs.is_dir(&d) {
+        if self.fs.is_dir_sync(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
-          if self.fs.exists(&package_json_path) {
+          if self.fs.exists_sync(&package_json_path) {
             let package_json = PackageJson::load(
               &*self.fs,
               &*self.npm_resolver,
@@ -262,13 +262,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     referrer: &Path,
   ) -> Result<PathBuf, AnyError> {
     let p = p.clean();
-    if self.fs.exists(&p) {
+    if self.fs.exists_sync(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file(&p_js) {
+      if self.fs.is_file_sync(&p_js) {
         return Ok(p_js);
-      } else if self.fs.is_dir(&p) {
+      } else if self.fs.is_dir_sync(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
@@ -276,7 +276,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer> NodeCodeTranslator<TCjsCodeAnalyzer> {
     } else if let Some(file_name) = p.file_name() {
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.fs.is_file(&p_js) {
+      if self.fs.is_file_sync(&p_js) {
         return Ok(p_js);
       }
     }

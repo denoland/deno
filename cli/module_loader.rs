@@ -745,7 +745,7 @@ impl NpmModuleLoader {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
-      .read_to_string(&file_path)
+      .read_text_file_sync(&file_path)
       .map_err(AnyError::from)
       .with_context(|| {
         if file_path.is_dir() {

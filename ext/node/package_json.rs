@@ -81,7 +81,7 @@ impl PackageJson {
       return Ok(CACHE.with(|cache| cache.borrow()[&path].clone()));
     }
 
-    let source = match fs.read_to_string(&path) {
+    let source = match fs.read_text_file_sync(&path) {
       Ok(source) => source,
       Err(err) if err.kind() == ErrorKind::NotFound => {
         return Ok(PackageJson::empty(path));

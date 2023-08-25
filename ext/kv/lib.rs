@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod codec;
+pub mod dynamic;
 mod interface;
+mod proto;
+pub mod remote;
 pub mod sqlite;
 
 use std::borrow::Cow;
@@ -285,7 +288,8 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
+  let output_ranges =
+    db.snapshot_read(state.clone(), read_ranges, opts).await?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -323,7 +327,7 @@ where
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message().await?;
+  let mut handle = db.dequeue_next_message(state.clone()).await?;
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
@@ -375,7 +379,7 @@ impl TryFrom<V8KvCheck> for KvCheck {
   }
 }
 
-type V8KvMutation = (KvKey, String, Option<FromV8Value>);
+type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
 
 impl TryFrom<V8KvMutation> for KvMutation {
   type Error = AnyError;
@@ -396,7 +400,11 @@ impl TryFrom<V8KvMutation> for KvMutation {
         )))
       }
     };
-    Ok(KvMutation { key, kind })
+    Ok(KvMutation {
+      key,
+      kind,
+      expire_at: value.3,
+    })
   }
 }
 
@@ -656,7 +664,7 @@ where
     enqueues,
   };
 
-  let result = db.atomic_write(atomic_write).await?;
+  let result = db.atomic_write(state.clone(), atomic_write).await?;
 
   Ok(result.map(|res| hex::encode(res.versionstamp)))
 }
