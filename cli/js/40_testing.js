@@ -57,7 +57,7 @@ function opSanitizerDelay() {
 }
 
 function getTestCaseLocation (){
-  let location;
+  let location ;
 
   for (let i = 0; i < jsError.frames.length; i++) {
     const filename = jsError.frames[i].fileName;
@@ -711,7 +711,7 @@ function test(
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
  
-  testDesc.location = testDesc[Symbol.for("Deno.test.location")] || getTestCaseLocation();
+  testDesc.location = testDesc.fn[Symbol.for("Deno.test.location")] || getTestCaseLocation();
   testDesc.fn = wrapTest(testDesc);
   testDesc.name = escapeName(testDesc.name);
 
@@ -1204,11 +1204,7 @@ function createTestContext(desc) {
       stepDesc.sanitizeResources ??= desc.sanitizeResources;
       stepDesc.sanitizeExit ??= desc.sanitizeExit;
       const jsError = core.destructureError(new Error());
-      stepDesc.location = {
-        fileName: jsError.frames[1].fileName,
-        lineNumber: jsError.frames[1].lineNumber,
-        columnNumber: jsError.frames[1].columnNumber,
-      };
+      stepDesc.location =  stepDesc.fn[Symbol.for("Deno.test.location")] || getTestCaseLocation();
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
