@@ -815,7 +815,7 @@ Deno.test(
       const {
         response,
         stream,
-      } = Deno.upgradeWebSocket(request);
+      } = Deno.upgradeWebSocketStream(request);
       const wssPromise = (async () => {
         const { readable, writable } = await stream.connection;
         const reader = readable.getReader();
