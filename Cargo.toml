@@ -116,7 +116,7 @@ prost-build = "0.11"
 rand = "=0.8.5"
 regex = "^1.7.0"
 lazy-regex = "2.5.0"
-reqwest = { version = "0.11.18", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
+reqwest = { version = "0.11.20", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json"] }
 ring = "=0.16.20"
 rusqlite = { version = "=0.29.0", features = ["unlock_notify", "bundled"] }
 rustls = "0.21.0"
