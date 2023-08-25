@@ -854,6 +854,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+ "sha2",
  "shell-escape",
  "tar",
  "tempfile",

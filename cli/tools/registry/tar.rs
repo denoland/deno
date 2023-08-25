@@ -159,6 +159,8 @@ pub fn create_tarball(
     let path = file.path();
 
     let url = Url::from_file_path(path).unwrap();
+    // TODO(bartlomieju): use the same functionality as in `deno test`/
+    // `deno bench` to match these
     if url.as_str().contains("_test") || url.as_str().contains("_bench") {
       continue;
     }
