@@ -36,6 +36,13 @@ import {
   SERVER,
   WebSocket,
 } from "ext:deno_websocket/01_websocket.js";
+import {
+  _closed,
+  _closeSent,
+  _connection,
+  _initStreams,
+  WebSocketStream,
+} from "ext:deno_websocket/02_websocketstream.js";
 import { TcpConn, UnixConn } from "ext:deno_net/01_net.js";
 import { TlsConn } from "ext:deno_net/02_tls.js";
 import {
@@ -368,8 +375,9 @@ function createRespondWith(
 
         deferred.resolve([conn, res.readBuf]);
       }
-      const ws = resp[_ws];
-      if (ws) {
+
+      if (resp[_ws]) {
+        const ws = resp[_ws];
         const wsRid = await core.opAsync(
           "op_http_upgrade_websocket",
           streamRid,
@@ -392,6 +400,23 @@ function createRespondWith(
           );
         }
         ws[_serverHandleIdleTimeout]();
+      }
+      else if (resp[_wss]) {
+        const wss = resp[_wss];
+        const wssRid = await core.opAsync(
+          "op_http_upgrade_websocket",
+          streamRid,
+        );
+        wss[_rid] = wssRid;
+        httpConn.close();
+        const { readable, writable } = wss[_initStreams]();
+        wss[_connection].resolve({
+          readable,
+          writable,
+          extensions: "",
+          protocol: resp.headers.get("sec-websocket-protocol"),
+        });
+        wss[_serverHandleIdleTimeout]();
       }
     } catch (error) {
       abortController.abort(error);
@@ -474,6 +499,72 @@ function upgradeWebSocket(request, options = {}) {
   response[_ws] = socket;
 
   return { response, socket };
+}
+
+const _wss = Symbol("[[associated_wss]]");
+
+function upgradeWebSocketStream(request, options = {}) {
+  const upgrade = request.headers.get("upgrade");
+  const upgradeHasWebSocketOption = upgrade !== null &&
+    websocketCvf(upgrade);
+  if (!upgradeHasWebSocketOption) {
+    throw new TypeError(
+      "Invalid Header: 'upgrade' header must contain 'websocket'",
+    );
+  }
+
+  const connection = request.headers.get("connection");
+  const connectionHasUpgradeOption = connection !== null &&
+    upgradeCvf(connection);
+  if (!connectionHasUpgradeOption) {
+    throw new TypeError(
+      "Invalid Header: 'connection' header must contain 'Upgrade'",
+    );
+  }
+
+  const websocketKey = request.headers.get("sec-websocket-key");
+  if (websocketKey === null) {
+    throw new TypeError(
+      "Invalid Header: 'sec-websocket-key' header must be set",
+    );
+  }
+
+  const accept = ops.op_http_websocket_accept_header(websocketKey);
+
+  const r = newInnerResponse(101);
+  r.headerList = [
+    ["upgrade", "websocket"],
+    ["connection", "Upgrade"],
+    ["sec-websocket-accept", accept],
+  ];
+
+  const protocolsStr = request.headers.get("sec-websocket-protocol") || "";
+  const protocols = StringPrototypeSplit(protocolsStr, ", ");
+  if (protocols && options.protocol) {
+    if (ArrayPrototypeIncludes(protocols, options.protocol)) {
+      ArrayPrototypePush(r.headerList, [
+        "sec-websocket-protocol",
+        options.protocol,
+      ]);
+    } else {
+      throw new TypeError(
+        `Protocol '${options.protocol}' not in the request's protocol list (non negotiable)`,
+      );
+    }
+  }
+
+  const stream = webidl.createBranded(WebSocketStream);
+  stream[_server] = true;
+  stream[_idleTimeoutDuration] = options.idleTimeout ?? 120;
+  stream[_idleTimeoutTimeout] = null;
+  stream[_closed] = new Deferred();
+  stream[_closeSent] = new Deferred();
+  stream[_connection] = new Deferred();
+
+  const response = fromInnerResponse(r, "immutable");
+  response[_wss] = stream;
+
+  return { response, stream };
 }
 
 function upgradeHttp(req) {
@@ -563,4 +654,11 @@ function buildCaseInsensitiveCommaValueFinder(checkText) {
 internals.buildCaseInsensitiveCommaValueFinder =
   buildCaseInsensitiveCommaValueFinder;
 
-export { _ws, HttpConn, serve, upgradeHttp, upgradeWebSocket };
+export {
+  _ws,
+  HttpConn,
+  serve,
+  upgradeHttp,
+  upgradeWebSocket,
+  upgradeWebSocketStream,
+};

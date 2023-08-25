@@ -163,6 +163,7 @@ const denoNsUnstable = {
   createHttpClient: httpClient.createHttpClient,
   // TODO(bartlomieju): why is it needed?
   http,
+  upgradeWebSocketStream: http.upgradeWebSocketStream,
   dlopen: ffi.dlopen,
   UnsafeCallback: ffi.UnsafeCallback,
   UnsafePointer: ffi.UnsafePointer,

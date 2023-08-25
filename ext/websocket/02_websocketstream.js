@@ -14,6 +14,13 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import {
+  _idleTimeoutDuration,
+  _idleTimeoutTimeout,
+  _rid,
+  _server,
+  _serverHandleIdleTimeout,
+} from "ext:deno_websocket/01_websocket.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeJoin,
@@ -36,6 +43,7 @@ const {
 const {
   op_ws_send_text_async,
   op_ws_send_binary_async,
+  op_ws_send_ping,
   op_ws_next_event,
   op_ws_get_buffer,
   op_ws_get_buffer_as_string,
@@ -81,12 +89,13 @@ webidl.converters.WebSocketCloseInfo = webidl.createDictionaryConverter(
 
 const CLOSE_RESPONSE_TIMEOUT = 5000;
 
-const _rid = Symbol("[[rid]]");
 const _url = Symbol("[[url]]");
 const _connection = Symbol("[[connection]]");
 const _closed = Symbol("[[closed]]");
 const _earlyClose = Symbol("[[earlyClose]]");
 const _closeSent = Symbol("[[closeSent]]");
+const _initStreams = Symbol("[[initStreams]]");
+
 class WebSocketStream {
   [_rid];
 
@@ -98,6 +107,8 @@ class WebSocketStream {
 
   constructor(url, options) {
     this[webidl.brand] = webidl.brand;
+    this[_idleTimeoutDuration] = 0;
+    this[_idleTimeoutTimeout] = undefined;
     const prefix = "Failed to construct 'WebSocketStream'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     url = webidl.converters.USVString(url, prefix, "Argument 1");
@@ -210,130 +221,7 @@ class WebSocketStream {
           } else {
             this[_rid] = create.rid;
 
-            const writable = new WritableStream({
-              write: async (chunk) => {
-                if (typeof chunk === "string") {
-                  await op_ws_send_text_async(this[_rid], chunk);
-                } else if (
-                  ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
-                ) {
-                  await op_ws_send_binary_async(this[_rid], chunk);
-                } else {
-                  throw new TypeError(
-                    "A chunk may only be either a string or an Uint8Array",
-                  );
-                }
-              },
-              close: async (reason) => {
-                try {
-                  this.close(reason?.code !== undefined ? reason : {});
-                } catch (_) {
-                  this.close();
-                }
-                await this.closed;
-              },
-              abort: async (reason) => {
-                try {
-                  this.close(reason?.code !== undefined ? reason : {});
-                } catch (_) {
-                  this.close();
-                }
-                await this.closed;
-              },
-            });
-            const pull = async (controller) => {
-              // Remember that this pull method may be re-entered before it has completed
-              const kind = await op_ws_next_event(this[_rid]);
-              switch (kind) {
-                case 0:
-                  /* string */
-                  controller.enqueue(op_ws_get_buffer_as_string(this[_rid]));
-                  break;
-                case 1: {
-                  /* binary */
-                  controller.enqueue(op_ws_get_buffer(this[_rid]));
-                  break;
-                }
-                case 2: {
-                  /* pong */
-                  break;
-                }
-                case 3: {
-                  /* error */
-                  const err = new Error(op_ws_get_error(this[_rid]));
-                  this[_closed].reject(err);
-                  controller.error(err);
-                  core.tryClose(this[_rid]);
-                  break;
-                }
-                case 1005: {
-                  /* closed */
-                  this[_closed].resolve({ code: 1005, reason: "" });
-                  core.tryClose(this[_rid]);
-                  break;
-                }
-                default: {
-                  /* close */
-                  const reason = op_ws_get_error(this[_rid]);
-                  this[_closed].resolve({
-                    code: kind,
-                    reason,
-                  });
-                  core.tryClose(this[_rid]);
-                  break;
-                }
-              }
-
-              if (
-                this[_closeSent].state === "fulfilled" &&
-                this[_closed].state === "pending"
-              ) {
-                if (
-                  DateNow() - await this[_closeSent].promise <=
-                    CLOSE_RESPONSE_TIMEOUT
-                ) {
-                  return pull(controller);
-                }
-
-                const error = op_ws_get_error(this[_rid]);
-                this[_closed].reject(new Error(error));
-                core.tryClose(this[_rid]);
-              }
-            };
-            const readable = new ReadableStream({
-              start: (controller) => {
-                PromisePrototypeThen(this.closed, () => {
-                  try {
-                    controller.close();
-                  } catch (_) {
-                    // needed to ignore warnings & assertions
-                  }
-                  try {
-                    PromisePrototypeCatch(
-                      writableStreamClose(writable),
-                      () => {},
-                    );
-                  } catch (_) {
-                    // needed to ignore warnings & assertions
-                  }
-                });
-
-                PromisePrototypeThen(this[_closeSent].promise, () => {
-                  if (this[_closed].state === "pending") {
-                    return pull(controller);
-                  }
-                });
-              },
-              pull,
-              cancel: async (reason) => {
-                try {
-                  this.close(reason?.code !== undefined ? reason : {});
-                } catch (_) {
-                  this.close();
-                }
-                await this.closed;
-              },
-            });
+            const { readable, writable } = this[_initStreams]();
 
             this[_connection].resolve({
               readable,
@@ -355,6 +243,141 @@ class WebSocketStream {
         },
       );
     }
+  }
+
+  [_initStreams]() {
+    const writable = new WritableStream({
+      write: async (chunk) => {
+        if (typeof chunk === "string") {
+          await op_ws_send_text_async(this[_rid], chunk);
+        } else if (
+          ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, chunk)
+        ) {
+          await op_ws_send_binary_async(this[_rid], chunk);
+        } else {
+          throw new TypeError(
+            "A chunk may only be either a string or an Uint8Array",
+          );
+        }
+      },
+      close: async (reason) => {
+        try {
+          this.close(reason?.code !== undefined ? reason : {});
+        } catch (_) {
+          this.close();
+        }
+        await this.closed;
+      },
+      abort: async (reason) => {
+        try {
+          this.close(reason?.code !== undefined ? reason : {});
+        } catch (_) {
+          this.close();
+        }
+        await this.closed;
+      },
+    });
+    const pull = async (controller) => {
+      // Remember that this pull method may be re-entered before it has completed
+      const kind = await op_ws_next_event(this[_rid]);
+      switch (kind) {
+        case 0:
+          /* string */
+          this[_serverHandleIdleTimeout]();
+          controller.enqueue(op_ws_get_buffer_as_string(this[_rid]));
+          break;
+        case 1: {
+          /* binary */
+          this[_serverHandleIdleTimeout]();
+          controller.enqueue(op_ws_get_buffer(this[_rid]));
+          break;
+        }
+        case 2: {
+          /* pong */
+          this[_serverHandleIdleTimeout]();
+          return pull(controller);
+          // break;
+        }
+        case 3: {
+          /* error */
+          const err = new Error(op_ws_get_error(this[_rid]));
+          this[_closed].reject(err);
+          controller.error(err);
+          core.tryClose(this[_rid]);
+          break;
+        }
+        case 1005: {
+          /* closed */
+          this[_closed].resolve({ code: 1005, reason: "" });
+          clearTimeout(this[_idleTimeoutTimeout]);
+          core.tryClose(this[_rid]);
+          break;
+        }
+        default: {
+          /* close */
+          const reason = op_ws_get_error(this[_rid]);
+          this[_closed].resolve({
+            code: kind,
+            reason,
+          });
+          clearTimeout(this[_idleTimeoutTimeout]);
+          core.tryClose(this[_rid]);
+          break;
+        }
+      }
+
+      if (
+        this[_closeSent].state === "fulfilled" &&
+        this[_closed].state === "pending"
+      ) {
+        if (
+          DateNow() - await this[_closeSent].promise <=
+            CLOSE_RESPONSE_TIMEOUT
+        ) {
+          return pull(controller);
+        }
+
+        const error = op_ws_get_error(this[_rid]);
+        this[_closed].reject(new Error(error));
+        core.tryClose(this[_rid]);
+      }
+    };
+    const readable = new ReadableStream({
+      start: (controller) => {
+        PromisePrototypeThen(this.closed, () => {
+          try {
+            controller.close();
+          } catch (_) {
+            // needed to ignore warnings & assertions
+          }
+          try {
+            PromisePrototypeCatch(
+              writableStreamClose(writable),
+              () => {},
+            );
+          } catch (_) {
+            // needed to ignore warnings & assertions
+          }
+        });
+
+        PromisePrototypeThen(this[_closeSent].promise, () => {
+          if (this[_closed].state === "pending") {
+            return pull(controller);
+          }
+        });
+      },
+      pull,
+      cancel: async (reason) => {
+        try {
+          this.close(reason?.code !== undefined ? reason : {});
+        } catch (_) {
+          this.close();
+        }
+        await this.closed;
+      },
+    });
+
+    return { readable, writable };
   }
 
   [_connection] = new Deferred();
@@ -379,15 +402,17 @@ class WebSocketStream {
       "Argument 1",
     );
 
-    if (
-      closeInfo.code &&
-      !(closeInfo.code === 1000 ||
-        (3000 <= closeInfo.code && closeInfo.code < 5000))
-    ) {
-      throw new DOMException(
-        "The close code must be either 1000 or in the range of 3000 to 4999.",
-        "InvalidAccessError",
-      );
+    if (!this[_server]) {
+      if (
+        closeInfo.code &&
+        !(closeInfo.code === 1000 ||
+          (3000 <= closeInfo.code && closeInfo.code < 5000))
+      ) {
+        throw new DOMException(
+          "The close code must be either 1000 or in the range of 3000 to 4999.",
+          "InvalidAccessError",
+        );
+      }
     }
 
     const encoder = new TextEncoder();
@@ -424,6 +449,29 @@ class WebSocketStream {
     }
   }
 
+  [_serverHandleIdleTimeout]() {
+    if (this[_idleTimeoutDuration]) {
+      clearTimeout(this[_idleTimeoutTimeout]);
+      this[_idleTimeoutTimeout] = setTimeout(async () => {
+        if (this[_connection].state === "fulfilled" && this[_closed].state === "pending") {
+          await op_ws_send_ping(this[_rid]);
+          this[_idleTimeoutTimeout] = setTimeout(async () => {
+            if (this[_connection].state === "fulfilled" && this[_closed].state === "pending") {
+              const reason = "No response from ping frame.";
+              await op_ws_close(this[_rid], 1001, reason);
+              this[_closed].reject(new Error(reason));
+              core.tryClose(this[_rid]);
+            } else {
+              clearTimeout(this[_idleTimeoutTimeout]);
+            }
+          }, (this[_idleTimeoutDuration] / 2) * 1000);
+        } else {
+          clearTimeout(this[_idleTimeoutTimeout]);
+        }
+      }, (this[_idleTimeoutDuration] / 2) * 1000);
+    }
+  }
+
   [SymbolFor("Deno.customInspect")](inspect) {
     return `${this.constructor.name} ${
       inspect({
@@ -435,4 +483,10 @@ class WebSocketStream {
 
 const WebSocketStreamPrototype = WebSocketStream.prototype;
 
-export { WebSocketStream };
+export {
+  _closed,
+  _closeSent,
+  _connection,
+  _initStreams,
+  WebSocketStream,
+};
