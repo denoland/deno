@@ -1013,7 +1013,7 @@ declare namespace Deno {
      *
      * Warning: This method should not be used for benchmarks averaging less
      * than 0.01s per iteration. In such cases it will be disabled but the call
-     * will still have meaningless overhead, and so a warning will be printed.
+     * will still have noticeable overhead, resulting in a warning.
      *
      * ```ts
      * Deno.bench("foo", async (t) => {
@@ -1030,7 +1030,7 @@ declare namespace Deno {
      *
      * Warning: This method should not be used for benchmarks averaging less
      * than 0.01s per iteration. In such cases it will be disabled but the call
-     * will still have meaningless overhead, and so a warning will be printed.
+     * will still have noticeable overhead, resulting in a warning.
      *
      * ```ts
      * Deno.bench("foo", async (t) => {
