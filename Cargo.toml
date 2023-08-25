@@ -75,7 +75,6 @@ deno_napi = { version = "0.47.0", path = "./ext/napi" }
 aes = "=0.8.2"
 anyhow = "1.0.57"
 async-trait = "0.1.51"
-atty = "=0.2.14"
 base64 = "=0.13.1"
 bencher = "0.1"
 brotli = "3.3.4"
