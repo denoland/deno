@@ -145,15 +145,15 @@ pub struct BasicAuth {
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   // TODO(@justinmchase): Consider also loading the system keychain here
-  root_cert_store.add_server_trust_anchors(
-    webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+  root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
+    |ta| {
       rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
         ta.subject,
         ta.spki,
         ta.name_constraints,
       )
-    }),
-  );
+    },
+  ));
   root_cert_store
 }
 
@@ -187,7 +187,7 @@ pub fn create_client_config(
     let client =
       if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
         client_config
-          .with_single_cert(cert_chain, private_key)
+          .with_client_auth_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
       } else {
         client_config.with_no_client_auth()
@@ -223,7 +223,7 @@ pub fn create_client_config(
   let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
   {
     client_config
-      .with_single_cert(cert_chain, private_key)
+      .with_client_auth_cert(cert_chain, private_key)
       .expect("invalid client key or certificate")
   } else {
     client_config.with_no_client_auth()

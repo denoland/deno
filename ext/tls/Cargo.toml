@@ -17,8 +17,8 @@ path = "lib.rs"
 deno_core.workspace = true
 once_cell.workspace = true
 rustls = { workspace = true, features = ["dangerous_configuration"] }
+rustls-native-certs.workspace = true
 rustls-pemfile.workspace = true
 rustls-webpki.workspace = true
-rustls-native-certs.workspace = true
 serde.workspace = true
 webpki-roots.workspace = true
