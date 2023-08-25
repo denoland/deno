@@ -21,7 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -1021,7 +1021,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -1031,7 +1031,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 

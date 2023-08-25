@@ -20,6 +20,9 @@ try {
   isCI = true;
 }
 
+// Defined in test_util/src/lib.rs
+Deno.env.set("DENO_KV_ACCESS_TOKEN", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
 Deno.test({
   name: "openKv :memory: no permissions",
   permissions: {},
@@ -1929,6 +1932,77 @@ Deno.test({
       } catch {
         // pass
       }
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend",
+  async fn() {
+    const db = await Deno.openKv("http://localhost:4545/kv_remote_authorize");
+    try {
+      await db.set(["some-key"], 1);
+      const entry = await db.get(["some-key"]);
+      assertEquals(entry.value, null);
+      assertEquals(entry.versionstamp, null);
+    } finally {
+      db.close();
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid format",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_format",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message.startsWith("Metadata error: Failed to decode metadata: ")
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid version",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_version",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message === "Metadata error: Unsupported metadata version: 2"
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
     }
   },
 });

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_npm::registry::NpmPackageVersionDistInfo;
-use deno_semver::npm::NpmPackageNv;
+use deno_semver::package::PackageNv;
 use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
@@ -16,7 +16,7 @@ use tar::EntryType;
 use super::cache::with_folder_sync_lock;
 
 pub fn verify_and_extract_tarball(
-  package: &NpmPackageNv,
+  package: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
@@ -29,7 +29,7 @@ pub fn verify_and_extract_tarball(
 }
 
 fn verify_tarball_integrity(
-  package: &NpmPackageNv,
+  package: &PackageNv,
   data: &[u8],
   npm_integrity: &str,
 ) -> Result<(), AnyError> {
@@ -140,7 +140,7 @@ mod test {
 
   #[test]
   pub fn test_verify_tarball() {
-    let package = NpmPackageNv {
+    let package = PackageNv {
       name: "package".to_string(),
       version: Version::parse_from_npm("1.0.0").unwrap(),
     };

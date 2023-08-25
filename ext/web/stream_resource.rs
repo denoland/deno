@@ -111,6 +111,10 @@ impl Resource for ReadableStreamResource {
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(ReadableStreamResource::read(self, limit))
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
 
 // TODO(mmastrac): Move this to deno_core
@@ -153,10 +157,6 @@ impl Future for CompletionHandle {
     mut_self.waker = Some(cx.waker().clone());
     std::task::Poll::Pending
   }
-}
-
-fn sender_closed() -> Error {
-  type_error("sender closed")
 }
 
 /// Allocate a resource that wraps a ReadableStream.
@@ -210,15 +210,13 @@ fn drop_sender(sender: *const c_void) {
 pub fn op_readable_stream_resource_write_buf(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
-) -> impl Future<Output = Result<(), Error>> {
+) -> impl Future<Output = bool> {
   let sender = get_sender(sender);
   async move {
-    let sender = sender.ok_or_else(sender_closed)?;
-    sender
-      .send(Ok(buffer.into()))
-      .await
-      .map_err(|_| sender_closed())?;
-    Ok(())
+    let Some(sender) = sender else {
+      return false;
+    };
+    sender.send(Ok(buffer.into())).await.ok().is_some()
   }
 }
 
@@ -226,15 +224,17 @@ pub fn op_readable_stream_resource_write_buf(
 pub fn op_readable_stream_resource_write_error(
   sender: *const c_void,
   #[string] error: String,
-) -> impl Future<Output = Result<(), Error>> {
+) -> impl Future<Output = bool> {
   let sender = get_sender(sender);
   async move {
-    let sender = sender.ok_or_else(sender_closed)?;
+    let Some(sender) = sender else {
+      return false;
+    };
     sender
       .send(Err(type_error(Cow::Owned(error))))
       .await
-      .map_err(|_| sender_closed())?;
-    Ok(())
+      .ok()
+      .is_some()
   }
 }
 

@@ -9,7 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
