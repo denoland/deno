@@ -69,7 +69,7 @@ function getTestCaseLocation (){
       lineNumber: jsError.frames[i].lineNumber,
       columnNumber: jsError.frames[i].columnNumber,
     };
-    break;
+    return location;
   }
 }
 
