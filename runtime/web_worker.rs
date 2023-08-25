@@ -38,7 +38,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
@@ -439,7 +439,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(None),
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
         unstable,
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),

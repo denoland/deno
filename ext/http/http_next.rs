@@ -14,6 +14,7 @@ use crate::slab::slab_drop;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
 use crate::slab::slab_insert;
+use crate::slab::HttpRequestBodyAutocloser;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
@@ -24,8 +25,8 @@ use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::serde_v8::from_v8;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use deno_core::v8;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -376,13 +377,20 @@ pub fn op_http_get_request_headers<'scope>(
 
 #[op(fast)]
 pub fn op_http_read_request_body(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   slab_id: SlabId,
 ) -> ResourceId {
   let mut http = slab_get(slab_id);
-  let incoming = http.take_body();
-  let body_resource = Rc::new(HttpRequestBody::new(incoming));
-  state.resource_table.add_rc(body_resource)
+  let rid = if let Some(incoming) = http.take_body() {
+    let body_resource = Rc::new(HttpRequestBody::new(incoming));
+    state.borrow_mut().resource_table.add_rc(body_resource)
+  } else {
+    // This should not be possible, but rather than panicking we'll return an invalid
+    // resource value to JavaScript.
+    ResourceId::MAX
+  };
+  http.put_resource(HttpRequestBodyAutocloser::new(rid, state.clone()));
+  rid
 }
 
 #[op2(fast)]
@@ -577,6 +585,7 @@ fn set_response(
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
   let mut http = slab_get(slab_id);
+  let resource = http.take_resource();
   let compression = is_request_compressible(&http.request_parts().headers);
   let response = http.response();
   let compression = modify_compressibility_from_response(
@@ -584,7 +593,9 @@ fn set_response(
     length,
     response.headers_mut(),
   );
-  response.body_mut().initialize(response_fn(compression));
+  response
+    .body_mut()
+    .initialize(response_fn(compression), resource);
 
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quitely ignore invalid values.
