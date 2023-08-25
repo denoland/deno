@@ -158,4 +158,8 @@ impl TestDefinitions {
       .iter()
       .find(|td| td.id.as_str() == id.as_ref())
   }
+
+  pub fn is_empty(&self) -> bool {
+    self.discovered.is_empty() && self.injected.is_empty()
+  }
 }
