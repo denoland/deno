@@ -146,7 +146,7 @@ pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   // TODO(@justinmchase): Consider also loading the system keychain here
   root_cert_store.add_server_trust_anchors(
-    webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+    webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
       rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
         ta.subject,
         ta.spki,
