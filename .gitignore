@@ -11,6 +11,7 @@ gclient_config.py_entries
 /target/
 /std/hash/_wasm/target
 /tools/wpt/manifest.json
+/third_party/
 /test_napi/node_modules
 /test_napi/build
 /test_napi/third_party_tests/node_modules

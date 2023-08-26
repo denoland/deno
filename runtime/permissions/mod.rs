@@ -1532,6 +1532,22 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for PermissionsContainer {
   }
 }
 
+impl deno_kv::remote::RemoteDbHandlerPermissions for PermissionsContainer {
+  #[inline(always)]
+  fn check_env(&mut self, var: &str) -> Result<(), AnyError> {
+    self.0.lock().env.check(var)
+  }
+
+  #[inline(always)]
+  fn check_net_url(
+    &mut self,
+    url: &url::Url,
+    api_name: &str,
+  ) -> Result<(), AnyError> {
+    self.0.lock().net.check_url(url, Some(api_name))
+  }
+}
+
 fn unit_permission_from_flag_bools(
   allow_flag: bool,
   deny_flag: bool,

@@ -39,7 +39,7 @@ import {
   forgivingBase64UrlEncode as encodeToBase64Url,
 } from "ext:deno_web/00_infra.js";
 
-const getArrayBufferOrView = hideStackFrames(
+export const getArrayBufferOrView = hideStackFrames(
   (
     buffer,
     name,

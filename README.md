@@ -60,6 +60,11 @@ scoop install deno
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```sh
+# Install the Protobuf compiler
+apt install -y protobuf-compiler # Linux
+brew install protobuf # macOS
+
+# Build and install Deno
 cargo install deno --locked
 ```
 

@@ -102,8 +102,9 @@ itest!(_017_import_redirect_check {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_deno_modules_dir {
-  args: "run --quiet --reload --deno-modules-dir --check $TESTDATA/run/017_import_redirect.ts",
+itest!(_017_import_redirect_vendor_dir {
+  args:
+    "run --quiet --reload --vendor --check $TESTDATA/run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
   temp_cwd: true,
 });
@@ -163,9 +164,9 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
-itest!(_027_redirect_typescript_deno_modules_dir {
+itest!(_027_redirect_typescript_vendor_dir {
   args:
-    "run --quiet --reload --deno-modules-dir $TESTDATA/run/027_redirect_typescript.ts",
+    "run --quiet --reload --vendor $TESTDATA/run/027_redirect_typescript.ts",
   output: "run/027_redirect_typescript.ts.out",
   http_server: true,
   temp_cwd: true,
@@ -201,9 +202,9 @@ itest!(_033_import_map_remote {
   http_server: true,
 });
 
-itest!(_033_import_map_deno_modules_dir_remote {
+itest!(_033_import_map_vendor_dir_remote {
   args:
-    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --deno-modules-dir --unstable $TESTDATA/import_maps/test_remote.ts",
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor --unstable $TESTDATA/import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
   temp_cwd: true,
@@ -1706,8 +1707,8 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
-itest!(jsx_import_source_pragma_with_config_deno_modules_dir {
-  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --deno-modules-dir $TESTDATA/run/jsx_import_source_pragma.tsx",
+itest!(jsx_import_source_pragma_with_config_vendor_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --vendor $TESTDATA/run/jsx_import_source_pragma.tsx",
   output: "run/jsx_import_source.out",
   http_server: true,
   temp_cwd: true,
@@ -1767,9 +1768,9 @@ itest!(reference_types_error {
   exit_code: 1,
 });
 
-itest!(reference_types_error_deno_modules_dir {
+itest!(reference_types_error_vendor_dir {
   args:
-    "run --config run/checkjs.tsconfig.json --check --deno-modules-dir $TESTDATA/run/reference_types_error.js",
+    "run --config run/checkjs.tsconfig.json --check --vendor $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
@@ -4162,26 +4163,26 @@ async fn websocketstream_ping() {
     tokio::spawn(async move {
       let mut ws = upgrade_fut.await.unwrap();
 
-      ws.write_frame(fastwebsockets::Frame::text("A".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
         .await
         .unwrap();
       ws.write_frame(fastwebsockets::Frame::new(
         true,
         fastwebsockets::OpCode::Ping,
         None,
-        vec![],
+        vec![].into(),
       ))
       .await
       .unwrap();
-      ws.write_frame(fastwebsockets::Frame::text("B".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
         .await
         .unwrap();
       let message = ws.read_frame().await.unwrap();
       assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
-      ws.write_frame(fastwebsockets::Frame::text("C".as_bytes().to_vec()))
+      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
         .await
         .unwrap();
-      ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
         .await
         .unwrap();
     });
@@ -4224,7 +4225,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -4275,7 +4276,7 @@ async fn websocket_server_multi_field_connection_header() {
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
   assert!(message.payload.is_empty());
   socket
-    .write_frame(fastwebsockets::Frame::close_raw(vec![]))
+    .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
   assert!(child.wait().unwrap().success());
@@ -4499,16 +4500,16 @@ itest!(extension_dynamic_import {
 });
 
 #[test]
-pub fn deno_modules_dir_config_file() {
+pub fn vendor_dir_config_file() {
   let test_context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = test_context.temp_dir();
-  let deno_modules_dir = temp_dir.path().join("deno_modules");
-  let rm_deno_modules = || std::fs::remove_dir_all(&deno_modules_dir).unwrap();
+  let vendor_dir = temp_dir.path().join("vendor");
+  let rm_vendor_dir = || std::fs::remove_dir_all(&vendor_dir).unwrap();
 
-  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
   temp_dir.write(
     "main.ts",
     r#"import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';
@@ -4518,25 +4519,25 @@ console.log(returnsHi());"#,
   let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
   deno_run_cmd.run().assert_matches_text("Hi\n");
 
-  assert!(deno_modules_dir.exists());
-  rm_deno_modules();
-  temp_dir.write("deno.json", r#"{ "denoModulesDir": false }"#);
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
+  temp_dir.write("deno.json", r#"{ "vendor": false }"#);
 
   deno_run_cmd.run().assert_matches_text("Hi\n");
-  assert!(!deno_modules_dir.exists());
+  assert!(!vendor_dir.exists());
   test_context
     .new_command()
-    .args("cache --quiet --deno-modules-dir main.ts")
+    .args("cache --quiet --vendor main.ts")
     .run();
-  assert!(deno_modules_dir.exists());
-  rm_deno_modules();
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
 
-  temp_dir.write("deno.json", r#"{ "denoModulesDir": true }"#);
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
   let cache_command = test_context.new_command().args("cache --quiet main.ts");
   cache_command.run();
 
-  assert!(deno_modules_dir.exists());
-  let mod1_file = deno_modules_dir
+  assert!(vendor_dir.exists());
+  let mod1_file = vendor_dir
     .join("http_localhost_4545")
     .join("subdir")
     .join("mod1.ts");
@@ -4568,20 +4569,33 @@ console.log(returnsHi());"#,
     .run()
     .skip_output_check();
   assert_eq!(
-    deno_modules_dir.join("manifest.json").read_json_value(),
+    vendor_dir.join("manifest.json").read_json_value(),
     json!({
       "folders": {
         "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
       }
     })
   );
-  deno_modules_dir
+  vendor_dir
     .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
     .write("console.log('hello there');");
   test_context
     .new_command()
     // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
-    .args("run --deno-modules-dir http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
     .run()
     .assert_matches_text("hello there\n");
+
+  // now try importing directly from the vendor folder
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from './vendor/http_localhost_4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+  deno_run_cmd
+    .run()
+    .assert_matches_text("error: Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.
+    at [WILDCARD]/main.ts:1:27
+")
+    .assert_exit_code(1);
 }

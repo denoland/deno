@@ -24,7 +24,7 @@ use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -142,11 +142,7 @@ pub trait FetchHandler: dyn_clone::DynClone {
     &self,
     state: &mut OpState,
     url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
-    Option<Rc<CancelHandle>>,
-  );
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
 
 dyn_clone::clone_trait_object!(FetchHandler);
@@ -160,17 +156,13 @@ impl FetchHandler for DefaultFileFetchHandler {
     &self,
     _state: &mut OpState,
     _url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
-    Option<Rc<CancelHandle>>,
-  ) {
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
       Ok(Err(type_error(
         "NetworkError when attempting to fetch resource.",
       )))
     };
-    (Box::pin(fut), None, None)
+    (Box::pin(fut), None)
   }
 }
 
@@ -266,15 +258,13 @@ where
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
       let file_fetch_handler = file_fetch_handler.clone();
-      let (request, maybe_request_body, maybe_cancel_handle) =
+      let (request, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
-      let maybe_request_body_rid =
-        maybe_request_body.map(|r| state.resource_table.add(r));
       let maybe_cancel_handle_rid = maybe_cancel_handle
         .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
-      (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
+      (request_rid, None, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();

@@ -34,6 +34,7 @@ pub struct ClientCapabilities {
   pub testing_api: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
+  pub workspace_will_rename_files: bool,
 }
 
 fn is_true() -> bool {
@@ -475,10 +476,8 @@ impl Config {
       .and_then(|p| p.maybe_node_modules_dir.as_ref())
   }
 
-  pub fn maybe_deno_modules_dir_path(&self) -> Option<PathBuf> {
-    self
-      .maybe_config_file()
-      .and_then(|c| c.deno_modules_dir_path())
+  pub fn maybe_vendor_dir_path(&self) -> Option<PathBuf> {
+    self.maybe_config_file().and_then(|c| c.vendor_dir_path())
   }
 
   pub fn maybe_config_file(&self) -> Option<&ConfigFile> {
@@ -666,6 +665,12 @@ impl Config {
         .did_change_watched_files
         .and_then(|it| it.dynamic_registration)
         .unwrap_or(false);
+      if let Some(file_operations) = &workspace.file_operations {
+        if let Some(true) = file_operations.dynamic_registration {
+          self.client_capabilities.workspace_will_rename_files =
+            file_operations.will_rename.unwrap_or(false);
+        }
+      }
     }
 
     if let Some(text_document) = &capabilities.text_document {
@@ -816,7 +821,13 @@ fn resolve_node_modules_dir(config_file: &ConfigFile) -> Option<PathBuf> {
   // `nodeModulesDir: true` setting in the deno.json file. This is to
   // reduce the chance of modifying someone's node_modules directory
   // without them having asked us to do so.
-  if config_file.node_modules_dir() != Some(true) {
+  let explicitly_disabled = config_file.node_modules_dir_flag() == Some(false);
+  if explicitly_disabled {
+    return None;
+  }
+  let enabled = config_file.node_modules_dir_flag() == Some(true)
+    || config_file.vendor_dir_flag() == Some(true);
+  if !enabled {
     return None;
   }
   if config_file.specifier.scheme() != "file" {

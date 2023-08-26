@@ -60,7 +60,11 @@ mod priority {
   use libc::id_t;
   use libc::PRIO_PROCESS;
 
-  #[cfg(target_os = "macos")]
+  #[cfg(any(
+    target_os = "macos",
+    target_os = "freebsd",
+    target_os = "openbsd"
+  ))]
   #[allow(non_camel_case_types)]
   type priority_t = i32;
   #[cfg(target_os = "linux")]

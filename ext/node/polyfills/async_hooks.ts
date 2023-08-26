@@ -22,8 +22,9 @@ function pushAsyncFrame(frame: AsyncContextFrame) {
 }
 
 function popAsyncFrame() {
-  assert(asyncContextStack.length > 0);
-  asyncContextStack.pop();
+  if (asyncContextStack.length > 0) {
+    asyncContextStack.pop();
+  }
 }
 
 let rootAsyncFrame: AsyncContextFrame | undefined = undefined;

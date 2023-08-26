@@ -35,7 +35,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::BlobStore;
@@ -178,8 +178,6 @@ pub struct WorkerOptions {
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   // Callbacks invoked when creating new instance of WebWorker
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub web_worker_preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pub web_worker_pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 
   /// Source map reference for errors.
@@ -221,12 +219,6 @@ pub struct WorkerOptions {
 impl Default for WorkerOptions {
   fn default() -> Self {
     Self {
-      web_worker_preload_module_cb: Arc::new(|_| {
-        unimplemented!("web workers are not supported")
-      }),
-      web_worker_pre_execute_module_cb: Arc::new(|_| {
-        unimplemented!("web workers are not supported")
-      }),
       create_web_worker_cb: Arc::new(|_| {
         unimplemented!("web workers are not supported")
       }),
@@ -342,7 +334,7 @@ impl MainWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(
           options.origin_storage_dir.clone(),
         ),
         unstable,
@@ -362,8 +354,6 @@ impl MainWorker {
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
-        options.web_worker_preload_module_cb.clone(),
-        options.web_worker_pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
@@ -478,9 +468,7 @@ impl MainWorker {
     let bootstrap_fn = self.bootstrap_fn_global.take().unwrap();
     let bootstrap_fn = v8::Local::new(scope, bootstrap_fn);
     let undefined = v8::undefined(scope);
-    bootstrap_fn
-      .call(scope, undefined.into(), &[args.into()])
-      .unwrap();
+    bootstrap_fn.call(scope, undefined.into(), &[args]).unwrap();
   }
 
   /// See [JsRuntime::execute_script](deno_core::JsRuntime::execute_script)

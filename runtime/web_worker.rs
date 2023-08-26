@@ -38,7 +38,7 @@ use deno_core::SourceMapGetter;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
-use deno_kv::sqlite::SqliteDbHandler;
+use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 use deno_tls::RootCertStoreProvider;
 use deno_web::create_entangled_message_port;
@@ -338,8 +338,6 @@ pub struct WebWorkerOptions {
   pub module_loader: Rc<dyn ModuleLoader>,
   pub npm_resolver: Option<Arc<dyn deno_node::NpmResolver>>,
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
-  pub preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pub pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub source_map_getter: Option<Box<dyn SourceMapGetter>>,
   pub worker_type: WebWorkerType,
@@ -441,7 +439,7 @@ impl WebWorker {
       ),
       deno_tls::deno_tls::init_ops_and_esm(),
       deno_kv::deno_kv::init_ops_and_esm(
-        SqliteDbHandler::<PermissionsContainer>::new(None),
+        MultiBackendDbHandler::remote_or_sqlite::<PermissionsContainer>(None),
         unstable,
       ),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
@@ -460,8 +458,6 @@ impl WebWorker {
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
         options.create_web_worker_cb.clone(),
-        options.preload_module_cb.clone(),
-        options.pre_execute_module_cb.clone(),
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
@@ -600,7 +596,7 @@ impl WebWorker {
           .unwrap()
           .into();
       bootstrap_fn
-        .call(scope, undefined.into(), &[args.into(), name_str, id_str])
+        .call(scope, undefined.into(), &[args, name_str, id_str])
         .unwrap();
     }
     // TODO(bartlomieju): this could be done using V8 API, without calling `execute_script`.
@@ -782,11 +778,9 @@ fn print_worker_error(
 /// This function should be called from a thread dedicated to this worker.
 // TODO(bartlomieju): check if order of actions is aligned to Worker spec
 pub fn run_web_worker(
-  worker: WebWorker,
+  mut worker: WebWorker,
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
-  preload_module_cb: Arc<ops::worker_host::WorkerEventCb>,
-  pre_execute_module_cb: Arc<ops::worker_host::WorkerEventCb>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
 ) -> Result<(), AnyError> {
   let name = worker.name.to_string();
@@ -796,20 +790,6 @@ pub fn run_web_worker(
 
   let fut = async move {
     let internal_handle = worker.internal_handle.clone();
-    let result = (preload_module_cb)(worker).await;
-
-    let mut worker = match result {
-      Ok(worker) => worker,
-      Err(e) => {
-        print_worker_error(&e, &name, format_js_error_fn.as_deref());
-        internal_handle
-          .post_event(WorkerControlEvent::TerminalError(e))
-          .expect("Failed to post message to host");
-
-        // Failure to execute script is a terminal error, bye, bye.
-        return Ok(());
-      }
-    };
 
     // Execute provided source code immediately
     let result = if let Some(source_code) = maybe_source_code.take() {
@@ -821,18 +801,6 @@ pub fn run_web_worker(
       // script instead of module
       match worker.preload_main_module(&specifier).await {
         Ok(id) => {
-          worker = match (pre_execute_module_cb)(worker).await {
-            Ok(worker) => worker,
-            Err(e) => {
-              print_worker_error(&e, &name, format_js_error_fn.as_deref());
-              internal_handle
-                .post_event(WorkerControlEvent::TerminalError(e))
-                .expect("Failed to post message to host");
-
-              // Failure to execute script is a terminal error, bye, bye.
-              return Ok(());
-            }
-          };
           worker.start_polling_for_messages();
           worker.execute_main_module(id).await
         }

@@ -15,9 +15,16 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
+use kv_remote::datapath::AtomicWrite;
+use kv_remote::datapath::AtomicWriteOutput;
+use kv_remote::datapath::AtomicWriteStatus;
+use kv_remote::datapath::ReadRangeOutput;
+use kv_remote::datapath::SnapshotRead;
+use kv_remote::datapath::SnapshotReadOutput;
 use npm::CUSTOM_NPM_PACKAGE_CACHE;
 use once_cell::sync::Lazy;
 use pretty_assertions::assert_eq;
+use prost::Message;
 use pty::Pty;
 use regex::Regex;
 use rustls::Certificate;
@@ -57,6 +64,7 @@ pub mod assertions;
 mod builders;
 pub mod factory;
 mod fs;
+mod kv_remote;
 pub mod lsp;
 mod npm;
 pub mod pty;
@@ -72,6 +80,9 @@ const PORT: u16 = 4545;
 const TEST_AUTH_TOKEN: &str = "abcdef123456789";
 const TEST_BASIC_AUTH_USERNAME: &str = "testuser123";
 const TEST_BASIC_AUTH_PASSWORD: &str = "testpassabc";
+const KV_DATABASE_ID: &str = "11111111-1111-1111-1111-111111111111";
+const KV_ACCESS_TOKEN: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const KV_DATABASE_TOKEN: &str = "MOCKMOCKMOCKMOCKMOCKMOCKMOCK";
 const REDIRECT_PORT: u16 = 4546;
 const ANOTHER_REDIRECT_PORT: u16 = 4547;
 const DOUBLE_REDIRECTS_PORT: u16 = 4548;
@@ -382,7 +393,7 @@ async fn ping_websocket_handler(
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
   for i in 0..9 {
-    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![]))
+    ws.write_frame(Frame::new(true, OpCode::Ping, None, vec![].into()))
       .await
       .unwrap();
 
@@ -390,9 +401,11 @@ async fn ping_websocket_handler(
     assert_eq!(frame.opcode, OpCode::Pong);
     assert!(frame.payload.is_empty());
 
-    ws.write_frame(Frame::text(format!("hello {}", i).as_bytes().to_vec()))
-      .await
-      .unwrap();
+    ws.write_frame(Frame::text(
+      format!("hello {}", i).as_bytes().to_vec().into(),
+    ))
+    .await
+    .unwrap();
 
     let frame = ws.read_frame().await.unwrap();
     assert_eq!(frame.opcode, OpCode::Text);
@@ -419,7 +432,7 @@ async fn close_websocket_handler(
 ) -> Result<(), anyhow::Error> {
   let mut ws = fastwebsockets::FragmentCollector::new(ws);
 
-  ws.write_frame(fastwebsockets::Frame::close_raw(vec![]))
+  ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
     .unwrap();
 
@@ -1092,6 +1105,199 @@ async fn main_server(
       let query = req.uri().query().map(|s| s.to_string());
       let res = Response::new(Body::from(query.unwrap_or_default()));
       Ok(res)
+    }
+    (&hyper::Method::POST, "/kv_remote_authorize") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1,
+              "databaseId": KV_DATABASE_ID,
+              "endpoints": [
+                {
+                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                  "consistency": "strong",
+                }
+              ],
+              "token": KV_DATABASE_TOKEN,
+              "expiresAt": "2099-01-01T00:00:00Z",
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_remote_authorize_invalid_format") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 1,
+              "databaseId": KV_DATABASE_ID,
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_remote_authorize_invalid_version") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_ACCESS_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      Ok(
+        Response::builder()
+          .header("content-type", "application/json")
+          .body(Body::from(
+            serde_json::json!({
+              "version": 2,
+              "databaseId": KV_DATABASE_ID,
+              "endpoints": [
+                {
+                  "url": format!("http://localhost:{}/kv_blackhole", PORT),
+                  "consistency": "strong",
+                }
+              ],
+              "token": KV_DATABASE_TOKEN,
+              "expiresAt": "2099-01-01T00:00:00Z",
+            })
+            .to_string(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_blackhole/snapshot_read") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_DATABASE_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      let body = hyper::body::to_bytes(req.into_body())
+        .await
+        .unwrap_or_default();
+      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..]) else {
+        return Ok(Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::empty())
+          .unwrap());
+      };
+      if body.ranges.is_empty() {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+      Ok(
+        Response::builder()
+          .body(Body::from(
+            SnapshotReadOutput {
+              ranges: body
+                .ranges
+                .iter()
+                .map(|_| ReadRangeOutput { values: vec![] })
+                .collect(),
+              read_disabled: false,
+              regions_if_read_disabled: vec![],
+              read_is_strongly_consistent: true,
+              primary_if_not_strongly_consistent: "".into(),
+            }
+            .encode_to_vec(),
+          ))
+          .unwrap(),
+      )
+    }
+    (&hyper::Method::POST, "/kv_blackhole/atomic_write") => {
+      if req
+        .headers()
+        .get("authorization")
+        .and_then(|x| x.to_str().ok())
+        .unwrap_or_default()
+        != format!("Bearer {}", KV_DATABASE_TOKEN)
+      {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::UNAUTHORIZED)
+            .body(Body::empty())
+            .unwrap(),
+        );
+      }
+
+      let body = hyper::body::to_bytes(req.into_body())
+        .await
+        .unwrap_or_default();
+      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..]) else {
+        return Ok(Response::builder()
+          .status(StatusCode::BAD_REQUEST)
+          .body(Body::empty())
+          .unwrap());
+      };
+      Ok(
+        Response::builder()
+          .body(Body::from(
+            AtomicWriteOutput {
+              status: AtomicWriteStatus::AwSuccess.into(),
+              versionstamp: vec![0u8; 10],
+              primary_if_write_disabled: "".into(),
+            }
+            .encode_to_vec(),
+          ))
+          .unwrap(),
+      )
     }
     _ => {
       let mut file_path = testdata_path().to_path_buf();
