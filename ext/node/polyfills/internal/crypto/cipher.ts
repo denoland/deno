@@ -162,6 +162,9 @@ export class Cipheriv extends Transform implements Cipher {
     });
     this.#cache = new BlockModeCache(false);
     this.#context = ops.op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -278,6 +281,9 @@ export class Decipheriv extends Transform implements Cipher {
     });
     this.#cache = new BlockModeCache(true);
     this.#context = ops.op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
