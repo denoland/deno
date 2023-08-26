@@ -106,6 +106,7 @@ pub struct BenchDescription {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BenchStats {
   pub n: u64,
   pub min: f64,
@@ -115,6 +116,8 @@ pub struct BenchStats {
   pub p99: f64,
   pub p995: f64,
   pub p999: f64,
+  pub high_precision: bool,
+  pub used_explicit_timers: bool,
 }
 
 impl BenchReport {
