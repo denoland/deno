@@ -15,7 +15,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexMap;
+use indexmap1::IndexMap;
 
 pub use deno_config::BenchConfig;
 pub use deno_config::CompilerOptions;

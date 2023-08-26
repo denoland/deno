@@ -87,6 +87,7 @@ http.workspace = true
 hyper.workspace = true
 import_map = "=0.15.0"
 indexmap.workspace = true
+indexmap1.workspace = true
 jsonc-parser = { version = "=0.21.1", features = ["serde"] }
 lazy-regex.workspace = true
 libc.workspace = true
