@@ -7722,6 +7722,84 @@ fn lsp_configuration_did_change() {
 }
 
 #[test]
+fn lsp_completions_complete_function_calls() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "[]."
+    }
+  }));
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let request = json!([{
+    "enable": true,
+    "suggest": {
+      "completeFunctionCalls": true,
+    },
+  }]);
+  // one for the workspace
+  client.handle_configuration_request(request.clone());
+  // one for the specifier
+  client.handle_configuration_request(request);
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+
+  let res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "map",
+      "kind": 2,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 3,
+          "name": "map",
+          "useCodeSnippet": true
+        }
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "label": "map",
+      "kind": 2,
+      "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
+      },
+      "sortText": "1",
+      "insertText": "map(callbackfn)",
+      "insertTextFormat": 1
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
