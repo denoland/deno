@@ -57,7 +57,7 @@ extension!(runtime,
       ext.esm_files.to_mut().push(ExtensionFileSource {
         specifier: "ext:runtime_main/js/99_main.js",
         code: ExtensionFileSourceCode::IncludedInBinary(
-          include_str!("../js/99_main.js"),
+          include_str!("./js/99_main.js"),
         ),
       });
       ext.esm_entry_point = Some("ext:runtime_main/js/99_main.js");
