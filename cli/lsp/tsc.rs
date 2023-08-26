@@ -51,6 +51,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
+use log::error;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -310,6 +311,26 @@ impl TsServer {
       },
       refactor_name,
       action_name,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_edits_for_file_rename(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    old_specifier: ModuleSpecifier,
+    new_specifier: ModuleSpecifier,
+    format_code_settings: FormatCodeSettings,
+    user_preferences: UserPreferences,
+  ) -> Result<Vec<FileTextChanges>, LspError> {
+    let req = RequestMethod::GetEditsForFileRename((
+      old_specifier,
+      new_specifier,
+      format_code_settings,
+      user_preferences,
     ));
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -2067,6 +2088,28 @@ impl ApplicableRefactorInfo {
   }
 }
 
+pub fn file_text_changes_to_workspace_edit(
+  changes: &[FileTextChanges],
+  language_server: &language_server::Inner,
+) -> LspResult<Option<lsp::WorkspaceEdit>> {
+  let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
+  for change in changes {
+    let ops = match change.to_text_document_change_ops(language_server) {
+      Ok(op) => op,
+      Err(err) => {
+        error!("Unable to convert changes to edits: {}", err);
+        return Err(LspError::internal_error());
+      }
+    };
+    all_ops.extend(ops);
+  }
+
+  Ok(Some(lsp::WorkspaceEdit {
+    document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
+    ..Default::default()
+  }))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
@@ -2079,17 +2122,8 @@ impl RefactorEditInfo {
   pub async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
-  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
-    for edit in self.edits.iter() {
-      let ops = edit.to_text_document_change_ops(language_server)?;
-      all_ops.extend(ops);
-    }
-
-    Ok(Some(lsp::WorkspaceEdit {
-      document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
-      ..Default::default()
-    }))
+  ) -> LspResult<Option<lsp::WorkspaceEdit>> {
+    file_text_changes_to_workspace_edit(&self.edits, language_server)
   }
 }
 
@@ -3644,6 +3678,15 @@ enum RequestMethod {
       String,
     ),
   ),
+  /// Retrieve the refactor edit info for a range.
+  GetEditsForFileRename(
+    (
+      ModuleSpecifier,
+      ModuleSpecifier,
+      FormatCodeSettings,
+      UserPreferences,
+    ),
+  ),
   /// Retrieve code fixes for a range of a file with the provided error codes.
   GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>, FormatCodeSettings)),
   /// Get completion information at a given position (IntelliSense).
@@ -3756,6 +3799,19 @@ impl RequestMethod {
         "range": { "pos": span.start, "end": span.start + span.length},
         "refactorName": refactor_name,
         "actionName": action_name,
+      }),
+      RequestMethod::GetEditsForFileRename((
+        old_specifier,
+        new_specifier,
+        format_code_settings,
+        preferences,
+      )) => json!({
+        "id": id,
+        "method": "getEditsForFileRename",
+        "oldSpecifier": state.denormalize_specifier(old_specifier),
+        "newSpecifier": state.denormalize_specifier(new_specifier),
+        "formatCodeSettings": format_code_settings,
+        "preferences": preferences,
       }),
       RequestMethod::GetCodeFixes((
         specifier,
@@ -4877,6 +4933,66 @@ mod tests {
     assert_eq!(
       change.new_text,
       "import { someLongVariable } from \"./b.ts\"\n"
+    );
+  }
+
+  #[test]
+  fn test_get_edits_for_file_rename() {
+    let temp_dir = TempDir::new();
+    let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[
+        (
+          "file:///a.ts",
+          r#"import "./b.ts";"#,
+          1,
+          LanguageId::TypeScript,
+        ),
+        ("file:///b.ts", r#""#, 1, LanguageId::TypeScript),
+      ],
+    );
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
+    );
+    assert!(result.is_ok());
+    let changes = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetEditsForFileRename((
+        resolve_url("file:///b.ts").unwrap(),
+        resolve_url("file:///c.ts").unwrap(),
+        Default::default(),
+        Default::default(),
+      )),
+      Default::default(),
+    )
+    .unwrap();
+    let changes: Vec<FileTextChanges> =
+      serde_json::from_value(changes).unwrap();
+    assert_eq!(
+      changes,
+      vec![FileTextChanges {
+        file_name: "file:///a.ts".to_string(),
+        text_changes: vec![TextChange {
+          span: TextSpan {
+            start: 8,
+            length: 6,
+          },
+          new_text: "./c.ts".to_string(),
+        }],
+        is_new_file: None,
+      }]
     );
   }
 
