@@ -17,7 +17,9 @@ use deno_semver::package::PackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
+// TODO(mmastrac): Once upstream indexmap is updated, this can go away
 use indexmap::IndexMap;
+use indexmap1::IndexMap as IndexMap1;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -178,7 +180,7 @@ fn collect_env_vars() -> HashMap<String, String> {
 
 fn print_available_tasks(
   // order can be important, so these use an index map
-  tasks_config: &IndexMap<String, String>,
+  tasks_config: &IndexMap1<String, String>,
   package_json_scripts: &IndexMap<String, String>,
 ) {
   eprintln!("{}", colors::green("Available tasks:"));
