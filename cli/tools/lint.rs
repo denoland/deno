@@ -228,13 +228,19 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
     for rule in lint_rules.iter() {
-      print!(" - {}", rule.code());
+      print!(" - {}", colors::cyan(rule.code()));
       if rule.tags().is_empty() {
         println!();
       } else {
-        println!(" [{}]", rule.tags().join(", "))
+        println!(" [{}]", colors::gray(rule.tags().join(", ")))
       }
-      println!("   help: https://lint.deno.land/#{}", rule.code());
+      println!(
+        "{}",
+        colors::gray(format!(
+          "   help: https://lint.deno.land/#{}",
+          rule.code()
+        ))
+      );
       println!();
     }
   }
