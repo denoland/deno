@@ -2456,6 +2456,49 @@ fn parse_code_actions(
   }
 }
 
+// Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
+fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
+  let mut parameters = Vec::with_capacity(3);
+  let mut is_in_fn = false;
+  let mut paren_count = 0;
+  let mut brace_count = 0;
+  for (idx, part) in parts.iter().enumerate() {
+    if ["methodName", "functionName", "text", "propertyName"]
+      .contains(&part.kind.as_str())
+    {
+      if paren_count == 0 && brace_count == 0 {
+        is_in_fn = true;
+      }
+    } else if part.kind == "parameterName" {
+      if paren_count == 1 && brace_count == 0 && is_in_fn {
+        let is_optional =
+          matches!(parts.get(idx + 1), Some(next) if next.text == "?");
+        // Skip `this` and optional parameters.
+        if !is_optional && part.text != "this" {
+          parameters.push(part.text.clone());
+        }
+      }
+    } else if part.kind == "punctuation" {
+      if part.text == "(" {
+        paren_count += 1;
+      } else if part.text == ")" {
+        paren_count -= 1;
+        if paren_count <= 0 && is_in_fn {
+          break;
+        }
+      } else if part.text == "..." && paren_count == 1 {
+        // Found rest parmeter. Do not fill in any further arguments.
+        break;
+      } else if part.text == "{" {
+        brace_count += 1;
+      } else if part.text == "}" {
+        brace_count -= 1;
+      }
+    }
+  }
+  parameters
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
@@ -2510,7 +2553,18 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
-    // TODO(@kitsonk) add `use_code_snippet`
+    let insert_text = if data.use_code_snippet {
+      Some(format!(
+        "{}({})",
+        original_item
+          .insert_text
+          .as_ref()
+          .unwrap_or(&original_item.label),
+        get_parameters_from_parts(&self.display_parts).join(", "),
+      ))
+    } else {
+      original_item.insert_text.clone()
+    };
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -2518,6 +2572,7 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
+      insert_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -4887,8 +4942,6 @@ mod tests {
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
-            allow_incomplete_completions: Some(true),
-            allow_text_changes_in_new_files: Some(true),
             include_completions_for_module_exports: Some(true),
             include_completions_with_insert_text: Some(true),
             ..Default::default()
