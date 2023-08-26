@@ -297,16 +297,6 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
