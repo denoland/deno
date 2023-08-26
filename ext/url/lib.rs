@@ -28,7 +28,7 @@ deno_core::extension!(
     op_urlpattern_parse,
     op_urlpattern_process_match_input
   ],
-  esm = ["00_url.js", "01_urlpattern.js"],
+  esm = ["00_url.js", "01_urlpattern.js", "02_quirks.js"],
 );
 
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.

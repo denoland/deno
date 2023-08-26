@@ -10,6 +10,8 @@
 const core = globalThis.Deno.core;
 const ops = core.ops;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { parseMatchInput, processMatchInput } from "ext:deno_url/02_quirks.js";
+
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypePop,
@@ -177,21 +179,16 @@ class URLPattern {
       baseURL = webidl.converters.USVString(baseURL, prefix, "Argument 2");
     }
 
-    const res = ops.op_urlpattern_process_match_input(
+    const values = processMatchInput(
       input,
       baseURL,
     );
-    if (res === null) {
+    if (values === null) {
       return null;
     }
 
-    const { 0: values, 1: inputs } = res;
-    if (inputs[1] === null) {
-      ArrayPrototypePop(inputs);
-    }
-
     /** @type {URLPatternResult} */
-    const result = { inputs };
+    const result = { inputs: [""] };
 
     for (let i = 0; i < COMPONENTS_KEYS.length; ++i) {
       const key = COMPONENTS_KEYS[i];
