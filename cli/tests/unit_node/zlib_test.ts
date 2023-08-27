@@ -62,6 +62,12 @@ Deno.test("brotli compression", async () => {
   }
 });
 
+Deno.test("brotli end-to-end with 4097 bytes", () => {
+  const a = "a".repeat(4097);
+  const compressed = brotliCompressSync(a);
+  const decompressed = brotliDecompressSync(compressed);
+});
+
 Deno.test(
   "zlib create deflate with dictionary",
   { sanitizeResources: false },
