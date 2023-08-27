@@ -4,6 +4,7 @@ use brotli::ffi::compressor::*;
 use brotli::ffi::decompressor::ffi::interface::BrotliDecoderResult;
 use brotli::ffi::decompressor::ffi::BrotliDecoderState;
 use brotli::ffi::decompressor::*;
+use brotli::Decompressor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -11,6 +12,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ToJsBuffer;
+use std::io::Read;
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   if mode > 6 {
