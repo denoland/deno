@@ -135,9 +135,10 @@ impl CliNpmResolver {
   ) -> Result<Option<PathBuf>, AnyError> {
     let Some(path) = self
       .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)? else {
-        return Ok(None);
-      };
+      .resolve_package_folder_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
     log::debug!(
       "Resolved package folder of {} to {}",
       specifier,
@@ -153,9 +154,10 @@ impl CliNpmResolver {
   ) -> Result<Option<NpmPackageId>, AnyError> {
     let Some(cache_folder_id) = self
       .fs_resolver
-      .resolve_package_cache_folder_id_from_specifier(specifier)? else {
-        return Ok(None);
-      };
+      .resolve_package_cache_folder_id_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
     Ok(Some(
       self
         .resolution

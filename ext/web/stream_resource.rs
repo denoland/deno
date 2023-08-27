@@ -183,7 +183,8 @@ pub fn op_readable_stream_resource_get_sink(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> *const c_void {
-  let Ok(resource) = state.resource_table.get::<ReadableStreamResource>(rid) else {
+  let Ok(resource) = state.resource_table.get::<ReadableStreamResource>(rid)
+  else {
     return std::ptr::null();
   };
   resource.data.tx as _
