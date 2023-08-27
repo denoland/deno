@@ -112,6 +112,7 @@ deno_core::extension!(deno_net,
     ops_tls::op_net_connect_tls<P>,
     ops_tls::op_net_listen_tls<P>,
     ops_tls::op_net_accept_tls,
+    ops_tls::op_tls_add_sni_info,
     ops_tls::op_tls_handshake,
 
     #[cfg(unix)] ops_unix::op_net_accept_unix,

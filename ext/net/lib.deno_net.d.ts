@@ -57,6 +57,7 @@ declare namespace Deno {
   export interface TlsListener extends Listener, AsyncIterable<TlsConn> {
     /** Waits for a TLS client to connect and accepts the connection. */
     accept(): Promise<TlsConn>;
+    addSniInfo(sniInfo: SniInfo): void;
     [Symbol.asyncIterator](): AsyncIterableIterator<TlsConn>;
   }
 
@@ -140,6 +141,12 @@ declare namespace Deno {
     options: TcpListenOptions & { transport?: "tcp" },
   ): Listener;
 
+  export interface SniInfo {
+    sni: string;
+    cert: string;
+    key: string;
+  }
+
   /** @category Network */
   export interface ListenTlsOptions extends TcpListenOptions {
     /** Server private key in PEM format */
@@ -159,6 +166,8 @@ declare namespace Deno {
      * @deprecated This option is deprecated and will be removed in Deno 2.0.
      */
     keyFile?: string;
+
+    sniInfo?: SniInfo[];
 
     transport?: "tcp";
 

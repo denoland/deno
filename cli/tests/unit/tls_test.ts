@@ -1321,6 +1321,143 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, net: true } },
+  async function tlsHandshakeSuccessWithSni() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      sniInfo: [
+        {
+          sni: "localhost",
+          cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+          key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+        },
+      ],
+    });
+    const acceptPromise = listener.accept();
+    const connectPromise = Deno.connectTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
+    });
+    const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
+    listener.close();
+
+    await Promise.all([conn1.handshake(), conn2.handshake()]);
+
+    await conn1.closeWrite();
+    await conn2.closeWrite();
+
+    conn1.close();
+    conn2.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsHandshakeSuccessWithAddSniInfo() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      sniInfo: [{
+        sni: "localhost",
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      }],
+    });
+
+    listener.addSniInfo({ // there's only once cert available for this test, so just add it one more time
+      sni: "localhost",
+      cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+      key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+    });
+
+    const acceptPromise = listener.accept();
+    const connectPromise = Deno.connectTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
+    });
+    const [conn1, conn2] = await Promise.all([acceptPromise, connectPromise]);
+    listener.close();
+
+    await Promise.all([conn1.handshake(), conn2.handshake()]);
+
+    await conn1.closeWrite();
+    await conn2.closeWrite();
+
+    conn1.close();
+    conn2.close();
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  function tlsAddSniInfoNotAllowedIfSniInfoNotSpecifiedEarlier() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      certFile: "cli/tests/testdata/tls/localhost.crt",
+      keyFile: "cli/tests/testdata/tls/localhost.key",
+    });
+
+    assertThrows(() => {
+      try {
+        listener.addSniInfo({
+          sni: "localhost",
+          cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+          key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+        });
+      } catch (e) {
+        throw e;
+      } finally {
+        listener.close();
+      }
+    });
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
+  async function tlsHandshakeSuccessWithWrongSni() {
+    const hostname = "localhost";
+    const port = getPort();
+
+    const listener = Deno.listenTls({
+      hostname,
+      port,
+      sniInfo: [{
+        sni: "localhost",
+        cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
+        key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
+      }],
+    });
+    const acceptPromise = listener.accept();
+    const connectPromise = Deno.connectTls({
+      hostname: "127.0.0.1",
+      port,
+      certFile: "cli/tests/testdata/tls/RootCA.crt",
+    });
+    await assertRejects(
+      () =>
+        Promise.all([acceptPromise, connectPromise]).finally(() =>
+          listener.close()
+        ),
+      Deno.errors.ConnectionRefused,
+    );
+  },
+);
+
+Deno.test(
+  { permissions: { read: true, net: true } },
   async function tlsHandshakeFailure() {
     const hostname = "localhost";
     const port = getPort();

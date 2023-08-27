@@ -53,6 +53,10 @@ class TlsListener extends Listener {
     remoteAddr.transport = "tcp";
     return new TlsConn(rid, remoteAddr, localAddr);
   }
+
+  addSniInfo(sniInfo) {
+    ops.op_tls_add_sni_info(this.rid, sniInfo.sni, sniInfo.cert, sniInfo.key);
+  }
 }
 
 function listenTls({
@@ -61,6 +65,7 @@ function listenTls({
   certFile,
   key,
   keyFile,
+  sniInfo,
   hostname = "0.0.0.0",
   transport = "tcp",
   alpnProtocols = undefined,
@@ -71,7 +76,7 @@ function listenTls({
   }
   const { 0: rid, 1: localAddr } = ops.op_net_listen_tls(
     { hostname, port: Number(port) },
-    { cert, certFile, key, keyFile, alpnProtocols, reusePort },
+    { cert, certFile, key, keyFile, sniInfo, alpnProtocols, reusePort },
   );
   return new TlsListener(rid, localAddr);
 }

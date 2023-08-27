@@ -279,9 +279,10 @@ pub fn take_network_stream_listener_resource(
   {
     let resource = Rc::try_unwrap(resource_rc)
       .map_err(|_| bad_resource("TLS socket listener is currently in use"))?;
+
     return Ok(NetworkStreamListener::Tls(
       resource.tcp_listener.into_inner(),
-      resource.tls_config,
+      Arc::new(resource.tls_config.into_inner().clone()),
     ));
   }
 
