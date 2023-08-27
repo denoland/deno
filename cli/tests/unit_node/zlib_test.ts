@@ -66,6 +66,7 @@ Deno.test("brotli end-to-end with 4097 bytes", () => {
   const a = "a".repeat(4097);
   const compressed = brotliCompressSync(a);
   const decompressed = brotliDecompressSync(compressed);
+  assertEquals(decompressed.toString(), a);
 });
 
 Deno.test(
