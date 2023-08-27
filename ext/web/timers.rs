@@ -5,6 +5,7 @@
 use crate::hr_timer_lock::hr_timer_lock;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -79,13 +80,15 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op(deferred)]
+#[op2(async(lazy))]
 pub async fn op_sleep(
   state: Rc<RefCell<OpState>>,
-  millis: u64,
-  rid: ResourceId,
+  #[bigint] millis: u64,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
-  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+  let Ok(handle) = state.borrow().resource_table.get::<TimerHandle>(rid) else {
+    return Ok(true);
+  };
 
   // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
   // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
