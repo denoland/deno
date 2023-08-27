@@ -120,6 +120,26 @@ Deno.test({
 });
 
 Deno.test({
+  name: "worker navigator",
+  fn: async function () {
+    const workerOptions: WorkerOptions = { type: "module" };
+    const w = new Worker(
+      import.meta.resolve("./worker_navigator.ts"),
+      workerOptions,
+    );
+
+    const promise = deferred();
+    w.onmessage = (e) => {
+      promise.resolve(e.data);
+    };
+
+    w.postMessage("Hello, world!");
+    assertEquals(await promise, "string, object, string, number");
+    w.terminate();
+  },
+});
+
+Deno.test({
   name: "worker fetch API",
   fn: async function () {
     const fetchingWorker = new Worker(

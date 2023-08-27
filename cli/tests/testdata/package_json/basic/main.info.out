@@ -5,4 +5,4 @@ size: [WILDCARD]
 
 file:///[WILDCARD]/main.ts (63B)
 └─┬ file:///[WILDCARD]/lib.ts (166B)
-  └── npm:@denotest/esm-basic@1.0.0 (416B)
+  └── npm:/@denotest/esm-basic@1.0.0 (416B)

@@ -17,6 +17,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::ResourceHandleFd;
 use deno_runtime::deno_fs::FsDirEntry;
 use deno_runtime::deno_io;
 use deno_runtime::deno_io::fs::FsError;
@@ -697,12 +698,7 @@ impl deno_io::fs::File for FileBackedVfsFile {
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
     Err(FsError::NotSupported)
   }
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    None
-  }
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     None
   }
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn deno_io::fs::File>> {

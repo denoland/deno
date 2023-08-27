@@ -45,12 +45,14 @@ fn macos_shared_libraries() {
   // target/release/deno:
   // 	/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation (compatibility version 150.0.0, current version 1953.255.0)
   // 	/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices (compatibility version 1.0.0, current version 1228.0.0)
+  //  /System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration (compatibility version 1.0.0, current version 1241.100.11)
   // 	/System/Library/Frameworks/Security.framework/Versions/A/Security (compatibility version 1.0.0, current version 60420.60.24)
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
-  const EXPECTED: [&str; 6] =
+  const EXPECTED: [&str; 7] =
     ["/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation",
      "/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices",
+     "/System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration",
      "/System/Library/Frameworks/Security.framework/Versions/A/Security",
      "/usr/lib/libiconv.2.dylib",
      "/usr/lib/libSystem.B.dylib",

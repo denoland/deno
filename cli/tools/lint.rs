@@ -198,12 +198,17 @@ fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext)
     .ignore_git_folder()
     .ignore_node_modules()
+    .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
     .collect_files(&files.include)
 }
 
-pub fn print_rules_list(json: bool) {
-  let lint_rules = rules::get_recommended_rules();
+pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
+  let lint_rules = if maybe_rules_tags.is_none() {
+    rules::get_all_rules()
+  } else {
+    rules::get_filtered_rules(maybe_rules_tags, None, None)
+  };
 
   if json {
     let json_rules: Vec<serde_json::Value> = lint_rules
@@ -223,8 +228,19 @@ pub fn print_rules_list(json: bool) {
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
     for rule in lint_rules.iter() {
-      println!(" - {}", rule.code());
-      println!("   help: https://lint.deno.land/#{}", rule.code());
+      print!(" - {}", colors::cyan(rule.code()));
+      if rule.tags().is_empty() {
+        println!();
+      } else {
+        println!(" [{}]", colors::gray(rule.tags().join(", ")))
+      }
+      println!(
+        "{}",
+        colors::gray(format!(
+          "   help: https://lint.deno.land/#{}",
+          rule.code()
+        ))
+      );
       println!();
     }
   }

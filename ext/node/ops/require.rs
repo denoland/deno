@@ -95,13 +95,17 @@ where
 {
   let fs = state.borrow::<FileSystemRc>();
   // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(
-    &from,
-    &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
-  )
-  .unwrap()
-  .to_file_path()
-  .unwrap();
+  let from = if from.starts_with("file:///") {
+    Url::parse(&from)?.to_file_path().unwrap()
+  } else {
+    deno_core::resolve_path(
+      &from,
+      &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
+    )
+    .unwrap()
+    .to_file_path()
+    .unwrap()
+  };
 
   ensure_read_permission::<P>(state, &from)?;
 
@@ -371,7 +375,8 @@ where
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
-    .ok();
+    .ok()
+    .flatten();
   if pkg.is_none() {
     return Ok(None);
   }
@@ -425,7 +430,7 @@ where
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<P>(state, &file_path)?;
   let fs = state.borrow::<FileSystemRc>();
-  Ok(fs.read_to_string(&file_path)?)
+  Ok(fs.read_text_file_sync(&file_path)?)
 }
 
 #[op]
@@ -465,7 +470,7 @@ where
   } else {
     let original = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
-    if fs.is_dir(Path::new(&mod_dir)) {
+    if fs.is_dir_sync(Path::new(&mod_dir)) {
       mod_dir
     } else {
       original
@@ -499,7 +504,7 @@ where
 fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
   filename: String,
-) -> Result<PackageJson, AnyError>
+) -> Result<Option<PackageJson>, AnyError>
 where
   P: NodePermissions + 'static,
 {

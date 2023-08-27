@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::task::spawn;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::JoinHandle;
 use deno_runtime::deno_webstorage::rusqlite::params;
 use serde::Serialize;
 
@@ -72,9 +72,8 @@ impl IncrementalCacheInner {
     state: &TState,
     initial_file_paths: &[PathBuf],
   ) -> Self {
-    let state_hash = FastInsecureHasher::new()
-      .write_str(&serde_json::to_string(state).unwrap())
-      .finish();
+    let state_hash =
+      FastInsecureHasher::hash(serde_json::to_string(state).unwrap());
     let sql_cache = SqlIncrementalCache::new(db, state_hash);
     Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
   }
@@ -114,15 +113,13 @@ impl IncrementalCacheInner {
 
   pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
     match self.previous_hashes.get(file_path) {
-      Some(hash) => {
-        *hash == FastInsecureHasher::new().write_str(file_text).finish()
-      }
+      Some(hash) => *hash == FastInsecureHasher::hash(file_text),
       None => false,
     }
   }
 
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
-    let hash = FastInsecureHasher::new().write_str(file_text).finish();
+    let hash = FastInsecureHasher::hash(file_text);
     if let Some(previous_hash) = self.previous_hashes.get(file_path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
@@ -270,7 +267,7 @@ mod test {
     let sql_cache = SqlIncrementalCache::new(conn, 1);
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
-    let file_hash = FastInsecureHasher::new().write_str(file_text).finish();
+    let file_hash = FastInsecureHasher::hash(file_text);
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,

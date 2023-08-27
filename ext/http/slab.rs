@@ -3,6 +3,8 @@ use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::CompletionHandle;
 use crate::response_body::ResponseBytes;
 use deno_core::error::AnyError;
+use deno_core::OpState;
+use deno_core::ResourceId;
 use http::request::Parts;
 use http::HeaderMap;
 use hyper1::body::Incoming;
@@ -18,10 +20,36 @@ pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
 pub type SlabId = u32;
 
+enum RequestBodyState {
+  Incoming(Incoming),
+  Resource(HttpRequestBodyAutocloser),
+}
+
+impl From<Incoming> for RequestBodyState {
+  fn from(value: Incoming) -> Self {
+    RequestBodyState::Incoming(value)
+  }
+}
+
+/// Ensures that the request body closes itself when no longer needed.
+pub struct HttpRequestBodyAutocloser(ResourceId, Rc<RefCell<OpState>>);
+
+impl HttpRequestBodyAutocloser {
+  pub fn new(res: ResourceId, op_state: Rc<RefCell<OpState>>) -> Self {
+    Self(res, op_state)
+  }
+}
+
+impl Drop for HttpRequestBodyAutocloser {
+  fn drop(&mut self) {
+    _ = self.1.borrow_mut().resource_table.close(self.0);
+  }
+}
+
 pub struct HttpSlabRecord {
   request_info: HttpConnectionProperties,
   request_parts: Parts,
-  request_body: Option<Incoming>,
+  request_body: Option<RequestBodyState>,
   // The response may get taken before we tear this down
   response: Option<Response>,
   promise: CompletionHandle,
@@ -32,7 +60,7 @@ pub struct HttpSlabRecord {
 }
 
 thread_local! {
-  static SLAB: RefCell<Slab<HttpSlabRecord>> = RefCell::new(Slab::with_capacity(1024));
+  static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
 }
 
 macro_rules! http_trace {
@@ -55,6 +83,18 @@ pub struct SlabEntry(
   SlabId,
   RefMut<'static, Slab<HttpSlabRecord>>,
 );
+
+const SLAB_CAPACITY: usize = 1024;
+
+pub fn slab_init() {
+  SLAB.with(|slab: &RefCell<Slab<HttpSlabRecord>>| {
+    // Note that there might already be an active HTTP server, so this may just
+    // end up adding room for an additional SLAB_CAPACITY items. All HTTP servers
+    // on a single thread share the same slab.
+    let mut slab = slab.borrow_mut();
+    slab.reserve(SLAB_CAPACITY);
+  })
+}
 
 pub fn slab_get(index: SlabId) -> SlabEntry {
   http_trace!(index, "slab_get");
@@ -86,6 +126,7 @@ fn slab_insert_raw(
     let mut slab = slab.borrow_mut();
     let body = ResponseBytes::default();
     let trailers = body.trailers();
+    let request_body = request_body.map(|r| r.into());
     slab.insert(HttpSlabRecord {
       request_info,
       request_parts,
@@ -162,8 +203,35 @@ impl SlabEntry {
   }
 
   /// Take the Hyper body from this entry.
-  pub fn take_body(&mut self) -> Incoming {
-    self.self_mut().request_body.take().unwrap()
+  pub fn take_body(&mut self) -> Option<Incoming> {
+    let body_holder = &mut self.self_mut().request_body;
+    let body = body_holder.take();
+    match body {
+      Some(RequestBodyState::Incoming(body)) => Some(body),
+      x => {
+        *body_holder = x;
+        None
+      }
+    }
+  }
+
+  pub fn take_resource(&mut self) -> Option<HttpRequestBodyAutocloser> {
+    let body_holder = &mut self.self_mut().request_body;
+    let body = body_holder.take();
+    match body {
+      Some(RequestBodyState::Resource(res)) => Some(res),
+      x => {
+        *body_holder = x;
+        None
+      }
+    }
+  }
+
+  /// Replace the request body with a resource ID and the OpState we'll need to shut it down.
+  /// We cannot keep just the resource itself, as JS code might be reading from the resource ID
+  /// to generate the response data (requiring us to keep it in the resource table).
+  pub fn put_resource(&mut self, res: HttpRequestBodyAutocloser) {
+    self.self_mut().request_body = Some(RequestBodyState::Resource(res));
   }
 
   /// Complete this entry, potentially expunging it if it is complete.

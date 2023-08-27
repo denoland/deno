@@ -36,7 +36,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::JoinHandle;
 use deno_runtime::colors;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -76,7 +76,7 @@ impl SubcommandOutput for Result<(), std::io::Error> {
 fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
   f: F,
 ) -> JoinHandle<Result<i32, AnyError>> {
-  deno_core::task::spawn(f.map(|r| r.output()))
+  deno_core::unsync::spawn(f.map(|r| r.output()))
 }
 
 async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
@@ -140,7 +140,10 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
     DenoSubcommand::Lsp => spawn_subcommand(async { lsp::start().await }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
-        tools::lint::print_rules_list(lint_flags.json);
+        tools::lint::print_rules_list(
+          lint_flags.json,
+          lint_flags.maybe_rules_tags,
+        );
         Ok(())
       } else {
         tools::lint::lint(flags, lint_flags).await

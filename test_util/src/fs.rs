@@ -10,6 +10,8 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use lsp_types::Url;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::assertions::assert_wildcard_match;
 
@@ -45,8 +47,12 @@ impl PathRef {
     PathRef(self.as_path().parent().unwrap().to_path_buf())
   }
 
-  pub fn uri(&self) -> Url {
+  pub fn uri_dir(&self) -> Url {
     Url::from_directory_path(self.as_path()).unwrap()
+  }
+
+  pub fn uri_file(&self) -> Url {
+    Url::from_file_path(self.as_path()).unwrap()
   }
 
   pub fn as_path(&self) -> &Path {
@@ -110,12 +116,25 @@ impl PathRef {
       .with_context(|| format!("Could not read file: {}", self))
   }
 
+  pub fn read_json<TValue: DeserializeOwned>(&self) -> TValue {
+    serde_json::from_str(&self.read_to_string()).unwrap()
+  }
+
+  pub fn read_json_value(&self) -> serde_json::Value {
+    serde_json::from_str(&self.read_to_string()).unwrap()
+  }
+
   pub fn rename(&self, to: impl AsRef<Path>) {
     fs::rename(self, self.join(to)).unwrap();
   }
 
   pub fn write(&self, text: impl AsRef<str>) {
     fs::write(self, text.as_ref()).unwrap();
+  }
+
+  pub fn write_json<TValue: Serialize>(&self, value: &TValue) {
+    let text = serde_json::to_string_pretty(value).unwrap();
+    self.write(text);
   }
 
   pub fn symlink_dir(
@@ -322,6 +341,10 @@ impl TempDir {
 
   pub fn new_with_prefix(prefix: &str) -> Self {
     Self::new_inner(&std::env::temp_dir(), Some(prefix))
+  }
+
+  pub fn new_in(parent_dir: &Path) -> Self {
+    Self::new_inner(parent_dir, None)
   }
 
   pub fn new_with_path(path: &Path) -> Self {

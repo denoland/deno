@@ -433,6 +433,217 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
 }
 
 #[test]
+fn lsp_import_map_config_file_auto_discovered() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
+
+  let mut client = context.new_lsp_command().capture_stderr().build();
+  client.initialize_default();
+
+  // add the deno.json
+  temp_dir.write("deno.jsonc", r#"{ "imports": { "/~/": "./lib/" } }"#);
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "type": 2
+    }]
+  }));
+  client.wait_until_stderr_line(|line| {
+    line.contains("Auto-resolved configuration file:")
+  });
+
+  let uri = temp_dir.uri().join("a.ts").unwrap();
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
+
+  assert_eq!(diagnostics.all().len(), 0);
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
+      }
+    })
+  );
+
+  // now cause a syntax error
+  temp_dir.write("deno.jsonc", r#",,#,#,,"#);
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "type": 2
+    }]
+  }));
+  assert_eq!(client.read_diagnostics().all().len(), 1);
+
+  // now fix it, and things should work again
+  temp_dir.write("deno.jsonc", r#"{ "imports": { "/~/": "./lib/" } }"#);
+  client.did_change_watched_files(json!({
+    "changes": [{
+      "uri": temp_dir.uri().join("deno.jsonc").unwrap(),
+      "type": 2
+    }]
+  }));
+  client.wait_until_stderr_line(|line| {
+    line.contains("Auto-resolved configuration file:")
+  });
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": uri
+      },
+      "position": { "line": 2, "character": 12 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value":"(alias) const b: \"b\"\nimport b"
+        },
+        ""
+      ],
+      "range": {
+        "start": { "line": 2, "character": 12 },
+        "end": { "line": 2, "character": 13 }
+      }
+    })
+  );
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_import_map_config_file_auto_discovered_symlink() {
+  let context = TestContextBuilder::new()
+    // DO NOT COPY THIS CODE. Very rare case where we want to force the temp
+    // directory on the CI to not be a symlinked directory because we are
+    // testing a scenario with a symlink to a non-symlink in the same directory
+    // tree. Generally you want to ensure your code works in symlinked directories
+    // so don't use this unless you have a similar scenario.
+    .temp_dir_path(std::env::temp_dir().canonicalize().unwrap())
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("lib");
+  temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
+
+  let mut client = context.new_lsp_command().capture_stderr().build();
+  client.initialize_default();
+
+  // now create a symlink in the current directory to a subdir/deno.json
+  // and ensure the watched files notification still works
+  temp_dir.create_dir_all("subdir");
+  temp_dir.write("subdir/deno.json", r#"{ }"#);
+  temp_dir.symlink_file(
+    temp_dir.path().join("subdir").join("deno.json"),
+    temp_dir.path().join("deno.json"),
+  );
+  client.did_change_watched_files(json!({
+    "changes": [{
+      // the client will give a watched file changed event for the symlink's target
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
+      "type": 2
+    }]
+  }));
+
+  // this will discover the deno.json in the root
+  let search_line = format!(
+    "Auto-resolved configuration file: \"{}\"",
+    temp_dir.uri().join("deno.json").unwrap().as_str()
+  );
+  client.wait_until_stderr_line(|line| line.contains(&search_line));
+
+  // now open a file which will cause a diagnostic because the import map is empty
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { b } from \"/~/b.ts\";\n\nconsole.log(b);\n"
+    }
+  }));
+  assert_eq!(diagnostics.all().len(), 1);
+
+  // update the import map to have the imports now
+  temp_dir.write("subdir/deno.json", r#"{ "imports": { "/~/": "./lib/" } }"#);
+  client.did_change_watched_files(json!({
+    "changes": [{
+      // now still say that the target path has changed
+      "uri": temp_dir.path().join("subdir/deno.json").canonicalize().uri_file(),
+      "type": 2
+    }]
+  }));
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_import_map_node_specifiers() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+
+  temp_dir.write("deno.json", r#"{ "imports": { "fs": "node:fs" } }"#);
+
+  // cache @types/node
+  context
+    .new_command()
+    .args("cache npm:@types/node")
+    .run()
+    .skip_output_check()
+    .assert_exit_code(0);
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.set_config("./deno.json");
+  });
+
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("a.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import fs from \"fs\";\nconsole.log(fs);"
+    }
+  }));
+  assert_eq!(diagnostics.all(), vec![]);
+
+  client.shutdown();
+}
+
+#[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1210,6 +1421,137 @@ fn lsp_workspace_enable_paths() {
 
   run_test(true);
   run_test(false);
+}
+
+#[test]
+fn lsp_exclude_config() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.create_dir_all("other");
+  temp_dir.write(
+    "other/shared.ts",
+    // this should not be found in the "find references" since this file is excluded
+    "import { a } from '../worker/shared.ts'; console.log(a);",
+  );
+  temp_dir.create_dir_all("worker");
+  temp_dir.write("worker/shared.ts", "export const a = 1");
+  temp_dir.write(
+    "deno.json",
+    r#"{
+  "exclude": ["other"],
+}"#,
+  );
+  let root_specifier = temp_dir.uri();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./other/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": concat!(
+        "console.log(Date.now());\n",
+        "import { a } from './shared.ts';\n",
+        "a;\n",
+      ),
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": "console.log(Date.now());\n"
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./other/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 19 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+      ],
+      "range": {
+        "start": { "line": 0, "character": 17, },
+        "end": { "line": 0, "character": 20, }
+      }
+    })
+  );
+
+  // check that the file system documents were auto-discovered
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      },
+      "position": { "line": 2, "character": 0 },
+      "context": {
+        "includeDeclaration": true
+      }
+    }),
+  );
+
+  assert_eq!(
+    res,
+    json!([{
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "range": {
+        "start": { "line": 1, "character": 9 },
+        "end": { "line": 1, "character": 10 }
+      }
+    }, {
+      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "range": {
+        "start": { "line": 2, "character": 0 },
+        "end": { "line": 2, "character": 1 }
+      }
+    }, {
+      "uri": root_specifier.join("./worker/shared.ts").unwrap(),
+      "range": {
+        "start": { "line": 0, "character": 13 },
+        "end": { "line": 0, "character": 14 }
+      }
+    }])
+  );
+
+  client.shutdown();
 }
 
 #[test]
@@ -3343,7 +3685,7 @@ fn lsp_find_references() {
       "uri": "file:///a/mod.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": r#"export const a = 1;\nconst b = 2;"#
+      "text": r"export const a = 1;\nconst b = 2;"
     }
   }));
   client.did_open(json!({
@@ -3776,7 +4118,7 @@ fn lsp_code_actions_deno_cache() {
         "severity": 1,
         "code": "no-cache",
         "source": "deno",
-        "message": "Uncached or missing remote URL: \"https://deno.land/x/a/mod.ts\".",
+        "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
         "data": { "specifier": "https://deno.land/x/a/mod.ts" }
       }],
       "version": 1
@@ -3866,7 +4208,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"chalk\".",
+        "message": "Uncached or missing npm package: chalk",
         "data": { "specifier": "npm:chalk" }
       }],
       "version": 1
@@ -3893,7 +4235,7 @@ fn lsp_code_actions_deno_cache_npm() {
           "severity": 1,
           "code": "no-cache-npm",
           "source": "deno",
-          "message": "Uncached or missing npm package: \"chalk\".",
+          "message": "Uncached or missing npm package: chalk",
           "data": { "specifier": "npm:chalk" }
         }],
         "only": ["quickfix"]
@@ -3913,7 +4255,7 @@ fn lsp_code_actions_deno_cache_npm() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"chalk\".",
+        "message": "Uncached or missing npm package: chalk",
         "data": { "specifier": "npm:chalk" }
       }],
       "command": {
@@ -4766,9 +5108,12 @@ fn lsp_completions_auto_import() {
   );
   assert!(!list.is_incomplete);
   let item = list.items.iter().find(|item| item.label == "foo");
-  if item.is_none() {
+  let Some(item) = item else {
     panic!("completions items missing 'foo' symbol");
-  }
+  };
+  let mut item_value = serde_json::to_value(item).unwrap();
+  item_value["data"]["tsc"]["data"]["exportMapKey"] =
+    serde_json::Value::String("".to_string());
 
   let req = json!({
     "label": "foo",
@@ -4788,7 +5133,7 @@ fn lsp_completions_auto_import() {
         "source": "./b.ts",
         "data": {
           "exportName": "foo",
-          "exportMapKey": "foo|6802|file:///a/b",
+          "exportMapKey": "",
           "moduleSpecifier": "./b.ts",
           "fileName": "file:///a/b.ts"
         },
@@ -4796,7 +5141,7 @@ fn lsp_completions_auto_import() {
       }
     }
   });
-  assert_eq!(serde_json::to_value(item.unwrap()).unwrap(), req);
+  assert_eq!(item_value, req);
 
   let res = client.write_request("completionItem/resolve", req);
   assert_eq!(
@@ -5994,7 +6339,7 @@ fn lsp_completions_node_specifier() {
         "severity": 1,
         "code": "no-cache-npm",
         "source": "deno",
-        "message": "Uncached or missing npm package: \"@types/node\"."
+        "message": "Uncached or missing npm package: @types/node"
       }
     ])
   );
@@ -6298,7 +6643,7 @@ fn lsp_cache_location() {
   );
   let cache_path = temp_dir.path().join(".cache");
   assert!(cache_path.is_dir());
-  assert!(cache_path.join("gen").is_dir());
+  assert!(!cache_path.join("gen").is_dir()); // not created because no emitting has occurred
   client.shutdown();
 }
 
@@ -7377,6 +7722,84 @@ fn lsp_configuration_did_change() {
 }
 
 #[test]
+fn lsp_completions_complete_function_calls() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "[]."
+    }
+  }));
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let request = json!([{
+    "enable": true,
+    "suggest": {
+      "completeFunctionCalls": true,
+    },
+  }]);
+  // one for the workspace
+  client.handle_configuration_request(request.clone());
+  // one for the specifier
+  client.handle_configuration_request(request);
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+
+  let res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "map",
+      "kind": 2,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 3,
+          "name": "map",
+          "useCodeSnippet": true
+        }
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "label": "map",
+      "kind": 2,
+      "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
+      },
+      "sortText": "1",
+      "insertText": "map(callbackfn)",
+      "insertTextFormat": 1
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7911,8 +8334,9 @@ fn lsp_testing_api() {
   let contents = r#"
 Deno.test({
   name: "test a",
-  fn() {
+  async fn(t) {
     console.log("test a");
+    await t.step("step of test a", () => {});
   }
 });
 "#;
@@ -7942,7 +8366,6 @@ Deno.test({
   assert_eq!(params.tests.len(), 1);
   let test = &params.tests[0];
   assert_eq!(test.label, "test a");
-  assert!(test.steps.is_none());
   assert_eq!(
     test.range,
     Some(lsp::Range {
@@ -7953,6 +8376,23 @@ Deno.test({
       end: lsp::Position {
         line: 1,
         character: 9,
+      }
+    })
+  );
+  let steps = test.steps.as_ref().unwrap();
+  assert_eq!(steps.len(), 1);
+  let step = &steps[0];
+  assert_eq!(step.label, "step of test a");
+  assert_eq!(
+    step.range,
+    Some(lsp::Range {
+      start: lsp::Position {
+        line: 5,
+        character: 12,
+      },
+      end: lsp::Position {
+        line: 5,
+        character: 16,
       }
     })
   );
@@ -8021,6 +8461,54 @@ Deno.test({
         },
       }
     }))
+  );
+
+  let (method, notification) = client.read_notification::<Value>();
+  assert_eq!(method, "deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+          "stepId": step.id,
+        },
+      }
+    }))
+  );
+
+  let (method, notification) = client.read_notification::<Value>();
+  assert_eq!(method, "deno/testRunProgress");
+  let mut notification = notification.unwrap();
+  let duration = notification
+    .as_object_mut()
+    .unwrap()
+    .get_mut("message")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .remove("duration");
+  assert!(duration.is_some());
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "passed",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+          "stepId": step.id,
+        },
+      }
+    })
   );
 
   let (method, notification) = client.read_notification::<Value>();
@@ -8417,6 +8905,242 @@ fn lsp_node_modules_dir() {
   assert_starts_with!(
     uri,
     ModuleSpecifier::from_file_path(&path).unwrap().as_str()
+  );
+
+  client.shutdown();
+}
+
+#[test]
+fn lsp_vendor_dir() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let local_file_uri = temp_dir.uri().join("file.ts").unwrap();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": local_file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": "import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);",
+    }
+  }));
+  let cache = |client: &mut LspClient| {
+    client.write_request(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": local_file_uri,
+        },
+        "uris": [
+          {
+            "uri": "http://localhost:4545/subdir/mod1.ts",
+          }
+        ]
+      }),
+    );
+  };
+
+  cache(&mut client);
+
+  assert!(!temp_dir.path().join("vendor").exists());
+
+  temp_dir.write(
+    temp_dir.path().join("deno.json"),
+    "{ \"vendor\": true, \"lock\": false }\n",
+  );
+  let refresh_config = |client: &mut LspClient| {
+    client.write_notification(
+      "workspace/didChangeConfiguration",
+      json!({
+        "settings": {
+          "enable": true,
+          "config": "./deno.json",
+        }
+      }),
+    );
+
+    let request = json!([{
+      "enable": true,
+      "config": "./deno.json",
+      "codeLens": {
+        "implementations": true,
+        "references": true
+      },
+      "importMap": null,
+      "lint": false,
+      "suggest": {
+        "autoImports": true,
+        "completeFunctionCalls": false,
+        "names": true,
+        "paths": true,
+        "imports": {}
+      },
+      "unstable": false
+    }]);
+    // one for the workspace
+    client.handle_configuration_request(request.clone());
+    // one for the specifier
+    client.handle_configuration_request(request);
+  };
+  refresh_config(&mut client);
+
+  let diagnostics = client.read_diagnostics();
+  assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics); // cached
+
+  // no caching necessary because it was already cached. It should exist now
+  assert!(temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts")
+    .exists());
+
+  // the declaration should be found in the vendor directory
+  let res = client.write_request(
+    "textDocument/references",
+    json!({
+      "textDocument": {
+        "uri": local_file_uri,
+      },
+      "position": { "line": 0, "character": 9 }, // returnsHi
+      "context": {
+        "includeDeclaration": false
+      }
+    }),
+  );
+
+  // ensure that it's using the vendor directory
+  let references = res.as_array().unwrap();
+  assert_eq!(references.len(), 2, "references: {:#?}", references);
+  let uri = references[1]
+    .as_object()
+    .unwrap()
+    .get("uri")
+    .unwrap()
+    .as_str()
+    .unwrap();
+  let file_path = temp_dir
+    .path()
+    .join("vendor/http_localhost_4545/subdir/mod1.ts");
+  let remote_file_uri = file_path.uri_file();
+  assert_eq!(uri, remote_file_uri.as_str());
+
+  let file_text = file_path.read_to_string();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": remote_file_uri,
+      "languageId": "typescript",
+      "version": 1,
+      "text": file_text,
+    }
+  }));
+  assert_eq!(diagnostics.all(), Vec::new());
+
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": remote_file_uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 17, "character": 0 },
+          },
+          "text": "export function returnsHi(): number { return new Date(); }"
+        }
+      ]
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(remote_file_uri.as_str(), "deno-ts")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 38 },
+          "end": { "line": 0, "character": 44 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'Date' is not assignable to type 'number'."
+      }
+    ]),
+  );
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(local_file_uri.as_str(), "deno-ts")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 1, "character": 6 },
+          "end": { "line": 1, "character": 10 }
+        },
+        "severity": 1,
+        "code": 2322,
+        "source": "deno-ts",
+        "message": "Type 'number' is not assignable to type 'string'."
+      }
+    ]),
+  );
+  assert_eq!(diagnostics.all().len(), 2);
+
+  // now try doing a relative import into the vendor directory
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": local_file_uri,
+        "version": 2
+      },
+      "contentChanges": [
+        {
+          "range": {
+            "start": { "line": 0, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "text": "import { returnsHi } from './vendor/subdir/mod1.ts';\nconst test: string = returnsHi();\nconsole.log(test);"
+        }
+      ]
+    }),
+  );
+
+  let diagnostics = client.read_diagnostics();
+
+  assert_eq!(
+    json!(
+      diagnostics
+        .messages_with_file_and_source(local_file_uri.as_str(), "deno")
+        .diagnostics
+    ),
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 26 },
+          "end": { "line": 0, "character": 51 }
+        },
+        "severity": 1,
+        "code": "resolver-error",
+        "source": "deno",
+        "message": "Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring."
+      }
+    ]),
   );
 
   client.shutdown();

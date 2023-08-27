@@ -8,6 +8,7 @@ const internals = globalThis.__bootstrap.internals;
 const { core } = globalThis.__bootstrap;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 import { EventEmitter } from "node:events";
+import Module from "node:module";
 import { validateString } from "ext:deno_node/internal/validators.mjs";
 import {
   ERR_INVALID_ARG_TYPE,
@@ -32,6 +33,8 @@ export { _nextTick as nextTick, chdir, cwd, env, version, versions };
 import {
   createWritableStdioStream,
   initStdin,
+  Readable,
+  Writable,
 } from "ext:deno_node/_process/streams.mjs";
 import {
   enableNextTick,
@@ -51,15 +54,42 @@ export let platform = "";
 // TODO(kt3k): This should be set at start up time
 export let pid = 0;
 
-// TODO(kt3k): Give better types to stdio objects
-// deno-lint-ignore no-explicit-any
-let stderr = null as any;
-// deno-lint-ignore no-explicit-any
-let stdin = null as any;
-// deno-lint-ignore no-explicit-any
-let stdout = null as any;
+// We want streams to be as lazy as possible, but we cannot export a getter in a module. To
+// work around this we make these proxies that eagerly instantiate the underlying object on
+// first access of any property/method.
+function makeLazyStream<T>(objectFactory: () => T): T {
+  return new Proxy({}, {
+    get: function (_, prop, receiver) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.get(objectFactory() as any, prop, receiver);
+    },
+    has: function (_, prop) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.has(objectFactory() as any, prop);
+    },
+    ownKeys: function (_) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.ownKeys(objectFactory() as any);
+    },
+    set: function (_, prop, value, receiver) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.set(objectFactory() as any, prop, value, receiver);
+    },
+    getPrototypeOf: function (_) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.getPrototypeOf(objectFactory() as any);
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      // deno-lint-ignore no-explicit-any
+      return Reflect.getOwnPropertyDescriptor(objectFactory() as any, prop);
+    },
+  }) as T;
+}
 
-export { stderr, stdin, stdout };
+export let stderr = makeLazyStream(getStderr);
+export let stdin = makeLazyStream(getStdin);
+export let stdout = makeLazyStream(getStdout);
+
 import { getBinding } from "ext:deno_node/internal_binding/mod.ts";
 import * as constants from "ext:deno_node/internal_binding/constants.ts";
 import * as uv from "ext:deno_node/internal_binding/uv.ts";
@@ -291,6 +321,14 @@ function _kill(pid: number, sig: number): number {
   }
 }
 
+export function dlopen(module, filename, _flags) {
+  // NOTE(bartlomieju): _flags is currently ignored, but we don't warn for it
+  // as it makes DX bad, even though it might not be needed:
+  // https://github.com/denoland/deno/issues/20075
+  Module._extensions[".node"](module, filename);
+  return module;
+}
+
 export function kill(pid: number, sig: string | number = "SIGTERM") {
   if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
@@ -354,6 +392,16 @@ class Process extends EventEmitter {
     return arch;
   }
 
+  get title() {
+    return "deno";
+  }
+
+  set title(_value) {
+    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
+    // process name will be properly set and visible from other tools anyway.
+    // Might revisit in the future.
+  }
+
   /**
    * https://nodejs.org/api/process.html#process_process_argv
    * Read permissions are required in order to get the executable route
@@ -402,6 +450,8 @@ class Process extends EventEmitter {
 
   /** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
   nextTick = _nextTick;
+
+  dlopen = dlopen;
 
   /** https://nodejs.org/api/process.html#process_process_events */
   override on(event: "exit", listener: (code: number) => void): this;
@@ -584,13 +634,19 @@ class Process extends EventEmitter {
   memoryUsage = memoryUsage;
 
   /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = stderr;
+  get stderr(): Writable {
+    return getStderr();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_stdin */
-  stdin = stdin;
+  get stdin(): Readable {
+    return getStdin();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = stdout;
+  get stdout(): Writable {
+    return getStdout();
+  }
 
   /** https://nodejs.org/api/process.html#process_process_version */
   version = version;
@@ -683,6 +739,115 @@ addReadOnlyProcessAlias("throwDeprecation", "--throw-deprecation");
 export const removeListener = process.removeListener;
 export const removeAllListeners = process.removeAllListeners;
 
+let unhandledRejectionListenerCount = 0;
+let uncaughtExceptionListenerCount = 0;
+let beforeExitListenerCount = 0;
+let exitListenerCount = 0;
+
+process.on("newListener", (event: string) => {
+  switch (event) {
+    case "unhandledRejection":
+      unhandledRejectionListenerCount++;
+      break;
+    case "uncaughtException":
+      uncaughtExceptionListenerCount++;
+      break;
+    case "beforeExit":
+      beforeExitListenerCount++;
+      break;
+    case "exit":
+      exitListenerCount++;
+      break;
+    default:
+      return;
+  }
+  synchronizeListeners();
+});
+
+process.on("removeListener", (event: string) => {
+  switch (event) {
+    case "unhandledRejection":
+      unhandledRejectionListenerCount--;
+      break;
+    case "uncaughtException":
+      uncaughtExceptionListenerCount--;
+      break;
+    case "beforeExit":
+      beforeExitListenerCount--;
+      break;
+    case "exit":
+      exitListenerCount--;
+      break;
+    default:
+      return;
+  }
+  synchronizeListeners();
+});
+
+function processOnError(event: ErrorEvent) {
+  if (process.listenerCount("uncaughtException") > 0) {
+    event.preventDefault();
+  }
+
+  uncaughtExceptionHandler(event.error, "uncaughtException");
+}
+
+function processOnBeforeUnload(event: Event) {
+  process.emit("beforeExit", process.exitCode || 0);
+  processTicksAndRejections();
+  if (core.eventLoopHasMoreWork()) {
+    event.preventDefault();
+  }
+}
+
+function processOnUnload() {
+  if (!process._exiting) {
+    process._exiting = true;
+    process.emit("exit", process.exitCode || 0);
+  }
+}
+
+function synchronizeListeners() {
+  // Install special "unhandledrejection" handler, that will be called
+  // last.
+  if (
+    unhandledRejectionListenerCount > 0 || uncaughtExceptionListenerCount > 0
+  ) {
+    internals.nodeProcessUnhandledRejectionCallback = (event) => {
+      if (process.listenerCount("unhandledRejection") === 0) {
+        // The Node.js default behavior is to raise an uncaught exception if
+        // an unhandled rejection occurs and there are no unhandledRejection
+        // listeners.
+
+        event.preventDefault();
+        uncaughtExceptionHandler(event.reason, "unhandledRejection");
+        return;
+      }
+
+      event.preventDefault();
+      process.emit("unhandledRejection", event.reason, event.promise);
+    };
+  } else {
+    internals.nodeProcessUnhandledRejectionCallback = undefined;
+  }
+
+  if (uncaughtExceptionListenerCount > 0) {
+    globalThis.addEventListener("error", processOnError);
+  } else {
+    globalThis.removeEventListener("error", processOnError);
+  }
+  if (beforeExitListenerCount > 0) {
+    globalThis.addEventListener("beforeunload", processOnBeforeUnload);
+  } else {
+    globalThis.removeEventListener("beforeunload", processOnBeforeUnload);
+  }
+  if (exitListenerCount > 0) {
+    globalThis.addEventListener("unload", processOnUnload);
+  } else {
+    globalThis.removeEventListener("unload", processOnUnload);
+  }
+}
+
 // Should be called only once, in `runtime/js/99_main.js` when the runtime is
 // bootstrapped.
 internals.__bootstrapNodeProcess = function (
@@ -727,68 +892,52 @@ internals.__bootstrapNodeProcess = function (
   core.setMacrotaskCallback(runNextTicks);
   enableNextTick();
 
-  // Install special "unhandledrejection" handler, that will be called
-  // last.
-  internals.nodeProcessUnhandledRejectionCallback = (event) => {
-    if (process.listenerCount("unhandledRejection") === 0) {
-      // The Node.js default behavior is to raise an uncaught exception if
-      // an unhandled rejection occurs and there are no unhandledRejection
-      // listeners.
-      if (process.listenerCount("uncaughtException") === 0) {
-        throw event.reason;
-      }
-
-      event.preventDefault();
-      uncaughtExceptionHandler(event.reason, "unhandledRejection");
-      return;
-    }
-
-    event.preventDefault();
-    process.emit("unhandledRejection", event.reason, event.promise);
-  };
-
-  globalThis.addEventListener("error", (event) => {
-    if (process.listenerCount("uncaughtException") > 0) {
-      event.preventDefault();
-    }
-
-    uncaughtExceptionHandler(event.error, "uncaughtException");
-  });
-
-  globalThis.addEventListener("beforeunload", (e) => {
-    process.emit("beforeExit", process.exitCode || 0);
-    processTicksAndRejections();
-    if (core.eventLoopHasMoreWork()) {
-      e.preventDefault();
-    }
-  });
-
-  globalThis.addEventListener("unload", () => {
-    if (!process._exiting) {
-      process._exiting = true;
-      process.emit("exit", process.exitCode || 0);
-    }
-  });
-
-  // Initializes stdin
-  stdin = process.stdin = initStdin();
-
-  /** https://nodejs.org/api/process.html#process_process_stderr */
-  stderr = process.stderr = createWritableStdioStream(
-    io.stderr,
-    "stderr",
-  );
-
-  /** https://nodejs.org/api/process.html#process_process_stdout */
-  stdout = process.stdout = createWritableStdioStream(
-    io.stdout,
-    "stdout",
-  );
-
   process.setStartTime(Date.now());
   // @ts-ignore Remove setStartTime and #startTime is not modifiable
   delete process.setStartTime;
   delete internals.__bootstrapNodeProcess;
 };
+
+// deno-lint-ignore no-explicit-any
+let stderr_ = null as any;
+// deno-lint-ignore no-explicit-any
+let stdin_ = null as any;
+// deno-lint-ignore no-explicit-any
+let stdout_ = null as any;
+
+function getStdin(): Readable {
+  if (!stdin_) {
+    stdin_ = initStdin();
+    stdin = stdin_;
+    Object.defineProperty(process, "stdin", { get: () => stdin_ });
+  }
+  return stdin_;
+}
+
+/** https://nodejs.org/api/process.html#process_process_stdout */
+function getStdout(): Writable {
+  if (!stdout_) {
+    stdout_ = createWritableStdioStream(
+      io.stdout,
+      "stdout",
+    );
+    stdout = stdout_;
+    Object.defineProperty(process, "stdout", { get: () => stdout_ });
+  }
+  return stdout_;
+}
+
+/** https://nodejs.org/api/process.html#process_process_stderr */
+function getStderr(): Writable {
+  if (!stderr_) {
+    stderr_ = createWritableStdioStream(
+      io.stderr,
+      "stderr",
+    );
+    stderr = stderr_;
+    Object.defineProperty(process, "stderr", { get: () => stderr_ });
+  }
+  return stderr_;
+}
 
 export default process;

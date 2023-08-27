@@ -693,29 +693,35 @@ function createStreamTest(count: number, delay: number, action: string) {
       onError: createOnErrorCb(ac),
     });
 
-    await listeningPromise;
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
-    const text = await resp.text();
+    try {
+      await listeningPromise;
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`);
+      if (action == "Throw") {
+        try {
+          await resp.text();
+          fail();
+        } catch (_) {
+          // expected
+        }
+      } else {
+        const text = await resp.text();
 
-    ac.abort();
-    await server.finished;
-    let expected = "";
-    if (action == "Throw" && count < 2 && delay < 1000) {
-      // NOTE: This is specific to the current implementation. In some cases where a stream errors, we
-      // don't send the first packet.
-      expected = "";
-    } else {
-      for (let i = 0; i < count; i++) {
-        expected += `a${i}`;
+        let expected = "";
+        for (let i = 0; i < count; i++) {
+          expected += `a${i}`;
+        }
+
+        assertEquals(text, expected);
       }
+    } finally {
+      ac.abort();
+      await server.finished;
     }
-
-    assertEquals(text, expected);
   });
 }
 
 for (const count of [0, 1, 2, 3]) {
-  for (const delay of [0, 1, 1000]) {
+  for (const delay of [0, 1, 25]) {
     // Creating a stream that errors in start will throw
     if (delay > 0) {
       createStreamTest(count, delay, "Throw");
@@ -1282,45 +1288,91 @@ Deno.test(
   },
 );
 
+async function testDuplex(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  writable: WritableStreamDefaultWriter<Uint8Array>,
+) {
+  await writable.write(new Uint8Array([1]));
+  const chunk1 = await reader.read();
+  assert(!chunk1.done);
+  assertEquals(chunk1.value, new Uint8Array([1]));
+  await writable.write(new Uint8Array([2]));
+  const chunk2 = await reader.read();
+  assert(!chunk2.done);
+  assertEquals(chunk2.value, new Uint8Array([2]));
+  await writable.close();
+  const chunk3 = await reader.read();
+  assert(chunk3.done);
+}
+
 Deno.test(
   { permissions: { net: true } },
-  async function httpServerStreamDuplex() {
+  async function httpServerStreamDuplexDirect() {
     const promise = deferred();
     const ac = new AbortController();
 
     const server = Deno.serve(
       { port: servePort, signal: ac.signal },
-      (request) => {
+      (request: Request) => {
         assert(request.body);
-
         promise.resolve();
         return new Response(request.body);
       },
     );
 
-    const ts = new TransformStream();
-    const writable = ts.writable.getWriter();
-
+    const { readable, writable } = new TransformStream();
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
-      body: ts.readable,
+      body: readable,
     });
 
     await promise;
     assert(resp.body);
-    const reader = resp.body.getReader();
-    await writable.write(new Uint8Array([1]));
-    const chunk1 = await reader.read();
-    assert(!chunk1.done);
-    assertEquals(chunk1.value, new Uint8Array([1]));
-    await writable.write(new Uint8Array([2]));
-    const chunk2 = await reader.read();
-    assert(!chunk2.done);
-    assertEquals(chunk2.value, new Uint8Array([2]));
-    await writable.close();
-    const chunk3 = await reader.read();
-    assert(chunk3.done);
+    await testDuplex(resp.body.getReader(), writable.getWriter());
+    ac.abort();
+    await server.finished;
+  },
+);
 
+// Test that a duplex stream passing through JavaScript also works (ie: that the request body resource
+// is still alive). https://github.com/denoland/deno/pull/20206
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerStreamDuplexJavascript() {
+    const promise = deferred();
+    const ac = new AbortController();
+
+    const server = Deno.serve(
+      { port: servePort, signal: ac.signal },
+      (request: Request) => {
+        assert(request.body);
+        promise.resolve();
+        const reader = request.body.getReader();
+        return new Response(
+          new ReadableStream({
+            async pull(controller) {
+              await new Promise((r) => setTimeout(r, 100));
+              const { done, value } = await reader.read();
+              if (done) {
+                controller.close();
+              } else {
+                controller.enqueue(value);
+              }
+            },
+          }),
+        );
+      },
+    );
+
+    const { readable, writable } = new TransformStream();
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
+      method: "POST",
+      body: readable,
+    });
+
+    await promise;
+    assert(resp.body);
+    await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
   },
@@ -1428,6 +1480,48 @@ Deno.test(
     await promise;
     await server.finished;
     clientConn.close();
+  },
+);
+
+// Make sure that the chunks of a large response aren't repeated or corrupted in some other way by
+// scatterning sentinels throughout.
+// https://github.com/denoland/fresh/issues/1699
+Deno.test(
+  { permissions: { net: true } },
+  async function httpLargeReadableStreamChunk() {
+    const ac = new AbortController();
+    const server = Deno.serve({
+      handler() {
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              const buffer = new Uint8Array(1024 * 1024);
+              // Mark the buffer with sentinels
+              for (let i = 0; i < 256; i++) {
+                buffer[i * 4096] = i;
+              }
+              controller.enqueue(buffer);
+              controller.close();
+            },
+          }),
+        );
+      },
+      port: servePort,
+      signal: ac.signal,
+    });
+    const response = await fetch(`http://localhost:${servePort}/`);
+    const body = await response.arrayBuffer();
+    assertEquals(1024 * 1024, body.byteLength);
+    const buffer = new Uint8Array(body);
+    for (let i = 0; i < 256; i++) {
+      assertEquals(
+        i,
+        buffer[i * 4096],
+        `sentinel mismatch at index ${i * 4096}`,
+      );
+    }
+    ac.abort();
+    await server.finished;
   },
 );
 
@@ -2789,6 +2883,7 @@ Deno.test(
 
 // https://github.com/denoland/deno/issues/15858
 Deno.test(
+  "Clone should work",
   { permissions: { net: true } },
   async function httpServerCanCloneRequest() {
     const ac = new AbortController();
@@ -2798,6 +2893,20 @@ Deno.test(
       handler: async (req) => {
         const cloned = req.clone();
         assertEquals(req.headers, cloned.headers);
+
+        assertEquals(cloned.url, req.url);
+        assertEquals(cloned.cache, req.cache);
+        assertEquals(cloned.destination, req.destination);
+        assertEquals(cloned.headers, req.headers);
+        assertEquals(cloned.integrity, req.integrity);
+        assertEquals(cloned.isHistoryNavigation, req.isHistoryNavigation);
+        assertEquals(cloned.isReloadNavigation, req.isReloadNavigation);
+        assertEquals(cloned.keepalive, req.keepalive);
+        assertEquals(cloned.method, req.method);
+        assertEquals(cloned.mode, req.mode);
+        assertEquals(cloned.redirect, req.redirect);
+        assertEquals(cloned.referrer, req.referrer);
+        assertEquals(cloned.referrerPolicy, req.referrerPolicy);
 
         // both requests can read body
         await req.text();
@@ -2825,6 +2934,111 @@ Deno.test(
     }
   },
 );
+
+// https://fetch.spec.whatwg.org/#dom-request-clone
+Deno.test(
+  "Throw if disturbed",
+  { permissions: { net: true } },
+  async function shouldThrowIfBodyIsUnusableDisturbed() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        await req.text();
+
+        try {
+          req.clone();
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
+          assert(
+            cloneError.message.endsWith("Body is unusable."),
+          );
+
+          ac.abort();
+          await server.finished;
+        }
+
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
+    });
+
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}',
+      });
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+);
+
+// https://fetch.spec.whatwg.org/#dom-request-clone
+Deno.test({
+  name: "Throw if locked",
+  permissions: { net: true },
+  fn: async function shouldThrowIfBodyIsUnusableLocked() {
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (req) => {
+        const _reader = req.body?.getReader();
+
+        try {
+          req.clone();
+          fail();
+        } catch (cloneError) {
+          assert(cloneError instanceof TypeError);
+          assert(
+            cloneError.message.endsWith("Body is unusable."),
+          );
+
+          ac.abort();
+          await server.finished;
+        }
+        return new Response("ok");
+      },
+      signal: ac.signal,
+      onListen: ({ port }: { port: number }) => listeningPromise.resolve(port),
+    });
+
+    try {
+      const port = await listeningPromise;
+      await fetch(`http://localhost:${port}/`, {
+        headers: { connection: "close" },
+        method: "POST",
+        body: '{"bar":true}',
+      });
+      fail();
+    } catch (clientError) {
+      assert(clientError instanceof TypeError);
+      assert(
+        clientError.message.endsWith(
+          "connection closed before message completed",
+        ),
+      );
+    } finally {
+      ac.abort();
+      await server.finished;
+    }
+  },
+});
 
 // Checks large streaming response
 // https://github.com/denoland/deno/issues/16567

@@ -8,23 +8,24 @@ use std::rc::Rc;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
-use deno_core::serde_json;
 use deno_core::serde_v8;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
+use deno_core::v8::ExternalReference;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_fs::sync::MaybeSend;
 use deno_fs::sync::MaybeSync;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageId;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use once_cell::sync::Lazy;
 
 pub mod analyze;
 pub mod errors;
+mod global;
 mod ops;
 mod package_json;
 mod path;
@@ -41,6 +42,9 @@ pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionMode;
 pub use resolution::NodeResolver;
 
+use crate::global::global_object_middleware;
+use crate::global::global_template_middleware;
+
 pub trait NodePermissions {
   fn check_net_url(
     &mut self,
@@ -48,6 +52,7 @@ pub trait NodePermissions {
     api_name: &str,
   ) -> Result<(), AnyError>;
   fn check_read(&self, path: &Path) -> Result<(), AnyError>;
+  fn check_sys(&self, kind: &str, api_name: &str) -> Result<(), AnyError>;
 }
 
 pub(crate) struct AllowAllNodePermissions;
@@ -61,6 +66,9 @@ impl NodePermissions for AllowAllNodePermissions {
     Ok(())
   }
   fn check_read(&self, _path: &Path) -> Result<(), AnyError> {
+    Ok(())
+  }
+  fn check_sys(&self, _kind: &str, _api_name: &str) -> Result<(), AnyError> {
     Ok(())
   }
 }
@@ -81,17 +89,17 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   fn resolve_package_folder_from_path(
     &self,
     path: &Path,
-  ) -> Result<PathBuf, AnyError>;
+  ) -> Result<Option<PathBuf>, AnyError>;
 
   /// Resolves an npm package folder path from a Deno module.
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_nv: &NpmPackageNv,
+    pkg_nv: &PackageNv,
   ) -> Result<PathBuf, AnyError>;
 
   fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError>;
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool;
@@ -112,8 +120,6 @@ pub trait NpmResolver: std::fmt::Debug + MaybeSend + MaybeSync {
   ) -> Result<(), AnyError>;
 }
 
-pub const NODE_GLOBAL_THIS_NAME: &str = env!("NODE_GLOBAL_THIS_NAME");
-
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
   // at https://nodejs.org/api/cli.html#environment-variables
@@ -125,12 +131,7 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 
 #[op]
 fn op_node_build_os() -> String {
-  std::env::var("TARGET")
-    .unwrap()
-    .split('-')
-    .nth(2)
-    .unwrap()
-    .to_string()
+  env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
 #[op(fast)]
@@ -240,6 +241,9 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::os::op_node_os_get_priority<P>,
+    ops::os::op_node_os_set_priority<P>,
+    ops::os::op_node_os_username<P>,
     op_node_build_os,
     op_is_any_arraybuffer,
     op_node_is_promise_rejected,
@@ -442,59 +446,57 @@ deno_core::extension!(deno_node,
     "path/mod.ts",
     "path/separator.ts",
     "readline/promises.ts",
-    "repl.ts",
-    "wasi.ts"
-  ],
-  esm_with_specifiers = [
-    dir "polyfills",
-    ("node:assert", "assert.ts"),
-    ("node:assert/strict", "assert/strict.ts"),
-    ("node:async_hooks", "async_hooks.ts"),
-    ("node:buffer", "buffer.ts"),
-    ("node:child_process", "child_process.ts"),
-    ("node:cluster", "cluster.ts"),
-    ("node:console", "console.ts"),
-    ("node:constants", "constants.ts"),
-    ("node:crypto", "crypto.ts"),
-    ("node:dgram", "dgram.ts"),
-    ("node:diagnostics_channel", "diagnostics_channel.ts"),
-    ("node:dns", "dns.ts"),
-    ("node:dns/promises", "dns/promises.ts"),
-    ("node:domain", "domain.ts"),
-    ("node:events", "events.ts"),
-    ("node:fs", "fs.ts"),
-    ("node:fs/promises", "fs/promises.ts"),
-    ("node:http", "http.ts"),
-    ("node:http2", "http2.ts"),
-    ("node:https", "https.ts"),
-    ("node:module", "01_require.js"),
-    ("node:net", "net.ts"),
-    ("node:os", "os.ts"),
-    ("node:path", "path.ts"),
-    ("node:path/posix", "path/posix.ts"),
-    ("node:path/win32", "path/win32.ts"),
-    ("node:perf_hooks", "perf_hooks.ts"),
-    ("node:process", "process.ts"),
-    ("node:punycode", "punycode.ts"),
-    ("node:querystring", "querystring.ts"),
-    ("node:readline", "readline.ts"),
-    ("node:stream", "stream.ts"),
-    ("node:stream/consumers", "stream/consumers.mjs"),
-    ("node:stream/promises", "stream/promises.mjs"),
-    ("node:stream/web", "stream/web.ts"),
-    ("node:string_decoder", "string_decoder.ts"),
-    ("node:sys", "sys.ts"),
-    ("node:timers", "timers.ts"),
-    ("node:timers/promises", "timers/promises.ts"),
-    ("node:tls", "tls.ts"),
-    ("node:tty", "tty.ts"),
-    ("node:url", "url.ts"),
-    ("node:util", "util.ts"),
-    ("node:util/types", "util/types.ts"),
-    ("node:v8", "v8.ts"),
-    ("node:vm", "vm.ts"),
-    ("node:worker_threads", "worker_threads.ts"),
-    ("node:zlib", "zlib.ts"),
+    "wasi.ts",
+    "assert.ts" with_specifier "node:assert",
+    "assert/strict.ts" with_specifier "node:assert/strict",
+    "async_hooks.ts" with_specifier "node:async_hooks",
+    "buffer.ts" with_specifier "node:buffer",
+    "child_process.ts" with_specifier "node:child_process",
+    "cluster.ts" with_specifier "node:cluster",
+    "console.ts" with_specifier "node:console",
+    "constants.ts" with_specifier "node:constants",
+    "crypto.ts" with_specifier "node:crypto",
+    "dgram.ts" with_specifier "node:dgram",
+    "diagnostics_channel.ts" with_specifier "node:diagnostics_channel",
+    "dns.ts" with_specifier "node:dns",
+    "dns/promises.ts" with_specifier "node:dns/promises",
+    "domain.ts" with_specifier "node:domain",
+    "events.ts" with_specifier "node:events",
+    "fs.ts" with_specifier "node:fs",
+    "fs/promises.ts" with_specifier "node:fs/promises",
+    "http.ts" with_specifier "node:http",
+    "http2.ts" with_specifier "node:http2",
+    "https.ts" with_specifier "node:https",
+    "01_require.js" with_specifier "node:module",
+    "net.ts" with_specifier "node:net",
+    "os.ts" with_specifier "node:os",
+    "path.ts" with_specifier "node:path",
+    "path/posix.ts" with_specifier "node:path/posix",
+    "path/win32.ts" with_specifier "node:path/win32",
+    "perf_hooks.ts" with_specifier "node:perf_hooks",
+    "process.ts" with_specifier "node:process",
+    "punycode.ts" with_specifier "node:punycode",
+    "querystring.ts" with_specifier "node:querystring",
+    "readline.ts" with_specifier "node:readline",
+    "repl.ts" with_specifier "node:repl",
+    "stream.ts" with_specifier "node:stream",
+    "stream/consumers.mjs" with_specifier "node:stream/consumers",
+    "stream/promises.mjs" with_specifier "node:stream/promises",
+    "stream/web.ts" with_specifier "node:stream/web",
+    "string_decoder.ts" with_specifier "node:string_decoder",
+    "sys.ts" with_specifier "node:sys",
+    "testing.ts" with_specifier "node:test",
+    "timers.ts" with_specifier "node:timers",
+    "timers/promises.ts" with_specifier "node:timers/promises",
+    "tls.ts" with_specifier "node:tls",
+    "tty.ts" with_specifier "node:tty",
+    "url.ts" with_specifier "node:url",
+    "util.ts" with_specifier "node:util",
+    "util/types.ts" with_specifier "node:util/types",
+    "v8.ts" with_specifier "node:v8",
+    "vm.ts" with_specifier "node:vm",
+    "worker_threads.ts" with_specifier "node:worker_threads",
+    "zlib.ts" with_specifier "node:zlib",
   ],
   options = {
     maybe_npm_resolver: Option<NpmResolverRc>,
@@ -510,35 +512,50 @@ deno_core::extension!(deno_node,
         npm_resolver,
       )))
     }
-  }
+  },
+  global_template_middleware = global_template_middleware,
+  global_object_middleware = global_object_middleware,
+  customizer = |ext: &mut deno_core::Extension| {
+    let mut external_references = Vec::with_capacity(7);
+
+    global::GETTER_MAP_FN.with(|getter| {
+      external_references.push(ExternalReference {
+        named_getter: *getter,
+      });
+    });
+    global::SETTER_MAP_FN.with(|setter| {
+      external_references.push(ExternalReference {
+        named_setter: *setter,
+      });
+    });
+    global::QUERY_MAP_FN.with(|query| {
+      external_references.push(ExternalReference {
+        named_getter: *query,
+      });
+    });
+    global::DELETER_MAP_FN.with(|deleter| {
+      external_references.push(ExternalReference {
+        named_getter: *deleter,
+      },);
+    });
+    global::ENUMERATOR_MAP_FN.with(|enumerator| {
+      external_references.push(ExternalReference {
+        enumerator: *enumerator,
+      });
+    });
+    global::DEFINER_MAP_FN.with(|definer| {
+      external_references.push(ExternalReference {
+        named_definer: *definer,
+      });
+    });
+    global::DESCRIPTOR_MAP_FN.with(|descriptor| {
+      external_references.push(ExternalReference {
+        named_getter: *descriptor,
+      });
+    });
+    ext.external_references.to_mut().extend(external_references);
+  },
 );
-
-pub fn initialize_runtime(
-  js_runtime: &mut JsRuntime,
-  uses_local_node_modules_dir: bool,
-  maybe_binary_command_name: Option<&str>,
-) -> Result<(), AnyError> {
-  let argv0 = if let Some(binary_command_name) = maybe_binary_command_name {
-    serde_json::to_string(binary_command_name)?
-  } else {
-    "undefined".to_string()
-  };
-  let source_code = format!(
-    r#"(function loadBuiltinNodeModules(nodeGlobalThisName, usesLocalNodeModulesDir, argv0) {{
-      Deno[Deno.internal].node.initialize(
-        nodeGlobalThisName,
-        usesLocalNodeModulesDir,
-        argv0
-      );
-      // Make the nodeGlobalThisName unconfigurable here.
-      Object.defineProperty(globalThis, nodeGlobalThisName, {{ configurable: false }});
-    }})('{}', {}, {});"#,
-    NODE_GLOBAL_THIS_NAME, uses_local_node_modules_dir, argv0
-  );
-
-  js_runtime.execute_script(located_script_name!(), source_code.into())?;
-  Ok(())
-}
 
 pub fn load_cjs_module(
   js_runtime: &mut JsRuntime,

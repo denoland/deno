@@ -15,7 +15,6 @@ use std::collections::HashSet;
 /// Parse an arrow expression for any test steps and return them.
 fn arrow_to_steps(
   parent: &str,
-  level: usize,
   arrow_expr: &ast::ArrowExpr,
 ) -> Vec<TestDefinition> {
   if let Some((maybe_test_context, maybe_step_var)) =
@@ -23,7 +22,6 @@ fn arrow_to_steps(
   {
     let mut collector = TestStepCollector::new(
       parent.to_string(),
-      level,
       maybe_test_context,
       maybe_step_var,
     );
@@ -35,17 +33,12 @@ fn arrow_to_steps(
 }
 
 /// Parse a function for any test steps and return them.
-fn fn_to_steps(
-  parent: &str,
-  level: usize,
-  function: &ast::Function,
-) -> Vec<TestDefinition> {
+fn fn_to_steps(parent: &str, function: &ast::Function) -> Vec<TestDefinition> {
   if let Some((maybe_test_context, maybe_step_var)) =
     parse_test_context_param(function.params.get(0).map(|p| &p.pat))
   {
     let mut collector = TestStepCollector::new(
       parent.to_string(),
-      level,
       maybe_test_context,
       maybe_step_var,
     );
@@ -130,7 +123,6 @@ fn parse_test_context_param(
 fn check_call_expr(
   parent: &str,
   node: &ast::CallExpr,
-  level: usize,
   fns: Option<&HashMap<String, ast::Function>>,
   text_info: Option<&SourceTextInfo>,
 ) -> Option<(String, Vec<TestDefinition>)> {
@@ -164,10 +156,10 @@ fn check_call_expr(
                     },
                     "fn" => match key_value_prop.value.as_ref() {
                       ast::Expr::Arrow(arrow_expr) => {
-                        steps = arrow_to_steps(parent, level, arrow_expr);
+                        steps = arrow_to_steps(parent, arrow_expr);
                       }
                       ast::Expr::Fn(fn_expr) => {
-                        steps = fn_to_steps(parent, level, &fn_expr.function);
+                        steps = fn_to_steps(parent, &fn_expr.function);
                       }
                       _ => (),
                     },
@@ -176,7 +168,7 @@ fn check_call_expr(
                 }
               }
               ast::Prop::Method(method_prop) => {
-                steps = fn_to_steps(parent, level, &method_prop.function);
+                steps = fn_to_steps(parent, &method_prop.function);
               }
               _ => (),
             }
@@ -187,7 +179,7 @@ fn check_call_expr(
       ast::Expr::Fn(fn_expr) => {
         if let Some(ast::Ident { sym, .. }) = fn_expr.ident.as_ref() {
           let name = sym.to_string();
-          let steps = fn_to_steps(parent, level, &fn_expr.function);
+          let steps = fn_to_steps(parent, &fn_expr.function);
           Some((name, steps))
         } else {
           None
@@ -198,10 +190,10 @@ fn check_call_expr(
         let mut steps = vec![];
         match node.args.get(1).map(|es| es.expr.as_ref()) {
           Some(ast::Expr::Fn(fn_expr)) => {
-            steps = fn_to_steps(parent, level, &fn_expr.function);
+            steps = fn_to_steps(parent, &fn_expr.function);
           }
           Some(ast::Expr::Arrow(arrow_expr)) => {
-            steps = arrow_to_steps(parent, level, arrow_expr);
+            steps = arrow_to_steps(parent, arrow_expr);
           }
           _ => (),
         }
@@ -212,10 +204,10 @@ fn check_call_expr(
           let mut steps = vec![];
           match node.args.get(1).map(|es| es.expr.as_ref()) {
             Some(ast::Expr::Fn(fn_expr)) => {
-              steps = fn_to_steps(parent, level, &fn_expr.function);
+              steps = fn_to_steps(parent, &fn_expr.function);
             }
             Some(ast::Expr::Arrow(arrow_expr)) => {
-              steps = arrow_to_steps(parent, level, arrow_expr);
+              steps = arrow_to_steps(parent, arrow_expr);
             }
             _ => (),
           }
@@ -230,7 +222,7 @@ fn check_call_expr(
         fns.and_then(|fns| {
           fns
             .get(&name)
-            .map(|fn_expr| (name, fn_to_steps(parent, level, fn_expr)))
+            .map(|fn_expr| (name, fn_to_steps(parent, fn_expr)))
         })
       }
       _ => {
@@ -255,7 +247,6 @@ fn check_call_expr(
 /// branch contains any testing steps.
 struct TestStepCollector {
   steps: Vec<TestDefinition>,
-  level: usize,
   parent: String,
   maybe_test_context: Option<String>,
   vars: HashSet<String>,
@@ -264,7 +255,6 @@ struct TestStepCollector {
 impl TestStepCollector {
   fn new(
     parent: String,
-    level: usize,
     maybe_test_context: Option<String>,
     maybe_step_var: Option<String>,
   ) -> Self {
@@ -274,7 +264,6 @@ impl TestStepCollector {
     }
     Self {
       steps: Vec::default(),
-      level,
       parent,
       maybe_test_context,
       vars,
@@ -287,19 +276,13 @@ impl TestStepCollector {
     range: SourceRange,
     steps: Vec<TestDefinition>,
   ) {
-    let step = TestDefinition::new_step(
-      name.as_ref().to_string(),
-      range,
-      self.parent.clone(),
-      self.level,
-      steps,
-    );
+    let step =
+      TestDefinition::new_step(name.as_ref().to_string(), range, steps);
     self.steps.push(step);
   }
 
   fn check_call_expr(&mut self, node: &ast::CallExpr, range: SourceRange) {
-    if let Some((name, steps)) =
-      check_call_expr(&self.parent, node, self.level + 1, None, None)
+    if let Some((name, steps)) = check_call_expr(&self.parent, node, None, None)
     {
       self.add_step(name, range, steps);
     }
@@ -436,7 +419,6 @@ impl TestCollector {
     if let Some((name, steps)) = check_call_expr(
       self.specifier.as_str(),
       node,
-      1,
       Some(&self.fns),
       Some(&self.text_info),
     ) {
@@ -579,7 +561,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(12, 16),
         steps: vec![],
@@ -600,7 +581,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(12, 16),
         steps: vec![],
@@ -631,21 +611,18 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(12, 16),
         steps: vec![TestDefinition {
           id:
-            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+            "704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c"
               .to_string(),
-          level: 1,
           name: "step".to_string(),
           range: new_range(81, 85),
           steps: vec![TestDefinition {
             id:
-              "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201"
+              "0d006a4ec0abaa9cc1d18256b1ccd2677a4c882ff5cb807123890f7528ab1e8d"
                 .to_string(),
-            level: 2,
             name: "sub step".to_string(),
             range: new_range(128, 132),
             steps: vec![],
@@ -678,21 +655,18 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(12, 16),
         steps: vec![TestDefinition {
           id:
-            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+            "704d24083fd4a3e1bd204faa20827dc594334812245e5d45dda222b3edc60a0c"
               .to_string(),
-          level: 1,
           name: "step".to_string(),
           range: new_range(81, 85),
           steps: vec![TestDefinition {
             id:
-              "abf356f59139b77574089615f896a6f501c010985d95b8a93abeb0069ccb2201"
+              "0d006a4ec0abaa9cc1d18256b1ccd2677a4c882ff5cb807123890f7528ab1e8d"
                 .to_string(),
-            level: 2,
             name: "sub step".to_string(),
             range: new_range(128, 132),
             steps: vec![],
@@ -716,7 +690,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(36, 40),
         steps: vec![],
@@ -739,14 +712,12 @@ pub mod tests {
       vec![TestDefinition {
         id: "86b4c821900e38fc89f24bceb0e45193608ab3f9d2a6019c7b6a5aceff5d7df2"
           .to_string(),
-        level: 0,
         name: "useFnName".to_string(),
         range: new_range(12, 16),
         steps: vec![TestDefinition {
           id:
-            "b3b2daad49e5c3095fe26aba0a840131f3d8f32e105e95507f5fc5118642b059"
+            "dac8a169b8f8c6babf11122557ea545de2733bfafed594d044b22bc6863a0856"
               .to_string(),
-          level: 1,
           name: "step".to_string(),
           range: new_range(71, 72),
           steps: vec![],
@@ -769,7 +740,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(34, 35),
         steps: vec![],
@@ -791,7 +761,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "4ebb361c93f76a0f1bac300638675609f1cf481e6f3b9006c3c98604b3a184e9"
           .to_string(),
-        level: 0,
         name: "test".to_string(),
         range: new_range(45, 49),
         steps: vec![],
@@ -812,7 +781,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
           .to_string(),
-        level: 0,
         name: "someFunction".to_string(),
         range: new_range(12, 16),
         steps: vec![]
@@ -834,7 +802,6 @@ pub mod tests {
       vec![TestDefinition {
         id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568"
           .to_string(),
-        level: 0,
         name: "someFunction".to_string(),
         range: new_range(51, 55),
         steps: vec![]
@@ -856,10 +823,59 @@ pub mod tests {
       vec![TestDefinition {
         id: "6d05d6dc35548b86a1e70acaf24a5bc2dd35db686b35b685ad5931d201b4a918"
           .to_string(),
-        level: 0,
         name: "Test 3:7".to_string(),
         range: new_range(79, 83),
         steps: vec![]
+      }]
+    );
+  }
+
+  // Regression test for https://github.com/denoland/vscode_deno/issues/656.
+  #[test]
+  fn test_test_collector_nested_steps_same_name_and_level() {
+    let res = collect(
+      r#"
+      Deno.test("1", async (t) => {
+        await t.step("step 1", async (t) => {
+          await t.step("nested step", () => {});
+        });
+        await t.step("step 2", async (t) => {
+          await t.step("nested step", () => {});
+        });
+      });
+    "#,
+    );
+
+    assert_eq!(
+      res,
+      vec![TestDefinition {
+        id: "3799fc549a32532145ffc8532b0cd943e025bbc19a02e2cde9be94f87bceb829".to_string(),
+        name: "1".to_string(),
+        range: new_range(12, 16),
+        steps: vec![
+          TestDefinition {
+            id: "e714fc695c0895327bf7148a934c3303ad515af029a14906be46f80340c6d7e3".to_string(),
+            name: "step 1".to_string(),
+            range: new_range(53, 57),
+            steps: vec![TestDefinition {
+              id: "d874949e18dfc297e15c52ff13f13b4e6ae911ec1818b2c761e3313bc018a3ab".to_string(),
+              name: "nested step".to_string(),
+              range: new_range(101, 105),
+              steps: vec![],
+            }],
+          },
+          TestDefinition {
+            id: "ec6b03d3dd3dde78d2d11ed981d3386083aeca701510cc049189d74bd79f8587".to_string(),
+            name: "step 2".to_string(),
+            range: new_range(160, 164),
+            steps: vec![TestDefinition {
+              id: "96729f1f1608e50160b0bf11946719384b4021fd1d26b14eff7765034b3d2684".to_string(),
+              name: "nested step".to_string(),
+              range: new_range(208, 212),
+              steps: vec![],
+            }],
+          },
+        ]
       }]
     );
   }

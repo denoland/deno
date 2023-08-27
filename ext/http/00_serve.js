@@ -30,9 +30,9 @@ import {
 import {
   Deferred,
   getReadableStreamResourceBacking,
-  readableStreamClose,
   readableStreamForRid,
   ReadableStreamPrototype,
+  resourceForReadableStream,
 } from "ext:deno_web/06_streams.js";
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
@@ -41,10 +41,6 @@ const {
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
-  SafeSet,
-  SafeSetIterator,
-  SetPrototypeAdd,
-  SetPrototypeDelete,
   Symbol,
   SymbolFor,
   TypeError,
@@ -61,7 +57,6 @@ const {
   op_http_set_promise_complete,
   op_http_set_response_body_bytes,
   op_http_set_response_body_resource,
-  op_http_set_response_body_stream,
   op_http_set_response_body_text,
   op_http_set_response_header,
   op_http_set_response_headers,
@@ -129,6 +124,7 @@ class InnerRequest {
   #streamRid;
   #body;
   #upgraded;
+  #urlValue;
 
   constructor(slabId, context) {
     this.#slabId = slabId;
@@ -137,10 +133,6 @@ class InnerRequest {
   }
 
   close() {
-    if (this.#streamRid !== undefined) {
-      core.close(this.#streamRid);
-      this.#streamRid = undefined;
-    }
     this.#slabId = undefined;
   }
 
@@ -236,6 +228,10 @@ class InnerRequest {
   }
 
   url() {
+    if (this.#urlValue !== undefined) {
+      return this.#urlValue;
+    }
+
     if (this.#methodAndUri === undefined) {
       if (this.#slabId === undefined) {
         throw new TypeError("request closed");
@@ -249,27 +245,28 @@ class InnerRequest {
 
     // * is valid for OPTIONS
     if (path === "*") {
-      return "*";
+      return this.#urlValue = "*";
     }
 
     // If the path is empty, return the authority (valid for CONNECT)
     if (path == "") {
-      return this.#methodAndUri[1];
+      return this.#urlValue = this.#methodAndUri[1];
     }
 
     // CONNECT requires an authority
     if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#methodAndUri[1];
+      return this.#urlValue = this.#methodAndUri[1];
     }
 
     const hostname = this.#methodAndUri[1];
     if (hostname) {
       // Construct a URL from the scheme, the hostname, and the path
-      return this.#context.scheme + hostname + path;
+      return this.#urlValue = this.#context.scheme + hostname + path;
     }
 
     // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#context.scheme + this.#context.fallbackHost + path;
+    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
+      path;
   }
 
   get remoteAddr() {
@@ -333,7 +330,6 @@ class InnerRequest {
 
 class CallbackContext {
   abortController;
-  responseBodies;
   scheme;
   fallbackHost;
   serverRid;
@@ -346,7 +342,6 @@ class CallbackContext {
       { once: true },
     );
     this.abortController = new AbortController();
-    this.responseBodies = new SafeSet();
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
@@ -363,23 +358,34 @@ class CallbackContext {
   }
 }
 
-function fastSyncResponseOrStream(req, respBody) {
+class ServeHandlerInfo {
+  #inner = null;
+  constructor(inner) {
+    this.#inner = inner;
+  }
+  get remoteAddr() {
+    return this.#inner.remoteAddr;
+  }
+}
+
+function fastSyncResponseOrStream(req, respBody, status) {
   if (respBody === null || respBody === undefined) {
     // Don't set the body
-    return null;
+    op_http_set_promise_complete(req, status);
+    return;
   }
 
   const stream = respBody.streamOrStatic;
   const body = stream.body;
 
   if (ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body)) {
-    op_http_set_response_body_bytes(req, body);
-    return null;
+    op_http_set_response_body_bytes(req, body, status);
+    return;
   }
 
   if (typeof body === "string") {
-    op_http_set_response_body_text(req, body);
-    return null;
+    op_http_set_response_body_text(req, body, status);
+    return;
   }
 
   // At this point in the response it needs to be a stream
@@ -392,115 +398,16 @@ function fastSyncResponseOrStream(req, respBody) {
       req,
       resourceBacking.rid,
       resourceBacking.autoClose,
+      status,
     );
-    return null;
-  }
-
-  return stream;
-}
-
-async function asyncResponse(responseBodies, req, status, stream) {
-  const reader = stream.getReader();
-  let responseRid;
-  let closed = false;
-  let timeout;
-
-  try {
-    // IMPORTANT: We get a performance boost from this optimization, but V8 is very
-    // sensitive to the order and structure. Benchmark any changes to this code.
-
-    // Optimize for streams that are done in zero or one packets. We will not
-    // have to allocate a resource in this case.
-    const { value: value1, done: done1 } = await reader.read();
-    if (done1) {
-      closed = true;
-      // Exit 1: no response body at all, extreme fast path
-      // Reader will be closed by finally block
-      return;
-    }
-
-    // The second value cannot block indefinitely, as someone may be waiting on a response
-    // of the first packet that may influence this packet. We set this timeout arbitrarily to 250ms
-    // and we race it.
-    let timeoutPromise;
-    timeout = setTimeout(() => {
-      responseRid = op_http_set_response_body_stream(req);
-      SetPrototypeAdd(responseBodies, responseRid);
-      op_http_set_promise_complete(req, status);
-      // TODO(mmastrac): if this promise fails before we get to the await below, it crashes
-      // the process with an error:
-      //
-      // 'Uncaught (in promise) BadResource: failed to write'.
-      //
-      // To avoid this, we're going to swallow errors here and allow the code later in the
-      // file to re-throw them in a way that doesn't appear to be an uncaught promise rejection.
-      timeoutPromise = PromisePrototypeCatch(
-        core.writeAll(responseRid, value1),
-        () => null,
-      );
-    }, 250);
-    const { value: value2, done: done2 } = await reader.read();
-
-    if (timeoutPromise) {
-      await timeoutPromise;
-      if (done2) {
-        closed = true;
-        // Exit 2(a): read 2 is EOS, and timeout resolved.
-        // Reader will be closed by finally block
-        // Response stream will be closed by finally block.
-        return;
-      }
-
-      // Timeout resolved, value1 written but read2 is not EOS. Carry value2 forward.
-    } else {
-      clearTimeout(timeout);
-      timeout = undefined;
-
-      if (done2) {
-        // Exit 2(b): read 2 is EOS, and timeout did not resolve as we read fast enough.
-        // Reader will be closed by finally block
-        // No response stream
-        closed = true;
-        op_http_set_response_body_bytes(req, value1);
-        return;
-      }
-
-      responseRid = op_http_set_response_body_stream(req);
-      SetPrototypeAdd(responseBodies, responseRid);
-      op_http_set_promise_complete(req, status);
-      // Write our first packet
-      await core.writeAll(responseRid, value1);
-    }
-
-    await core.writeAll(responseRid, value2);
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        closed = true;
-        break;
-      }
-      await core.writeAll(responseRid, value);
-    }
-  } catch (error) {
-    closed = true;
-    try {
-      await reader.cancel(error);
-    } catch {
-      // Pass
-    }
-  } finally {
-    if (!closed) {
-      readableStreamClose(reader);
-    }
-    if (timeout !== undefined) {
-      clearTimeout(timeout);
-    }
-    if (responseRid) {
-      core.tryClose(responseRid);
-      SetPrototypeDelete(responseBodies, responseRid);
-    } else {
-      op_http_set_promise_complete(req, status);
-    }
+  } else {
+    const rid = resourceForReadableStream(stream);
+    op_http_set_response_body_resource(
+      req,
+      rid,
+      true,
+      status,
+    );
   }
 }
 
@@ -512,7 +419,6 @@ async function asyncResponse(responseBodies, req, status, stream) {
  * This function returns a promise that will only reject in the case of abnormal exit.
  */
 function mapToCallback(context, callback, onError) {
-  const responseBodies = context.responseBodies;
   const signal = context.abortController.signal;
   const hasCallback = callback.length > 0;
   const hasOneCallback = callback.length === 1;
@@ -529,11 +435,10 @@ function mapToCallback(context, callback, onError) {
         if (hasOneCallback) {
           response = await callback(request);
         } else {
-          response = await callback(request, {
-            get remoteAddr() {
-              return innerRequest.remoteAddr;
-            },
-          });
+          response = await callback(
+            request,
+            new ServeHandlerInfo(innerRequest),
+          );
         }
       } else {
         response = await callback();
@@ -576,15 +481,7 @@ function mapToCallback(context, callback, onError) {
       }
     }
 
-    // Attempt to respond quickly to this request, otherwise extract the stream
-    const stream = fastSyncResponseOrStream(req, inner.body);
-    if (stream !== null) {
-      // Handle the stream asynchronously
-      await asyncResponse(responseBodies, req, status, stream);
-    } else {
-      op_http_set_promise_complete(req, status);
-    }
-
+    fastSyncResponseOrStream(req, inner.body, status);
     innerRequest?.close();
   };
 }
@@ -626,6 +523,17 @@ function serve(arg1, arg2) {
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
   };
+
+  if (options.certFile || options.keyFile) {
+    throw new TypeError(
+      "Unsupported 'certFile' / 'keyFile' options provided: use 'cert' / 'key' instead.",
+    );
+  }
+  if (options.alpnProtocols) {
+    throw new TypeError(
+      "Unsupported 'alpnProtocols' option provided. 'h2' and 'http/1.1' are automatically supported.",
+    );
+  }
 
   let listener;
   if (wantsHttps) {
@@ -709,7 +617,7 @@ function serveHttpOn(context, callback) {
       try {
         // Attempt to pull as many requests out of the queue as possible before awaiting. This API is
         // a synchronous, non-blocking API that returns u32::MAX if anything goes wrong.
-        while ((req = op_http_try_wait(rid)) !== 0xffffffff) {
+        while ((req = op_http_try_wait(rid)) !== -1) {
           PromisePrototypeCatch(callback(req), promiseErrorHandler);
         }
         currentPromise = op_http_wait(rid);
@@ -724,14 +632,10 @@ function serveHttpOn(context, callback) {
         }
         throw new Deno.errors.Http(error);
       }
-      if (req === 0xffffffff) {
+      if (req === -1) {
         break;
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
-    }
-
-    for (const streamRid of new SafeSetIterator(context.responseBodies)) {
-      core.tryClose(streamRid);
     }
   })();
 

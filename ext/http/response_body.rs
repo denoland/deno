@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::Write;
@@ -11,24 +10,20 @@ use brotli::enc::encode::BrotliEncoderParameter;
 use brotli::ffi::compressor::BrotliEncoderState;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::bad_resource;
 use deno_core::error::AnyError;
 use deno_core::futures::ready;
 use deno_core::futures::FutureExt;
-use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
-use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::WriteOutcome;
 use flate2::write::GzEncoder;
 use http::HeaderMap;
 use hyper1::body::Body;
 use hyper1::body::Frame;
 use hyper1::body::SizeHint;
 use pin_project::pin_project;
+
+use crate::slab::HttpRequestBodyAutocloser;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
@@ -126,8 +121,8 @@ pub enum Compression {
 pub enum ResponseStream {
   /// A resource stream, piped in fast mode.
   Resource(ResourceBodyAdapter),
-  /// A JS-backed stream, written in JS and transported via pipe.
-  V8Stream(tokio::sync::mpsc::Receiver<BufView>),
+  #[cfg(test)]
+  TestChannel(tokio::sync::mpsc::Receiver<BufView>),
 }
 
 #[derive(Default)]
@@ -163,34 +158,40 @@ impl std::fmt::Debug for ResponseBytesInner {
 /// This represents the union of possible response types in Deno with the stream-style [`Body`] interface
 /// required by hyper. As the API requires information about request completion (including a success/fail
 /// flag), we include a very lightweight [`CompletionHandle`] for interested parties to listen on.
-#[derive(Debug, Default)]
-pub struct ResponseBytes(
-  ResponseBytesInner,
-  CompletionHandle,
-  Rc<RefCell<Option<HeaderMap>>>,
-);
+#[derive(Default)]
+pub struct ResponseBytes {
+  inner: ResponseBytesInner,
+  completion_handle: CompletionHandle,
+  headers: Rc<RefCell<Option<HeaderMap>>>,
+  res: Option<HttpRequestBodyAutocloser>,
+}
 
 impl ResponseBytes {
-  pub fn initialize(&mut self, inner: ResponseBytesInner) {
-    debug_assert!(matches!(self.0, ResponseBytesInner::Empty));
-    self.0 = inner;
+  pub fn initialize(
+    &mut self,
+    inner: ResponseBytesInner,
+    req_body_resource: Option<HttpRequestBodyAutocloser>,
+  ) {
+    debug_assert!(matches!(self.inner, ResponseBytesInner::Empty));
+    self.inner = inner;
+    self.res = req_body_resource;
   }
 
   pub fn completion_handle(&self) -> CompletionHandle {
-    self.1.clone()
+    self.completion_handle.clone()
   }
 
   pub fn trailers(&self) -> Rc<RefCell<Option<HeaderMap>>> {
-    self.2.clone()
+    self.headers.clone()
   }
 
   fn complete(&mut self, success: bool) -> ResponseBytesInner {
-    if matches!(self.0, ResponseBytesInner::Done) {
+    if matches!(self.inner, ResponseBytesInner::Done) {
       return ResponseBytesInner::Done;
     }
 
-    let current = std::mem::replace(&mut self.0, ResponseBytesInner::Done);
-    self.1.complete(success);
+    let current = std::mem::replace(&mut self.inner, ResponseBytesInner::Done);
+    self.completion_handle.complete(success);
     current
   }
 }
@@ -217,13 +218,6 @@ impl ResponseBytesInner {
     }
   }
 
-  pub fn from_v8(
-    compression: Compression,
-    rx: tokio::sync::mpsc::Receiver<BufView>,
-  ) -> Self {
-    Self::from_stream(compression, ResponseStream::V8Stream(rx))
-  }
-
   pub fn from_resource(
     compression: Compression,
     stm: Rc<dyn Resource>,
@@ -235,12 +229,12 @@ impl ResponseBytesInner {
     )
   }
 
-  pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
+  pub fn from_bufview(compression: Compression, buf: BufView) -> Self {
     match compression {
       Compression::GZip => {
         let mut writer =
           GzEncoder::new(Vec::new(), flate2::Compression::fast());
-        writer.write_all(bytes).unwrap();
+        writer.write_all(&buf).unwrap();
         Self::Bytes(BufView::from(writer.finish().unwrap()))
       }
       Compression::Brotli => {
@@ -251,11 +245,11 @@ impl ResponseBytesInner {
         // (~4MB)
         let mut writer =
           brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
-        writer.write_all(bytes).unwrap();
+        writer.write_all(&buf).unwrap();
         writer.flush().unwrap();
         Self::Bytes(BufView::from(writer.into_inner()))
       }
-      _ => Self::Bytes(BufView::from(bytes.to_vec())),
+      _ => Self::Bytes(buf),
     }
   }
 
@@ -288,15 +282,17 @@ impl Body for ResponseBytes {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     let res = loop {
-      let res = match &mut self.0 {
+      let res = match &mut self.inner {
         ResponseBytesInner::Done | ResponseBytesInner::Empty => {
-          if let Some(trailers) = self.2.borrow_mut().take() {
+          if let Some(trailers) = self.headers.borrow_mut().take() {
             return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
           }
           unreachable!()
         }
         ResponseBytesInner::Bytes(..) => {
-          let ResponseBytesInner::Bytes(data) = self.complete(true) else { unreachable!(); };
+          let ResponseBytesInner::Bytes(data) = self.complete(true) else {
+            unreachable!();
+          };
           return std::task::Poll::Ready(Some(Ok(Frame::data(data))));
         }
         ResponseBytesInner::UncompressedStream(stm) => {
@@ -317,7 +313,7 @@ impl Body for ResponseBytes {
     };
 
     if matches!(res, ResponseStreamResult::EndOfStream) {
-      if let Some(trailers) = self.2.borrow_mut().take() {
+      if let Some(trailers) = self.headers.borrow_mut().take() {
         return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
       }
       self.complete(true);
@@ -326,21 +322,23 @@ impl Body for ResponseBytes {
   }
 
   fn is_end_stream(&self) -> bool {
-    matches!(self.0, ResponseBytesInner::Done | ResponseBytesInner::Empty)
-      && self.2.borrow_mut().is_none()
+    matches!(
+      self.inner,
+      ResponseBytesInner::Done | ResponseBytesInner::Empty
+    ) && self.headers.borrow_mut().is_none()
   }
 
   fn size_hint(&self) -> SizeHint {
     // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
     // anyways just in case hyper needs it.
-    self.0.size_hint()
+    self.inner.size_hint()
   }
 }
 
 impl Drop for ResponseBytes {
   fn drop(&mut self) {
     // We won't actually poll_frame for Empty responses so this is where we return success
-    self.complete(matches!(self.0, ResponseBytesInner::Empty));
+    self.complete(matches!(self.inner, ResponseBytesInner::Empty));
   }
 }
 
@@ -368,14 +366,16 @@ impl PollFrame for ResponseStream {
   ) -> std::task::Poll<ResponseStreamResult> {
     match &mut *self {
       ResponseStream::Resource(res) => Pin::new(res).poll_frame(cx),
-      ResponseStream::V8Stream(res) => Pin::new(res).poll_frame(cx),
+      #[cfg(test)]
+      ResponseStream::TestChannel(rx) => Pin::new(rx).poll_frame(cx),
     }
   }
 
   fn size_hint(&self) -> SizeHint {
     match self {
       ResponseStream::Resource(res) => res.size_hint(),
-      ResponseStream::V8Stream(res) => res.size_hint(),
+      #[cfg(test)]
+      ResponseStream::TestChannel(_) => SizeHint::default(),
     }
   }
 }
@@ -414,6 +414,7 @@ impl PollFrame for ResourceBodyAdapter {
   }
 }
 
+#[cfg(test)]
 impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
   fn poll_frame(
     mut self: Pin<&mut Self>,
@@ -761,52 +762,6 @@ impl PollFrame for BrotliResponseStream {
   }
 }
 
-/// A response body object that can be passed to V8. This body will feed byte buffers to a channel which
-/// feed's hyper's HTTP response.
-pub struct V8StreamHttpResponseBody(
-  AsyncRefCell<Option<tokio::sync::mpsc::Sender<BufView>>>,
-  CancelHandle,
-);
-
-impl V8StreamHttpResponseBody {
-  pub fn new(sender: tokio::sync::mpsc::Sender<BufView>) -> Self {
-    Self(AsyncRefCell::new(Some(sender)), CancelHandle::default())
-  }
-}
-
-impl Resource for V8StreamHttpResponseBody {
-  fn name(&self) -> Cow<str> {
-    "responseBody".into()
-  }
-
-  fn write(
-    self: Rc<Self>,
-    buf: BufView,
-  ) -> AsyncResult<deno_core::WriteOutcome> {
-    let cancel_handle = RcRef::map(&self, |this| &this.1);
-    Box::pin(
-      async move {
-        let nwritten = buf.len();
-
-        let res = RcRef::map(self, |this| &this.0).borrow().await;
-        if let Some(tx) = res.as_ref() {
-          tx.send(buf)
-            .await
-            .map_err(|_| bad_resource("failed to write"))?;
-          Ok(WriteOutcome::Full { nwritten })
-        } else {
-          Err(bad_resource("failed to write"))
-        }
-      }
-      .try_or_cancel(cancel_handle),
-    )
-  }
-
-  fn close(self: Rc<Self>) {
-    self.1.cancel();
-  }
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -892,7 +847,7 @@ mod tests {
       expected.extend(v);
     }
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let underlying = ResponseStream::V8Stream(rx);
+    let underlying = ResponseStream::TestChannel(rx);
     let mut resp = GZipResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
@@ -934,7 +889,7 @@ mod tests {
       expected.extend(v);
     }
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let underlying = ResponseStream::V8Stream(rx);
+    let underlying = ResponseStream::TestChannel(rx);
     let mut resp = BrotliResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
