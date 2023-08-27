@@ -21,7 +21,11 @@ use super::urls::LspClientUrl;
 use super::urls::LspUrlMap;
 use super::urls::INVALID_SPECIFIER;
 
+use crate::args::FmtOptionsConfig;
 use crate::args::TsConfig;
+use crate::cache::HttpCache;
+use crate::lsp::cache::CacheMetadata;
+use crate::lsp::documents::Documents;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
 use crate::tsc::ResolveArgs;
@@ -47,6 +51,7 @@ use deno_core::OpState;
 use deno_core::RuntimeOptions;
 use deno_runtime::tokio_util::create_basic_runtime;
 use lazy_regex::lazy_regex;
+use log::error;
 use once_cell::sync::Lazy;
 use regex::Captures;
 use regex::Regex;
@@ -92,14 +97,43 @@ type Request = (
   CancellationToken,
 );
 
+/// Relevant subset of https://github.com/denoland/deno/blob/80331d1fe5b85b829ac009fdc201c128b3427e11/cli/tsc/dts/typescript.d.ts#L6658.
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatCodeSettings {
+  convert_tabs_to_spaces: Option<bool>,
+  indent_size: Option<u8>,
+  semicolons: Option<SemicolonPreference>,
+}
+
+impl From<&FmtOptionsConfig> for FormatCodeSettings {
+  fn from(config: &FmtOptionsConfig) -> Self {
+    FormatCodeSettings {
+      convert_tabs_to_spaces: Some(!config.use_tabs.unwrap_or(false)),
+      indent_size: Some(config.indent_width.unwrap_or(2)),
+      semicolons: match config.semi_colons {
+        Some(false) => Some(SemicolonPreference::Remove),
+        _ => Some(SemicolonPreference::Insert),
+      },
+    }
+  }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SemicolonPreference {
+  Insert,
+  Remove,
+}
+
 #[derive(Clone, Debug)]
 pub struct TsServer(mpsc::UnboundedSender<Request>);
 
 impl TsServer {
-  pub fn new(performance: Arc<Performance>) -> Self {
+  pub fn new(performance: Arc<Performance>, cache: Arc<dyn HttpCache>) -> Self {
     let (tx, mut rx) = mpsc::unbounded_channel::<Request>();
     let _join_handle = thread::spawn(move || {
-      let mut ts_runtime = js_runtime(performance);
+      let mut ts_runtime = js_runtime(performance, cache);
 
       let runtime = create_basic_runtime();
       runtime.block_on(async {
@@ -199,9 +233,15 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
     codes: Vec<String>,
+    format_code_settings: FormatCodeSettings,
   ) -> Vec<CodeFixAction> {
-    let req =
-      RequestMethod::GetCodeFixes((specifier, range.start, range.end, codes));
+    let req = RequestMethod::GetCodeFixes((
+      specifier,
+      range.start,
+      range.end,
+      codes,
+      format_code_settings,
+    ));
     match self.request(snapshot, req).await {
       Ok(items) => items,
       Err(err) => {
@@ -240,10 +280,12 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     code_action_data: &CodeActionData,
+    format_code_settings: FormatCodeSettings,
   ) -> Result<CombinedCodeActions, LspError> {
     let req = RequestMethod::GetCombinedCodeFix((
       code_action_data.specifier.clone(),
       json!(code_action_data.fix_id.clone()),
+      format_code_settings,
     ));
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get combined fix from TypeScript: {}", err);
@@ -255,18 +297,40 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
+    format_code_settings: FormatCodeSettings,
     range: Range<u32>,
     refactor_name: String,
     action_name: String,
   ) -> Result<RefactorEditInfo, LspError> {
     let req = RequestMethod::GetEditsForRefactor((
       specifier,
+      format_code_settings,
       TextSpan {
         start: range.start,
         length: range.end - range.start,
       },
       refactor_name,
       action_name,
+    ));
+    self.request(snapshot, req).await.map_err(|err| {
+      log::error!("Failed to request to tsserver {}", err);
+      LspError::invalid_request()
+    })
+  }
+
+  pub async fn get_edits_for_file_rename(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    old_specifier: ModuleSpecifier,
+    new_specifier: ModuleSpecifier,
+    format_code_settings: FormatCodeSettings,
+    user_preferences: UserPreferences,
+  ) -> Result<Vec<FileTextChanges>, LspError> {
+    let req = RequestMethod::GetEditsForFileRename((
+      old_specifier,
+      new_specifier,
+      format_code_settings,
+      user_preferences,
     ));
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -327,8 +391,14 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     options: GetCompletionsAtPositionOptions,
+    format_code_settings: FormatCodeSettings,
   ) -> Option<CompletionInfo> {
-    let req = RequestMethod::GetCompletions((specifier, position, options));
+    let req = RequestMethod::GetCompletions((
+      specifier,
+      position,
+      options,
+      format_code_settings,
+    ));
     match self.request(snapshot, req).await {
       Ok(maybe_info) => maybe_info,
       Err(err) => {
@@ -2018,6 +2088,28 @@ impl ApplicableRefactorInfo {
   }
 }
 
+pub fn file_text_changes_to_workspace_edit(
+  changes: &[FileTextChanges],
+  language_server: &language_server::Inner,
+) -> LspResult<Option<lsp::WorkspaceEdit>> {
+  let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
+  for change in changes {
+    let ops = match change.to_text_document_change_ops(language_server) {
+      Ok(op) => op,
+      Err(err) => {
+        error!("Unable to convert changes to edits: {}", err);
+        return Err(LspError::internal_error());
+      }
+    };
+    all_ops.extend(ops);
+  }
+
+  Ok(Some(lsp::WorkspaceEdit {
+    document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
+    ..Default::default()
+  }))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
@@ -2030,17 +2122,8 @@ impl RefactorEditInfo {
   pub async fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
-  ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
-    let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
-    for edit in self.edits.iter() {
-      let ops = edit.to_text_document_change_ops(language_server)?;
-      all_ops.extend(ops);
-    }
-
-    Ok(Some(lsp::WorkspaceEdit {
-      document_changes: Some(lsp::DocumentChanges::Operations(all_ops)),
-      ..Default::default()
-    }))
+  ) -> LspResult<Option<lsp::WorkspaceEdit>> {
+    file_text_changes_to_workspace_edit(&self.edits, language_server)
   }
 }
 
@@ -2373,6 +2456,49 @@ fn parse_code_actions(
   }
 }
 
+// Based on https://github.com/microsoft/vscode/blob/1.81.1/extensions/typescript-language-features/src/languageFeatures/util/snippetForFunctionCall.ts#L49.
+fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
+  let mut parameters = Vec::with_capacity(3);
+  let mut is_in_fn = false;
+  let mut paren_count = 0;
+  let mut brace_count = 0;
+  for (idx, part) in parts.iter().enumerate() {
+    if ["methodName", "functionName", "text", "propertyName"]
+      .contains(&part.kind.as_str())
+    {
+      if paren_count == 0 && brace_count == 0 {
+        is_in_fn = true;
+      }
+    } else if part.kind == "parameterName" {
+      if paren_count == 1 && brace_count == 0 && is_in_fn {
+        let is_optional =
+          matches!(parts.get(idx + 1), Some(next) if next.text == "?");
+        // Skip `this` and optional parameters.
+        if !is_optional && part.text != "this" {
+          parameters.push(part.text.clone());
+        }
+      }
+    } else if part.kind == "punctuation" {
+      if part.text == "(" {
+        paren_count += 1;
+      } else if part.text == ")" {
+        paren_count -= 1;
+        if paren_count <= 0 && is_in_fn {
+          break;
+        }
+      } else if part.text == "..." && paren_count == 1 {
+        // Found rest parmeter. Do not fill in any further arguments.
+        break;
+      } else if part.text == "{" {
+        brace_count += 1;
+      } else if part.text == "}" {
+        brace_count -= 1;
+      }
+    }
+  }
+  parameters
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
@@ -2427,7 +2553,18 @@ impl CompletionEntryDetails {
       specifier,
       language_server,
     )?;
-    // TODO(@kitsonk) add `use_code_snippet`
+    let insert_text = if data.use_code_snippet {
+      Some(format!(
+        "{}({})",
+        original_item
+          .insert_text
+          .as_ref()
+          .unwrap_or(&original_item.label),
+        get_parameters_from_parts(&self.display_parts).join(", "),
+      ))
+    } else {
+      original_item.insert_text.clone()
+    };
 
     Ok(lsp::CompletionItem {
       data: None,
@@ -2435,6 +2572,7 @@ impl CompletionEntryDetails {
       documentation,
       command,
       additional_text_edits,
+      insert_text,
       // NOTE(bartlomieju): it's not entirely clear to me why we need to do that,
       // but when `completionItem/resolve` is called, we get a list of commit chars
       // even though we might have returned an empty list in `completion` request.
@@ -3211,9 +3349,13 @@ fn op_script_names(state: &mut OpState) -> Vec<String> {
         .filter_map(|dep| dep.get_type().or_else(|| dep.get_code())),
     );
     for specifier in specifiers {
-      if seen.insert(specifier.as_str()) && documents.exists(specifier) {
-        // only include dependencies we know to exist otherwise typescript will error
-        result.push(specifier.to_string());
+      if seen.insert(specifier.as_str()) {
+        if let Some(specifier) = documents.resolve_redirected(specifier) {
+          // only include dependencies we know to exist otherwise typescript will error
+          if documents.exists(&specifier) {
+            result.push(specifier.to_string());
+          }
+        }
       }
     }
   }
@@ -3242,9 +3384,12 @@ fn op_script_version(
 /// Create and setup a JsRuntime based on a snapshot. It is expected that the
 /// supplied snapshot is an isolate that contains the TypeScript language
 /// server.
-fn js_runtime(performance: Arc<Performance>) -> JsRuntime {
+fn js_runtime(
+  performance: Arc<Performance>,
+  cache: Arc<dyn HttpCache>,
+) -> JsRuntime {
   JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(performance)],
+    extensions: vec![deno_tsc::init_ops(performance, cache)],
     startup_snapshot: Some(tsc::compiler_snapshot()),
     ..Default::default()
   })
@@ -3261,11 +3406,19 @@ deno_core::extension!(deno_tsc,
     op_script_version,
   ],
   options = {
-    performance: Arc<Performance>
+    performance: Arc<Performance>,
+    cache: Arc<dyn HttpCache>,
   },
   state = |state, options| {
     state.put(State::new(
-      Arc::new(StateSnapshot::default()),
+      Arc::new(StateSnapshot {
+        assets: Default::default(),
+        cache_metadata: CacheMetadata::new(options.cache.clone()),
+        documents: Documents::new(options.cache.clone()),
+        maybe_import_map: None,
+        maybe_node_resolver: None,
+        maybe_npm_resolver: None,
+      }),
       options.performance,
     ));
   },
@@ -3524,6 +3677,8 @@ pub struct GetCompletionDetailsArgs {
   pub position: u32,
   pub name: String,
   #[serde(skip_serializing_if = "Option::is_none")]
+  pub format_code_settings: Option<FormatCodeSettings>,
+  #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub preferences: Option<UserPreferences>,
@@ -3539,6 +3694,7 @@ impl From<&CompletionItemData> for GetCompletionDetailsArgs {
       name: item_data.name.clone(),
       source: item_data.source.clone(),
       preferences: None,
+      format_code_settings: None,
       data: item_data.data.clone(),
     }
   }
@@ -3568,15 +3724,39 @@ enum RequestMethod {
   /// Retrieve the possible refactor info for a range of a file.
   GetApplicableRefactors((ModuleSpecifier, TextSpan, String)),
   /// Retrieve the refactor edit info for a range.
-  GetEditsForRefactor((ModuleSpecifier, TextSpan, String, String)),
+  GetEditsForRefactor(
+    (
+      ModuleSpecifier,
+      FormatCodeSettings,
+      TextSpan,
+      String,
+      String,
+    ),
+  ),
+  /// Retrieve the refactor edit info for a range.
+  GetEditsForFileRename(
+    (
+      ModuleSpecifier,
+      ModuleSpecifier,
+      FormatCodeSettings,
+      UserPreferences,
+    ),
+  ),
   /// Retrieve code fixes for a range of a file with the provided error codes.
-  GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>)),
+  GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>, FormatCodeSettings)),
   /// Get completion information at a given position (IntelliSense).
-  GetCompletions((ModuleSpecifier, u32, GetCompletionsAtPositionOptions)),
+  GetCompletions(
+    (
+      ModuleSpecifier,
+      u32,
+      GetCompletionsAtPositionOptions,
+      FormatCodeSettings,
+    ),
+  ),
   /// Get details about a specific completion entry.
   GetCompletionDetails(GetCompletionDetailsArgs),
   /// Retrieve the combined code fixes for a fix id for a module.
-  GetCombinedCodeFix((ModuleSpecifier, Value)),
+  GetCombinedCodeFix((ModuleSpecifier, Value, FormatCodeSettings)),
   /// Get declaration information for a specific position.
   GetDefinition((ModuleSpecifier, u32)),
   /// Return diagnostics for given file.
@@ -3662,6 +3842,7 @@ impl RequestMethod {
       }),
       RequestMethod::GetEditsForRefactor((
         specifier,
+        format_code_settings,
         span,
         refactor_name,
         action_name,
@@ -3669,15 +3850,30 @@ impl RequestMethod {
         "id": id,
         "method": "getEditsForRefactor",
         "specifier": state.denormalize_specifier(specifier),
+        "formatCodeSettings": format_code_settings,
         "range": { "pos": span.start, "end": span.start + span.length},
         "refactorName": refactor_name,
         "actionName": action_name,
+      }),
+      RequestMethod::GetEditsForFileRename((
+        old_specifier,
+        new_specifier,
+        format_code_settings,
+        preferences,
+      )) => json!({
+        "id": id,
+        "method": "getEditsForFileRename",
+        "oldSpecifier": state.denormalize_specifier(old_specifier),
+        "newSpecifier": state.denormalize_specifier(new_specifier),
+        "formatCodeSettings": format_code_settings,
+        "preferences": preferences,
       }),
       RequestMethod::GetCodeFixes((
         specifier,
         start_pos,
         end_pos,
         error_codes,
+        format_code_settings,
       )) => json!({
         "id": id,
         "method": "getCodeFixes",
@@ -3685,25 +3881,37 @@ impl RequestMethod {
         "startPosition": start_pos,
         "endPosition": end_pos,
         "errorCodes": error_codes,
+        "formatCodeSettings": format_code_settings,
       }),
-      RequestMethod::GetCombinedCodeFix((specifier, fix_id)) => json!({
+      RequestMethod::GetCombinedCodeFix((
+        specifier,
+        fix_id,
+        format_code_settings,
+      )) => json!({
         "id": id,
         "method": "getCombinedCodeFix",
         "specifier": state.denormalize_specifier(specifier),
         "fixId": fix_id,
+        "formatCodeSettings": format_code_settings,
       }),
       RequestMethod::GetCompletionDetails(args) => json!({
         "id": id,
         "method": "getCompletionDetails",
         "args": args
       }),
-      RequestMethod::GetCompletions((specifier, position, preferences)) => {
+      RequestMethod::GetCompletions((
+        specifier,
+        position,
+        preferences,
+        format_code_settings,
+      )) => {
         json!({
           "id": id,
           "method": "getCompletions",
           "specifier": state.denormalize_specifier(specifier),
           "position": position,
           "preferences": preferences,
+          "formatCodeSettings": format_code_settings,
         })
       }
       RequestMethod::GetDefinition((specifier, position)) => json!({
@@ -3895,8 +4103,11 @@ fn request(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::http_util::HeadersMap;
+  use crate::lsp::cache::CacheMetadata;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -3911,7 +4122,11 @@ mod tests {
     fixtures: &[(&str, &str, i32, LanguageId)],
     location: &Path,
   ) -> StateSnapshot {
-    let mut documents = Documents::new(location.to_path_buf());
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
+    let mut documents = Documents::new(cache.clone());
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -3924,7 +4139,11 @@ mod tests {
     }
     StateSnapshot {
       documents,
-      ..Default::default()
+      assets: Default::default(),
+      cache_metadata: CacheMetadata::new(cache),
+      maybe_import_map: None,
+      maybe_node_resolver: None,
+      maybe_npm_resolver: None,
     }
   }
 
@@ -3935,8 +4154,10 @@ mod tests {
     sources: &[(&str, &str, i32, LanguageId)],
   ) -> (JsRuntime, Arc<StateSnapshot>, PathBuf) {
     let location = temp_dir.path().join("deps").to_path_buf();
+    let cache =
+      Arc::new(GlobalHttpCache::new(location.clone(), RealDenoCacheEnv));
     let state_snapshot = Arc::new(mock_state_snapshot(sources, &location));
-    let mut runtime = js_runtime(Default::default());
+    let mut runtime = js_runtime(Default::default(), cache);
     start(&mut runtime, debug).unwrap();
     let ts_config = TsConfig::new(config);
     assert_eq!(
@@ -4414,7 +4635,7 @@ mod tests {
         LanguageId::TypeScript,
       )],
     );
-    let cache = HttpCache::new(location);
+    let cache = Arc::new(GlobalHttpCache::new(location, RealDenoCacheEnv));
     let specifier_dep =
       resolve_url("https://deno.land/x/example/a.ts").unwrap();
     cache
@@ -4558,6 +4779,7 @@ mod tests {
           trigger_character: Some(".".to_string()),
           trigger_kind: None,
         },
+        Default::default(),
       )),
       Default::default(),
     );
@@ -4574,6 +4796,7 @@ mod tests {
         name: "log".to_string(),
         source: None,
         preferences: None,
+        format_code_settings: None,
         data: None,
       }),
       Default::default(),
@@ -4666,6 +4889,163 @@ mod tests {
         ],
         "documentation": []
       })
+    );
+  }
+
+  #[test]
+  fn test_completions_fmt() {
+    let fixture_a = r#"
+      console.log(someLongVaria)
+    "#;
+    let fixture_b = r#"
+      export const someLongVariable = 1
+    "#;
+    let line_index = LineIndex::new(fixture_a);
+    let position = line_index
+      .offset_tsc(lsp::Position {
+        line: 1,
+        character: 33,
+      })
+      .unwrap();
+    let temp_dir = TempDir::new();
+    let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[
+        ("file:///a.ts", fixture_a, 1, LanguageId::TypeScript),
+        ("file:///b.ts", fixture_b, 1, LanguageId::TypeScript),
+      ],
+    );
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
+    );
+    assert!(result.is_ok());
+    let fmt_options_config = FmtOptionsConfig {
+      semi_colons: Some(false),
+      ..Default::default()
+    };
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetCompletions((
+        specifier.clone(),
+        position,
+        GetCompletionsAtPositionOptions {
+          user_preferences: UserPreferences {
+            include_completions_for_module_exports: Some(true),
+            include_completions_with_insert_text: Some(true),
+            ..Default::default()
+          },
+          ..Default::default()
+        },
+        (&fmt_options_config).into(),
+      )),
+      Default::default(),
+    )
+    .unwrap();
+    let info: CompletionInfo = serde_json::from_value(result).unwrap();
+    let entry = info
+      .entries
+      .iter()
+      .find(|e| &e.name == "someLongVariable")
+      .unwrap();
+    let result = request(
+      &mut runtime,
+      state_snapshot,
+      RequestMethod::GetCompletionDetails(GetCompletionDetailsArgs {
+        specifier,
+        position,
+        name: entry.name.clone(),
+        source: entry.source.clone(),
+        preferences: None,
+        format_code_settings: Some((&fmt_options_config).into()),
+        data: entry.data.clone(),
+      }),
+      Default::default(),
+    )
+    .unwrap();
+    let details: CompletionEntryDetails =
+      serde_json::from_value(result).unwrap();
+    let actions = details.code_actions.unwrap();
+    let action = actions
+      .iter()
+      .find(|a| &a.description == r#"Add import from "./b.ts""#)
+      .unwrap();
+    let changes = action.changes.first().unwrap();
+    let change = changes.text_changes.first().unwrap();
+    assert_eq!(
+      change.new_text,
+      "import { someLongVariable } from \"./b.ts\"\n"
+    );
+  }
+
+  #[test]
+  fn test_get_edits_for_file_rename() {
+    let temp_dir = TempDir::new();
+    let (mut runtime, state_snapshot, _) = setup(
+      &temp_dir,
+      false,
+      json!({
+        "target": "esnext",
+        "module": "esnext",
+        "lib": ["deno.ns", "deno.window"],
+        "noEmit": true,
+      }),
+      &[
+        (
+          "file:///a.ts",
+          r#"import "./b.ts";"#,
+          1,
+          LanguageId::TypeScript,
+        ),
+        ("file:///b.ts", r#""#, 1, LanguageId::TypeScript),
+      ],
+    );
+    let specifier = resolve_url("file:///a.ts").expect("could not resolve url");
+    let result = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetDiagnostics(vec![specifier.clone()]),
+      Default::default(),
+    );
+    assert!(result.is_ok());
+    let changes = request(
+      &mut runtime,
+      state_snapshot.clone(),
+      RequestMethod::GetEditsForFileRename((
+        resolve_url("file:///b.ts").unwrap(),
+        resolve_url("file:///c.ts").unwrap(),
+        Default::default(),
+        Default::default(),
+      )),
+      Default::default(),
+    )
+    .unwrap();
+    let changes: Vec<FileTextChanges> =
+      serde_json::from_value(changes).unwrap();
+    assert_eq!(
+      changes,
+      vec![FileTextChanges {
+        file_name: "file:///a.ts".to_string(),
+        text_changes: vec![TextChange {
+          span: TextSpan {
+            start: 8,
+            length: 6,
+          },
+          new_text: "./c.ts".to_string(),
+        }],
+        is_new_file: None,
+      }]
     );
   }
 

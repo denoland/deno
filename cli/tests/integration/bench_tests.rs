@@ -181,6 +181,17 @@ itest!(check_local_by_default2 {
   exit_code: 1,
 });
 
+itest!(bench_explicit_start_end {
+  args: "bench --quiet -A bench/explicit_start_and_end.ts",
+  output: "bench/explicit_start_and_end.out",
+  exit_code: 1,
+});
+
+itest_flaky!(bench_explicit_start_end_low_precision {
+  args: "bench --quiet -A bench/explicit_start_and_end_low_precision.ts",
+  output: "bench/explicit_start_and_end_low_precision.out",
+});
+
 itest!(bench_with_config {
   args: "bench --config bench/collect/deno.jsonc bench/collect",
   exit_code: 0,

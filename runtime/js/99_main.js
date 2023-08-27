@@ -154,6 +154,7 @@ async function pollForMessages() {
           ObjectPrototypeIsPrototypeOf(messagePort.MessagePortPrototype, t),
       ),
     });
+    event.setIsTrusted(msgEvent, true);
 
     try {
       globalDispatchEvent(msgEvent);
@@ -167,6 +168,7 @@ async function pollForMessages() {
         error: e,
       });
 
+      event.setIsTrusted(errorEvent, true);
       globalDispatchEvent(errorEvent);
       if (!errorEvent.defaultPrevented) {
         throw e;
@@ -413,14 +415,16 @@ function promiseRejectMacrotaskCallback() {
 }
 
 let hasBootstrapped = false;
+// Delete the `console` object that V8 automaticaly adds onto the global wrapper
+// object on context creation. We don't want this console object to shadow the
+// `console` object exposed by the ext/node globalThis proxy.
+delete globalThis.console;
 // Set up global properties shared by main and worker runtime.
 ObjectDefineProperties(globalThis, windowOrWorkerGlobalScope);
 // FIXME(bartlomieju): temporarily add whole `Deno.core` to
 // `Deno[Deno.internal]` namespace. It should be removed and only necessary
 // methods should be left there.
-ObjectAssign(internals, {
-  core,
-});
+ObjectAssign(internals, { core });
 const internalSymbol = Symbol("Deno.internal");
 const finalDenoNs = {
   internal: internalSymbol,
@@ -434,6 +438,7 @@ function bootstrapMainRuntime(runtimeOptions) {
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+  const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
     0: args,
@@ -452,6 +457,8 @@ function bootstrapMainRuntime(runtimeOptions) {
     13: userAgent,
     14: inspectFlag,
     // 15: enableTestingFeaturesFlag
+    16: hasNodeModulesDir,
+    17: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -460,12 +467,13 @@ function bootstrapMainRuntime(runtimeOptions) {
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
+  delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
   // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
   // writable, so that they can mock it themselves if they like. If the flag was
   // set, define `globalThis.location`, using the provided value.
-  if (location_ === undefined) {
+  if (location_ == null) {
     mainRuntimeGlobalProperties.location = {
       writable: true,
     };
@@ -538,6 +546,10 @@ function bootstrapMainRuntime(runtimeOptions) {
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
 
   util.log("args", args);
+
+  if (nodeBootstrap) {
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+  }
 }
 
 function bootstrapWorkerRuntime(
@@ -548,6 +560,8 @@ function bootstrapWorkerRuntime(
   if (hasBootstrapped) {
     throw new Error("Worker runtime already bootstrapped");
   }
+
+  const nodeBootstrap = globalThis.nodeBootstrap;
 
   const {
     0: args,
@@ -563,9 +577,11 @@ function bootstrapWorkerRuntime(
     10: pid,
     11: target,
     12: v8Version,
-    // 13: userAgent,
+    13: userAgent,
     // 14: inspectFlag,
     15: enableTestingFeaturesFlag,
+    16: hasNodeModulesDir,
+    17: maybeBinaryNpmCommandName,
   } = runtimeOptions;
 
   performance.setTimeOrigin(DateNow());
@@ -576,6 +592,7 @@ function bootstrapWorkerRuntime(
   // Remove bootstrapping data from the global scope
   delete globalThis.__bootstrap;
   delete globalThis.bootstrap;
+  delete globalThis.nodeBootstrap;
   hasBootstrapped = true;
 
   if (unstableFlag) {
@@ -629,6 +646,7 @@ function bootstrapWorkerRuntime(
   location.setLocationHref(location_);
 
   setNumCpus(cpuCount);
+  setUserAgent(userAgent);
   setLanguage(locale);
 
   globalThis.pollForMessages = pollForMessages;
@@ -644,6 +662,10 @@ function bootstrapWorkerRuntime(
   // Setup `Deno` global - we're actually overriding already
   // existing global `Deno` with `Deno` namespace from "./deno.ts".
   ObjectDefineProperty(globalThis, "Deno", util.readOnly(finalDenoNs));
+
+  if (nodeBootstrap) {
+    nodeBootstrap(hasNodeModulesDir, maybeBinaryNpmCommandName);
+  }
 }
 
 globalThis.bootstrap = {

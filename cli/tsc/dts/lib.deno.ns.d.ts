@@ -996,13 +996,63 @@ declare namespace Deno {
   ): void;
 
   /**
+   * Context that is passed to a benchmarked function. The instance is shared
+   * between iterations of the benchmark. Its methods can be used for example
+   * to override of the measured portion of the function.
+   *
+   * @category Testing
+   */
+  export interface BenchContext {
+    /** The current benchmark name. */
+    name: string;
+    /** The string URL of the current benchmark. */
+    origin: string;
+
+    /** Restarts the timer for the bench measurement. This should be called
+     * after doing setup work which should not be measured.
+     *
+     * Warning: This method should not be used for benchmarks averaging less
+     * than 10μs per iteration. In such cases it will be disabled but the call
+     * will still have noticeable overhead, resulting in a warning.
+     *
+     * ```ts
+     * Deno.bench("foo", async (t) => {
+     *   const data = await Deno.readFile("data.txt");
+     *   t.start();
+     *   // some operation on `data`...
+     * });
+     * ```
+     */
+    start(): void;
+
+    /** End the timer early for the bench measurement. This should be called
+     * before doing teardown work which should not be measured.
+     *
+     * Warning: This method should not be used for benchmarks averaging less
+     * than 10μs per iteration. In such cases it will be disabled but the call
+     * will still have noticeable overhead, resulting in a warning.
+     *
+     * ```ts
+     * Deno.bench("foo", async (t) => {
+     *   const file = await Deno.open("data.txt");
+     *   t.start();
+     *   // some operation on `file`...
+     *   t.end();
+     *   file.close();
+     * });
+     * ```
+     */
+    end(): void;
+  }
+
+  /**
    * The interface for defining a benchmark test using {@linkcode Deno.bench}.
    *
    * @category Testing
    */
   export interface BenchDefinition {
     /** The test function which will be benchmarked. */
-    fn: () => void | Promise<void>;
+    fn: (b: BenchContext) => void | Promise<void>;
     /** The name of the test, which will be used in displaying the results. */
     name: string;
     /** If truthy, the benchmark test will be ignored/skipped. */
@@ -1073,7 +1123,7 @@ declare namespace Deno {
    *
    * @category Testing
    */
-  export function bench(t: BenchDefinition): void;
+  export function bench(b: BenchDefinition): void;
 
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
@@ -1100,7 +1150,7 @@ declare namespace Deno {
    */
   export function bench(
     name: string,
-    fn: () => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1126,7 +1176,7 @@ declare namespace Deno {
    *
    * @category Testing
    */
-  export function bench(fn: () => void | Promise<void>): void;
+  export function bench(fn: (b: BenchContext) => void | Promise<void>): void;
 
   /**
    * Register a benchmark test which will be run when `deno bench` is used on
@@ -1162,7 +1212,7 @@ declare namespace Deno {
   export function bench(
     name: string,
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1196,7 +1246,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn">,
-    fn: () => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /**
@@ -1230,7 +1280,7 @@ declare namespace Deno {
    */
   export function bench(
     options: Omit<BenchDefinition, "fn" | "name">,
-    fn: () => void | Promise<void>,
+    fn: (b: BenchContext) => void | Promise<void>,
   ): void;
 
   /** Exit the Deno process with optional exit code.
@@ -4361,9 +4411,12 @@ declare namespace Deno {
    *
    * @category Permissions
    */
-  export type PermissionState = "granted" | "denied" | "prompt";
+  export type PermissionState =
+    | "granted"
+    | "denied"
+    | "prompt";
 
-  /** The permission descriptor for the `allow-run` permission, which controls
+  /** The permission descriptor for the `allow-run` and `deny-run` permissions, which controls
    * access to what sub-processes can be executed by Deno. The option `command`
    * allows scoping the permission to a specific executable.
    *
@@ -4374,12 +4427,12 @@ declare namespace Deno {
    * @category Permissions */
   export interface RunPermissionDescriptor {
     name: "run";
-    /** The `allow-run` permission can be scoped to a specific executable,
+    /** An `allow-run` or `deny-run` permission can be scoped to a specific executable,
      * which would be relative to the start-up CWD of the Deno CLI. */
     command?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-read` permissions, which controls
+  /** The permission descriptor for the `allow-read` and `deny-read` permissions, which controls
    * access to reading resources from the local host. The option `path` allows
    * scoping the permission to a specific path (and if the path is a directory
    * any sub paths).
@@ -4390,12 +4443,12 @@ declare namespace Deno {
    * @category Permissions */
   export interface ReadPermissionDescriptor {
     name: "read";
-    /** The `allow-read` permission can be scoped to a specific path (and if
+    /** An `allow-read` or `deny-read` permission can be scoped to a specific path (and if
      * the path is a directory, any sub paths). */
     path?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-write` permissions, which
+  /** The permission descriptor for the `allow-write` and `deny-write` permissions, which
    * controls access to writing to resources from the local host. The option
    * `path` allow scoping the permission to a specific path (and if the path is
    * a directory any sub paths).
@@ -4406,12 +4459,12 @@ declare namespace Deno {
    * @category Permissions */
   export interface WritePermissionDescriptor {
     name: "write";
-    /** The `allow-write` permission can be scoped to a specific path (and if
+    /** An `allow-write` or `deny-write` permission can be scoped to a specific path (and if
      * the path is a directory, any sub paths). */
     path?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-net` permissions, which controls
+  /** The permission descriptor for the `allow-net` and `deny-net` permissions, which controls
    * access to opening network ports and connecting to remote hosts via the
    * network. The option `host` allows scoping the permission for outbound
    * connection to a specific host and port.
@@ -4427,7 +4480,7 @@ declare namespace Deno {
     host?: string;
   }
 
-  /** The permission descriptor for the `allow-env` permissions, which controls
+  /** The permission descriptor for the `allow-env` and `deny-env` permissions, which controls
    * access to being able to read and write to the process environment variables
    * as well as access other information about the environment. The option
    * `variable` allows scoping the permission to a specific environment
@@ -4440,7 +4493,7 @@ declare namespace Deno {
     variable?: string;
   }
 
-  /** The permission descriptor for the `allow-sys` permissions, which controls
+  /** The permission descriptor for the `allow-sys` and `deny-sys` permissions, which controls
    * access to sensitive host system information, which malicious code might
    * attempt to exploit. The option `kind` allows scoping the permission to a
    * specific piece of information.
@@ -4460,7 +4513,7 @@ declare namespace Deno {
       | "gid";
   }
 
-  /** The permission descriptor for the `allow-ffi` permissions, which controls
+  /** The permission descriptor for the `allow-ffi` and `deny-ffi` permissions, which controls
    * access to loading _foreign_ code and interfacing with it via the
    * [Foreign Function Interface API](https://deno.land/manual/runtime/ffi_api)
    * available in Deno.  The option `path` allows scoping the permission to a
@@ -4473,7 +4526,7 @@ declare namespace Deno {
     path?: string | URL;
   }
 
-  /** The permission descriptor for the `allow-hrtime` permission, which
+  /** The permission descriptor for the `allow-hrtime` and `deny-hrtime` permissions, which
    * controls if the runtime code has access to high resolution time. High
    * resolution time is considered sensitive information, because it can be used
    * by malicious code to gain information about the host that it might not
@@ -4518,6 +4571,13 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     onchange: ((this: PermissionStatus, ev: Event) => any) | null;
     readonly state: PermissionState;
+    /**
+     * Describes if permission is only granted partially, eg. an access
+     * might be granted to "/foo" directory, but denied for "/foo/bar".
+     * In such case this field will be set to `true` when querying for
+     * read permissions of "/foo" directory.
+     */
+    readonly partial: boolean;
     addEventListener<K extends keyof PermissionStatusEventMap>(
       type: K,
       listener: (

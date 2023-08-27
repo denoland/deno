@@ -1477,3 +1477,45 @@ Deno.test({
   }, Deno.errors.AddrInUse);
   listener1.close();
 });
+
+Deno.test({
+  permissions: { net: true },
+}, function listenTlsDoesNotThrowOnStringPort() {
+  const listener = Deno.listenTls({
+    hostname: "localhost",
+    // @ts-ignore String port is not allowed by typing, but it shouldn't throw
+    // for backwards compatibility.
+    port: "0",
+    cert,
+    key,
+  });
+  listener.close();
+});
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  function listenTLSInvalidCert() {
+    assertThrows(() => {
+      Deno.listenTls({
+        hostname: "localhost",
+        port: 3500,
+        certFile: "cli/tests/testdata/tls/invalid.crt",
+        keyFile: "cli/tests/testdata/tls/localhost.key",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);
+
+Deno.test(
+  { permissions: { net: true, read: true } },
+  function listenTLSInvalidKey() {
+    assertThrows(() => {
+      Deno.listenTls({
+        hostname: "localhost",
+        port: 3500,
+        certFile: "cli/tests/testdata/tls/localhost.crt",
+        keyFile: "cli/tests/testdata/tls/invalid.key",
+      });
+    }, Deno.errors.InvalidData);
+  },
+);

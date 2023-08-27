@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 43;
+const cacheVersion = 51;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -65,8 +65,8 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
-cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
-cp third_party/prebuilt/linux64/libdl/libdl.a .
+wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
+wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
 
 sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
@@ -105,6 +105,8 @@ CC=clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
 };
+
+const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
 
 // The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
 // We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
@@ -165,6 +167,11 @@ const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v3",
   with: { "node-version": 18 },
+};
+const installProtocStep = {
+  name: "Install protoc",
+  uses: "arduino/setup-protoc@v2",
+  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -369,6 +376,14 @@ const ci = {
             os: Runners.ubuntu,
             job: "lint",
             profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "lint",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "lint",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -387,14 +402,13 @@ const ci = {
         reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
-        submoduleStep("./third_party"),
         {
           ...submoduleStep("./test_util/wpt"),
           if: "matrix.wpt",
         },
         {
           ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -413,7 +427,8 @@ const ci = {
         },
         installRustStep,
         {
-          if: "matrix.job == 'lint' || matrix.job == 'test'",
+          if:
+            "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -424,6 +439,7 @@ const ci = {
           if: "matrix.job == 'bench'",
           ...installNodeStep,
         },
+        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",
@@ -488,15 +504,16 @@ const ci = {
             "rustc --version",
             "cargo --version",
             "which dpkg && dpkg -l",
-            // Deno is installed when linting.
-            'if [ "${{ matrix.job }}" == "lint" ]',
-            "then",
+            // Deno is installed when linting or testing.
+            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
             "  deno --version",
             "fi",
             // Node is installed for benchmarks.
             'if [ "${{ matrix.job }}" == "bench" ]',
             "then",
             "  node -v",
+            // Install benchmark tools.
+            "  " + installBenchTools,
             "fi",
           ].join("\n"),
         },
@@ -543,13 +560,14 @@ const ci = {
         },
         {
           name: "test_format.js",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
-          if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')",
           env: {
             PR_TITLE: "${{ github.event.pull_request.title }}",
           },
@@ -559,11 +577,11 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },

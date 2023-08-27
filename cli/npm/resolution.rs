@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -10,6 +11,7 @@ use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmPackageVersionResolutionError;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
@@ -25,8 +27,8 @@ use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
@@ -80,7 +82,7 @@ impl NpmResolution {
 
   pub async fn add_package_reqs(
     &self,
-    package_reqs: &[NpmPackageReq],
+    package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -98,7 +100,7 @@ impl NpmResolution {
 
   pub async fn set_package_reqs(
     &self,
-    package_reqs: &[NpmPackageReq],
+    package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
     let _permit = self.update_queue.acquire().await;
@@ -183,7 +185,7 @@ impl NpmResolution {
   /// Resolve a node package from a deno module.
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self
       .snapshot
@@ -195,7 +197,7 @@ impl NpmResolution {
   pub fn resolve_pkg_reqs_from_pkg_id(
     &self,
     id: &NpmPackageId,
-  ) -> Vec<NpmPackageReq> {
+  ) -> Vec<PackageReq> {
     let snapshot = self.snapshot.read();
     let mut pkg_reqs = snapshot
       .package_reqs()
@@ -209,7 +211,7 @@ impl NpmResolution {
 
   pub fn resolve_pkg_id_from_deno_module(
     &self,
-    id: &NpmPackageNv,
+    id: &PackageNv,
   ) -> Result<NpmPackageId, PackageNvNotFoundError> {
     self
       .snapshot
@@ -223,8 +225,8 @@ impl NpmResolution {
   /// a package.json
   pub fn resolve_package_req_as_pending(
     &self,
-    pkg_req: &NpmPackageReq,
-  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
+    pkg_req: &PackageReq,
+  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     // we should always have this because it should have been cached before here
     let package_info = self.api.get_cached_package_info(&pkg_req.name).unwrap();
     self.resolve_package_req_as_pending_with_info(pkg_req, &package_info)
@@ -235,9 +237,9 @@ impl NpmResolution {
   /// a package.json
   pub fn resolve_package_req_as_pending_with_info(
     &self,
-    pkg_req: &NpmPackageReq,
+    pkg_req: &PackageReq,
     package_info: &NpmPackageInfo,
-  ) -> Result<NpmPackageNv, NpmPackageVersionResolutionError> {
+  ) -> Result<PackageNv, NpmPackageVersionResolutionError> {
     debug_assert_eq!(pkg_req.name, package_info.name);
     let mut snapshot = self.snapshot.write();
     let pending_resolver = get_npm_pending_resolver(&self.api);
@@ -247,6 +249,10 @@ impl NpmResolution {
       package_info,
     )?;
     Ok(nv)
+  }
+
+  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
+    self.snapshot.read().package_reqs().clone()
   }
 
   pub fn all_system_packages(
@@ -298,50 +304,49 @@ impl NpmResolution {
 
 async fn add_package_reqs_to_snapshot(
   api: &CliNpmRegistryApi,
-  package_reqs: &[NpmPackageReq],
+  package_reqs: &[PackageReq],
   maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
   get_new_snapshot: impl Fn() -> NpmResolutionSnapshot,
 ) -> Result<NpmResolutionSnapshot, AnyError> {
   let snapshot = get_new_snapshot();
-  if !snapshot.has_pending()
+  let snapshot = if !snapshot.has_pending()
     && package_reqs
       .iter()
       .all(|req| snapshot.package_reqs().contains_key(req))
   {
     log::debug!("Snapshot already up to date. Skipping pending resolution.");
-    return Ok(snapshot);
-  }
+    snapshot
+  } else {
+    let pending_resolver = get_npm_pending_resolver(api);
+    let result = pending_resolver
+      .resolve_pending(snapshot, package_reqs)
+      .await;
+    api.clear_memory_cache();
+    match result {
+      Ok(snapshot) => snapshot,
+      Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
+        log::debug!("{err:#}");
+        log::debug!("npm resolution failed. Trying again...");
 
-  let pending_resolver = get_npm_pending_resolver(api);
-  let result = pending_resolver
-    .resolve_pending(snapshot, package_reqs)
-    .await;
-  api.clear_memory_cache();
-  let snapshot = match result {
-    Ok(snapshot) => snapshot,
-    Err(NpmResolutionError::Resolution(err)) if api.mark_force_reload() => {
-      log::debug!("{err:#}");
-      log::debug!("npm resolution failed. Trying again...");
-
-      // try again
-      let snapshot = get_new_snapshot();
-      let result = pending_resolver
-        .resolve_pending(snapshot, package_reqs)
-        .await;
-      api.clear_memory_cache();
-      // now surface the result after clearing the cache
-      result?
+        // try again
+        let snapshot = get_new_snapshot();
+        let result = pending_resolver
+          .resolve_pending(snapshot, package_reqs)
+          .await;
+        api.clear_memory_cache();
+        // now surface the result after clearing the cache
+        result?
+      }
+      Err(err) => return Err(err.into()),
     }
-    Err(err) => return Err(err.into()),
   };
 
   if let Some(lockfile_mutex) = maybe_lockfile {
     let mut lockfile = lockfile_mutex.lock();
     populate_lockfile_from_snapshot(&mut lockfile, &snapshot)?;
-    Ok(snapshot)
-  } else {
-    Ok(snapshot)
   }
+
+  Ok(snapshot)
 }
 
 fn get_npm_pending_resolver(

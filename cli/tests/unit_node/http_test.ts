@@ -141,8 +141,7 @@ Deno.test("[node/http] chunked response", async () => {
   }
 });
 
-// TODO(kt3k): This test case exercises the workaround for https://github.com/denoland/deno/issues/17194
-// This should be removed when #17194 is resolved.
+// Test empty chunks: https://github.com/denoland/deno/issues/17194
 Deno.test("[node/http] empty chunk in the middle of response", async () => {
   const promise = deferred<void>();
 
@@ -261,6 +260,7 @@ Deno.test("[node/http] non-string buffer response", {
 }, async () => {
   const promise = deferred<void>();
   const server = http.createServer((_, res) => {
+    res.socket!.end();
     gzip(
       Buffer.from("a".repeat(100), "utf8"),
       {},
@@ -351,7 +351,10 @@ Deno.test("[node/http] send request with non-chunked body", async () => {
     assertEquals(requestBody, "hello world");
   });
   req.on("socket", (socket) => {
+    assert(socket.writable);
+    assert(socket.readable);
     socket.setKeepAlive();
+    socket.destroy();
   });
   req.write("hello ");
   req.write("world");
@@ -635,7 +638,9 @@ Deno.test("[node/http] HTTPS server", async () => {
   const server = https.createServer({
     cert: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.crt"),
     key: Deno.readTextFileSync("cli/tests/testdata/tls/localhost.key"),
-  }, (_req, res) => {
+  }, (req, res) => {
+    // @ts-ignore: It exists on TLSSocket
+    assert(req.socket.encrypted);
     res.end("success!");
   });
   server.listen(() => {
@@ -662,7 +667,9 @@ Deno.test(
   { permissions: { net: true } },
   async () => {
     const promise = deferred();
-    const server = http.createServer((_req, res) => {
+    const server = http.createServer((req, res) => {
+      // @ts-ignore: It exists on TLSSocket
+      assert(!req.socket.encrypted);
       res.writeHead(200, { "Content-Type": "text/plain" });
       res.end("okay");
     });
@@ -706,3 +713,67 @@ Deno.test(
     await promise;
   },
 );
+
+Deno.test(
+  "[node/http] client end with callback",
+  { permissions: { net: true } },
+  async () => {
+    let received = false;
+    const ac = new AbortController();
+    const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+      received = true;
+      return new Response("hello");
+    });
+    const promise = deferred();
+    let body = "";
+
+    const request = http.request(
+      "http://localhost:5928/",
+      (resp) => {
+        resp.on("data", (chunk) => {
+          body += chunk;
+        });
+
+        resp.on("end", () => {
+          promise.resolve();
+        });
+      },
+    );
+    request.on("error", promise.reject);
+    request.end(() => {
+      assert(received);
+    });
+
+    await promise;
+    ac.abort();
+    await server.finished;
+
+    assertEquals(body, "hello");
+  },
+);
+
+Deno.test("[node/http] server emits error if addr in use", async () => {
+  const promise = deferred<void>();
+  const promise2 = deferred<Error>();
+
+  const server = http.createServer();
+  server.listen(9001);
+
+  const server2 = http.createServer();
+  server2.on("error", (e) => {
+    promise2.resolve(e);
+  });
+  server2.listen(9001);
+
+  const err = await promise2;
+  server.close(() => promise.resolve());
+  server2.close();
+  await promise;
+  const expectedMsg = Deno.build.os === "windows"
+    ? "Only one usage of each socket address"
+    : "Address already in use";
+  assert(
+    err.message.startsWith(expectedMsg),
+    `Wrong error: ${err.message}`,
+  );
+});

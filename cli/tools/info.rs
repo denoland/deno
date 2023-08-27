@@ -21,9 +21,9 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::colors;
-use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
 
 use crate::args::Flags;
 use crate::args::InfoFlags;
@@ -40,7 +40,25 @@ pub async fn info(flags: Flags, info_flags: InfoFlags) -> Result<(), AnyError> {
     let module_graph_builder = factory.module_graph_builder().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = factory.maybe_lockfile();
-    let specifier = resolve_url_or_path(&specifier, cli_options.initial_cwd())?;
+    let maybe_imports_map = factory.maybe_import_map().await?;
+
+    let maybe_import_specifier = if let Some(imports_map) = maybe_imports_map {
+      if let Ok(imports_specifier) =
+        imports_map.resolve(&specifier, imports_map.base_url())
+      {
+        Some(imports_specifier)
+      } else {
+        None
+      }
+    } else {
+      None
+    };
+
+    let specifier = match maybe_import_specifier {
+      Some(specifier) => specifier,
+      None => resolve_url_or_path(&specifier, cli_options.initial_cwd())?,
+    };
+
     let mut loader = module_graph_builder.create_graph_loader();
     loader.enable_loading_cache_info(); // for displaying the cache information
     let graph = module_graph_builder
@@ -77,7 +95,8 @@ fn print_cache_info(
   location: Option<&deno_core::url::Url>,
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
-  let modules_cache = factory.file_fetcher()?.get_http_cache_location();
+  #[allow(deprecated)]
+  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
   let npm_cache = factory.npm_cache()?.as_readonly().get_cache_location();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();
@@ -166,7 +185,7 @@ fn add_npm_packages_to_json(
         .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
         .and_then(|package_ref| {
           snapshot
-            .resolve_package_from_deno_module(&package_ref.nv)
+            .resolve_package_from_deno_module(package_ref.nv())
             .ok()
         });
       if let Some(pkg) = maybe_package {
@@ -201,7 +220,8 @@ fn add_npm_packages_to_json(
             let specifier = dep.get("specifier").and_then(|s| s.as_str());
             if let Some(specifier) = specifier {
               if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-                if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(&npm_ref.req)
+                if let Ok(pkg) =
+                  snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
                 {
                   dep.insert(
                     "npmPackage".to_string(),
@@ -312,7 +332,7 @@ fn print_tree_node<TWrite: Write>(
 #[derive(Default)]
 struct NpmInfo {
   package_sizes: HashMap<NpmPackageId, u64>,
-  resolved_ids: HashMap<NpmPackageNv, NpmPackageId>,
+  resolved_ids: HashMap<PackageNv, NpmPackageId>,
   packages: HashMap<NpmPackageId, NpmResolutionPackage>,
 }
 
@@ -329,7 +349,7 @@ impl NpmInfo {
 
     for module in graph.modules() {
       if let Module::Npm(module) = module {
-        let nv = &module.nv_reference.nv;
+        let nv = module.nv_reference.nv();
         if let Ok(package) = npm_snapshot.resolve_package_from_deno_module(nv) {
           info.resolved_ids.insert(nv.clone(), package.id.clone());
           if !info.packages.contains_key(&package.id) {
@@ -363,7 +383,7 @@ impl NpmInfo {
 
   pub fn resolve_package(
     &self,
-    nv: &NpmPackageNv,
+    nv: &PackageNv,
   ) -> Option<&NpmResolutionPackage> {
     let id = self.resolved_ids.get(nv)?;
     self.packages.get(id)
@@ -523,7 +543,7 @@ impl<'a> GraphDisplayContext<'a> {
     use PackageOrSpecifier::*;
 
     let package_or_specifier = match module.npm() {
-      Some(npm) => match self.npm_info.resolve_package(&npm.nv_reference.nv) {
+      Some(npm) => match self.npm_info.resolve_package(npm.nv_reference.nv()) {
         Some(package) => Package(package.clone()),
         None => Specifier(module.specifier().clone()), // should never happen
       },
@@ -596,7 +616,7 @@ impl<'a> GraphDisplayContext<'a> {
       let maybe_size = self.npm_info.package_sizes.get(dep_id).cloned();
       let size_str = maybe_size_to_text(maybe_size);
       let mut child = TreeNode::from_text(format!(
-        "npm:{} {}",
+        "npm:/{} {}",
         dep_id.as_serialized(),
         size_str
       ));

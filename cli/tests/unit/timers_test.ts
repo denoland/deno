@@ -727,3 +727,32 @@ Deno.test({
     assertEquals(output, "");
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/19866
+Deno.test({
+  name: "regression for #19866",
+  fn: async () => {
+    const timeoutsFired = [];
+
+    // deno-lint-ignore require-await
+    async function start(n: number) {
+      let i = 0;
+      const intervalId = setInterval(() => {
+        i++;
+        if (i > 2) {
+          clearInterval(intervalId!);
+        }
+        timeoutsFired.push(n);
+      }, 20);
+    }
+
+    for (let n = 0; n < 100; n++) {
+      start(n);
+    }
+
+    // 3s should be plenty of time for all the intervals to fire
+    // but it might still be flaky on CI.
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    assertEquals(timeoutsFired.length, 300);
+  },
+});

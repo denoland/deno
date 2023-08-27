@@ -8,7 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -154,11 +154,14 @@ impl OutsideLockClient {
 
   pub async fn publish_diagnostics(
     &self,
-    uri: lsp::Url,
+    uri: LspClientUrl,
     diags: Vec<lsp::Diagnostic>,
     version: Option<i32>,
   ) {
-    self.0.publish_diagnostics(uri, diags, version).await;
+    self
+      .0
+      .publish_diagnostics(uri.into_url(), diags, version)
+      .await;
   }
 }
 

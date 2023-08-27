@@ -55,6 +55,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
@@ -274,7 +275,20 @@ const kError = Symbol("kError");
 const kUniqueHeaders = Symbol("kUniqueHeaders");
 
 class FakeSocket extends EventEmitter {
+  constructor(opts = {}) {
+    super();
+    this.remoteAddress = opts.hostname;
+    this.remotePort = opts.port;
+    this.encrypted = opts.encrypted;
+    this.writable = true;
+    this.readable = true;
+  }
+
   setKeepAlive() {}
+
+  end() {}
+
+  destroy() {}
 }
 
 /** ClientRequest represents the http(s) request from the client */
@@ -551,7 +565,7 @@ class ClientRequest extends OutgoingMessage {
         this.onSocket(createConnection(optsWithoutSignal));
       }
     }*/
-    this.onSocket(new FakeSocket());
+    this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
 
     const url = this._createUrlStrFromOptions();
 
@@ -591,6 +605,15 @@ class ClientRequest extends OutgoingMessage {
 
   // deno-lint-ignore no-explicit-any
   end(chunk?: any, encoding?: any, cb?: any): this {
+    if (typeof chunk === "function") {
+      cb = chunk;
+      chunk = null;
+      encoding = null;
+    } else if (typeof encoding === "function") {
+      cb = encoding;
+      encoding = null;
+    }
+
     this.finished = true;
     if (chunk !== undefined && chunk !== null) {
       this.write(chunk, encoding);
@@ -609,15 +632,14 @@ class ClientRequest extends OutgoingMessage {
               }
 
               core.tryClose(this._bodyWriteRid);
-
-              try {
-                cb?.();
-              } catch (_) {
-                //
-              }
             }
           })(),
         ]);
+        try {
+          cb?.();
+        } catch (_) {
+          //
+        }
         if (this._timeout) {
           this._timeout.removeEventListener("abort", this._timeoutCb);
           webClearTimeout(this._timeout[timerId]);
@@ -1288,7 +1310,10 @@ export class ServerResponse extends NodeWritable {
     return status === 101 || status === 204 || status === 205 || status === 304;
   }
 
-  constructor(resolve: (value: Response | PromiseLike<Response>) => void) {
+  constructor(
+    resolve: (value: Response | PromiseLike<Response>) => void,
+    socket: FakeSocket,
+  ) {
     let controller: ReadableByteStreamController;
     const readable = new ReadableStream({
       start(c) {
@@ -1331,6 +1356,7 @@ export class ServerResponse extends NodeWritable {
     });
     this.#readable = readable;
     this.#resolve = resolve;
+    this.socket = socket;
   }
 
   setHeader(name: string, value: string) {
@@ -1413,13 +1439,14 @@ export class ServerResponse extends NodeWritable {
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
+  #headers: Record<string, string>;
   url: string;
   method: string;
   // Polyfills part of net.Socket object.
   // These properties are used by `npm:forwarded` for example.
   socket: { remoteAddress: string; remotePort: number };
 
-  constructor(req: Request, remoteAddr: { hostname: string; port: number }) {
+  constructor(req: Request, socket: FakeSocket) {
     // Check if no body (GET/HEAD/OPTIONS/...)
     const reader = req.body?.getReader();
     super({
@@ -1446,10 +1473,7 @@ export class IncomingMessageForServer extends NodeReadable {
     // url: (new URL(request.url).pathname),
     this.url = req.url?.slice(req.url.indexOf("/", 8));
     this.method = req.method;
-    this.socket = {
-      remoteAddress: remoteAddr.hostname,
-      remotePort: remoteAddr.port,
-    };
+    this.socket = socket;
     this.#req = req;
   }
 
@@ -1462,7 +1486,15 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get headers() {
-    return Object.fromEntries(this.#req.headers.entries());
+    if (!this.#headers) {
+      this.#headers = {};
+      const entries = headersEntries(this.#req.headers);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        this.#headers[entry[0]] = entry[1];
+      }
+    }
+    return this.#headers;
   }
 
   get upgrade(): boolean {
@@ -1553,7 +1585,12 @@ export class ServerImpl extends EventEmitter {
   _serve() {
     const ac = new AbortController();
     const handler = (request: Request, info: Deno.ServeHandlerInfo) => {
-      const req = new IncomingMessageForServer(request, info.remoteAddr);
+      const socket = new FakeSocket({
+        remoteAddress: info.remoteAddr.hostname,
+        remotePort: info.remoteAddr.port,
+        encrypted: this._encrypted,
+      });
+      const req = new IncomingMessageForServer(request, socket);
       if (req.upgrade && this.listenerCount("upgrade") > 0) {
         const { conn, response } = upgradeHttpRaw(request);
         const socket = new Socket({
@@ -1563,7 +1600,7 @@ export class ServerImpl extends EventEmitter {
         return response;
       } else {
         return new Promise<Response>((resolve): void => {
-          const res = new ServerResponse(resolve);
+          const res = new ServerResponse(resolve, socket);
           this.emit("request", req, res);
         });
       }
@@ -1573,19 +1610,25 @@ export class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    this.#server = serve(
-      {
-        handler: handler as Deno.ServeHandler,
-        ...this.#addr,
-        signal: ac.signal,
-        // @ts-ignore Might be any without `--unstable` flag
-        onListen: ({ port }) => {
-          this.#addr!.port = port;
-          this.emit("listening");
+    try {
+      this.#server = serve(
+        {
+          handler: handler as Deno.ServeHandler,
+          ...this.#addr,
+          signal: ac.signal,
+          // @ts-ignore Might be any without `--unstable` flag
+          onListen: ({ port }) => {
+            this.#addr!.port = port;
+            this.emit("listening");
+          },
+          ...this._additionalServeOptions?.(),
         },
-        ...this._additionalServeOptions?.(),
-      },
-    );
+      );
+    } catch (e) {
+      this.emit("error", e);
+      return;
+    }
+
     if (this.#unref) {
       this.#server.unref();
     }

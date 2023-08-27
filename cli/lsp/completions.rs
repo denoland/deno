@@ -505,6 +505,7 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
@@ -519,13 +520,20 @@ mod tests {
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let mut documents = Documents::new(location.to_path_buf());
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      crate::cache::RealDenoCacheEnv,
+    ));
+    let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new(location.to_path_buf());
+    let http_cache = GlobalHttpCache::new(
+      location.to_path_buf(),
+      crate::cache::RealDenoCacheEnv,
+    );
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");

@@ -1,0 +1,38 @@
+Check [WILDCARD]/testdata/test/pass.ts
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="deno test" tests="16" failures="0" errors="0" time="[WILDCARD]">
+    <testsuite name="[WILDCARD]/testdata/test/pass.ts" tests="16" disabled="0" errors="0" failures="0">
+        <testcase name="test 0" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="1" col="6">
+        </testcase>
+        <testcase name="test 1" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="2" col="6">
+        </testcase>
+        <testcase name="test 2" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="3" col="6">
+        </testcase>
+        <testcase name="test 3" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="4" col="6">
+        </testcase>
+        <testcase name="test 4" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="5" col="6">
+        </testcase>
+        <testcase name="test 5" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="6" col="6">
+        </testcase>
+        <testcase name="test 6" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="7" col="6">
+        </testcase>
+        <testcase name="test 7" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="8" col="6">
+        </testcase>
+        <testcase name="test 8" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="9" col="6">
+        </testcase>
+        <testcase name="test 9" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="12" col="6">
+        </testcase>
+        <testcase name="test\b" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="16" col="6">
+        </testcase>
+        <testcase name="test\f" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="19" col="6">
+        </testcase>
+        <testcase name="test\t" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="23" col="6">
+        </testcase>
+        <testcase name="test\n" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="27" col="6">
+        </testcase>
+        <testcase name="test\r" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="31" col="6">
+        </testcase>
+        <testcase name="test\v" time="[WILDCARD]" filename="[WILDCARD]/testdata/test/pass.ts" line="35" col="6">
+        </testcase>
+    </testsuite>
+</testsuites>

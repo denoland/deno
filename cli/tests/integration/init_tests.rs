@@ -7,9 +7,7 @@ use util::TestContextBuilder;
 #[test]
 fn init_subcommand_without_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context.new_command().args("init").split_output().run();
 
@@ -59,8 +57,7 @@ fn init_subcommand_without_dir() {
 #[test]
 fn init_subcommand_with_dir_arg() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context
     .new_command()
@@ -117,8 +114,7 @@ fn init_subcommand_with_dir_arg() {
 #[test]
 fn init_subcommand_with_quiet_arg() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context
     .new_command()

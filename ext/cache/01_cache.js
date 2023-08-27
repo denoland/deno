@@ -1,5 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-
+// deno-lint-ignore-file camelcase
 const core = globalThis.Deno.core;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 const primordials = globalThis.__bootstrap.primordials;
@@ -20,7 +20,15 @@ import { toInnerResponse } from "ext:deno_fetch/23_response.js";
 import { URLPrototype } from "ext:deno_url/00_url.js";
 import { getHeader } from "ext:deno_fetch/20_headers.js";
 import { readableStreamForRid } from "ext:deno_web/06_streams.js";
-
+const {
+  op_cache_delete,
+  op_cache_match,
+  op_cache_put,
+  op_cache_put_finish,
+  op_cache_storage_delete,
+  op_cache_storage_has,
+  op_cache_storage_open,
+} = core.ensureFastOps();
 class CacheStorage {
   constructor() {
     webidl.illegalConstructor();
@@ -31,7 +39,7 @@ class CacheStorage {
     const prefix = "Failed to execute 'open' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    const cacheId = await core.opAsync("op_cache_storage_open", cacheName);
+    const cacheId = await op_cache_storage_open(cacheName);
     const cache = webidl.createBranded(Cache);
     cache[_id] = cacheId;
     return cache;
@@ -42,7 +50,7 @@ class CacheStorage {
     const prefix = "Failed to execute 'has' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    return await core.opAsync("op_cache_storage_has", cacheName);
+    return await op_cache_storage_has(cacheName);
   }
 
   async delete(cacheName) {
@@ -50,7 +58,7 @@ class CacheStorage {
     const prefix = "Failed to execute 'delete' on 'CacheStorage'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     cacheName = webidl.converters["DOMString"](cacheName, prefix, "Argument 1");
-    return await core.opAsync("op_cache_storage_delete", cacheName);
+    return await op_cache_storage_delete(cacheName);
   }
 }
 
@@ -124,8 +132,7 @@ class Cache {
     reqUrl.hash = "";
 
     // Step 9-11.
-    const rid = await core.opAsync(
-      "op_cache_put",
+    const rid = await op_cache_put(
       {
         cacheId: this[_id],
         // deno-lint-ignore prefer-primordials
@@ -142,7 +149,7 @@ class Cache {
         while (true) {
           const { value, done } = await reader.read();
           if (done) {
-            await core.shutdown(rid);
+            await op_cache_put_finish(rid);
             break;
           }
           await core.writeAll(rid, value);
@@ -196,7 +203,7 @@ class Cache {
     ) {
       r = new Request(request);
     }
-    return await core.opAsync("op_cache_delete", {
+    return await op_cache_delete({
       cacheId: this[_id],
       requestUrl: r.url,
     });
@@ -240,8 +247,7 @@ class Cache {
       const url = new URL(r.url);
       url.hash = "";
       const innerRequest = toInnerRequest(r);
-      const matchResult = await core.opAsync(
-        "op_cache_match",
+      const matchResult = await op_cache_match(
         {
           cacheId: this[_id],
           // deno-lint-ignore prefer-primordials

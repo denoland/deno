@@ -2,6 +2,7 @@
 
 use super::check_unstable;
 use crate::permissions::PermissionsContainer;
+use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
@@ -285,7 +286,12 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn()?;
+  let mut child = command.spawn().with_context(|| {
+    format!(
+      "Failed to spawn: {}",
+      command.as_std().get_program().to_string_lossy()
+    )
+  })?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -352,8 +358,13 @@ fn op_spawn_sync(
 ) -> Result<SpawnOutput, AnyError> {
   let stdout = matches!(args.stdio.stdout, Stdio::Piped);
   let stderr = matches!(args.stdio.stderr, Stdio::Piped);
-  let output =
-    create_command(state, args, "Deno.Command().outputSync()")?.output()?;
+  let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
+  let output = command.output().with_context(|| {
+    format!(
+      "Failed to spawn: {}",
+      command.get_program().to_string_lossy()
+    )
+  })?;
 
   Ok(SpawnOutput {
     status: output.status.try_into()?,
@@ -568,7 +579,7 @@ mod deprecated {
     #[cfg(unix)]
     let signal = run_status.signal();
     #[cfg(not(unix))]
-    let signal = None;
+    let signal = Default::default();
 
     code
       .or(signal)

@@ -764,3 +764,13 @@ Deno.test({
     assert(typeof process.stdout.isTTY === "boolean");
   },
 });
+
+Deno.test({
+  name: "process.title",
+  fn() {
+    assertEquals(process.title, "deno");
+    // Verify that setting the value has no effect.
+    process.title = "foo";
+    assertEquals(process.title, "deno");
+  },
+});

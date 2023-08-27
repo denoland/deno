@@ -6,70 +6,10 @@ use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
-use lazy_regex::lazy_regex;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::error::Error;
 use std::fmt;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
-
-const UNSTABLE_DENO_PROPS: &[&str] = &[
-  "CreateHttpClientOptions",
-  "DatagramConn",
-  "HttpClient",
-  "UnixConnectOptions",
-  "UnixListenOptions",
-  "connect",
-  "createHttpClient",
-  "listen",
-  "listenDatagram",
-  "dlopen",
-  "removeSignalListener",
-  "shutdown",
-  "umask",
-];
-
-static MSG_MISSING_PROPERTY_DENO: Lazy<Regex> =
-  lazy_regex!(r#"Property '([^']+)' does not exist on type 'typeof Deno'"#);
-
-static MSG_SUGGESTION: Lazy<Regex> =
-  lazy_regex!(r#" Did you mean '([^']+)'\?"#);
-
-/// Potentially convert a "raw" diagnostic message from TSC to something that
-/// provides a more sensible error message given a Deno runtime context.
-fn format_message(msg: &str, code: &u64) -> String {
-  match code {
-    2339 => {
-      if let Some(captures) = MSG_MISSING_PROPERTY_DENO.captures(msg) {
-        if let Some(property) = captures.get(1) {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag?", msg, property.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    2551 => {
-      if let (Some(caps_property), Some(caps_suggestion)) = (
-        MSG_MISSING_PROPERTY_DENO.captures(msg),
-        MSG_SUGGESTION.captures(msg),
-      ) {
-        if let (Some(property), Some(suggestion)) =
-          (caps_property.get(1), caps_suggestion.get(1))
-        {
-          if UNSTABLE_DENO_PROPS.contains(&property.as_str()) {
-            return format!("{} 'Deno.{}' is an unstable API. Did you forget to run with the '--unstable' flag, or did you mean '{}'?", MSG_SUGGESTION.replace(msg, ""), property.as_str(), suggestion.as_str());
-          }
-        }
-      }
-
-      msg.to_string()
-    }
-    _ => msg.to_string(),
-  }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DiagnosticCategory {
@@ -227,7 +167,7 @@ impl Diagnostic {
         f,
         "{:indent$}{}",
         "",
-        format_message(&self.message_text.clone().unwrap(), &self.code),
+        self.message_text.as_deref().unwrap_or_default(),
         indent = level,
       )
     }

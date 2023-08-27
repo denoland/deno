@@ -1,6 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::cache::calculate_fs_version;
+use super::cache::calculate_fs_version_at_path;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
@@ -9,7 +10,6 @@ use crate::args::package_json;
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::ConfigFile;
 use crate::args::JsxImportSourceConfig;
-use crate::cache::CachedUrlMetadata;
 use crate::cache::FastInsecureHasher;
 use crate::cache::HttpCache;
 use crate::file_fetcher::get_source_from_bytes;
@@ -21,6 +21,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -42,9 +43,9 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexMap;
+use deno_semver::package::PackageReq;
+use indexmap1::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
@@ -656,14 +657,14 @@ fn recurse_dependents(
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct SpecifierResolver {
-  cache: HttpCache,
+  cache: Arc<dyn HttpCache>,
   redirects: Mutex<HashMap<ModuleSpecifier, ModuleSpecifier>>,
 }
 
 impl SpecifierResolver {
-  pub fn new(cache: HttpCache) -> Self {
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache,
       redirects: Mutex::new(HashMap::new()),
@@ -698,10 +699,13 @@ impl SpecifierResolver {
     specifier: &ModuleSpecifier,
     redirect_limit: usize,
   ) -> Option<ModuleSpecifier> {
-    let cache_filename = self.cache.get_cache_filename(specifier)?;
-    if redirect_limit > 0 && cache_filename.is_file() {
-      let headers = CachedUrlMetadata::read(&cache_filename)
+    if redirect_limit > 0 {
+      let cache_key = self.cache.cache_item_key(specifier).ok()?;
+      let headers = self
+        .cache
+        .read_metadata(&cache_key)
         .ok()
+        .flatten()
         .map(|m| m.headers)?;
       if let Some(location) = headers.get("location") {
         let redirect =
@@ -725,15 +729,14 @@ struct FileSystemDocuments {
 impl FileSystemDocuments {
   pub fn get(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
     let fs_version = if specifier.scheme() == "data" {
       Some("1".to_string())
     } else {
-      get_document_path(cache, specifier)
-        .and_then(|path| calculate_fs_version(&path))
+      calculate_fs_version(cache, specifier)
     };
     let file_system_doc = self.docs.get(specifier);
     if file_system_doc.map(|d| d.fs_version().to_string()) != fs_version {
@@ -748,13 +751,13 @@ impl FileSystemDocuments {
   /// returning the document.
   fn refresh_document(
     &mut self,
-    cache: &HttpCache,
+    cache: &Arc<dyn HttpCache>,
     resolver: &dyn deno_graph::source::Resolver,
     specifier: &ModuleSpecifier,
   ) -> Option<Document> {
     let doc = if specifier.scheme() == "file" {
-      let path = get_document_path(cache, specifier)?;
-      let fs_version = calculate_fs_version(&path)?;
+      let path = specifier_to_file_path(specifier).ok()?;
+      let fs_version = calculate_fs_version_at_path(&path)?;
       let bytes = fs::read(path).ok()?;
       let maybe_charset =
         Some(text_encoding::detect_charset(&bytes).to_string());
@@ -776,11 +779,10 @@ impl FileSystemDocuments {
         resolver,
       )
     } else {
-      let path = get_document_path(cache, specifier)?;
-      let fs_version = calculate_fs_version(&path)?;
-      let bytes = fs::read(path).ok()?;
-      let cache_filename = cache.get_cache_filename(specifier)?;
-      let specifier_metadata = CachedUrlMetadata::read(&cache_filename).ok()?;
+      let fs_version = calculate_fs_version(cache, specifier)?;
+      let cache_key = cache.cache_item_key(specifier).ok()?;
+      let bytes = cache.read_file_bytes(&cache_key).ok()??;
+      let specifier_metadata = cache.read_metadata(&cache_key).ok()??;
       let maybe_content_type = specifier_metadata.headers.get("content-type");
       let (_, maybe_charset) = map_content_type(specifier, maybe_content_type);
       let maybe_headers = Some(specifier_metadata.headers);
@@ -796,17 +798,6 @@ impl FileSystemDocuments {
     self.dirty = true;
     self.docs.insert(specifier.clone(), doc.clone());
     Some(doc)
-  }
-}
-
-fn get_document_path(
-  cache: &HttpCache,
-  specifier: &ModuleSpecifier,
-) -> Option<PathBuf> {
-  match specifier.scheme() {
-    "npm" | "node" | "data" | "blob" => None,
-    "file" => specifier_to_file_path(specifier).ok(),
-    _ => cache.get_cache_filename(specifier),
   }
 }
 
@@ -831,10 +822,10 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
-  cache: HttpCache,
+  cache: Arc<dyn HttpCache>,
   /// A flag that indicates that stated data is potentially invalid and needs to
   /// be recalculated before being considered valid.
   dirty: bool,
@@ -855,7 +846,7 @@ pub struct Documents {
   /// settings.
   resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
+  npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -864,8 +855,7 @@ pub struct Documents {
 }
 
 impl Documents {
-  pub fn new(location: PathBuf) -> Self {
-    let cache = HttpCache::new(location);
+  pub fn new(cache: Arc<dyn HttpCache>) -> Self {
     Self {
       cache: cache.clone(),
       dirty: true,
@@ -980,6 +970,13 @@ impl Documents {
     }
   }
 
+  pub fn resolve_redirected(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    self.specifier_resolver.resolve(specifier)
+  }
+
   /// Return `true` if the specifier can be resolved to a document.
   pub fn exists(&self, specifier: &ModuleSpecifier) -> bool {
     let specifier = self.specifier_resolver.resolve(specifier);
@@ -990,8 +987,13 @@ impl Documents {
       if specifier.scheme() == "data" {
         return true;
       }
-      if let Some(path) = get_document_path(&self.cache, &specifier) {
-        return path.is_file();
+      if specifier.scheme() == "file" {
+        return specifier_to_file_path(&specifier)
+          .map(|p| p.is_file())
+          .unwrap_or(false);
+      }
+      if self.cache.contains(&specifier) {
+        return true;
       }
     }
     false
@@ -1015,7 +1017,7 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
     self.calculate_dependents_if_dirty();
     self.npm_specifier_reqs.clone()
   }
@@ -1111,18 +1113,6 @@ impl Documents {
           continue;
         }
       }
-      if let Some(module_name) = specifier.strip_prefix("node:") {
-        if deno_node::is_builtin_node_module(module_name) {
-          // return itself for node: specifiers because during type checking
-          // we resolve to the ambient modules in the @types/node package
-          // rather than deno_std/node
-          results.push(Some((
-            ModuleSpecifier::parse(&specifier).unwrap(),
-            MediaType::Dts,
-          )));
-          continue;
-        }
-      }
       if specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(&specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1158,9 +1148,8 @@ impl Documents {
   }
 
   /// Update the location of the on disk cache for the document store.
-  pub fn set_location(&mut self, location: PathBuf) {
+  pub fn set_cache(&mut self, cache: Arc<dyn HttpCache>) {
     // TODO update resolved dependencies?
-    let cache = HttpCache::new(location);
     self.cache = cache.clone();
     self.specifier_resolver = Arc::new(SpecifierResolver::new(cache));
     self.dirty = true;
@@ -1196,10 +1185,11 @@ impl Documents {
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
+      maybe_vendor_dir: Option<bool>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
-      hasher.write_hashable(&document_preload_limit);
+      hasher.write_hashable(document_preload_limit);
       hasher.write_hashable(&{
         // ensure these are sorted so the hashing is deterministic
         let mut enabled_urls = enabled_urls.to_vec();
@@ -1210,7 +1200,8 @@ impl Documents {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      hasher.write_hashable(&maybe_jsx_config);
+      hasher.write_hashable(maybe_vendor_dir);
+      hasher.write_hashable(maybe_jsx_config);
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
         // this in order to catch if the type of package_json_deps ever changes
@@ -1228,6 +1219,7 @@ impl Documents {
           }
         }
       }
+
       hasher.finish()
     }
 
@@ -1237,25 +1229,32 @@ impl Documents {
       });
     let maybe_jsx_config = options
       .maybe_config_file
-      .and_then(|cf| cf.to_maybe_jsx_import_source_config());
+      .and_then(|cf| cf.to_maybe_jsx_import_source_config().ok().flatten());
     let new_resolver_config_hash = calculate_resolver_config_hash(
       &options.enabled_urls,
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
+      options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
       maybe_package_json_deps.as_ref(),
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
-      maybe_jsx_config,
-      options.maybe_import_map,
-      false,
       options.npm_registry_api,
       options.npm_resolution,
       deps_provider,
       deps_installer,
+      CliGraphResolverOptions {
+        maybe_jsx_import_source_config: maybe_jsx_config,
+        maybe_import_map: options.maybe_import_map,
+        maybe_vendor_dir: options
+          .maybe_config_file
+          .and_then(|c| c.vendor_dir_path())
+          .as_ref(),
+        no_npm: false,
+      },
     ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
@@ -1263,13 +1262,10 @@ impl Documents {
       {
         imports
           .into_iter()
-          .map(|import| {
-            let graph_import = GraphImport::new(
-              &import.referrer,
-              import.imports,
-              Some(self.get_resolver()),
-            );
-            (import.referrer, graph_import)
+          .map(|(referrer, imports)| {
+            let graph_import =
+              GraphImport::new(&referrer, imports, Some(self.get_resolver()));
+            (referrer, graph_import)
           })
           .collect()
       } else {
@@ -1297,9 +1293,10 @@ impl Documents {
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
-    }
 
-    self.dirty = true;
+      self.dirty = true;
+      self.calculate_dependents_if_dirty();
+    }
   }
 
   fn refresh_dependencies(
@@ -1398,7 +1395,7 @@ impl Documents {
       dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
-      npm_reqs: HashSet<NpmPackageReq>,
+      npm_reqs: HashSet<PackageReq>,
       has_node_builtin_specifier: bool,
     }
 
@@ -1410,7 +1407,7 @@ impl Documents {
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            self.npm_reqs.insert(reference.req);
+            self.npm_reqs.insert(reference.into_inner().req);
           }
         }
 
@@ -1423,12 +1420,11 @@ impl Documents {
 
       fn analyze_doc(&mut self, specifier: &ModuleSpecifier, doc: &Document) {
         self.analyzed_specifiers.insert(specifier.clone());
-        for (name, dependency) in doc.dependencies() {
-          if !self.has_node_builtin_specifier && name.starts_with("node:") {
-            self.has_node_builtin_specifier = true;
-          }
-
+        for dependency in doc.dependencies().values() {
           if let Some(dep) = dependency.get_code() {
+            if !self.has_node_builtin_specifier && dep.scheme() == "node" {
+              self.has_node_builtin_specifier = true;
+            }
             self.add(dep, specifier);
           }
           if let Some(dep) = dependency.get_type() {
@@ -1469,7 +1465,7 @@ impl Documents {
       .has_node_builtin_specifier
       && !npm_reqs.iter().any(|r| r.name == "@types/node");
     if self.has_injected_types_node_package {
-      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
@@ -1491,6 +1487,15 @@ impl Documents {
     specifier: &ModuleSpecifier,
     maybe_node_resolver: Option<&Arc<NodeResolver>>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+      if deno_node::is_builtin_node_module(module_name) {
+        // return itself for node: specifiers because during type checking
+        // we resolve to the ambient modules in the @types/node package
+        // rather than deno_std/node
+        return Some((specifier.clone(), MediaType::Dts));
+      }
+    }
+
     if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(specifier) {
       return node_resolve_npm_req_ref(npm_ref, maybe_node_resolver);
     }
@@ -1504,7 +1509,7 @@ impl Documents {
       self.resolve_dependency(specifier, maybe_node_resolver)
     } else {
       let media_type = doc.media_type();
-      Some((specifier.clone(), media_type))
+      Some((doc.specifier().clone(), media_type))
     }
   }
 
@@ -1849,6 +1854,8 @@ fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+  use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::npm::NpmResolution;
 
   use super::*;
@@ -1859,7 +1866,11 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let documents = Documents::new(location.to_path_buf());
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
+    let documents = Documents::new(cache);
     (documents, location)
   }
 

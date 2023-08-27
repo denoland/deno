@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-mod byte_stream;
 mod fs_fetch_handler;
 
 use std::borrow::Cow;
@@ -13,17 +12,19 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use deno_core::anyhow::Error;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
+use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
 use deno_core::op;
 use deno_core::BufView;
 use deno_core::WriteOutcome;
 
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
@@ -68,8 +69,6 @@ pub use data_url;
 pub use reqwest;
 
 pub use fs_fetch_handler::FsFetchHandler;
-
-pub use crate::byte_stream::MpscByteStream;
 
 #[derive(Clone)]
 pub struct Options {
@@ -143,11 +142,7 @@ pub trait FetchHandler: dyn_clone::DynClone {
     &self,
     state: &mut OpState,
     url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
-    Option<Rc<CancelHandle>>,
-  );
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>);
 }
 
 dyn_clone::clone_trait_object!(FetchHandler);
@@ -161,17 +156,13 @@ impl FetchHandler for DefaultFileFetchHandler {
     &self,
     _state: &mut OpState,
     _url: Url,
-  ) -> (
-    CancelableResponseFuture,
-    Option<FetchRequestBodyResource>,
-    Option<Rc<CancelHandle>>,
-  ) {
+  ) -> (CancelableResponseFuture, Option<Rc<CancelHandle>>) {
     let fut = async move {
       Ok(Err(type_error(
         "NetworkError when attempting to fetch resource.",
       )))
     };
-    (Box::pin(fut), None, None)
+    (Box::pin(fut), None)
   }
 }
 
@@ -237,11 +228,11 @@ pub fn op_fetch<FP>(
 where
   FP: FetchPermissions + 'static,
 {
-  let client = if let Some(rid) = client_rid {
+  let (client, allow_host) = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
-    r.client.clone()
+    (r.client.clone(), r.allow_host)
   } else {
-    get_or_create_client_from_state(state)?
+    (get_or_create_client_from_state(state)?, false)
   };
 
   let method = Method::from_bytes(&method)?;
@@ -267,15 +258,13 @@ where
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();
       let file_fetch_handler = file_fetch_handler.clone();
-      let (request, maybe_request_body, maybe_cancel_handle) =
+      let (request, maybe_cancel_handle) =
         file_fetch_handler.fetch_file(state, url);
       let request_rid = state.resource_table.add(FetchRequestResource(request));
-      let maybe_request_body_rid =
-        maybe_request_body.map(|r| state.resource_table.add(r));
       let maybe_cancel_handle_rid = maybe_cancel_handle
         .map(|ch| state.resource_table.add(FetchCancelHandle(ch)));
 
-      (request_rid, maybe_request_body_rid, maybe_cancel_handle_rid)
+      (request_rid, None, maybe_cancel_handle_rid)
     }
     "http" | "https" => {
       let permissions = state.borrow_mut::<FP>();
@@ -293,7 +282,7 @@ where
         match data {
           None => {
             // If no body is passed, we return a writer for streaming the body.
-            let (stream, tx) = MpscByteStream::new();
+            let (tx, stream) = tokio::sync::mpsc::channel(1);
 
             // If the size of the body is known, we include a content-length
             // header explicitly.
@@ -302,11 +291,11 @@ where
                 request.header(CONTENT_LENGTH, HeaderValue::from(body_size))
             }
 
-            request = request.body(Body::wrap_stream(stream));
+            request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
             let request_body_rid =
               state.resource_table.add(FetchRequestBodyResource {
-                body: AsyncRefCell::new(tx),
+                body: AsyncRefCell::new(Some(tx)),
                 cancel: CancelHandle::default(),
               });
 
@@ -334,7 +323,7 @@ where
         let v = HeaderValue::from_bytes(&value)
           .map_err(|err| type_error(err.to_string()))?;
 
-        if !matches!(name, HOST | CONTENT_LENGTH) {
+        if (name != HOST || allow_host) && name != CONTENT_LENGTH {
           header_map.append(name, v);
         }
       }
@@ -604,8 +593,21 @@ impl Resource for FetchCancelHandle {
   }
 }
 
+/// Wraps a [`mpsc::Receiver`] in a [`Stream`] that can be used as a Hyper [`Body`].
+pub struct FetchBodyStream(pub mpsc::Receiver<Result<bytes::Bytes, Error>>);
+
+impl Stream for FetchBodyStream {
+  type Item = Result<bytes::Bytes, Error>;
+  fn poll_next(
+    mut self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<Option<Self::Item>> {
+    self.0.poll_recv(cx)
+  }
+}
+
 pub struct FetchRequestBodyResource {
-  pub body: AsyncRefCell<mpsc::Sender<Option<bytes::Bytes>>>,
+  pub body: AsyncRefCell<Option<mpsc::Sender<Result<bytes::Bytes, Error>>>>,
   pub cancel: CancelHandle,
 }
 
@@ -619,38 +621,43 @@ impl Resource for FetchRequestBodyResource {
       let bytes: bytes::Bytes = buf.into();
       let nwritten = bytes.len();
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      body
-        .send(Some(bytes))
-        .or_cancel(cancel)
-        .await?
-        .map_err(|_| {
-          type_error("request body receiver not connected (request closed)")
-        })?;
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Ok(bytes)).or_cancel(cancel).await?.map_err(|_| {
+        type_error("request body receiver not connected (request closed)")
+      })?;
       Ok(WriteOutcome::Full { nwritten })
     })
   }
 
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(async move {
+  fn write_error(self: Rc<Self>, error: Error) -> AsyncResult<()> {
+    async move {
       let body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      let body = (*body).as_ref();
       let cancel = RcRef::map(self, |r| &r.cancel);
-      // There is a case where hyper knows the size of the response body up
-      // front (through content-length header on the resp), where it will drop
-      // the body once that content length has been reached, regardless of if
-      // the stream is complete or not. This is expected behaviour, but it means
-      // that if you stream a body with an up front known size (eg a Blob),
-      // explicit shutdown can never succeed because the body (and by extension
-      // the receiver) will have dropped by the time we try to shutdown. As such
-      // we ignore if the receiver is closed, because we know that the request
-      // is complete in good health in that case.
-      body.send(None).or_cancel(cancel).await?.ok();
+      let body = body.ok_or(type_error(
+        "request body receiver not connected (request closed)",
+      ))?;
+      body.send(Err(error)).or_cancel(cancel).await??;
       Ok(())
-    })
+    }
+    .boxed_local()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    async move {
+      let mut body = RcRef::map(&self, |r| &r.body).borrow_mut().await;
+      body.take();
+      Ok(())
+    }
+    .boxed_local()
   }
 
   fn close(self: Rc<Self>) {
-    self.cancel.cancel()
+    self.cancel.cancel();
   }
 }
 
@@ -761,6 +768,7 @@ impl Resource for FetchResponseResource {
 
 pub struct HttpClientResource {
   pub client: Client,
+  pub allow_host: bool,
 }
 
 impl Resource for HttpClientResource {
@@ -770,8 +778,8 @@ impl Resource for HttpClientResource {
 }
 
 impl HttpClientResource {
-  fn new(client: Client) -> Self {
-    Self { client }
+  fn new(client: Client, allow_host: bool) -> Self {
+    Self { client, allow_host }
   }
 }
 
@@ -795,6 +803,8 @@ pub struct CreateHttpClientArgs {
   http1: bool,
   #[serde(default = "default_true")]
   http2: bool,
+  #[serde(default)]
+  allow_host: bool,
 }
 
 fn default_true() -> bool {
@@ -860,7 +870,9 @@ where
     },
   )?;
 
-  let rid = state.resource_table.add(HttpClientResource::new(client));
+  let rid = state
+    .resource_table
+    .add(HttpClientResource::new(client, args.allow_host));
   Ok(rid)
 }
 

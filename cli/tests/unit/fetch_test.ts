@@ -10,7 +10,7 @@ import {
 } from "./test_util.ts";
 import { Buffer } from "../../../test_util/std/io/buffer.ts";
 
-const listenPort = 4504;
+const listenPort = 4506;
 
 Deno.test(
   { permissions: { net: true } },
@@ -1569,6 +1569,25 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true, read: true } },
+  async function createHttpClientAllowHost() {
+    const client = Deno.createHttpClient({
+      allowHost: true,
+    });
+    const res = await fetch("http://localhost:4545/echo_server", {
+      headers: {
+        "host": "example.com",
+      },
+      client,
+    });
+    assert(res.ok);
+    assertEquals(res.headers.get("host"), "example.com");
+    await res.body?.cancel();
+    client.close();
+  },
+);
+
 Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
   await assertRejects(async () => {
     await fetch(import.meta.resolve("../testdata/subdir/json_1.json"));
@@ -1890,7 +1909,7 @@ Deno.test(
   // https://github.com/denoland/deno/issues/18350
   { ignore: Deno.build.os === "windows", permissions: { net: true } },
   async function fetchRequestBodyErrorCatchable() {
-    const listener = Deno.listen({ hostname: "127.0.0.1", port: 4514 });
+    const listener = Deno.listen({ hostname: "127.0.0.1", port: listenPort });
     const server = (async () => {
       const conn = await listener.accept();
       listener.close();
@@ -1917,7 +1936,7 @@ Deno.test(
     });
 
     const err = await assertRejects(() =>
-      fetch("http://localhost:4514", {
+      fetch(`http://localhost:${listenPort}/`, {
         body: stream,
         method: "POST",
       })
@@ -1929,6 +1948,33 @@ Deno.test(
     assertEquals(err.cause.message, "foo");
 
     await server;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function fetchRequestBodyEmptyStream() {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array([]));
+        controller.close();
+      },
+    });
+
+    await assertRejects(
+      async () => {
+        const controller = new AbortController();
+        const promise = fetch("http://localhost:4545/echo_server", {
+          body,
+          method: "POST",
+          signal: controller.signal,
+        });
+        controller.abort();
+        await promise;
+      },
+      DOMException,
+      "The signal has been aborted",
+    );
   },
 );
 
