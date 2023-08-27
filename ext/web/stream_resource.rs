@@ -111,6 +111,10 @@ impl Resource for ReadableStreamResource {
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
     Box::pin(ReadableStreamResource::read(self, limit))
   }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_handle.cancel();
+  }
 }
 
 // TODO(mmastrac): Move this to deno_core
@@ -155,10 +159,6 @@ impl Future for CompletionHandle {
   }
 }
 
-fn sender_closed() -> Error {
-  type_error("sender closed")
-}
-
 /// Allocate a resource that wraps a ReadableStream.
 #[op2(fast)]
 #[smi]
@@ -183,7 +183,8 @@ pub fn op_readable_stream_resource_get_sink(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> *const c_void {
-  let Ok(resource) = state.resource_table.get::<ReadableStreamResource>(rid) else {
+  let Ok(resource) = state.resource_table.get::<ReadableStreamResource>(rid)
+  else {
     return std::ptr::null();
   };
   resource.data.tx as _
@@ -210,15 +211,13 @@ fn drop_sender(sender: *const c_void) {
 pub fn op_readable_stream_resource_write_buf(
   sender: *const c_void,
   #[buffer] buffer: JsBuffer,
-) -> impl Future<Output = Result<(), Error>> {
+) -> impl Future<Output = bool> {
   let sender = get_sender(sender);
   async move {
-    let sender = sender.ok_or_else(sender_closed)?;
-    sender
-      .send(Ok(buffer.into()))
-      .await
-      .map_err(|_| sender_closed())?;
-    Ok(())
+    let Some(sender) = sender else {
+      return false;
+    };
+    sender.send(Ok(buffer.into())).await.ok().is_some()
   }
 }
 
@@ -226,15 +225,17 @@ pub fn op_readable_stream_resource_write_buf(
 pub fn op_readable_stream_resource_write_error(
   sender: *const c_void,
   #[string] error: String,
-) -> impl Future<Output = Result<(), Error>> {
+) -> impl Future<Output = bool> {
   let sender = get_sender(sender);
   async move {
-    let sender = sender.ok_or_else(sender_closed)?;
+    let Some(sender) = sender else {
+      return false;
+    };
     sender
       .send(Err(type_error(Cow::Owned(error))))
       .await
-      .map_err(|_| sender_closed())?;
-    Ok(())
+      .ok()
+      .is_some()
   }
 }
 

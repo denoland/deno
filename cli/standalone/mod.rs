@@ -183,10 +183,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
       };
     }
 
-    let Some(module) = self.shared.eszip.get_module(original_specifier.as_str()) else {
+    let Some(module) =
+      self.shared.eszip.get_module(original_specifier.as_str())
+    else {
       return Box::pin(deno_core::futures::future::ready(Err(type_error(
         format!("Module not found: {}", original_specifier),
-      ))))
+      ))));
     };
     let original_specifier = original_specifier.clone();
     let found_specifier =

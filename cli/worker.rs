@@ -346,7 +346,7 @@ impl CliMainWorkerFactory {
     {
       shared
         .npm_resolver
-        .add_package_reqs(&[package_ref.req.clone()])
+        .add_package_reqs(&[package_ref.req().clone()])
         .await?;
       let node_resolution =
         self.resolve_binary_entrypoint(&package_ref, &permissions)?;
@@ -500,18 +500,20 @@ impl CliMainWorkerFactory {
     permissions: &PermissionsContainer,
   ) -> Result<Option<NodeResolution>, AnyError> {
     // only fallback if the user specified a sub path
-    if package_ref.sub_path.is_none() {
+    if package_ref.sub_path().is_none() {
       // it's confusing to users if the package doesn't have any binary
       // entrypoint and we just execute the main script which will likely
       // have blank output, so do not resolve the entrypoint in this case
       return Ok(None);
     }
 
-    let Some(resolution) = self.shared.node_resolver.resolve_npm_req_reference(
-      package_ref,
-      NodeResolutionMode::Execution,
-      permissions,
-    )? else {
+    let Some(resolution) =
+      self.shared.node_resolver.resolve_npm_req_reference(
+        package_ref,
+        NodeResolutionMode::Execution,
+        permissions,
+      )?
+    else {
       return Ok(None);
     };
     match &resolution {

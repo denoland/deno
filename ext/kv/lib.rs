@@ -1,7 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 pub mod codec;
+pub mod dynamic;
 mod interface;
+mod proto;
+pub mod remote;
 pub mod sqlite;
 
 use std::borrow::Cow;
@@ -35,7 +38,8 @@ const MAX_VALUE_SIZE_BYTES: usize = 65536;
 const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
 const MAX_CHECKS: usize = 10;
-const MAX_MUTATIONS: usize = 10;
+const MAX_MUTATIONS: usize = 1000;
+const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 819200;
 
 struct UnstableChecker {
   pub unstable: bool,
@@ -285,7 +289,8 @@ where
   let opts = SnapshotReadOptions {
     consistency: consistency.into(),
   };
-  let output_ranges = db.snapshot_read(read_ranges, opts).await?;
+  let output_ranges =
+    db.snapshot_read(state.clone(), read_ranges, opts).await?;
   let output_ranges = output_ranges
     .into_iter()
     .map(|x| {
@@ -323,7 +328,7 @@ where
     resource.db.clone()
   };
 
-  let mut handle = db.dequeue_next_message().await?;
+  let mut handle = db.dequeue_next_message(state.clone()).await?;
   let payload = handle.take_payload().await?.into();
   let handle_rid = {
     let mut state = state.borrow_mut();
@@ -634,6 +639,8 @@ where
     .collect::<Result<Vec<Enqueue>, AnyError>>()
     .with_context(|| "invalid enqueue")?;
 
+  let mut total_payload_size = 0usize;
+
   for key in checks
     .iter()
     .map(|c| &c.key)
@@ -643,15 +650,22 @@ where
       return Err(type_error("key cannot be empty"));
     }
 
-    check_write_key_size(key)?;
+    total_payload_size += check_write_key_size(key)?;
   }
 
   for value in mutations.iter().flat_map(|m| m.kind.value()) {
-    check_value_size(value)?;
+    total_payload_size += check_value_size(value)?;
   }
 
   for enqueue in &enqueues {
-    check_enqueue_payload_size(&enqueue.payload)?;
+    total_payload_size += check_enqueue_payload_size(&enqueue.payload)?;
+  }
+
+  if total_payload_size > MAX_TOTAL_MUTATION_SIZE_BYTES {
+    return Err(type_error(format!(
+      "total mutation size too large (max {} bytes)",
+      MAX_TOTAL_MUTATION_SIZE_BYTES
+    )));
   }
 
   let atomic_write = AtomicWrite {
@@ -660,7 +674,7 @@ where
     enqueues,
   };
 
-  let result = db.atomic_write(atomic_write).await?;
+  let result = db.atomic_write(state.clone(), atomic_write).await?;
 
   Ok(result.map(|res| hex::encode(res.versionstamp)))
 }
@@ -690,22 +704,22 @@ fn check_read_key_size(key: &[u8]) -> Result<(), AnyError> {
   }
 }
 
-fn check_write_key_size(key: &[u8]) -> Result<(), AnyError> {
+fn check_write_key_size(key: &[u8]) -> Result<usize, AnyError> {
   if key.len() > MAX_WRITE_KEY_SIZE_BYTES {
     Err(type_error(format!(
       "key too large for write (max {} bytes)",
       MAX_WRITE_KEY_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(key.len())
   }
 }
 
-fn check_value_size(value: &Value) -> Result<(), AnyError> {
+fn check_value_size(value: &Value) -> Result<usize, AnyError> {
   let payload = match value {
     Value::Bytes(x) => x,
     Value::V8(x) => x,
-    Value::U64(_) => return Ok(()),
+    Value::U64(_) => return Ok(8),
   };
 
   if payload.len() > MAX_VALUE_SIZE_BYTES {
@@ -714,17 +728,17 @@ fn check_value_size(value: &Value) -> Result<(), AnyError> {
       MAX_VALUE_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(payload.len())
   }
 }
 
-fn check_enqueue_payload_size(payload: &[u8]) -> Result<(), AnyError> {
+fn check_enqueue_payload_size(payload: &[u8]) -> Result<usize, AnyError> {
   if payload.len() > MAX_VALUE_SIZE_BYTES {
     Err(type_error(format!(
       "enqueue payload too large (max {} bytes)",
       MAX_VALUE_SIZE_BYTES
     )))
   } else {
-    Ok(())
+    Ok(payload.len())
   }
 }

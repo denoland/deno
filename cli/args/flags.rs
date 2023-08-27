@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::ConfigFlag;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -224,6 +225,7 @@ pub enum TestReporterConfig {
   Pretty,
   Dot,
   Junit,
+  Tap,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -330,19 +332,6 @@ impl TypeCheckMode {
 impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConfigFlag {
-  Discover,
-  Path(String),
-  Disabled,
-}
-
-impl Default for ConfigFlag {
-  fn default() -> Self {
-    Self::Discover
   }
 }
 
@@ -1992,7 +1981,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("reporter")
         .long("reporter")
         .help("Select reporter to use. Default to 'pretty'.")
-        .value_parser(["pretty", "dot", "junit"])
+        .value_parser(["pretty", "dot", "junit", "tap"])
     )
   )
 }
@@ -3381,13 +3370,14 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         "pretty" => TestReporterConfig::Pretty,
         "junit" => TestReporterConfig::Junit,
         "dot" => TestReporterConfig::Dot,
+        "tap" => TestReporterConfig::Tap,
         _ => unreachable!(),
       }
     } else {
       TestReporterConfig::Pretty
     };
 
-  if matches!(reporter, TestReporterConfig::Dot) {
+  if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
     flags.log_level = Some(Level::Error);
   }
 
@@ -6847,6 +6837,21 @@ mod tests {
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--reporter=tap"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          reporter: TestReporterConfig::Tap,
+          ..Default::default()
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        log_level: Some(Level::Error),
         ..Flags::default()
       }
     );

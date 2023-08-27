@@ -40,8 +40,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -89,6 +89,7 @@ use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
+use reporters::TapTestReporter;
 use reporters::TestReporter;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -404,6 +405,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
     }
+    TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+    )),
   };
 
   if let Some(junit_path) = &options.junit_path {

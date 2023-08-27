@@ -10,7 +10,6 @@ use deno_core::op;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ResourceId;
-use std::ffi::c_void;
 use std::ptr;
 
 #[op(v8)]
@@ -147,7 +146,7 @@ pub fn op_ffi_get_static<'scope>(
     }
     NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
       let external: v8::Local<v8::Value> =
-        v8::External::new(scope, data_ptr as *mut c_void).into();
+        v8::External::new(scope, data_ptr).into();
       external.into()
     }
     NativeType::Struct(_) => {
