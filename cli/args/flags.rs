@@ -1154,6 +1154,7 @@ supported in canary.
           .action(ArgAction::SetTrue),
       )
       .arg(executable_ext_arg())
+      .arg(env_file_arg())
     })
 }
 
@@ -1379,6 +1380,7 @@ This command has implicit access to all permissions (--allow-all).",
             .value_name("CODE_ARG")
             .required(true),
         )
+        .arg(env_file_arg())
     })
 }
 
@@ -1612,6 +1614,7 @@ These must be added to the path manually if required.")
           .help("Forcefully overwrite existing installation")
           .action(ArgAction::SetTrue))
       )
+      .arg(env_file_arg())
 }
 
 fn uninstall_subcommand() -> Command {
@@ -1786,6 +1789,7 @@ fn repl_subcommand() -> Command {
           .help("Evaluates the provided code when the REPL starts.")
           .value_name("code"),
       ))
+      .arg(env_file_arg())
 }
 
 fn run_subcommand() -> Command {
