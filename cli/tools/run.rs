@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+extern crate dotenvy;
+
 use std::io::Read;
+use dotenvy::from_filename;
 
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
@@ -29,6 +32,10 @@ To grant permissions, set them before the script argument. For example:
     deno run --allow-read=. main.js"#
       )
     );
+  }
+
+  if let Some(env_file_name) = &flags.env_file {
+    from_filename(env_file_name)?;
   }
 
   if let Some(watch_flags) = run_flags.watch {
