@@ -1012,7 +1012,7 @@ declare namespace Deno {
      * after doing setup work which should not be measured.
      *
      * Warning: This method should not be used for benchmarks averaging less
-     * than 0.01s per iteration. In such cases it will be disabled but the call
+     * than 10μs per iteration. In such cases it will be disabled but the call
      * will still have noticeable overhead, resulting in a warning.
      *
      * ```ts
@@ -1029,7 +1029,7 @@ declare namespace Deno {
      * before doing teardown work which should not be measured.
      *
      * Warning: This method should not be used for benchmarks averaging less
-     * than 0.01s per iteration. In such cases it will be disabled but the call
+     * than 10μs per iteration. In such cases it will be disabled but the call
      * will still have noticeable overhead, resulting in a warning.
      *
      * ```ts
