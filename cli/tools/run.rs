@@ -2,8 +2,8 @@
 
 extern crate dotenvy;
 
-use std::io::Read;
 use dotenvy::from_filename;
+use std::io::Read;
 
 use deno_ast::MediaType;
 use deno_core::error::AnyError;
