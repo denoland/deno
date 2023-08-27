@@ -383,6 +383,7 @@ pub struct Flags {
   pub ext: Option<String>,
   pub ignore: Vec<PathBuf>,
   pub import_map_path: Option<String>,
+  pub env_file: Option<String>,
   pub inspect_brk: Option<SocketAddr>,
   pub inspect_wait: Option<SocketAddr>,
   pub inspect: Option<SocketAddr>,
@@ -990,6 +991,7 @@ glob {*_,*.,}bench.{js,mjs,ts,mts,jsx,tsx}:
         .arg(watch_arg(false))
         .arg(no_clear_screen_arg())
         .arg(script_arg().last(true))
+        .arg(env_file_arg())
     })
 }
 
@@ -1802,6 +1804,7 @@ fn run_subcommand() -> Command {
         .required_unless_present("v8-flags")
         .trailing_var_arg(true),
     )
+    .arg(env_file_arg())
     .about("Run a JavaScript or TypeScript program")
     .long_about(
       "Run a JavaScript or TypeScript program
@@ -1983,6 +1986,7 @@ Directory arguments are expanded to all contained files matching the glob
         .help("Select reporter to use. Default to 'pretty'.")
         .value_parser(["pretty", "dot", "junit", "tap"])
     )
+    .arg(env_file_arg())
   )
 }
 
@@ -2560,6 +2564,15 @@ fn import_map_arg() -> Arg {
     .value_name("FILE")
     .help("Load import map file")
     .long_help(IMPORT_MAP_HELP)
+    .value_hint(ValueHint::FilePath)
+}
+
+fn env_file_arg() -> Arg {
+  Arg::new("env-file")
+    .long("env-file")
+    .value_name("FILE")
+    .help("Load .env file")
+    .long_help("Load environment variables from local .env file")
     .value_hint(ValueHint::FilePath)
 }
 
@@ -3579,6 +3592,7 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
+  env_file_arg_parse(flags, matches);
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3614,6 +3628,10 @@ fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.import_map_path = matches.remove_one::<String>("import-map");
+}
+
+fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.env_file = matches.remove_one::<String>("env-file");
 }
 
 fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -5853,6 +5871,23 @@ mod tests {
           filter: None,
         }),
         import_map_path: Some("import_map.json".to_owned()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--env-file=.env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Default::default(),
+        }),
+        import_map_path: Some(".env".to_owned()),
         ..Flags::default()
       }
     );
