@@ -581,7 +581,8 @@ pub async fn op_ws_next_event(
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid) else {
+    .get::<ServerWebSocket>(rid)
+  else {
     // op_ws_get_error will correctly handle a bad resource
     return MessageKind::Error as u16;
   };

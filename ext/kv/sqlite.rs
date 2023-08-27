@@ -355,7 +355,7 @@ impl SqliteDb {
     spawn_blocking(move || {
       let mut db = db.try_lock().ok();
       let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
-        return Err(type_error(ERROR_USING_CLOSED_DATABASE))
+        return Err(type_error(ERROR_USING_CLOSED_DATABASE));
       };
       let result = match db.transaction() {
         Ok(tx) => f(tx),
@@ -626,16 +626,17 @@ impl SqliteQueue {
     tx: &rusqlite::Transaction<'_>,
   ) -> Result<bool, AnyError> {
     let Some((_, id, data, backoff_schedule, keys_if_undelivered)) = tx
-    .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
-    .query_row([id], |row| {
-      let deadline: u64 = row.get(0)?;
-      let id: String = row.get(1)?;
-      let data: Vec<u8> = row.get(2)?;
-      let backoff_schedule: String = row.get(3)?;
-      let keys_if_undelivered: String = row.get(4)?;
-      Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
-    })
-    .optional()? else {
+      .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
+      .query_row([id], |row| {
+        let deadline: u64 = row.get(0)?;
+        let id: String = row.get(1)?;
+        let data: Vec<u8> = row.get(2)?;
+        let backoff_schedule: String = row.get(3)?;
+        let keys_if_undelivered: String = row.get(4)?;
+        Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
+      })
+      .optional()?
+    else {
       return Ok(false);
     };
 
@@ -926,7 +927,9 @@ fn mutate_le64(
   mutate: impl FnOnce(u64, u64) -> u64,
 ) -> Result<(), AnyError> {
   let Value::U64(operand) = *operand else {
-    return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 operand")));
+    return Err(type_error(format!(
+      "Failed to perform '{op_name}' mutation on a non-U64 operand"
+    )));
   };
 
   let old_value = tx
