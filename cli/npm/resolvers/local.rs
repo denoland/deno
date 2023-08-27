@@ -110,7 +110,9 @@ impl LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(relative_url) = self.root_node_modules_url.make_relative(specifier) else {
+    let Some(relative_url) =
+      self.root_node_modules_url.make_relative(specifier)
+    else {
       return Ok(None);
     };
     if relative_url.starts_with("../") {
@@ -230,7 +232,9 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
-    let Some(folder_path) = self.resolve_package_folder_from_specifier(specifier)? else {
+    let Some(folder_path) =
+      self.resolve_package_folder_from_specifier(specifier)?
+    else {
       return Ok(None);
     };
     let folder_name = folder_path.parent().unwrap().to_string_lossy();
