@@ -5887,7 +5887,7 @@ mod tests {
           script: "script.ts".to_string(),
           watch: Default::default(),
         }),
-        import_map_path: Some(".env".to_owned()),
+        env_file: Some(".env".to_owned()),
         ..Flags::default()
       }
     );
