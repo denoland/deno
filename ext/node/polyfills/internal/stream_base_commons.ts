@@ -318,40 +318,40 @@ export function onStreamRead(
 
 export function setStreamTimeout(
   // deno-lint-ignore no-explicit-any
-  stream: any,
+  this: any,
   msecs: number,
   callback?: () => void,
 ) {
-  if (stream.destroyed) {
-    return stream;
+  if (this.destroyed) {
+    return this;
   }
 
-  stream.timeout = msecs;
+  this.timeout = msecs;
 
   // Type checking identical to timers.enroll()
   msecs = getTimerDuration(msecs, "msecs");
 
   // Attempt to clear an existing timer in both cases -
   //  even if it will be rescheduled we don't want to leak an existing timer.
-  clearTimeout(stream[kTimeout]);
+  clearTimeout(this[kTimeout]);
 
   if (msecs === 0) {
     if (callback !== undefined) {
       validateFunction(callback, "callback");
-      stream.removeListener("timeout", callback);
+      this.removeListener("timeout", callback);
     }
   } else {
-    stream[kTimeout] = setUnrefTimeout(stream._onTimeout.bind(stream), msecs);
+    this[kTimeout] = setUnrefTimeout(this._onTimeout.bind(this), msecs);
 
-    if (stream[kSession]) {
-      stream[kSession][kUpdateTimer]();
+    if (this[kSession]) {
+      this[kSession][kUpdateTimer]();
     }
 
     if (callback !== undefined) {
       validateFunction(callback, "callback");
-      stream.once("timeout", callback);
+      this.once("timeout", callback);
     }
   }
 
-  return stream;
+  return this;
 }
