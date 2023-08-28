@@ -453,10 +453,16 @@ class WebSocketStream {
     if (this[_idleTimeoutDuration]) {
       clearTimeout(this[_idleTimeoutTimeout]);
       this[_idleTimeoutTimeout] = setTimeout(async () => {
-        if (this[_connection].state === "fulfilled" && this[_closed].state === "pending") {
+        if (
+          this[_connection].state === "fulfilled" &&
+          this[_closed].state === "pending"
+        ) {
           await op_ws_send_ping(this[_rid]);
           this[_idleTimeoutTimeout] = setTimeout(async () => {
-            if (this[_connection].state === "fulfilled" && this[_closed].state === "pending") {
+            if (
+              this[_connection].state === "fulfilled" &&
+              this[_closed].state === "pending"
+            ) {
               const reason = "No response from ping frame.";
               await op_ws_close(this[_rid], 1001, reason);
               this[_closed].reject(new Error(reason));
@@ -483,10 +489,4 @@ class WebSocketStream {
 
 const WebSocketStreamPrototype = WebSocketStream.prototype;
 
-export {
-  _closed,
-  _closeSent,
-  _connection,
-  _initStreams,
-  WebSocketStream,
-};
+export { _closed, _closeSent, _connection, _initStreams, WebSocketStream };

@@ -400,8 +400,7 @@ function createRespondWith(
           );
         }
         ws[_serverHandleIdleTimeout]();
-      }
-      else if (resp[_wss]) {
+      } else if (resp[_wss]) {
         const wss = resp[_wss];
         const wssRid = await core.opAsync(
           "op_http_upgrade_websocket",
