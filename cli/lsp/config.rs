@@ -34,6 +34,7 @@ pub struct ClientCapabilities {
   pub testing_api: bool,
   pub workspace_configuration: bool,
   pub workspace_did_change_watched_files: bool,
+  pub workspace_will_rename_files: bool,
 }
 
 fn is_true() -> bool {
@@ -664,6 +665,12 @@ impl Config {
         .did_change_watched_files
         .and_then(|it| it.dynamic_registration)
         .unwrap_or(false);
+      if let Some(file_operations) = &workspace.file_operations {
+        if let Some(true) = file_operations.dynamic_registration {
+          self.client_capabilities.workspace_will_rename_files =
+            file_operations.will_rename.unwrap_or(false);
+        }
+      }
     }
 
     if let Some(text_document) = &capabilities.text_document {
