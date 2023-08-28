@@ -3,14 +3,6 @@
 import * as http2 from "node:http2";
 import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
-import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
-
-const {
-  HTTP2_HEADER_AUTHORITY,
-  HTTP2_HEADER_METHOD,
-  HTTP2_HEADER_PATH,
-  HTTP2_HEADER_STATUS,
-} = http2.constants;
 
 Deno.test("[node/http2 client]", async () => {
   // Create a server to respond to the HTTP2 requests
@@ -39,7 +31,8 @@ Deno.test("[node/http2 client]", async () => {
   const req = client.request({ ":method": "POST", ":path": "/" }, {
     waitForTrailers: true,
   });
-  req.on("response", (headers, flags) => {
+  req.on("response", (headers, _flags) => {
+    // deno-lint-ignore guard-for-in
     for (const name in headers) {
       console.log(`${name}: ${headers[name]}`);
     }
