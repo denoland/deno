@@ -807,6 +807,11 @@ fn permissions_cache() {
     });
 }
 
+itest!(env_file {
+  args: "run --env --allow-env run/env_file.ts",
+  output: "run/env_file.out",
+});
+
 itest!(_091_use_define_for_class_fields {
   args: "run --check run/091_use_define_for_class_fields.ts",
   output: "run/091_use_define_for_class_fields.ts.out",

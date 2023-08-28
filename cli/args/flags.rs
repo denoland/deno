@@ -2572,12 +2572,15 @@ fn import_map_arg() -> Arg {
 }
 
 fn env_file_arg() -> Arg {
-  Arg::new("env-file")
-    .long("env-file")
+  Arg::new("env")
+    .long("env")
     .value_name("FILE")
     .help("Load .env file")
     .long_help("Load environment variables from local .env file")
     .value_hint(ValueHint::FilePath)
+    .default_missing_value(".env")
+    .require_equals(true)
+    .num_args(0..=1)
 }
 
 fn reload_arg() -> Arg {
@@ -3635,7 +3638,7 @@ fn import_map_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  flags.env_file = matches.remove_one::<String>("env-file");
+  flags.env_file = matches.remove_one::<String>("env");
 }
 
 fn reload_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -4988,7 +4991,7 @@ mod tests {
   #[test]
   fn eval_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "42"]);
+    let r = flags_from_vec(svec!["deno", "eval", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--env=.example.env", "42"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5017,6 +5020,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        env_file: Some(".example.env".to_owned()),
         ..Flags::default()
       }
     );
@@ -5086,7 +5090,7 @@ mod tests {
   #[test]
   fn repl_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors"]);
+    let r = flags_from_vec(svec!["deno", "repl", "-A", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--unsafely-ignore-certificate-errors", "--env=.example.env"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5117,6 +5121,7 @@ mod tests {
         allow_write: Some(vec![]),
         allow_ffi: Some(vec![]),
         allow_hrtime: true,
+        env_file: Some(".example.env".to_owned()),
         unsafely_ignore_certificate_errors: Some(vec![]),
         ..Flags::default()
       }
@@ -5881,9 +5886,8 @@ mod tests {
   }
 
   #[test]
-  fn run_env_file() {
-    let r =
-      flags_from_vec(svec!["deno", "run", "--env-file=.env", "script.ts"]);
+  fn run_env_file_default() {
+    let r = flags_from_vec(svec!["deno", "run", "--env", "script.ts"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -5892,6 +5896,23 @@ mod tests {
           watch: Default::default(),
         }),
         env_file: Some(".env".to_owned()),
+        ..Flags::default()
+      }
+    );
+  }
+
+  #[test]
+  fn run_env_file_defined() {
+    let r =
+      flags_from_vec(svec!["deno", "run", "--env=.another_env", "script.ts"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Run(RunFlags {
+          script: "script.ts".to_string(),
+          watch: Default::default(),
+        }),
+        env_file: Some(".another_env".to_owned()),
         ..Flags::default()
       }
     );
@@ -5978,7 +5999,7 @@ mod tests {
   #[test]
   fn install_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "install", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--inspect=127.0.0.1:9229", "--name", "file_server", "--root", "/foo", "--force", "--env=.example.env", "https://deno.land/std/http/file_server.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -6004,6 +6025,7 @@ mod tests {
         allow_net: Some(vec![]),
         unsafely_ignore_certificate_errors: Some(vec![]),
         allow_read: Some(vec![]),
+        env_file: Some(".example.env".to_owned()),
         ..Flags::default()
       }
     );
@@ -7301,7 +7323,7 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
     assert_eq!(
       r.unwrap(),
       Flags {
@@ -7328,6 +7350,7 @@ mod tests {
         allow_net: Some(vec![]),
         v8_flags: svec!["--help", "--random-seed=1"],
         seed: Some(1),
+        env_file: Some(".example.env".to_owned()),
         ..Flags::default()
       }
     );

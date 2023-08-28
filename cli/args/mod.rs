@@ -53,6 +53,7 @@ use deno_runtime::deno_tls::rustls_pemfile;
 use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::PermissionsOptions;
+use dotenvy::from_filename;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use std::collections::HashMap;
@@ -611,6 +612,10 @@ impl CliOptions {
     .with_context(|| "Resolving node_modules folder.")?;
     let maybe_vendor_folder =
       resolve_vendor_folder(&initial_cwd, &flags, maybe_config_file.as_ref());
+
+    if let Some(env_file_name) = &flags.env_file {
+      from_filename(env_file_name)?;
+    }
 
     Ok(Self {
       flags,
