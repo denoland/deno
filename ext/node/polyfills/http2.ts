@@ -73,7 +73,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-let tempDebugEnabled = true;
+const tempDebugEnabled = true;
 function tempDebug(...args) {
   if (tempDebugEnabled) {
     console.log(...args);
@@ -81,7 +81,7 @@ function tempDebug(...args) {
 }
 
 export class Http2Session extends EventEmitter {
-  constructor(type, options /* socket */) {
+  constructor(type, _options /* socket */) {
     super();
 
     // TODO(bartlomieju): Handle sockets here
@@ -830,7 +830,7 @@ export class ClientHttp2Stream extends Duplex {
 
   // [kWriteGeneric]() {}
 
-  // TODO:
+  // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
     console.log(">>> _write", callback);
     if (typeof encoding === "function") {
@@ -867,8 +867,8 @@ export class ClientHttp2Stream extends Duplex {
       });
   }
 
-  // TODO:
-  _writev(chunks, callback?: () => {}) {
+  // TODO(bartlomieju): finish this method
+  _writev(_chunks, _callback?) {
     notImplemented("ClientHttp2Stream._writev");
   }
 
@@ -882,7 +882,7 @@ export class ClientHttp2Stream extends Duplex {
     shutdownWritable(this, cb);
   }
 
-  // TODO:
+  // TODO(bartlomieju): needs a proper cleanup
   _read() {
     if (this.destroyed) {
       this.push(null);
@@ -977,7 +977,7 @@ export class ClientHttp2Stream extends Duplex {
     })();
   }
 
-  // TODO:
+  // TODO(bartlomieju):
   priority(_options: Record<string, unknown>) {
     notImplemented("Http2Stream.priority");
   }
@@ -1001,6 +1001,7 @@ export class ClientHttp2Stream extends Duplex {
     }
     this[kSentTrailers] = trailers;
 
+    // deno-lint-ignore no-this-alias
     const stream = this;
     stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
     console.log("sending trailers", this.#rid, trailers);
@@ -1023,7 +1024,6 @@ export class ClientHttp2Stream extends Duplex {
     return !!(this[kState].flags & STREAM_FLAGS_CLOSED);
   }
 
-  // TODO:
   close(code: number = constants.NGHTTP2_NO_ERROR, callback?: () => void) {
     console.log(">>> close", callback);
     console.error("Stream close");
@@ -1031,7 +1031,7 @@ export class ClientHttp2Stream extends Duplex {
     if (this.closed) {
       return;
     }
-    if (typeof callback !== undefined) {
+    if (typeof callback !== "undefined") {
       this.once("close", callback);
     }
     closeStream(this, code);
@@ -1058,7 +1058,7 @@ export class ClientHttp2Stream extends Duplex {
     }
 
     if (!this.closed) {
-      // TODO: this not handle `socket handle`
+      // TODO(bartlomieju): this not handle `socket handle`
       closeStream(this, code, kNoRstStream);
     }
 
@@ -1124,7 +1124,7 @@ export class ClientHttp2Stream extends Duplex {
     }
   }
 
-  setTimeout(msecs: number, callback?: () => void) {
+  setTimeout(_msecs: number, _callback?: () => void) {
     // setStreamTimeout(this, msecs, callback);
     notImplemented("ClientHttp2Stream.setTimeout");
   }
@@ -1515,7 +1515,7 @@ export function connect(
     host = authority.host;
   }
 
-  // TODO: handle defaults
+  // TODO(bartlomieju): handle defaults
   if (typeof options.createConnection === "function") {
     console.error("Not implemented: http2.connect.options.createConnection");
     // notImplemented("http2.connect.options.createConnection");
@@ -1777,48 +1777,48 @@ export const constants = {
   HTTP_STATUS_NETWORK_AUTHENTICATION_REQUIRED: 511,
 };
 
-const kSingleValueHeaders = new Set([
-  constants.HTTP2_HEADER_STATUS,
-  constants.HTTP2_HEADER_METHOD,
-  constants.HTTP2_HEADER_AUTHORITY,
-  constants.HTTP2_HEADER_SCHEME,
-  constants.HTTP2_HEADER_PATH,
-  constants.HTTP2_HEADER_PROTOCOL,
-  constants.HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
-  constants.HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
-  constants.HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
-  constants.HTTP2_HEADER_AGE,
-  constants.HTTP2_HEADER_AUTHORIZATION,
-  constants.HTTP2_HEADER_CONTENT_ENCODING,
-  constants.HTTP2_HEADER_CONTENT_LANGUAGE,
-  constants.HTTP2_HEADER_CONTENT_LENGTH,
-  constants.HTTP2_HEADER_CONTENT_LOCATION,
-  constants.HTTP2_HEADER_CONTENT_MD5,
-  constants.HTTP2_HEADER_CONTENT_RANGE,
-  constants.HTTP2_HEADER_CONTENT_TYPE,
-  constants.HTTP2_HEADER_DATE,
-  constants.HTTP2_HEADER_DNT,
-  constants.HTTP2_HEADER_ETAG,
-  constants.HTTP2_HEADER_EXPIRES,
-  constants.HTTP2_HEADER_FROM,
-  constants.HTTP2_HEADER_HOST,
-  constants.HTTP2_HEADER_IF_MATCH,
-  constants.HTTP2_HEADER_IF_MODIFIED_SINCE,
-  constants.HTTP2_HEADER_IF_NONE_MATCH,
-  constants.HTTP2_HEADER_IF_RANGE,
-  constants.HTTP2_HEADER_IF_UNMODIFIED_SINCE,
-  constants.HTTP2_HEADER_LAST_MODIFIED,
-  constants.HTTP2_HEADER_LOCATION,
-  constants.HTTP2_HEADER_MAX_FORWARDS,
-  constants.HTTP2_HEADER_PROXY_AUTHORIZATION,
-  constants.HTTP2_HEADER_RANGE,
-  constants.HTTP2_HEADER_REFERER,
-  constants.HTTP2_HEADER_RETRY_AFTER,
-  constants.HTTP2_HEADER_TK,
-  constants.HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS,
-  constants.HTTP2_HEADER_USER_AGENT,
-  constants.HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS,
-]);
+// const kSingleValueHeaders = new Set([
+//   constants.HTTP2_HEADER_STATUS,
+//   constants.HTTP2_HEADER_METHOD,
+//   constants.HTTP2_HEADER_AUTHORITY,
+//   constants.HTTP2_HEADER_SCHEME,
+//   constants.HTTP2_HEADER_PATH,
+//   constants.HTTP2_HEADER_PROTOCOL,
+//   constants.HTTP2_HEADER_ACCESS_CONTROL_ALLOW_CREDENTIALS,
+//   constants.HTTP2_HEADER_ACCESS_CONTROL_MAX_AGE,
+//   constants.HTTP2_HEADER_ACCESS_CONTROL_REQUEST_METHOD,
+//   constants.HTTP2_HEADER_AGE,
+//   constants.HTTP2_HEADER_AUTHORIZATION,
+//   constants.HTTP2_HEADER_CONTENT_ENCODING,
+//   constants.HTTP2_HEADER_CONTENT_LANGUAGE,
+//   constants.HTTP2_HEADER_CONTENT_LENGTH,
+//   constants.HTTP2_HEADER_CONTENT_LOCATION,
+//   constants.HTTP2_HEADER_CONTENT_MD5,
+//   constants.HTTP2_HEADER_CONTENT_RANGE,
+//   constants.HTTP2_HEADER_CONTENT_TYPE,
+//   constants.HTTP2_HEADER_DATE,
+//   constants.HTTP2_HEADER_DNT,
+//   constants.HTTP2_HEADER_ETAG,
+//   constants.HTTP2_HEADER_EXPIRES,
+//   constants.HTTP2_HEADER_FROM,
+//   constants.HTTP2_HEADER_HOST,
+//   constants.HTTP2_HEADER_IF_MATCH,
+//   constants.HTTP2_HEADER_IF_MODIFIED_SINCE,
+//   constants.HTTP2_HEADER_IF_NONE_MATCH,
+//   constants.HTTP2_HEADER_IF_RANGE,
+//   constants.HTTP2_HEADER_IF_UNMODIFIED_SINCE,
+//   constants.HTTP2_HEADER_LAST_MODIFIED,
+//   constants.HTTP2_HEADER_LOCATION,
+//   constants.HTTP2_HEADER_MAX_FORWARDS,
+//   constants.HTTP2_HEADER_PROXY_AUTHORIZATION,
+//   constants.HTTP2_HEADER_RANGE,
+//   constants.HTTP2_HEADER_REFERER,
+//   constants.HTTP2_HEADER_RETRY_AFTER,
+//   constants.HTTP2_HEADER_TK,
+//   constants.HTTP2_HEADER_UPGRADE_INSECURE_REQUESTS,
+//   constants.HTTP2_HEADER_USER_AGENT,
+//   constants.HTTP2_HEADER_X_CONTENT_TYPE_OPTIONS,
+// ]);
 
 export function getDefaultSettings(): Record<string, unknown> {
   notImplemented("http2.getDefaultSettings");
