@@ -311,61 +311,49 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    const isOwnedBuf = bufLocked;
-    let buf = bufLocked ? new Uint8Array(SUGGESTED_SIZE) : BUF;
-    bufLocked = true;
+    let buf = new Uint8Array(SUGGESTED_SIZE);
+
+    let nread: number | null;
     try {
-      let nread: number | null;
-      const ridBefore = this[kStreamBaseField]!.rid;
-      try {
-        nread = await this[kStreamBaseField]!.read(buf);
-      } catch (e) {
-        // Try to read again if the underlying stream resource
-        // changed. This can happen during TLS upgrades (eg. STARTTLS)
-        if (ridBefore != this[kStreamBaseField]!.rid) {
-          return this.#read();
-        }
-
-        if (
-          e instanceof Deno.errors.Interrupted ||
-          e instanceof Deno.errors.BadResource
-        ) {
-          nread = codeMap.get("EOF")!;
-        } else if (
-          e instanceof Deno.errors.ConnectionReset ||
-          e instanceof Deno.errors.ConnectionAborted
-        ) {
-          nread = codeMap.get("ECONNRESET")!;
-        } else {
-          nread = codeMap.get("UNKNOWN")!;
-        }
-
-        buf = new Uint8Array(0);
+      nread = await this[kStreamBaseField]!.read(buf);
+    } catch (e) {
+      if (
+        e instanceof Deno.errors.Interrupted ||
+        e instanceof Deno.errors.BadResource
+      ) {
+        nread = codeMap.get("EOF")!;
+      } else if (
+        e instanceof Deno.errors.ConnectionReset ||
+        e instanceof Deno.errors.ConnectionAborted
+      ) {
+        nread = codeMap.get("ECONNRESET")!;
+      } else {
+        nread = codeMap.get("UNKNOWN")!;
       }
 
-      nread ??= codeMap.get("EOF")!;
+      buf = new Uint8Array(0);
+    }
 
-      streamBaseState[kReadBytesOrError] = nread;
+    nread ??= codeMap.get("EOF")!;
 
-      if (nread > 0) {
-        this.bytesRead += nread;
-      }
+    streamBaseState[kReadBytesOrError] = nread;
 
-      buf = isOwnedBuf ? buf.subarray(0, nread) : buf.slice(0, nread);
+    if (nread > 0) {
+      this.bytesRead += nread;
+    }
 
-      streamBaseState[kArrayBufferOffset] = 0;
+    buf = buf.slice(0, nread);
 
-      try {
-        this.onread!(buf, nread);
-      } catch {
-        // swallow callback errors.
-      }
+    streamBaseState[kArrayBufferOffset] = 0;
 
-      if (nread >= 0 && this.#reading) {
-        this.#read();
-      }
-    } finally {
-      bufLocked = false;
+    try {
+      this.onread!(buf, nread);
+    } catch {
+      // swallow callback errors.
+    }
+
+    if (nread >= 0 && this.#reading) {
+      this.#read();
     }
   }
 
