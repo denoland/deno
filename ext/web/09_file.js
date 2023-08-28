@@ -535,6 +535,12 @@ class File extends Blob {
     webidl.assertBranded(this, FilePrototype);
     return this[_LastModified];
   }
+
+  /** @returns {string} */
+  get webkitRelativePath() {
+    webidl.assertBranded(this, FilePrototype);
+    return "";
+  }
 }
 
 webidl.configurePrototype(File);

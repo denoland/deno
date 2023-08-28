@@ -562,6 +562,7 @@ declare interface FilePropertyBag extends BlobPropertyBag {
 declare interface File extends Blob {
   readonly lastModified: number;
   readonly name: string;
+  readonly webkitRelativePath: string;
 }
 
 /** Provides information about files and allows JavaScript in a web page to

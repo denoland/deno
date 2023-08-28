@@ -8,6 +8,7 @@ function testFirstArgument(arg1: any[], expectedSize: number) {
   assertEquals(file.name, "name");
   assertEquals(file.size, expectedSize);
   assertEquals(file.type, "");
+  assertEquals(file.webkitRelativePath, "");
 }
 
 Deno.test(function fileEmptyFileBits() {
