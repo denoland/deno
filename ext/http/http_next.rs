@@ -585,39 +585,52 @@ fn set_response(
   response_fn: impl FnOnce(Compression) -> ResponseBytesInner,
 ) {
   let mut http = slab_get(slab_id);
-  let resource = http.take_resource();
-  let compression = is_request_compressible(&http.request_parts().headers);
-  let response = http.response();
-  let compression = modify_compressibility_from_response(
-    compression,
-    length,
-    response.headers_mut(),
-  );
-  response
-    .body_mut()
-    .initialize(response_fn(compression), resource);
+  // The request may have been cancelled by this point and if so, there's no need for us to
+  // do all of this work to send the response.
+  if !http.cancelled() {
+    let resource = http.take_resource();
+    let compression = is_request_compressible(&http.request_parts().headers);
+    let response = http.response();
+    let compression = modify_compressibility_from_response(
+      compression,
+      length,
+      response.headers_mut(),
+    );
+    response
+      .body_mut()
+      .initialize(response_fn(compression), resource);
 
-  // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
-  // will quitely ignore invalid values.
-  if let Ok(code) = StatusCode::from_u16(status) {
-    *response.status_mut() = code;
+    // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
+    // will quitely ignore invalid values.
+    if let Ok(code) = StatusCode::from_u16(status) {
+      *response.status_mut() = code;
+    }
   }
   http.complete();
 }
 
 #[op2(fast)]
 pub fn op_http_set_response_body_resource(
-  state: &mut OpState,
+  state: Rc<RefCell<OpState>>,
   #[smi] slab_id: SlabId,
   #[smi] stream_rid: ResourceId,
   auto_close: bool,
   status: u16,
 ) -> Result<(), AnyError> {
+  // IMPORTANT: We might end up requiring the OpState lock in set_response if we need to drop the request
+  // body resource so we _cannot_ hold the OpState lock longer than necessary.
+
   // If the stream is auto_close, we will hold the last ref to it until the response is complete.
-  let resource = if auto_close {
-    state.resource_table.take_any(stream_rid)?
-  } else {
-    state.resource_table.get_any(stream_rid)?
+  // TODO(mmastrac): We should be using the same auto-close functionality rather than removing autoclose resources.
+  // It's possible things could fail elsewhere if code expects the rid to continue existing after the response has been
+  // returned.
+  let resource = {
+    let mut state = state.borrow_mut();
+    if auto_close {
+      state.resource_table.take_any(stream_rid)?
+    } else {
+      state.resource_table.get_any(stream_rid)?
+    }
   };
 
   set_response(
