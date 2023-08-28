@@ -784,5 +784,5 @@ Deno.test({
     );
     await delay(10);
     worker.terminate();
-  }
-})
+  },
+});
