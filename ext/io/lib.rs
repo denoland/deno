@@ -2,7 +2,7 @@
 
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;

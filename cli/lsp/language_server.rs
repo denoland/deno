@@ -8,7 +8,7 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_lockfile::Lockfile;
@@ -69,6 +69,7 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use super::urls::LspClientUrl;
@@ -93,6 +94,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
@@ -1704,7 +1706,7 @@ impl Inner {
     }
 
     // spawn a blocking task to allow doing other work while this is occurring
-    let format_result = deno_core::task::spawn_blocking({
+    let format_result = deno_core::unsync::spawn_blocking({
       let fmt_options = self.fmt_options.options.clone();
       let document = document.clone();
       move || {
@@ -1871,7 +1873,7 @@ impl Inner {
             }
             _ => false,
           },
-          "deno-lint" => matches!(&d.code, Some(_)),
+          "deno-lint" => d.code.is_some(),
           "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
           _ => false,
         },
@@ -1899,6 +1901,7 @@ impl Inner {
                 line_index.offset_tsc(diagnostic.range.start)?
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
+                (&self.fmt_options.options).into(),
               )
               .await;
             for action in actions {
@@ -2007,7 +2010,11 @@ impl Inner {
         })?;
       let combined_code_actions = self
         .ts_server
-        .get_combined_code_fix(self.snapshot(), &code_action_data)
+        .get_combined_code_fix(
+          self.snapshot(),
+          &code_action_data,
+          (&self.fmt_options.options).into(),
+        )
         .await?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
@@ -2047,19 +2054,14 @@ impl Inner {
         .get_edits_for_refactor(
           self.snapshot(),
           action_data.specifier,
+          (&self.fmt_options.options).into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
         )
         .await?;
-      code_action.edit = refactor_edit_info
-        .to_workspace_edit(self)
-        .await
-        .map_err(|err| {
-          error!("Unable to convert changes to edits: {}", err);
-          LspError::internal_error()
-        })?;
+      code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -2402,6 +2404,7 @@ impl Inner {
             trigger_character,
             trigger_kind,
           },
+          (&self.fmt_options.options).into(),
         )
         .await;
 
@@ -2436,9 +2439,13 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let args = GetCompletionDetailsArgs {
+          format_code_settings: Some((&self.fmt_options.options).into()),
+          ..data.into()
+        };
         let result = self
           .ts_server
-          .get_completion_details(self.snapshot(), data.into())
+          .get_completion_details(self.snapshot(), args)
           .await;
         match result {
           Ok(maybe_completion_info) => {
@@ -2922,6 +2929,37 @@ impl Inner {
     }
   }
 
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    let mut changes = vec![];
+    for rename in params.files {
+      changes.extend(
+        self
+          .ts_server
+          .get_edits_for_file_rename(
+            self.snapshot(),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.old_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.new_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            (&self.fmt_options.options).into(),
+            tsc::UserPreferences {
+              allow_text_changes_in_new_files: Some(true),
+              ..Default::default()
+            },
+          )
+          .await?,
+      );
+    }
+    file_text_changes_to_workspace_edit(&changes, self)
+  }
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -2992,7 +3030,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn initialized(&self, _: InitializedParams) {
-    let mut maybe_registration = None;
+    let mut registrations = Vec::with_capacity(2);
     let client = {
       let mut ls = self.0.write().await;
       if ls
@@ -3003,19 +3041,33 @@ impl tower_lsp::LanguageServer for LanguageServer {
         // we are going to watch all the JSON files in the workspace, and the
         // notification handler will pick up any of the changes of those files we
         // are interested in.
-        let watch_registration_options =
-          DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![FileSystemWatcher {
-              glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
-              kind: Some(WatchKind::Change),
-            }],
-          };
-        maybe_registration = Some(Registration {
+        let options = DidChangeWatchedFilesRegistrationOptions {
+          watchers: vec![FileSystemWatcher {
+            glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
+            kind: Some(WatchKind::Change),
+          }],
+        };
+        registrations.push(Registration {
           id: "workspace/didChangeWatchedFiles".to_string(),
           method: "workspace/didChangeWatchedFiles".to_string(),
-          register_options: Some(
-            serde_json::to_value(watch_registration_options).unwrap(),
-          ),
+          register_options: Some(serde_json::to_value(options).unwrap()),
+        });
+      }
+      if ls.config.client_capabilities.workspace_will_rename_files {
+        let options = FileOperationRegistrationOptions {
+          filters: vec![FileOperationFilter {
+            scheme: Some("file".to_string()),
+            pattern: FileOperationPattern {
+              glob: "**/*".to_string(),
+              matches: None,
+              options: None,
+            },
+          }],
+        };
+        registrations.push(Registration {
+          id: "workspace/willRenameFiles".to_string(),
+          method: "workspace/willRenameFiles".to_string(),
+          register_options: Some(serde_json::to_value(options).unwrap()),
         });
       }
 
@@ -3030,7 +3082,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       ls.client.clone()
     };
 
-    if let Some(registration) = maybe_registration {
+    for registration in registrations {
       if let Err(err) = client
         .when_outside_lsp_lock()
         .register_capability(vec![registration])
@@ -3362,6 +3414,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
     self.0.read().await.signature_help(params).await
+  }
+
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    self.0.read().await.will_rename_files(params).await
   }
 
   async fn symbol(

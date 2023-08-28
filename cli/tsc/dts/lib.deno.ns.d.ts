@@ -1011,6 +1011,10 @@ declare namespace Deno {
     /** Restarts the timer for the bench measurement. This should be called
      * after doing setup work which should not be measured.
      *
+     * Warning: This method should not be used for benchmarks averaging less
+     * than 10μs per iteration. In such cases it will be disabled but the call
+     * will still have noticeable overhead, resulting in a warning.
+     *
      * ```ts
      * Deno.bench("foo", async (t) => {
      *   const data = await Deno.readFile("data.txt");
@@ -1023,6 +1027,10 @@ declare namespace Deno {
 
     /** End the timer early for the bench measurement. This should be called
      * before doing teardown work which should not be measured.
+     *
+     * Warning: This method should not be used for benchmarks averaging less
+     * than 10μs per iteration. In such cases it will be disabled but the call
+     * will still have noticeable overhead, resulting in a warning.
      *
      * ```ts
      * Deno.bench("foo", async (t) => {

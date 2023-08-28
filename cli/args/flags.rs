@@ -7,6 +7,7 @@ use clap::ArgMatches;
 use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
+use deno_config::ConfigFlag;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
@@ -224,6 +225,7 @@ pub enum TestReporterConfig {
   Pretty,
   Dot,
   Junit,
+  Tap,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -330,19 +332,6 @@ impl TypeCheckMode {
 impl Default for TypeCheckMode {
   fn default() -> Self {
     Self::None
-  }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ConfigFlag {
-  Discover,
-  Path(String),
-  Disabled,
-}
-
-impl Default for ConfigFlag {
-  fn default() -> Self {
-    Self::Discover
   }
 }
 
@@ -831,7 +820,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
-      "run" => run_parse(&mut flags, &mut m),
+      "run" => run_parse(&mut flags, &mut m, app)?,
       "task" => task_parse(&mut flags, &mut m),
       "test" => test_parse(&mut flags, &mut m),
       "types" => types_parse(&mut flags, &mut m),
@@ -1992,7 +1981,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("reporter")
         .long("reporter")
         .help("Select reporter to use. Default to 'pretty'.")
-        .value_parser(["pretty", "dot", "junit"])
+        .value_parser(["pretty", "dot", "junit", "tap"])
     )
   )
 }
@@ -3245,10 +3234,22 @@ fn repl_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   );
 }
 
-fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+fn run_parse(
+  flags: &mut Flags,
+  matches: &mut ArgMatches,
+  app: Command,
+) -> clap::error::Result<()> {
   runtime_args_parse(flags, matches, true, true);
 
-  let mut script_arg = matches.remove_many::<String>("script_arg").unwrap();
+  let mut script_arg =
+    matches.remove_many::<String>("script_arg").ok_or_else(|| {
+      let mut app = app;
+      let subcommand = &mut app.find_subcommand_mut("run").unwrap();
+      subcommand.error(
+        clap::error::ErrorKind::MissingRequiredArgument,
+        "[SCRIPT_ARG] may only be omitted with --v8-flags=--help",
+      )
+    })?;
 
   let script = script_arg.next().unwrap();
   flags.argv.extend(script_arg);
@@ -3259,6 +3260,8 @@ fn run_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     script,
     watch: watch_arg_parse_with_paths(matches),
   });
+
+  Ok(())
 }
 
 fn task_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -3367,13 +3370,14 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         "pretty" => TestReporterConfig::Pretty,
         "junit" => TestReporterConfig::Junit,
         "dot" => TestReporterConfig::Dot,
+        "tap" => TestReporterConfig::Tap,
         _ => unreachable!(),
       }
     } else {
       TestReporterConfig::Pretty
     };
 
-  if matches!(reporter, TestReporterConfig::Dot) {
+  if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
     flags.log_level = Some(Level::Error);
   }
 
@@ -3996,6 +4000,12 @@ mod tests {
         ..Flags::default()
       }
     );
+
+    let r = flags_from_vec(svec!["deno", "run", "--v8-flags=--expose-gc"]);
+    assert!(r
+      .unwrap_err()
+      .to_string()
+      .contains("[SCRIPT_ARG] may only be omitted with --v8-flags=--help"));
   }
 
   #[test]
@@ -6827,6 +6837,21 @@ mod tests {
         }),
         no_prompt: true,
         type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "test", "--reporter=tap"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          reporter: TestReporterConfig::Tap,
+          ..Default::default()
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        log_level: Some(Level::Error),
         ..Flags::default()
       }
     );

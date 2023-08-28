@@ -110,25 +110,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-/// Gets the parent of this module specifier.
-pub fn specifier_parent(specifier: &ModuleSpecifier) -> ModuleSpecifier {
-  let mut specifier = specifier.clone();
-  // don't use specifier.segments() because it will strip the leading slash
-  let mut segments = specifier.path().split('/').collect::<Vec<_>>();
-  if segments.iter().all(|s| s.is_empty()) {
-    return specifier;
-  }
-  if let Some(last) = segments.last() {
-    if last.is_empty() {
-      segments.pop();
-    }
-    segments.pop();
-    let new_path = format!("{}/", segments.join("/"));
-    specifier.set_path(&new_path);
-  }
-  specifier
-}
-
 /// `from.make_relative(to)` but with fixes.
 pub fn relative_specifier(
   from: &ModuleSpecifier,
@@ -290,22 +271,6 @@ mod test {
         specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
           .unwrap();
       assert_eq!(result, PathBuf::from(expected_path));
-    }
-  }
-
-  #[test]
-  fn test_specifier_parent() {
-    run_test("file:///", "file:///");
-    run_test("file:///test", "file:///");
-    run_test("file:///test/", "file:///");
-    run_test("file:///test/other", "file:///test/");
-    run_test("file:///test/other.txt", "file:///test/");
-    run_test("file:///test/other/", "file:///test/");
-
-    fn run_test(specifier: &str, expected: &str) {
-      let result =
-        specifier_parent(&ModuleSpecifier::parse(specifier).unwrap());
-      assert_eq!(result.to_string(), expected);
     }
   }
 

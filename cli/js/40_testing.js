@@ -849,7 +849,7 @@ function compareMeasurements(a, b) {
   return 0;
 }
 
-function benchStats(n, highPrecision, avg, min, max, all) {
+function benchStats(n, highPrecision, usedExplicitTimers, avg, min, max, all) {
   return {
     n,
     min,
@@ -859,6 +859,8 @@ function benchStats(n, highPrecision, avg, min, max, all) {
     p995: all[MathCeil(n * (99.5 / 100)) - 1],
     p999: all[MathCeil(n * (99.9 / 100)) - 1],
     avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    highPrecision,
+    usedExplicitTimers,
   };
 }
 
@@ -926,7 +928,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
   wavg /= c;
 
   // measure step
-  if (wavg > lowPrecisionThresholdInNs || usedExplicitTimers) {
+  if (wavg > lowPrecisionThresholdInNs) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
@@ -978,6 +980,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
       }
     }
   } else {
+    context.start = function start() {};
+    context.end = function end() {};
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
@@ -986,8 +990,6 @@ async function benchMeasure(timeBudget, fn, async, context) {
         const t1 = benchNow();
         for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
           fn(context);
-          currentBenchUserExplicitStart = null;
-          currentBenchUserExplicitEnd = null;
         }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
@@ -1019,7 +1021,15 @@ async function benchMeasure(timeBudget, fn, async, context) {
   }
 
   all.sort(compareMeasurements);
-  return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
+  return benchStats(
+    n,
+    wavg > lowPrecisionThresholdInNs,
+    usedExplicitTimers,
+    avg,
+    min,
+    max,
+    all,
+  );
 }
 
 /** @param desc {BenchDescription} */

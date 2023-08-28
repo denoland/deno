@@ -833,7 +833,9 @@ Module._resolveFilename = function (
     isMain,
     parentPath,
   );
-  if (filename) return filename;
+  if (filename) {
+    return ops.op_require_real_path(filename);
+  }
   const requireStack = [];
   for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
     ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
@@ -891,7 +893,7 @@ Module.prototype.load = function (filename) {
     );
   }
 
-  Module._extensions[extension](this, filename);
+  Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
   // TODO: do caching

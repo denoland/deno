@@ -34,6 +34,21 @@ Deno.test({
 });
 
 Deno.test({
+  name: "rsa public encrypt (options) and private decrypt",
+  fn() {
+    const encrypted = crypto.publicEncrypt(
+      { key: Buffer.from(rsaPublicKey) },
+      input,
+    );
+    const decrypted = crypto.privateDecrypt(
+      Buffer.from(rsaPrivateKey),
+      Buffer.from(encrypted),
+    );
+    assertEquals(decrypted, input);
+  },
+});
+
+Deno.test({
   name: "rsa private encrypt and private decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
@@ -182,5 +197,29 @@ Deno.test({
       new Uint8Array(16),
     ));
     assertEquals(await text(stream), "foo".repeat(15));
+  },
+});
+
+Deno.test({
+  name: "createCipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createCipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
   },
 });

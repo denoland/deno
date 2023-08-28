@@ -103,6 +103,31 @@ declare namespace Deno {
    */
   type NativeStructType = { readonly struct: readonly NativeType[] };
 
+  /** @category FFI */
+  const brand: unique symbol;
+
+  /** @category FFI */
+  export type NativeU8Enum<T extends number> = "u8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI8Enum<T extends number> = "i8" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU16Enum<T extends number> = "u16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI16Enum<T extends number> = "i16" & { [brand]: T };
+  /** @category FFI */
+  export type NativeU32Enum<T extends number> = "u32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeI32Enum<T extends number> = "i32" & { [brand]: T };
+  /** @category FFI */
+  export type NativeTypedPointer<T extends PointerObject> = "pointer" & {
+    [brand]: T;
+  };
+  export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
+    & "function"
+    & {
+      [brand]: T;
+    };
+
   /** **UNSTABLE**: New API, yet to be vetted.
    *
    * All supported types for interfacing with foreign functions.
@@ -126,21 +151,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type conversion for foreign symbol parameters and unsafe callback
-   * return types.
-   *
-   * @category FFI
-   */
-  type ToNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>
-    & Record<NativeBufferType, BufferSource | null>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol parameters and unsafe callback return
    * types.
    *
@@ -148,15 +158,22 @@ declare namespace Deno {
    */
   type ToNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? BufferSource
-    : ToNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for unsafe callback return types.
-   *
-   * @category FFI
-   */
-  type ToNativeResultTypeMap = ToNativeTypeMap & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
+      : PointerValue
+    : T extends NativeBufferType ? BufferSource | null
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -166,7 +183,23 @@ declare namespace Deno {
    */
   type ToNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? BufferSource
-      : ToNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
+      : T extends NativeBufferType ? BufferSource | null
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -186,21 +219,6 @@ declare namespace Deno {
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * A utility type for conversion of foreign symbol return types and unsafe
-   * callback parameters.
-   *
-   * @category FFI
-   */
-  type FromNativeTypeMap =
-    & Record<NativeNumberType, number>
-    & Record<NativeBigIntType, number | bigint>
-    & Record<NativeBooleanType, boolean>
-    & Record<NativePointerType, PointerValue>
-    & Record<NativeBufferType, PointerValue>
-    & Record<NativeFunctionType, PointerValue>;
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
    * Type conversion for foreign symbol return types and unsafe callback
    * parameters.
    *
@@ -208,17 +226,22 @@ declare namespace Deno {
    */
   type FromNativeType<T extends NativeType = NativeType> = T extends
     NativeStructType ? Uint8Array
-    : FromNativeTypeMap[Exclude<T, NativeStructType>];
-
-  /** **UNSTABLE**: New API, yet to be vetted.
-   *
-   * A utility type for conversion for foreign symbol return types.
-   *
-   * @category FFI
-   */
-  type FromNativeResultTypeMap =
-    & FromNativeTypeMap
-    & Record<NativeVoidType, void>;
+    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+      : T extends NativeI8Enum<infer U> ? U
+      : T extends NativeU16Enum<infer U> ? U
+      : T extends NativeI16Enum<infer U> ? U
+      : T extends NativeU32Enum<infer U> ? U
+      : T extends NativeI32Enum<infer U> ? U
+      : number
+    : T extends NativeBigIntType ? number | bigint
+    : T extends NativeBooleanType ? boolean
+    : T extends NativePointerType
+      ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+    : T extends NativeBufferType ? PointerValue
+    : T extends NativeFunctionType
+      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+      : PointerValue
+    : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -228,7 +251,23 @@ declare namespace Deno {
    */
   type FromNativeResultType<T extends NativeResultType = NativeResultType> =
     T extends NativeStructType ? Uint8Array
-      : FromNativeResultTypeMap[Exclude<T, NativeStructType>];
+      : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
+        : T extends NativeI8Enum<infer U> ? U
+        : T extends NativeU16Enum<infer U> ? U
+        : T extends NativeI16Enum<infer U> ? U
+        : T extends NativeU32Enum<infer U> ? U
+        : T extends NativeI32Enum<infer U> ? U
+        : number
+      : T extends NativeBigIntType ? number | bigint
+      : T extends NativeBooleanType ? boolean
+      : T extends NativePointerType
+        ? T extends NativeTypedPointer<infer U> ? U | null : PointerValue
+      : T extends NativeBufferType ? PointerValue
+      : T extends NativeFunctionType
+        ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
+        : PointerValue
+      : T extends NativeVoidType ? void
+      : never;
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -354,42 +393,52 @@ declare namespace Deno {
       : StaticForeignSymbol<T[K]>;
   };
 
-  /** @category FFI */
-  const brand: unique symbol;
-  /** @category FFI */
-  type PointerObject = { [brand]: unknown };
-
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * Pointer type depends on the architecture and actual pointer value.
+   * A non-null pointer, represented as an object
+   * at runtime. The object's prototype is `null`
+   * and cannot be changed. The object cannot be
+   * assigned to either and is thus entirely read-only.
    *
-   * On a 32 bit host system all pointer values are plain numbers. On a 64 bit
-   * host system pointer values are represented as numbers if the value is below
-   * `Number.MAX_SAFE_INTEGER`, otherwise they are provided as bigints.
+   * To interact with memory through a pointer use the
+   * {@linkcode UnsafePointerView} class. To create a
+   * pointer from an address or the get the address of
+   * a pointer use the static methods of the
+   * {@linkcode UnsafePointer} class.
    *
    * @category FFI
    */
-  export type PointerValue = null | PointerObject;
+  export type PointerObject<T = unknown> = { [brand]: T };
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
-   * An unsafe pointer to a memory location for passing and returning pointers
-   * to and from the FFI.
+   * Pointers are represented either with a {@linkcode PointerObject}
+   * object or a `null` if the pointer is null.
+   *
+   * @category FFI
+   */
+  export type PointerValue<T = unknown> = null | PointerObject<T>;
+
+  /** **UNSTABLE**: New API, yet to be vetted.
+   *
+   * A collection of static functions for interacting with pointer objects.
    *
    * @category FFI
    */
   export class UnsafePointer {
     /** Create a pointer from a numeric value. This one is <i>really</i> dangerous! */
-    static create(value: number | bigint): PointerValue;
+    static create<T = unknown>(value: number | bigint): PointerValue<T>;
     /** Returns `true` if the two pointers point to the same address. */
-    static equals(a: PointerValue, b: PointerValue): boolean;
+    static equals<T = unknown>(a: PointerValue<T>, b: PointerValue<T>): boolean;
     /** Return the direct memory pointer to the typed array in memory. */
-    static of(value: Deno.UnsafeCallback | BufferSource): PointerValue;
+    static of<T = unknown>(
+      value: Deno.UnsafeCallback | BufferSource,
+    ): PointerValue<T>;
     /** Return a new pointer offset from the original by `offset` bytes. */
-    static offset(
-      value: NonNullable<PointerValue>,
+    static offset<T = unknown>(
+      value: PointerObject,
       offset: number,
-    ): PointerValue;
+    ): PointerValue<T>;
     /** Get the numeric value of a pointer */
     static value(value: PointerValue): number | bigint;
   }
@@ -404,9 +453,9 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafePointerView {
-    constructor(pointer: NonNullable<PointerValue>);
+    constructor(pointer: PointerObject);
 
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject;
 
     /** Gets a boolean at the specified byte offset from the pointer. */
     getBool(offset?: number): boolean;
@@ -441,14 +490,14 @@ declare namespace Deno {
      * pointer. */
     getFloat64(offset?: number): number;
     /** Gets a pointer at the specified byte offset from the pointer */
-    getPointer(offset?: number): PointerValue;
+    getPointer<T = unknown>(offset?: number): PointerValue<T>;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the pointer. */
     getCString(offset?: number): string;
     /** Gets a C string (`null` terminated string) at the specified byte offset
      * from the specified pointer. */
     static getCString(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       offset?: number,
     ): string;
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
@@ -457,7 +506,7 @@ declare namespace Deno {
     /** Gets an `ArrayBuffer` of length `byteLength` at the specified byte
      * offset from the specified pointer. */
     static getArrayBuffer(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       byteLength: number,
       offset?: number,
     ): ArrayBuffer;
@@ -473,7 +522,7 @@ declare namespace Deno {
      *
      * Also takes optional byte offset from the pointer. */
     static copyInto(
-      pointer: NonNullable<PointerValue>,
+      pointer: PointerObject,
       destination: BufferSource,
       offset?: number,
     ): void;
@@ -488,11 +537,13 @@ declare namespace Deno {
    */
   export class UnsafeFnPointer<Fn extends ForeignFunction> {
     /** The pointer to the function. */
-    pointer: NonNullable<PointerValue>;
+    pointer: PointerObject<Fn>;
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(pointer: NonNullable<PointerValue>, definition: Const<Fn>);
+    constructor(pointer: PointerObject<Fn>, definition: Const<Fn>);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Const<Fn>);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -562,7 +613,7 @@ declare namespace Deno {
     );
 
     /** The pointer to the unsafe callback. */
-    readonly pointer: NonNullable<PointerValue>;
+    readonly pointer: PointerObject<Definition>;
     /** The definition of the unsafe callback. */
     readonly definition: Definition;
     /** The callback function. */
@@ -1357,7 +1408,13 @@ declare namespace Deno {
    * mutation is applied to the key.
    *
    * - `set` - Sets the value of the key to the given value, overwriting any
-   *   existing value.
+   *   existing value. Optionally an `expireIn` option can be specified to
+   *   set a time-to-live (TTL) for the key. The TTL is specified in
+   *   milliseconds, and the key will be deleted from the database at earliest
+   *   after the specified number of milliseconds have elapsed. Once the
+   *   specified duration has passed, the key may still be visible for some
+   *   additional time. If the `expireIn` option is not specified, the key will
+   *   not expire.
    * - `delete` - Deletes the key from the database. The mutation is a no-op if
    *   the key does not exist.
    * - `sum` - Adds the given value to the existing value of the key. Both the
@@ -1379,7 +1436,7 @@ declare namespace Deno {
   export type KvMutation =
     & { key: KvKey }
     & (
-      | { type: "set"; value: unknown }
+      | { type: "set"; value: unknown; expireIn?: number }
       | { type: "delete" }
       | { type: "sum"; value: KvU64 }
       | { type: "max"; value: KvU64 }
@@ -1591,8 +1648,15 @@ declare namespace Deno {
     /**
      * Add to the operation a mutation that sets the value of the specified key
      * to the specified value if all checks pass during the commit.
+     *
+     * Optionally an `expireIn` option can be specified to set a time-to-live
+     * (TTL) for the key. The TTL is specified in milliseconds, and the key will
+     * be deleted from the database at earliest after the specified number of
+     * milliseconds have elapsed. Once the specified duration has passed, the
+     * key may still be visible for some additional time. If the `expireIn`
+     * option is not specified, the key will not expire.
      */
-    set(key: KvKey, value: unknown): this;
+    set(key: KvKey, value: unknown, options?: { expireIn?: number }): this;
     /**
      * Add to the operation a mutation that deletes the specified key if all
      * checks pass during the commit.
@@ -1721,8 +1785,19 @@ declare namespace Deno {
      * const db = await Deno.openKv();
      * await db.set(["foo"], "bar");
      * ```
+     *
+     * Optionally an `expireIn` option can be specified to set a time-to-live
+     * (TTL) for the key. The TTL is specified in milliseconds, and the key will
+     * be deleted from the database at earliest after the specified number of
+     * milliseconds have elapsed. Once the specified duration has passed, the
+     * key may still be visible for some additional time. If the `expireIn`
+     * option is not specified, the key will not expire.
      */
-    set(key: KvKey, value: unknown): Promise<KvCommitResult>;
+    set(
+      key: KvKey,
+      value: unknown,
+      options?: { expireIn?: number },
+    ): Promise<KvCommitResult>;
 
     /**
      * Delete the value for the given key from the database. If no value exists
