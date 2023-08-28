@@ -832,7 +832,7 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
-    console.log(">>> _write", callback);
+    tempDebug(">>> _write", callback);
     if (typeof encoding === "function") {
       callback = encoding;
       encoding = "utf8";
