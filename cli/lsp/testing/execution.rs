@@ -478,48 +478,96 @@ impl TestRun {
 }
 
 #[derive(Debug, PartialEq)]
-enum TestOrTestStepDescription {
+enum LspTestDescription {
   TestDescription(test::TestDescription),
-  TestStepDescription(test::TestStepDescription),
+  /// `(desc, static_id, root_static_id)`
+  TestStepDescription(test::TestStepDescription, String, String),
 }
 
-impl TestOrTestStepDescription {
+impl LspTestDescription {
   fn origin(&self) -> &str {
     match self {
-      TestOrTestStepDescription::TestDescription(d) => d.origin.as_str(),
-      TestOrTestStepDescription::TestStepDescription(d) => d.origin.as_str(),
+      LspTestDescription::TestDescription(d) => d.origin.as_str(),
+      LspTestDescription::TestStepDescription(d, _, _) => d.origin.as_str(),
     }
+  }
+
+  fn location(&self) -> &test::TestLocation {
+    match self {
+      LspTestDescription::TestDescription(d) => &d.location,
+      LspTestDescription::TestStepDescription(d, _, _) => &d.location,
+    }
+  }
+
+  fn parent_id(&self) -> Option<usize> {
+    match self {
+      LspTestDescription::TestDescription(_) => None,
+      LspTestDescription::TestStepDescription(d, _, _) => Some(d.parent_id),
+    }
+  }
+
+  fn from_step_description(
+    desc: &test::TestStepDescription,
+    tests: &IndexMap<usize, LspTestDescription>,
+  ) -> Self {
+    let mut id_components = Vec::with_capacity(7);
+    let mut root_static_id = None;
+    let mut step_desc = Some(desc);
+    while let Some(desc) = step_desc {
+      id_components.push(desc.name.as_bytes());
+      let parent_desc = tests.get(&desc.parent_id).unwrap();
+      step_desc = match parent_desc {
+        LspTestDescription::TestDescription(d) => {
+          id_components.push(d.name.as_bytes());
+          root_static_id = Some(d.static_id());
+          None
+        }
+        LspTestDescription::TestStepDescription(d, _, _) => Some(d),
+      };
+    }
+    id_components.push(desc.origin.as_bytes());
+    id_components.reverse();
+    let static_id = checksum::gen(&id_components);
+    LspTestDescription::TestStepDescription(
+      desc.clone(),
+      static_id,
+      root_static_id.unwrap(),
+    )
   }
 }
 
-impl From<&test::TestDescription> for TestOrTestStepDescription {
+impl From<&test::TestDescription> for LspTestDescription {
   fn from(desc: &test::TestDescription) -> Self {
     Self::TestDescription(desc.clone())
   }
 }
 
-impl From<&test::TestStepDescription> for TestOrTestStepDescription {
-  fn from(desc: &test::TestStepDescription) -> Self {
-    Self::TestStepDescription(desc.clone())
-  }
-}
-
-impl From<&TestOrTestStepDescription> for lsp_custom::TestIdentifier {
-  fn from(desc: &TestOrTestStepDescription) -> lsp_custom::TestIdentifier {
+impl From<&LspTestDescription> for lsp_custom::TestIdentifier {
+  fn from(desc: &LspTestDescription) -> lsp_custom::TestIdentifier {
     match desc {
-      TestOrTestStepDescription::TestDescription(test_desc) => test_desc.into(),
-      TestOrTestStepDescription::TestStepDescription(test_step_desc) => {
-        test_step_desc.into()
+      LspTestDescription::TestDescription(d) => d.into(),
+      LspTestDescription::TestStepDescription(d, static_id, root_static_id) => {
+        let uri = ModuleSpecifier::parse(&d.origin).unwrap();
+        Self {
+          text_document: lsp::TextDocumentIdentifier { uri },
+          id: Some(root_static_id.clone()),
+          step_id: Some(static_id.clone()),
+        }
       }
     }
   }
 }
 
-impl From<&TestOrTestStepDescription> for lsp_custom::TestData {
-  fn from(desc: &TestOrTestStepDescription) -> Self {
+impl From<&LspTestDescription> for lsp_custom::TestData {
+  fn from(desc: &LspTestDescription) -> Self {
     match desc {
-      TestOrTestStepDescription::TestDescription(desc) => desc.into(),
-      TestOrTestStepDescription::TestStepDescription(desc) => desc.into(),
+      LspTestDescription::TestDescription(d) => d.into(),
+      LspTestDescription::TestStepDescription(d, static_id, _) => Self {
+        id: static_id.clone(),
+        label: d.name.clone(),
+        steps: Default::default(),
+        range: None,
+      },
     }
   }
 }
@@ -546,37 +594,12 @@ impl From<&test::TestDescription> for lsp_custom::TestIdentifier {
   }
 }
 
-impl From<&test::TestStepDescription> for lsp_custom::TestData {
-  fn from(desc: &test::TestStepDescription) -> Self {
-    Self {
-      id: desc.static_id(),
-      label: desc.name.clone(),
-      steps: Default::default(),
-      range: None,
-    }
-  }
-}
-
-impl From<&test::TestStepDescription> for lsp_custom::TestIdentifier {
-  fn from(desc: &test::TestStepDescription) -> Self {
-    let uri = ModuleSpecifier::parse(&desc.origin).unwrap();
-    Self {
-      text_document: lsp::TextDocumentIdentifier { uri },
-      id: Some(checksum::gen(&[
-        desc.origin.as_bytes(),
-        desc.root_name.as_bytes(),
-      ])),
-      step_id: Some(desc.static_id()),
-    }
-  }
-}
-
 struct LspTestReporter {
   client: Client,
   id: u32,
   maybe_root_uri: Option<ModuleSpecifier>,
   files: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
-  tests: IndexMap<usize, TestOrTestStepDescription>,
+  tests: IndexMap<usize, LspTestDescription>,
   current_test: Option<usize>,
 }
 
@@ -713,26 +736,27 @@ impl LspTestReporter {
   }
 
   fn report_step_register(&mut self, desc: &test::TestStepDescription) {
-    self.tests.insert(desc.id, desc.into());
+    self.tests.insert(
+      desc.id,
+      LspTestDescription::from_step_description(desc, &self.tests),
+    );
+    let desc = self.tests.get(&desc.id).unwrap();
     let mut files = self.files.lock();
     let tds = files
-      .entry(ModuleSpecifier::parse(&desc.location.file_name).unwrap())
+      .entry(ModuleSpecifier::parse(&desc.location().file_name).unwrap())
       .or_default();
     let data: lsp_custom::TestData = desc.into();
     if tds.inject(data.clone()) {
-      let mut step_desc = Some(desc);
       let mut data = data;
-      while let Some(desc) = step_desc {
-        let parent_desc = self.tests.get(&desc.parent_id).unwrap();
+      let mut current_desc = desc;
+      while let Some(parent_id) = current_desc.parent_id() {
+        let parent_desc = self.tests.get(&parent_id).unwrap();
         let mut parent_data: lsp_custom::TestData = parent_desc.into();
         parent_data.steps = vec![data];
         data = parent_data;
-        step_desc = match parent_desc {
-          TestOrTestStepDescription::TestDescription(_) => None,
-          TestOrTestStepDescription::TestStepDescription(d) => Some(d),
-        }
+        current_desc = parent_desc;
       }
-      let specifier = ModuleSpecifier::parse(&desc.origin).unwrap();
+      let specifier = ModuleSpecifier::parse(desc.origin()).unwrap();
       let label = if let Some(root) = &self.maybe_root_uri {
         specifier.as_str().replace(root.as_str(), "")
       } else {
@@ -758,6 +782,7 @@ impl LspTestReporter {
     if self.current_test == Some(desc.parent_id) {
       self.current_test = Some(desc.id);
     }
+    let desc = &LspTestDescription::from_step_description(desc, &self.tests);
     let test: lsp_custom::TestIdentifier = desc.into();
     self.progress(lsp_custom::TestRunProgressMessage::Started { test });
   }
@@ -771,6 +796,7 @@ impl LspTestReporter {
     if self.current_test == Some(desc.id) {
       self.current_test = Some(desc.parent_id);
     }
+    let desc = &LspTestDescription::from_step_description(desc, &self.tests);
     match result {
       test::TestStepResult::Ok => {
         self.progress(lsp_custom::TestRunProgressMessage::Passed {
@@ -848,7 +874,6 @@ mod tests {
     let test_def_a = TestDefinition {
       id: "0b7c6bf3cd617018d33a1bf982a08fe088c5bb54fcd5eb9e802e7c137ec1af94"
         .to_string(),
-      level: 0,
       name: "test a".to_string(),
       range: new_range(420, 424),
       steps: vec![],
@@ -856,7 +881,6 @@ mod tests {
     let test_def_b = TestDefinition {
       id: "69d9fe87f64f5b66cb8b631d4fd2064e8224b8715a049be54276c42189ff8f9f"
         .to_string(),
-      level: 0,
       name: "test b".to_string(),
       range: new_range(480, 481),
       steps: vec![],
