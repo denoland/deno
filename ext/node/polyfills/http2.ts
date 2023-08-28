@@ -73,7 +73,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const tempDebugEnabled = true;
+const tempDebugEnabled = false;
 function tempDebug(...args) {
   if (tempDebugEnabled) {
     console.log(...args);
@@ -855,7 +855,7 @@ export class ClientHttp2Stream extends Duplex {
       })
       .then(() => {
         callback?.();
-        console.log(
+        tempDebug(
           "this.writableFinished",
           this.pending,
           this.destroyed,
@@ -873,7 +873,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   _final(cb) {
-    console.log("_final", new Error());
+    tempDebug("_final", new Error());
     if (this.pending) {
       this.once("ready", () => this._final(cb));
       return;
@@ -983,7 +983,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   sendTrailers(trailers: Record<string, unknown>) {
-    console.log("sendTrailers", trailers);
+    tempDebug("sendTrailers", trailers);
     if (this.destroyed || this.closed) {
       throw new ERR_HTTP2_INVALID_STREAM();
     }
@@ -1004,7 +1004,7 @@ export class ClientHttp2Stream extends Duplex {
     // deno-lint-ignore no-this-alias
     const stream = this;
     stream[kState].flags &= ~STREAM_FLAGS_HAS_TRAILERS;
-    console.log("sending trailers", this.#rid, trailers);
+    tempDebug("sending trailers", this.#rid, trailers);
 
     core.opAsync(
       "op_http2_client_send_trailers",
@@ -1025,8 +1025,8 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   close(code: number = constants.NGHTTP2_NO_ERROR, callback?: () => void) {
-    console.log(">>> close", callback);
-    console.error("Stream close");
+    tempDebug(">>> close", callback);
+    tempDebug("Stream close");
 
     if (this.closed) {
       return;
@@ -1097,13 +1097,13 @@ export class ClientHttp2Stream extends Duplex {
 
     if (this.writableFinished) {
       if (!this.readable && this.closed) {
-        console.log("going into _destroy");
+        tempDebug("going into _destroy");
         this._destroy();
         return;
       }
 
       const state = this[kState];
-      console.log(
+      tempDebug(
         "state here, sent headers",
         this.headersSent,
         "has trailers",
@@ -1131,7 +1131,7 @@ export class ClientHttp2Stream extends Duplex {
 }
 
 function shutdownWritable(stream, callback) {
-  console.log(">>> shutdownWritable", callback);
+  tempDebug(">>> shutdownWritable", callback);
   const state = stream[kState];
   if (state.shutdownWritableCalled) {
     return callback();
@@ -1480,7 +1480,7 @@ export function connect(
   options: Record<string, unknown>,
   callback: (session: ClientHttp2Session) => void,
 ): ClientHttp2Session {
-  console.log(">>> http2.connect", options);
+  tempDebug(">>> http2.connect", options);
 
   if (typeof options === "function") {
     callback = options;
