@@ -5670,12 +5670,8 @@
       "credentials": {
         "authentication-basic.any.html": true,
         "authentication-basic.any.worker.html": true,
-        "authentication-redirection.any.html": [
-          "getAuthorizationHeaderValue - cross origin redirection"
-        ],
-        "authentication-redirection.any.worker.html": [
-          "getAuthorizationHeaderValue - cross origin redirection"
-        ],
+        "authentication-redirection.any.html": true,
+        "authentication-redirection.any.worker.html": true,
         "cookies.any.html": [
           "Include mode: 1 cookie",
           "Include mode: 2 cookies",
