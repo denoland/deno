@@ -808,7 +808,7 @@ fn permissions_cache() {
 }
 
 itest!(env_file {
-  args: "run --env --allow-env run/env_file.ts",
+  args: "run --env=env --allow-env run/env_file.ts",
   output: "run/env_file.out",
 });
 
