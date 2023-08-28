@@ -29,8 +29,6 @@ import {
   ERR_HTTP2_CONNECT_PATH,
   ERR_HTTP2_CONNECT_SCHEME,
   ERR_HTTP2_GOAWAY_SESSION,
-  ERR_HTTP2_HEADER_SINGLE_VALUE,
-  ERR_HTTP2_INVALID_CONNECTION_HEADERS,
   ERR_HTTP2_INVALID_PSEUDOHEADER,
   ERR_HTTP2_INVALID_SESSION,
   ERR_HTTP2_INVALID_STREAM,
@@ -50,23 +48,14 @@ const kEncrypted = Symbol("encrypted");
 const kID = Symbol("id");
 const kInit = Symbol("init");
 const kInfoHeaders = Symbol("sent-info-headers");
-const kLocalSettings = Symbol("local-settings");
-const kNativeFields = Symbol("kNativeFields");
-const kOptions = Symbol("options");
 const kOrigin = Symbol("origin");
 const kPendingRequestCalls = Symbol("kPendingRequestCalls");
-const kProceed = Symbol("proceed");
 const kProtocol = Symbol("protocol");
-const kRemoteSettings = Symbol("remote-settings");
-const kSelectPadding = Symbol("select-padding");
 const kSentHeaders = Symbol("sent-headers");
 const kSentTrailers = Symbol("sent-trailers");
-const kServer = Symbol("server");
 const kState = Symbol("state");
 const kType = Symbol("type");
-const kWriteGeneric = Symbol("write-generic");
 const kTimeout = Symbol("timeout");
-const kSensitiveHeaders = Symbol("nodejs.http2.sensitiveHeaders");
 
 const STREAM_FLAGS_PENDING = 0x0;
 const STREAM_FLAGS_READY = 0x1;
@@ -84,9 +73,9 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-let debugEnabled = true;
-function debug(...args) {
-  if (debugEnabled) {
+let tempDebugEnabled = true;
+function tempDebug(...args) {
+  if (tempDebugEnabled) {
     console.log(...args);
   }
 }
@@ -298,7 +287,7 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
   }
 
   // TODO(bartlomieju): handle sockets
-  debug(">>> closeSession", session._connRid, session._clientRid);
+  tempDebug(">>> closeSession", session._connRid, session._clientRid);
   core.tryClose(session._connRid);
   core.tryClose(session._clientRid);
 
@@ -349,15 +338,15 @@ export class ClientHttp2Session extends Http2Session {
 
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
-      // debug(">>> before connect");
+      // tempDebug(">>> before connect");
       const [clientRid, connRid] = await core.opAsync(
         "op_http2_connect",
         authority.toString(),
       );
-      // debug(">>> after connect");
+      // tempDebug(">>> after connect");
       this._clientRid = clientRid;
       this._connRid = connRid;
-      // TODO(bartlomieju): save so it can be unrefed
+      // TODO(bartlomieju): save this promise, so the session ca be unrefed
       (async () => {
         try {
           await core.opAsync("op_http2_poll_client_connection", this._connRid);
@@ -651,7 +640,7 @@ async function clientHttp2Request(
   headers,
   options,
 ) {
-  debug(
+  tempDebug(
     "waiting for connect promise",
     sessionConnectPromise,
     headers,
@@ -669,7 +658,7 @@ async function clientHttp2Request(
       reqHeaders.push([key, Array.isArray(value) ? value[0] : value]);
     }
   }
-  debug(
+  tempDebug(
     "waited for connect promise",
     !!options.waitForTrailers,
     pseudoHeaders,
@@ -726,26 +715,26 @@ export class ClientHttp2Stream extends Duplex {
       options,
     );
     this.#waitForTrailers = !!options.waitForTrailers;
-    debug(">>> created clienthttp2stream");
+    tempDebug(">>> created clienthttp2stream");
     this.#responsePromise = (async () => {
-      debug(">>> before request promise", session._clientRid);
+      tempDebug(">>> before request promise", session._clientRid);
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
       // TODO(bartlomieju): clean this up
       this.__rid = streamRid;
       this[kID] = streamId;
-      debug(">>> after request promise", session._clientRid, this.#rid);
+      tempDebug(">>> after request promise", session._clientRid, this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
         this.#rid,
       );
-      debug(">>> after get response", response);
+      tempDebug(">>> after get response", response);
       this.#bodyRid = response.bodyRid;
       const headers = {
         ":status": response.statusCode,
         ...Object.fromEntries(response.headers),
       };
-      debug(">>> emitting response", headers);
+      tempDebug(">>> emitting response", headers);
       this.emit("response", headers, 0);
       this.__response = response;
       // this.uncork();
@@ -857,7 +846,7 @@ export class ClientHttp2Stream extends Duplex {
 
     this.#requestPromise
       .then(() => {
-        debug(">>> _write", this.#rid, data, encoding, callback);
+        tempDebug(">>> _write", this.#rid, data, encoding, callback);
         return core.opAsync(
           "op_http2_client_send_data",
           this.#rid,
@@ -915,16 +904,16 @@ export class ClientHttp2Stream extends Duplex {
       return;
     }
 
-    debug(">>> read");
+    tempDebug(">>> read");
     // if (this.#hasTrailersToRead) {
     //   (async () => {
-    //     debug(">>> before trailers to read");
+    //     tempDebug(">>> before trailers to read");
     //     const trailerList = await core.opAsync(
     //       "op_http2_client_get_response_trailers",
     //       response.bodyRid,
     //     );
-    //     debug(">>> after trailers to read");
-    //     debug(">>> trailers", trailerList);
+    //     tempDebug(">>> after trailers to read");
+    //     tempDebug(">>> trailers", trailerList);
     //     const trailers = Object.fromEntries(trailerList);
     //     // core.close(response.bodyRid);
     //     // core.close(clientRid);
@@ -933,7 +922,7 @@ export class ClientHttp2Stream extends Duplex {
     //   })();
 
     //   // this.#closed = true;
-    //   // // debug(this.#bodyRid, this.#rid);
+    //   // // tempDebug(this.#bodyRid, this.#rid);
     //   // core.tryClose(this.#bodyRid);
     //   // core.tryClose(this.#rid);
     //   // this.emit("end");
@@ -945,13 +934,13 @@ export class ClientHttp2Stream extends Duplex {
         this.__response.bodyRid,
       );
 
-      debug(">>> chunk", chunk, finished);
+      tempDebug(">>> chunk", chunk, finished);
       if (chunk === null) {
         core.tryClose(this.__response.bodyRid);
         // if (finished) {
         //   this.#hasTrailersToRead = true;
         //   const result = this.push(null);
-        //   debug(">>> read result1", result);
+        //   tempDebug(">>> read result1", result);
         //   // TODO: remove, don't emit manually
         //   this.emit("end");
         //   return;
@@ -960,20 +949,20 @@ export class ClientHttp2Stream extends Duplex {
         //   "op_http2_client_get_response_trailers",
         //   this.__response.bodyRid,
         // );
-        // // debug(">>> after trailers to read");
-        // // debug(">>> trailers", trailerList);
+        // // tempDebug(">>> after trailers to read");
+        // // tempDebug(">>> trailers", trailerList);
         // const trailers = Object.fromEntries(trailerList);
         // // core.close(response.bodyRid);
         // // core.close(clientRid);
         // // core.tryClose(connRid);
-        // debug(">>> emitting trailers", trailers);
+        // tempDebug(">>> emitting trailers", trailers);
         // const result = this.push(null);
-        // debug(">>> read result2", result);
+        // tempDebug(">>> read result2", result);
         // this.emit("trailers", trailers);
         // // TODO: remove, don't emit manually
         // this.emit("end");
         this.push(null);
-        debug(">>> read null chunk");
+        tempDebug(">>> read null chunk");
         this[kMaybeDestroy]();
         return;
       }
@@ -984,7 +973,7 @@ export class ClientHttp2Stream extends Duplex {
       } else {
         result = this.push(new Uint8Array(chunk));
       }
-      debug(">>> read result", result);
+      tempDebug(">>> read result", result);
     })();
   }
 
@@ -1024,7 +1013,7 @@ export class ClientHttp2Stream extends Duplex {
       stream[kMaybeDestroy]();
       core.tryClose(this.#rid);
     }).catch((e) => {
-      debug(">>> send trailers error", e);
+      tempDebug(">>> send trailers error", e);
       core.tryClose(this.#rid);
       stream._destroy(e);
     });
@@ -1049,7 +1038,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   _destroy(err, callback) {
-    debug(">>> ClientHttp2Stream._destroy", err, callback);
+    tempDebug(">>> ClientHttp2Stream._destroy", err, callback);
     const session = this[kSession];
     const id = this[kID];
 
@@ -1094,7 +1083,7 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   [kMaybeDestroy](code = constants.NGHTTP2_NO_ERROR) {
-    debug(
+    tempDebug(
       ">>> ClientHttp2Stream[kMaybeDestroy]",
       code,
       this.writableFinished,
@@ -1154,7 +1143,7 @@ function shutdownWritable(stream, callback) {
   //   // TODO(bartlomieju): cleanup
   //   stream.__rid,
   // ).then(() => {
-  //   debug(">>> endstream close", stream.__rid);
+  //   tempDebug(">>> endstream close", stream.__rid);
   //   core.tryClose(stream.__rid);
   //   callback();
   // });
@@ -1165,15 +1154,15 @@ function shutdownWritable(stream, callback) {
 
 function onStreamTrailers(stream) {
   stream[kState].trailersReady = true;
-  debug(">>> onStreamTrailers", stream.destroyed, stream.closed);
+  tempDebug(">>> onStreamTrailers", stream.destroyed, stream.closed);
   if (stream.destroyed || stream.closed) {
     return;
   }
   if (!stream.emit("wantTrailers")) {
-    debug(">>> onStreamTrailers no wantTrailers");
+    tempDebug(">>> onStreamTrailers no wantTrailers");
     stream.sendTrailers({});
   }
-  debug(">>> onStreamTrailers wantTrailers");
+  tempDebug(">>> onStreamTrailers wantTrailers");
 }
 
 const kNoRstStream = 0;
@@ -1212,7 +1201,7 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 }
 
 function finishCloseStream(stream, code) {
-  debug(">>> finishCloseStream", stream, code);
+  tempDebug(">>> finishCloseStream", stream, code);
   if (stream.pending) {
     this.push(null);
     this.once("ready", () => {
@@ -1221,7 +1210,7 @@ function finishCloseStream(stream, code) {
         this.__rid,
         code,
       ).then(() => {
-        debug(
+        tempDebug(
           ">>> finishCloseStream close",
           this.__rid,
           this.__response.bodyRid,
@@ -1236,7 +1225,7 @@ function finishCloseStream(stream, code) {
       this.__rid,
       code,
     ).then(() => {
-      debug(
+      tempDebug(
         ">>> finishCloseStream close2",
         this.__rid,
         this.__response.bodyRid,
