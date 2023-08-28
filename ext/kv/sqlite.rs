@@ -19,8 +19,8 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::OpState;
 use rand::Rng;
@@ -285,7 +285,7 @@ impl<P: SqliteDbHandlerPermissions> DatabaseHandler for SqliteDbHandler<P> {
 pub struct SqliteDb {
   conn: ProtectedConn,
   queue: OnceCell<SqliteQueue>,
-  expiration_watcher: deno_core::task::JoinHandle<()>,
+  expiration_watcher: deno_core::unsync::JoinHandle<()>,
 }
 
 impl Drop for SqliteDb {
@@ -355,7 +355,7 @@ impl SqliteDb {
     spawn_blocking(move || {
       let mut db = db.try_lock().ok();
       let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
-        return Err(type_error(ERROR_USING_CLOSED_DATABASE))
+        return Err(type_error(ERROR_USING_CLOSED_DATABASE));
       };
       let result = match db.transaction() {
         Ok(tx) => f(tx),
@@ -626,16 +626,17 @@ impl SqliteQueue {
     tx: &rusqlite::Transaction<'_>,
   ) -> Result<bool, AnyError> {
     let Some((_, id, data, backoff_schedule, keys_if_undelivered)) = tx
-    .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
-    .query_row([id], |row| {
-      let deadline: u64 = row.get(0)?;
-      let id: String = row.get(1)?;
-      let data: Vec<u8> = row.get(2)?;
-      let backoff_schedule: String = row.get(3)?;
-      let keys_if_undelivered: String = row.get(4)?;
-      Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
-    })
-    .optional()? else {
+      .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
+      .query_row([id], |row| {
+        let deadline: u64 = row.get(0)?;
+        let id: String = row.get(1)?;
+        let data: Vec<u8> = row.get(2)?;
+        let backoff_schedule: String = row.get(3)?;
+        let keys_if_undelivered: String = row.get(4)?;
+        Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
+      })
+      .optional()?
+    else {
       return Ok(false);
     };
 
@@ -724,6 +725,7 @@ impl Database for SqliteDb {
 
   async fn snapshot_read(
     &self,
+    _state: Rc<RefCell<OpState>>,
     requests: Vec<ReadRange>,
     _options: SnapshotReadOptions,
   ) -> Result<Vec<ReadRangeOutput>, AnyError> {
@@ -769,6 +771,7 @@ impl Database for SqliteDb {
 
   async fn atomic_write(
     &self,
+    _state: Rc<RefCell<OpState>>,
     write: AtomicWrite,
   ) -> Result<Option<CommitResult>, AnyError> {
     let write = Arc::new(write);
@@ -894,7 +897,10 @@ impl Database for SqliteDb {
     Ok(commit_result)
   }
 
-  async fn dequeue_next_message(&self) -> Result<Self::QMH, AnyError> {
+  async fn dequeue_next_message(
+    &self,
+    _state: Rc<RefCell<OpState>>,
+  ) -> Result<Self::QMH, AnyError> {
     let queue = self
       .queue
       .get_or_init(|| async move { SqliteQueue::new(self.conn.clone()) })
@@ -921,7 +927,9 @@ fn mutate_le64(
   mutate: impl FnOnce(u64, u64) -> u64,
 ) -> Result<(), AnyError> {
   let Value::U64(operand) = *operand else {
-    return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 operand")));
+    return Err(type_error(format!(
+      "Failed to perform '{op_name}' mutation on a non-U64 operand"
+    )));
   };
 
   let old_value = tx

@@ -377,7 +377,7 @@ pub(crate) fn format_error(e: dlopen::Error, path: String) -> String {
 
       let path = OsStr::new(&path)
         .encode_wide()
-        .chain(Some(0).into_iter())
+        .chain(Some(0))
         .collect::<Vec<_>>();
 
       let arguments = [path.as_ptr()];

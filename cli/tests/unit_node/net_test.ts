@@ -130,3 +130,60 @@ Deno.test("[node/net] connection event has socket value", async () => {
 
   await Promise.all([p, p2]);
 });
+
+// https://github.com/denoland/deno/issues/20188
+Deno.test("[node/net] multiple Sockets should get correct server data", async () => {
+  const p = deferred();
+  const p2 = deferred();
+
+  const dataReceived1 = deferred();
+  const dataReceived2 = deferred();
+
+  const events1: string[] = [];
+  const events2: string[] = [];
+
+  const server = net.createServer();
+  server.on("connection", (socket) => {
+    assert(socket !== undefined);
+    socket.on("data", (data) => {
+      socket.write(new TextDecoder().decode(data));
+    });
+  });
+
+  server.listen(async () => {
+    // deno-lint-ignore no-explicit-any
+    const { port } = server.address() as any;
+
+    const socket1 = net.createConnection(port);
+    const socket2 = net.createConnection(port);
+
+    socket1.on("data", (data) => {
+      events1.push(new TextDecoder().decode(data));
+      dataReceived1.resolve();
+    });
+
+    socket2.on("data", (data) => {
+      events2.push(new TextDecoder().decode(data));
+      dataReceived2.resolve();
+    });
+
+    socket1.write("111");
+    socket2.write("222");
+
+    await Promise.all([dataReceived1, dataReceived2]);
+
+    socket1.end();
+    socket2.end();
+
+    server.close(() => {
+      p.resolve();
+    });
+
+    p2.resolve();
+  });
+
+  await Promise.all([p, p2]);
+
+  assertEquals(events1, ["111"]);
+  assertEquals(events2, ["222"]);
+});

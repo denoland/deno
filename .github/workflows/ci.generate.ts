@@ -5,7 +5,7 @@ import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 49;
+const cacheVersion = 51;
 
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
@@ -167,6 +167,11 @@ const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v3",
   with: { "node-version": 18 },
+};
+const installProtocStep = {
+  name: "Install protoc",
+  uses: "arduino/setup-protoc@v2",
+  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -434,6 +439,7 @@ const ci = {
           if: "matrix.job == 'bench'",
           ...installNodeStep,
         },
+        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",

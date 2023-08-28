@@ -16,9 +16,11 @@ use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use std::io::BufRead;
+use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use url::Url;
 use util::assert_starts_with;
 use util::http_server;
@@ -32,7 +34,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -73,6 +75,12 @@ struct InspectorTester {
   child: DenoChild,
   stderr_lines: Box<dyn Iterator<Item = String>>,
   stdout_lines: Box<dyn Iterator<Item = String>>,
+}
+
+impl Drop for InspectorTester {
+  fn drop(&mut self) {
+    _ = self.child.kill();
+  }
 }
 
 fn ignore_script_parsed(msg: &str) -> bool {
@@ -148,7 +156,11 @@ impl InspectorTester {
 
   async fn recv(&mut self) -> String {
     loop {
-      let result = self.socket.read_frame().await.map_err(|e| anyhow!(e));
+      // In the rare case this locks up, don't wait longer than one minute
+      let result = timeout(Duration::from_secs(60), self.socket.read_frame())
+        .await
+        .expect("recv() timeout")
+        .map_err(|e| anyhow!(e));
       let message =
         String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
       if (self.notification_filter)(&message) {
@@ -953,7 +965,7 @@ async fn inspector_with_ts_files() {
   tester.assert_received_messages(
       &[
         r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-        r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n  hello() {\n    return \"hello\";\n  }\n}\nexport function foo() {\n  const f = new Foo();\n  return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
         r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
       ],
       &[],
