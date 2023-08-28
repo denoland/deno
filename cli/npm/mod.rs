@@ -12,7 +12,6 @@ pub use cache::NpmCache;
 pub use cache::NpmCacheDir;
 pub use installer::PackageJsonDepsInstaller;
 pub use registry::CliNpmRegistryApi;
-pub use registry::NpmSearchApi;
 pub use resolution::NpmResolution;
 pub use resolvers::create_npm_fs_resolver;
 pub use resolvers::CliNpmResolver;

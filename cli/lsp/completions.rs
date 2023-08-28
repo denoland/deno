@@ -5,11 +5,11 @@ use super::config::ConfigSnapshot;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
+use super::npm::CliNpmSearchApi;
+use super::npm::NpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
-use crate::npm::CliNpmRegistryApi;
-use crate::npm::NpmSearchApi;
 use crate::util::path::is_supported_ext;
 use crate::util::path::relative_specifier;
 use crate::util::path::specifier_to_file_path;
@@ -24,7 +24,6 @@ use deno_core::serde::Serialize;
 use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
-use deno_npm::registry::NpmRegistryApi;
 use import_map::ImportMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -145,7 +144,7 @@ pub async fn get_import_completions(
   config: &ConfigSnapshot,
   client: &Client,
   module_registries: &ModuleRegistry,
-  npm_api: &CliNpmRegistryApi,
+  npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
 ) -> Option<lsp::CompletionResponse> {
@@ -170,7 +169,7 @@ pub async fn get_import_completions(
   } else if text.starts_with("npm:") {
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete: false,
-      items: get_npm_completions(&text, &range, npm_api, npm_api).await?,
+      items: get_npm_completions(&text, &range, npm_search_api).await?,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -467,7 +466,6 @@ fn get_relative_specifiers(
 async fn get_npm_completions(
   specifier: &str,
   range: &lsp::Range,
-  npm_registry_api: &impl NpmRegistryApi,
   npm_search_api: &impl NpmSearchApi,
 ) -> Option<Vec<lsp::CompletionItem>> {
   debug_assert!(specifier.starts_with("npm:"));
@@ -495,7 +493,7 @@ async fn get_npm_completions(
   if let Some(v_index) = v_index {
     let package_name = &bare_specifier[..v_index];
     let v_prefix = &bare_specifier[(v_index + 1)..];
-    let versions = &npm_registry_api
+    let versions = &npm_search_api
       .package_info(package_name)
       .await
       .ok()?
@@ -628,17 +626,23 @@ mod tests {
   use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::npm::NpmSearchApi;
   use crate::AnyError;
   use async_trait::async_trait;
   use deno_core::resolve_url;
   use deno_graph::Range;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
   use deno_npm::registry::TestNpmRegistryApi;
   use std::collections::HashMap;
   use std::path::Path;
   use test_util::TempDir;
 
   #[derive(Default)]
-  struct TestNpmSearchApi(HashMap<String, Arc<Vec<String>>>);
+  struct TestNpmSearchApi(
+    HashMap<String, Arc<Vec<String>>>,
+    TestNpmRegistryApi,
+  );
 
   #[async_trait]
   impl NpmSearchApi for TestNpmSearchApi {
@@ -647,6 +651,13 @@ mod tests {
         Some(names) => Ok(names.clone()),
         None => Ok(Arc::new(vec![])),
       }
+    }
+
+    async fn package_info(
+      &self,
+      name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, AnyError> {
+      self.1.package_info(name).await.map_err(|e| e.into())
     }
   }
 
@@ -819,7 +830,6 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_npm_completions() {
-    let npm_registry_api = TestNpmRegistryApi::default();
     let npm_search_api = TestNpmSearchApi(
       vec![(
         "puppe".to_string(),
@@ -832,6 +842,7 @@ mod tests {
       )]
       .into_iter()
       .collect(),
+      Default::default(),
     );
     let range = lsp::Range {
       start: lsp::Position {
@@ -843,14 +854,9 @@ mod tests {
         character: 32,
       },
     };
-    let actual = get_npm_completions(
-      "npm:puppe",
-      &range,
-      &npm_registry_api,
-      &npm_search_api,
-    )
-    .await
-    .unwrap();
+    let actual = get_npm_completions("npm:puppe", &range, &npm_search_api)
+      .await
+      .unwrap();
     assert_eq!(
       actual,
       vec![
@@ -938,12 +944,19 @@ mod tests {
 
   #[tokio::test]
   async fn test_get_npm_completions_for_versions() {
-    let npm_registry_api = TestNpmRegistryApi::default();
-    npm_registry_api.ensure_package_version("puppeteer", "20.9.0");
-    npm_registry_api.ensure_package_version("puppeteer", "21.0.0");
-    npm_registry_api.ensure_package_version("puppeteer", "21.0.1");
-    npm_registry_api.ensure_package_version("puppeteer", "21.0.2");
     let npm_search_api = TestNpmSearchApi::default();
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "20.9.0");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.0");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.1");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.2");
     let range = lsp::Range {
       start: lsp::Position {
         line: 0,
@@ -954,14 +967,9 @@ mod tests {
         character: 37,
       },
     };
-    let actual = get_npm_completions(
-      "npm:puppeteer@",
-      &range,
-      &npm_registry_api,
-      &npm_search_api,
-    )
-    .await
-    .unwrap();
+    let actual = get_npm_completions("npm:puppeteer@", &range, &npm_search_api)
+      .await
+      .unwrap();
     assert_eq!(
       actual,
       vec![

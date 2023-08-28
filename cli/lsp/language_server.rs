@@ -59,6 +59,7 @@ use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
@@ -123,6 +124,8 @@ struct LspNpmServices {
   config_hash: LspNpmConfigHash,
   /// Npm's registry api.
   api: Arc<CliNpmRegistryApi>,
+  /// Npm's search api.
+  search_api: CliNpmSearchApi,
   /// Npm cache
   cache: Arc<NpmCache>,
   /// Npm resolution that is stored in memory.
@@ -556,6 +559,8 @@ impl Inner {
       module_registries_location.clone(),
       http_client.clone(),
     );
+    let npm_search_api =
+      CliNpmSearchApi::new(module_registries.file_fetcher.clone(), None);
     let location = dir.deps_folder_path();
     let deps_http_cache = Arc::new(GlobalHttpCache::new(
       location,
@@ -612,6 +617,7 @@ impl Inner {
       npm: LspNpmServices {
         config_hash: LspNpmConfigHash(0), // this will be updated in initialize
         api: npm_api,
+        search_api: npm_search_api,
         cache: npm_cache,
         resolution: npm_resolution,
         resolver: npm_resolver,
@@ -2345,7 +2351,7 @@ impl Inner {
       &self.config.snapshot(),
       &self.client,
       &self.module_registries,
-      &self.npm.api,
+      &self.npm.search_api,
       &self.documents,
       self.maybe_import_map.clone(),
     )

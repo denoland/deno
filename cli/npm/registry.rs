@@ -23,7 +23,6 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
 
 use crate::args::CacheSetting;
 use crate::cache::CACHE_PERM;
@@ -53,11 +52,6 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
   Url::parse("https://registry.npmjs.org").unwrap()
 });
 
-#[async_trait::async_trait]
-pub trait NpmSearchApi {
-  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
-}
-
 #[derive(Debug)]
 pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
@@ -77,7 +71,6 @@ impl CliNpmRegistryApi {
       cache,
       force_reload_flag: Default::default(),
       mem_cache: Default::default(),
-      search_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
       http_client,
       progress_bar,
@@ -110,13 +103,6 @@ impl CliNpmRegistryApi {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
     self.0.as_ref().unwrap()
-  }
-}
-
-#[async_trait]
-impl NpmSearchApi for CliNpmRegistryApi {
-  async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
-    self.inner().search(query).await
   }
 }
 
@@ -181,7 +167,6 @@ struct CliNpmRegistryApiInner {
   cache: Arc<NpmCache>,
   force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
-  search_cache: Mutex<HashMap<String, Arc<Vec<String>>>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
   http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
@@ -399,7 +384,6 @@ impl CliNpmRegistryApiInner {
 
   fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
-    self.search_cache.lock().clear();
   }
 
   pub fn get_cached_package_info(
@@ -412,69 +396,5 @@ impl CliNpmRegistryApiInner {
     } else {
       None
     }
-  }
-
-  // Search is only used by lsp import completion, so caching etc. is simpler.
-  pub async fn search(
-    &self,
-    query: &str,
-  ) -> Result<Arc<Vec<String>>, AnyError> {
-    if let Some(names) = self.search_cache.lock().get(query) {
-      return Ok(names.clone());
-    }
-    let mut search_url = self.base_url.clone();
-    search_url
-      .path_segments_mut()
-      .map_err(|_| anyhow!("Custom npm registry URL cannot be a base."))?
-      .pop_if_empty()
-      .extend("-/v1/search".split('/'));
-    search_url
-      .query_pairs_mut()
-      .append_pair("text", &format!("{} boost-exact:false", query));
-    let bytes = self.http_client.download(search_url).await?;
-    let names = Arc::new(parse_npm_search_response(&bytes)?);
-    self
-      .search_cache
-      .lock()
-      .insert(query.to_string(), names.clone());
-    Ok(names)
-  }
-}
-
-fn parse_npm_search_response(bytes: &[u8]) -> Result<Vec<String>, AnyError> {
-  #[derive(Debug, Deserialize)]
-  struct Package {
-    name: String,
-  }
-  #[derive(Debug, Deserialize)]
-  struct Object {
-    package: Package,
-  }
-  #[derive(Debug, Deserialize)]
-  struct Response {
-    objects: Vec<Object>,
-  }
-  let objects = serde_json::from_slice::<Response>(bytes)?.objects;
-  Ok(objects.into_iter().map(|o| o.package.name).collect())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn test_parse_npm_search_response() {
-    // This is a subset of a realistic response only containing data currently
-    // used by our parser. It's enough to catch regressions.
-    let names = parse_npm_search_response(r#"{"objects":[{"package":{"name":"puppeteer"}},{"package":{"name":"puppeteer-core"}},{"package":{"name":"puppeteer-extra-plugin-stealth"}},{"package":{"name":"puppeteer-extra-plugin"}}]}"#.as_bytes()).unwrap();
-    assert_eq!(
-      names,
-      vec![
-        "puppeteer".to_string(),
-        "puppeteer-core".to_string(),
-        "puppeteer-extra-plugin-stealth".to_string(),
-        "puppeteer-extra-plugin".to_string()
-      ]
-    );
   }
 }
