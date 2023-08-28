@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use chrono::DateTime;
@@ -12,8 +13,8 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
+use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
-use http::HeaderName;
 use serde::Deserialize;
 
 use crate::args::Flags;
@@ -186,14 +187,16 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
 
   let client = reqwest::Client::new();
 
-  let (auth_name, token) = match auth_method {
-    AuthMethod::Token(token) => ("Bearer", token.token),
+  let authorization = match auth_method {
+    AuthMethod::Token(token) => format!("Bearer {}", token.token),
     AuthMethod::Oidc(oidc_config) => {
       use sha2::Digest;
       let tarball_sha = sha2::Sha256::digest(&tarball);
       let hash_bytes: Vec<u8> = tarball_sha.iter().cloned().collect();
-      let hash_hex: String =
-        hash_bytes.iter().map(|b| format!("{:02x}", b)).collect();
+      let mut hash_hex = format!("sha256-");
+      for byte in hash_bytes {
+        write!(&mut hash_hex, "{:02x}", byte).unwrap();
+      }
       let audience =
         format!("deno:@{}/{}@{}#{}", scope, package_name, version, hash_hex);
       // curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE"
@@ -209,14 +212,18 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
         .get(url)
         .bearer_auth(oidc_config.token)
         .send()
-        .await?;
-      let token = response.text().await?;
+        .await?
+        .error_for_status()?;
+      #[derive(serde::Deserialize)]
+      struct Token {
+        value: String,
+      }
 
-      ("githuboidc", token)
+      let token: Token = response.json().await?;
+
+      format!("githuboidc {}", token.value)
     }
   };
-
-  let header_name = HeaderName::from_lowercase(auth_name.as_bytes())?;
 
   let url = format!(
     "{}/publish/{}/{}/{}",
@@ -226,9 +233,11 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
     version
   );
 
+  println!("authenticating with {authorization}");
+
   let response = client
     .post(url)
-    .header(header_name, token)
+    .header(AUTHORIZATION, authorization)
     .header(CONTENT_ENCODING, "gzip")
     .body(tarball)
     .send()
