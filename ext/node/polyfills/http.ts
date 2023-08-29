@@ -774,6 +774,9 @@ class ClientRequest extends OutgoingMessage {
     if (rid) {
       core.tryClose(rid);
     }
+    if (this._req.cancelHandleRid !== null) {
+      core.tryClose(this._req.cancelHandleRid);
+    }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
       this.res._dump();
