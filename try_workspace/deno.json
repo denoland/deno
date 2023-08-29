@@ -1,5 +1,4 @@
 {
-  "workspace": true,
   "members": [
     "foo",
     "bar"
