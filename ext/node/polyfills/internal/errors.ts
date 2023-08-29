@@ -516,16 +516,16 @@ class NodeSystemError extends NodeErrorAbstraction {
         configurable: true,
       });
     }
-  }
 
-  Object.defineProperty(this, 'toString', {
-    configurable: true,
-    enumerable: false,
-    value: function toString() {
-      return `${this.name} [${this.code}]: ${this.message}`;
-    },
-    writable: true,
-  });
+    Object.defineProperty(this, 'toString', {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
+  }
 }
 
 function makeSystemErrorWithCode(key: string, msgPrfix: string) {
