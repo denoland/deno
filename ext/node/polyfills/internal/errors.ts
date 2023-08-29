@@ -368,7 +368,7 @@ export class NodeSyntaxError extends NodeErrorAbstraction
   constructor(code: string, message: string) {
     super(SyntaxError.prototype.name, code, message);
     Object.setPrototypeOf(this, SyntaxError.prototype);
-    Object.defineProperty(this, 'toString', {
+    Object.defineProperty(this, "toString", {
       configurable: true,
       enumerable: false,
       value: function toString() {
@@ -383,7 +383,7 @@ export class NodeRangeError extends NodeErrorAbstraction {
   constructor(code: string, message: string) {
     super(RangeError.prototype.name, code, message);
     Object.setPrototypeOf(this, RangeError.prototype);
-    Object.defineProperty(this, 'toString', {
+    Object.defineProperty(this, "toString", {
       configurable: true,
       enumerable: false,
       value: function toString() {
@@ -398,7 +398,7 @@ export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
   constructor(code: string, message: string) {
     super(TypeError.prototype.name, code, message);
     Object.setPrototypeOf(this, TypeError.prototype);
-    Object.defineProperty(this, 'toString', {
+    Object.defineProperty(this, "toString", {
       configurable: true,
       enumerable: false,
       value: function toString() {
@@ -413,7 +413,7 @@ export class NodeURIError extends NodeErrorAbstraction implements URIError {
   constructor(code: string, message: string) {
     super(URIError.prototype.name, code, message);
     Object.setPrototypeOf(this, URIError.prototype);
-    Object.defineProperty(this, 'toString', {
+    Object.defineProperty(this, "toString", {
       configurable: true,
       enumerable: false,
       value: function toString() {
@@ -517,7 +517,7 @@ class NodeSystemError extends NodeErrorAbstraction {
       });
     }
 
-    Object.defineProperty(this, 'toString', {
+    Object.defineProperty(this, "toString", {
       configurable: true,
       enumerable: false,
       value: function toString() {
