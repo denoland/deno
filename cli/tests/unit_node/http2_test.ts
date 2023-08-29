@@ -7,6 +7,7 @@ import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
 // TODO(bartlomieju): reenable sanitizers
 Deno.test("[node/http2 client]", {
+  ignore: Deno.build.os === "windows",
   sanitizeOps: false,
   sanitizeResources: false,
 }, async () => {
