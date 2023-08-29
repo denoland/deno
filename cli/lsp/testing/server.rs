@@ -127,6 +127,10 @@ impl TestServer {
                           parsed_source.text_info(),
                         ),
                       );
+                    } else {
+                      client.send_test_notification(as_delete_notification(
+                        specifier.clone(),
+                      ));
                     }
                     tests.insert(specifier.clone(), test_definitions);
                   }
