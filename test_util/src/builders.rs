@@ -19,6 +19,7 @@ use crate::env_vars_for_npm_tests_no_sync_download;
 use crate::fs::PathRef;
 use crate::http_server;
 use crate::lsp::LspClientBuilder;
+use crate::npm_registry_unset_url;
 use crate::pty::Pty;
 use crate::strip_ansi_codes;
 use crate::testdata_path;
@@ -266,6 +267,17 @@ impl TestCommandBuilder {
     self
   }
 
+  pub fn envs<S: AsRef<OsStr>>(
+    self,
+    envs: impl IntoIterator<Item = (S, S)>,
+  ) -> Self {
+    let mut this = self;
+    for (k, v) in envs {
+      this = this.env(k, v);
+    }
+    this
+  }
+
   pub fn env_clear(mut self) -> Self {
     self.env_clear = true;
     self
@@ -391,6 +403,10 @@ impl TestCommandBuilder {
       command.env_clear();
     }
     command.env("DENO_DIR", self.context.deno_dir.path());
+    let envs = self.build_envs();
+    if !envs.contains_key("NPM_CONFIG_REGISTRY") {
+      command.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
+    }
     command.envs(self.build_envs());
     command.current_dir(cwd);
     command.stdin(Stdio::piped());
