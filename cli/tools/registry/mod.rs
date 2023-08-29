@@ -226,7 +226,7 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
   };
 
   let url = format!(
-    "{}/publish/{}/{}/{}",
+    "{}/scopes/{}/packages/{}/versions/{}",
     urls::REGISTRY_URL,
     scope,
     package_name,
