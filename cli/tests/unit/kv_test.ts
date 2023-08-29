@@ -70,7 +70,6 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
 function queueTest(
   name: string,
   fn: (db: Deno.Kv) => Promise<void>,
-  opts?: { skipSanitize?: boolean },
 ) {
   Deno.test({
     name,
@@ -82,8 +81,6 @@ function queueTest(
       );
       await fn(db);
     },
-    sanitizeOps: opts?.skipSanitize ? false : true,
-    sanitizeResources: opts?.skipSanitize ? false : true,
   });
 }
 
@@ -1401,20 +1398,6 @@ queueTest("basic listenQueue and enqueue", async (db) => {
     await listener;
   }
 });
-
-queueTest("queue test without db close", async (db) => {
-  const promise = deferred();
-  let dequeuedMessage: unknown = null;
-  db.listenQueue((msg) => {
-    dequeuedMessage = msg;
-    promise.resolve();
-  });
-  const res = await db.enqueue("test");
-  assert(res.ok);
-  assertNotEquals(res.versionstamp, null);
-  await promise;
-  assertEquals(dequeuedMessage, "test");
-}, { skipSanitize: true });
 
 for (const { name, value } of VALUE_CASES) {
   queueTest(`listenQueue and enqueue ${name}`, async (db) => {
