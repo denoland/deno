@@ -7,6 +7,7 @@ use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use hyper::header::HeaderValue;
+use hyper::http;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
@@ -102,6 +103,7 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
+const H2_GRPC_PORT: u16 = 4246;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -1725,6 +1727,68 @@ async fn wrap_https_h2_only_server() {
   let _ = main_server_http.await;
 }
 
+async fn h2_grpc_server() {
+  let addr = SocketAddr::from(([127, 0, 0, 1], H2_GRPC_PORT));
+
+  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+  async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn handle_request(
+    mut request: http::Request<h2::RecvStream>,
+    mut respond: h2::server::SendResponse<bytes::Bytes>,
+  ) -> Result<(), anyhow::Error> {
+    let body = request.body_mut();
+    while let Some(data) = body.data().await {
+      let data = data?;
+      let _ = body.flow_control().release_capacity(data.len());
+    }
+
+    let maybe_recv_trailers = body.trailers().await?;
+
+    let response = http::Response::new(());
+    let mut send = respond.send_response(response, false)?;
+    send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
+    send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
+    let mut trailers = http::HeaderMap::new();
+    trailers.insert(
+      http::HeaderName::from_static("abc"),
+      HeaderValue::from_static("def"),
+    );
+    trailers.insert(
+      http::HeaderName::from_static("opr"),
+      HeaderValue::from_static("stv"),
+    );
+    if let Some(recv_trailers) = maybe_recv_trailers {
+      for (key, value) in recv_trailers {
+        trailers.insert(key.unwrap(), value);
+      }
+    }
+    send.send_trailers(trailers)?;
+
+    Ok(())
+  }
+
+  loop {
+    if let Ok((socket, _peer_addr)) = listener.accept().await {
+      tokio::spawn(async move {
+        let _ = serve(socket).await;
+      });
+    }
+  }
+}
+
 async fn wrap_client_auth_https_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], HTTPS_CLIENT_AUTH_PORT));
@@ -1817,6 +1881,7 @@ pub async fn run_all_servers() {
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
+  let h2_grpc_server_fut = h2_grpc_server();
 
   let mut server_fut = async {
     futures::join!(
@@ -1839,7 +1904,8 @@ pub async fn run_all_servers() {
       h1_only_server_tls_fut,
       h2_only_server_tls_fut,
       h1_only_server_fut,
-      h2_only_server_fut
+      h2_only_server_fut,
+      h2_grpc_server_fut,
     )
   }
   .boxed();
