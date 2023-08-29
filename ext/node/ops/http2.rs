@@ -84,8 +84,17 @@ pub async fn op_http2_connect<P>(
 where
   P: crate::NodePermissions + 'static,
 {
-  // TODO(bartlomieju): permission checks
+  // TODO(bartlomieju): I think we might not get a full URL here. Anyway,
+  // we should be taking a `rid` for an existing socket instead of connecting
+  // manually in this op.
   let url = Url::parse(&url)?;
+
+  {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_net_url(&url, "http2.ClientHttp2Session.request")?;
+  }
+
   // TODO(bartlomieju): handle urls gracefully
   let ip = format!("{}:{}", url.host_str().unwrap(), url.port().unwrap());
   let tcp = TcpStream::connect(ip).await?;
