@@ -141,8 +141,7 @@ Deno.test("[node/http] chunked response", async () => {
   }
 });
 
-// TODO(kt3k): This test case exercises the workaround for https://github.com/denoland/deno/issues/17194
-// This should be removed when #17194 is resolved.
+// Test empty chunks: https://github.com/denoland/deno/issues/17194
 Deno.test("[node/http] empty chunk in the middle of response", async () => {
   const promise = deferred<void>();
 
@@ -752,6 +751,32 @@ Deno.test(
     assertEquals(body, "hello");
   },
 );
+
+Deno.test("[node/http] server emits error if addr in use", async () => {
+  const promise = deferred<void>();
+  const promise2 = deferred<Error>();
+
+  const server = http.createServer();
+  server.listen(9001);
+
+  const server2 = http.createServer();
+  server2.on("error", (e) => {
+    promise2.resolve(e);
+  });
+  server2.listen(9001);
+
+  const err = await promise2;
+  server.close(() => promise.resolve());
+  server2.close();
+  await promise;
+  const expectedMsg = Deno.build.os === "windows"
+    ? "Only one usage of each socket address"
+    : "Address already in use";
+  assert(
+    err.message.startsWith(expectedMsg),
+    `Wrong error: ${err.message}`,
+  );
+});
 
 Deno.test(
   "[node/http] client destroy doesn't leak",

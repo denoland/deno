@@ -40,8 +40,8 @@ use deno_core::futures::StreamExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_v8;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -89,6 +89,7 @@ use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
+use reporters::TapTestReporter;
 use reporters::TestReporter;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -296,16 +297,6 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -404,6 +395,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
     }
+    TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+    )),
   };
 
   if let Some(junit_path) = &options.junit_path {

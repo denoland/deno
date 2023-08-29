@@ -50,8 +50,8 @@
     }
   ],
   "redirects": {
-    "npm:@denotest/peer-dep-test-child@1": "npm:@denotest/peer-dep-test-child@1.0.0",
-    "npm:@denotest/peer-dep-test-child@2": "npm:@denotest/peer-dep-test-child@2.0.0"
+    "npm:@denotest/peer-dep-test-child@1": "npm:/@denotest/peer-dep-test-child@1.0.0",
+    "npm:@denotest/peer-dep-test-child@2": "npm:/@denotest/peer-dep-test-child@2.0.0"
   },
   "npmPackages": {
     "@denotest/peer-dep-test-child@1.0.0_@denotest+peer-dep-test-peer@1.0.0": {

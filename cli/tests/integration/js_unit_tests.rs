@@ -78,6 +78,7 @@ util::unit_test_factory!(
     signal_test,
     stat_test,
     stdio_test,
+    streams_test,
     structured_clone_test,
     symlink_test,
     sync_test,

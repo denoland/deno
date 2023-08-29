@@ -9,14 +9,18 @@ use deno_runtime::deno_fetch::reqwest;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
+use http::header::HOST;
+use hyper::header::HeaderValue;
 use hyper::upgrade::Upgraded;
 use hyper::Body;
 use hyper::Request;
 use hyper::Response;
 use std::io::BufRead;
+use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use url::Url;
 use util::assert_starts_with;
 use util::http_server;
@@ -30,7 +34,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -73,6 +77,12 @@ struct InspectorTester {
   stdout_lines: Box<dyn Iterator<Item = String>>,
 }
 
+impl Drop for InspectorTester {
+  fn drop(&mut self) {
+    _ = self.child.kill();
+  }
+}
+
 fn ignore_script_parsed(msg: &str) -> bool {
   !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
 }
@@ -110,7 +120,7 @@ impl InspectorTester {
     for msg in messages {
       let result = self
         .socket
-        .write_frame(Frame::text(msg.to_string().into_bytes()))
+        .write_frame(Frame::text(msg.to_string().into_bytes().into()))
         .await
         .map_err(|e| anyhow!(e));
       self.handle_error(result);
@@ -146,9 +156,13 @@ impl InspectorTester {
 
   async fn recv(&mut self) -> String {
     loop {
-      let result = self.socket.read_frame().await.map_err(|e| anyhow!(e));
+      // In the rare case this locks up, don't wait longer than one minute
+      let result = timeout(Duration::from_secs(60), self.socket.read_frame())
+        .await
+        .expect("recv() timeout")
+        .map_err(|e| anyhow!(e));
       let message =
-        String::from_utf8(self.handle_error(result).payload).unwrap();
+        String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
       if (self.notification_filter)(&message) {
         return message;
       }
@@ -540,7 +554,7 @@ async fn inspector_does_not_hang() {
   // Check that we can gracefully close the websocket connection.
   tester
     .socket
-    .write_frame(Frame::close_raw(vec![]))
+    .write_frame(Frame::close_raw(vec![].into()))
     .await
     .unwrap();
 
@@ -704,14 +718,34 @@ async fn inspector_json() {
   let mut url = ws_url.clone();
   let _ = url.set_scheme("http");
   url.set_path("/json");
-  let resp = reqwest::get(url).await.unwrap();
-  assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
-    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
-  let matching_endpoint = endpoint_list
-    .iter()
-    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
-  assert!(matching_endpoint.is_some());
+  let client = reqwest::Client::new();
+
+  // Ensure that the webSocketDebuggerUrl matches the host header
+  for (host, expected) in [
+    (None, ws_url.as_str()),
+    (Some("some.random.host"), "ws://some.random.host/"),
+    (Some("some.random.host:1234"), "ws://some.random.host:1234/"),
+    (Some("[::1]:1234"), "ws://[::1]:1234/"),
+  ] {
+    let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+    if let Some(host) = host {
+      req
+        .headers_mut()
+        .insert(HOST, HeaderValue::from_static(host));
+    }
+    let resp = client.execute(req).await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let endpoint_list: Vec<deno_core::serde_json::Value> =
+      serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    let matching_endpoint = endpoint_list.iter().find(|e| {
+      e["webSocketDebuggerUrl"]
+        .as_str()
+        .unwrap()
+        .contains(expected)
+    });
+    assert!(matching_endpoint.is_some());
+  }
+
   child.kill().unwrap();
 }
 
@@ -931,7 +965,7 @@ async fn inspector_with_ts_files() {
   tester.assert_received_messages(
       &[
         r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-        r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n  hello() {\n    return \"hello\";\n  }\n}\nexport function foo() {\n  const f = new Foo();\n  return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
         r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
       ],
       &[],

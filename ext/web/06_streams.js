@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+// deno-lint-ignore-file camelcase
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -7,8 +8,19 @@
 /// <reference lib="esnext" />
 
 const core = globalThis.Deno.core;
-const ops = core.ops;
+const internals = globalThis.__bootstrap.internals;
+const {
+  op_arraybuffer_was_detached,
+  op_transfer_arraybuffer,
+  op_readable_stream_resource_allocate,
+  op_readable_stream_resource_get_sink,
+  op_readable_stream_resource_write_error,
+  op_readable_stream_resource_write_buf,
+  op_readable_stream_resource_close,
+  op_readable_stream_resource_await_close,
+} = core.ensureFastOps();
 import * as webidl from "ext:deno_webidl/00_webidl.js";
+import { structuredClone } from "ext:deno_web/02_structured_clone.js";
 import {
   AbortSignalPrototype,
   add,
@@ -60,6 +72,7 @@ const {
   SafeWeakMap,
   // TODO(lucacasonato): add SharedArrayBuffer to primordials
   // SharedArrayBufferPrototype,
+  String,
   Symbol,
   SymbolAsyncIterator,
   SymbolIterator,
@@ -217,7 +230,7 @@ function isDetachedBuffer(O) {
     return false;
   }
   return ArrayBufferPrototypeGetByteLength(O) === 0 &&
-    ops.op_arraybuffer_was_detached(O);
+    op_arraybuffer_was_detached(O);
 }
 
 /**
@@ -243,7 +256,7 @@ function canTransferArrayBuffer(O) {
  * @returns {ArrayBufferLike}
  */
 function transferArrayBuffer(O) {
-  return ops.op_transfer_arraybuffer(O);
+  return op_transfer_arraybuffer(O);
 }
 
 /**
@@ -692,6 +705,76 @@ function isReadableStreamBYOBReader(value) {
 function isReadableStreamDisturbed(stream) {
   assert(isReadableStream(stream));
   return stream[_disturbed];
+}
+
+/**
+ * Create a new resource that wraps a ReadableStream. The resource will support
+ * read operations, and those read operations will be fed by the output of the
+ * ReadableStream source.
+ * @param {ReadableStream<Uint8Array>} stream
+ * @returns {number}
+ */
+function resourceForReadableStream(stream) {
+  const reader = acquireReadableStreamDefaultReader(stream);
+
+  // Allocate the resource
+  const rid = op_readable_stream_resource_allocate();
+
+  // Close the Reader we get from the ReadableStream when the resource is closed, ignoring any errors
+  PromisePrototypeCatch(
+    PromisePrototypeThen(
+      op_readable_stream_resource_await_close(rid),
+      () => reader.cancel("resource closed"),
+    ),
+    () => {},
+  );
+
+  // The ops here look like op_write_all/op_close, but we're not actually writing to a
+  // real resource.
+  (async () => {
+    try {
+      // This allocation is freed in the finally block below, guaranteeing it won't leak
+      const sink = op_readable_stream_resource_get_sink(rid);
+      try {
+        while (true) {
+          let value;
+          try {
+            const read = await reader.read();
+            value = read.value;
+            if (read.done) {
+              break;
+            }
+          } catch (err) {
+            const message = err?.message;
+            const success = (message && (typeof message == "string"))
+              ? await op_readable_stream_resource_write_error(sink, message)
+              : await op_readable_stream_resource_write_error(
+                sink,
+                String(err),
+              );
+            // We don't cancel the reader if there was an error reading. We'll let the downstream
+            // consumer close the resource after it receives the error.
+            if (!success) {
+              reader.cancel("resource closed");
+            }
+            break;
+          }
+          // If the chunk has non-zero length, write it
+          if (value.length > 0) {
+            if (!await op_readable_stream_resource_write_buf(sink, value)) {
+              reader.cancel("resource closed");
+            }
+          }
+        }
+      } finally {
+        op_readable_stream_resource_close(sink);
+      }
+    } catch (err) {
+      // Something went terribly wrong with this stream -- log and continue
+      console.error("Unexpected internal error on stream", err);
+    }
+  })();
+  return rid;
 }
 
 const DEFAULT_CHUNK_SIZE = 64 * 1024; // 64 KiB
@@ -2847,9 +2930,24 @@ function readableStreamDefaultTee(stream, cloneForBranch2) {
         queueMicrotask(() => {
           readAgain = false;
           const value1 = value;
-          const value2 = value;
+          let value2 = value;
 
-          // TODO(lucacasonato): respect clonedForBranch2.
+          if (canceled2 === false && cloneForBranch2 === true) {
+            try {
+              value2 = structuredClone(value2);
+            } catch (cloneError) {
+              readableStreamDefaultControllerError(
+                branch1[_controller],
+                cloneError,
+              );
+              readableStreamDefaultControllerError(
+                branch2[_controller],
+                cloneError,
+              );
+              cancelPromise.resolve(readableStreamCancel(stream, cloneError));
+              return;
+            }
+          }
 
           if (canceled1 === false) {
             readableStreamDefaultControllerEnqueue(
@@ -6438,6 +6536,8 @@ webidl.converters.StreamPipeOptions = webidl
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
 
+internals.resourceForReadableStream = resourceForReadableStream;
+
 export {
   // Non-Public
   _state,
@@ -6464,7 +6564,9 @@ export {
   readableStreamForRidUnrefableRef,
   readableStreamForRidUnrefableUnref,
   ReadableStreamPrototype,
+  readableStreamTee,
   readableStreamThrowIfErrored,
+  resourceForReadableStream,
   TransformStream,
   TransformStreamDefaultController,
   WritableStream,

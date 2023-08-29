@@ -579,7 +579,7 @@ mod deprecated {
     #[cfg(unix)]
     let signal = run_status.signal();
     #[cfg(not(unix))]
-    let signal = None;
+    let signal = Default::default();
 
     code
       .or(signal)

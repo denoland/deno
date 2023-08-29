@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
 use deno_core::v8;
@@ -263,16 +264,19 @@ fn is_managed_key(
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
-  let Some(v8_string) = v8::StackTrace::current_script_name_or_source_url(scope) else {
+  let Some(v8_string) =
+    v8::StackTrace::current_script_name_or_source_url(scope)
+  else {
     return Mode::Deno;
   };
-  let string = v8_string.to_rust_string_lossy(scope);
   let op_state = deno_core::JsRuntime::op_state_from(scope);
   let op_state = op_state.borrow();
   let Some(node_resolver) = op_state.try_borrow::<Rc<NodeResolver>>() else {
     return Mode::Deno;
   };
-  if node_resolver.in_npm_package_with_cache(string) {
+  let mut buffer = [MaybeUninit::uninit(); 2048];
+  let str = v8_string.to_rust_cow_lossy(scope, &mut buffer);
+  if node_resolver.in_npm_package_with_cache(str) {
     Mode::Node
   } else {
     Mode::Deno
@@ -373,7 +377,8 @@ pub fn query<'s>(
     return;
   };
 
-  let Some(attributes) = inner.get_property_attributes(scope, key.into()) else {
+  let Some(attributes) = inner.get_property_attributes(scope, key.into())
+  else {
     return;
   };
 
@@ -427,7 +432,9 @@ pub fn enumerator<'s>(
   };
   let inner = v8::Local::new(scope, inner);
 
-  let Some(array) = inner.get_property_names(scope, GetPropertyNamesArgs::default()) else {
+  let Some(array) =
+    inner.get_property_names(scope, GetPropertyNamesArgs::default())
+  else {
     return;
   };
 

@@ -110,7 +110,7 @@ import process from "node:process";
 import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "ext:deno_node/readline/promises.ts";
-import repl from "ext:deno_node/repl.ts";
+import repl from "node:repl";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
@@ -833,7 +833,9 @@ Module._resolveFilename = function (
     isMain,
     parentPath,
   );
-  if (filename) return filename;
+  if (filename) {
+    return ops.op_require_real_path(filename);
+  }
   const requireStack = [];
   for (let cursor = parent; cursor; cursor = moduleParentCache.get(cursor)) {
     ArrayPrototypePush(requireStack, cursor.filename || cursor.id);
@@ -891,7 +893,7 @@ Module.prototype.load = function (filename) {
     );
   }
 
-  Module._extensions[extension](this, filename);
+  Module._extensions[extension](this, this.filename);
   this.loaded = true;
 
   // TODO: do caching

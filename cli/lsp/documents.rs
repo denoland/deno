@@ -21,6 +21,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::util::glob;
 use crate::util::path::specifier_to_file_path;
 use crate::util::text_encoding;
@@ -42,9 +43,9 @@ use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_semver::npm::NpmPackageReq;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexMap;
+use deno_semver::package::PackageReq;
+use indexmap1::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
@@ -845,7 +846,7 @@ pub struct Documents {
   /// settings.
   resolver: Arc<CliGraphResolver>,
   /// The npm package requirements found in npm specifiers.
-  npm_specifier_reqs: Arc<Vec<NpmPackageReq>>,
+  npm_specifier_reqs: Arc<Vec<PackageReq>>,
   /// Gets if any document had a node: specifier such that a @types/node package
   /// should be injected.
   has_injected_types_node_package: bool,
@@ -1016,7 +1017,7 @@ impl Documents {
   }
 
   /// Returns a collection of npm package requirements.
-  pub fn npm_package_reqs(&mut self) -> Arc<Vec<NpmPackageReq>> {
+  pub fn npm_package_reqs(&mut self) -> Arc<Vec<PackageReq>> {
     self.calculate_dependents_if_dirty();
     self.npm_specifier_reqs.clone()
   }
@@ -1184,7 +1185,7 @@ impl Documents {
       document_preload_limit: usize,
       maybe_import_map: Option<&import_map::ImportMap>,
       maybe_jsx_config: Option<&JsxImportSourceConfig>,
-      maybe_deno_modules_dir: Option<bool>,
+      maybe_vendor_dir: Option<bool>,
       maybe_package_json_deps: Option<&PackageJsonDeps>,
     ) -> u64 {
       let mut hasher = FastInsecureHasher::default();
@@ -1199,7 +1200,7 @@ impl Documents {
         hasher.write_str(&import_map.to_json());
         hasher.write_str(import_map.base_url().as_str());
       }
-      hasher.write_hashable(maybe_deno_modules_dir);
+      hasher.write_hashable(maybe_vendor_dir);
       hasher.write_hashable(maybe_jsx_config);
       if let Some(package_json_deps) = &maybe_package_json_deps {
         // We need to ensure the hashing is deterministic so explicitly type
@@ -1234,20 +1235,26 @@ impl Documents {
       options.document_preload_limit,
       options.maybe_import_map.as_deref(),
       maybe_jsx_config.as_ref(),
-      options.maybe_config_file.and_then(|c| c.deno_modules_dir()),
+      options.maybe_config_file.and_then(|c| c.vendor_dir_flag()),
       maybe_package_json_deps.as_ref(),
     );
     let deps_provider =
       Arc::new(PackageJsonDepsProvider::new(maybe_package_json_deps));
     let deps_installer = Arc::new(PackageJsonDepsInstaller::no_op());
     self.resolver = Arc::new(CliGraphResolver::new(
-      maybe_jsx_config,
-      options.maybe_import_map,
-      false,
       options.npm_registry_api,
       options.npm_resolution,
       deps_provider,
       deps_installer,
+      CliGraphResolverOptions {
+        maybe_jsx_import_source_config: maybe_jsx_config,
+        maybe_import_map: options.maybe_import_map,
+        maybe_vendor_dir: options
+          .maybe_config_file
+          .and_then(|c| c.vendor_dir_path())
+          .as_ref(),
+        no_npm: false,
+      },
     ));
     self.imports = Arc::new(
       if let Some(Ok(imports)) =
@@ -1255,13 +1262,10 @@ impl Documents {
       {
         imports
           .into_iter()
-          .map(|import| {
-            let graph_import = GraphImport::new(
-              &import.referrer,
-              import.imports,
-              Some(self.get_resolver()),
-            );
-            (import.referrer, graph_import)
+          .map(|(referrer, imports)| {
+            let graph_import =
+              GraphImport::new(&referrer, imports, Some(self.get_resolver()));
+            (referrer, graph_import)
           })
           .collect()
       } else {
@@ -1391,7 +1395,7 @@ impl Documents {
       dependents_map: HashMap<ModuleSpecifier, HashSet<ModuleSpecifier>>,
       analyzed_specifiers: HashSet<ModuleSpecifier>,
       pending_specifiers: VecDeque<ModuleSpecifier>,
-      npm_reqs: HashSet<NpmPackageReq>,
+      npm_reqs: HashSet<PackageReq>,
       has_node_builtin_specifier: bool,
     }
 
@@ -1403,7 +1407,7 @@ impl Documents {
           // been analyzed in order to not cause an extra file system lookup
           self.pending_specifiers.push_back(dep.clone());
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            self.npm_reqs.insert(reference.req);
+            self.npm_reqs.insert(reference.into_inner().req);
           }
         }
 
@@ -1461,7 +1465,7 @@ impl Documents {
       .has_node_builtin_specifier
       && !npm_reqs.iter().any(|r| r.name == "@types/node");
     if self.has_injected_types_node_package {
-      npm_reqs.insert(NpmPackageReq::from_str("@types/node").unwrap());
+      npm_reqs.insert(PackageReq::from_str("@types/node").unwrap());
     }
 
     self.dependents_map = Arc::new(doc_analyzer.dependents_map);
@@ -1851,6 +1855,7 @@ fn sort_and_remove_non_leaf_dirs(mut dirs: Vec<PathBuf>) -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
   use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::npm::NpmResolution;
 
   use super::*;
@@ -1861,7 +1866,10 @@ mod tests {
 
   fn setup(temp_dir: &TempDir) -> (Documents, PathRef) {
     let location = temp_dir.path().join("deps");
-    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
     let documents = Documents::new(cache);
     (documents, location)
   }

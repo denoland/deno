@@ -55,6 +55,7 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.js";
 import { createHttpClient } from "ext:deno_fetch/22_http_client.js";
+import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { TcpConn } from "ext:deno_net/01_net.js";
@@ -565,7 +566,9 @@ class ClientRequest extends OutgoingMessage {
       }
     }*/
     this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
+  }
 
+  _writeHeader() {
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -584,10 +587,20 @@ class ClientRequest extends OutgoingMessage {
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH" ||
-        this.method === "PUT",
+      (this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT") && this._contentLength !== 0,
     );
     this._bodyWriteRid = this._req.requestBodyRid;
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -614,8 +627,12 @@ class ClientRequest extends OutgoingMessage {
     }
 
     this.finished = true;
-    if (chunk !== undefined && chunk !== null) {
-      this.write(chunk, encoding);
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
     }
 
     (async () => {
@@ -1445,6 +1462,7 @@ export class ServerResponse extends NodeWritable {
 // TODO(@AaronO): optimize
 export class IncomingMessageForServer extends NodeReadable {
   #req: Request;
+  #headers: Record<string, string>;
   url: string;
   method: string;
   // Polyfills part of net.Socket object.
@@ -1491,7 +1509,15 @@ export class IncomingMessageForServer extends NodeReadable {
   }
 
   get headers() {
-    return Object.fromEntries(this.#req.headers.entries());
+    if (!this.#headers) {
+      this.#headers = {};
+      const entries = headersEntries(this.#req.headers);
+      for (let i = 0; i < entries.length; i++) {
+        const entry = entries[i];
+        this.#headers[entry[0]] = entry[1];
+      }
+    }
+    return this.#headers;
   }
 
   get upgrade(): boolean {
@@ -1607,19 +1633,25 @@ export class ServerImpl extends EventEmitter {
       return;
     }
     this.#ac = ac;
-    this.#server = serve(
-      {
-        handler: handler as Deno.ServeHandler,
-        ...this.#addr,
-        signal: ac.signal,
-        // @ts-ignore Might be any without `--unstable` flag
-        onListen: ({ port }) => {
-          this.#addr!.port = port;
-          this.emit("listening");
+    try {
+      this.#server = serve(
+        {
+          handler: handler as Deno.ServeHandler,
+          ...this.#addr,
+          signal: ac.signal,
+          // @ts-ignore Might be any without `--unstable` flag
+          onListen: ({ port }) => {
+            this.#addr!.port = port;
+            this.emit("listening");
+          },
+          ...this._additionalServeOptions?.(),
         },
-        ...this._additionalServeOptions?.(),
-      },
-    );
+      );
+    } catch (e) {
+      this.emit("error", e);
+      return;
+    }
+
     if (this.#unref) {
       this.#server.unref();
     }
