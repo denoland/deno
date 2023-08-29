@@ -230,31 +230,27 @@ fn x509name_to_string(
 ) -> Result<String, x509_parser::error::X509Error> {
   // Lifted from https://github.com/rusticata/x509-parser/blob/4d618c2ed6b1fc102df16797545895f7c67ee0fe/src/x509.rs#L543-L566
   // since it's a private function (Copyright 2017 Pierre Chifflier)
-  name.iter_rdn().fold(Ok(String::new()), |acc, rdn| {
-    acc.and_then(|mut _vec| {
-      rdn
-        .iter()
-        .fold(Ok(String::new()), |acc2, attr| {
-          acc2.and_then(|mut _vec2| {
-            let val_str =
-              attribute_value_to_string(attr.attr_value(), attr.attr_type())?;
-            // look ABBREV, and if not found, use shortname
-            let abbrev = match oid2abbrev(attr.attr_type(), oid_registry) {
-              Ok(s) => String::from(s),
-              _ => format!("{:?}", attr.attr_type()),
-            };
-            let rdn = format!("{}={}", abbrev, val_str);
-            match _vec2.len() {
-              0 => Ok(rdn),
-              _ => Ok(_vec2 + " + " + rdn.as_str()),
-            }
-          })
-        })
-        .map(|v| match _vec.len() {
-          0 => v,
-          _ => _vec + "\n" + v.as_str(),
-        })
-    })
+  name.iter_rdn().try_fold(String::new(), |acc, rdn| {
+    rdn
+      .iter()
+      .try_fold(String::new(), |acc2, attr| {
+        let val_str =
+          attribute_value_to_string(attr.attr_value(), attr.attr_type())?;
+        // look ABBREV, and if not found, use shortname
+        let abbrev = match oid2abbrev(attr.attr_type(), oid_registry) {
+          Ok(s) => String::from(s),
+          _ => format!("{:?}", attr.attr_type()),
+        };
+        let rdn = format!("{}={}", abbrev, val_str);
+        match acc2.len() {
+          0 => Ok(rdn),
+          _ => Ok(acc2 + " + " + rdn.as_str()),
+        }
+      })
+      .map(|v| match acc.len() {
+        0 => v,
+        _ => acc + "\n" + v.as_str(),
+      })
   })
 }
 

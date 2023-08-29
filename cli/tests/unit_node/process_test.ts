@@ -774,3 +774,15 @@ Deno.test({
     assertEquals(process.title, "deno");
   },
 });
+
+Deno.test({
+  name: "process.argv[1] in Worker",
+  async fn() {
+    const worker = new Worker(
+      `data:text/javascript,import process from "node:process";console.log(process.argv[1]);`,
+      { type: "module" },
+    );
+    await delay(10);
+    worker.terminate();
+  },
+});

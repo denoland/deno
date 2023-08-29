@@ -15,7 +15,6 @@ use tower_lsp::lsp_types as lsp;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDefinition {
   pub id: String,
-  pub level: usize,
   pub name: String,
   pub range: SourceRange,
   pub steps: Vec<TestDefinition>,
@@ -26,33 +25,41 @@ impl TestDefinition {
     specifier: &ModuleSpecifier,
     name: String,
     range: SourceRange,
-    steps: Vec<TestDefinition>,
+    mut steps: Vec<TestDefinition>,
   ) -> Self {
-    let id = checksum::gen(&[specifier.as_str().as_bytes(), name.as_bytes()]);
+    let mut id_components = Vec::with_capacity(7);
+    id_components.push(specifier.as_str().as_bytes());
+    id_components.push(name.as_bytes());
+    let id = checksum::gen(&id_components);
+    Self::fix_ids(&mut steps, &mut id_components);
     Self {
       id,
-      level: 0,
       name,
       range,
       steps,
     }
   }
 
+  fn fix_ids<'a>(
+    steps: &'a mut Vec<TestDefinition>,
+    id_components: &mut Vec<&'a [u8]>,
+  ) {
+    for step in steps {
+      id_components.push(step.name.as_bytes());
+      step.id = checksum::gen(id_components);
+      Self::fix_ids(&mut step.steps, id_components);
+      id_components.pop();
+    }
+  }
+
   pub fn new_step(
     name: String,
     range: SourceRange,
-    parent: String,
-    level: usize,
     steps: Vec<TestDefinition>,
   ) -> Self {
-    let id = checksum::gen(&[
-      parent.as_bytes(),
-      &level.to_be_bytes(),
-      name.as_bytes(),
-    ]);
     Self {
-      id,
-      level,
+      // ID will be fixed later when the entire ancestry is available.
+      id: "".to_string(),
       name,
       range,
       steps,
@@ -157,5 +164,9 @@ impl TestDefinitions {
       .discovered
       .iter()
       .find(|td| td.id.as_str() == id.as_ref())
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.discovered.is_empty() && self.injected.is_empty()
   }
 }
