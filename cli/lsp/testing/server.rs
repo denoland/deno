@@ -109,6 +109,7 @@ impl TestServer {
                   if let Some(Ok(parsed_source)) =
                     document.maybe_parsed_source()
                   {
+                    let old_tds = tests.remove(specifier).unwrap_or_default();
                     let mut collector = TestCollector::new(
                       specifier.clone(),
                       parsed_source.text_info().clone(),
@@ -127,7 +128,7 @@ impl TestServer {
                           parsed_source.text_info(),
                         ),
                       );
-                    } else {
+                    } else if !old_tds.is_empty() {
                       client.send_test_notification(as_delete_notification(
                         specifier.clone(),
                       ));
