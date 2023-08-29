@@ -367,14 +367,15 @@ impl CliMainWorkerFactory {
         });
       shared
         .npm_resolver
-        .add_package_reqs(&[
-          existing_package_req.unwrap_or_else(|| package_ref.req()).clone()
-        ])
+        .add_package_reqs(&[existing_package_req
+          .unwrap_or_else(|| package_ref.req())
+          .clone()])
         .await?;
       let node_resolution = self.resolve_binary_entrypoint(
         &(existing_package_req
           .map(|req| {
-             NpmPackageReqReference::from_str(format!("npm:{}", req).as_ref()).unwrap()
+            NpmPackageReqReference::from_str(format!("npm:{}", req).as_ref())
+              .unwrap()
           })
           .unwrap_or_else(|| package_ref)),
         &permissions,
