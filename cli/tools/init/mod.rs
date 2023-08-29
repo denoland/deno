@@ -61,8 +61,5 @@ pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
   info!("");
   info!("  {}", colors::gray("# Run the tests"));
   info!("  deno test");
-  info!("");
-  info!("  {}", colors::gray("# Run the benchmarks"));
-  info!("  deno bench");
   Ok(())
 }
