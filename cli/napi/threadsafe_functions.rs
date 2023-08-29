@@ -120,7 +120,6 @@ impl TsFn {
       });
       // This call should never fail
       self.sender.unbounded_send(call).unwrap();
-    } else {
     }
 
     if is_blocking {
