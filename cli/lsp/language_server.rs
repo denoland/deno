@@ -913,6 +913,8 @@ impl Inner {
       module_registries_location.clone(),
       self.http_client.clone(),
     );
+    self.npm.search_api =
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone(), None);
     self.module_registries_location = module_registries_location;
     // update the cache path
     let global_cache = Arc::new(GlobalHttpCache::new(
