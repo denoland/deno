@@ -67,10 +67,7 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
   });
 }
 
-function queueTest(
-  name: string,
-  fn: (db: Deno.Kv) => Promise<void>,
-) {
+function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
   Deno.test({
     name,
     // https://github.com/denoland/deno/issues/18363
