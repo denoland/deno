@@ -8562,6 +8562,8 @@ Deno.test({
     }),
   );
 
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
   let (method, notification) = client.read_notification::<Value>();
   assert_eq!(method, "deno/testModuleDelete");
   assert_eq!(
