@@ -684,6 +684,7 @@ impl CliFactory {
         .unsafely_ignore_certificate_errors()
         .clone(),
       unstable: self.options.unstable(),
+      maybe_package_json_deps: self.options.maybe_package_json_deps(),
     })
   }
 }
