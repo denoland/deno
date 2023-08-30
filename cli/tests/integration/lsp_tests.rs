@@ -3685,7 +3685,7 @@ fn lsp_find_references() {
       "uri": "file:///a/mod.ts",
       "languageId": "typescript",
       "version": 1,
-      "text": r#"export const a = 1;\nconst b = 2;"#
+      "text": r"export const a = 1;\nconst b = 2;"
     }
   }));
   client.did_open(json!({
@@ -7722,6 +7722,84 @@ fn lsp_configuration_did_change() {
 }
 
 #[test]
+fn lsp_completions_complete_function_calls() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "[]."
+    }
+  }));
+  client.write_notification(
+    "workspace/didChangeConfiguration",
+    json!({
+      "settings": {}
+    }),
+  );
+  let request = json!([{
+    "enable": true,
+    "suggest": {
+      "completeFunctionCalls": true,
+    },
+  }]);
+  // one for the workspace
+  client.handle_configuration_request(request.clone());
+  // one for the specifier
+  client.handle_configuration_request(request);
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (0, 3),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+
+  let res = client.write_request(
+    "completionItem/resolve",
+    json!({
+      "label": "map",
+      "kind": 2,
+      "sortText": "1",
+      "insertTextFormat": 1,
+      "data": {
+        "tsc": {
+          "specifier": "file:///a/file.ts",
+          "position": 3,
+          "name": "map",
+          "useCodeSnippet": true
+        }
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "label": "map",
+      "kind": 2,
+      "detail": "(method) Array<never>.map<U>(callbackfn: (value: never, index: number, array: never[]) => U, thisArg?: any): U[]",
+      "documentation": {
+        "kind": "markdown",
+        "value": "Calls a defined callback function on each element of an array, and returns an array that contains the results.\n\n*@param* - callbackfn A function that accepts up to three arguments. The map method calls the callbackfn function one time for each element in the array.*@param* - thisArg An object to which the this keyword can refer in the callbackfn function. If thisArg is omitted, undefined is used as the this value."
+      },
+      "sortText": "1",
+      "insertText": "map(callbackfn)",
+      "insertTextFormat": 1
+    })
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_workspace_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8256,8 +8334,9 @@ fn lsp_testing_api() {
   let contents = r#"
 Deno.test({
   name: "test a",
-  fn() {
+  async fn(t) {
     console.log("test a");
+    await t.step("step of test a", () => {});
   }
 });
 "#;
@@ -8287,7 +8366,6 @@ Deno.test({
   assert_eq!(params.tests.len(), 1);
   let test = &params.tests[0];
   assert_eq!(test.label, "test a");
-  assert!(test.steps.is_none());
   assert_eq!(
     test.range,
     Some(lsp::Range {
@@ -8298,6 +8376,23 @@ Deno.test({
       end: lsp::Position {
         line: 1,
         character: 9,
+      }
+    })
+  );
+  let steps = test.steps.as_ref().unwrap();
+  assert_eq!(steps.len(), 1);
+  let step = &steps[0];
+  assert_eq!(step.label, "step of test a");
+  assert_eq!(
+    step.range,
+    Some(lsp::Range {
+      start: lsp::Position {
+        line: 5,
+        character: 12,
+      },
+      end: lsp::Position {
+        line: 5,
+        character: 16,
       }
     })
   );
@@ -8370,6 +8465,54 @@ Deno.test({
 
   let (method, notification) = client.read_notification::<Value>();
   assert_eq!(method, "deno/testRunProgress");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "id": 1,
+      "message": {
+        "type": "started",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+          "stepId": step.id,
+        },
+      }
+    }))
+  );
+
+  let (method, notification) = client.read_notification::<Value>();
+  assert_eq!(method, "deno/testRunProgress");
+  let mut notification = notification.unwrap();
+  let duration = notification
+    .as_object_mut()
+    .unwrap()
+    .get_mut("message")
+    .unwrap()
+    .as_object_mut()
+    .unwrap()
+    .remove("duration");
+  assert!(duration.is_some());
+  assert_eq!(
+    notification,
+    json!({
+      "id": 1,
+      "message": {
+        "type": "passed",
+        "test": {
+          "textDocument": {
+            "uri": specifier,
+          },
+          "id": id,
+          "stepId": step.id,
+        },
+      }
+    })
+  );
+
+  let (method, notification) = client.read_notification::<Value>();
+  assert_eq!(method, "deno/testRunProgress");
   let notification = notification.unwrap();
   let obj = notification.as_object().unwrap();
   assert_eq!(obj.get("id"), Some(&json!(1)));
@@ -8405,6 +8548,32 @@ Deno.test({
     Some("end") => (),
     _ => panic!("unexpected message {}", json!(notification)),
   }
+
+  // Regression test for https://github.com/denoland/vscode_deno/issues/899.
+  temp_dir.write("./test.ts", "");
+  client.write_notification(
+    "textDocument/didChange",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("test.ts").unwrap(),
+        "version": 2
+      },
+      "contentChanges": [{ "text": "" }],
+    }),
+  );
+
+  assert_eq!(client.read_diagnostics().all().len(), 0);
+
+  let (method, notification) = client.read_notification::<Value>();
+  assert_eq!(method, "deno/testModuleDelete");
+  assert_eq!(
+    notification,
+    Some(json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("test.ts").unwrap()
+      }
+    }))
+  );
 
   client.shutdown();
 }

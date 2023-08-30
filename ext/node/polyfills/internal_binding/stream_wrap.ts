@@ -311,20 +311,36 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    const isOwnedBuf = bufLocked;
-    let buf = bufLocked ? new Uint8Array(SUGGESTED_SIZE) : BUF;
-    bufLocked = true;
+    // Lock safety: We must hold this lock until we are certain that buf is no longer used
+    // This setup code is a little verbose, but we need to be careful about buffer management
+    let buf, locked = false;
+    if (bufLocked) {
+      // Already locked, allocate
+      buf = new Uint8Array(SUGGESTED_SIZE);
+    } else {
+      // Not locked, take the buffer + lock
+      buf = BUF;
+      locked = bufLocked = true;
+    }
     try {
       let nread: number | null;
       const ridBefore = this[kStreamBaseField]!.rid;
       try {
         nread = await this[kStreamBaseField]!.read(buf);
       } catch (e) {
+        // Lock safety: we know that the buffer will not be used in this function again
+        // All exits from this block either return or re-assign buf to a different value
+        if (locked) {
+          bufLocked = locked = false;
+        }
+
         // Try to read again if the underlying stream resource
         // changed. This can happen during TLS upgrades (eg. STARTTLS)
         if (ridBefore != this[kStreamBaseField]!.rid) {
           return this.#read();
         }
+
+        buf = new Uint8Array(0);
 
         if (
           e instanceof Deno.errors.Interrupted ||
@@ -339,8 +355,6 @@ export class LibuvStreamWrap extends HandleWrap {
         } else {
           nread = codeMap.get("UNKNOWN")!;
         }
-
-        buf = new Uint8Array(0);
       }
 
       nread ??= codeMap.get("EOF")!;
@@ -351,7 +365,17 @@ export class LibuvStreamWrap extends HandleWrap {
         this.bytesRead += nread;
       }
 
-      buf = isOwnedBuf ? buf.subarray(0, nread) : buf.slice(0, nread);
+      // We release the lock early so a re-entrant read can make use of the shared buffer, but
+      // we need to make a copy of the data in the shared buffer.
+      if (locked) {
+        // Lock safety: we know that the buffer will not be used in this function again
+        // We're making a copy of data that lives in the shared buffer
+        buf = buf.slice(0, nread);
+        bufLocked = locked = false;
+      } else {
+        // The buffer isn't owned, so let's create a subarray view
+        buf = buf.subarray(0, nread);
+      }
 
       streamBaseState[kArrayBufferOffset] = 0;
 
@@ -365,7 +389,10 @@ export class LibuvStreamWrap extends HandleWrap {
         this.#read();
       }
     } finally {
-      bufLocked = false;
+      // Lock safety: we know that the buffer will not be used in this function again
+      if (locked) {
+        bufLocked = locked = false;
+      }
     }
   }
 

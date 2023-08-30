@@ -507,11 +507,13 @@ impl CliMainWorkerFactory {
       return Ok(None);
     }
 
-    let Some(resolution) = self.shared.node_resolver.resolve_npm_req_reference(
-      package_ref,
-      NodeResolutionMode::Execution,
-      permissions,
-    )? else {
+    let Some(resolution) =
+      self.shared.node_resolver.resolve_npm_req_reference(
+        package_ref,
+        NodeResolutionMode::Execution,
+        permissions,
+      )?
+    else {
       return Ok(None);
     };
     match &resolution {

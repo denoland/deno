@@ -234,7 +234,7 @@ impl SlabEntry {
     self.self_mut().request_body = Some(RequestBodyState::Resource(res));
   }
 
-  /// Complete this entry, potentially expunging it if it is complete.
+  /// Complete this entry, potentially expunging it if it is fully complete (ie: dropped as well).
   pub fn complete(self) {
     let promise = &self.self_ref().promise;
     assert!(
@@ -249,6 +249,12 @@ impl SlabEntry {
       drop(self);
       slab_expunge(index);
     }
+  }
+
+  /// Has the future for this entry been dropped? ie, has the underlying TCP connection
+  /// been closed?
+  pub fn cancelled(&self) -> bool {
+    self.self_ref().been_dropped
   }
 
   /// Get a mutable reference to the response.

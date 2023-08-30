@@ -3,6 +3,7 @@
 use std::fs;
 use test_util as util;
 use test_util::TempDir;
+use util::env_vars_for_npm_tests;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -326,7 +327,7 @@ fn no_tests_included(test_name: &str, extension: &str) {
 
 #[test]
 fn no_npm_cache_coverage() {
-  let context = TestContext::default();
+  let context = TestContext::with_http_server();
   let tempdir = context.temp_dir();
   let tempdir = tempdir.path().join("cov");
 
@@ -339,6 +340,7 @@ fn no_npm_cache_coverage() {
       format!("--coverage={}", tempdir),
       format!("coverage/no_npm_coverage/no_npm_coverage_test.ts"),
     ])
+    .envs(env_vars_for_npm_tests())
     .run();
 
   output.assert_exit_code(0);

@@ -15,7 +15,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap::IndexMap;
+use indexmap1::IndexMap;
 
 pub use deno_config::BenchConfig;
 pub use deno_config::CompilerOptions;
@@ -486,8 +486,8 @@ pub fn get_root_cert_store(
   for store in ca_stores.iter() {
     match store.as_str() {
       "mozilla" => {
-        root_cert_store.add_server_trust_anchors(
-          webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+        root_cert_store.add_trust_anchors(
+          webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
               ta.subject,
               ta.spki,
