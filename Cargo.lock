@@ -1515,6 +1515,7 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "uuid",
+ "which",
  "winapi",
  "winres",
 ]

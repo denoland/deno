@@ -3617,6 +3617,11 @@ itest!(followup_dyn_import_resolved {
   output: "run/followup_dyn_import_resolves/main.ts.out",
 });
 
+itest!(allow_run_allowlist_resolution {
+  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  output: "allow_run_allowlist_resolution.ts.out",
+});
+
 itest!(unhandled_rejection {
   args: "run --check run/unhandled_rejection.ts",
   output: "run/unhandled_rejection.ts.out",
