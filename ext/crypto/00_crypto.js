@@ -2286,18 +2286,13 @@ function importKeyEd25519(
       }
 
       // 5.
-      if (jwk.alg !== undefined && jwk.alg !== "EdDSA") {
-        throw new DOMException("Invalid algorithm", "DataError");
-      }
-
-      // 6.
       if (
         keyUsages.length > 0 && jwk.use !== undefined && jwk.use !== "sig"
       ) {
         throw new DOMException("Invalid key usage", "DataError");
       }
 
-      // 7.
+      // 6.
       if (jwk.key_ops !== undefined) {
         if (
           ArrayPrototypeFind(
@@ -2324,12 +2319,12 @@ function importKeyEd25519(
         }
       }
 
-      // 8.
+      // 7.
       if (jwk.ext !== undefined && jwk.ext === false && extractable) {
         throw new DOMException("Invalid key extractability", "DataError");
       }
 
-      // 9.
+      // 8.
       if (jwk.d !== undefined) {
         // https://www.rfc-editor.org/rfc/rfc8037#section-2
         const privateKeyData = ops.op_crypto_base64url_decode(jwk.d);
@@ -4088,7 +4083,6 @@ function exportKeyEd25519(format, key, innerKey) {
         : ops.op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
-        alg: "EdDSA",
         crv: "Ed25519",
         x,
         "key_ops": key.usages,
