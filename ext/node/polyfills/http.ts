@@ -566,7 +566,9 @@ class ClientRequest extends OutgoingMessage {
       }
     }*/
     this.onSocket(new FakeSocket({ encrypted: this._encrypted }));
+  }
 
+  _writeHeader() {
     const url = this._createUrlStrFromOptions();
 
     const headers = [];
@@ -585,10 +587,20 @@ class ClientRequest extends OutgoingMessage {
       url,
       headers,
       client.rid,
-      this.method === "POST" || this.method === "PATCH" ||
-        this.method === "PUT",
+      (this.method === "POST" || this.method === "PATCH" ||
+        this.method === "PUT") && this._contentLength !== 0,
     );
     this._bodyWriteRid = this._req.requestBodyRid;
+  }
+
+  _implicitHeader() {
+    if (this._header) {
+      throw new ERR_HTTP_HEADERS_SENT("render");
+    }
+    this._storeHeader(
+      this.method + " " + this.path + " HTTP/1.1\r\n",
+      this[kOutHeaders],
+    );
   }
 
   _getClient(): Deno.HttpClient | undefined {
@@ -615,8 +627,12 @@ class ClientRequest extends OutgoingMessage {
     }
 
     this.finished = true;
-    if (chunk !== undefined && chunk !== null) {
-      this.write(chunk, encoding);
+    if (chunk) {
+      this.write_(chunk, encoding, null, true);
+    } else if (!this._headerSent) {
+      this._contentLength = 0;
+      this._implicitHeader();
+      this._send("", "latin1");
     }
 
     (async () => {
@@ -771,6 +787,13 @@ class ClientRequest extends OutgoingMessage {
     }
     this.destroyed = true;
 
+    const rid = this._client?.rid;
+    if (rid) {
+      core.tryClose(rid);
+    }
+    if (this._req.cancelHandleRid !== null) {
+      core.tryClose(this._req.cancelHandleRid);
+    }
     // If we're aborting, we don't care about any more response data.
     if (this.res) {
       this.res._dump();
