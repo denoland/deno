@@ -141,31 +141,34 @@ fn visit_call_expr(
       ast::Expr::Object(obj_lit) => {
         let mut maybe_name = None;
         for prop in &obj_lit.props {
-          if let ast::PropOrSpread::Prop(prop) = prop {
-            if let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() {
-              if let ast::PropName::Ident(ast::Ident { sym, .. }) =
-                &key_value_prop.key
-              {
-                if sym == "name" {
-                  match key_value_prop.value.as_ref() {
-                    // matches string literals (e.g. "test name" or
-                    // 'test name')
-                    ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
-                      maybe_name = Some(lit_str.value.to_string());
-                    }
-                    // matches template literals with only a single quasis
-                    // (e.g. `test name`)
-                    ast::Expr::Tpl(tpl) => {
-                      if tpl.quasis.len() == 1 {
-                        maybe_name = Some(tpl.quasis[0].raw.to_string());
-                      }
-                    }
-                    _ => {}
-                  }
-                  break;
+          let ast::PropOrSpread::Prop(prop) = prop else {
+            continue;
+          };
+          let ast::Prop::KeyValue(key_value_prop) = prop.as_ref() else {
+            continue;
+          };
+          let ast::PropName::Ident(ast::Ident { sym, .. }) =
+            &key_value_prop.key
+          else {
+            continue;
+          };
+          if sym == "name" {
+            match key_value_prop.value.as_ref() {
+              // matches string literals (e.g. "test name" or
+              // 'test name')
+              ast::Expr::Lit(ast::Lit::Str(lit_str)) => {
+                maybe_name = Some(lit_str.value.to_string());
+              }
+              // matches template literals with only a single quasis
+              // (e.g. `test name`)
+              ast::Expr::Tpl(tpl) => {
+                if tpl.quasis.len() == 1 {
+                  maybe_name = Some(tpl.quasis[0].raw.to_string());
                 }
               }
+              _ => {}
             }
+            break;
           }
         }
         let name = match maybe_name {
@@ -179,48 +182,41 @@ fn visit_call_expr(
           parent_id.map(str::to_owned),
         );
         for prop in &obj_lit.props {
-          if let ast::PropOrSpread::Prop(prop) = prop {
-            match prop.as_ref() {
-              ast::Prop::KeyValue(key_value_prop) => {
-                if let ast::PropName::Ident(ast::Ident { sym, .. }) =
-                  &key_value_prop.key
-                {
-                  if sym == "fn" {
-                    match key_value_prop.value.as_ref() {
-                      ast::Expr::Arrow(arrow_expr) => {
-                        visit_arrow(arrow_expr, &id, text_info, test_module);
-                      }
-                      ast::Expr::Fn(fn_expr) => {
-                        visit_fn(
-                          &fn_expr.function,
-                          &id,
-                          text_info,
-                          test_module,
-                        );
-                      }
-                      _ => {}
-                    }
-                    break;
+          let ast::PropOrSpread::Prop(prop) = prop else {
+            continue;
+          };
+          match prop.as_ref() {
+            ast::Prop::KeyValue(key_value_prop) => {
+              let ast::PropName::Ident(ast::Ident { sym, .. }) =
+                &key_value_prop.key
+              else {
+                continue;
+              };
+              if sym == "fn" {
+                match key_value_prop.value.as_ref() {
+                  ast::Expr::Arrow(arrow_expr) => {
+                    visit_arrow(arrow_expr, &id, text_info, test_module);
                   }
-                }
-              }
-              ast::Prop::Method(method_prop) => {
-                if let ast::PropName::Ident(ast::Ident { sym, .. }) =
-                  &method_prop.key
-                {
-                  if sym == "fn" {
-                    visit_fn(
-                      &method_prop.function,
-                      &id,
-                      text_info,
-                      test_module,
-                    );
-                    break;
+                  ast::Expr::Fn(fn_expr) => {
+                    visit_fn(&fn_expr.function, &id, text_info, test_module);
                   }
+                  _ => {}
                 }
+                break;
               }
-              _ => {}
             }
+            ast::Prop::Method(method_prop) => {
+              let ast::PropName::Ident(ast::Ident { sym, .. }) =
+                &method_prop.key
+              else {
+                continue;
+              };
+              if sym == "fn" {
+                visit_fn(&method_prop.function, &id, text_info, test_module);
+                break;
+              }
+            }
+            _ => {}
           }
         }
       }
