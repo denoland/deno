@@ -333,8 +333,8 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm" | "deno")
-                && !matches!(to.scheme(), "file" | "npm" | "deno")
+              if !matches!(from.scheme(), "file" | "npm")
+                && !matches!(to.scheme(), "file" | "npm")
               {
                 graph.redirects.insert(from, to);
               }
@@ -344,6 +344,7 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // add the deno specifiers to the graph if it's the first time executing
     if graph.deno_specifiers.is_empty() {
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
@@ -351,24 +352,6 @@ impl ModuleGraphBuilder {
           if let Ok(key) = PackageReq::from_str(key) {
             if let Ok(value) = PackageNv::from_str(value) {
               graph.deno_specifiers.add(key, value);
-            }
-          }
-        }
-      }
-    }
-
-    // add the lockfile redirects to the graph if it's the first time executing
-    if graph.redirects.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let lockfile = lockfile.lock();
-        for (from, to) in &lockfile.content.redirects {
-          if let Ok(from) = ModuleSpecifier::parse(from) {
-            if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm")
-                && !matches!(to.scheme(), "file" | "npm")
-              {
-                graph.redirects.insert(from, to);
-              }
             }
           }
         }
@@ -397,20 +380,6 @@ impl ModuleGraphBuilder {
         let mut lockfile = lockfile.lock();
         for (from, to) in mappings {
           lockfile.insert_deno_specifier(from.to_string(), to.to_string());
-        }
-      }
-    }
-
-    // add the redirects in the graph to the lockfile
-    if !graph.redirects.is_empty() {
-      if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph
-          .redirects
-          .iter()
-          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"));
-        let mut lockfile = lockfile.lock();
-        for (from, to) in graph_redirects {
-          lockfile.insert_redirect(from.to_string(), to.to_string());
         }
       }
     }
