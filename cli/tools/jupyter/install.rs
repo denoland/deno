@@ -26,6 +26,7 @@ pub fn install() -> Result<(), AnyError> {
     .args([
       "kernelspec",
       "install",
+      "--user",
       "--name",
       "deno",
       &temp_dir.path().to_string_lossy(),

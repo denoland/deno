@@ -23,6 +23,7 @@ import * as tty from "ext:runtime/40_tty.js";
 // TODO(bartlomieju): this is funky we have two `http` imports
 import * as httpRuntime from "ext:runtime/40_http.js";
 import * as kv from "ext:deno_kv/01_db.ts";
+import * as jupyter from "ext:runtime/40_jupyter.js";
 
 const denoNs = {
   metrics: core.metrics,
@@ -178,6 +179,7 @@ const denoNsUnstable = {
   Kv: kv.Kv,
   KvU64: kv.KvU64,
   KvListIterator: kv.KvListIterator,
+  jupyter,
 };
 
 export { denoNs, denoNsUnstable };
