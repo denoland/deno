@@ -532,7 +532,6 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: PermissionsContainer,
   ) -> Result<File, AnyError> {
-    debug!("FileFetcher::fetch() - specifier: {}", specifier);
     self
       .fetch_with_options(FetchOptions {
         specifier,
@@ -548,6 +547,7 @@ impl FileFetcher {
     options: FetchOptions<'_>,
   ) -> Result<File, AnyError> {
     let specifier = options.specifier;
+    debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
     options.permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
