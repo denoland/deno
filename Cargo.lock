@@ -1382,6 +1382,7 @@ dependencies = [
  "deno_fetch",
  "deno_fs",
  "deno_media_type",
+ "deno_net",
  "deno_npm",
  "deno_semver",
  "digest 0.10.7",

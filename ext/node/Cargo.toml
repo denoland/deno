@@ -23,6 +23,7 @@ deno_core.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_media_type.workspace = true
+deno_net.workspace = true
 deno_npm.workspace = true
 deno_semver.workspace = true
 digest = { version = "0.10.5", features = ["core-api", "std"] }
