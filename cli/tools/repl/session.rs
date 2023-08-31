@@ -116,6 +116,7 @@ pub fn result_to_evaluation_output(
   }
 }
 
+#[derive(Debug)]
 pub struct TsEvaluateResponse {
   pub ts_code: String,
   pub value: cdp::EvaluateResponse,

@@ -552,8 +552,17 @@ impl Kernel {
       })
     } else {
       // TODO(bartlomieju): fix this
-      // ExecResult::Ok(output.value.result.clone())
-      ExecResult::Ok(output.value.result.value.as_ref().unwrap().clone())
+      eprintln!("output {:#?}", output);
+
+      // TODO(bartlomieju): handle exception
+      let output = self
+        .repl_session
+        .get_eval_value(&output.value.result)
+        .await?;
+
+      eprintln!("output serialized {:#?}", output);
+
+      ExecResult::Ok(Value::String(output))
     };
 
     match result {
