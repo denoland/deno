@@ -15,7 +15,6 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
@@ -174,12 +173,6 @@ pub struct TestDescription {
   pub location: TestLocation,
 }
 
-impl TestDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[self.location.file_name.as_bytes(), self.name.as_bytes()])
-  }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestOutput {
@@ -295,16 +288,6 @@ pub struct TestStepDescription {
   pub parent_id: usize,
   pub root_id: usize,
   pub root_name: String,
-}
-
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]

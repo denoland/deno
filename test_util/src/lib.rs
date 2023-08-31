@@ -160,6 +160,10 @@ pub fn npm_registry_url() -> String {
   "http://localhost:4545/npm/registry/".to_string()
 }
 
+pub fn npm_registry_unset_url() -> String {
+  "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
+}
+
 pub fn std_path() -> PathRef {
   root_path().join("test_util").join("std")
 }
@@ -2309,6 +2313,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
   assert!(exe_path.exists());
   let mut cmd = Command::new(exe_path);
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
   DenoCmd {
     _deno_dir: deno_dir.clone(),
     cmd,

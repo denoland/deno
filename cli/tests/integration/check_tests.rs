@@ -86,13 +86,17 @@ itest!(check_static_response_json {
 itest!(check_node_builtin_modules_ts {
   args: "check --quiet check/node_builtin_modules/mod.ts",
   output: "check/node_builtin_modules/mod.ts.out",
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(check_node_builtin_modules_js {
   args: "check --quiet check/node_builtin_modules/mod.js",
   output: "check/node_builtin_modules/mod.js.out",
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(check_no_error_truncation {
