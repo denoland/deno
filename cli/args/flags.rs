@@ -2576,7 +2576,7 @@ fn env_file_arg() -> Arg {
     .long("env")
     .value_name("FILE")
     .help("Load .env file")
-    .long_help("Load environment variables from local file. Environment variables with conflicting keys within the file are not overwritten.")
+    .long_help("Load environment variables from local file. Only the first environment variable with a given key is used. Variables with duplicate keys are not used.")
     .value_hint(ValueHint::FilePath)
     .default_missing_value(".env")
     .require_equals(true)
