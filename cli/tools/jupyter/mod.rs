@@ -3,9 +3,9 @@
 // TODO(bartlomieju): remove me
 #![allow(unused)]
 
+use crate::args::Flags;
+use crate::args::JupyterFlags;
 use crate::create_main_worker;
-use crate::flags::Flags;
-use crate::flags::JupyterFlags;
 use crate::logger;
 use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;

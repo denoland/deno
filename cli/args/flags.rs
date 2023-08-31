@@ -158,7 +158,7 @@ pub struct InstallFlags {
   pub force: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JupyterFlags {
   pub install: bool,
   pub conn_file: Option<PathBuf>,
@@ -1621,7 +1621,7 @@ These must be added to the path manually if required.")
       )
 }
 
-fn jupyter_subcommand<'a>() -> Command<'a> {
+fn jupyter_subcommand() -> Command {
   Command::new("jupyter")
     .arg(
       Arg::new("install")
@@ -1631,8 +1631,8 @@ fn jupyter_subcommand<'a>() -> Command<'a> {
       Arg::new("conn")
         .long("conn")
         .help("Path to JSON file describing connection parameters, provided by Jupyter")
-        .takes_value(true)
-        .required(false)
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::FilePath)
         .conflicts_with("install"))
     .about("Jupyter kernel")
 }
@@ -3191,14 +3191,8 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 }
 
 fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let conn_file = if matches.is_present("conn") {
-    let conn_file = matches.value_of("conn").unwrap();
-    Some(PathBuf::from(conn_file))
-  } else {
-    None
-  };
-
-  let install = matches.is_present("install");
+  let conn_file = matches.remove_one::<PathBuf>("conn");
+  let install = matches.get_flag("install");
 
   flags.subcommand =
     DenoSubcommand::Jupyter(JupyterFlags { install, conn_file });
