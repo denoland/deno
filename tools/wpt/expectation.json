@@ -2807,8 +2807,12 @@
       },
       "class-string-interface.any.html": true,
       "class-string-interface.any.worker.html": true,
-      "class-string-iterator-prototype-object.any.html": true,
-      "class-string-iterator-prototype-object.any.worker.html": true,
+      "class-string-iterator-prototype-object.any.html": [
+        "Object.prototype.toString applied after deleting @@toStringTag"
+      ],
+      "class-string-iterator-prototype-object.any.worker.html": [
+        "Object.prototype.toString applied after deleting @@toStringTag"
+      ],     
       "class-string-named-properties-object.window.html": false,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
