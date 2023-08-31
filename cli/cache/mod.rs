@@ -9,12 +9,14 @@ use crate::util::fs::atomic_write_file;
 use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -159,7 +161,29 @@ impl FetchCacher {
   }
 }
 
+static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "DENO_REGISTRY_URL";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+});
+
 impl Loader for FetchCacher {
+  fn registry_url(&self) -> &Url {
+    &DENO_REGISTRY_URL
+  }
+
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;
@@ -182,13 +206,13 @@ impl Loader for FetchCacher {
     }
   }
 
-  fn load_with_cache_setting(
+  fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
-    cache_setting: deno_graph::source::LoaderCacheSetting,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
-    use deno_graph::source::LoaderCacheSetting;
+    use deno_graph::source::CacheSetting as LoaderCacheSetting;
 
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       // The specifier might be in a completely different symlinked tree than
@@ -214,7 +238,7 @@ impl Loader for FetchCacher {
 
     async move {
       let maybe_cache_setting = match cache_setting {
-        LoaderCacheSetting::Prefer => None,
+        LoaderCacheSetting::Use => None,
         // todo: error if cache setting is currently `Only`
         LoaderCacheSetting::Reload => Some(CacheSetting::ReloadAll),
         LoaderCacheSetting::Only => Some(CacheSetting::Only),

@@ -46,7 +46,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use indexmap1::IndexMap;
+use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
@@ -1574,19 +1574,19 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
-  fn load_with_cache_setting(
+  fn registry_url(&self) -> &Url {
+    self.inner_loader.registry_url()
+  }
+
+  fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
-    cache_setting: deno_graph::source::LoaderCacheSetting,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
     match self.load_from_docs(specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load_with_cache_setting(
-        specifier,
-        is_dynamic,
-        cache_setting,
-      ),
+      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
     }
   }
 

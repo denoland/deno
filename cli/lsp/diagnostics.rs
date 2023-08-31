@@ -1249,7 +1249,7 @@ fn diagnose_dependency(
         &dependency.maybe_code
       },
       dependency.is_dynamic,
-      dependency.maybe_assert_type.as_deref(),
+      dependency.maybe_attribute_type.as_deref(),
     )
     .iter()
     .flat_map(|diag| {
@@ -1278,7 +1278,7 @@ fn diagnose_dependency(
         snapshot,
         &dependency.maybe_type,
         dependency.is_dynamic,
-        dependency.maybe_assert_type.as_deref(),
+        dependency.maybe_attribute_type.as_deref(),
       )
       .iter()
       .map(|diag| diag.to_lsp_diagnostic(&range)),

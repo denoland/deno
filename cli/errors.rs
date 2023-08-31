@@ -31,7 +31,7 @@ fn get_module_graph_error_class(err: &ModuleGraphError) -> &'static str {
       ModuleError::InvalidTypeAssertion { .. } => "SyntaxError",
       ModuleError::ParseErr(_, diagnostic) => get_diagnostic_class(diagnostic),
       ModuleError::UnsupportedMediaType { .. }
-      | ModuleError::UnsupportedImportAssertionType { .. } => "TypeError",
+      | ModuleError::UnsupportedImportAttributeType { .. } => "TypeError",
       ModuleError::Missing(_, _)
       | ModuleError::MissingDynamic(_, _)
       | ModuleError::UnknownPackage { .. }
