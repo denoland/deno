@@ -239,8 +239,14 @@ impl Loader for FetchCacher {
     async move {
       let maybe_cache_setting = match cache_setting {
         LoaderCacheSetting::Use => None,
-        // todo: error if cache setting is currently `Only`
-        LoaderCacheSetting::Reload => Some(CacheSetting::ReloadAll),
+        LoaderCacheSetting::Reload => {
+          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+            return Err(deno_core::anyhow::anyhow!(
+              "Failed to resolve version constraint. Try running again without --cached-only"
+            ));
+          }
+          Some(CacheSetting::ReloadAll)
+        }
         LoaderCacheSetting::Only => Some(CacheSetting::Only),
       };
       file_fetcher

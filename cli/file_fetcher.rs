@@ -206,6 +206,10 @@ impl FileFetcher {
     }
   }
 
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_setting
+  }
+
   /// Sets the log level to use when outputting the download message.
   pub fn set_download_log_level(&mut self, level: log::Level) {
     self.download_log_level = level;
