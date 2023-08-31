@@ -1,13 +1,14 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::collectors::TestCollector;
-use super::definitions::TestDefinitions;
+use super::definitions::TestModule;
 use super::execution::TestRun;
 use super::lsp_custom;
 
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
+use crate::lsp::documents::DocumentsFilter;
 use crate::lsp::language_server::StateSnapshot;
 use crate::lsp::performance::Performance;
 
@@ -46,7 +47,7 @@ pub struct TestServer {
   /// A map of run ids to test runs
   runs: Arc<Mutex<HashMap<u32, TestRun>>>,
   /// Tests that are discovered from a versioned document
-  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>>,
+  tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>>,
   /// A channel for requesting that changes to documents be statically analyzed
   /// for tests
   update_channel: mpsc::UnboundedSender<Arc<StateSnapshot>>,
@@ -58,7 +59,7 @@ impl TestServer {
     performance: Arc<Performance>,
     maybe_root_uri: Option<ModuleSpecifier>,
   ) -> Self {
-    let tests: Arc<Mutex<HashMap<ModuleSpecifier, TestDefinitions>>> =
+    let tests: Arc<Mutex<HashMap<ModuleSpecifier, TestModule>>> =
       Arc::new(Mutex::new(HashMap::new()));
 
     let (update_channel, mut update_rx) =
@@ -92,7 +93,10 @@ impl TestServer {
               // eliminating any we go over when iterating over the document
               let mut keys: HashSet<ModuleSpecifier> =
                 tests.keys().cloned().collect();
-              for document in snapshot.documents.documents(false, true) {
+              for document in snapshot
+                .documents
+                .documents(DocumentsFilter::AllDiagnosable)
+              {
                 let specifier = document.specifier();
                 keys.remove(specifier);
                 let script_version = document.script_version();
@@ -105,23 +109,27 @@ impl TestServer {
                   if let Some(Ok(parsed_source)) =
                     document.maybe_parsed_source()
                   {
-                    let mut collector = TestCollector::new(specifier.clone());
-                    parsed_source.module().visit_with(&mut collector);
-                    let test_definitions = TestDefinitions {
-                      discovered: collector.take(),
-                      injected: Default::default(),
+                    let was_empty = tests
+                      .remove(specifier)
+                      .map(|tm| tm.is_empty())
+                      .unwrap_or(true);
+                    let mut collector = TestCollector::new(
+                      specifier.clone(),
                       script_version,
-                    };
-                    if !test_definitions.discovered.is_empty() {
+                      parsed_source.text_info().clone(),
+                    );
+                    parsed_source.module().visit_with(&mut collector);
+                    let test_module = collector.take();
+                    if !test_module.is_empty() {
                       client.send_test_notification(
-                        test_definitions.as_notification(
-                          specifier,
-                          mru.as_ref(),
-                          parsed_source.text_info(),
-                        ),
+                        test_module.as_replace_notification(mru.as_ref()),
                       );
+                    } else if !was_empty {
+                      client.send_test_notification(as_delete_notification(
+                        specifier.clone(),
+                      ));
                     }
-                    tests.insert(specifier.clone(), test_definitions);
+                    tests.insert(specifier.clone(), test_module);
                   }
                 }
               }
@@ -153,7 +161,7 @@ impl TestServer {
                 match run.exec(&client, maybe_root_uri.as_ref()).await {
                   Ok(_) => (),
                   Err(err) => {
-                    client.show_message(lsp::MessageType::ERROR, err).await;
+                    client.show_message(lsp::MessageType::ERROR, err);
                   }
                 }
                 client.send_test_notification(TestingNotification::Progress(

@@ -1,4 +1,4 @@
-const w = new Worker(new URL("doesnt_exist.js", import.meta.url).href, {
+const w = new Worker(import.meta.resolve("./doesnt_exist.js"), {
   type: "module",
 });
 

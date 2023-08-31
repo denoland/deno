@@ -1,5 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals } from "./test_util.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 const {
   inspectArgs,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
@@ -34,52 +34,52 @@ const headerDict: Record<string, string> = {
 };
 // deno-lint-ignore no-explicit-any
 const headerSeq: any[] = [];
-for (const name in headerDict) {
-  headerSeq.push([name, headerDict[name]]);
+for (const [name, value] of Object.entries(headerDict)) {
+  headerSeq.push([name, value]);
 }
 
 Deno.test(function newHeaderWithSequence() {
   const headers = new Headers(headerSeq);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
   }
   assertEquals(headers.get("length"), null);
 });
 
 Deno.test(function newHeaderWithRecord() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function newHeaderWithHeadersInstance() {
   const headers = new Headers(headerDict);
   const headers2 = new Headers(headers);
-  for (const name in headerDict) {
-    assertEquals(headers2.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers2.get(name), String(value));
   }
 });
 
 Deno.test(function headerAppendSuccess() {
   const headers = new Headers();
-  for (const name in headerDict) {
-    headers.append(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    headers.append(name, value);
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function headerSetSuccess() {
   const headers = new Headers();
-  for (const name in headerDict) {
-    headers.set(name, headerDict[name]);
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    headers.set(name, value);
+    assertEquals(headers.get(name), String(value));
   }
 });
 
 Deno.test(function headerHasSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
+  for (const name of Object.keys(headerDict)) {
     assert(headers.has(name), "headers has name " + name);
     assert(
       !headers.has("nameNotInHeaders"),
@@ -90,7 +90,7 @@ Deno.test(function headerHasSuccess() {
 
 Deno.test(function headerDeleteSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
+  for (const name of Object.keys(headerDict)) {
     assert(headers.has(name), "headers have a header: " + name);
     headers.delete(name);
     assert(!headers.has(name), "headers do not have anymore a header: " + name);
@@ -99,8 +99,8 @@ Deno.test(function headerDeleteSuccess() {
 
 Deno.test(function headerGetSuccess() {
   const headers = new Headers(headerDict);
-  for (const name in headerDict) {
-    assertEquals(headers.get(name), String(headerDict[name]));
+  for (const [name, value] of Object.entries(headerDict)) {
+    assertEquals(headers.get(name), String(value));
     assertEquals(headers.get("nameNotInHeaders"), null);
   }
 });
@@ -325,6 +325,21 @@ Deno.test(function headersInitMultiple() {
   ]);
 });
 
+Deno.test(function headerInitWithPrototypePollution() {
+  const originalExec = RegExp.prototype.exec;
+  try {
+    RegExp.prototype.exec = () => {
+      throw Error();
+    };
+    new Headers([
+      ["X-Deno", "foo"],
+      ["X-Deno", "bar"],
+    ]);
+  } finally {
+    RegExp.prototype.exec = originalExec;
+  }
+});
+
 Deno.test(function headersAppendMultiple() {
   const headers = new Headers([
     ["Set-Cookie", "foo=bar"],
@@ -384,5 +399,18 @@ Deno.test(function customInspectReturnsCorrectHeadersFormat() {
   assertEquals(
     stringify(multiParamHeader),
     `Headers { "content-length": "1337", "content-type": "application/json" }`,
+  );
+});
+
+Deno.test(function invalidHeadersFlaky() {
+  assertThrows(
+    () => new Headers([["x", "\u0000x"]]),
+    TypeError,
+    "Header value is not valid.",
+  );
+  assertThrows(
+    () => new Headers([["x", "\u0000x"]]),
+    TypeError,
+    "Header value is not valid.",
   );
 });

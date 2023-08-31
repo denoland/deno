@@ -1,0 +1,4 @@
+[WILDCARD]a.ts: line 1, col 1 - TODO should be tagged with (@username) or (#issue) (ban-untagged-todo)
+[WILDCARD]a.ts: line 2, col 10 - `add` is never used (no-unused-vars)
+Found 2 problems
+Checked 1 file

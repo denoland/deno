@@ -1,8 +1,13 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::itest;
 use deno_core::url::Url;
 use test_util as util;
+use util::assert_contains;
+use util::assert_not_contains;
+use util::env_vars_for_npm_tests;
+use util::wildcard_match;
+use util::TestContext;
+use util::TestContextBuilder;
 
 #[test]
 fn no_color() {
@@ -60,6 +65,55 @@ itest!(collect {
   args: "test --ignore=test/collect/ignore test/collect",
   exit_code: 0,
   output: "test/collect.out",
+});
+
+itest!(test_with_config {
+  args: "test --config test/collect/deno.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.out",
+});
+
+itest!(test_with_config2 {
+  args: "test --config test/collect/deno2.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect2.out",
+});
+
+itest!(test_with_deprecated_config {
+  args: "test --config test/collect/deno.deprecated.jsonc test/collect",
+  exit_code: 0,
+  output: "test/collect.deprecated.out",
+});
+
+itest!(test_with_malformed_config {
+  args: "test --config test/collect/deno.malformed.jsonc",
+  exit_code: 1,
+  output: "test/collect_with_malformed_config.out",
+});
+
+itest!(parallel_flag {
+  args: "test test/short-pass.ts --parallel",
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(parallel_flag_with_env_variable {
+  args: "test test/short-pass.ts --parallel",
+  envs: vec![("DENO_JOBS".to_owned(), "2".to_owned())],
+  exit_code: 0,
+  output: "test/short-pass.out",
+});
+
+itest!(jobs_flag {
+  args: "test test/short-pass.ts --jobs",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-warning.out",
+});
+
+itest!(jobs_flag_with_numeric_value {
+  args: "test test/short-pass.ts --jobs=2",
+  exit_code: 0,
+  output: "test/short-pass-jobs-flag-warning.out",
 });
 
 itest!(load_unload {
@@ -181,6 +235,12 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
   output: "test/ops_sanitizer_multiple_timeout_tests_no_trace.out",
 });
 
+itest!(trace_ops_catch_error {
+  args: "test -A --trace-ops test/trace_ops_caught_error/main.ts",
+  exit_code: 0,
+  output: "test/trace_ops_caught_error/main.out",
+});
+
 // TODO(@littledivy): re-enable this test, recent optimizations made output non deterministic.
 // https://github.com/denoland/deno/issues/14268
 //
@@ -191,7 +251,7 @@ itest!(ops_sanitizer_multiple_timeout_tests_no_trace {
 // });
 
 itest!(ops_sanitizer_nexttick {
-  args: "test test/ops_sanitizer_nexttick.ts",
+  args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",
 });
 
@@ -205,6 +265,11 @@ itest!(exit_sanitizer {
   args: "test test/exit_sanitizer.ts",
   output: "test/exit_sanitizer.out",
   exit_code: 1,
+});
+
+itest!(junit {
+  args: "test --reporter junit test/pass.ts",
+  output: "test/pass.junit.out",
 });
 
 itest!(clear_timeout {
@@ -261,12 +326,6 @@ itest!(steps_passing_steps {
   output: "test/steps/passing_steps.out",
 });
 
-itest!(steps_passing_steps_concurrent {
-  args: "test --jobs=2 test/steps/passing_steps.ts",
-  exit_code: 0,
-  output: "test/steps/passing_steps.out",
-});
-
 itest!(steps_failing_steps {
   args: "test test/steps/failing_steps.ts",
   exit_code: 1,
@@ -277,6 +336,43 @@ itest!(steps_ignored_steps {
   args: "test test/steps/ignored_steps.ts",
   exit_code: 0,
   output: "test/steps/ignored_steps.out",
+});
+
+itest!(steps_dot_passing_steps {
+  args: "test --reporter=dot test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.dot.out",
+});
+
+itest!(steps_dot_failing_steps {
+  args: "test --reporter=dot test/steps/failing_steps.ts",
+  exit_code: 1,
+  output: "test/steps/failing_steps.dot.out",
+});
+
+itest!(steps_dot_ignored_steps {
+  args: "test --reporter=dot test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.dot.out",
+});
+
+itest!(steps_tap_passing_steps {
+  args: "test --reporter=tap test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.tap.out",
+});
+
+itest!(steps_tap_failing_steps {
+  args: "test --reporter=tap test/steps/failing_steps.ts",
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_owned(), "1".to_owned())],
+  output: "test/steps/failing_steps.tap.out",
+});
+
+itest!(steps_tap_ignored_steps {
+  args: "test --reporter=tap test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.tap.out",
 });
 
 itest!(steps_invalid_usage {
@@ -303,29 +399,38 @@ itest!(no_prompt_with_denied_perms {
   output: "test/no_prompt_with_denied_perms.out",
 });
 
+itest!(test_with_custom_jsx {
+  args: "test --quiet --allow-read test/hello_world.ts --config=test/deno_custom_jsx.json",
+  exit_code: 0,
+  output: "test/hello_world.out",
+});
+
+itest!(before_unload_prevent_default {
+  args: "test --quiet test/before_unload_prevent_default.ts",
+  output: "test/before_unload_prevent_default.out",
+});
+
 #[test]
 fn captured_output() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("--allow-run")
-    .arg("--allow-read")
-    .arg("--unstable")
-    .arg("test/captured_output.ts")
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --allow-run --allow-read --unstable test/captured_output.ts")
     .env("NO_COLOR", "1")
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
+    .run();
 
   let output_start = "------- output -------";
   let output_end = "----- output end -----";
-  assert!(output.status.success());
-  let output_text = String::from_utf8(output.stdout).unwrap();
+  output.assert_exit_code(0);
+  let output_text = output.combined_output();
   let start = output_text.find(output_start).unwrap() + output_start.len();
   let end = output_text.find(output_end).unwrap();
-  let output_text = output_text[start..end].trim();
+  // replace zero width space that may appear in test output due
+  // to test runner output flusher
+  let output_text = output_text[start..end]
+    .replace('\u{200B}', "")
+    .trim()
+    .to_string();
   let mut lines = output_text.lines().collect::<Vec<_>>();
   // the output is racy on either stdout or stderr being flushed
   // from the runtime into the rust code, so sort it... the main
@@ -337,20 +442,16 @@ fn captured_output() {
 
 #[test]
 fn recursive_permissions_pledge() {
-  let output = util::deno_cmd()
-    .current_dir(util::testdata_path())
-    .arg("test")
-    .arg("test/recursive_permissions_pledge.js")
-    .stderr(std::process::Stdio::piped())
-    .stdout(std::process::Stdio::piped())
-    .spawn()
-    .unwrap()
-    .wait_with_output()
-    .unwrap();
-  assert!(!output.status.success());
-  assert!(String::from_utf8(output.stderr).unwrap().contains(
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test test/recursive_permissions_pledge.js")
+    .run();
+  output.assert_exit_code(1);
+  assert_contains!(
+    output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
-  ));
+  );
 }
 
 #[test]
@@ -360,18 +461,22 @@ fn file_protocol() {
       .unwrap()
       .to_string();
 
-  (util::CheckOutputIntegrationTest {
-    args_vec: vec!["test", &file_url],
-    exit_code: 0,
-    output: "test/file_protocol.out",
-    ..Default::default()
-  })
-  .run();
+  TestContext::default()
+    .new_command()
+    .args_vec(["test", file_url.as_str()])
+    .run()
+    .assert_matches_file("test/file_protocol.out");
 }
 
 itest!(uncaught_errors {
   args: "test --quiet test/uncaught_errors_1.ts test/uncaught_errors_2.ts test/uncaught_errors_3.ts",
   output: "test/uncaught_errors.out",
+  exit_code: 1,
+});
+
+itest!(report_error {
+  args: "test --quiet test/report_error.ts",
+  output: "test/report_error.out",
   exit_code: 1,
 });
 
@@ -393,3 +498,134 @@ itest!(non_error_thrown {
   output: "test/non_error_thrown.out",
   exit_code: 1,
 });
+
+itest!(parallel_output {
+  args: "test --parallel --reload test/parallel_output.ts",
+  output: "test/parallel_output.out",
+  exit_code: 1,
+});
+
+#[test]
+// todo(#18480): re-enable
+#[ignore]
+fn sigint_with_hanging_test() {
+  util::with_pty(
+    &[
+      "test",
+      "--quiet",
+      "--no-check",
+      "test/sigint_with_hanging_test.ts",
+    ],
+    |mut console| {
+      std::thread::sleep(std::time::Duration::from_secs(1));
+      console.write_line("\x03");
+      let text = console.read_until("hanging_test.ts:10:15");
+      wildcard_match(
+        include_str!("../testdata/test/sigint_with_hanging_test.out"),
+        &text,
+      );
+    },
+  );
+}
+
+itest!(package_json_basic {
+  args: "test",
+  output: "package_json/basic/lib.test.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  cwd: Some("package_json/basic"),
+  copy_temp_dir: Some("package_json/basic"),
+  exit_code: 0,
+});
+
+itest!(test_lock {
+  args: "test",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  exit_code: 10,
+  output: "lockfile/basic/fail.out",
+});
+
+itest!(test_no_lock {
+  args: "test --no-lock",
+  http_server: true,
+  cwd: Some("lockfile/basic"),
+  output: "lockfile/basic/test.nolock.out",
+});
+
+itest!(test_replace_timers {
+  args: "test test/replace_timers.js",
+  output: "test/replace_timers.js.out",
+});
+
+#[test]
+fn test_with_glob_config() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bar.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bar.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn test_with_glob_config_and_flags() {
+  let context = TestContextBuilder::new().cwd("test").build();
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json --ignore=glob/nested/**/bar.ts")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/nested/fizz/fizz.ts");
+  assert_contains!(output, "glob/pages/[id].ts");
+  assert_contains!(output, "glob/nested/fizz/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/foo.ts");
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/nested/foo/bazz.ts");
+  assert_contains!(output, "glob/nested/foo/fizz.ts");
+  assert_contains!(output, "glob/nested/fizz/foo.ts");
+  assert_contains!(output, "glob/data/test1.ts");
+
+  let cmd_output = context
+    .new_command()
+    .args("test --config deno.glob.json glob/data/test1.?s")
+    .run();
+
+  cmd_output.assert_exit_code(0);
+
+  let output = cmd_output.combined_output();
+  assert_contains!(output, "glob/data/test1.js");
+  assert_contains!(output, "glob/data/test1.ts");
+}
+
+#[test]
+fn conditionally_loads_type_graph() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("test --reload -L debug run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("test --reload -L debug --no-check run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}

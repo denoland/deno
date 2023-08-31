@@ -1,10 +1,10 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-///!
-///! Provides information about what capabilities that are supported by the
-///! language server, which helps determine what messages are sent from the
-///! client.
-///!
+//!
+//! Provides information about what capabilities that are supported by the
+//! language server, which helps determine what messages are sent from the
+//! client.
+//!
 use deno_core::serde_json::json;
 use tower_lsp::lsp_types::*;
 
@@ -19,7 +19,7 @@ fn code_action_capabilities(
     .as_ref()
     .and_then(|it| it.code_action.as_ref())
     .and_then(|it| it.code_action_literal_support.as_ref())
-    .map_or(CodeActionProviderCapability::Simple(true), |_| {
+    .map(|_| {
       let mut code_action_kinds =
         vec![CodeActionKind::QUICKFIX, CodeActionKind::REFACTOR];
       code_action_kinds.extend(
@@ -34,6 +34,7 @@ fn code_action_capabilities(
         work_done_progress_options: Default::default(),
       })
     })
+    .unwrap_or(CodeActionProviderCapability::Simple(true))
 }
 
 pub fn server_capabilities(
@@ -52,12 +53,14 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      // Don't include "," here as it leads to confusing completion
+      // behavior with function arguments. See https://github.com/denoland/deno/issues/20160
       all_commit_characters: Some(vec![
         ".".to_string(),
-        ",".to_string(),
         ";".to_string(),
         "(".to_string(),
       ]),
+      completion_item: None,
       trigger_characters: Some(vec![
         ".".to_string(),
         "\"".to_string(),
@@ -140,5 +143,7 @@ pub fn server_capabilities(
       "denoConfigTasks": true,
       "testingApi":true,
     })),
+    inlay_hint_provider: Some(OneOf::Left(true)),
+    position_encoding: None,
   }
 }

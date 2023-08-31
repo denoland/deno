@@ -1,18 +1,19 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file no-explicit-any
+// deno-lint-ignore-file no-explicit-any no-var
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-interface CloseEventInit extends EventInit {
+/** @category Web Sockets */
+declare interface CloseEventInit extends EventInit {
   code?: number;
   reason?: string;
   wasClean?: boolean;
 }
 
-declare class CloseEvent extends Event {
-  constructor(type: string, eventInitDict?: CloseEventInit);
+/** @category Web Sockets */
+declare interface CloseEvent extends Event {
   /**
    * Returns the WebSocket connection close code provided by the server.
    */
@@ -27,7 +28,13 @@ declare class CloseEvent extends Event {
   readonly wasClean: boolean;
 }
 
-interface WebSocketEventMap {
+declare var CloseEvent: {
+  readonly prototype: CloseEvent;
+  new (type: string, eventInitDict?: CloseEventInit): CloseEvent;
+};
+
+/** @category Web Sockets */
+declare interface WebSocketEventMap {
   close: CloseEvent;
   error: Event;
   message: MessageEvent;
@@ -35,18 +42,16 @@ interface WebSocketEventMap {
 }
 
 /**
- * Provides the API for creating and managing a WebSocket connection to a server, as well as for sending and receiving data on the connection.
+ * Provides the API for creating and managing a WebSocket connection to a
+ * server, as well as for sending and receiving data on the connection.
  *
- * If you are looking to create a WebSocket server, please take a look at `Deno.upgradeWebSocket()`.
+ * If you are looking to create a WebSocket server, please take a look at
+ * `Deno.upgradeWebSocket()`.
+ *
+ * @tags allow-net
+ * @category Web Sockets
  */
-declare class WebSocket extends EventTarget {
-  constructor(url: string, protocols?: string | string[]);
-
-  static readonly CLOSED: number;
-  static readonly CLOSING: number;
-  static readonly CONNECTING: number;
-  static readonly OPEN: number;
-
+declare interface WebSocket extends EventTarget {
   /**
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
@@ -113,4 +118,15 @@ declare class WebSocket extends EventTarget {
   ): void;
 }
 
-type BinaryType = "arraybuffer" | "blob";
+/** @category Web Sockets */
+declare var WebSocket: {
+  readonly prototype: WebSocket;
+  new (url: string | URL, protocols?: string | string[]): WebSocket;
+  readonly CLOSED: number;
+  readonly CLOSING: number;
+  readonly CONNECTING: number;
+  readonly OPEN: number;
+};
+
+/** @category Web Sockets */
+declare type BinaryType = "arraybuffer" | "blob";

@@ -1,22 +1,29 @@
 # Deno
 
-[![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
-[![Discord Chat](https://img.shields.io/discord/684898665143206084?logo=discord&style=social)](https://discord.gg/deno)
+[![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
+[![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
+[![YouTube badge][]][YouTube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
-Deno is a _simple_, _modern_ and _secure_ runtime for **JavaScript** and
-**TypeScript** that uses V8 and is built in Rust.
+[Deno](https://deno.com/runtime) is a _simple_, _modern_ and _secure_ runtime
+for **JavaScript** and **TypeScript** that uses V8 and is built in Rust.
 
 ### Features
 
-- Secure by default. No file, network, or environment access, unless explicitly
-  enabled.
-- Supports TypeScript out of the box.
+- [Secure by default.](https://deno.land/manual/basics/permissions) No file,
+  network, or environment access, unless explicitly enabled.
+- Provides
+  [web platform functionality and APIs](https://deno.land/manual/runtime/web_platform_apis),
+  e.g. using ES modules, web workers, and `fetch()`.
+- Supports
+  [TypeScript out of the box](https://deno.land/manual/advanced/typescript).
 - Ships only a single executable file.
-- [Built-in utilities.](https://deno.land/manual/tools#built-in-tooling)
-- Set of reviewed standard modules that are guaranteed to work with
-  [Deno](https://deno.land/std/).
+- [Built-in tooling](https://deno.land/manual/tools#built-in-tooling) including
+  `deno test`, `deno fmt`, `deno bench`, and more.
+- Includes [a set of reviewed standard modules](https://deno.land/std/)
+  guaranteed to work with Deno.
+- [Supports npm.](https://deno.land/manual/node)
 
 ### Install
 
@@ -29,7 +36,7 @@ curl -fsSL https://deno.land/install.sh | sh
 PowerShell (Windows):
 
 ```powershell
-iwr https://deno.land/install.ps1 -useb | iex
+irm https://deno.land/install.ps1 | iex
 ```
 
 [Homebrew](https://formulae.brew.sh/formula/deno) (Mac):
@@ -53,6 +60,11 @@ scoop install deno
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```sh
+# Install the Protobuf compiler
+apt install -y protobuf-compiler # Linux
+brew install protobuf # macOS
+
+# Build and install Deno
 cargo install deno --locked
 ```
 
@@ -62,34 +74,34 @@ and [releases](https://github.com/denoland/deno/releases) for other options.
 
 ### Getting Started
 
-Try running a simple program:
+Try [running a simple program](https://examples.deno.land/hello-world):
 
 ```sh
 deno run https://deno.land/std/examples/welcome.ts
 ```
 
-Or a more complex one:
+Or [setup a simple HTTP server](https://examples.deno.land/http-server):
 
 ```ts
-const listener = Deno.listen({ port: 8000 });
-console.log("http://localhost:8000/");
-
-for await (const conn of listener) {
-  serve(conn);
-}
-
-async function serve(conn: Deno.Conn) {
-  for await (const { respondWith } of Deno.serveHttp(conn)) {
-    respondWith(new Response("Hello world"));
-  }
-}
+Deno.serve((_req) => new Response("Hello, World!"));
 ```
 
-You can find a deeper introduction, examples, and environment setup guides in
-the [manual](https://deno.land/manual).
+[More Examples](https://examples.deno.land)
 
-The complete API reference is available at the runtime
-[documentation](https://doc.deno.land).
+### Additional Resources
+
+- **[The Deno Manual](https://deno.land/manual)** is a great starting point for
+  [additional examples](https://deno.land/manual/examples),
+  [setting up your environment](https://deno.land/manual/getting_started/setup_your_environment),
+  [using npm](https://deno.land/manual/node), and more.
+- **[Runtime API reference](https://deno.land/api)** documents all APIs built
+  into Deno CLI.
+- **[Deno Standard Modules](https://deno.land/std)** do not have external
+  dependencies and are reviewed by the Deno core team.
+- **[deno.land/x](https://deno.land/x)** is the registry for third party
+  modules.
+- **[Blog](https://deno.com/blog)** is where the Deno team shares important
+  product updates and “how to”s about solving technical problems.
 
 ### Contributing
 
@@ -98,7 +110,11 @@ We appreciate your help!
 To contribute, please read our
 [contributing instructions](https://deno.land/manual/contributing).
 
-[Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
+[Build status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions
-[Twitter badge]: https://twitter.com/intent/follow?screen_name=deno_land
-[Twitter handle]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
+[Twitter badge]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
+[Twitter link]: https://twitter.com/intent/follow?screen_name=deno_land
+[YouTube badge]: https://img.shields.io/youtube/channel/subscribers/UCqC2G2M-rg4fzg1esKFLFIw?style=social
+[YouTube link]: https://www.youtube.com/@deno_land
+[Discord badge]: https://img.shields.io/discord/684898665143206084?logo=discord&style=social
+[Discord link]: https://discord.gg/deno

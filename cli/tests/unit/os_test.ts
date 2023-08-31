@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -24,6 +24,13 @@ Deno.test({ permissions: { env: true } }, function deleteEnv() {
   assertEquals(Deno.env.get("TEST_VAR"), "A");
   assertEquals(Deno.env.delete("TEST_VAR"), undefined);
   assertEquals(Deno.env.get("TEST_VAR"), undefined);
+});
+
+Deno.test({ permissions: { env: true } }, function hasEnv() {
+  Deno.env.set("TEST_VAR", "A");
+  assert(Deno.env.has("TEST_VAR"));
+  Deno.env.delete("TEST_VAR");
+  assert(!Deno.env.has("TEST_VAR"));
 });
 
 Deno.test({ permissions: { env: true } }, function avoidEmptyNamedEnv() {
@@ -74,11 +81,11 @@ Deno.test(
       console.log(
         ${JSON.stringify(Object.keys(expectedEnv))}.map(k => Deno.env.get(k))
       )`;
-      const { status, stdout } = await Deno.spawn(Deno.execPath(), {
+      const { success, stdout } = await new Deno.Command(Deno.execPath(), {
         args: ["eval", src],
         env: { ...inputEnv, NO_COLOR: "1" },
-      });
-      assertEquals(status.success, true);
+      }).output();
+      assertEquals(success, true);
       const expectedValues = Object.values(expectedEnv);
       const actualValues = JSON.parse(new TextDecoder().decode(stdout));
       assertEquals(actualValues, expectedValues);
@@ -116,6 +123,40 @@ Deno.test(
   },
 );
 
+Deno.test({ permissions: { env: true } }, function envInvalidChars() {
+  assertThrows(() => Deno.env.get(""), TypeError, "Key is an empty string");
+  assertThrows(
+    () => Deno.env.get("\0"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.get("="),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("", "foo"),
+    TypeError,
+    "Key is an empty string",
+  );
+  assertThrows(
+    () => Deno.env.set("\0", "foo"),
+    TypeError,
+    'Key contains invalid characters: "\\0"',
+  );
+  assertThrows(
+    () => Deno.env.set("=", "foo"),
+    TypeError,
+    'Key contains invalid characters: "="',
+  );
+  assertThrows(
+    () => Deno.env.set("foo", "\0"),
+    TypeError,
+    'Value contains invalid characters: "\\0"',
+  );
+});
+
 Deno.test(function osPid() {
   assert(Deno.pid > 0);
 });
@@ -128,10 +169,10 @@ Deno.test(
   { permissions: { run: true, read: true } },
   async function osPpidIsEqualToPidOfParentProcess() {
     const decoder = new TextDecoder();
-    const { stdout } = await Deno.spawn(Deno.execPath(), {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
       args: ["eval", "-p", "--unstable", "Deno.ppid"],
       env: { NO_COLOR: "true" },
-    });
+    }).output();
 
     const expected = Deno.pid;
     const actual = parseInt(decoder.decode(stdout));
@@ -153,64 +194,109 @@ Deno.test({ permissions: { read: false } }, function execPathPerm() {
   );
 });
 
-Deno.test({ permissions: { env: true } }, function loadavgSuccess() {
-  const load = Deno.loadavg();
-  assertEquals(load.length, 3);
-});
+Deno.test(
+  { permissions: { sys: ["loadavg"] } },
+  function loadavgSuccess() {
+    const load = Deno.loadavg();
+    assertEquals(load.length, 3);
+  },
+);
 
-Deno.test({ permissions: { env: false } }, function loadavgPerm() {
+Deno.test({ permissions: { sys: false } }, function loadavgPerm() {
   assertThrows(() => {
     Deno.loadavg();
   }, Deno.errors.PermissionDenied);
 });
 
-Deno.test({ permissions: { env: true } }, function hostnameDir() {
-  assertNotEquals(Deno.hostname(), "");
-});
+Deno.test(
+  { permissions: { sys: ["hostname"] } },
+  function hostnameDir() {
+    assertNotEquals(Deno.hostname(), "");
+  },
+);
 
-Deno.test({ permissions: { env: false } }, function hostnamePerm() {
+Deno.test(
+  { permissions: { run: [Deno.execPath()], read: true } },
+  // See https://github.com/denoland/deno/issues/16527
+  async function hostnameWithoutOtherNetworkUsages() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "-p", "Deno.hostname()"],
+    }).output();
+    const hostname = new TextDecoder().decode(stdout).trim();
+    assert(hostname.length > 0);
+  },
+);
+
+Deno.test({ permissions: { sys: false } }, function hostnamePerm() {
   assertThrows(() => {
     Deno.hostname();
   }, Deno.errors.PermissionDenied);
 });
 
-Deno.test({ permissions: { env: true } }, function releaseDir() {
-  assertNotEquals(Deno.osRelease(), "");
-});
+Deno.test(
+  { permissions: { sys: ["osRelease"] } },
+  function releaseDir() {
+    assertNotEquals(Deno.osRelease(), "");
+  },
+);
 
-Deno.test({ permissions: { env: false } }, function releasePerm() {
+Deno.test({ permissions: { sys: false } }, function releasePerm() {
   assertThrows(() => {
     Deno.osRelease();
   }, Deno.errors.PermissionDenied);
 });
 
-Deno.test({ permissions: { env: true } }, function systemMemoryInfo() {
-  const info = Deno.systemMemoryInfo();
-  assert(info.total >= 0);
-  assert(info.free >= 0);
-  assert(info.available >= 0);
-  assert(info.buffers >= 0);
-  assert(info.cached >= 0);
-  assert(info.swapTotal >= 0);
-  assert(info.swapFree >= 0);
+Deno.test({ permissions: { sys: ["osUptime"] } }, function osUptime() {
+  const uptime = Deno.osUptime();
+  assert(typeof uptime === "number");
+  assert(uptime > 0);
 });
 
-Deno.test({ permissions: { env: true } }, function getUid() {
+Deno.test({ permissions: { sys: false } }, function osUptimePerm() {
+  assertThrows(() => {
+    Deno.osUptime();
+  }, Deno.errors.PermissionDenied);
+});
+
+Deno.test(
+  { permissions: { sys: ["systemMemoryInfo"] } },
+  function systemMemoryInfo() {
+    const info = Deno.systemMemoryInfo();
+    assert(info.total >= 0);
+    assert(info.free >= 0);
+    assert(info.available >= 0);
+    assert(info.buffers >= 0);
+    assert(info.cached >= 0);
+    assert(info.swapTotal >= 0);
+    assert(info.swapFree >= 0);
+  },
+);
+
+Deno.test({ permissions: { sys: ["uid"] } }, function getUid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getUid(), null);
+    assertEquals(Deno.uid(), null);
   } else {
-    const uid = Deno.getUid();
+    const uid = Deno.uid();
     assert(typeof uid === "number");
     assert(uid > 0);
   }
 });
 
-Deno.test({ permissions: { env: true } }, function getGid() {
+Deno.test({ permissions: { sys: ["gid"] } }, function getGid() {
   if (Deno.build.os === "windows") {
-    assertEquals(Deno.getGid(), null);
+    assertEquals(Deno.gid(), null);
   } else {
-    const gid = Deno.getGid();
+    const gid = Deno.gid();
     assert(typeof gid === "number");
     assert(gid > 0);
   }
+});
+
+Deno.test(function memoryUsage() {
+  const mem = Deno.memoryUsage();
+  assert(typeof mem.rss === "number");
+  assert(typeof mem.heapTotal === "number");
+  assert(typeof mem.heapUsed === "number");
+  assert(typeof mem.external === "number");
+  assert(mem.rss >= mem.heapTotal);
 });

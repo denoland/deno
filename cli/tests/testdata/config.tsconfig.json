@@ -1,7 +1,0 @@
-{
-  "compilerOptions": {
-    "experimentalDecorators": false,
-    "module": "amd",
-    "target": "es5"
-  }
-}

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -6,10 +6,12 @@ use serde::Serialize;
 #[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
-  /// Start byte index.
-  pub start_offset: usize,
-  /// End byte index.
-  pub end_offset: usize,
+  /// Start character index.
+  #[serde(rename = "startOffset")]
+  pub start_char_offset: usize,
+  /// End character index.
+  #[serde(rename = "endOffset")]
+  pub end_char_offset: usize,
   pub count: i64,
 }
 

@@ -1,10 +1,11 @@
-use crate::shared::*;
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use rsa::pkcs1::UIntRef;
@@ -14,6 +15,8 @@ use spki::der::asn1;
 use spki::der::Decode;
 use spki::der::Encode;
 use spki::AlgorithmIdentifier;
+
+use crate::shared::*;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,9 +59,9 @@ pub enum ExportKeyAlgorithm {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ExportKeyResult {
-  Raw(ZeroCopyBuf),
-  Pkcs8(ZeroCopyBuf),
-  Spki(ZeroCopyBuf),
+  Raw(ToJsBuffer),
+  Pkcs8(ToJsBuffer),
+  Spki(ToJsBuffer),
   JwkSecret {
     k: String,
   },
@@ -90,7 +93,7 @@ pub enum ExportKeyResult {
 #[op]
 pub fn op_crypto_export_key(
   opts: ExportKeyOptions,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, AnyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
@@ -116,7 +119,7 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
 
 fn export_key_rsa(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::Spki => {
@@ -127,7 +130,7 @@ fn export_key_rsa(
         algorithm: spki::AlgorithmIdentifier {
           // rsaEncryption(1)
           oid: const_oid::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
-          // parameters field should not be ommited (None).
+          // parameters field should not be omitted (None).
           // It MUST have ASN.1 type NULL.
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
@@ -155,7 +158,7 @@ fn export_key_rsa(
         algorithm: rsa::pkcs8::AlgorithmIdentifier {
           // rsaEncryption(1)
           oid: rsa::pkcs8::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1"),
-          // parameters field should not be ommited (None).
+          // parameters field should not be omitted (None).
           // It MUST have ASN.1 type NULL as per defined in RFC 3279 Section 2.3.1
           parameters: Some(asn1::AnyRef::from(asn1::Null)),
         },
@@ -209,7 +212,7 @@ fn export_key_rsa(
 
 fn export_key_symmetric(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
   match format {
     ExportKeyFormat::JwkSecret => {
@@ -225,7 +228,7 @@ fn export_key_symmetric(
 
 fn export_key_ec(
   format: ExportKeyFormat,
-  key_data: RawKeyData,
+  key_data: V8RawKeyData,
   algorithm: ExportKeyAlgorithm,
   named_curve: EcNamedCurve,
 ) -> Result<ExportKeyResult, deno_core::anyhow::Error> {
@@ -281,7 +284,7 @@ fn export_key_ec(
 
       let alg_id = match algorithm {
         ExportKeyAlgorithm::Ecdh { .. } => AlgorithmIdentifier {
-          oid: ObjectIdentifier::new_unwrap("1.3.132.1.12"),
+          oid: ObjectIdentifier::new_unwrap("1.2.840.10045.2.1"),
           parameters: alg_id.parameters,
         },
         _ => alg_id,

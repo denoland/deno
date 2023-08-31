@@ -1,5 +1,4 @@
 {
-  "incremental": true,
   "typescript": {
     "deno": true
   },
@@ -10,45 +9,56 @@
     "deno": true
   },
   "exec": {
-    "associations": "**/*.rs",
-    "rustfmt": "rustfmt"
+    "commands": [{
+      "command": "rustfmt --config imports_granularity=item",
+      "exts": ["rs"]
+    }]
   },
-  "includes": [
-    "**/*.{ts,tsx,js,jsx,json,md,toml,rs}"
-  ],
   "excludes": [
     ".cargo_home",
     ".git",
     "cli/bench/testdata/express-router.js",
-    "cli/dts/lib.d.ts",
-    "cli/dts/lib.dom*",
-    "cli/dts/lib.es*",
-    "cli/dts/lib.scripthost.d.ts",
-    "cli/dts/lib.webworker*.d.ts",
-    "cli/dts/typescript.d.ts",
-    "cli/tests/testdata/badly_formatted.json",
-    "cli/tests/testdata/badly_formatted.md",
+    "cli/bench/testdata/npm/",
+    "cli/tsc/dts/lib.d.ts",
+    "cli/tsc/dts/lib.scripthost.d.ts",
+    "cli/tsc/dts/lib.decorators*.d.ts",
+    "cli/tsc/dts/lib.webworker*.d.ts",
+    "cli/tsc/dts/lib.dom*.d.ts",
+    "cli/tsc/dts/lib.es*.d.ts",
+    "cli/tsc/dts/typescript.d.ts",
+    "cli/tests/node_compat/test",
+    "cli/tests/testdata/file_extensions/ts_with_js_extension.js",
+    "cli/tests/testdata/fmt/badly_formatted.json",
+    "cli/tests/testdata/fmt/badly_formatted.md",
     "cli/tests/testdata/byte_order_mark.ts",
     "cli/tests/testdata/encoding",
-    "cli/tests/testdata/fmt/*",
+    "cli/tests/testdata/fmt/",
+    "cli/tests/testdata/lint/glob/",
+    "cli/tests/testdata/test/glob/",
     "cli/tests/testdata/import_assertions/json_with_shebang.json",
-    "cli/tests/testdata/inline_js_source_map*",
-    "cli/tests/testdata/malformed_config/*",
+    "cli/tests/testdata/run/error_syntax_empty_trailing_line.mjs",
+    "cli/tests/testdata/run/inline_js_source_map*",
+    "cli/tests/testdata/malformed_config/",
+    "cli/tests/testdata/npm/registry/",
     "cli/tests/testdata/test/markdown_windows.md",
     "cli/tsc/*typescript.js",
     "gh-pages",
     "target",
+    "test_ffi/tests/test.js",
     "test_util/std",
     "test_util/wpt",
     "third_party",
+    "tools/node_compat/TODO.md",
+    "tools/node_compat/node",
     "tools/wpt/expectation.json",
-    "tools/wpt/manifest.json"
+    "tools/wpt/manifest.json",
+    "ext/websocket/autobahn/reports"
   ],
   "plugins": [
-    "https://plugins.dprint.dev/typescript-0.69.5.wasm",
-    "https://plugins.dprint.dev/json-0.15.3.wasm",
-    "https://plugins.dprint.dev/markdown-0.13.3.wasm",
+    "https://plugins.dprint.dev/typescript-0.86.2.wasm",
+    "https://plugins.dprint.dev/json-0.17.4.wasm",
+    "https://plugins.dprint.dev/markdown-0.16.0.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
-    "https://plugins.dprint.dev/exec-0.2.1.exe-plugin@0a89a91810a212d9413e26d8946d41fbab3e2b5400362d764a1523839c4d78ea"
+    "https://plugins.dprint.dev/exec-0.4.3.json@42343548b8022c99b1d750be6b894fe6b6c7ee25f72ae9f9082226dd2e515072"
   ]
 }

@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   assert,
   assertEquals,
@@ -32,21 +32,42 @@ Deno.test(function urlParsing() {
   );
 });
 
+Deno.test(function emptyUrl() {
+  assertThrows(
+    // @ts-ignore for test
+    () => new URL(),
+    TypeError,
+    "1 argument required, but only 0 present",
+  );
+  assertThrows(
+    // @ts-ignore for test
+    () => URL.canParse(),
+    TypeError,
+    "1 argument required, but only 0 present",
+  );
+});
+
 Deno.test(function urlProtocolParsing() {
   assertEquals(new URL("Aa+-.1://foo").protocol, "aa+-.1:");
   assertEquals(new URL("aA+-.1://foo").protocol, "aa+-.1:");
-  assertThrows(() => new URL("1://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("+://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("-://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL(".://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("_://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("=://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("!://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL(`"://foo`), TypeError, "Invalid URL");
-  assertThrows(() => new URL("$://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("%://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("^://foo"), TypeError, "Invalid URL");
-  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL");
+  assertThrows(() => new URL("1://foo"), TypeError, "Invalid URL: '1://foo'");
+  assertThrows(() => new URL("+://foo"), TypeError, "Invalid URL: '+://foo'");
+  assertThrows(() => new URL("-://foo"), TypeError, "Invalid URL: '-://foo'");
+  assertThrows(() => new URL(".://foo"), TypeError, "Invalid URL: '.://foo'");
+  assertThrows(() => new URL("_://foo"), TypeError, "Invalid URL: '_://foo'");
+  assertThrows(() => new URL("=://foo"), TypeError, "Invalid URL: '=://foo'");
+  assertThrows(() => new URL("!://foo"), TypeError, "Invalid URL: '!://foo'");
+  assertThrows(() => new URL(`"://foo`), TypeError, `Invalid URL: '"://foo'`);
+  assertThrows(() => new URL("$://foo"), TypeError, "Invalid URL: '$://foo'");
+  assertThrows(() => new URL("%://foo"), TypeError, "Invalid URL: '%://foo'");
+  assertThrows(() => new URL("^://foo"), TypeError, "Invalid URL: '^://foo'");
+  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL: '*://foo'");
+  assertThrows(() => new URL("*://foo"), TypeError, "Invalid URL: '*://foo'");
+  assertThrows(
+    () => new URL("!:", "*://foo"),
+    TypeError,
+    "Invalid URL: '!:' with base '*://foo'",
+  );
 });
 
 Deno.test(function urlAuthenticationParsing() {
@@ -493,4 +514,16 @@ Deno.test(function urlSearchParamsIdentityPreserved() {
   u.href = "http://bar.com/?baz=42";
   const sp2 = u.searchParams;
   assertStrictEquals(sp1, sp2);
+});
+
+Deno.test(function urlTakeURLObjectAsParameter() {
+  const url = new URL(
+    new URL(
+      "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+    ),
+  );
+  assertEquals(
+    url.href,
+    "https://foo:bar@baz.qat:8000/qux/quux?foo=bar&baz=12#qat",
+  );
 });

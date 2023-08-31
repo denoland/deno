@@ -1,0 +1,4 @@
+[WILDCARD]file1.js: line 1, col 1 - Ignore directive requires lint rule name(s) (ban-untagged-ignore)
+[WILDCARD]file1.js: line 2, col 15 - Empty block statement (no-empty)
+Found 2 problems
+Checked 1 file

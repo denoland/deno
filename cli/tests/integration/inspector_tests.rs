@@ -1,58 +1,234 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use deno_core::futures;
-use deno_core::futures::prelude::*;
-use deno_core::futures::stream::SplitSink;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
-use deno_runtime::deno_websocket::tokio_tungstenite;
-use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+use fastwebsockets::FragmentCollector;
+use fastwebsockets::Frame;
+use fastwebsockets::WebSocket;
+use http::header::HOST;
+use hyper::header::HeaderValue;
+use hyper::upgrade::Upgraded;
+use hyper::Body;
+use hyper::Request;
+use hyper::Response;
 use std::io::BufRead;
-use std::pin::Pin;
+use std::time::Duration;
 use test_util as util;
+use test_util::TempDir;
 use tokio::net::TcpStream;
+use tokio::time::timeout;
+use url::Url;
+use util::assert_starts_with;
+use util::http_server;
+use util::DenoChild;
 
-macro_rules! assert_starts_with {
-  ($string:expr, $($test:expr),+) => {
-    let string = $string; // This might be a function call or something
-    if !($(string.starts_with($test))||+) {
-      panic!("{:?} does not start with {:?}", string, [$($test),+]);
-    }
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::unsync::spawn(fut);
   }
 }
 
-fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
-  use std::sync::atomic::{AtomicU16, Ordering};
-  static PORT: AtomicU16 = AtomicU16::new(9229);
-  let port = PORT.fetch_add(1, Ordering::Relaxed);
-  format!("{}=127.0.0.1:{}", flag_prefix, port)
+async fn connect_to_ws(uri: Url) -> (WebSocket<Upgraded>, Response<Body>) {
+  let domain = &uri.host().unwrap().to_string();
+  let port = &uri.port().unwrap_or(match uri.scheme() {
+    "wss" | "https" => 443,
+    _ => 80,
+  });
+  let addr = format!("{domain}:{port}");
+
+  let stream = TcpStream::connect(addr).await.unwrap();
+
+  let host = uri.host_str().unwrap();
+
+  let req = Request::builder()
+    .method("GET")
+    .uri(uri.path())
+    .header("Host", host)
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(hyper::header::CONNECTION, "Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+    .await
+    .unwrap()
 }
 
-fn extract_ws_url_from_stderr(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) -> url::Url {
-  let stderr_first_line = skip_check_line(stderr_lines);
-  assert_starts_with!(&stderr_first_line, "Debugger listening on ");
-  let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
-  assert_eq!(v.len(), 1);
-  let ws_url_index = v[0].0;
-  let ws_url = &stderr_first_line[ws_url_index..];
-  url::Url::parse(ws_url).unwrap()
+struct InspectorTester {
+  socket: FragmentCollector<Upgraded>,
+  notification_filter: Box<dyn FnMut(&str) -> bool + 'static>,
+  child: DenoChild,
+  stderr_lines: Box<dyn Iterator<Item = String>>,
+  stdout_lines: Box<dyn Iterator<Item = String>>,
 }
 
-fn skip_check_line(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) -> String {
-  loop {
-    let mut line = stderr_lines.next().unwrap();
-    line = util::strip_ansi_codes(&line).to_string();
+impl Drop for InspectorTester {
+  fn drop(&mut self) {
+    _ = self.child.kill();
+  }
+}
 
-    if line.starts_with("Check") {
-      continue;
+fn ignore_script_parsed(msg: &str) -> bool {
+  !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+}
+
+impl InspectorTester {
+  async fn create<F>(mut child: DenoChild, notification_filter: F) -> Self
+  where
+    F: FnMut(&str) -> bool + 'static,
+  {
+    let stdout = child.stdout.take().unwrap();
+    let stdout_lines =
+      std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+
+    let stderr = child.stderr.take().unwrap();
+    let mut stderr_lines =
+      std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
+
+    let uri = extract_ws_url_from_stderr(&mut stderr_lines);
+
+    let (socket, response) = connect_to_ws(uri).await;
+
+    assert_eq!(response.status(), 101); // Switching protocols.
+
+    Self {
+      socket: FragmentCollector::new(socket),
+      notification_filter: Box::new(notification_filter),
+      child,
+      stderr_lines: Box::new(stderr_lines),
+      stdout_lines: Box::new(stdout_lines),
     }
+  }
 
-    return line;
+  async fn send_many(&mut self, messages: &[serde_json::Value]) {
+    // TODO(bartlomieju): add graceful error handling
+    for msg in messages {
+      let result = self
+        .socket
+        .write_frame(Frame::text(msg.to_string().into_bytes().into()))
+        .await
+        .map_err(|e| anyhow!(e));
+      self.handle_error(result);
+    }
+  }
+
+  async fn send(&mut self, message: serde_json::Value) {
+    self.send_many(&[message]).await;
+  }
+
+  fn handle_error<T>(&mut self, result: Result<T, AnyError>) -> T {
+    match result {
+      Ok(result) => result,
+      Err(err) => {
+        let mut stdout = vec![];
+        for line in self.stdout_lines.by_ref() {
+          stdout.push(line);
+        }
+        let mut stderr = vec![];
+        for line in self.stderr_lines.by_ref() {
+          stderr.push(line);
+        }
+        let stdout = stdout.join("\n");
+        let stderr = stderr.join("\n");
+        self.child.kill().unwrap();
+
+        panic!(
+          "Inspector test failed with error: {err:?}.\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+      }
+    }
+  }
+
+  async fn recv(&mut self) -> String {
+    loop {
+      // In the rare case this locks up, don't wait longer than one minute
+      let result = timeout(Duration::from_secs(60), self.socket.read_frame())
+        .await
+        .expect("recv() timeout")
+        .map_err(|e| anyhow!(e));
+      let message =
+        String::from_utf8(self.handle_error(result).payload.to_vec()).unwrap();
+      if (self.notification_filter)(&message) {
+        return message;
+      }
+    }
+  }
+
+  async fn recv_as_json(&mut self) -> serde_json::Value {
+    let msg = self.recv().await;
+    serde_json::from_str(&msg).unwrap()
+  }
+
+  async fn assert_received_messages(
+    &mut self,
+    responses: &[&str],
+    notifications: &[&str],
+  ) {
+    let expected_messages = responses.len() + notifications.len();
+    let mut responses_idx = 0;
+    let mut notifications_idx = 0;
+
+    for _ in 0..expected_messages {
+      let msg = self.recv().await;
+
+      if msg.starts_with(r#"{"id":"#) {
+        assert!(
+          msg.starts_with(responses[responses_idx]),
+          "Doesn't start with {}, instead received {}",
+          responses[responses_idx],
+          msg
+        );
+        responses_idx += 1;
+      } else {
+        assert!(
+          msg.starts_with(notifications[notifications_idx]),
+          "Doesn't start with {}, instead received {}",
+          notifications[notifications_idx],
+          msg
+        );
+        notifications_idx += 1;
+      }
+    }
+  }
+
+  fn stderr_line(&mut self) -> String {
+    self.stderr_lines.next().unwrap()
+  }
+
+  fn stdout_line(&mut self) -> String {
+    self.stdout_lines.next().unwrap()
+  }
+
+  fn assert_stderr_for_inspect(&mut self) {
+    assert_stderr(
+      &mut self.stderr_lines,
+      &["Visit chrome://inspect to connect to the debugger."],
+    );
+  }
+
+  fn assert_stderr_for_inspect_brk(&mut self) {
+    assert_stderr(
+      &mut self.stderr_lines,
+      &[
+        "Visit chrome://inspect to connect to the debugger.",
+        "Deno is waiting for debugger to connect.",
+      ],
+    );
   }
 }
 
@@ -74,67 +250,38 @@ fn assert_stderr(
   }
 }
 
-fn assert_stderr_for_inspect(
-  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) {
-  assert_stderr(
-    stderr_lines,
-    &["Visit chrome://inspect to connect to the debugger."],
-  );
+fn inspect_flag_with_unique_port(flag_prefix: &str) -> String {
+  use std::sync::atomic::AtomicU16;
+  use std::sync::atomic::Ordering;
+  static PORT: AtomicU16 = AtomicU16::new(9229);
+  let port = PORT.fetch_add(1, Ordering::Relaxed);
+  format!("{flag_prefix}=127.0.0.1:{port}")
 }
 
-fn assert_stderr_for_inspect_brk(
+fn extract_ws_url_from_stderr(
   stderr_lines: &mut impl std::iter::Iterator<Item = String>,
-) {
-  assert_stderr(
-    stderr_lines,
-    &[
-      "Visit chrome://inspect to connect to the debugger.",
-      "Deno is waiting for debugger to connect.",
-    ],
-  );
+) -> url::Url {
+  let stderr_first_line = skip_check_line(stderr_lines);
+  assert_starts_with!(&stderr_first_line, "Debugger listening on ");
+  let v: Vec<_> = stderr_first_line.match_indices("ws:").collect();
+  assert_eq!(v.len(), 1);
+  let ws_url_index = v[0].0;
+  let ws_url = &stderr_first_line[ws_url_index..];
+  url::Url::parse(ws_url).unwrap()
 }
 
-async fn assert_inspector_messages(
-  socket_tx: &mut SplitSink<
-    tokio_tungstenite::WebSocketStream<
-      tokio_tungstenite::MaybeTlsStream<TcpStream>,
-    >,
-    tungstenite::Message,
-  >,
-  messages: &[&str],
-  socket_rx: &mut Pin<Box<dyn Stream<Item = String>>>,
-  responses: &[&str],
-  notifications: &[&str],
-) {
-  for msg in messages {
-    socket_tx.send(msg.to_string().into()).await.unwrap();
-  }
+fn skip_check_line(
+  stderr_lines: &mut impl std::iter::Iterator<Item = String>,
+) -> String {
+  loop {
+    let mut line = stderr_lines.next().unwrap();
+    line = util::strip_ansi_codes(&line).to_string();
 
-  let expected_messages = responses.len() + notifications.len();
-  let mut responses_idx = 0;
-  let mut notifications_idx = 0;
-
-  for _ in 0..expected_messages {
-    let msg = socket_rx.next().await.unwrap();
-
-    if msg.starts_with(r#"{"id":"#) {
-      assert!(
-        msg.starts_with(responses[responses_idx]),
-        "Doesn't start with {}, instead received {}",
-        responses[responses_idx],
-        msg
-      );
-      responses_idx += 1;
-    } else {
-      assert!(
-        msg.starts_with(notifications[notifications_idx]),
-        "Doesn't start with {}, instead received {}",
-        notifications[notifications_idx],
-        msg
-      );
-      notifications_idx += 1;
+    if line.starts_with("Check") || line.starts_with("Download") {
+      continue;
     }
+
+    return line;
   }
 }
 
@@ -154,10 +301,7 @@ async fn inspector_connect() {
     std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
   let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
 
-  // We use tokio_tungstenite as a websocket client because warp (which is
-  // a dependency of Deno) uses it.
-  let (_socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
+  let (_socket, response) = connect_to_ws(ws_url).await;
   assert_eq!("101 Switching Protocols", response.status().to_string());
   child.kill().unwrap();
   child.wait().unwrap();
@@ -166,7 +310,7 @@ async fn inspector_connect() {
 #[tokio::test]
 async fn inspector_break_on_first_line() {
   let script = util::testdata_path().join("inspector/inspector2.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -175,143 +319,108 @@ async fn inspector_break_on_first_line() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  tester.assert_stderr_for_inspect_brk();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines =
-    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
 
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
+  tester
+    .send(json!({
+      "id":4,
+      "method":"Runtime.evaluate",
+      "params":{
+        "expression":"Deno[Deno.internal].core.print(\"hello from the inspector\\n\")",
+        "contextId":1,
+        "includeCommandLineAPI":true,
+        "silent":false,
+        "returnByValue":true
+      }
+    }))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+      &[],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
+  assert_eq!(
+    &tester.stdout_lines.next().unwrap(),
+    "hello from the inspector"
+  );
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
+  tester
+    .send(json!({"id":5,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
-    &[],
-  )
-  .await;
+  assert_eq!(
+    &tester.stdout_lines.next().unwrap(),
+    "hello from the script"
+  );
 
-  assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":5,"method":"Debugger.resume"}"#],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{}}"#],
-    &[],
-  )
-  .await;
-
-  assert_eq!(&stdout_lines.next().unwrap(), "hello from the script");
-
-  child.kill().unwrap();
-  child.wait().unwrap();
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_pause() {
   let script = util::testdata_path().join("inspector/inspector1.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .arg(script)
+    .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  // We use tokio_tungstenite as a websocket client because warp (which is
-  // a dependency of Deno) uses it.
-  let (mut socket, _) = tokio_tungstenite::connect_async(ws_url).await.unwrap();
+  tester
+    .send(json!({"id":6,"method":"Debugger.enable"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":6,"result":{"debuggerId":"#], &[])
+    .await;
 
-  /// Returns the next websocket message as a string ignoring
-  /// Debugger.scriptParsed messages.
-  async fn ws_read_msg(
-    socket: &mut tokio_tungstenite::WebSocketStream<
-      tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-  ) -> String {
-    use deno_core::futures::stream::StreamExt;
-    while let Some(msg) = socket.next().await {
-      let msg = msg.unwrap().to_string();
-      // FIXME(bartlomieju): fails because there's a file loaded
-      // called 150_errors.js
-      // assert!(!msg.contains("error"));
-      if !msg.contains("Debugger.scriptParsed") {
-        return msg;
-      }
-    }
-    unreachable!()
-  }
+  tester
+    .send(json!({"id":31,"method":"Debugger.pause"}))
+    .await;
 
-  socket
-    .send(r#"{"id":6,"method":"Debugger.enable"}"#.into())
-    .await
-    .unwrap();
+  tester
+    .assert_received_messages(&[r#"{"id":31,"result":{}}"#], &[])
+    .await;
 
-  let msg = ws_read_msg(&mut socket).await;
-  println!("response msg 1 {}", msg);
-  assert_starts_with!(msg, r#"{"id":6,"result":{"debuggerId":"#);
-
-  socket
-    .send(r#"{"id":31,"method":"Debugger.pause"}"#.into())
-    .await
-    .unwrap();
-
-  let msg = ws_read_msg(&mut socket).await;
-  println!("response msg 2 {}", msg);
-  assert_eq!(msg, r#"{"id":31,"result":{}}"#);
-
-  child.kill().unwrap();
+  tester.child.kill().unwrap();
 }
 
 #[tokio::test]
@@ -364,7 +473,7 @@ async fn inspector_port_collision() {
 #[tokio::test]
 async fn inspector_does_not_hang() {
   let script = util::testdata_path().join("inspector/inspector3.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .env("NO_COLOR", "1")
@@ -374,102 +483,83 @@ async fn inspector_does_not_hang() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  tester.assert_stderr_for_inspect_brk();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
+      ],
+    )
+    .await;
 
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines =
-    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
 
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#
-    ],
-  )
-  .await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":4,"method":"Debugger.resume"}"#],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{}}"#],
-    &[r#"{"method":"Debugger.resumed","params":{}}"#],
-  )
-  .await;
+  tester
+    .send(json!({"id":4,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Debugger.resumed","params":{}}"#],
+    )
+    .await;
 
   for i in 0..128u32 {
     let request_id = i + 10;
     // Expect the number {i} on stdout.
     let s = i.to_string();
-    assert_eq!(stdout_lines.next().unwrap(), s);
+    assert_eq!(tester.stdout_lines.next().unwrap(), s);
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[],
-      &mut socket_rx,
-      &[],
-      &[
-        r#"{"method":"Runtime.consoleAPICalled","#,
-        r#"{"method":"Debugger.paused","#,
-      ],
-    )
-    .await;
+    tester
+      .assert_received_messages(
+        &[],
+        &[
+          r#"{"method":"Runtime.consoleAPICalled","#,
+          r#"{"method":"Debugger.paused","#,
+        ],
+      )
+      .await;
 
-    assert_inspector_messages(
-      &mut socket_tx,
-      &[&format!(
-        r#"{{"id":{},"method":"Debugger.resume"}}"#,
-        request_id
-      )],
-      &mut socket_rx,
-      &[&format!(r#"{{"id":{},"result":{{}}}}"#, request_id)],
-      &[r#"{"method":"Debugger.resumed","params":{}}"#],
-    )
-    .await;
+    tester
+      .send(json!({"id":request_id,"method":"Debugger.resume"}))
+      .await;
+    tester
+      .assert_received_messages(
+        &[&format!(r#"{{"id":{request_id},"result":{{}}}}"#)],
+        &[r#"{"method":"Debugger.resumed","params":{}}"#],
+      )
+      .await;
   }
 
   // Check that we can gracefully close the websocket connection.
-  socket_tx.close().await.unwrap();
-  socket_rx.for_each(|_| async {}).await;
+  tester
+    .socket
+    .write_frame(Frame::close_raw(vec![].into()))
+    .await
+    .unwrap();
 
-  assert_eq!(&stdout_lines.next().unwrap(), "done");
-  assert!(child.wait().unwrap().success());
+  assert_eq!(&tester.stdout_lines.next().unwrap(), "done");
+  assert!(tester.child.wait().unwrap().success());
 }
 
 #[tokio::test]
@@ -503,8 +593,9 @@ async fn inspector_without_brk_runs_code() {
 
 #[tokio::test]
 async fn inspector_runtime_evaluate_does_not_crash() {
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("repl")
+    .arg("--allow-read")
     .arg(inspect_flag_with_unique_port("--inspect"))
     .stdin(std::process::Stdio::piped())
     .stdout(std::process::Stdio::piped())
@@ -512,91 +603,101 @@ async fn inspector_runtime_evaluate_does_not_crash() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines = std::io::BufReader::new(stderr)
-    .lines()
-    .map(|r| r.unwrap())
-    .filter(|s| s.as_str() != "Debugger session started.");
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  let stdin = tester.child.stdin.take().unwrap();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
-
-  let stdin = child.stdin.take().unwrap();
-
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines = std::io::BufReader::new(stdout)
-    .lines()
-    .map(|r| r.unwrap())
-    .filter(|s| !s.starts_with("Deno "));
-
-  assert_stderr_for_inspect(&mut stderr_lines);
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
+  tester.assert_stderr_for_inspect();
+  assert_starts_with!(&tester.stdout_line(), "Deno");
   assert_eq!(
-    &stdout_lines.next().unwrap(),
-    "exit using ctrl+d or close()"
+    &tester.stdout_line(),
+    "exit using ctrl+d, ctrl+c, or close()"
   );
+  assert_eq!(&tester.stderr_line(), "Debugger session started.");
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":3,"method":"Runtime.compileScript","params":{"expression":"Deno.cwd()","sourceURL":"","persistScript":false,"executionContextId":1}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#], &[]
-  ).await;
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.cwd()","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
-    &[],
-  ).await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":5,"method":"Runtime.evaluate","params":{"expression":"console.error('done');","objectGroup":"console","includeCommandLineAPI":true,"silent":false,"contextId":1,"returnByValue":true,"generatePreview":true,"userGesture":true,"awaitPromise":false,"replMode":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
-    &[r#"{"method":"Runtime.consoleAPICalled"#],
-  ).await;
-
-  assert_eq!(&stderr_lines.next().unwrap(), "done");
-
+  tester
+    .send(json!({
+      "id":3,
+      "method":"Runtime.compileScript",
+      "params":{
+        "expression":"Deno.cwd()",
+        "sourceURL":"",
+        "persistScript":false,
+        "executionContextId":1
+      }
+    }))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":3,"result":{}}"#], &[])
+    .await;
+  tester
+    .send(json!({
+      "id":4,
+      "method":"Runtime.evaluate",
+      "params":{
+        "expression":"Deno.cwd()",
+        "objectGroup":"console",
+        "includeCommandLineAPI":true,
+        "silent":false,
+        "contextId":1,
+        "returnByValue":true,
+        "generatePreview":true,
+        "userGesture":true,
+        "awaitPromise":false,
+        "replMode":true
+      }
+    }))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":4,"result":{"result":{"type":"string","value":""#],
+      &[],
+    )
+    .await;
+  tester
+    .send(json!({
+      "id":5,
+      "method":"Runtime.evaluate",
+      "params":{
+        "expression":"console.error('done');",
+        "objectGroup":"console",
+        "includeCommandLineAPI":true,
+        "silent":false,
+        "contextId":1,
+        "returnByValue":true,
+        "generatePreview":true,
+        "userGesture":true,
+        "awaitPromise":false,
+        "replMode":true
+      }
+    }))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":5,"result":{"result":{"type":"undefined"}}}"#],
+      &[r#"{"method":"Runtime.consoleAPICalled"#],
+    )
+    .await;
+  assert_eq!(&tester.stderr_line(), "done");
   drop(stdin);
-  child.wait().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
@@ -617,14 +718,34 @@ async fn inspector_json() {
   let mut url = ws_url.clone();
   let _ = url.set_scheme("http");
   url.set_path("/json");
-  let resp = reqwest::get(url).await.unwrap();
-  assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
-    serde_json::from_str(&resp.text().await.unwrap()).unwrap();
-  let matching_endpoint = endpoint_list
-    .iter()
-    .find(|e| e["webSocketDebuggerUrl"] == ws_url.as_str());
-  assert!(matching_endpoint.is_some());
+  let client = reqwest::Client::new();
+
+  // Ensure that the webSocketDebuggerUrl matches the host header
+  for (host, expected) in [
+    (None, ws_url.as_str()),
+    (Some("some.random.host"), "ws://some.random.host/"),
+    (Some("some.random.host:1234"), "ws://some.random.host:1234/"),
+    (Some("[::1]:1234"), "ws://[::1]:1234/"),
+  ] {
+    let mut req = reqwest::Request::new(reqwest::Method::GET, url.clone());
+    if let Some(host) = host {
+      req
+        .headers_mut()
+        .insert(HOST, HeaderValue::from_static(host));
+    }
+    let resp = client.execute(req).await.unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let endpoint_list: Vec<deno_core::serde_json::Value> =
+      serde_json::from_str(&resp.text().await.unwrap()).unwrap();
+    let matching_endpoint = endpoint_list.iter().find(|e| {
+      e["webSocketDebuggerUrl"]
+        .as_str()
+        .unwrap()
+        .contains(expected)
+    });
+    assert!(matching_endpoint.is_some());
+  }
+
   child.kill().unwrap();
 }
 
@@ -684,104 +805,87 @@ async fn inspector_connect_non_ws() {
 }
 
 #[tokio::test]
-#[ignore] // https://github.com/denoland/deno/issues/13491
 async fn inspector_break_on_first_line_in_test() {
   let script = util::testdata_path().join("inspector/inspector_test.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("test")
+    .arg("--quiet")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
+    .env("NO_COLOR", "1")
     .stdout(std::process::Stdio::piped())
     .stderr(std::process::Stdio::piped())
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  tester.assert_stderr_for_inspect_brk();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines =
-    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
 
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
+  tester
+    .send(json!({
+      "id":4,
+      "method":"Runtime.evaluate",
+      "params":{
+        "expression":"1 + 1",
+        "contextId":1,
+        "includeCommandLineAPI":true,
+        "silent":false,
+        "returnByValue":true
+      }
+    }))
+    .await;
+  tester.assert_received_messages(
+      &[r#"{"id":4,"result":{"result":{"type":"number","value":2,"description":"2"}}}"#],
+      &[],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
+  tester
+    .send(json!({"id":5,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":5,"result":{}}"#], &[])
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
+  assert_starts_with!(&tester.stdout_line(), "running 1 test from");
+  assert!(&tester.stdout_line().contains("basic test ... ok"));
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":4,"method":"Runtime.evaluate","params":{"expression":"Deno.core.print(\"hello from the inspector\\n\")","contextId":1,"includeCommandLineAPI":true,"silent":false,"returnByValue":true}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
-    &[],
-  )
-  .await;
-
-  assert_eq!(&stdout_lines.next().unwrap(), "hello from the inspector");
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":5,"method":"Debugger.resume"}"#],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{}}"#],
-    &[],
-  )
-  .await;
-
-  assert_starts_with!(&stdout_lines.next().unwrap(), "running 1 test from");
-  assert!(&stdout_lines
-    .next()
-    .unwrap()
-    .contains("test has finished running"));
-
-  child.kill().unwrap();
-  child.wait().unwrap();
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_with_ts_files() {
   let script = util::testdata_path().join("inspector/test.ts");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg("--check")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
@@ -791,123 +895,117 @@ async fn inspector_with_ts_files() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  fn notification_filter(msg: &str) -> bool {
+    (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+      && msg.contains("testdata/inspector"))
+      || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
+  }
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  let mut tester = InspectorTester::create(child, notification_filter).await;
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = (msg.starts_with(r#"{"method":"Debugger.scriptParsed","#)
-        && msg.contains("testdata/inspector"))
-        || !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
+  tester.assert_stderr_for_inspect_brk();
 
-  let stdout = child.stdout.as_mut().unwrap();
-  let mut stdout_lines =
-    std::io::BufReader::new(stdout).lines().map(|r| r.unwrap());
-
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
   // receive messages with sources from this test
-  let script1 = socket_rx.next().await.unwrap();
+  let script1 = tester.recv().await;
   assert!(script1.contains("testdata/inspector/test.ts"));
   let script1_id = {
     let v: serde_json::Value = serde_json::from_str(&script1).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script2 = socket_rx.next().await.unwrap();
+  let script2 = tester.recv().await;
   assert!(script2.contains("testdata/inspector/foo.ts"));
   let script2_id = {
     let v: serde_json::Value = serde_json::from_str(&script2).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
-  let script3 = socket_rx.next().await.unwrap();
+  let script3 = tester.recv().await;
   assert!(script3.contains("testdata/inspector/bar.js"));
   let script3_id = {
     let v: serde_json::Value = serde_json::from_str(&script3).unwrap();
     v["params"]["scriptId"].as_str().unwrap().to_string()
   };
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[],
-    &mut socket_rx,
-    &[r#"{"id":2,"result":{"debuggerId":"#],
-    &[],
-  )
-  .await;
+  tester
+    .assert_received_messages(&[r#"{"id":2,"result":{"debuggerId":"#], &[])
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
+  tester.send_many(
     &[
-      &format!(r#"{{"id":4,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script1_id),
-      &format!(r#"{{"id":5,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script2_id),
-      &format!(r#"{{"id":6,"method":"Debugger.getScriptSource","params":{{"scriptId":"{}"}}}}"#, script3_id),
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
-      r#"{"id":5,"result":{"scriptSource":"class Foo {\n    hello() {\n        return \"hello\";\n    }\n}\nexport function foo() {\n    const f = new Foo();\n    return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
-      r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
-    ],
-    &[],
-  )
-  .await;
+      json!({"id":4,"method":"Debugger.getScriptSource","params":{"scriptId":script1_id.as_str()}}),
+      json!({"id":5,"method":"Debugger.getScriptSource","params":{"scriptId":script2_id.as_str()}}),
+      json!({"id":6,"method":"Debugger.getScriptSource","params":{"scriptId":script3_id.as_str()}}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":4,"result":{"scriptSource":"import { foo } from \"./foo.ts\";\nimport { bar } from \"./bar.js\";\nconsole.log(foo());\nconsole.log(bar());\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":5,"result":{"scriptSource":"class Foo {\n  hello() {\n    return \"hello\";\n  }\n}\nexport function foo() {\n  const f = new Foo();\n  return f.hello();\n}\n//# sourceMappingURL=data:application/json;base64,"#,
+        r#"{"id":6,"result":{"scriptSource":"export function bar() {\n  return \"world\";\n}\n"#,
+      ],
+      &[],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[r#"{"id":7,"method":"Debugger.resume"}"#],
-    &mut socket_rx,
-    &[r#"{"id":7,"result":{}}"#],
-    &[],
-  )
-  .await;
+  tester
+    .send(json!({"id":7,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":7,"result":{}}"#], &[])
+    .await;
 
-  assert_eq!(&stdout_lines.next().unwrap(), "hello");
-  assert_eq!(&stdout_lines.next().unwrap(), "world");
+  assert_eq!(&tester.stdout_line(), "hello");
+  assert_eq!(&tester.stdout_line(), "world");
 
-  child.kill().unwrap();
-  child.wait().unwrap();
+  tester.assert_received_messages(
+      &[],
+      &[
+        r#"{"method":"Debugger.resumed","params":{}}"#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.consoleAPICalled","#,
+        r#"{"method":"Runtime.executionContextDestroyed","params":{"executionContextId":1"#,
+      ],
+    )
+    .await;
+
+  assert_eq!(
+      &tester.stdout_line(),
+      "Program finished. Waiting for inspector to disconnect to exit the process..."
+    );
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_memory() {
   let script = util::testdata_path().join("inspector/memory.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -916,66 +1014,45 @@ async fn inspector_memory() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  tester.assert_stderr_for_inspect_brk();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
-
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
-      r#"{"id":4,"method":"HeapProfiler.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
-
-  socket_tx
-    .send(
-      r#"{"id":5,"method":"Runtime.getHeapUsage", "params": {}}"#
-        .to_string()
-        .into(),
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
     )
-    .await
-    .unwrap();
-  let msg = socket_rx.next().await.unwrap();
-  let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
+    .await;
+
+  tester
+    .send_many(&[
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+      json!({"id":4,"method":"HeapProfiler.enable"}),
+    ])
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":5,"method":"Runtime.getHeapUsage", "params": {}}))
+    .await;
+
+  let json_msg = tester.recv_as_json().await;
   assert_eq!(json_msg["id"].as_i64().unwrap(), 5);
   let result = &json_msg["result"];
   assert!(
@@ -983,15 +1060,23 @@ async fn inspector_memory() {
       <= result["totalSize"].as_i64().unwrap()
   );
 
-  socket_tx.send(
-    r#"{"id":6,"method":"HeapProfiler.takeHeapSnapshot","params": {"reportProgress": true, "treatGlobalObjectsAsRoots": true, "captureNumberValue": false}}"#
-      .to_string().into()
-  ).await.unwrap();
+  tester
+    .send(json!({
+      "id":6,
+      "method":"HeapProfiler.takeHeapSnapshot",
+      "params": {
+        "reportProgress": true,
+        "treatGlobalObjectsAsRoots": true,
+        "captureNumberValue": false
+      }
+    }))
+    .await;
 
   let mut progress_report_completed = false;
   loop {
-    let msg = socket_rx.next().await.unwrap();
+    let msg = tester.recv().await;
 
+    // TODO(bartlomieju): can be abstracted
     if !progress_report_completed
       && msg.starts_with(
         r#"{"method":"HeapProfiler.reportHeapSnapshotProgress","params""#,
@@ -1005,8 +1090,8 @@ async fn inspector_memory() {
     }
 
     if msg.starts_with(r#"{"method":"HeapProfiler.reportHeapSnapshotProgress","params":{"done":"#,) {
-      continue;
-    }
+        continue;
+      }
 
     if msg.starts_with(r#"{"id":6,"result":{}}"#) {
       assert!(progress_report_completed);
@@ -1014,14 +1099,14 @@ async fn inspector_memory() {
     }
   }
 
-  child.kill().unwrap();
-  child.wait().unwrap();
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
 }
 
 #[tokio::test]
 async fn inspector_profile() {
   let script = util::testdata_path().join("inspector/memory.js");
-  let mut child = util::deno_cmd()
+  let child = util::deno_cmd()
     .arg("run")
     .arg(inspect_flag_with_unique_port("--inspect-brk"))
     .arg(script)
@@ -1030,78 +1115,59 @@ async fn inspector_profile() {
     .spawn()
     .unwrap();
 
-  let stderr = child.stderr.as_mut().unwrap();
-  let mut stderr_lines =
-    std::io::BufReader::new(stderr).lines().map(|r| r.unwrap());
-  let ws_url = extract_ws_url_from_stderr(&mut stderr_lines);
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
 
-  let (socket, response) =
-    tokio_tungstenite::connect_async(ws_url).await.unwrap();
-  assert_eq!(response.status(), 101); // Switching protocols.
+  tester.assert_stderr_for_inspect_brk();
 
-  let (mut socket_tx, socket_rx) = socket.split();
-  let mut socket_rx = socket_rx
-    .map(|msg| msg.unwrap().to_string())
-    .filter(|msg| {
-      let pass = !msg.starts_with(r#"{"method":"Debugger.scriptParsed","#);
-      futures::future::ready(pass)
-    })
-    .boxed_local();
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
 
-  assert_stderr_for_inspect_brk(&mut stderr_lines);
+  tester
+    .send_many(&[
+      json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}),
+      json!({"id":4,"method":"Profiler.enable"}),
+    ])
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
 
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":1,"method":"Runtime.enable"}"#,
-      r#"{"id":2,"method":"Debugger.enable"}"#,
-
-    ],
-    &mut socket_rx,
-    &[
-      r#"{"id":1,"result":{}}"#,
-      r#"{"id":2,"result":{"debuggerId":"#,
-    ],
-    &[
-      r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
-    ],
-  )
-  .await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":3,"method":"Runtime.runIfWaitingForDebugger"}"#,
-      r#"{"id":4,"method":"Profiler.enable"}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":3,"result":{}}"#, r#"{"id":4,"result":{}}"#],
-    &[r#"{"method":"Debugger.paused","#],
-  )
-  .await;
-
-  assert_inspector_messages(
-    &mut socket_tx,
-    &[
-      r#"{"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}"#,
-      r#"{"id":6,"method":"Profiler.start","params":{}}"#,
-    ],
-    &mut socket_rx,
-    &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
-    &[],
-  )
-  .await;
+  tester.send_many(
+      &[
+        json!({"id":5,"method":"Profiler.setSamplingInterval","params":{"interval": 100}}),
+        json!({"id":6,"method":"Profiler.start","params":{}}),
+      ],
+    ).await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":5,"result":{}}"#, r#"{"id":6,"result":{}}"#],
+      &[],
+    )
+    .await;
 
   tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-  socket_tx
-    .send(
-      r#"{"id":7,"method":"Profiler.stop", "params": {}}"#.to_string().into(),
-    )
-    .await
-    .unwrap();
-  let msg = socket_rx.next().await.unwrap();
-  let json_msg: serde_json::Value = serde_json::from_str(&msg).unwrap();
+  tester
+    .send(json!({"id":7,"method":"Profiler.stop", "params": {}}))
+    .await;
+  let json_msg = tester.recv_as_json().await;
   assert_eq!(json_msg["id"].as_i64().unwrap(), 7);
   let result = &json_msg["result"];
   let profile = &result["profile"];
@@ -1112,6 +1178,268 @@ async fn inspector_profile() {
   profile["samples"].as_array().unwrap();
   profile["nodes"].as_array().unwrap();
 
-  child.kill().unwrap();
-  child.wait().unwrap();
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+// TODO(bartlomieju): this test became flaky on CI after wiring up "ext/node"
+// compatibility layer. Can't reproduce this problem locally for either Mac M1
+// or Linux. Ignoring for now to unblock further integration of "ext/node".
+#[ignore]
+#[tokio::test]
+async fn inspector_break_on_first_line_npm_esm() {
+  let _server = http_server();
+
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("--quiet")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg("npm:@denotest/bin/cli-esm")
+    .arg("this")
+    .arg("is")
+    .arg("a")
+    .arg("test")
+    .envs(util::env_vars_for_npm_tests())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":4,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .await;
+
+  assert_eq!(&tester.stdout_line(), "this");
+  assert_eq!(&tester.stdout_line(), "is");
+  assert_eq!(&tester.stdout_line(), "a");
+  assert_eq!(&tester.stdout_line(), "test");
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+// TODO(bartlomieju): this test became flaky on CI after wiring up "ext/node"
+// compatibility layer. Can't reproduce this problem locally for either Mac M1
+// or Linux. Ignoring for now to unblock further integration of "ext/node".
+#[ignore]
+#[tokio::test]
+async fn inspector_break_on_first_line_npm_cjs() {
+  let _server = http_server();
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("--quiet")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg("npm:@denotest/bin/cli-cjs")
+    .arg("this")
+    .arg("is")
+    .arg("a")
+    .arg("test")
+    .envs(util::env_vars_for_npm_tests())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":4,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .await;
+
+  assert_eq!(&tester.stdout_line(), "this");
+  assert_eq!(&tester.stdout_line(), "is");
+  assert_eq!(&tester.stdout_line(), "a");
+  assert_eq!(&tester.stdout_line(), "test");
+
+  tester.child.kill().unwrap();
+  tester.child.wait().unwrap();
+}
+
+// TODO(bartlomieju): this test became flaky on CI after wiring up "ext/node"
+// compatibility layer. Can't reproduce this problem locally for either Mac M1
+// or Linux. Ignoring for now to unblock further integration of "ext/node".
+#[ignore]
+#[tokio::test]
+async fn inspector_error_with_npm_import() {
+  let script = util::testdata_path().join("inspector/error_with_npm_import.js");
+  let _server = http_server();
+
+  let child = util::deno_cmd()
+    .arg("run")
+    .arg("--quiet")
+    .arg("-A")
+    .arg(inspect_flag_with_unique_port("--inspect-brk"))
+    .arg(script)
+    .envs(util::env_vars_for_npm_tests())
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
+
+  tester.assert_stderr_for_inspect_brk();
+
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(
+      &[r#"{"id":3,"result":{}}"#],
+      &[r#"{"method":"Debugger.paused","#],
+    )
+    .await;
+
+  tester
+    .send(json!({"id":4,"method":"Debugger.resume"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":4,"result":{}}"#], &[])
+    .await;
+
+  // TODO(bartlomieju): this is a partial fix, we should assert that
+  // "Runtime.exceptionThrown" notification was sent, but a bindings for this
+  // notification is not yet there
+  assert_eq!(&tester.stderr_line(), "Debugger session started.");
+  assert_eq!(&tester.stderr_line(), "error: Uncaught Error: boom!");
+
+  assert_eq!(tester.child.wait().unwrap().code(), Some(1));
+}
+
+#[tokio::test]
+async fn inspector_wait() {
+  let script = util::testdata_path().join("inspector/inspect_wait.js");
+  let temp_dir = TempDir::new();
+
+  let child = util::deno_cmd()
+    .current_dir(temp_dir.path())
+    .arg("run")
+    .arg("--quiet")
+    .arg("-A")
+    .arg(inspect_flag_with_unique_port("--inspect-wait"))
+    .arg(script)
+    .stdout(std::process::Stdio::piped())
+    .stderr(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+
+  tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+  assert!(!temp_dir.path().join("hello.txt").exists());
+
+  let mut tester = InspectorTester::create(child, ignore_script_parsed).await;
+
+  tester.assert_stderr_for_inspect_brk();
+  tester
+    .send_many(&[
+      json!({"id":1,"method":"Runtime.enable"}),
+      json!({"id":2,"method":"Debugger.enable"}),
+    ])
+    .await;
+  tester.assert_received_messages(
+      &[
+        r#"{"id":1,"result":{}}"#,
+        r#"{"id":2,"result":{"debuggerId":"#,
+      ],
+      &[
+        r#"{"method":"Runtime.executionContextCreated","params":{"context":{"id":1,"#,
+      ],
+    )
+    .await;
+  // TODO(bartlomieju): ideally this shouldn't be needed, but currently there's
+  // no way to express that in inspector code. Most clients always send this
+  // message anyway.
+  tester
+    .send(json!({"id":3,"method":"Runtime.runIfWaitingForDebugger"}))
+    .await;
+  tester
+    .assert_received_messages(&[r#"{"id":3,"result":{}}"#], &[])
+    .await;
+  assert_eq!(&tester.stderr_line(), "Debugger session started.");
+  tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+  assert_eq!(&tester.stderr_line(), "did run");
+  assert!(temp_dir.path().join("hello.txt").exists());
+  tester.child.kill().unwrap();
 }

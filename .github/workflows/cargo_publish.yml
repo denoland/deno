@@ -20,22 +20,24 @@ jobs:
           git config --global fetch.parallel 32
 
       - name: Clone repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           token: ${{ secrets.DENOBOT_PAT }}
           submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dsherret/rust-toolchain-file@v1
 
       - name: Install deno
         uses: denoland/setup-deno@v1
         with:
-          deno-version: v1.x
+          # use a recent version instead of the latest version in case
+          # the latest version ever has issues that breaks publishing
+          deno-version: v1.31.3
 
       - name: Publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: ./tools/release/03_publish_crates.ts --real
+        run: ./tools/release/03_publish_crates.ts
 
       - name: Create release tag and check forward commit to main
         env:

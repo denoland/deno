@@ -1,8 +1,8 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // Contains types that can be used to validate and check `99_main_compiler.js`
 
-import * as _ts from "../dts/typescript";
+import * as _ts from "./dts/typescript.d.ts";
 
 declare global {
   namespace ts {
@@ -10,8 +10,10 @@ declare global {
     var libMap: Map<string, string>;
     var base64encode: (host: ts.CompilerHost, input: string) => string;
     var normalizePath: (path: string) => string;
+
     interface SourceFile {
       version?: string;
+      scriptSnapShot?: _ts.IScriptSnapshot;
     }
 
     interface CompilerHost {
@@ -24,9 +26,14 @@ declare global {
     }
 
     var performance: Performance;
+
+    function setLocalizedDiagnosticMessages(
+      messages: Record<string, string>,
+    ): void;
   }
 
   namespace ts {
+    // @ts-ignore allow using an export = here
     export = _ts;
   }
 
@@ -38,9 +45,10 @@ declare global {
   interface DenoCore {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
-    opSync<T>(name: string, params: T): any;
-    ops(): void;
-    print(msg: string, stderr: bool): void;
+    ops: Record<string, (...args: unknown[]) => any>;
+    // deno-lint-ignore no-explicit-any
+    asyncOps: Record<string, (...args: unknown[]) => any>;
+    print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
       Ctor: typeof Error,
@@ -50,11 +58,13 @@ declare global {
   }
 
   type LanguageServerRequest =
+    | Restart
     | ConfigureRequest
     | FindRenameLocationsRequest
     | GetAssets
     | GetApplicableRefactors
     | GetEditsForRefactor
+    | GetEditsForFileRename
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionDetails
@@ -68,14 +78,15 @@ declare global {
     | GetNavigationTree
     | GetOutliningSpans
     | GetQuickInfoRequest
-    | GetReferencesRequest
+    | FindReferencesRequest
     | GetSignatureHelpItemsRequest
     | GetSmartSelectionRange
     | GetSupportedCodeFixes
     | GetTypeDefinitionRequest
     | PrepareCallHierarchy
     | ProvideCallHierarchyIncomingCalls
-    | ProvideCallHierarchyOutgoingCalls;
+    | ProvideCallHierarchyOutgoingCalls
+    | ProvideInlayHints;
 
   interface BaseLanguageServerRequest {
     id: number;
@@ -111,9 +122,18 @@ declare global {
   interface GetEditsForRefactor extends BaseLanguageServerRequest {
     method: "getEditsForRefactor";
     specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
+  }
+
+  interface GetEditsForFileRename extends BaseLanguageServerRequest {
+    method: "getEditsForFileRename";
+    old_specifier: string;
+    new_specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences?: ts.UserPreferences;
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {
@@ -122,6 +142,7 @@ declare global {
     startPosition: number;
     endPosition: number;
     errorCodes: string[];
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
@@ -129,6 +150,7 @@ declare global {
     specifier: string;
     // deno-lint-ignore ban-types
     fixId: {};
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCompletionDetails extends BaseLanguageServerRequest {
@@ -137,8 +159,10 @@ declare global {
       specifier: string;
       position: number;
       name: string;
+      formatCodeSettings: ts.FormatCodeSettings;
       source?: string;
-      data?: unknown;
+      preferences?: ts.UserPreferences;
+      data?: ts.CompletionEntryData;
     };
   }
 
@@ -147,6 +171,7 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.GetCompletionsAtPositionOptions;
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {
@@ -203,8 +228,8 @@ declare global {
     position: number;
   }
 
-  interface GetReferencesRequest extends BaseLanguageServerRequest {
-    method: "getReferences";
+  interface FindReferencesRequest extends BaseLanguageServerRequest {
+    method: "findReferences";
     specifier: string;
     position: number;
   }
@@ -250,5 +275,16 @@ declare global {
     method: "provideCallHierarchyOutgoingCalls";
     specifier: string;
     position: number;
+  }
+
+  interface ProvideInlayHints extends BaseLanguageServerRequest {
+    method: "provideInlayHints";
+    specifier: string;
+    span: ts.TextSpan;
+    preferences?: ts.UserPreferences;
+  }
+
+  interface Restart extends BaseLanguageServerRequest {
+    method: "restart";
   }
 }

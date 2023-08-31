@@ -1,5 +1,5 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
-import { assert, assertEquals, assertStringIncludes } from "./test_util.ts";
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { assertEquals, assertStringIncludes } from "./test_util.ts";
 
 Deno.test(function eventInitializedWithType() {
   const type = "click";
@@ -80,19 +80,6 @@ Deno.test(function eventInitializedWithNonStringType() {
   assertEquals(event.cancelable, false);
 });
 
-// ref https://github.com/web-platform-tests/wpt/blob/master/dom/events/Event-isTrusted.any.js
-Deno.test(function eventIsTrusted() {
-  const desc1 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
-  assert(desc1);
-  assertEquals(typeof desc1.get, "function");
-
-  const desc2 = Object.getOwnPropertyDescriptor(new Event("x"), "isTrusted");
-  assert(desc2);
-  assertEquals(typeof desc2!.get, "function");
-
-  assertEquals(desc1!.get, desc2!.get);
-});
-
 Deno.test(function eventInspectOutput() {
   // deno-lint-ignore no-explicit-any
   const cases: Array<[any, (event: any) => string]> = [
@@ -104,7 +91,7 @@ Deno.test(function eventInspectOutput() {
     [
       new ErrorEvent("error"),
       (event: Event) =>
-        `ErrorEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  srcElement: null,\n  target: null,\n  returnValue: true,\n  timeStamp: ${event.timeStamp},\n  type: "error",\n  message: "",\n  filename: "",\n  lineno: 0,\n  colno: 0,\n  error: null\n}`,
+        `ErrorEvent {\n  bubbles: false,\n  cancelable: false,\n  composed: false,\n  currentTarget: null,\n  defaultPrevented: false,\n  eventPhase: 0,\n  srcElement: null,\n  target: null,\n  returnValue: true,\n  timeStamp: ${event.timeStamp},\n  type: "error",\n  message: "",\n  filename: "",\n  lineno: 0,\n  colno: 0,\n  error: undefined\n}`,
     ],
     [
       new CloseEvent("close"),

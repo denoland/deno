@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import {
   dirname,
   fromFileUrl,
@@ -6,20 +6,27 @@ import {
   resolve,
   toFileUrl,
 } from "../test_util/std/path/mod.ts";
+import { wait } from "https://deno.land/x/wait@0.1.13/mod.ts";
 export { dirname, fromFileUrl, join, resolve, toFileUrl };
 export { existsSync, walk } from "../test_util/std/fs/mod.ts";
-export { TextLineStream } from "../test_util/std/streams/delimiter.ts";
+export { TextLineStream } from "../test_util/std/streams/text_line_stream.ts";
 export { delay } from "../test_util/std/async/delay.ts";
+
+// [toolName] --version output
+const versions = {
+  "dprint": "dprint 0.40.0",
+  "dlint": "dlint 0.47.0",
+};
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
 
 async function getFilesFromGit(baseDir, args) {
-  const { status, stdout } = await Deno.spawn("git", {
+  const { success, stdout } = await new Deno.Command("git", {
     stderr: "inherit",
     args,
-  });
+  }).output();
   const output = new TextDecoder().decode(stdout);
-  if (!status.success) {
+  if (!success) {
     throw new Error("gitLsFiles failed");
   }
 
@@ -100,14 +107,82 @@ export function buildPath() {
   return join(ROOT_PATH, "target", buildMode());
 }
 
-export function getPrebuiltToolPath(toolName) {
-  const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const platformDirName = {
+  "windows": "win",
+  "darwin": "mac",
+  "linux": "linux64",
+}[Deno.build.os];
 
-  const platformDirName = {
-    "windows": "win",
-    "darwin": "mac",
-    "linux": "linux64",
-  }[Deno.build.os];
-  const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
-  return join(PREBUILT_PATH, platformDirName, toolName + executableSuffix);
+const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
+
+export async function getPrebuilt(toolName) {
+  const toolPath = getPrebuiltToolPath(toolName);
+  try {
+    await Deno.stat(toolPath);
+    const versionOk = await verifyVersion(toolName);
+    if (!versionOk) {
+      throw new Error("Version mismatch");
+    }
+  } catch {
+    await downloadPrebuilt(toolName);
+  }
+
+  return toolPath;
+}
+
+const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
+const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
+
+export function getPrebuiltToolPath(toolName) {
+  return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
+}
+
+const downloadUrl =
+  `https://raw.githubusercontent.com/denoland/deno_third_party/master/prebuilt/${platformDirName}`;
+
+export async function downloadPrebuilt(toolName) {
+  const spinner = wait("Downloading prebuilt tool: " + toolName).start();
+  const toolPath = getPrebuiltToolPath(toolName);
+
+  try {
+    await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
+
+    const url = `${downloadUrl}/${toolName}${executableSuffix}`;
+
+    const resp = await fetch(url);
+    const file = await Deno.open(toolPath, {
+      create: true,
+      write: true,
+      mode: 0o755,
+    });
+
+    await resp.body.pipeTo(file.writable);
+  } catch (e) {
+    spinner.fail();
+    throw e;
+  }
+
+  spinner.succeed();
+}
+
+export async function verifyVersion(toolName) {
+  const requiredVersion = versions[toolName];
+  if (!requiredVersion) {
+    return true;
+  }
+
+  try {
+    const toolPath = getPrebuiltToolPath(toolName);
+    const cmd = new Deno.Command(toolPath, {
+      args: ["--version"],
+      stdout: "piped",
+      stderr: "inherit",
+    });
+    const output = await cmd.output();
+    const version = new TextDecoder().decode(output.stdout).trim();
+    return version == requiredVersion;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
 }

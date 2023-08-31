@@ -1,5 +1,5 @@
 const worker = new Worker(
-  new URL("async_error.ts", import.meta.url).href,
+  import.meta.resolve("./async_error.ts"),
   { type: "module", name: "foo" },
 );
 setTimeout(() => worker.terminate(), 30000);

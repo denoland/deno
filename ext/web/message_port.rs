@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -6,10 +8,13 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 
-use deno_core::ZeroCopyBuf;
-use deno_core::{CancelFuture, Resource};
-use deno_core::{CancelHandle, OpState};
-use deno_core::{RcRef, ResourceId};
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::DetachedBuffer;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::sync::mpsc::unbounded_channel;
@@ -21,7 +26,7 @@ enum Transferable {
   ArrayBuffer(u32),
 }
 
-type MessagePortMessage = (Vec<u8>, Vec<Transferable>);
+type MessagePortMessage = (DetachedBuffer, Vec<Transferable>);
 
 pub struct MessagePort {
   rx: RefCell<UnboundedReceiver<MessagePortMessage>>,
@@ -40,7 +45,7 @@ impl MessagePort {
     // Swallow the failed to send error. It means the channel was disentangled,
     // but not cleaned up.
     if let Some(tx) = &*self.tx.borrow() {
-      tx.send((data.data.to_vec(), transferables)).ok();
+      tx.send((data.data, transferables)).ok();
     }
 
     Ok(())
@@ -59,7 +64,7 @@ impl MessagePort {
       let js_transferables =
         serialize_transferables(&mut state.borrow_mut(), transferables);
       return Ok(Some(JsMessageData {
-        data: ZeroCopyBuf::from(data),
+        data,
         transferables: js_transferables,
       }));
     }
@@ -182,7 +187,7 @@ fn serialize_transferables(
 
 #[derive(Deserialize, Serialize)]
 pub struct JsMessageData {
-  data: ZeroCopyBuf,
+  data: DetachedBuffer,
   transferables: Vec<JsTransferable>,
 }
 

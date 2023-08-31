@@ -1,0 +1,10 @@
+{
+  "name": "@denotest/types-exports-import-types",
+  "version": "1.0.0",
+  "exports": {
+    "node": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.mjs"
+    }
+  }
+}

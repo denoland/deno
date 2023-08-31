@@ -1,5 +1,6 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::unsync::spawn;
 use tokio::time::sleep;
 use tokio::time::Duration;
 
@@ -7,7 +8,7 @@ use tokio::time::Duration;
 /// provided process id. Once that process no longer exists
 /// it will terminate the current process.
 pub fn start(parent_process_id: u32) {
-  tokio::task::spawn(async move {
+  spawn(async move {
     loop {
       sleep(Duration::from_secs(30)).await;
 
@@ -39,6 +40,7 @@ fn is_process_active(process_id: u32) -> bool {
   use winapi::um::synchapi::WaitForSingleObject;
   use winapi::um::winnt::SYNCHRONIZE;
 
+  // SAFETY: winapi calls
   unsafe {
     let process = OpenProcess(SYNCHRONIZE, FALSE, process_id as DWORD);
     let result = if process == NULL {

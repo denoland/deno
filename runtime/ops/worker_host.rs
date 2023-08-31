@@ -1,9 +1,9 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::ops::TestingFeaturesEnabled;
 use crate::permissions::create_child_permissions;
 use crate::permissions::ChildPermissionsArg;
-use crate::permissions::Permissions;
+use crate::permissions::PermissionsContainer;
 use crate::web_worker::run_web_worker;
 use crate::web_worker::SendableWebWorkerHandle;
 use crate::web_worker::WebWorker;
@@ -13,13 +13,10 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
-
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use deno_core::Extension;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_web::JsMessageData;
@@ -32,8 +29,8 @@ use std::sync::Arc;
 pub struct CreateWebWorkerArgs {
   pub name: String,
   pub worker_id: WorkerId,
-  pub parent_permissions: Permissions,
-  pub permissions: Permissions,
+  pub parent_permissions: PermissionsContainer,
+  pub permissions: PermissionsContainer,
   pub main_module: ModuleSpecifier,
   pub worker_type: WebWorkerType,
 }
@@ -42,26 +39,15 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-pub type PreloadModuleCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
-  + Sync
-  + Send;
-
 /// A holder for callback that is used to create a new
 /// WebWorker. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
 /// value if type aliases have the same underlying type
 #[derive(Clone)]
-pub struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
+struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Clone)]
-pub struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
-
-/// A holder for callback that can used to preload some modules into a WebWorker
-/// before actual worker code is executed. It's a struct instead of a type
-/// because `GothamState` used in `OpState` overrides
-/// value if type aliases have the same underlying type
-#[derive(Clone)]
-pub struct PreloadModuleCbHolder(Arc<PreloadModuleCb>);
+struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
@@ -90,37 +76,31 @@ impl Drop for WorkerThread {
 
 pub type WorkersTable = HashMap<WorkerId, WorkerThread>;
 
-pub fn init(
-  create_web_worker_cb: Arc<CreateWebWorkerCb>,
-  preload_module_cb: Arc<PreloadModuleCb>,
-  format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-) -> Extension {
-  Extension::builder()
-    .state(move |state| {
-      state.put::<WorkersTable>(WorkersTable::default());
-      state.put::<WorkerId>(WorkerId::default());
+deno_core::extension!(
+  deno_worker_host,
+  ops = [
+    op_create_worker,
+    op_host_terminate_worker,
+    op_host_post_message,
+    op_host_recv_ctrl,
+    op_host_recv_message,
+  ],
+  options = {
+    create_web_worker_cb: Arc<CreateWebWorkerCb>,
+    format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
+  },
+  state = |state, options| {
+    state.put::<WorkersTable>(WorkersTable::default());
+    state.put::<WorkerId>(WorkerId::default());
 
-      let create_web_worker_cb_holder =
-        CreateWebWorkerCbHolder(create_web_worker_cb.clone());
-      state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
-      let preload_module_cb_holder =
-        PreloadModuleCbHolder(preload_module_cb.clone());
-      state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
-      let format_js_error_fn_holder =
-        FormatJsErrorFnHolder(format_js_error_fn.clone());
-      state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
-
-      Ok(())
-    })
-    .ops(vec![
-      op_create_worker::decl(),
-      op_host_terminate_worker::decl(),
-      op_host_post_message::decl(),
-      op_host_recv_ctrl::decl(),
-      op_host_recv_message::decl(),
-    ])
-    .build()
-}
+    let create_web_worker_cb_holder =
+      CreateWebWorkerCbHolder(options.create_web_worker_cb);
+    state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
+    let format_js_error_fn_holder =
+      FormatJsErrorFnHolder(options.format_js_error_fn);
+    state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
+  },
+);
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -161,10 +141,13 @@ fn op_create_worker(
   if args.permissions.is_some() {
     super::check_unstable(state, "Worker.deno.permissions");
   }
-  let parent_permissions = state.borrow_mut::<Permissions>();
+  let parent_permissions = state.borrow_mut::<PermissionsContainer>();
   let worker_permissions = if let Some(child_permissions_arg) = args.permissions
   {
-    create_child_permissions(parent_permissions, child_permissions_arg)?
+    let mut parent_permissions = parent_permissions.0.lock();
+    let perms =
+      create_child_permissions(&mut parent_permissions, child_permissions_arg)?;
+    PermissionsContainer::new(perms)
   } else {
     parent_permissions.clone()
   };
@@ -172,22 +155,19 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let preload_module_cb = state.take::<PreloadModuleCbHolder>();
-  state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
   let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
   state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
 
   let module_specifier = deno_core::resolve_url(&specifier)?;
-  let worker_name = args_name.unwrap_or_else(|| "".to_string());
+  let worker_name = args_name.unwrap_or_default();
 
   let (handle_sender, handle_receiver) = std::sync::mpsc::sync_channel::<
     Result<SendableWebWorkerHandle, AnyError>,
   >(1);
 
   // Setup new thread
-  let thread_builder =
-    std::thread::Builder::new().name(format!("{}", worker_id));
+  let thread_builder = std::thread::Builder::new().name(format!("{worker_id}"));
 
   // Spawn it
   thread_builder.spawn(move || {
@@ -218,7 +198,6 @@ fn op_create_worker(
       worker,
       module_specifier,
       maybe_source_code,
-      preload_module_cb.0,
       format_js_error_fn.0,
     )
   })?;

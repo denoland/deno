@@ -1,18 +1,20 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 [package]
 name = "deno"
-version = "1.23.1"
-authors = ["the Deno authors"]
+version = "1.36.3"
+authors.workspace = true
 default-run = "deno"
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/denoland/deno"
+edition.workspace = true
+exclude = ["tests/testdata/npm/registry/*"]
+license.workspace = true
+repository.workspace = true
 description = "Provides the deno executable"
 
 [[bin]]
 name = "deno"
 path = "main.rs"
+doc = false
 
 [[bench]]
 name = "deno_bench"
@@ -24,94 +26,120 @@ name = "lsp_bench_standalone"
 harness = false
 path = "./bench/lsp_bench_standalone.rs"
 
+[features]
+# A dev feature to disable creations and loading of snapshots in favor of
+# loading JS sources at runtime.
+__runtime_js_sources = ["deno_runtime/__runtime_js_sources"]
+
 [build-dependencies]
-deno_runtime = { version = "0.66.0", path = "../runtime" }
-regex = "=1.5.6"
-serde = { version = "=1.0.136", features = ["derive"] }
-zstd = '=0.11.1'
+deno_runtime = { workspace = true, features = ["exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+lazy-regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zstd.workspace = true
+glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
-winapi = "=0.3.9"
-winres = "=0.1.12"
+winapi.workspace = true
+winres.workspace = true
 
 [dependencies]
-deno_ast = { version = "0.16.0", features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "transpiling", "typescript", "view", "visit"] }
-deno_core = { version = "0.140.0", path = "../core" }
-deno_doc = "0.36.0"
-deno_emit = "0.3.0"
-deno_graph = "0.28.0"
-deno_lint = { version = "0.31.0", features = ["docs"] }
-deno_runtime = { version = "0.66.0", path = "../runtime" }
-deno_snapshots = { version = "0.0.0", path = "../snapshots" }
-deno_task_shell = "0.4.0"
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_cache_dir = "=0.5.2"
+deno_config = "=0.2.1"
+deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
+deno_doc = "=0.65.0"
+deno_emit = "=0.26.0"
+deno_graph = "=0.52.0"
+deno_lint = { version = "=0.50.2", features = ["docs"] }
+deno_lockfile.workspace = true
+deno_npm.workspace = true
+deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
+deno_semver.workspace = true
+deno_task_shell = "=0.13.2"
+eszip = "=0.50.1"
+napi_sym.workspace = true
 
-atty = "=0.2.14"
-base64 = "=0.13.0"
-cache_control = "=0.2.0"
-chrono = "=0.4.19"
-clap = "=3.1.12"
-clap_complete = "=3.1.2"
-clap_complete_fig = "=3.1.5"
-data-encoding = "=2.3.2"
-data-url = "=0.1.1"
-dissimilar = "=1.0.3"
-dprint-plugin-json = "=0.15.3"
-dprint-plugin-markdown = "=0.13.3"
-dprint-plugin-typescript = "=0.69.5"
-encoding_rs = "=0.8.31"
-env_logger = "=0.9.0"
-eszip = "=0.21.0"
-fancy-regex = "=0.9.0"
-http = "=0.2.6"
-import_map = "=0.11.0"
-indexmap = "1.8.1"
-jsonc-parser = { version = "=0.19.0", features = ["serde"] }
-libc = "=0.2.126"
-log = { version = "=0.4.17", features = ["serde"] }
-mitata = '=0.0.7'
-node_resolver = "=0.1.1"
-notify = "=5.0.0-pre.15"
-once_cell = "=1.12.0"
-os_pipe = "=1.0.1"
-percent-encoding = "=2.1.0"
-pin-project = "=1.0.10"
-rand = { version = "=0.8.5", features = ["small_rng"] }
-regex = "=1.5.6"
-ring = "=0.16.20"
-rustyline = { version = "=9.1.2", default-features = false }
-rustyline-derive = "=0.6.0"
-secure_tempfile = { version = "=3.3.0", package = "tempfile" } # different name to discourage use in tests
-semver-parser = "=0.10.2"
-serde = { version = "=1.0.136", features = ["derive"] }
-serde_repr = "=0.1.8"
+async-trait.workspace = true
+base32 = "=0.4.0"
+base64.workspace = true
+bincode = "=1.3.3"
+cache_control.workspace = true
+chrono.workspace = true
+clap = { version = "=4.3.3", features = ["string"] }
+clap_complete = "=4.3.1"
+clap_complete_fig = "=4.3.1"
+console_static_text.workspace = true
+data-url.workspace = true
+dissimilar = "=1.0.4"
+dprint-plugin-json = "=0.17.4"
+dprint-plugin-markdown = "=0.16.0"
+dprint-plugin-typescript = "=0.86.2"
+encoding_rs.workspace = true
+env_logger = "=0.10.0"
+fancy-regex = "=0.10.0"
+fastwebsockets.workspace = true
+flate2.workspace = true
+fs3.workspace = true
+glob = "0.3.1"
+http.workspace = true
+hyper.workspace = true
+import_map = "=0.15.0"
+indexmap.workspace = true
+indexmap1.workspace = true
+jsonc-parser = { version = "=0.21.1", features = ["serde"] }
+lazy-regex.workspace = true
+libc.workspace = true
+log = { workspace = true, features = ["serde"] }
+lsp-types.workspace = true
+monch = "=0.4.3"
+notify.workspace = true
+once_cell.workspace = true
+os_pipe.workspace = true
+percent-encoding.workspace = true
+pin-project.workspace = true
+quick-junit = "^0.3.3"
+rand = { workspace = true, features = ["small_rng"] }
+regex.workspace = true
+ring.workspace = true
+rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
+rustyline-derive = "=0.7.0"
+serde.workspace = true
+serde_repr.workspace = true
 shell-escape = "=0.1.5"
+tar.workspace = true
+tempfile.workspace = true
 text-size = "=1.1.0"
-text_lines = "=0.4.1"
-tokio = { version = "=1.19", features = ["full"] }
-tokio-util = "=0.7.2"
-tower-lsp = "=0.17.0"
-twox-hash = "=1.6.2"
-typed-arena = "2.0.1"
-uuid = { version = "=1.0.0", features = ["v4", "serde"] }
+text_lines = "=0.6.0"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tower-lsp.workspace = true
+twox-hash = "=1.6.3"
+typed-arena = "=2.0.1"
+uuid = { workspace = true, features = ["serde"] }
 walkdir = "=2.3.2"
 zeromq = { version = "=0.3.3", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
-zstd = '=0.11.1'
+zstd.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-fwdansi = "=1.1.0"
-winapi = { version = "=0.3.9", features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+fwdansi.workspace = true
+junction = "=0.2.0"
+winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "shlobj", "tlhelp32", "winbase", "winerror", "winsock2"] }
+
+[target.'cfg(unix)'.dependencies]
+nix.workspace = true
 
 [dev-dependencies]
-deno_bench_util = { version = "0.52.0", path = "../bench_util" }
+deno_bench_util.workspace = true
 flaky_test = "=0.1.0"
-os_pipe = "=1.0.1"
-pretty_assertions = "=1.2.1"
-test_util = { path = "../test_util" }
-trust-dns-client = "=0.21.2"
-trust-dns-server = "=0.21.2"
-
-[target.'cfg(unix)'.dev-dependencies]
-nix = "=0.23.0"
+once_cell.workspace = true
+os_pipe.workspace = true
+pretty_assertions.workspace = true
+test_util.workspace = true
+trust-dns-client = "=0.22.0"
+trust-dns-server = "=0.22.1"
 
 [package.metadata.winres]
 # This section defines the metadata that appears in the deno.exe PE header.

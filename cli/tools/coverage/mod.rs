@@ -1,29 +1,35 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CoverageFlags;
+use crate::args::FileFlags;
+use crate::args::Flags;
 use crate::colors;
-use crate::flags::CoverageFlags;
-use crate::flags::Flags;
-use crate::fs_util::collect_files;
-use crate::proc_state::ProcState;
+use crate::factory::CliFactory;
 use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
+use crate::util::fs::FileCollector;
+use crate::util::text_encoding::source_map_from_code;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
+use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
-use deno_core::SourceMapGetter;
+use deno_core::ModuleCode;
 use regex::Regex;
 use std::fs;
 use std::fs::File;
 use std::io::BufWriter;
-use std::io::{self, Error, Write};
+use std::io::Error;
+use std::io::Write;
+use std::io::{self};
+use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
 
@@ -126,12 +132,12 @@ impl CoverageCollector {
 
       let mut out = BufWriter::new(File::create(filepath)?);
       let coverage = serde_json::to_string(&script_coverage)?;
-      let formated_coverage = format_json(&coverage, &Default::default())
+      let formatted_coverage = format_json(&coverage, &Default::default())
         .ok()
         .flatten()
         .unwrap_or(coverage);
 
-      out.write_all(formated_coverage.as_bytes())?;
+      out.write_all(formatted_coverage.as_bytes())?;
       out.flush()?;
     }
 
@@ -166,16 +172,16 @@ struct CoverageReport {
 
 fn generate_coverage_report(
   script_coverage: &ScriptCoverage,
-  script_source: &str,
+  script_source: String,
   maybe_source_map: &Option<Vec<u8>>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
     .as_ref()
     .map(|source_map| SourceMap::from_slice(source_map).unwrap());
-  let text_lines = TextLines::new(script_source);
+  let text_lines = TextLines::new(&script_source);
 
-  let comment_ranges = deno_ast::lex(script_source, MediaType::JavaScript)
+  let comment_ranges = deno_ast::lex(&script_source, MediaType::JavaScript)
     .into_iter()
     .filter(|item| {
       matches!(item.inner, deno_ast::TokenOrComment::Comment { .. })
@@ -203,16 +209,18 @@ fn generate_coverage_report(
       continue;
     }
 
-    let source_line_index =
-      text_lines.line_index(function.ranges[0].start_offset);
+    let dest_line_index = text_lines.line_index(
+      text_lines
+        .byte_index_from_char_index(function.ranges[0].start_char_offset),
+    );
     let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
       source_map
         .tokens()
-        .find(|token| token.get_dst_line() as usize == source_line_index)
+        .find(|token| token.get_dst_line() as usize == dest_line_index)
         .map(|token| token.get_src_line() as usize)
         .unwrap_or(0)
     } else {
-      source_line_index
+      dest_line_index
     };
 
     coverage_report.named_functions.push(FunctionCoverageItem {
@@ -225,7 +233,9 @@ fn generate_coverage_report(
   for (block_number, function) in script_coverage.functions.iter().enumerate() {
     let block_hits = function.ranges[0].count;
     for (branch_number, range) in function.ranges[1..].iter().enumerate() {
-      let source_line_index = text_lines.line_index(range.start_offset);
+      let source_line_index = text_lines.line_index(
+        text_lines.byte_index_from_char_index(range.start_char_offset),
+      );
       let line_index = if let Some(source_map) = maybe_source_map.as_ref() {
         source_map
           .tokens()
@@ -265,11 +275,14 @@ fn generate_coverage_report(
   // parts of a line in color (word diff style) instead of the entire line.
   let mut line_counts = Vec::with_capacity(text_lines.lines_count());
   for line_index in 0..text_lines.lines_count() {
-    let line_start_offset = text_lines.line_start(line_index);
-    let line_end_offset = text_lines.line_end(line_index);
+    let line_start_byte_offset = text_lines.line_start(line_index);
+    let line_start_char_offset = text_lines.char_index(line_start_byte_offset);
+    let line_end_byte_offset = text_lines.line_end(line_index);
+    let line_end_char_offset = text_lines.char_index(line_end_byte_offset);
     let ignore = comment_ranges.iter().any(|range| {
-      range.start <= line_start_offset && range.end >= line_end_offset
-    }) || script_source[line_start_offset..line_end_offset]
+      range.start <= line_start_byte_offset && range.end >= line_end_byte_offset
+    }) || script_source
+      [line_start_byte_offset..line_end_byte_offset]
       .trim()
       .is_empty();
     let mut count = 0;
@@ -281,8 +294,8 @@ fn generate_coverage_report(
       // as long as the code has been evaluated.
       for function in &script_coverage.functions {
         for range in &function.ranges {
-          if range.start_offset <= line_start_offset
-            && range.end_offset >= line_end_offset
+          if range.start_char_offset <= line_start_char_offset
+            && range.end_char_offset >= line_end_char_offset
           {
             count += range.count;
           }
@@ -296,8 +309,8 @@ fn generate_coverage_report(
             continue;
           }
 
-          let overlaps = range.start_offset < line_end_offset
-            && range.end_offset > line_start_offset;
+          let overlaps = range.start_char_offset < line_end_char_offset
+            && range.end_char_offset > line_start_char_offset;
           if overlaps {
             count = 0;
           }
@@ -402,7 +415,7 @@ impl CoverageReporter for LcovCoverageReporter {
       .ok()
       .and_then(|p| p.to_str().map(|p| p.to_string()))
       .unwrap_or_else(|| coverage_report.url.to_string());
-    writeln!(out_writer, "SF:{}", file_path)?;
+    writeln!(out_writer, "SF:{file_path}")?;
 
     for function in &coverage_report.named_functions {
       writeln!(
@@ -422,13 +435,13 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let functions_found = coverage_report.named_functions.len();
-    writeln!(out_writer, "FNF:{}", functions_found)?;
+    writeln!(out_writer, "FNF:{functions_found}")?;
     let functions_hit = coverage_report
       .named_functions
       .iter()
       .filter(|f| f.execution_count > 0)
       .count();
-    writeln!(out_writer, "FNH:{}", functions_hit)?;
+    writeln!(out_writer, "FNH:{functions_hit}")?;
 
     for branch in &coverage_report.branches {
       let taken = if let Some(taken) = &branch.taken {
@@ -448,10 +461,10 @@ impl CoverageReporter for LcovCoverageReporter {
     }
 
     let branches_found = coverage_report.branches.len();
-    writeln!(out_writer, "BRF:{}", branches_found)?;
+    writeln!(out_writer, "BRF:{branches_found}")?;
     let branches_hit =
       coverage_report.branches.iter().filter(|b| b.is_hit).count();
-    writeln!(out_writer, "BRH:{}", branches_hit)?;
+    writeln!(out_writer, "BRH:{branches_hit}")?;
     for (index, count) in &coverage_report.found_lines {
       writeln!(out_writer, "DA:{},{}", index + 1, count)?;
     }
@@ -461,10 +474,10 @@ impl CoverageReporter for LcovCoverageReporter {
       .iter()
       .filter(|(_, count)| *count != 0)
       .count();
-    writeln!(out_writer, "LH:{}", lines_hit)?;
+    writeln!(out_writer, "LH:{lines_hit}")?;
 
     let lines_found = coverage_report.found_lines.len();
-    writeln!(out_writer, "LF:{}", lines_found)?;
+    writeln!(out_writer, "LF:{lines_found}")?;
 
     writeln!(out_writer, "end_of_record")?;
     Ok(())
@@ -520,20 +533,20 @@ impl CoverageReporter for PrettyCoverageReporter {
     let mut last_line = None;
     for line_index in missed_lines {
       const WIDTH: usize = 4;
-      const SEPERATOR: &str = "|";
+      const SEPARATOR: &str = "|";
 
       // Put a horizontal separator between disjoint runs of lines
       if let Some(last_line) = last_line {
         if last_line + 1 != line_index {
           let dash = colors::gray("-".repeat(WIDTH + 1));
-          println!("{}{}{}", dash, colors::gray(SEPERATOR), dash);
+          println!("{}{}{}", dash, colors::gray(SEPARATOR), dash);
         }
       }
 
       println!(
         "{:width$} {} {}",
         line_index + 1,
-        colors::gray(SEPERATOR),
+        colors::gray(SEPARATOR),
         colors::red(&lines[line_index]),
         width = WIDTH
       );
@@ -547,13 +560,20 @@ impl CoverageReporter for PrettyCoverageReporter {
 }
 
 fn collect_coverages(
-  files: Vec<PathBuf>,
-  ignore: Vec<PathBuf>,
+  files: FileFlags,
 ) -> Result<Vec<ScriptCoverage>, AnyError> {
   let mut coverages: Vec<ScriptCoverage> = Vec::new();
-  let file_paths = collect_files(&files, &ignore, |file_path| {
-    file_path.extension().map_or(false, |ext| ext == "json")
-  })?;
+  let file_paths = FileCollector::new(|file_path| {
+    file_path
+      .extension()
+      .map(|ext| ext == "json")
+      .unwrap_or(false)
+  })
+  .ignore_git_folder()
+  .ignore_node_modules()
+  .ignore_vendor_folder()
+  .add_ignore_paths(&files.ignore)
+  .collect_files(&files.include)?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
@@ -570,6 +590,7 @@ fn filter_coverages(
   coverages: Vec<ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
+  npm_root_dir: &str,
 ) -> Vec<ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -580,10 +601,12 @@ fn filter_coverages(
   coverages
     .into_iter()
     .filter(|e| {
-      let is_internal = e.url.starts_with("deno:")
+      let is_internal = e.url.starts_with("ext:")
+        || e.url.starts_with(npm_root_dir)
         || e.url.ends_with("__anonymous__")
         || e.url.ends_with("$deno$test.js")
-        || e.url.ends_with(".snap");
+        || e.url.ends_with(".snap")
+        || is_supported_test_path(Path::new(e.url.as_str()));
 
       let is_included = include.iter().any(|p| p.is_match(&e.url));
       let is_excluded = exclude.iter().any(|p| p.is_match(&e.url));
@@ -597,14 +620,22 @@ pub async fn cover_files(
   flags: Flags,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
+  if coverage_flags.files.include.is_empty() {
+    return Err(generic_error("No matching coverage profiles found"));
+  }
 
-  let script_coverages =
-    collect_coverages(coverage_flags.files, coverage_flags.ignore)?;
+  let factory = CliFactory::from_flags(flags).await?;
+  let root_dir_url = factory.npm_resolver().await?.root_dir_url();
+  let file_fetcher = factory.file_fetcher()?;
+  let cli_options = factory.cli_options();
+  let emitter = factory.emitter()?;
+
+  let script_coverages = collect_coverages(coverage_flags.files)?;
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
+    root_dir_url.as_str(),
   );
 
   let proc_coverages: Vec<_> = script_coverages
@@ -638,16 +669,18 @@ pub async fn cover_files(
   };
 
   for script_coverage in script_coverages {
-    let module_specifier =
-      deno_core::resolve_url_or_path(&script_coverage.url)?;
+    let module_specifier = deno_core::resolve_url_or_path(
+      &script_coverage.url,
+      cli_options.initial_cwd(),
+    )?;
 
     let maybe_file = if module_specifier.scheme() == "file" {
-      ps.file_fetcher.get_source(&module_specifier)
+      file_fetcher.get_source(&module_specifier)
     } else {
-      ps.file_fetcher
+      file_fetcher
         .fetch_cached(&module_specifier, 10)
         .with_context(|| {
-          format!("Failed to fetch \"{}\" from cache.", module_specifier)
+          format!("Failed to fetch \"{module_specifier}\" from cache.")
         })?
     };
     let file = maybe_file.ok_or_else(|| {
@@ -658,28 +691,22 @@ pub async fn cover_files(
     })?;
 
     // Check if file was transpiled
-    let transpiled_source = match file.media_type {
+    let original_source = file.source.clone();
+    let transpiled_code: ModuleCode = match file.media_type {
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Cjs
       | MediaType::Mjs
-      | MediaType::Json => file.source.as_ref().to_string(),
-      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => "".to_string(),
+      | MediaType::Json => file.source.clone().into(),
+      MediaType::Dts | MediaType::Dmts | MediaType::Dcts => Default::default(),
       MediaType::TypeScript
       | MediaType::Jsx
       | MediaType::Mts
       | MediaType::Cts
       | MediaType::Tsx => {
-        let emit_path = ps
-          .dir
-          .gen_cache
-          .get_cache_filename_with_extension(&file.specifier, "js")
-          .unwrap_or_else(|| {
-            unreachable!("Unable to get cache filename: {}", &file.specifier)
-          });
-        match ps.dir.gen_cache.get(&emit_path) {
-          Ok(b) => String::from_utf8(b).unwrap(),
-          Err(_) => {
+        match emitter.maybe_cached_emit(&file.specifier, &file.source) {
+          Some(code) => code.into(),
+          None => {
             return Err(anyhow!(
               "Missing transpiled source code for: \"{}\".
               Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
@@ -693,18 +720,16 @@ pub async fn cover_files(
       }
     };
 
-    let original_source = &file.source;
-    let maybe_source_map = ps.get_source_map(&script_coverage.url);
-
+    let source_map = source_map_from_code(&transpiled_code);
     let coverage_report = generate_coverage_report(
       &script_coverage,
-      &transpiled_source,
-      &maybe_source_map,
+      transpiled_code.as_str().to_owned(),
+      &source_map,
       &out_mode,
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, original_source)?;
+      reporter.report(&coverage_report, &original_source)?;
     }
   }
 

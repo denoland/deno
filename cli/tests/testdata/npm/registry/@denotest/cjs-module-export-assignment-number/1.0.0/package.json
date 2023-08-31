@@ -1,0 +1,5 @@
+{
+  "name": "@denotest/cjs-module-export-assignment-number",
+  "version": "1.0.0",
+  "types": "./index.d.ts"
+}

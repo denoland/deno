@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
@@ -8,7 +8,7 @@ import {
   assertRejects,
   assertThrows,
 } from "./test_util.ts";
-import { copy } from "../../../test_util/std/io/util.ts";
+import { copy } from "../../../test_util/std/streams/copy.ts";
 
 Deno.test(function filesStdioFileDescriptors() {
   assertEquals(Deno.stdin.rid, 0);
@@ -17,7 +17,7 @@ Deno.test(function filesStdioFileDescriptors() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   const file = await Deno.open(filename);
   assert(file.rid > 2);
   const bytesWritten = await copy(file, Deno.stdout);
@@ -27,7 +27,7 @@ Deno.test({ permissions: { read: true } }, async function filesCopyToStdout() {
 });
 
 Deno.test({ permissions: { read: true } }, async function filesIter() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
 
   let totalSize = 0;
@@ -42,7 +42,7 @@ Deno.test({ permissions: { read: true } }, async function filesIter() {
 Deno.test(
   { permissions: { read: true } },
   async function filesIterCustomBufSize() {
-    const filename = "cli/tests/testdata/hello.txt";
+    const filename = "cli/tests/testdata/assets/hello.txt";
     const file = await Deno.open(filename);
 
     let totalSize = 0;
@@ -59,7 +59,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, function filesIterSync() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
 
   let totalSize = 0;
@@ -74,7 +74,7 @@ Deno.test({ permissions: { read: true } }, function filesIterSync() {
 Deno.test(
   { permissions: { read: true } },
   function filesIterSyncCustomBufSize() {
-    const filename = "cli/tests/testdata/hello.txt";
+    const filename = "cli/tests/testdata/assets/hello.txt";
     const file = Deno.openSync(filename);
 
     let totalSize = 0;
@@ -264,7 +264,7 @@ Deno.test(
 );
 
 Deno.test(async function openOptions() {
-  const filename = "cli/tests/testdata/fixture.json";
+  const filename = "cli/tests/testdata/assets/fixture.json";
   await assertRejects(
     async () => {
       await Deno.open(filename, { write: false });
@@ -558,7 +558,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { read: true } }, async function seekStart() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -574,8 +574,25 @@ Deno.test({ permissions: { read: true } }, async function seekStart() {
   file.close();
 });
 
+Deno.test({ permissions: { read: true } }, async function seekStartBigInt() {
+  const filename = "cli/tests/testdata/assets/hello.txt";
+  const file = await Deno.open(filename);
+  const seekPosition = 6n;
+  // Deliberately move 1 step forward
+  await file.read(new Uint8Array(1)); // "H"
+  // Skipping "Hello "
+  // seeking from beginning of a file plus seekPosition
+  const cursorPosition = await file.seek(seekPosition, Deno.SeekMode.Start);
+  assertEquals(seekPosition, BigInt(cursorPosition));
+  const buf = new Uint8Array(6);
+  await file.read(buf);
+  const decoded = new TextDecoder().decode(buf);
+  assertEquals(decoded, "world!");
+  file.close();
+});
+
 Deno.test({ permissions: { read: true } }, function seekSyncStart() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = 6;
   // Deliberately move 1 step forward
@@ -592,7 +609,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncStart() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekCurrent() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   // Deliberately move 1 step forward
   await file.read(new Uint8Array(1)); // "H"
@@ -609,7 +626,7 @@ Deno.test({ permissions: { read: true } }, async function seekCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   // Deliberately move 1 step forward
   file.readSync(new Uint8Array(1)); // "H"
@@ -626,7 +643,7 @@ Deno.test({ permissions: { read: true } }, function seekSyncCurrent() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekEnd() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -640,7 +657,7 @@ Deno.test({ permissions: { read: true } }, async function seekEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = Deno.openSync(filename);
   const seekPosition = -6;
   // seek from end of file that has 12 chars, 12 - 6  = 6
@@ -654,11 +671,11 @@ Deno.test({ permissions: { read: true } }, function seekSyncEnd() {
 });
 
 Deno.test({ permissions: { read: true } }, async function seekMode() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   await assertRejects(
     async () => {
-      await file.seek(1, -1);
+      await file.seek(1, -1 as unknown as Deno.SeekMode);
     },
     TypeError,
     "Invalid seek mode",
@@ -747,7 +764,7 @@ Deno.test(async function fileStatSuccess() {
 });
 
 Deno.test({ permissions: { read: true } }, async function readableStream() {
-  const filename = "cli/tests/testdata/hello.txt";
+  const filename = "cli/tests/testdata/assets/hello.txt";
   const file = await Deno.open(filename);
   assert(file.readable instanceof ReadableStream);
   const chunks = [];
@@ -761,7 +778,7 @@ Deno.test({ permissions: { read: true } }, async function readableStream() {
 Deno.test(
   { permissions: { read: true } },
   async function readableStreamTextEncoderPipe() {
-    const filename = "cli/tests/testdata/hello.txt";
+    const filename = "cli/tests/testdata/assets/hello.txt";
     const file = await Deno.open(filename);
     const readable = file.readable.pipeThrough(new TextDecoderStream());
     const chunks = [];

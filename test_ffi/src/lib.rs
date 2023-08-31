@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 #![allow(clippy::undocumented_unsafe_blocks)]
 
@@ -15,17 +15,17 @@ pub extern "C" fn print_something() {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn print_buffer(ptr: *const u8, len: usize) {
   let buf = std::slice::from_raw_parts(ptr, len);
-  println!("{:?}", buf);
+  println!("{buf:?}");
 }
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn print_buffer2(
@@ -36,7 +36,7 @@ pub unsafe extern "C" fn print_buffer2(
 ) {
   let buf1 = std::slice::from_raw_parts(ptr1, len1);
   let buf2 = std::slice::from_raw_parts(ptr2, len2);
-  println!("{:?} {:?}", buf1, buf2);
+  println!("{buf1:?} {buf2:?}");
 }
 
 #[no_mangle]
@@ -45,8 +45,8 @@ pub extern "C" fn return_buffer() -> *const u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn is_null_ptr(ptr: *const u8) -> u8 {
-  ptr.is_null() as u8
+pub extern "C" fn is_null_ptr(ptr: *const u8) -> bool {
+  ptr.is_null()
 }
 
 #[no_mangle]
@@ -75,6 +75,11 @@ pub extern "C" fn add_usize(a: usize, b: usize) -> usize {
 }
 
 #[no_mangle]
+pub extern "C" fn add_usize_fast(a: usize, b: usize) -> u32 {
+  (a + b) as u32
+}
+
+#[no_mangle]
 pub extern "C" fn add_isize(a: isize, b: isize) -> isize {
   a + b
 }
@@ -90,6 +95,21 @@ pub extern "C" fn add_f64(a: f64, b: f64) -> f64 {
 }
 
 #[no_mangle]
+pub extern "C" fn and(a: bool, b: bool) -> bool {
+  a && b
+}
+
+#[no_mangle]
+unsafe extern "C" fn hash(ptr: *const u8, length: u32) -> u32 {
+  let buf = std::slice::from_raw_parts(ptr, length as usize);
+  let mut hash: u32 = 0;
+  for byte in buf {
+    hash = hash.wrapping_mul(0x10001000).wrapping_add(*byte as u32);
+  }
+  hash
+}
+
+#[no_mangle]
 pub extern "C" fn sleep_blocking(ms: u64) {
   let duration = Duration::from_millis(ms);
   sleep(duration);
@@ -97,7 +117,7 @@ pub extern "C" fn sleep_blocking(ms: u64) {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
@@ -109,7 +129,7 @@ pub unsafe extern "C" fn fill_buffer(value: u8, buf: *mut u8, len: usize) {
 
 /// # Safety
 ///
-/// The pointer to the buffer must be valid and initalized, and the length must
+/// The pointer to the buffer must be valid and initialized, and the length must
 /// not be longer than the buffer's allocation.
 #[no_mangle]
 pub unsafe extern "C" fn nonblocking_buffer(ptr: *const u8, len: usize) {
@@ -169,7 +189,7 @@ pub extern "C" fn call_fn_ptr_return_buffer(
   let func = func.unwrap();
   let ptr = func();
   let buf = unsafe { std::slice::from_raw_parts(ptr, 8) };
-  println!("buf: {:?}", buf);
+  println!("buf: {buf:?}");
 }
 
 static mut STORED_FUNCTION: Option<extern "C" fn()> = None;
@@ -211,9 +231,93 @@ pub extern "C" fn call_stored_function_2(arg: u8) {
   }
 }
 
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn call_stored_function_thread_safe_and_log() {
+  std::thread::spawn(move || {
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    unsafe {
+      if STORED_FUNCTION.is_none() {
+        return;
+      }
+      STORED_FUNCTION.unwrap()();
+      println!("STORED_FUNCTION called");
+    }
+  });
+}
+
+#[no_mangle]
+pub extern "C" fn log_many_parameters(
+  a: u8,
+  b: u16,
+  c: u32,
+  d: u64,
+  e: f64,
+  f: f32,
+  g: i64,
+  h: i32,
+  i: i16,
+  j: i8,
+  k: isize,
+  l: usize,
+  m: f64,
+  n: f32,
+  o: f64,
+  p: f32,
+  q: f64,
+  r: f32,
+  s: f64,
+) {
+  println!("{a} {b} {c} {d} {e} {f} {g} {h} {i} {j} {k} {l} {m} {n} {o} {p} {q} {r} {s}");
+}
+
+#[no_mangle]
+pub extern "C" fn cast_u8_u32(x: u8) -> u32 {
+  x as u32
+}
+
+#[no_mangle]
+pub extern "C" fn cast_u32_u8(x: u32) -> u8 {
+  x as u8
+}
+
+#[no_mangle]
+pub extern "C" fn add_many_u16(
+  a: u16,
+  b: u16,
+  c: u16,
+  d: u16,
+  e: u16,
+  f: u16,
+  g: u16,
+  h: u16,
+  i: u16,
+  j: u16,
+  k: u16,
+  l: u16,
+  m: u16,
+) -> u16 {
+  a + b + c + d + e + f + g + h + i + j + k + l + m
+}
+
 // FFI performance helper functions
 #[no_mangle]
 pub extern "C" fn nop() {}
+
+#[no_mangle]
+pub extern "C" fn nop_bool(_a: bool) {}
 
 #[no_mangle]
 pub extern "C" fn nop_u8(_a: u8) {}
@@ -253,6 +357,11 @@ pub extern "C" fn nop_f64(_a: f64) {}
 
 #[no_mangle]
 pub extern "C" fn nop_buffer(_buffer: *mut [u8; 8]) {}
+
+#[no_mangle]
+pub extern "C" fn return_bool() -> bool {
+  true
+}
 
 #[no_mangle]
 pub extern "C" fn return_u8() -> u8 {
@@ -361,4 +470,76 @@ pub struct Structure {
 }
 
 #[no_mangle]
-pub static static_ptr: Structure = Structure { _data: 42 };
+pub static mut static_ptr: Structure = Structure { _data: 42 };
+
+static STRING: &str = "Hello, world!\0";
+
+#[no_mangle]
+extern "C" fn ffi_string() -> *const u8 {
+  STRING.as_ptr()
+}
+
+/// Invalid UTF-8 characters, array of length 14
+#[no_mangle]
+pub static static_char: [u8; 14] = [
+  0xC0, 0xC1, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+  0x00,
+];
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Rect {
+  x: f64,
+  y: f64,
+  w: f64,
+  h: f64,
+}
+
+#[no_mangle]
+pub extern "C" fn make_rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
+  Rect { x, y, w, h }
+}
+
+#[no_mangle]
+pub extern "C" fn print_rect(rect: Rect) {
+  println!("{rect:?}");
+}
+
+#[derive(Debug)]
+#[repr(C)]
+pub struct Mixed {
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: [u32; 2],
+}
+
+/// # Safety
+///
+/// The array pointer to the buffer must be valid and initialized, and the length must
+/// be 2.
+#[no_mangle]
+pub unsafe extern "C" fn create_mixed(
+  u8: u8,
+  f32: f32,
+  rect: Rect,
+  usize: usize,
+  array: *const [u32; 2],
+) -> Mixed {
+  let array = *array
+    .as_ref()
+    .expect("Array parameter should contain value");
+  Mixed {
+    u8,
+    f32,
+    rect,
+    usize,
+    array,
+  }
+}
+
+#[no_mangle]
+pub extern "C" fn print_mixed(mixed: Mixed) {
+  println!("{mixed:?}");
+}

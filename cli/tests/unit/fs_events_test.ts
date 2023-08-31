@@ -1,4 +1,5 @@
-// Copyright 2018-2019 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import { assert, assertEquals, assertThrows, delay } from "./test_util.ts";
 
 // TODO(ry) Add more tests to specify format.
@@ -13,14 +14,14 @@ Deno.test({ permissions: { read: true } }, function watchFsInvalidPath() {
   if (Deno.build.os === "windows") {
     assertThrows(
       () => {
-        Deno.watchFs("non-existant.file");
+        Deno.watchFs("non-existent.file");
       },
       Error,
       "Input watch path is neither a file nor a directory",
     );
   } else {
     assertThrows(() => {
-      Deno.watchFs("non-existant.file");
+      Deno.watchFs("non-existent.file");
     }, Deno.errors.NotFound);
   }
 });
@@ -50,7 +51,7 @@ Deno.test(
     const testDir = await makeTempDir();
     const iter = Deno.watchFs(testDir);
 
-    // Asynchornously capture two fs events.
+    // Asynchronously capture two fs events.
     const eventsPromise = getTwoEvents(iter);
 
     // Make some random file system activity.

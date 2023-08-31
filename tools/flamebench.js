@@ -1,36 +1,50 @@
 #!/usr/bin/env -S deno run --unstable --allow-read --allow-run
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { join, ROOT_PATH as ROOT } from "./util.js";
 
-async function bashOut(subcmd) {
-  const { status, stdout } = await Deno.spawn("bash", {
-    args: ["-c", subcmd],
-    stdout: "piped",
-    stderr: "null",
-  });
-
-  // Check for failure
-  if (!status.success) {
-    throw new Error("subcmd failed");
-  }
-  // Gather output
-  const output = new TextDecoder().decode(stdout);
-
-  return output.trim();
+const { 0: benchName, 1: benchFilter } = Deno.args;
+// Print usage if no bench specified
+if (!benchName) {
+  console.log("flamebench.js <bench_name> [bench_filter]");
+  // Also show available benches
+  console.log("\nAvailable benches:");
+  const benches = await availableBenches();
+  console.log(benches.join("\n"));
+  return Deno.exit(1);
 }
 
-async function bashThrough(subcmd, opts = {}) {
-  const { status } = await Deno.spawn("bash", {
-    ...opts,
-    args: ["-c", subcmd],
-    stdout: "inherit",
-    stderr: "inherit",
-  });
+// List available benches, hoping we don't have any benches called "ls" :D
+if (benchName === "ls") {
+  const benches = await availableBenches();
+  console.log(benches.join("\n"));
+  return;
+}
 
-  // Exit process on failure
-  if (!status.success) {
-    Deno.exit(status.code);
-  }
+// Ensure flamegraph is installed
+if (!await binExists("flamegraph")) {
+  console.log(
+    "flamegraph (https://github.com/flamegraph-rs/flamegraph) not found, please run:",
+  );
+  console.log();
+  console.log("cargo install flamegraph");
+  return Deno.exit(1);
+}
+
+// Build bench with frame pointers
+await bashThrough(
+  `RUSTFLAGS='-C force-frame-pointers=y' cargo build --release --bench ${benchName}`,
+);
+
+// Get the freshly built bench binary
+const benchBin = await latestBenchBin(benchName);
+
+// Run flamegraph
+const outputFile = join(ROOT, "flamebench.svg");
+await runFlamegraph(benchBin, benchFilter, outputFile);
+
+// Open flamegraph (in your browser / SVG viewer)
+if (await binExists("open")) {
+  await bashThrough(`open ${outputFile}`);
 }
 
 async function availableBenches() {
@@ -59,6 +73,37 @@ function runFlamegraph(benchBin, benchFilter, outputFile) {
   );
 }
 
+async function bashOut(subcmd) {
+  const { success, stdout } = await new Deno.Command("bash", {
+    args: ["-c", subcmd],
+    stdout: "piped",
+    stderr: "null",
+  }).output();
+
+  // Check for failure
+  if (!success) {
+    throw new Error("subcmd failed");
+  }
+  // Gather output
+  const output = new TextDecoder().decode(stdout);
+
+  return output.trim();
+}
+
+async function bashThrough(subcmd, opts = {}) {
+  const { success, code } = await new Deno.Command("bash", {
+    ...opts,
+    args: ["-c", subcmd],
+    stdout: "inherit",
+    stderr: "inherit",
+  }).output();
+
+  // Exit process on failure
+  if (!success) {
+    Deno.exit(code);
+  }
+}
+
 async function binExists(bin) {
   try {
     await bashOut(`which ${bin}`);
@@ -67,52 +112,3 @@ async function binExists(bin) {
     return false;
   }
 }
-
-async function main() {
-  const { 0: benchName, 1: benchFilter } = Deno.args;
-  // Print usage if no bench specified
-  if (!benchName) {
-    console.log("flamebench.js <bench_name> [bench_filter]");
-    // Also show available benches
-    console.log("\nAvailable benches:");
-    const benches = await availableBenches();
-    console.log(benches.join("\n"));
-    return Deno.exit(1);
-  }
-
-  // List available benches, hoping we don't have any benches called "ls" :D
-  if (benchName === "ls") {
-    const benches = await availableBenches();
-    console.log(benches.join("\n"));
-    return;
-  }
-
-  // Ensure flamegraph is installed
-  if (!await binExists("flamegraph")) {
-    console.log(
-      "flamegraph (https://github.com/flamegraph-rs/flamegraph) not found, please run:",
-    );
-    console.log();
-    console.log("cargo install flamegraph");
-    return Deno.exit(1);
-  }
-
-  // Build bench with frame pointers
-  await bashThrough(
-    `RUSTFLAGS='-C force-frame-pointers=y' cargo build --release --bench ${benchName}`,
-  );
-
-  // Get the freshly built bench binary
-  const benchBin = await latestBenchBin(benchName);
-
-  // Run flamegraph
-  const outputFile = join(ROOT, "flamebench.svg");
-  await runFlamegraph(benchBin, benchFilter, outputFile);
-
-  // Open flamegraph (in your browser / SVG viewer)
-  if (await binExists("open")) {
-    await bashThrough(`open ${outputFile}`);
-  }
-}
-// Run
-await main();

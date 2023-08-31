@@ -1,5 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
+
+const listenPort = 4505;
 
 Deno.test(function resourcesCloseBadArgs() {
   assertThrows(() => {
@@ -16,8 +18,8 @@ Deno.test(function resourcesStdio() {
 });
 
 Deno.test({ permissions: { net: true } }, async function resourcesNet() {
-  const listener = Deno.listen({ port: 4501 });
-  const dialerConn = await Deno.connect({ port: 4501 });
+  const listener = Deno.listen({ port: listenPort });
+  const dialerConn = await Deno.connect({ port: listenPort });
   const listenerConn = await listener.accept();
 
   const res = Deno.resources();
@@ -37,7 +39,7 @@ Deno.test({ permissions: { net: true } }, async function resourcesNet() {
 
 Deno.test({ permissions: { read: true } }, async function resourcesFile() {
   const resourcesBefore = Deno.resources();
-  const f = await Deno.open("cli/tests/testdata/hello.txt");
+  const f = await Deno.open("cli/tests/testdata/assets/hello.txt");
   const resourcesAfter = Deno.resources();
   f.close();
 

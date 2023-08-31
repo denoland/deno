@@ -1,10 +1,12 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use crate::cdp;
 use crate::colors;
 use deno_ast::swc::parser::error::SyntaxError;
+use deno_ast::swc::parser::token::BinOpToken;
 use deno_ast::swc::parser::token::Token;
 use deno_ast::swc::parser::token::Word;
+use deno_ast::view::AssignOp;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -16,20 +18,28 @@ use rustyline::validate::ValidationResult;
 use rustyline::validate::Validator;
 use rustyline::Cmd;
 use rustyline::CompletionType;
+use rustyline::ConditionalEventHandler;
 use rustyline::Config;
 use rustyline::Context;
 use rustyline::Editor;
+use rustyline::Event;
+use rustyline::EventContext;
 use rustyline::EventHandler;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-use rustyline::{ConditionalEventHandler, Event, EventContext, RepeatCount};
-use rustyline_derive::{Helper, Hinter};
+use rustyline::RepeatCount;
+use rustyline_derive::Helper;
+use rustyline_derive::Hinter;
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+use super::cdp;
 use super::channel::RustylineSyncMessageSender;
+use super::session::REPL_INTERNALS_NAME;
 
 // Provides helpers to the editor like validation for multi-line edits, completion candidates for
 // tab completion.
@@ -99,7 +109,7 @@ impl EditorHelper {
           own_properties: None,
           accessor_properties_only: None,
           generate_preview: None,
-          non_indexed_properties_only: None,
+          non_indexed_properties_only: Some(true),
         }),
       )
       .ok()?;
@@ -150,7 +160,7 @@ impl EditorHelper {
 }
 
 fn is_word_boundary(c: char) -> bool {
-  if c == '.' {
+  if matches!(c, '.' | '_' | '$') {
     false
   } else {
     char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
@@ -158,12 +168,11 @@ fn is_word_boundary(c: char) -> bool {
 }
 
 fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
-  let start = line[..cursor_pos]
-    .rfind(is_word_boundary)
-    .map_or_else(|| 0, |i| i);
+  let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
   let end = line[cursor_pos..]
     .rfind(is_word_boundary)
-    .map_or_else(|| cursor_pos, |i| cursor_pos + i);
+    .map(|i| cursor_pos + i)
+    .unwrap_or(cursor_pos);
 
   let word = &line[start..end];
   let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
@@ -199,7 +208,11 @@ impl Completer for EditorHelper {
       let candidates = self
         .get_expression_property_names(sub_expr)
         .into_iter()
-        .filter(|n| !n.starts_with("Symbol(") && n.starts_with(prop_name))
+        .filter(|n| {
+          !n.starts_with("Symbol(")
+            && n.starts_with(prop_name)
+            && n != &*REPL_INTERNALS_NAME
+        })
         .collect();
 
       Ok((pos - prop_name.len(), candidates))
@@ -209,7 +222,7 @@ impl Completer for EditorHelper {
         .get_expression_property_names("globalThis")
         .into_iter()
         .chain(self.get_global_lexical_scope_names())
-        .filter(|n| n.starts_with(expr))
+        .filter(|n| n.starts_with(expr) && n != &*REPL_INTERNALS_NAME)
         .collect::<Vec<_>>();
 
       // sort and remove duplicates
@@ -226,57 +239,88 @@ impl Validator for EditorHelper {
     &self,
     ctx: &mut ValidationContext,
   ) -> Result<ValidationResult, ReadlineError> {
-    let mut stack: Vec<Token> = Vec::new();
-    let mut in_template = false;
+    Ok(validate(ctx.input()))
+  }
+}
 
-    for item in deno_ast::lex(ctx.input(), deno_ast::MediaType::TypeScript) {
-      if let deno_ast::TokenOrComment::Token(token) = item.inner {
-        match token {
-          Token::BackQuote => in_template = !in_template,
-          Token::LParen
-          | Token::LBracket
-          | Token::LBrace
-          | Token::DollarLBrace => stack.push(token),
-          Token::RParen | Token::RBracket | Token::RBrace => {
-            match (stack.pop(), token) {
-              (Some(Token::LParen), Token::RParen)
-              | (Some(Token::LBracket), Token::RBracket)
-              | (Some(Token::LBrace), Token::RBrace)
-              | (Some(Token::DollarLBrace), Token::RBrace) => {}
-              (Some(left), _) => {
-                return Ok(ValidationResult::Invalid(Some(format!(
-                  "Mismatched pairs: {:?} is not properly closed",
-                  left
-                ))))
-              }
-              (None, _) => {
-                // While technically invalid when unpaired, it should be V8's task to output error instead.
-                // Thus marked as valid with no info.
-                return Ok(ValidationResult::Valid(None));
-              }
-            }
-          }
-          Token::Error(error) => {
-            match error.kind() {
-              // If there is unterminated template, it continues to read input.
-              SyntaxError::UnterminatedTpl => {}
-              _ => {
-                // If it failed parsing, it should be V8's task to output error instead.
-                // Thus marked as valid with no info.
-                return Ok(ValidationResult::Valid(None));
-              }
-            }
-          }
-          _ => {}
-        }
+fn validate(input: &str) -> ValidationResult {
+  let line_info = text_lines::TextLines::new(input);
+  let mut stack: Vec<Token> = Vec::new();
+  let mut in_template = false;
+  let mut div_token_count_on_current_line = 0;
+  let mut last_line_index = 0;
+  let mut queued_validation_error = None;
+  let tokens = deno_ast::lex(input, deno_ast::MediaType::TypeScript)
+    .into_iter()
+    .filter_map(|item| match item.inner {
+      deno_ast::TokenOrComment::Token(token) => Some((token, item.range)),
+      deno_ast::TokenOrComment::Comment { .. } => None,
+    });
+
+  for (token, range) in tokens {
+    let current_line_index = line_info.line_index(range.start);
+    if current_line_index != last_line_index {
+      div_token_count_on_current_line = 0;
+      last_line_index = current_line_index;
+
+      if let Some(error) = queued_validation_error {
+        return error;
       }
     }
-
-    if !stack.is_empty() || in_template {
-      return Ok(ValidationResult::Incomplete);
+    match token {
+      Token::BinOp(BinOpToken::Div) | Token::AssignOp(AssignOp::DivAssign) => {
+        // it's too complicated to write code to detect regular expression literals
+        // which are no longer tokenized, so if a `/` or `/=` happens twice on the same
+        // line, then we bail
+        div_token_count_on_current_line += 1;
+        if div_token_count_on_current_line >= 2 {
+          return ValidationResult::Valid(None);
+        }
+      }
+      Token::BackQuote => in_template = !in_template,
+      Token::LParen | Token::LBracket | Token::LBrace | Token::DollarLBrace => {
+        stack.push(token)
+      }
+      Token::RParen | Token::RBracket | Token::RBrace => {
+        match (stack.pop(), token) {
+          (Some(Token::LParen), Token::RParen)
+          | (Some(Token::LBracket), Token::RBracket)
+          | (Some(Token::LBrace), Token::RBrace)
+          | (Some(Token::DollarLBrace), Token::RBrace) => {}
+          (Some(left), _) => {
+            // queue up a validation error to surface once we've finished examining the current line
+            queued_validation_error = Some(ValidationResult::Invalid(Some(
+              format!("Mismatched pairs: {left:?} is not properly closed"),
+            )));
+          }
+          (None, _) => {
+            // While technically invalid when unpaired, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
+            return ValidationResult::Valid(None);
+          }
+        }
+      }
+      Token::Error(error) => {
+        match error.kind() {
+          // If there is unterminated template, it continues to read input.
+          SyntaxError::UnterminatedTpl => {}
+          _ => {
+            // If it failed parsing, it should be V8's task to output error instead.
+            // Thus marked as valid with no info.
+            return ValidationResult::Valid(None);
+          }
+        }
+      }
+      _ => {}
     }
+  }
 
-    Ok(ValidationResult::Valid(None))
+  if let Some(error) = queued_validation_error {
+    error
+  } else if !stack.is_empty() || in_template {
+    ValidationResult::Incomplete
+  } else {
+    ValidationResult::Valid(None)
   }
 }
 
@@ -304,7 +348,10 @@ impl Highlighter for EditorHelper {
   fn highlight<'l>(&self, line: &'l str, _: usize) -> Cow<'l, str> {
     let mut out_line = String::from(line);
 
-    for item in deno_ast::lex(line, deno_ast::MediaType::TypeScript) {
+    let mut lexed_items = deno_ast::lex(line, deno_ast::MediaType::TypeScript)
+      .into_iter()
+      .peekable();
+    while let Some(item) = lexed_items.next() {
       // Adding color adds more bytes to the string,
       // so an offset is needed to stop spans falling out of sync.
       let offset = out_line.len() - line.len();
@@ -334,7 +381,26 @@ impl Highlighter for EditorHelper {
                 } else if ident == *"async" || ident == *"of" {
                   colors::cyan(&line[range]).to_string()
                 } else {
-                  line[range].to_string()
+                  let next = lexed_items.peek().map(|item| &item.inner);
+                  if matches!(
+                    next,
+                    Some(deno_ast::TokenOrComment::Token(Token::LParen))
+                  ) {
+                    // We're looking for something that looks like a function
+                    // We use a simple heuristic: 'ident' followed by 'LParen'
+                    colors::intense_blue(&line[range]).to_string()
+                  } else if ident == *"from"
+                    && matches!(
+                      next,
+                      Some(deno_ast::TokenOrComment::Token(Token::Str { .. }))
+                    )
+                  {
+                    // When ident 'from' is followed by a string literal, highlight it
+                    // E.g. "export * from 'something'" or "import a from 'something'"
+                    colors::cyan(&line[range]).to_string()
+                  } else {
+                    line[range].to_string()
+                  }
                 }
               }
             },
@@ -354,18 +420,26 @@ impl Highlighter for EditorHelper {
 #[derive(Clone)]
 pub struct ReplEditor {
   inner: Arc<Mutex<Editor<EditorHelper>>>,
-  history_file_path: PathBuf,
+  history_file_path: Option<PathBuf>,
+  errored_on_history_save: Arc<AtomicBool>,
+  should_exit_on_interrupt: Arc<AtomicBool>,
 }
 
 impl ReplEditor {
-  pub fn new(helper: EditorHelper, history_file_path: PathBuf) -> Self {
+  pub fn new(
+    helper: EditorHelper,
+    history_file_path: Option<PathBuf>,
+  ) -> Result<Self, AnyError> {
     let editor_config = Config::builder()
       .completion_type(CompletionType::List)
       .build();
 
-    let mut editor = Editor::with_config(editor_config);
+    let mut editor =
+      Editor::with_config(editor_config).expect("Failed to create editor.");
     editor.set_helper(Some(helper));
-    editor.load_history(&history_file_path).unwrap_or(());
+    if let Some(history_file_path) = &history_file_path {
+      editor.load_history(history_file_path).unwrap_or(());
+    }
     editor.bind_sequence(
       KeyEvent(KeyCode::Char('s'), Modifiers::CTRL),
       EventHandler::Simple(Cmd::Newline),
@@ -374,26 +448,73 @@ impl ReplEditor {
       KeyEvent(KeyCode::Tab, Modifiers::NONE),
       EventHandler::Conditional(Box::new(TabEventHandler)),
     );
+    let should_exit_on_interrupt = Arc::new(AtomicBool::new(false));
+    editor.bind_sequence(
+      KeyEvent(KeyCode::Char('r'), Modifiers::CTRL),
+      EventHandler::Conditional(Box::new(ReverseSearchHistoryEventHandler {
+        should_exit_on_interrupt: should_exit_on_interrupt.clone(),
+      })),
+    );
 
-    ReplEditor {
+    if let Some(history_file_path) = &history_file_path {
+      let history_file_dir = history_file_path.parent().unwrap();
+      std::fs::create_dir_all(history_file_dir).with_context(|| {
+        format!(
+          "Unable to create directory for the history file: {}",
+          history_file_dir.display()
+        )
+      })?;
+    }
+
+    Ok(ReplEditor {
       inner: Arc::new(Mutex::new(editor)),
       history_file_path,
-    }
+      errored_on_history_save: Arc::new(AtomicBool::new(false)),
+      should_exit_on_interrupt,
+    })
   }
 
   pub fn readline(&self) -> Result<String, ReadlineError> {
     self.inner.lock().readline("> ")
   }
 
-  pub fn add_history_entry(&self, entry: String) {
+  pub fn update_history(&self, entry: String) {
     self.inner.lock().add_history_entry(entry);
+    if let Some(history_file_path) = &self.history_file_path {
+      if let Err(e) = self.inner.lock().append_history(history_file_path) {
+        if self.errored_on_history_save.load(Relaxed) {
+          return;
+        }
+
+        self.errored_on_history_save.store(true, Relaxed);
+        eprintln!("Unable to save history file: {e}");
+      }
+    }
   }
 
-  pub fn save_history(&self) -> Result<(), AnyError> {
-    std::fs::create_dir_all(self.history_file_path.parent().unwrap())?;
+  pub fn should_exit_on_interrupt(&self) -> bool {
+    self.should_exit_on_interrupt.load(Relaxed)
+  }
 
-    self.inner.lock().save_history(&self.history_file_path)?;
-    Ok(())
+  pub fn set_should_exit_on_interrupt(&self, yes: bool) {
+    self.should_exit_on_interrupt.store(yes, Relaxed);
+  }
+}
+
+/// Command to reverse search history , same as rustyline default C-R but that resets repl should_exit flag to false
+struct ReverseSearchHistoryEventHandler {
+  should_exit_on_interrupt: Arc<AtomicBool>,
+}
+impl ConditionalEventHandler for ReverseSearchHistoryEventHandler {
+  fn handle(
+    &self,
+    _: &Event,
+    _: RepeatCount,
+    _: bool,
+    _: &EventContext,
+  ) -> Option<Cmd> {
+    self.should_exit_on_interrupt.store(false, Relaxed);
+    Some(Cmd::ReverseSearchHistory)
   }
 }
 
@@ -418,8 +539,7 @@ impl ConditionalEventHandler for TabEventHandler {
     if ctx.line().is_empty()
       || ctx.line()[..ctx.pos()]
         .chars()
-        .rev()
-        .next()
+        .next_back()
         .filter(|c| c.is_whitespace())
         .is_some()
     {
@@ -433,5 +553,26 @@ impl ConditionalEventHandler for TabEventHandler {
     } else {
       None // default complete
     }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use rustyline::validate::ValidationResult;
+
+  use super::validate;
+
+  #[test]
+  fn validate_only_one_forward_slash_per_line() {
+    let code = r#"function test(arr){
+if( arr.length <= 1) return arr.map(a => a / 2)
+let left = test( arr.slice( 0 , arr.length/2 ) )"#;
+    assert!(matches!(validate(code), ValidationResult::Incomplete));
+  }
+
+  #[test]
+  fn validate_regex_looking_code() {
+    let code = r#"/testing/;"#;
+    assert!(matches!(validate(code), ValidationResult::Valid(_)));
   }
 }

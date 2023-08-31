@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, deferred } from "./test_util.ts";
 
 Deno.test(
@@ -7,10 +7,9 @@ Deno.test(
     const promise = deferred<boolean[]>();
 
     const worker = new Worker(
-      new URL(
+      import.meta.resolve(
         "../testdata/workers/env_read_check_worker.js",
-        import.meta.url,
-      ).href,
+      ),
       { type: "module", deno: { permissions: { env: ["test", "OTHER"] } } },
     );
 

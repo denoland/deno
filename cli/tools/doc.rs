@@ -1,172 +1,104 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::DocFlags;
+use crate::args::DocSourceFileFlag;
+use crate::args::Flags;
 use crate::colors;
+use crate::display::write_json_to_stdout;
+use crate::display::write_to_stdout_ignore_sigpipe;
+use crate::factory::CliFactory;
 use crate::file_fetcher::File;
-use crate::flags::DocFlags;
-use crate::flags::Flags;
-use crate::get_types;
-use crate::proc_state::ProcState;
-use crate::write_json_to_stdout;
-use crate::write_to_stdout_ignore_sigpipe;
+use crate::graph_util::graph_lock_or_exit;
+use crate::tsc::get_types_declaration_file_text;
 use deno_ast::MediaType;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::FutureExt;
+use deno_core::resolve_path;
 use deno_core::resolve_url_or_path;
 use deno_doc as doc;
-use deno_graph::create_graph;
-use deno_graph::source::LoadFuture;
-use deno_graph::source::LoadResponse;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveResponse;
-use deno_graph::source::Resolver;
-use deno_graph::ModuleKind;
+use deno_graph::GraphKind;
 use deno_graph::ModuleSpecifier;
-use deno_runtime::permissions::Permissions;
-use import_map::ImportMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-
-struct StubDocLoader;
-
-impl Loader for StubDocLoader {
-  fn load(
-    &mut self,
-    _specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
-  ) -> LoadFuture {
-    Box::pin(future::ready(Ok(None)))
-  }
-}
-
-#[derive(Debug)]
-struct DocResolver {
-  import_map: Option<Arc<ImportMap>>,
-}
-
-impl Resolver for DocResolver {
-  fn resolve(
-    &self,
-    specifier: &str,
-    referrer: &ModuleSpecifier,
-  ) -> ResolveResponse {
-    if let Some(import_map) = &self.import_map {
-      return match import_map.resolve(specifier, referrer) {
-        Ok(specifier) => ResolveResponse::Specifier(specifier),
-        Err(err) => ResolveResponse::Err(err.into()),
-      };
-    }
-
-    match deno_core::resolve_import(specifier, referrer.as_str()) {
-      Ok(specifier) => ResolveResponse::Specifier(specifier),
-      Err(err) => ResolveResponse::Err(err.into()),
-    }
-  }
-}
-
-struct DocLoader {
-  ps: ProcState,
-}
-
-impl Loader for DocLoader {
-  fn load(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
-  ) -> LoadFuture {
-    let specifier = specifier.clone();
-    let ps = self.ps.clone();
-    async move {
-      ps.file_fetcher
-        .fetch(&specifier, &mut Permissions::allow_all())
-        .await
-        .map(|file| {
-          Some(LoadResponse::Module {
-            specifier,
-            content: file.source.clone(),
-            maybe_headers: file.maybe_headers,
-          })
-        })
-    }
-    .boxed_local()
-  }
-}
 
 pub async fn print_docs(
   flags: Flags,
   doc_flags: DocFlags,
 ) -> Result<(), AnyError> {
-  let ps = ProcState::build(Arc::new(flags)).await?;
-  let source_file = doc_flags
-    .source_file
-    .unwrap_or_else(|| "--builtin".to_string());
-  let source_parser = deno_graph::DefaultSourceParser::new();
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
 
-  let parse_result = if source_file == "--builtin" {
-    let mut loader = StubDocLoader;
-    let source_file_specifier =
-      ModuleSpecifier::parse("deno://lib.deno.d.ts").unwrap();
-    let graph = create_graph(
-      vec![(source_file_specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
-      &mut loader,
-      None,
-      None,
-      None,
-      None,
-    )
-    .await;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
-    doc_parser.parse_source(
-      &source_file_specifier,
-      MediaType::Dts,
-      get_types(ps.flags.unstable).into(),
-    )
-  } else {
-    let module_specifier = resolve_url_or_path(&source_file)?;
+  let mut doc_nodes = match doc_flags.source_file {
+    DocSourceFileFlag::Builtin => {
+      let source_file_specifier =
+        ModuleSpecifier::parse("internal://lib.deno.d.ts").unwrap();
+      let content = get_types_declaration_file_text(cli_options.unstable());
+      let mut loader = deno_graph::source::MemoryLoader::new(
+        vec![(
+          source_file_specifier.to_string(),
+          deno_graph::source::Source::Module {
+            specifier: source_file_specifier.to_string(),
+            content,
+            maybe_headers: None,
+          },
+        )],
+        Vec::new(),
+      );
+      let analyzer = deno_graph::CapturingModuleAnalyzer::default();
+      let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
+      graph
+        .build(
+          vec![source_file_specifier.clone()],
+          &mut loader,
+          deno_graph::BuildOptions {
+            module_analyzer: Some(&analyzer),
+            ..Default::default()
+          },
+        )
+        .await;
+      let doc_parser = doc::DocParser::new(
+        graph,
+        doc_flags.private,
+        analyzer.as_capturing_parser(),
+      );
+      doc_parser.parse_module(&source_file_specifier)?.definitions
+    }
+    DocSourceFileFlag::Path(source_file) => {
+      let file_fetcher = factory.file_fetcher()?;
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let maybe_lockfile = factory.maybe_lockfile();
+      let parsed_source_cache = factory.parsed_source_cache()?;
 
-    // If the root module has external types, the module graph won't redirect it,
-    // so instead create a dummy file which exports everything from the actual file being documented.
-    let root_specifier = resolve_url_or_path("./$deno$doc.ts").unwrap();
-    let root = File {
-      local: PathBuf::from("./$deno$doc.ts"),
-      maybe_types: None,
-      media_type: MediaType::TypeScript,
-      source: format!("export * from \"{}\";", module_specifier).into(),
-      specifier: root_specifier.clone(),
-      maybe_headers: None,
-    };
+      let module_specifier =
+        resolve_url_or_path(&source_file, cli_options.initial_cwd())?;
 
-    // Save our fake file into file fetcher cache.
-    ps.file_fetcher.insert_cached(root);
+      // If the root module has external types, the module graph won't redirect it,
+      // so instead create a dummy file which exports everything from the actual file being documented.
+      let root_specifier =
+        resolve_path("./$deno$doc.ts", cli_options.initial_cwd()).unwrap();
+      let root = File {
+        maybe_types: None,
+        media_type: MediaType::TypeScript,
+        source: format!("export * from \"{module_specifier}\";").into(),
+        specifier: root_specifier.clone(),
+        maybe_headers: None,
+      };
 
-    let mut loader = DocLoader { ps: ps.clone() };
-    let resolver = DocResolver {
-      import_map: ps.maybe_import_map.clone(),
-    };
-    let graph = create_graph(
-      vec![(root_specifier.clone(), ModuleKind::Esm)],
-      false,
-      None,
-      &mut loader,
-      Some(&resolver),
-      None,
-      None,
-      None,
-    )
-    .await;
-    let doc_parser =
-      doc::DocParser::new(graph, doc_flags.private, &source_parser);
-    doc_parser.parse_with_reexports(&root_specifier)
-  };
+      // Save our fake file into file fetcher cache.
+      file_fetcher.insert_cached(root);
 
-  let mut doc_nodes = match parse_result {
-    Ok(nodes) => nodes,
-    Err(e) => {
-      eprintln!("{}", e);
-      std::process::exit(1);
+      let graph = module_graph_builder
+        .create_graph(GraphKind::TypesOnly, vec![root_specifier.clone()])
+        .await?;
+
+      if let Some(lockfile) = maybe_lockfile {
+        graph_lock_or_exit(&graph, &mut lockfile.lock());
+      }
+
+      let doc_parser = doc::DocParser::new(
+        graph,
+        doc_flags.private,
+        parsed_source_cache.as_capturing_parser(),
+      );
+      doc_parser.parse_with_reexports(&root_specifier)?
     }
   };
 
@@ -178,8 +110,7 @@ pub async fn print_docs(
       let nodes =
         doc::find_nodes_by_name_recursively(doc_nodes, filter.clone());
       if nodes.is_empty() {
-        eprintln!("Node {} was not found!", filter);
-        std::process::exit(1);
+        bail!("Node {} was not found!", filter);
       }
       format!(
         "{}",

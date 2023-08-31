@@ -1,4 +1,4 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import { assertEquals, assertStringIncludes } from "./test_util.ts";
 
 Deno.test(async function fromInit() {
@@ -67,4 +67,11 @@ Deno.test(function customInspectFunction() {
 }`,
   );
   assertStringIncludes(Deno.inspect(Request.prototype), "Request");
+});
+
+Deno.test(function requestConstructorTakeURLObjectAsParameter() {
+  assertEquals(
+    new Request(new URL("http://foo/")).url,
+    "http://foo/",
+  );
 });

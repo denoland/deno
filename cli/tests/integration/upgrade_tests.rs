@@ -1,6 +1,7 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::process::Stdio;
 use test_util as util;
 use test_util::TempDir;
 
@@ -11,7 +12,7 @@ use test_util::TempDir;
 fn upgrade_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -33,7 +34,7 @@ fn upgrade_in_tmpdir() {
 fn upgrade_with_space_in_path() {
   let temp_dir = TempDir::new_with_prefix("directory with spaces");
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let status = Command::new(&exe_path)
     .arg("upgrade")
@@ -53,7 +54,7 @@ fn upgrade_with_space_in_path() {
 fn upgrade_with_version_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -82,7 +83,7 @@ fn upgrade_with_version_in_tmpdir() {
 fn upgrade_with_canary_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let _mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -112,7 +113,7 @@ fn upgrade_with_out_in_tmpdir() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
   let new_exe_path = temp_dir.path().join("foo");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let mtime1 = std::fs::metadata(&exe_path).unwrap().modified().unwrap();
   let status = Command::new(&exe_path)
@@ -120,7 +121,7 @@ fn upgrade_with_out_in_tmpdir() {
     .arg("--version")
     .arg("1.11.5")
     .arg("--output")
-    .arg(&new_exe_path.to_str().unwrap())
+    .arg(&new_exe_path)
     .spawn()
     .unwrap()
     .wait()
@@ -148,7 +149,7 @@ fn upgrade_with_out_in_tmpdir() {
 fn upgrade_invalid_stable_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let output = Command::new(&exe_path)
     .arg("upgrade")
@@ -173,7 +174,7 @@ fn upgrade_invalid_stable_version() {
 fn upgrade_invalid_canary_version() {
   let temp_dir = TempDir::new();
   let exe_path = temp_dir.path().join("deno");
-  let _ = std::fs::copy(util::deno_exe_path(), &exe_path).unwrap();
+  util::deno_exe_path().copy(&exe_path);
   assert!(exe_path.exists());
   let output = Command::new(&exe_path)
     .arg("upgrade")

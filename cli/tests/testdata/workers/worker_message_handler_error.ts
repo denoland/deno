@@ -1,5 +1,5 @@
 const worker = new Worker(
-  new URL("message_handler_error.ts", import.meta.url).href,
+  import.meta.resolve("./message_handler_error.ts"),
   { type: "module", name: "foo" },
 );
 worker.onmessage = () => {

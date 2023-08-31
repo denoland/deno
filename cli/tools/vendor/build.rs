@@ -1,17 +1,28 @@
-// Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalBoxFuture;
+use deno_core::parking_lot::Mutex;
+use deno_graph::EsmModule;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleKind;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
+
+use crate::args::JsxImportSourceConfig;
+use crate::args::Lockfile;
+use crate::cache::ParsedSourceCache;
+use crate::graph_util;
+use crate::graph_util::graph_lock_or_exit;
+use crate::tools::vendor::import_map::BuildImportMapInput;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -48,13 +59,47 @@ impl VendorEnvironment for RealVendorEnvironment {
   }
 }
 
+type BuildGraphFuture = LocalBoxFuture<'static, Result<ModuleGraph, AnyError>>;
+
+pub struct BuildInput<
+  'a,
+  TBuildGraphFn: FnOnce(Vec<ModuleSpecifier>) -> BuildGraphFuture,
+  TEnvironment: VendorEnvironment,
+> {
+  pub entry_points: Vec<ModuleSpecifier>,
+  pub build_graph: TBuildGraphFn,
+  pub parsed_source_cache: &'a ParsedSourceCache,
+  pub output_dir: &'a Path,
+  pub maybe_original_import_map: Option<&'a ImportMap>,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub resolver: &'a dyn deno_graph::source::Resolver,
+  pub environment: &'a TEnvironment,
+}
+
+pub struct BuildOutput {
+  pub vendored_count: usize,
+  pub graph: ModuleGraph,
+}
+
 /// Vendors remote modules and returns how many were vendored.
-pub fn build(
-  graph: ModuleGraph,
-  output_dir: &Path,
-  original_import_map: Option<&ImportMap>,
-  environment: &impl VendorEnvironment,
-) -> Result<usize, AnyError> {
+pub async fn build<
+  TBuildGraphFn: FnOnce(Vec<ModuleSpecifier>) -> BuildGraphFuture,
+  TEnvironment: VendorEnvironment,
+>(
+  input: BuildInput<'_, TBuildGraphFn, TEnvironment>,
+) -> Result<BuildOutput, AnyError> {
+  let BuildInput {
+    mut entry_points,
+    build_graph,
+    parsed_source_cache,
+    output_dir,
+    maybe_original_import_map: original_import_map,
+    maybe_lockfile,
+    maybe_jsx_import_source: jsx_import_source,
+    resolver,
+    environment,
+  } = input;
   assert!(output_dir.is_absolute());
   let output_dir_specifier =
     ModuleSpecifier::from_directory_path(output_dir).unwrap();
@@ -63,15 +108,40 @@ pub fn build(
     validate_original_import_map(original_im, &output_dir_specifier)?;
   }
 
-  // build the graph
-  graph.lock()?;
-  graph.valid()?;
+  // add the jsx import source to the entry points to ensure it is always vendored
+  if let Some(jsx_import_source) = jsx_import_source {
+    if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
+      if let Ok(specifier) =
+        resolver.resolve(&specifier_text, &jsx_import_source.base_url)
+      {
+        entry_points.push(specifier);
+      }
+    }
+  }
+
+  let graph = build_graph(entry_points).await?;
+
+  // check the lockfile
+  if let Some(lockfile) = maybe_lockfile {
+    graph_lock_or_exit(&graph, &mut lockfile.lock());
+  }
+
+  // surface any errors
+  graph_util::graph_valid(
+    &graph,
+    &graph.roots,
+    graph_util::GraphValidOptions {
+      is_vendoring: true,
+      check_js: true,
+      follow_type_only: true,
+    },
+  )?;
 
   // figure out how to map remote modules to local
-  let all_modules = graph.modules();
+  let all_modules = graph.modules().collect::<Vec<_>>();
   let remote_modules = all_modules
     .iter()
-    .filter(|m| is_remote_specifier(&m.specifier))
+    .filter(|m| is_remote_specifier(m.specifier()))
     .copied()
     .collect::<Vec<_>>();
   let mappings =
@@ -79,21 +149,16 @@ pub fn build(
 
   // write out all the files
   for module in &remote_modules {
-    let source = match &module.maybe_source {
-      Some(source) => source,
-      None => continue,
+    let source = match module {
+      Module::Esm(module) => &module.source,
+      Module::Json(module) => &module.source,
+      Module::Node(_) | Module::Npm(_) | Module::External(_) => continue,
     };
+    let specifier = module.specifier();
     let local_path = mappings
-      .proxied_path(&module.specifier)
-      .unwrap_or_else(|| mappings.local_path(&module.specifier));
-    if !matches!(module.kind, ModuleKind::Esm | ModuleKind::Asserted) {
-      log::warn!(
-        "Unsupported module kind {:?} for {}",
-        module.kind,
-        module.specifier
-      );
-      continue;
-    }
+      .proxied_path(specifier)
+      .unwrap_or_else(|| mappings.local_path(specifier));
+
     environment.create_dir_all(local_path.parent().unwrap())?;
     environment.write_file(&local_path, source)?;
   }
@@ -101,8 +166,9 @@ pub fn build(
   // write out the proxies
   for (specifier, proxied_module) in mappings.proxied_modules() {
     let proxy_path = mappings.local_path(specifier);
-    let module = graph.get(specifier).unwrap();
-    let text = build_proxy_module_source(module, proxied_module);
+    let module = graph.get(specifier).unwrap().esm().unwrap();
+    let text =
+      build_proxy_module_source(module, proxied_module, parsed_source_cache)?;
 
     environment.write_file(&proxy_path, &text)?;
   }
@@ -110,17 +176,23 @@ pub fn build(
   // create the import map if necessary
   if !remote_modules.is_empty() {
     let import_map_path = output_dir.join("import_map.json");
-    let import_map_text = build_import_map(
-      &output_dir_specifier,
-      &graph,
-      &all_modules,
-      &mappings,
+    let import_map_text = build_import_map(BuildImportMapInput {
+      base_dir: &output_dir_specifier,
+      graph: &graph,
+      modules: &all_modules,
+      mappings: &mappings,
       original_import_map,
-    );
+      jsx_import_source,
+      resolver,
+      parsed_source_cache,
+    })?;
     environment.write_file(&import_map_path, &import_map_text)?;
   }
 
-  Ok(remote_modules.len())
+  Ok(BuildOutput {
+    vendored_count: remote_modules.len(),
+    graph,
+  })
 }
 
 fn validate_original_import_map(
@@ -161,13 +233,18 @@ fn validate_original_import_map(
 }
 
 fn build_proxy_module_source(
-  module: &Module,
+  module: &EsmModule,
   proxied_module: &ProxiedModule,
-) -> String {
-  let mut text = format!(
-    "// @deno-types=\"{}\"\n",
+  parsed_source_cache: &ParsedSourceCache,
+) -> Result<String, AnyError> {
+  let mut text = String::new();
+  writeln!(
+    text,
+    "// @deno-types=\"{}\"",
     proxied_module.declaration_specifier
-  );
+  )
+  .unwrap();
+
   let relative_specifier = format!(
     "./{}",
     proxied_module
@@ -179,23 +256,22 @@ fn build_proxy_module_source(
 
   // for simplicity, always include the `export *` statement as it won't error
   // even when the module does not contain a named export
-  text.push_str(&format!("export * from \"{}\";\n", relative_specifier));
+  writeln!(text, "export * from \"{relative_specifier}\";").unwrap();
 
   // add a default export if one exists in the module
-  if let Some(parsed_source) = module.maybe_parsed_source.as_ref() {
-    if has_default_export(parsed_source) {
-      text.push_str(&format!(
-        "export {{ default }} from \"{}\";\n",
-        relative_specifier
-      ));
-    }
+  let parsed_source =
+    parsed_source_cache.get_parsed_source_from_esm_module(module)?;
+  if has_default_export(&parsed_source) {
+    writeln!(text, "export {{ default }} from \"{relative_specifier}\";")
+      .unwrap();
   }
 
-  text
+  Ok(text)
 }
 
 #[cfg(test)]
 mod test {
+  use crate::args::JsxImportSourceConfig;
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -357,6 +433,54 @@ mod test {
   }
 
   #[tokio::test]
+  async fn remote_redirect_entrypoint() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let output = builder
+      .with_loader(|loader| {
+        loader
+          .add(
+            "/mod.ts",
+            concat!(
+              "import * as test from 'https://x.nest.land/Yenv@1.0.0/mod.ts';\n",
+              "console.log(test)",
+            ),
+          )
+          .add_redirect("https://x.nest.land/Yenv@1.0.0/mod.ts", "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts")
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+            "export * from './src/mod.ts'",
+          )
+          .add(
+            "https://arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+            "export class Test {}",
+          );
+      })
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://x.nest.land/Yenv@1.0.0/mod.ts": "./arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts",
+          "https://arweave.net/": "./arweave.net/"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/mod.ts", "export * from './src/mod.ts'"),
+        (
+          "/vendor/arweave.net/VFtWNW3QZ-7__v7c7kck22eFI24OuK1DFzyQHKoZ9AE/src/mod.ts",
+          "export class Test {}",
+        ),
+      ]),
+    );
+  }
+
+  #[tokio::test]
   async fn same_target_filename_specifiers() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let output = builder
@@ -451,7 +575,7 @@ mod test {
             "/mod.ts",
             r#"import data from "https://localhost/data.json" assert { type: "json" };"#,
           )
-          .add("https://localhost/data.json", "{}");
+          .add("https://localhost/data.json", "{ \"a\": \"b\" }");
       })
       .build()
       .await
@@ -467,7 +591,7 @@ mod test {
     );
     assert_eq!(
       output.files,
-      to_file_vec(&[("/vendor/localhost/data.json", "{}"),]),
+      to_file_vec(&[("/vendor/localhost/data.json", "{ \"a\": \"b\" }"),]),
     );
   }
 
@@ -480,7 +604,7 @@ mod test {
     let output = builder
       .with_loader(|loader| {
         loader
-          .add("/mod.ts", &mod_file_text)
+          .add("/mod.ts", mod_file_text)
           .add("https://localhost/mod.ts", "export class Example {}");
       })
       .build()
@@ -784,7 +908,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "console.log(6);");
         loader.add("https://localhost/other.ts", "import './mod.ts';");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -814,6 +938,52 @@ mod test {
   }
 
   #[tokio::test]
+  async fn existing_import_map_remote_dep_bare_specifier() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map2.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "twind".to_string(),
+        "https://localhost/twind.ts".to_string(),
+      )
+      .unwrap();
+
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://remote/mod.ts';");
+        loader.add("https://remote/mod.ts", "import 'twind';");
+        loader.add("https://localhost/twind.ts", "export class Test {}");
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "https://remote/": "./remote/"
+        },
+        "scopes": {
+          "./remote/": {
+            "twind": "./localhost/twind.ts"
+          },
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/twind.ts", "export class Test {}"),
+        ("/vendor/remote/mod.ts", "import 'twind';"),
+      ]),
+    );
+  }
+
+  #[tokio::test]
   async fn existing_import_map_mapped_bare_specifier() {
     let mut builder = VendorTestBuilder::with_default_setup();
     let mut original_import_map = builder.new_import_map("/import_map.json");
@@ -834,7 +1004,7 @@ mod test {
           &[("content-type", "application/typescript")],
         );
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -879,7 +1049,7 @@ mod test {
         loader.add("https://localhost/mod.ts", "import '/logger.ts?test';");
         loader.add("https://localhost/logger.ts?test", "export class Logger {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .unwrap();
@@ -921,7 +1091,7 @@ mod test {
         loader.add("/vendor/deno.land/std/mod.ts", "export function f() {}");
         loader.add("https://deno.land/std/mod.ts", "export function f() {}");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -951,7 +1121,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -981,7 +1151,7 @@ mod test {
       .with_loader(|loader| {
         loader.add("/mod.ts", "console.log(5);");
       })
-      .set_original_import_map(original_import_map.clone())
+      .set_original_import_map(original_import_map)
       .build()
       .await
       .err()
@@ -992,6 +1162,169 @@ mod test {
       concat!(
         "Providing an existing import map with a scope for the output ",
         "directory is not supported (\"./vendor/\").",
+      )
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_http_key() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    original_import_map
+      .imports_mut()
+      .append(
+        "http/".to_string(),
+        "https://deno.land/std/http/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'http/mod.ts';");
+        loader.add("https://deno.land/std/http/mod.ts", "console.log(5);");
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "http/mod.ts": "./deno.land/std/http/mod.ts",
+          "https://deno.land/": "./deno.land/",
+        }
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[("/vendor/deno.land/std/http/mod.ts", "console.log(5);")]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source_jsx_files() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.tsx");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+      base_url: builder.resolve_to_url("/deno.json"),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.tsx", "const myComponent = <div></div>;");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts",
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/localhost/preact/jsx-runtime.ts",
+        "export function stuff() {}"
+      ),]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source_no_jsx_files() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.ts");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+      base_url: builder.resolve_to_url("/deno.json"),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "console.log(1)");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.ts", "console.log(1)"),
+        (
+          "/vendor/localhost/preact/jsx-runtime.ts",
+          "export function stuff() {}"
+        ),
+      ]),
+    );
+  }
+
+  #[tokio::test]
+  async fn vendor_file_fails_loading_dynamic_import() {
+    let mut builder = VendorTestBuilder::with_default_setup();
+    let err = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "await import('./test.ts');");
+        loader.add_failure(
+          "https://localhost/test.ts",
+          "500 Internal Server Error",
+        );
+      })
+      .build()
+      .await
+      .err()
+      .unwrap();
+
+    assert_eq!(
+      test_util::strip_ansi_codes(&err.to_string()),
+      concat!(
+        "500 Internal Server Error\n",
+        "    at https://localhost/mod.ts:1:14"
       )
     );
   }

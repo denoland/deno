@@ -1,22 +1,24 @@
-# Copyright 2018-2022 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 [package]
 name = "deno_bench_util"
-version = "0.52.0"
-authors = ["the Deno authors"]
-edition = "2021"
-license = "MIT"
+version = "0.111.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 publish = true
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository.workspace = true
 description = "Bench and profiling utilities for deno crates"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-bencher = "0.1"
-deno_core = { version = "0.140.0", path = "../core" }
-tokio = { version = "1.19", features = ["full"] }
+bencher.workspace = true
+deno_core.workspace = true
+once_cell.workspace = true
+tokio.workspace = true
 
 [[bench]]
 name = "op_baseline"
