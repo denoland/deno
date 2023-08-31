@@ -1049,6 +1049,17 @@ delete Object.prototype.__proto__;
           ),
         );
       }
+      case "getEditsForFileRename": {
+        return respond(
+          id,
+          languageService.getEditsForFileRename(
+            request.oldSpecifier,
+            request.newSpecifier,
+            request.formatCodeSettings,
+            request.preferences,
+          ),
+        );
+      }
       case "getCodeFixes": {
         return respond(
           id,

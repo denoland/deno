@@ -23,6 +23,7 @@ use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
+use std::io::IsTerminal;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -210,7 +211,7 @@ pub fn check_for_upgrades(
 
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
+    if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
         eprint!(
           "{} ",

@@ -1228,11 +1228,14 @@ async fn main_server(
       let body = hyper::body::to_bytes(req.into_body())
         .await
         .unwrap_or_default();
-      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..]) else {
-        return Ok(Response::builder()
-          .status(StatusCode::BAD_REQUEST)
-          .body(Body::empty())
-          .unwrap());
+      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::empty())
+            .unwrap(),
+        );
       };
       if body.ranges.is_empty() {
         return Ok(
@@ -1280,11 +1283,14 @@ async fn main_server(
       let body = hyper::body::to_bytes(req.into_body())
         .await
         .unwrap_or_default();
-      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..]) else {
-        return Ok(Response::builder()
-          .status(StatusCode::BAD_REQUEST)
-          .body(Body::empty())
-          .unwrap());
+      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::empty())
+            .unwrap(),
+        );
       };
       Ok(
         Response::builder()

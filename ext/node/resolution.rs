@@ -1053,9 +1053,10 @@ impl NodeResolver {
 
     // ResolveSelf
     let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)? else {
-        return Ok(None);
-      };
+      self.get_package_scope_config(referrer, permissions)?
+    else {
+      return Ok(None);
+    };
     if package_config.exists
       && package_config.name.as_ref() == Some(&package_name)
     {
@@ -1132,9 +1133,10 @@ impl NodeResolver {
   ) -> Result<Option<PackageJson>, AnyError> {
     let Some(root_folder) = self
       .npm_resolver
-      .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())? else {
-        return Ok(None);
-      };
+      .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?
+    else {
+      return Ok(None);
+    };
     let package_json_path = root_folder.join("package.json");
     self
       .load_package_json(permissions, package_json_path)
@@ -1146,7 +1148,8 @@ impl NodeResolver {
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PackageJson>, AnyError> {
-    let Some(package_json_path) = self.get_closest_package_json_path(url)? else {
+    let Some(package_json_path) = self.get_closest_package_json_path(url)?
+    else {
       return Ok(None);
     };
     self
@@ -1169,9 +1172,10 @@ impl NodeResolver {
     }
     let Some(root_pkg_folder) = self
       .npm_resolver
-      .resolve_package_folder_from_path(current_dir)? else {
-        return Ok(None);
-      };
+      .resolve_package_folder_from_path(current_dir)?
+    else {
+      return Ok(None);
+    };
     while current_dir.starts_with(&root_pkg_folder) {
       current_dir = current_dir.parent().unwrap();
       let package_json_path = current_dir.join("package.json");

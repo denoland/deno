@@ -494,9 +494,15 @@ async fn call_remote<
       // `unwrap()` never fails because `tx` is owned by the task held by `refresher`.
       metadata_rx.changed().await.unwrap();
     };
-    let Some(sc_endpoint) = metadata.endpoints.iter().find(|x| x.consistency == "strong") else {
-        return Err(type_error("No strong consistency endpoint is available for this database"));
-      };
+    let Some(sc_endpoint) = metadata
+      .endpoints
+      .iter()
+      .find(|x| x.consistency == "strong")
+    else {
+      return Err(type_error(
+        "No strong consistency endpoint is available for this database",
+      ));
+    };
 
     let full_url = format!("{}/{}", sc_endpoint.url, method);
     {
