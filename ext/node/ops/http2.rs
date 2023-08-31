@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::error::AnyError;
@@ -20,7 +21,9 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use h2;
+use h2::RecvStream;
 use http;
+use http::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use tokio::net::TcpStream;
@@ -68,6 +71,8 @@ impl Resource for Http2ClientStream {
 #[derive(Debug)]
 pub struct Http2ClientResponseBody {
   pub body: AsyncRefCell<h2::RecvStream>,
+  pub trailers_rx: AsyncRefCell<Option<tokio::sync::oneshot::Receiver<Option<HeaderMap>>>>,
+  pub trailers_tx: AsyncRefCell<Option<tokio::sync::oneshot::Sender<Option<HeaderMap>>>>,
 }
 
 impl Resource for Http2ClientResponseBody {
@@ -292,18 +297,48 @@ pub async fn op_http2_client_get_response(
     res_headers.push((key.as_str().into(), val.as_bytes().into()));
   }
 
+  let (trailers_tx, trailers_rx) = tokio::sync::oneshot::channel();
   let body_rid =
     state
       .borrow_mut()
       .resource_table
       .add(Http2ClientResponseBody {
         body: AsyncRefCell::new(body),
+        trailers_rx: AsyncRefCell::new(Some(trailers_rx)),
+        trailers_tx: AsyncRefCell::new(Some(trailers_tx))
       });
   Ok(Http2ClientResponse {
     headers: res_headers,
     body_rid,
     status_code: status.into(),
   })
+}
+
+enum DataOrTrailers {
+  Data(Bytes),
+  Trailers(HeaderMap),
+  Eof,
+}
+
+fn poll_data_or_trailers(cx: &mut std::task::Context, body: &mut RecvStream) -> Poll<Result<DataOrTrailers, h2::Error>> {
+  loop {
+    if let Poll::Ready(trailers) = body.poll_trailers(cx) {
+      if let Some(trailers) = trailers? {
+        return Poll::Ready(Ok(DataOrTrailers::Trailers(trailers)));
+      } else {
+        return Poll::Ready(Ok(DataOrTrailers::Eof));
+      }
+    }
+    if let Poll::Ready(data) = body.poll_data(cx) {
+      if let Some(data) = data {
+        return Poll::Ready(Ok(DataOrTrailers::Data(data?)));
+      }
+      // If data is None, loop one more time to check for trailers
+      continue;
+    }
+    // Return pending here as poll_data will keep the waker
+    return Poll::Pending;
+  }
 }
 
 #[op]
@@ -317,15 +352,22 @@ pub async fn op_http2_client_get_response_body_chunk(
     .get::<Http2ClientResponseBody>(body_rid)?;
   let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
 
-  let maybe_data = match body.data().await {
-    Some(maybe_data) => {
-      let data = maybe_data?;
-      Some(data.to_vec())
-    }
-    None => None,
-  };
+  loop {
+    match poll_fn(|cx| poll_data_or_trailers(cx, &mut body)).await? {
+      DataOrTrailers::Data(data) => {
+        return Ok((Some(data.to_vec()), false));
+      },
+      DataOrTrailers::Trailers(trailers) => {
+        println!("{trailers:?}");
+        if let Some(trailers_tx) = RcRef::map(&resource, |r| &r.trailers_tx).borrow_mut().await.take() {
+          _ = trailers_tx.send(Some(trailers));
+        };
 
-  Ok((maybe_data, body.is_end_stream()))
+        continue;
+      }
+      DataOrTrailers::Eof => return Ok((None, true)),
+    };
+  }
 }
 
 #[op]
@@ -337,19 +379,21 @@ pub async fn op_http2_client_get_response_trailers(
     .borrow()
     .resource_table
     .get::<Http2ClientResponseBody>(body_rid)?;
-  let mut body = RcRef::map(&resource, |r| &r.body).borrow_mut().await;
-  let maybe_trailers = body.trailers().await?;
-  let trailers = if let Some(trailers) = maybe_trailers {
-    let mut v = Vec::with_capacity(trailers.len());
-    for (key, value) in trailers.iter() {
-      v.push((
-        ByteString::from(key.as_str()),
-        ByteString::from(value.as_bytes()),
-      ));
+  let trailers = RcRef::map(&resource, |r| &r.trailers_rx).borrow_mut().await.take();
+  if let Some(trailers) = trailers {
+    if let Some(trailers) = trailers.await? {
+      let mut v = Vec::with_capacity(trailers.len());
+      for (key, value) in trailers.iter() {
+        v.push((
+          ByteString::from(key.as_str()),
+          ByteString::from(value.as_bytes()),
+        ));
+      }
+      Ok(Some(v))
+    } else {
+      Ok(None)
     }
-    Some(v)
   } else {
-    None
-  };
-  Ok(trailers)
+    Ok(None)
+  }
 }

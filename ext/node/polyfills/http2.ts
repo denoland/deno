@@ -920,7 +920,7 @@ export class ClientHttp2Stream extends Duplex {
     //     // core.tryClose(connRid);
     //     this.emit("trailers", trailers);
     //   })();
-
+    // }
     //   // this.#closed = true;
     //   // // tempDebug(this.#bodyRid, this.#rid);
     //   // core.tryClose(this.#bodyRid);
@@ -936,6 +936,14 @@ export class ClientHttp2Stream extends Duplex {
 
       tempDebug(">>> chunk", chunk, finished);
       if (chunk === null) {
+        const trailerList = await core.opAsync(
+          "op_http2_client_get_response_trailers",
+          this.__response.bodyRid,
+        );
+        if (trailerList) {
+          const trailers = Object.fromEntries(trailerList);
+          this.emit("trailers", trailers);
+        }
         core.tryClose(this.__response.bodyRid);
         // if (finished) {
         //   this.#hasTrailersToRead = true;

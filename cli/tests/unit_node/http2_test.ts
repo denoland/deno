@@ -57,14 +57,11 @@ Deno.test("[node/http2 client]", {
   assertEquals(receivedHeaders, { ":status": 200 });
   assertEquals(receivedData, "hello world\n");
 
-  // TODO(bartlomieju): this is currently not working properly
-  assertEquals(receivedTrailers, undefined);
-  // Should be this:
-  // assertEquals(receivedTrailers, {
-  //   "abc": "def",
-  //   "opr": "stv",
-  //   "foo": "bar",
-  // });
+  assertEquals(receivedTrailers, {
+    "abc": "def",
+    "opr": "stv",
+    "foo": "bar",
+  });
 });
 
 // TODO(bartlomieju): reenable sanitizers
