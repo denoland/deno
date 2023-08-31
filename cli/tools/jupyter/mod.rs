@@ -927,7 +927,7 @@ impl MimeSet {
 
     let json_data = match fmt_str.as_ref() {
       "string" => json!(String::from_utf8(buf.to_vec())?),
-      "json" => serde_json::from_str(std::str::from_utf8(&buf.to_vec())?)?,
+      "json" => serde_json::from_str(std::str::from_utf8(&buf)?)?,
       "base64" | "default" => json!(base64::encode(buf)),
       _ => return Err(anyhow!("unknown display mime format: {}", fmt_str)),
     };
