@@ -985,6 +985,7 @@ dependencies = [
  "clap_complete",
  "clap_complete_fig",
  "console_static_text",
+ "data-encoding",
  "data-url 0.3.0",
  "deno_ast",
  "deno_bench_util",

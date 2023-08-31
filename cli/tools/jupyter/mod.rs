@@ -5,11 +5,10 @@
 
 use crate::args::Flags;
 use crate::args::JupyterFlags;
-use crate::create_main_worker;
-use crate::logger;
-use crate::proc_state::ProcState;
 use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
+use crate::util::logger;
+use crate::CliFactory;
 use base64;
 use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
@@ -29,17 +28,19 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::Extension;
+use deno_core::JsBuffer;
 use deno_core::JsRuntime;
+use deno_core::Op;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use deno_runtime::permissions::Permissions;
+use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use ring::hmac;
-use secure_tempfile::TempDir;
 use std::collections::HashMap;
 use std::env::current_exe;
 use std::sync::Arc;
 use std::time::Duration;
+use tempfile::TempDir;
 use tokio::join;
 use tokio::time::sleep;
 use zeromq::prelude::*;
@@ -110,28 +111,30 @@ enum HandlerType {
   Stdin,
 }
 
-type WorkerCommSender = UnboundedSender<WorkerCommMsg>;
-type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
+pub type WorkerCommSender = UnboundedSender<WorkerCommMsg>;
+pub type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 
-enum WorkerCommMsg {
+pub enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
-  Display(String, ZeroCopyBuf, Option<String>, Option<Value>),
+  Display(String, JsBuffer, Option<String>, Option<Value>),
 }
 
-fn jupyter_extension(sender: WorkerCommSender) -> Extension {
-  Extension::builder()
-    .ops(vec![op_jupyter_display::decl()])
-    .middleware(|op| match op.name {
-      "op_print" => op_print::decl(),
-      _ => op,
-    })
-    .state(move |state| {
-      state.put(sender.clone());
-      Ok(())
-    })
-    .build()
-}
+deno_core::extension!(deno_jupyter,
+  ops = [
+    op_jupyter_display
+  ],
+  options = {
+    sender: WorkerCommSender,
+  },
+  middleware = |op| match op.name {
+    "op_print" => op_print::DECL,
+    _ => op,
+  },
+  state = |state, options| {
+    state.put(options.sender);
+  },
+);
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -145,7 +148,7 @@ pub struct DisplayArgs {
 pub fn op_jupyter_display(
   state: &mut OpState,
   args: DisplayArgs,
-  data: Option<ZeroCopyBuf>,
+  data: Option<JsBuffer>,
 ) -> Result<(), AnyError> {
   let d = match data {
     Some(x) => x,
@@ -223,19 +226,32 @@ impl Kernel {
       HbComm::new(create_conn_str(&spec.transport, &spec.ip, spec.hb_port));
 
     let (stdio_tx, stdio_rx) = mpsc::unbounded();
-    let main_module = resolve_url_or_path("./$deno$jupyter.ts").unwrap();
-    // TODO(bartlomieju): should we run with all permissions?
-    let permissions = Permissions::allow_all();
-    let ps = ProcState::build(Arc::new(flags.clone())).await?;
-    let mut worker = create_main_worker(
-      &ps,
-      main_module.clone(),
-      permissions,
-      vec![jupyter_extension(stdio_tx)],
-      Default::default(),
-    );
 
-    let repl_session = ReplSession::initialize(worker).await?;
+    let factory = CliFactory::from_flags(flags).await?;
+    let cli_options = factory.cli_options();
+    let main_module =
+      resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
+        .unwrap();
+    // TODO(bartlomieju): should we run with all permissions?
+    let permissions = PermissionsContainer::new(Permissions::allow_all());
+    let npm_resolver = factory.npm_resolver().await?.clone();
+    let resolver = factory.resolver().await?.clone();
+    let file_fetcher = factory.file_fetcher()?;
+    let worker_factory = factory.create_cli_main_worker_factory().await?;
+
+    let mut worker = worker_factory
+      .create_custom_worker(
+        main_module.clone(),
+        permissions,
+        vec![deno_jupyter::init_ops(stdio_tx)],
+        Default::default(),
+      )
+      .await?;
+    worker.setup_repl().await?;
+    let worker = worker.into_main_worker();
+    let repl_session =
+      ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
+        .await?;
 
     let kernel = Self {
       metadata,
@@ -901,7 +917,7 @@ impl MimeSet {
   fn add_buf(
     &mut self,
     mime_type: &str,
-    buf: ZeroCopyBuf,
+    buf: JsBuffer,
     format: Option<String>,
   ) -> Result<(), AnyError> {
     let fmt_str = match format {
@@ -968,7 +984,7 @@ impl Default for KernelMetadata {
       help_text: "<TODO>".to_string(),
       help_url: "https://github.com/denoland/deno".to_string(),
       implementation_name: "Deno kernel".to_string(),
-      kernel_version: crate::version::deno(),
+      kernel_version: crate::version::deno().to_string(),
       language_version: crate::version::TYPESCRIPT.to_string(),
       language: "typescript".to_string(),
       mime: "text/x.typescript".to_string(),

@@ -116,9 +116,9 @@ pub fn result_to_evaluation_output(
   }
 }
 
-struct TsEvaluateResponse {
-  ts_code: String,
-  value: cdp::EvaluateResponse,
+pub struct TsEvaluateResponse {
+  pub ts_code: String,
+  pub value: cdp::EvaluateResponse,
 }
 
 pub struct ReplSession {

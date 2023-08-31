@@ -3,8 +3,8 @@
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use secure_tempfile::TempDir;
 use std::env::current_exe;
+use tempfile::TempDir;
 
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();

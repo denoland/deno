@@ -685,7 +685,8 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
+      | Vendor(_) => None,
     }
   }
 
@@ -1626,6 +1627,7 @@ fn jupyter_subcommand() -> Command {
     .arg(
       Arg::new("install")
         .long("install")
+        .action(ArgAction::SetTrue)
     )
     .arg(
       Arg::new("conn")
