@@ -236,7 +236,7 @@ impl Default for ImportCompletionSettings {
 #[serde(rename_all = "camelCase")]
 pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
-  pub enable: bool,
+  pub enable: Option<bool>,
   /// A list of paths, using the workspace folder as a base that should be Deno
   /// enabled.
   #[serde(default)]
@@ -288,8 +288,7 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
-  #[serde(default)]
-  pub enable: bool,
+  pub enable: Option<bool>,
 
   /// A list of paths, using the root_uri as a base that should be Deno enabled.
   #[serde(default)]
@@ -359,7 +358,7 @@ pub struct WorkspaceSettings {
 impl Default for WorkspaceSettings {
   fn default() -> Self {
     WorkspaceSettings {
-      enable: false,
+      enable: None,
       enable_paths: vec![],
       cache: None,
       certificate_stores: None,
@@ -405,6 +404,7 @@ pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
   pub enabled_paths: HashMap<Url, Vec<Url>>,
   pub excluded_paths: Option<Vec<Url>>,
+  pub has_config_file: bool,
   pub settings: Settings,
 }
 
@@ -415,6 +415,7 @@ impl ConfigSnapshot {
       &self.enabled_paths,
       self.excluded_paths.as_ref(),
       &self.settings,
+      self.has_config_file,
       specifier,
     )
   }
@@ -523,6 +524,10 @@ impl Config {
     self.maybe_config_file_info = None;
   }
 
+  pub fn has_config_file(&self) -> bool {
+    self.maybe_config_file_info.is_some()
+  }
+
   pub fn set_config_file(&mut self, config_file: ConfigFile) {
     self.maybe_config_file_info = Some(LspConfigFileInfo {
       maybe_lockfile: resolve_lockfile_from_config(&config_file).map(
@@ -582,12 +587,21 @@ impl Config {
         .maybe_config_file_info
         .as_ref()
         .map(|i| i.excluded_paths.clone()),
+      has_config_file: self.has_config_file(),
       settings: self.settings.clone(),
     })
   }
 
   pub fn has_specifier_settings(&self, specifier: &ModuleSpecifier) -> bool {
     self.settings.specifiers.contains_key(specifier)
+  }
+
+  pub fn enabled(&self) -> bool {
+    self
+      .settings
+      .workspace
+      .enable
+      .unwrap_or_else(|| self.has_config_file())
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
@@ -598,6 +612,7 @@ impl Config {
         .as_ref()
         .map(|i| &i.excluded_paths),
       &self.settings,
+      self.has_config_file(),
       specifier,
     )
   }
@@ -610,7 +625,7 @@ impl Config {
   pub fn enabled_urls(&self) -> Vec<Url> {
     let mut urls: Vec<Url> = Vec::new();
 
-    if !self.settings.workspace.enable && self.enabled_paths.is_empty() {
+    if !self.enabled() && self.enabled_paths.is_empty() {
       // do not return any urls when disabled
       return urls;
     }
@@ -780,6 +795,7 @@ fn specifier_enabled(
   enabled_paths: &HashMap<Url, Vec<Url>>,
   excluded_paths: Option<&Vec<Url>>,
   settings: &Settings,
+  workspace_has_config_file: bool,
   specifier: &Url,
 ) -> bool {
   let specifier_str = specifier.as_str();
@@ -800,8 +816,9 @@ fn specifier_enabled(
   settings
     .specifiers
     .get(specifier)
-    .map(|settings| settings.enable)
-    .unwrap_or_else(|| settings.workspace.enable)
+    .and_then(|settings| settings.enable)
+    .or(settings.workspace.enable)
+    .unwrap_or(workspace_has_config_file)
 }
 
 fn resolve_lockfile_from_config(config_file: &ConfigFile) -> Option<Lockfile> {
@@ -916,7 +933,7 @@ mod tests {
     assert_eq!(
       config.workspace_settings().clone(),
       WorkspaceSettings {
-        enable: false,
+        enable: None,
         enable_paths: Vec::new(),
         cache: None,
         certificate_stores: None,
@@ -1025,14 +1042,14 @@ mod tests {
     let mut config = Config::new();
     let root_dir = Url::parse("file:///example/").unwrap();
     config.root_uri = Some(root_dir.clone());
-    config.settings.workspace.enable = false;
+    config.settings.workspace.enable = Some(false);
     config.settings.workspace.enable_paths = Vec::new();
     assert_eq!(config.enabled_urls(), vec![]);
 
-    config.settings.workspace.enable = true;
+    config.settings.workspace.enable = Some(true);
     assert_eq!(config.enabled_urls(), vec![root_dir]);
 
-    config.settings.workspace.enable = false;
+    config.settings.workspace.enable = Some(false);
     let root_dir1 = Url::parse("file:///root1/").unwrap();
     let root_dir2 = Url::parse("file:///root2/").unwrap();
     let root_dir3 = Url::parse("file:///root3/").unwrap();
@@ -1059,5 +1076,19 @@ mod tests {
         root_dir3
       ]
     );
+  }
+
+  #[test]
+  fn config_enable_via_config_file_detection() {
+    let mut config = Config::new();
+    let root_uri = Url::parse("file:///root/").unwrap();
+    config.root_uri = Some(root_uri.clone());
+    config.settings.workspace.enable = None;
+    assert_eq!(config.enabled_urls(), vec![]);
+
+    config.set_config_file(
+      ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+    );
+    assert_eq!(config.enabled_urls(), vec![root_uri]);
   }
 }
