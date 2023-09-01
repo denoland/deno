@@ -1,4 +1,4 @@
-// Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use crate::args::Flags;
 use crate::args::JupyterFlags;
@@ -132,6 +132,7 @@ pub struct DisplayArgs {
   metadata: Option<Value>,
 }
 
+// TODO(bartlomieju): this op is unused right now.
 #[op]
 pub fn op_jupyter_display(
   state: &mut OpState,
@@ -471,7 +472,10 @@ impl Kernel {
         mimetype: self.metadata.mime.clone(),
         file_extension: self.metadata.file_ext.clone(),
       },
-      help_links: vec![], // TODO(apowers313) dig up help links
+      help_links: vec![KernelHelpLink {
+        text: self.metadata.help_text.clone(),
+        url: self.metadata.help_url.clone(),
+      }],
       banner: self.metadata.banner.clone(),
       debugger: false,
     };
@@ -552,7 +556,8 @@ impl Kernel {
         .await?;
 
       eprintln!("output serialized {:#?}", output);
-
+      // TODO(bartlomieju): returning this doesn't print the value in the notebook,
+      // it should probably send the data to stdio topic.
       ExecResult::Ok(Value::String(output))
     };
 
@@ -727,6 +732,8 @@ impl Kernel {
     Ok(())
   }
 
+  // TODO(bartlomieju): this method shouldn't be using `data: Value` but
+  // a strongly typed struct. All this handling here, is super brittle.
   async fn display_data_from_result_value(
     &mut self,
     data: Value,
@@ -979,8 +986,8 @@ impl Default for KernelMetadata {
     Self {
       banner: "Welcome to Deno kernel".to_string(),
       file_ext: ".ts".to_string(),
-      help_text: "<TODO>".to_string(),
-      help_url: "https://github.com/denoland/deno".to_string(),
+      help_text: "Visit Deno manual".to_string(),
+      help_url: "https://deno.land/manual".to_string(),
       implementation_name: "Deno kernel".to_string(),
       kernel_version: crate::version::deno().to_string(),
       language_version: crate::version::TYPESCRIPT.to_string(),
