@@ -114,7 +114,7 @@ struct Kernel {
   identity: String,
   execution_count: u32,
   repl_session: ReplSession,
-  stdio_rx: WorkerCommReceiver,
+  stdio_rx: mpsc::UnboundedReceiver<WorkerCommMsg>,
   last_comm_ctx: Option<CommContext>,
 }
 
@@ -125,22 +125,14 @@ enum HandlerType {
   Stdin,
 }
 
-pub type WorkerCommSender = UnboundedSender<WorkerCommMsg>;
-pub type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
-
 pub enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
-  // TODO(bartlomieju): do we need it?
-  Display(String, JsBuffer, Option<String>, Option<Value>),
 }
 
 deno_core::extension!(deno_jupyter,
-  ops = [
-    op_jupyter_display
-  ],
   options = {
-    sender: WorkerCommSender,
+    sender: mpsc::UnboundedSender<WorkerCommMsg>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print::DECL,
@@ -151,45 +143,13 @@ deno_core::extension!(deno_jupyter,
   },
 );
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct DisplayArgs {
-  mime_type: String,
-  data_format: Option<String>,
-  metadata: Option<Value>,
-}
-
-// TODO(bartlomieju): this op is unused right now.
-#[op]
-pub fn op_jupyter_display(
-  state: &mut OpState,
-  args: DisplayArgs,
-  data: Option<JsBuffer>,
-) -> Result<(), AnyError> {
-  let d = match data {
-    Some(x) => x,
-    None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
-  };
-
-  let sender = state.borrow_mut::<WorkerCommSender>();
-  // TODO(bartlomieju): should the result be handled?
-  let _ = sender.unbounded_send(WorkerCommMsg::Display(
-    args.mime_type,
-    d,
-    args.data_format,
-    args.metadata,
-  ));
-
-  Ok(())
-}
-
 #[op]
 pub fn op_print(
   state: &mut OpState,
   msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow_mut::<WorkerCommSender>();
+  let sender = state.borrow_mut::<mpsc::UnboundedSender<WorkerCommMsg>>();
 
   // TODO(bartlomieju): should these results be handled somehow?
   if is_err {
@@ -362,12 +322,6 @@ impl Kernel {
           .send_stdio(&comm_ctx, StdioType::Stderr, s.as_ref())
           .await?;
       }
-      WorkerCommMsg::Display(mime, buf, format, metadata) => {
-        let mut dd = MimeSet::new();
-        dd.add_buf(mime.as_ref(), buf, format)?;
-        let md = self.create_display_metadata(mime, metadata)?;
-        self.send_display_data(&comm_ctx, dd, md).await?;
-      }
     };
 
     Ok(())
@@ -401,12 +355,14 @@ impl Kernel {
     Ok(())
   }
 
-  fn control_handler(&self, _comm_ctx: &CommContext) -> Result<(), AnyError> {
-    todo!()
+  fn control_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
+    eprintln!("Unimplemented control_handler {:#?}", comm_ctx);
+    Ok(())
   }
 
-  fn stdin_handler(&self, _comm_ctx: &CommContext) -> Result<(), AnyError> {
-    todo!()
+  fn stdin_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
+    eprintln!("Unimplemented stdin_handler {:#?}", comm_ctx);
+    Ok(())
   }
 
   async fn set_state(&mut self, comm_ctx: &CommContext, state: KernelState) {
@@ -538,7 +494,7 @@ impl Kernel {
       eprintln!("output serialized {:#?}", output);
       // TODO(bartlomieju): returning this doesn't print the value in the notebook,
       // it should probably send the data to stdio topic.
-      ExecResult::Ok(Value::String(output))
+      ExecResult::Ok(output)
     };
 
     match result {
@@ -612,9 +568,8 @@ impl Kernel {
     comm_ctx: &CommContext,
     result: &ExecResult,
   ) -> Result<(), AnyError> {
-    let e = match result {
-      ExecResult::Error(e) => e,
-      _ => return Err(anyhow!("send_error: unreachable")),
+    let ExecResult::Error(e) = result else {
+      unreachable!()
     };
     let msg = SideEffectMessage::new(
       comm_ctx,
@@ -636,14 +591,9 @@ impl Kernel {
     comm_ctx: &CommContext,
     result: &ExecResult,
   ) -> Result<(), AnyError> {
-    let v = match result {
-      ExecResult::Ok(v) => v,
-      _ => return Err(anyhow!("send_execute_result: unreachable")),
+    let ExecResult::Ok(result_str) = result else {
+      unreachable!()
     };
-    let display_data = self.display_data_from_result_value(v.clone()).await?;
-    if display_data.is_empty() {
-      return Ok(());
-    }
 
     let msg = SideEffectMessage::new(
       comm_ctx,
@@ -651,7 +601,9 @@ impl Kernel {
       ReplyMetadata::Empty,
       ReplyContent::ExecuteResult(ExecuteResultContent {
         execution_count: self.execution_count,
-        data: display_data.to_object(),
+        data: json!({
+          "text/plain": result_str,
+        }),
         // data: json!("<not implemented>"),
         metadata: json!({}),
       }),
@@ -682,31 +634,6 @@ impl Kernel {
       ReplyContent::Stream(content),
     );
 
-    self.iopub_comm.send(msg).await?;
-
-    Ok(())
-  }
-
-  async fn send_display_data(
-    &mut self,
-    comm_ctx: &CommContext,
-    display_data: MimeSet,
-    metadata: MimeSet,
-  ) -> Result<(), AnyError> {
-    if display_data.is_empty() {
-      return Err(anyhow!("send_display_data called with empty display data"));
-    }
-
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "display_data",
-      ReplyMetadata::Empty,
-      ReplyContent::DisplayData(DisplayDataContent {
-        data: display_data.to_object(),
-        metadata: metadata.to_object(),
-        transient: json!({}),
-      }),
-    );
     self.iopub_comm.send(msg).await?;
 
     Ok(())
@@ -784,43 +711,6 @@ impl Kernel {
     };
 
     Ok(ret)
-  }
-
-  fn create_display_metadata(
-    &self,
-    format: String,
-    metadata: Option<Value>,
-  ) -> Result<MimeSet, AnyError> {
-    let mut ms = MimeSet::new();
-    let format_str = format.as_ref();
-
-    let md = match metadata {
-      Some(m) => m,
-      None => {
-        ms.add(format_str, json!({}));
-        return Ok(ms);
-      }
-    };
-
-    match format_str {
-      "image/png" | "image/bmp" | "image/gif" | "image/jpeg"
-      | "image/svg+xml" => ms.add(
-        format_str,
-        json!({
-          "width": md["width"],
-          "height": md["height"],
-        }),
-      ),
-      "application/json" => ms.add(
-        format_str,
-        json!({
-          "expanded": md["width"],
-        }),
-      ),
-      _ => ms.add(format_str, md),
-    }
-
-    Ok(ms)
   }
 
   async fn decode_object(
@@ -937,7 +827,7 @@ impl MimeSet {
 }
 
 enum ExecResult {
-  Ok(Value),
+  Ok(String),
   Error(ExecError),
 }
 
