@@ -104,6 +104,7 @@ pub type WorkerCommReceiver = UnboundedReceiver<WorkerCommMsg>;
 pub enum WorkerCommMsg {
   Stderr(String),
   Stdout(String),
+  // TODO(bartlomieju): do we need it?
   Display(String, JsBuffer, Option<String>, Option<Value>),
 }
 
@@ -514,6 +515,7 @@ impl Kernel {
       .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
 
+    // TODO(bartlomieju): clean this up - maybe deduplicate with existing code in `ReplSession`.
     let result = if let Some(ex_details) = &output.value.exception_details {
       let stack_trace: Vec<String> = ex_details
         .exception

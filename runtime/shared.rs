@@ -47,7 +47,6 @@ extension!(runtime,
     "40_process.js",
     "40_signals.js",
     "40_tty.js",
-    "40_jupyter.js",
     "41_prompt.js",
     "90_deno_ns.js",
     "98_global_scope.js"
