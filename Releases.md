@@ -16,7 +16,8 @@ https://github.com/denoland/deno_install
 - fix(ext/node): fix argv[1] in Worker (#20305)
 - fix(ext/node): shared global buffer unlock correctness fix (#20314)
 - fix(ext/tls): upgrade webpki version (#20285)
-- fix(fmt/markdown): ignore trailing words in code block info string for language detection (#20310)
+- fix(fmt/markdown): ignore trailing words in code block info string for
+  language detection (#20310)
 - fix(kv) increase number of allowed mutations in atomic (#20126)
 - fix(lsp): delete test modules with all tests deleted (#20321)
 - fix(lsp): implement deno.suggest.completeFunctionCalls (#20214)
