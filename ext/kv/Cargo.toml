@@ -32,7 +32,7 @@ serde_json.workspace = true
 tokio.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
-termcolor = "1.1.3"
+termcolor.workspace = true
 
 [build-dependencies]
 prost-build.workspace = true
