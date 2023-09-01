@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::path::Path;
+
 use crate::args::Flags;
 use crate::args::JupyterFlags;
 use crate::tools::repl::ReplSession;
@@ -41,18 +43,43 @@ pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
-  if jupyter_flags.conn_file.is_none() {
+  let Some(connection_filepath) = jupyter_flags.conn_file else {
     return Err(generic_error("Missing --conn flag"));
-  }
+  };
 
   // This env var might be set by notebook
   if std::env::var("DEBUG").is_ok() {
     logger::init(Some(log::Level::Debug));
   }
 
-  let conn_file_path = jupyter_flags.conn_file.unwrap();
+  let factory = CliFactory::from_flags(flags).await?;
+  let cli_options = factory.cli_options();
+  let main_module =
+    resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
+      .unwrap();
+  // TODO(bartlomieju): should we run with all permissions?
+  let permissions = PermissionsContainer::new(Permissions::allow_all());
+  let npm_resolver = factory.npm_resolver().await?.clone();
+  let resolver = factory.resolver().await?.clone();
+  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let (stdio_tx, stdio_rx) = mpsc::unbounded();
 
-  let mut kernel = Kernel::new(flags, conn_file_path.to_str().unwrap()).await?;
+  let mut worker = worker_factory
+    .create_custom_worker(
+      main_module.clone(),
+      permissions,
+      vec![deno_jupyter::init_ops(stdio_tx)],
+      Default::default(),
+    )
+    .await?;
+  worker.setup_repl().await?;
+  let worker = worker.into_main_worker();
+  let repl_session =
+    ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
+      .await?;
+
+  let mut kernel =
+    Kernel::new(&connection_filepath, stdio_rx, repl_session).await?;
   println!("[DENO] kernel created: {:#?}", kernel.identity);
 
   println!("running kernel...");
@@ -174,89 +201,42 @@ pub fn op_print(
 }
 
 impl Kernel {
-  async fn new(flags: Flags, conn_file_path: &str) -> Result<Self, AnyError> {
+  async fn new(
+    connection_filepath: &Path,
+    stdio_rx: mpsc::UnboundedReceiver<WorkerCommMsg>,
+    repl_session: ReplSession,
+  ) -> Result<Self, AnyError> {
     let conn_file =
-      std::fs::read_to_string(conn_file_path).with_context(|| {
-        format!("Couldn't read connection file: {}", conn_file_path)
+      std::fs::read_to_string(connection_filepath).with_context(|| {
+        format!("Couldn't read connection file: {:?}", connection_filepath)
       })?;
     let spec: ConnectionSpec =
       serde_json::from_str(&conn_file).with_context(|| {
-        format!("Connection file isn't proper JSON: {}", conn_file_path)
+        format!(
+          "Connection file is not a valid JSON: {:?}",
+          connection_filepath
+        )
       })?;
 
     println!("[DENO] parsed conn file: {:#?}", spec);
 
-    let execution_count = 0;
     let identity = uuid::Uuid::new_v4().to_string();
     let hmac_key = hmac::Key::new(hmac::HMAC_SHA256, spec.key.as_ref());
-    let metadata = KernelMetadata::default();
-    let iopub_comm = PubComm::new(
-      create_conn_str(&spec.transport, &spec.ip, spec.iopub_port),
-      identity.clone(),
-      hmac_key.clone(),
-    );
-    let shell_comm = DealerComm::new(
-      "shell",
-      create_conn_str(&spec.transport, &spec.ip, spec.shell_port),
-      identity.clone(),
-      hmac_key.clone(),
-    );
-    let control_comm = DealerComm::new(
-      "control",
-      create_conn_str(&spec.transport, &spec.ip, spec.control_port),
-      identity.clone(),
-      hmac_key.clone(),
-    );
-    let stdin_comm = DealerComm::new(
-      "stdin",
-      create_conn_str(&spec.transport, &spec.ip, spec.stdin_port),
-      identity.clone(),
-      hmac_key,
-    );
-    let hb_comm =
-      HbComm::new(create_conn_str(&spec.transport, &spec.ip, spec.hb_port));
-
-    let (stdio_tx, stdio_rx) = mpsc::unbounded();
-
-    let factory = CliFactory::from_flags(flags).await?;
-    let cli_options = factory.cli_options();
-    let main_module =
-      resolve_url_or_path("./$deno$jupyter.ts", cli_options.initial_cwd())
-        .unwrap();
-    // TODO(bartlomieju): should we run with all permissions?
-    let permissions = PermissionsContainer::new(Permissions::allow_all());
-    let npm_resolver = factory.npm_resolver().await?.clone();
-    let resolver = factory.resolver().await?.clone();
-    let worker_factory = factory.create_cli_main_worker_factory().await?;
-
-    let mut worker = worker_factory
-      .create_custom_worker(
-        main_module.clone(),
-        permissions,
-        vec![deno_jupyter::init_ops(stdio_tx)],
-        Default::default(),
-      )
-      .await?;
-    worker.setup_repl().await?;
-    let worker = worker.into_main_worker();
-    let repl_session =
-      ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
-        .await?;
 
     let kernel = Self {
-      metadata,
-      conn_spec: spec,
+      metadata: KernelMetadata::default(),
       state: KernelState::Idle,
-      iopub_comm,
-      shell_comm,
-      control_comm,
-      stdin_comm,
-      hb_comm,
+      iopub_comm: PubComm::new(&spec, &identity, &hmac_key),
+      shell_comm: DealerComm::create_shell(&spec, &identity, &hmac_key),
+      control_comm: DealerComm::create_control(&spec, &identity, &hmac_key),
+      stdin_comm: DealerComm::create_stdin(&spec, &identity, &hmac_key),
+      hb_comm: HbComm::new(&spec),
       identity,
-      execution_count,
+      execution_count: 0,
       repl_session,
       stdio_rx,
       last_comm_ctx: None,
+      conn_spec: spec,
     };
 
     Ok(kernel)
@@ -999,7 +979,7 @@ impl Default for KernelMetadata {
 }
 
 #[derive(Debug, Deserialize)]
-struct ConnectionSpec {
+pub struct ConnectionSpec {
   ip: String,
   transport: String,
   control_port: u32,
@@ -1007,12 +987,10 @@ struct ConnectionSpec {
   stdin_port: u32,
   hb_port: u32,
   iopub_port: u32,
-  signature_scheme: String,
   key: String,
-}
 
-fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
-  format!("{}://{}:{}", transport, ip, port)
+  #[allow(unused)]
+  signature_scheme: String,
 }
 
 #[derive(Debug)]

@@ -7,6 +7,7 @@ use zeromq::util::PeerIdentity;
 use zeromq::SocketOptions;
 
 use super::hmac_verify;
+use super::ConnectionSpec;
 use super::ReplyMessage;
 use super::RequestMessage;
 use super::SideEffectMessage;
@@ -21,9 +22,18 @@ pub struct PubComm {
   identity: String,
 }
 
+fn create_conn_str(transport: &str, ip: &str, port: u32) -> String {
+  format!("{}://{}:{}", transport, ip, port)
+}
+
 // TODO(apowers313) connect and send look like traits shared with DealerComm
 impl PubComm {
-  pub fn new(conn_str: String, identity: String, hmac_key: hmac::Key) -> Self {
+  pub fn new(
+    spec: &ConnectionSpec,
+    identity: &str,
+    hmac_key: &hmac::Key,
+  ) -> Self {
+    let conn_str = create_conn_str(&spec.transport, &spec.ip, spec.iopub_port);
     println!("iopub connection: {}", conn_str);
     let peer_identity =
       PeerIdentity::try_from(identity.as_bytes().to_vec()).unwrap();
@@ -32,8 +42,8 @@ impl PubComm {
 
     Self {
       conn_str,
-      identity,
-      hmac_key,
+      identity: identity.to_string(),
+      hmac_key: hmac_key.to_owned(),
       socket: zeromq::PubSocket::with_options(options),
     }
   }
@@ -67,8 +77,8 @@ impl DealerComm {
   pub fn new(
     name: &str,
     conn_str: String,
-    identity: String,
-    hmac_key: hmac::Key,
+    identity: &str,
+    hmac_key: &hmac::Key,
   ) -> Self {
     println!("dealer '{}' connection: {}", name, conn_str);
     let peer_identity =
@@ -79,10 +89,49 @@ impl DealerComm {
     Self {
       name: name.to_string(),
       conn_str,
-      identity,
-      hmac_key,
+      identity: identity.to_string(),
+      hmac_key: hmac_key.to_owned(),
       socket: zeromq::DealerSocket::with_options(options),
     }
+  }
+
+  pub fn create_shell(
+    spec: &ConnectionSpec,
+    identity: &str,
+    hmac_key: &hmac::Key,
+  ) -> Self {
+    Self::new(
+      "shell",
+      create_conn_str(&spec.transport, &spec.ip, spec.shell_port),
+      identity,
+      hmac_key,
+    )
+  }
+
+  pub fn create_control(
+    spec: &ConnectionSpec,
+    identity: &str,
+    hmac_key: &hmac::Key,
+  ) -> Self {
+    Self::new(
+      "control",
+      create_conn_str(&spec.transport, &spec.ip, spec.control_port),
+      identity,
+      hmac_key,
+    )
+  }
+
+  pub fn create_stdin(
+    spec: &ConnectionSpec,
+    identity: &str,
+    hmac_key: &hmac::Key,
+  ) -> Self {
+    Self::new(
+      "stdin",
+      create_conn_str(&spec.transport, &spec.ip, spec.stdin_port),
+      identity,
+      hmac_key,
+    )
   }
 
   pub async fn connect(&mut self) -> Result<(), AnyError> {
@@ -123,7 +172,8 @@ pub struct HbComm {
 }
 
 impl HbComm {
-  pub fn new(conn_str: String) -> Self {
+  pub fn new(spec: &ConnectionSpec) -> Self {
+    let conn_str = create_conn_str(&spec.transport, &spec.ip, spec.hb_port);
     println!("hb connection: {}", conn_str);
     Self {
       conn_str,
