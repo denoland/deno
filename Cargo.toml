@@ -42,9 +42,9 @@ deno_ast = { version = "0.28.0", features = ["transpiling"] }
 
 deno_core = "0.204.0"
 
-deno_runtime = { version = "0.125.0", path = "./runtime" }
-napi_sym = { version = "0.47.0", path = "./cli/napi/sym" }
-deno_bench_util = { version = "0.111.0", path = "./bench_util" }
+deno_runtime = { version = "0.126.0", path = "./runtime" }
+napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
+deno_bench_util = { version = "0.112.0", path = "./bench_util" }
 test_util = { path = "./test_util" }
 deno_lockfile = "0.15.0"
 deno_media_type = { version = "0.1.1", features = ["module_specifier"] }
@@ -52,25 +52,25 @@ deno_npm = "0.12.0"
 deno_semver = "0.4.0"
 
 # exts
-deno_broadcast_channel = { version = "0.111.0", path = "./ext/broadcast_channel" }
-deno_cache = { version = "0.49.0", path = "./ext/cache" }
-deno_console = { version = "0.117.0", path = "./ext/console" }
-deno_crypto = { version = "0.131.0", path = "./ext/crypto" }
-deno_fetch = { version = "0.141.0", path = "./ext/fetch" }
-deno_ffi = { version = "0.104.0", path = "./ext/ffi" }
-deno_fs = { version = "0.27.0", path = "./ext/fs" }
-deno_http = { version = "0.112.0", path = "./ext/http" }
-deno_io = { version = "0.27.0", path = "./ext/io" }
-deno_net = { version = "0.109.0", path = "./ext/net" }
-deno_node = { version = "0.54.0", path = "./ext/node" }
-deno_kv = { version = "0.25.0", path = "./ext/kv" }
-deno_tls = { version = "0.104.0", path = "./ext/tls" }
-deno_url = { version = "0.117.0", path = "./ext/url" }
-deno_web = { version = "0.148.0", path = "./ext/web" }
-deno_webidl = { version = "0.117.0", path = "./ext/webidl" }
-deno_websocket = { version = "0.122.0", path = "./ext/websocket" }
-deno_webstorage = { version = "0.112.0", path = "./ext/webstorage" }
-deno_napi = { version = "0.47.0", path = "./ext/napi" }
+deno_broadcast_channel = { version = "0.112.0", path = "./ext/broadcast_channel" }
+deno_cache = { version = "0.50.0", path = "./ext/cache" }
+deno_console = { version = "0.118.0", path = "./ext/console" }
+deno_crypto = { version = "0.132.0", path = "./ext/crypto" }
+deno_fetch = { version = "0.142.0", path = "./ext/fetch" }
+deno_ffi = { version = "0.105.0", path = "./ext/ffi" }
+deno_fs = { version = "0.28.0", path = "./ext/fs" }
+deno_http = { version = "0.113.0", path = "./ext/http" }
+deno_io = { version = "0.28.0", path = "./ext/io" }
+deno_net = { version = "0.110.0", path = "./ext/net" }
+deno_node = { version = "0.55.0", path = "./ext/node" }
+deno_kv = { version = "0.26.0", path = "./ext/kv" }
+deno_tls = { version = "0.105.0", path = "./ext/tls" }
+deno_url = { version = "0.118.0", path = "./ext/url" }
+deno_web = { version = "0.149.0", path = "./ext/web" }
+deno_webidl = { version = "0.118.0", path = "./ext/webidl" }
+deno_websocket = { version = "0.123.0", path = "./ext/websocket" }
+deno_webstorage = { version = "0.113.0", path = "./ext/webstorage" }
+deno_napi = { version = "0.48.0", path = "./ext/napi" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
