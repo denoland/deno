@@ -6,6 +6,29 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 1.36.4 / 2023.09.01
+
+- feat(ext/kv): connect to remote database (#20178)
+- feat(node): use i32 for priority_t on MacOS and {Free,Open}BSD (#20286)
+- fix(bench): explicit timers don't force high precision measurements (#20272)
+- fix(ext/http): don't panic on stream responses in cancelled requests (#20316)
+- fix(ext/kv): don't panic if listening on queues and KV is not closed (#20317)
+- fix(ext/node): fix argv[1] in Worker (#20305)
+- fix(ext/node): shared global buffer unlock correctness fix (#20314)
+- fix(ext/tls): upgrade webpki version (#20285)
+- fix(fmt/markdown): ignore trailing words in code block info string for language detection (#20310)
+- fix(kv) increase number of allowed mutations in atomic (#20126)
+- fix(lsp): delete test modules with all tests deleted (#20321)
+- fix(lsp): implement deno.suggest.completeFunctionCalls (#20214)
+- fix(lsp): test explorer panic on step result (#20289)
+- fix(lsp/testing): don't queue modules without tests (#20277)
+- fix(lsp/testing): use full ancestry to compute static id of step (#20297)
+- fix(napi): ignore tsfn recv error (#20324)
+- fix(network): adjust Listener type params (#18642)
+- fix(node): propagate create cipher errors (#20280)
+- fix(node/http): don't leak resources on destroyed request (#20040)
+- fix: unexpected lsp function arg comma completion (#20311)
+
 ### 1.36.3 / 2023.08.24
 
 - fix(build): socket2 compile error
