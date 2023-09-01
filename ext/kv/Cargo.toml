@@ -30,7 +30,7 @@ serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 url.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["serde"] }
 
 [build-dependencies]
 prost-build.workspace = true
