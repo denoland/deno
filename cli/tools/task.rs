@@ -17,7 +17,6 @@ use deno_semver::package::PackageNv;
 use deno_task_shell::ExecuteResult;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
-// TODO(mmastrac): Once upstream indexmap is updated, this can go away
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::path::PathBuf;
