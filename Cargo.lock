@@ -1041,13 +1041,13 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.2.1"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a42ff2a01961c72ef883375399677ccf046dba607dc14169b313e4a95bd26da2"
+checksum = "cc0c89c37b55d33bdd3374fddb9e6bf74dd7d071d1217d1ef3ab7d09bcefb6d3"
 dependencies = [
  "anyhow",
  "deno_semver",
- "indexmap 1.9.3",
+ "indexmap 2.0.0",
  "jsonc-parser",
  "log",
  "percent-encoding",
