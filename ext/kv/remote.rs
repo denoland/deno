@@ -25,7 +25,7 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::OpState;
-use deno_unsync::task::JoinHandle;
+use deno_unsync::JoinHandle;
 use prost::Message;
 use rand::Rng;
 use serde::Deserialize;
@@ -357,7 +357,7 @@ impl MetadataRefresher {
   pub fn new(url: String, access_token: String) -> Self {
     let (tx, rx) = watch::channel(MetadataState::Pending);
     let handle =
-      deno_unsync::task::spawn(metadata_refresh_task(url, access_token, tx));
+      deno_unsync::spawn(metadata_refresh_task(url, access_token, tx));
     Self {
       handle,
       metadata_rx: rx,
