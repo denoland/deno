@@ -1390,7 +1390,7 @@ mod tests {
     ConfigSnapshot {
       settings: Settings {
         workspace: WorkspaceSettings {
-          enable: Some(true),
+          enable: true,
           lint: true,
           ..Default::default()
         },
@@ -1466,7 +1466,7 @@ let c: number = "a";
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
         SpecifierSettings {
-          enable: Some(false),
+          enable: false,
           enable_paths: Vec::new(),
           code_lens: Default::default(),
         },
