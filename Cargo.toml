@@ -98,7 +98,7 @@ hex = "0.4"
 http = "0.2.9"
 httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
-# TODO(mmastrac): indexmap 2.0 will require multiple synchronized changes
+# TODO(mmastrac): remove once deno_graph is updated
 indexmap1 = { package = "indexmap", version = "1", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 libc = "0.2.126"
