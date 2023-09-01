@@ -3053,7 +3053,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         let options = DidChangeWatchedFilesRegistrationOptions {
           watchers: vec![FileSystemWatcher {
             glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
-            kind: None,
+            kind: Some(WatchKind::Change),
           }],
         };
         registrations.push(Registration {
