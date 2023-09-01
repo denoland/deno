@@ -1290,6 +1290,7 @@ dependencies = [
  "base64 0.13.1",
  "chrono",
  "deno_core",
+ "deno_unsync",
  "hex",
  "log",
  "num-bigint",
