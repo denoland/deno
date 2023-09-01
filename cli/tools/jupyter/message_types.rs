@@ -1,5 +1,8 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+// TODO(bartlomieju): remove this lint supression
+#![allow(dead_code)]
+
 use data_encoding::HEXLOWER;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -8,7 +11,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use ring::hmac;
-use zeromq::prelude::*;
 use zeromq::ZmqMessage;
 
 const DELIMITER: &str = "<IDS|MSG>";
@@ -42,7 +44,7 @@ impl TryFrom<ZmqMessage> for RequestMessage {
   fn try_from(zmq_msg: ZmqMessage) -> Result<Self, AnyError> {
     // TODO(apowers313) make all unwraps recoverable errors
     let header_bytes = zmq_msg.get(2).unwrap();
-    let metadata_bytes = zmq_msg.get(4).unwrap();
+    let _metadata_bytes = zmq_msg.get(4).unwrap();
     let content_bytes = zmq_msg.get(5).unwrap();
 
     let header: MessageHeader = serde_json::from_slice(header_bytes).unwrap();
@@ -95,7 +97,7 @@ impl ReplyMessage {
     // TODO(apowers313) convert unwrap() to recoverable error
     let header = serde_json::to_string(&self.header).unwrap();
     let parent_header = serde_json::to_string(&self.parent_header).unwrap();
-    let metadata = serde_json::to_string(&self.metadata).unwrap();
+    let _metadata = serde_json::to_string(&self.metadata).unwrap();
     let metadata = match &self.metadata {
       ReplyMetadata::Empty => serde_json::to_string(&json!({})).unwrap(),
     };

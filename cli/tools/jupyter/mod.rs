@@ -1,16 +1,11 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
-// TODO(bartlomieju): remove me
-#![allow(unused)]
-
 use crate::args::Flags;
 use crate::args::JupyterFlags;
-use crate::tools::repl::EvaluationOutput;
 use crate::tools::repl::ReplSession;
 use crate::util::logger;
 use crate::CliFactory;
 use base64;
-use data_encoding::HEXLOWER;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -18,33 +13,19 @@ use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
-use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::op;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::Extension;
 use deno_core::JsBuffer;
-use deno_core::JsRuntime;
 use deno_core::Op;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
-use deno_runtime::worker::MainWorker;
 use ring::hmac;
-use std::collections::HashMap;
-use std::env::current_exe;
-use std::sync::Arc;
-use std::time::Duration;
-use tempfile::TempDir;
-use tokio::join;
-use tokio::time::sleep;
-use zeromq::prelude::*;
-use zeromq::ZmqMessage;
 
 mod comm;
 mod install;
@@ -75,7 +56,8 @@ pub async fn kernel(
   println!("[DENO] kernel created: {:#?}", kernel.identity);
 
   println!("running kernel...");
-  kernel.run().await;
+  // TODO(bartlomieju): handle the result
+  let _r = kernel.run().await;
   println!("done running kernel.");
 
   Ok(())
@@ -85,11 +67,16 @@ pub async fn kernel(
 enum KernelState {
   Busy,
   Idle,
+
+  // TODO(bartlomieju):
+  #[allow(unused)]
   Starting,
 }
 
 struct Kernel {
   metadata: KernelMetadata,
+  // TODO(bartlomieju):
+  #[allow(unused)]
   conn_spec: ConnectionSpec,
   state: KernelState,
   iopub_comm: PubComm,
@@ -155,8 +142,9 @@ pub fn op_jupyter_display(
     None => return Err(anyhow!("op_jupyter_display missing 'data' argument")),
   };
 
-  let mut sender = state.borrow_mut::<WorkerCommSender>();
-  sender.unbounded_send(WorkerCommMsg::Display(
+  let sender = state.borrow_mut::<WorkerCommSender>();
+  // TODO(bartlomieju): should the result be handled?
+  let _ = sender.unbounded_send(WorkerCommMsg::Display(
     args.mime_type,
     d,
     args.data_format,
@@ -172,12 +160,13 @@ pub fn op_print(
   msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let mut sender = state.borrow_mut::<WorkerCommSender>();
+  let sender = state.borrow_mut::<WorkerCommSender>();
 
+  // TODO(bartlomieju): should these results be handled somehow?
   if is_err {
-    let r = sender.unbounded_send(WorkerCommMsg::Stderr(msg));
+    let _r = sender.unbounded_send(WorkerCommMsg::Stderr(msg));
   } else {
-    let r = sender.unbounded_send(WorkerCommMsg::Stdout(msg));
+    let _r = sender.unbounded_send(WorkerCommMsg::Stdout(msg));
   }
   Ok(())
 }
@@ -236,7 +225,6 @@ impl Kernel {
     let permissions = PermissionsContainer::new(Permissions::allow_all());
     let npm_resolver = factory.npm_resolver().await?.clone();
     let resolver = factory.resolver().await?.clone();
-    let file_fetcher = factory.file_fetcher()?;
     let worker_factory = factory.create_cli_main_worker_factory().await?;
 
     let mut worker = worker_factory
@@ -306,7 +294,8 @@ impl Kernel {
         },
         maybe_stdio_proxy_msg = self.stdio_rx.next() => {
           if let Some(stdio_proxy_msg) = maybe_stdio_proxy_msg {
-            self.worker_comm_handler(stdio_proxy_msg).await;
+            // TODO(bartlomieju): should the result be handled?
+            let _ = self.worker_comm_handler(stdio_proxy_msg).await;
           }
         },
         heartbeat_result = self.hb_comm.heartbeat() => {
@@ -430,11 +419,11 @@ impl Kernel {
     Ok(())
   }
 
-  fn control_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
+  fn control_handler(&self, _comm_ctx: &CommContext) -> Result<(), AnyError> {
     todo!()
   }
 
-  fn stdin_handler(&self, comm_ctx: &CommContext) -> Result<(), AnyError> {
+  fn stdin_handler(&self, _comm_ctx: &CommContext) -> Result<(), AnyError> {
     todo!()
   }
 
@@ -462,7 +451,7 @@ impl Kernel {
     );
 
     if let Err(e) = self.iopub_comm.send(msg).await {
-      println!("[IoPub] Error setting state: {}", s);
+      println!("[IoPub] Error setting state: {}, reason: {}", s, e);
     }
   }
 
@@ -664,8 +653,7 @@ impl Kernel {
       ExecResult::Ok(v) => v,
       _ => return Err(anyhow!("send_execute_result: unreachable")),
     };
-    let mut display_data =
-      self.display_data_from_result_value(v.clone()).await?;
+    let display_data = self.display_data_from_result_value(v.clone()).await?;
     if display_data.is_empty() {
       return Ok(());
     }
@@ -718,7 +706,7 @@ impl Kernel {
     display_data: MimeSet,
     metadata: MimeSet,
   ) -> Result<(), AnyError> {
-    if (display_data.is_empty()) {
+    if display_data.is_empty() {
       return Err(anyhow!("send_display_data called with empty display data"));
     }
 
@@ -958,7 +946,6 @@ impl MimeSet {
     data
   }
 }
-struct ErrorValue {}
 
 enum ExecResult {
   Ok(Value),

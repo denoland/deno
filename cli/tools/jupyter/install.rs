@@ -1,5 +1,6 @@
 // Copyright 2018-2021 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -12,7 +13,7 @@ pub fn install() -> Result<(), AnyError> {
 
   // TODO(bartlomieju): add remaining fields as per
   // https://jupyter-client.readthedocs.io/en/stable/kernels.html#kernel-specs
-  // FIXME(bartlomieju): replace `current_exe`
+  // FIXME(bartlomieju): replace `current_exe` before landing?
   let json_data = json!({
       "argv": [current_exe().unwrap().to_string_lossy(), "--unstable", "jupyter", "--conn", "{connection_file}"],
       "display_name": "Deno",
@@ -40,11 +41,11 @@ pub fn install() -> Result<(), AnyError> {
     match wait_result {
       Ok(status) => {
         if !status.success() {
-          eprintln!("Failed to install kernelspec, try again.");
+          bail!("Failed to install kernelspec, try again.");
         }
       }
       Err(err) => {
-        eprintln!("Failed to install kernelspec: {}", err);
+        bail!("Failed to install kernelspec: {}", err);
       }
     }
   }

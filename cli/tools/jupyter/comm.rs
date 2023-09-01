@@ -13,9 +13,12 @@ use super::SideEffectMessage;
 
 pub struct PubComm {
   conn_str: String,
-  identity: String,
   hmac_key: hmac::Key,
   socket: zeromq::PubSocket,
+
+  // TODO(bartlomieju):
+  #[allow(unused)]
+  identity: String,
 }
 
 // TODO(apowers313) connect and send look like traits shared with DealerComm
@@ -52,9 +55,12 @@ impl PubComm {
 pub struct DealerComm {
   name: String,
   conn_str: String,
-  identity: String,
   hmac_key: hmac::Key,
   socket: zeromq::DealerSocket,
+
+  // TODO(bartlomieju):
+  #[allow(unused)]
+  identity: String,
 }
 
 impl DealerComm {
