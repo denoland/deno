@@ -2,8 +2,11 @@
 import { scrypt, scryptSync } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
+import { deferred } from "../../../../test_util/std/async/deferred.ts";
 
-Deno.test("scrypt works correctly", () => {
+Deno.test("scrypt works correctly", async () => {
+  const promise = deferred();
+
   scrypt("password", "salt", 32, (err, key) => {
     if (err) throw err;
     assertEquals(
@@ -43,10 +46,15 @@ Deno.test("scrypt works correctly", () => {
         115,
       ]),
     );
+    promise.resolve(true);
   });
+
+  await promise;
 });
 
-Deno.test("scrypt works with options", () => {
+Deno.test("scrypt works with options", async () => {
+  const promise = deferred();
+
   scrypt(
     "password",
     "salt",
@@ -93,8 +101,11 @@ Deno.test("scrypt works with options", () => {
           71,
         ]),
       );
+      promise.resolve(true);
     },
   );
+
+  await promise;
 });
 
 Deno.test("scryptSync works correctly", () => {

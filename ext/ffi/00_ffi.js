@@ -10,7 +10,7 @@ const {
   ArrayPrototypeJoin,
   DataViewPrototypeGetByteLength,
   ObjectDefineProperty,
-  ObjectPrototypeHasOwnProperty,
+  ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   Number,
   NumberIsSafeInteger,
@@ -30,8 +30,8 @@ const {
   MathCeil,
   SafeMap,
   SafeArrayIterator,
+  SafeWeakMap,
   SymbolFor,
-  WeakMap,
 } = primordials;
 import { pathFromURL } from "ext:deno_web/00_infra.js";
 
@@ -204,7 +204,7 @@ const OUT_BUFFER = new Uint32Array(2);
 const OUT_BUFFER_64 = new BigInt64Array(
   TypedArrayPrototypeGetBuffer(OUT_BUFFER),
 );
-const POINTER_TO_BUFFER_WEAK_MAP = new WeakMap();
+const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
 class UnsafePointer {
   static create(value) {
     return ops.op_ffi_ptr_create(value);
@@ -426,7 +426,7 @@ class UnsafeCallback {
 
   close() {
     this.#refcount = 0;
-    core.close(this.#rid);
+    ops.op_ffi_unsafe_callback_close(this.#rid);
   }
 }
 
@@ -439,7 +439,7 @@ class DynamicLibrary {
   constructor(path, symbols) {
     ({ 0: this.#rid, 1: this.symbols } = ops.op_ffi_load({ path, symbols }));
     for (const symbol in symbols) {
-      if (!ObjectPrototypeHasOwnProperty(symbols, symbol)) {
+      if (!ObjectHasOwn(symbols, symbol)) {
         continue;
       }
 

@@ -8,7 +8,6 @@ use deno_core::Extension;
 use deno_core::ExtensionFileSource;
 use deno_core::ExtensionFileSourceCode;
 use deno_core::OpState;
-use deno_web::BlobStore;
 
 #[derive(Clone)]
 struct Permissions;
@@ -28,24 +27,27 @@ fn setup() -> Vec<Extension> {
     deno_url::deno_url::init_ops_and_esm(),
     deno_console::deno_console::init_ops_and_esm(),
     deno_web::deno_web::init_ops_and_esm::<Permissions>(
-      BlobStore::default(),
+      Default::default(),
       None,
     ),
-    Extension::builder("bench_setup")
-      .esm(vec![ExtensionFileSource {
+    Extension {
+      name: "bench_setup",
+      esm_files: std::borrow::Cow::Borrowed(&[ExtensionFileSource {
         specifier: "ext:bench_setup/setup",
         code: ExtensionFileSourceCode::IncludedInBinary(
           r#"
-        import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
-        globalThis.TextDecoder = TextDecoder;
-        globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
+          import { TextDecoder } from "ext:deno_web/08_text_encoding.js";
+          globalThis.TextDecoder = TextDecoder;
+          globalThis.hello12k = Deno.core.encode("hello world\n".repeat(1e3));
         "#,
         ),
-      }])
-      .state(|state| {
+      }]),
+      esm_entry_point: Some("ext:bench_setup/setup"),
+      op_state_fn: Some(Box::new(|state| {
         state.put(Permissions {});
-      })
-      .build(),
+      })),
+      ..Default::default()
+    },
   ]
 }
 

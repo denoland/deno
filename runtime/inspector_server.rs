@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use core::convert::Infallible as Never; // Alias for the future `!` type.
-use deno_core::error::AnyError;
+// Alias for the future `!` type.
+use core::convert::Infallible as Never;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -15,11 +15,14 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
-use deno_websocket::tokio_tungstenite::tungstenite;
-use deno_websocket::tokio_tungstenite::WebSocketStream;
+use fastwebsockets::Frame;
+use fastwebsockets::OpCode;
+use fastwebsockets::WebSocket;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -108,7 +111,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -145,35 +148,27 @@ fn handle_ws_request(
     let info = maybe_inspector_info.unwrap();
     info.new_session_tx.clone()
   };
-
-  let resp = tungstenite::handshake::server::create_response(&req)
-    .map(|resp| resp.map(|_| hyper::Body::empty()))
-    .or_else(|e| match e {
-      tungstenite::error::Error::HttpFormat(http_error) => Err(http_error),
-      _ => http::Response::builder()
-        .status(http::StatusCode::BAD_REQUEST)
-        .body("Not a valid Websocket Request".into()),
-    })?;
-
   let (parts, _) = req.into_parts();
-  let req = http::Request::from_parts(parts, body);
+  let mut req = http::Request::from_parts(parts, body);
+
+  let (resp, fut) = match fastwebsockets::upgrade::upgrade(&mut req) {
+    Ok(e) => e,
+    _ => {
+      return http::Response::builder()
+        .status(http::StatusCode::BAD_REQUEST)
+        .body("Not a valid Websocket Request".into());
+    }
+  };
 
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
-  tokio::task::spawn_local(async move {
-    let upgrade_result = hyper::upgrade::on(req).await;
-    let upgraded = if let Ok(u) = upgrade_result {
-      u
+  spawn(async move {
+    let websocket = if let Ok(w) = fut.await {
+      w
     } else {
       eprintln!("Inspector server failed to upgrade to WS connection");
       return;
     };
-    let websocket = WebSocketStream::from_raw_socket(
-      upgraded,
-      tungstenite::protocol::Role::Server,
-      None,
-    )
-    .await;
 
     // The 'outbound' channel carries messages sent to the websocket.
     let (outbound_tx, outbound_rx) = mpsc::unbounded();
@@ -195,11 +190,12 @@ fn handle_ws_request(
 
 fn handle_json_request(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  host: Option<String>,
 ) -> http::Result<http::Response<hyper::Body>> {
   let data = inspector_map
     .borrow()
     .values()
-    .map(|info| info.get_json_metadata())
+    .map(move |info| info.get_json_metadata(&host))
     .collect::<Vec<_>>();
   http::Response::builder()
     .status(http::StatusCode::OK)
@@ -230,7 +226,7 @@ async fn server(
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
-        info.get_websocket_debugger_url()
+        info.get_websocket_debugger_url(&info.host.to_string())
       );
       eprintln!("Visit chrome://inspect to connect to the debugger.");
       if info.wait_for_session {
@@ -264,6 +260,17 @@ async fn server(
     future::ok::<_, Infallible>(hyper::service::service_fn(
       move |req: http::Request<hyper::Body>| {
         future::ready({
+          // If the host header can make a valid URL, use it
+          let host = req
+            .headers()
+            .get("host")
+            .and_then(|host| host.to_str().ok())
+            .and_then(|host| Url::parse(&format!("http://{host}")).ok())
+            .and_then(|url| match (url.host(), url.port()) {
+              (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+              (Some(host), None) => Some(format!("{host}")),
+              _ => None,
+            });
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
               handle_ws_request(req, Rc::clone(&inspector_map))
@@ -272,10 +279,10 @@ async fn server(
               handle_json_version_request(json_version_response.clone())
             }
             (&http::Method::GET, "/json") => {
-              handle_json_request(Rc::clone(&inspector_map))
+              handle_json_request(Rc::clone(&inspector_map), host)
             }
             (&http::Method::GET, "/json/list") => {
-              handle_json_request(Rc::clone(&inspector_map))
+              handle_json_request(Rc::clone(&inspector_map), host)
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
@@ -324,37 +331,36 @@ async fn server(
 /// 'futures' crate, therefore they can't participate in Tokio's cooperative
 /// task yielding.
 async fn pump_websocket_messages(
-  websocket: WebSocketStream<hyper::upgrade::Upgraded>,
+  mut websocket: WebSocket<hyper::upgrade::Upgraded>,
   inbound_tx: UnboundedSender<String>,
-  outbound_rx: UnboundedReceiver<InspectorMsg>,
+  mut outbound_rx: UnboundedReceiver<InspectorMsg>,
 ) {
-  let (websocket_tx, websocket_rx) = websocket.split();
-
-  let outbound_pump = outbound_rx
-    .map(|msg| tungstenite::Message::text(msg.content))
-    .map(Ok)
-    .forward(websocket_tx)
-    .map_err(|_| ());
-
-  let inbound_pump = async move {
-    let _result = websocket_rx
-      .map_err(AnyError::from)
-      .map_ok(|msg| {
-        // Messages that cannot be converted to strings are ignored.
-        if let Ok(msg_text) = msg.into_text() {
-          let _ = inbound_tx.unbounded_send(msg_text);
+  'pump: loop {
+    tokio::select! {
+        Some(msg) = outbound_rx.next() => {
+            let msg = Frame::text(msg.content.into_bytes().into());
+            let _ = websocket.write_frame(msg).await;
         }
-      })
-      .try_collect::<()>()
-      .await;
-
-    // Users don't care if there was an error coming from debugger,
-    // just about the fact that debugger did disconnect.
-    eprintln!("Debugger session ended");
-
-    Ok(())
-  };
-  let _ = future::try_join(outbound_pump, inbound_pump).await;
+        Ok(msg) = websocket.read_frame() => {
+            match msg.opcode {
+                OpCode::Text => {
+                    if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
+                      let _ = inbound_tx.unbounded_send(s);
+                    }
+                }
+                OpCode::Close => {
+                    // Users don't care if there was an error coming from debugger,
+                    // just about the fact that debugger did disconnect.
+                    eprintln!("Debugger session ended");
+                    break 'pump;
+                }
+                _ => {
+                    // Ignore other messages.
+                }
+            }
+        }
+    }
+  }
 }
 
 /// Inspector information that is sent from the isolate thread to the server
@@ -388,27 +394,29 @@ impl InspectorInfo {
     }
   }
 
-  fn get_json_metadata(&self) -> Value {
+  fn get_json_metadata(&self, host: &Option<String>) -> Value {
+    let host_listen = format!("{}", self.host);
+    let host = host.as_ref().unwrap_or(&host_listen);
     json!({
       "description": "deno",
-      "devtoolsFrontendUrl": self.get_frontend_url(),
+      "devtoolsFrontendUrl": self.get_frontend_url(host),
       "faviconUrl": "https://deno.land/favicon.ico",
       "id": self.uuid.to_string(),
       "title": self.get_title(),
       "type": "node",
       "url": self.url.to_string(),
-      "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
+      "webSocketDebuggerUrl": self.get_websocket_debugger_url(host),
     })
   }
 
-  pub fn get_websocket_debugger_url(&self) -> String {
-    format!("ws://{}/ws/{}", &self.host, &self.uuid)
+  pub fn get_websocket_debugger_url(&self, host: &str) -> String {
+    format!("ws://{}/ws/{}", host, &self.uuid)
   }
 
-  fn get_frontend_url(&self) -> String {
+  fn get_frontend_url(&self, host: &str) -> String {
     format!(
         "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
-        &self.host, &self.uuid
+        host, &self.uuid
       )
   }
 

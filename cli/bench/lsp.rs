@@ -40,7 +40,10 @@ struct FixtureMessage {
 /// the end of the document and does a level of hovering and gets quick fix
 /// code actions.
 fn bench_big_file_edits(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  let mut client = LspClientBuilder::new()
+    .use_diagnostic_sync(false)
+    .deno_exe(deno_exe)
+    .build();
   client.initialize_default();
 
   client.write_notification(
@@ -102,7 +105,10 @@ fn bench_big_file_edits(deno_exe: &Path) -> Duration {
 }
 
 fn bench_code_lens(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  let mut client = LspClientBuilder::new()
+    .use_diagnostic_sync(false)
+    .deno_exe(deno_exe)
+    .build();
   client.initialize_default();
 
   client.write_notification(
@@ -152,7 +158,10 @@ fn bench_code_lens(deno_exe: &Path) -> Duration {
 }
 
 fn bench_find_replace(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  let mut client = LspClientBuilder::new()
+    .use_diagnostic_sync(false)
+    .deno_exe(deno_exe)
+    .build();
   client.initialize_default();
 
   for i in 0..10 {
@@ -238,7 +247,10 @@ fn bench_find_replace(deno_exe: &Path) -> Duration {
 
 /// A test that starts up the LSP, opens a single line document, and exits.
 fn bench_startup_shutdown(deno_exe: &Path) -> Duration {
-  let mut client = LspClientBuilder::new().deno_exe(deno_exe).build();
+  let mut client = LspClientBuilder::new()
+    .use_diagnostic_sync(false)
+    .deno_exe(deno_exe)
+    .build();
   client.initialize_default();
 
   client.write_notification(

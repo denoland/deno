@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::cache::LocalLspHttpCache;
 use crate::file_fetcher::map_content_type;
 
 use data_url::DataUrl;
@@ -121,16 +122,30 @@ pub enum LspUrlKind {
 /// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
 #[derive(Debug, Default, Clone)]
-pub struct LspUrlMap(Arc<Mutex<LspUrlMapInner>>);
+pub struct LspUrlMap {
+  local_http_cache: Option<Arc<LocalLspHttpCache>>,
+  inner: Arc<Mutex<LspUrlMapInner>>,
+}
 
 impl LspUrlMap {
+  pub fn set_cache(&mut self, http_cache: Option<Arc<LocalLspHttpCache>>) {
+    self.local_http_cache = http_cache;
+  }
+
   /// Normalize a specifier that is used internally within Deno (or tsc) to a
   /// URL that can be handled as a "virtual" document by an LSP client.
   pub fn normalize_specifier(
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<LspClientUrl, AnyError> {
-    let mut inner = self.0.lock();
+    if let Some(cache) = &self.local_http_cache {
+      if matches!(specifier.scheme(), "http" | "https") {
+        if let Some(file_url) = cache.get_file_url(specifier) {
+          return Ok(LspClientUrl(file_url));
+        }
+      }
+    }
+    let mut inner = self.inner.lock();
     if let Some(url) = inner.get_url(specifier).cloned() {
       Ok(url)
     } else {
@@ -184,14 +199,27 @@ impl LspUrlMap {
   /// so we need to force it to in the mapping and nee to explicitly state whether
   /// this is a file or directory url.
   pub fn normalize_url(&self, url: &Url, kind: LspUrlKind) -> ModuleSpecifier {
-    let mut inner = self.0.lock();
+    if let Some(cache) = &self.local_http_cache {
+      if url.scheme() == "file" {
+        if let Ok(path) = url.to_file_path() {
+          if let Some(remote_url) = cache.get_remote_url(&path) {
+            return remote_url;
+          }
+        }
+      }
+    }
+    let mut inner = self.inner.lock();
     if let Some(specifier) = inner.get_specifier(url).cloned() {
       specifier
     } else {
-      let specifier = if let Ok(path) = url.to_file_path() {
-        match kind {
-          LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
-          LspUrlKind::File => Url::from_file_path(path).unwrap(),
+      let specifier = if url.scheme() == "file" {
+        if let Ok(path) = url.to_file_path() {
+          match kind {
+            LspUrlKind::Folder => Url::from_directory_path(path).unwrap(),
+            LspUrlKind::File => Url::from_file_path(path).unwrap(),
+          }
+        } else {
+          url.clone()
         }
       } else {
         url.clone()
@@ -292,5 +320,13 @@ mod tests {
       Url::parse("file:///Users/deno/Desktop/file with spaces in name.txt")
         .unwrap();
     assert_eq!(actual, expected);
+  }
+
+  #[test]
+  fn test_normalize_deno_status() {
+    let map = LspUrlMap::default();
+    let fixture = resolve_url("deno:/status.md").unwrap();
+    let actual = map.normalize_url(&fixture, LspUrlKind::File);
+    assert_eq!(actual, fixture);
   }
 }

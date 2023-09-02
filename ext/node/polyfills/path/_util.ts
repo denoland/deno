@@ -2,6 +2,9 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import type { FormatInputPathObject } from "ext:deno_node/path/_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
@@ -113,19 +116,4 @@ export function _format(
   if (!dir) return base;
   if (dir === pathObject.root) return dir + base;
   return dir + sep + base;
-}
-
-const WHITESPACE_ENCODINGS: Record<string, string> = {
-  "\u0009": "%09",
-  "\u000A": "%0A",
-  "\u000B": "%0B",
-  "\u000C": "%0C",
-  "\u000D": "%0D",
-  "\u0020": "%20",
-};
-
-export function encodeWhitespace(string: string): string {
-  return string.replaceAll(/[\s]/g, (c) => {
-    return WHITESPACE_ENCODINGS[c] ?? c;
-  });
 }

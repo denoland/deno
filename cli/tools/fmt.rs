@@ -9,14 +9,15 @@
 
 use crate::args::CliOptions;
 use crate::args::FilesConfig;
+use crate::args::Flags;
+use crate::args::FmtFlags;
 use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
-use crate::cache::Caches;
 use crate::colors;
+use crate::factory::CliFactory;
 use crate::util::diff::diff;
 use crate::util::file_watcher;
-use crate::util::file_watcher::ResolutionResult;
 use crate::util::fs::FileCollector;
 use crate::util::path::get_extension;
 use crate::util::text_encoding;
@@ -28,6 +29,7 @@ use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
+use deno_core::unsync::spawn_blocking;
 use log::debug;
 use log::info;
 use log::warn;
@@ -45,11 +47,10 @@ use std::sync::Arc;
 use crate::cache::IncrementalCache;
 
 /// Format JavaScript/TypeScript files.
-pub async fn format(
-  cli_options: CliOptions,
-  fmt_options: FmtOptions,
-) -> Result<(), AnyError> {
-  if fmt_options.is_stdin {
+pub async fn format(flags: Flags, fmt_flags: FmtFlags) -> Result<(), AnyError> {
+  if fmt_flags.is_stdin() {
+    let cli_options = CliOptions::from_flags(flags)?;
+    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
     return format_stdin(
       fmt_options,
       cli_options
@@ -60,86 +61,89 @@ pub async fn format(
     );
   }
 
-  let files = fmt_options.files;
-  let check = fmt_options.check;
-  let fmt_config_options = fmt_options.options;
-
-  let resolver = |changed: Option<Vec<PathBuf>>| {
-    let files_changed = changed.is_some();
-
-    let result = collect_fmt_files(&files).map(|files| {
-      let refmt_files = if let Some(paths) = changed {
-        if check {
-          files
-            .iter()
-            .any(|path| paths.contains(path))
-            .then_some(files)
-            .unwrap_or_else(|| [].to_vec())
-        } else {
-          files
-            .into_iter()
-            .filter(|path| paths.contains(path))
-            .collect::<Vec<_>>()
-        }
-      } else {
-        files
-      };
-      (refmt_files, fmt_config_options.clone())
-    });
-
-    let paths_to_watch = files.include.clone();
-    async move {
-      if files_changed
-        && matches!(result, Ok((ref files, _)) if files.is_empty())
-      {
-        ResolutionResult::Ignore
-      } else {
-        ResolutionResult::Restart {
-          paths_to_watch,
-          result,
-        }
-      }
-    }
-  };
-  let deno_dir = &cli_options.resolve_deno_dir()?;
-  let caches = Caches::default();
-  let operation = |(paths, fmt_options): (Vec<PathBuf>, FmtOptionsConfig)| async {
-    let incremental_cache = Arc::new(IncrementalCache::new(
-      caches.fmt_incremental_cache_db(deno_dir),
-      &fmt_options,
-      &paths,
-    ));
-    if check {
-      check_source_files(paths, fmt_options, incremental_cache.clone()).await?;
-    } else {
-      format_source_files(paths, fmt_options, incremental_cache.clone())
-        .await?;
-    }
-    incremental_cache.wait_completion().await;
-    Ok(())
-  };
-
-  if cli_options.watch_paths().is_some() {
+  if let Some(watch_flags) = &fmt_flags.watch {
     file_watcher::watch_func(
-      resolver,
-      operation,
+      flags,
       file_watcher::PrintConfig {
         job_name: "Fmt".to_string(),
-        clear_screen: !cli_options.no_clear_screen(),
+        clear_screen: !watch_flags.no_clear_screen,
+      },
+      move |flags, sender, changed_paths| {
+        let fmt_flags = fmt_flags.clone();
+        Ok(async move {
+          let factory = CliFactory::from_flags(flags).await?;
+          let cli_options = factory.cli_options();
+          let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+          let files =
+            collect_fmt_files(&fmt_options.files).and_then(|files| {
+              if files.is_empty() {
+                Err(generic_error("No target files found."))
+              } else {
+                Ok(files)
+              }
+            })?;
+          _ = sender.send(files.clone());
+          let refmt_files = if let Some(paths) = changed_paths {
+            if fmt_options.check {
+              // check all files on any changed (https://github.com/denoland/deno/issues/12446)
+              files
+                .iter()
+                .any(|path| paths.contains(path))
+                .then_some(files)
+                .unwrap_or_else(|| [].to_vec())
+            } else {
+              files
+                .into_iter()
+                .filter(|path| paths.contains(path))
+                .collect::<Vec<_>>()
+            }
+          } else {
+            files
+          };
+          format_files(factory, fmt_options, refmt_files).await?;
+
+          Ok(())
+        })
       },
     )
     .await?;
   } else {
-    let files = collect_fmt_files(&files).and_then(|files| {
+    let factory = CliFactory::from_flags(flags).await?;
+    let cli_options = factory.cli_options();
+    let fmt_options = cli_options.resolve_fmt_options(fmt_flags)?;
+    let files = collect_fmt_files(&fmt_options.files).and_then(|files| {
       if files.is_empty() {
         Err(generic_error("No target files found."))
       } else {
         Ok(files)
       }
     })?;
-    operation((files, fmt_config_options)).await?;
+    format_files(factory, fmt_options, files).await?;
   }
 
+  Ok(())
+}
+
+async fn format_files(
+  factory: CliFactory,
+  fmt_options: FmtOptions,
+  paths: Vec<PathBuf>,
+) -> Result<(), AnyError> {
+  let caches = factory.caches()?;
+  let check = fmt_options.check;
+  let incremental_cache = Arc::new(IncrementalCache::new(
+    caches.fmt_incremental_cache_db(),
+    &fmt_options.options,
+    &paths,
+  ));
+  if check {
+    check_source_files(paths, fmt_options.options, incremental_cache.clone())
+      .await?;
+  } else {
+    format_source_files(paths, fmt_options.options, incremental_cache.clone())
+      .await?;
+  }
+  incremental_cache.wait_completion().await;
   Ok(())
 }
 
@@ -147,6 +151,7 @@ fn collect_fmt_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(is_supported_ext_fmt)
     .ignore_git_folder()
     .ignore_node_modules()
+    .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
     .collect_files(&files.include)
 }
@@ -438,8 +443,8 @@ fn format_ensure_stable(
               concat!(
                 "Formatting succeeded initially, but failed when ensuring a ",
                 "stable format. This indicates a bug in the formatter where ",
-                "the text it produces is not syntatically correct. As a temporary ",
-                "workfaround you can ignore this file ({}).\n\n{:#}"
+                "the text it produces is not syntactically correct. As a temporary ",
+                "workaround you can ignore this file ({}).\n\n{:#}"
               ),
               file_path.display(),
               err,
@@ -628,7 +633,7 @@ where
   let handles = file_paths.iter().map(|file_path| {
     let f = f.clone();
     let file_path = file_path.clone();
-    tokio::task::spawn_blocking(move || f(file_path))
+    spawn_blocking(move || f(file_path))
   });
   let join_results = futures::future::join_all(handles).await;
 

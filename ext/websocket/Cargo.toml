@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_websocket"
-version = "0.102.0"
+version = "0.123.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,12 +14,14 @@ description = "Implementation of WebSocket API for Deno"
 path = "lib.rs"
 
 [dependencies]
+bytes.workspace = true
 deno_core.workspace = true
+deno_net.workspace = true
 deno_tls.workspace = true
-fastwebsockets = "0.1.0"
+fastwebsockets = { workspace = true, features = ["upgrade"] }
 http.workspace = true
-hyper.workspace = true
+hyper = { workspace = true, features = ["backports"] }
+once_cell.workspace = true
 serde.workspace = true
 tokio.workspace = true
 tokio-rustls.workspace = true
-tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }

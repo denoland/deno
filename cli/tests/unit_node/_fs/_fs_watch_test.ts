@@ -12,7 +12,7 @@ Deno.test({
   name: "watching a file",
   async fn() {
     const file = Deno.makeTempFileSync();
-    const result: Array<[string, string]> = [];
+    const result: Array<[string, string | null]> = [];
     const watcher = watch(
       file,
       (eventType, filename) => result.push([eventType, filename]),

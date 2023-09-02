@@ -1,8 +1,14 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import randomBytes, {
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import {
   MAX_SIZE as kMaxUint32,
 } from "ext:deno_node/internal/crypto/_randomBytes.ts";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
+const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 const kBufferMaxLength = 0x7fffffff;
 
@@ -62,11 +68,14 @@ export default function randomFill(
   assertOffset(offset as number, buf.length);
   assertSize(size as number, offset as number, buf.length);
 
-  randomBytes(size as number, (err, bytes) => {
-    if (err) return cb!(err, buf);
-    bytes?.copy(buf, offset as number);
-    cb!(null, buf);
-  });
+  core.opAsync("op_node_generate_secret_async", Math.floor(size as number))
+    .then(
+      (randomData: Uint8Array) => {
+        const randomBuf = Buffer.from(randomData.buffer);
+        randomBuf.copy(buf, offset as number, 0, size as number);
+        cb!(null, buf);
+      },
+    );
 }
 
 export function randomFillSync(buf: Buffer, offset = 0, size?: number) {
@@ -76,9 +85,10 @@ export function randomFillSync(buf: Buffer, offset = 0, size?: number) {
 
   assertSize(size, offset, buf.length);
 
-  const bytes = randomBytes(size);
-
-  bytes.copy(buf, offset);
+  const bytes: Uint8Array = new Uint8Array(Math.floor(size));
+  ops.op_node_generate_secret(bytes);
+  const bytesBuf: Buffer = Buffer.from(bytes.buffer);
+  bytesBuf.copy(buf, offset, 0, size);
 
   return buf;
 }

@@ -10,7 +10,7 @@
 /// <reference lib="esnext" />
 
 import * as webidl from "ext:deno_webidl/00_webidl.js";
-import { createFilteredInspectProxy } from "ext:deno_console/02_console.js";
+import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import {
   byteUpperCase,
   HTTP_TOKEN_CODE_POINT_RE,
@@ -36,7 +36,8 @@ const {
   ArrayPrototypeSplice,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
-  RegExpPrototypeTest,
+  RegExpPrototypeExec,
+  StringPrototypeStartsWith,
   Symbol,
   SymbolFor,
   TypeError,
@@ -90,7 +91,11 @@ function processUrlList(urlList, urlListProcessed) {
  */
 function newInnerRequest(method, url, headerList, body, maybeBlob) {
   let blobUrlEntry = null;
-  if (maybeBlob && typeof url === "string" && url.startsWith("blob:")) {
+  if (
+    maybeBlob &&
+    typeof url === "string" &&
+    StringPrototypeStartsWith(url, "blob:")
+  ) {
     blobUrlEntry = blobFromObjectUrl(url);
   }
   return {
@@ -169,8 +174,8 @@ function cloneInnerRequest(request, skipBody = false) {
     body,
     redirectMode: request.redirectMode,
     redirectCount: request.redirectCount,
-    urlList: request.urlList,
-    urlListProcessed: request.urlListProcessed,
+    urlList: [() => request.url()],
+    urlListProcessed: [request.url()],
     clientRid: request.clientRid,
     blobUrlEntry: request.blobUrlEntry,
     url() {
@@ -197,32 +202,30 @@ function cloneInnerRequest(request, skipBody = false) {
   };
 }
 
-/**
- * @param {string} m
- * @returns {boolean}
- */
-function isKnownMethod(m) {
-  return (
-    m === "DELETE" ||
-    m === "GET" ||
-    m === "HEAD" ||
-    m === "OPTIONS" ||
-    m === "POST" ||
-    m === "PUT"
-  );
-}
+// method => normalized method
+const KNOWN_METHODS = {
+  "DELETE": "DELETE",
+  "delete": "DELETE",
+  "GET": "GET",
+  "get": "GET",
+  "HEAD": "HEAD",
+  "head": "HEAD",
+  "OPTIONS": "OPTIONS",
+  "options": "OPTIONS",
+  "PATCH": "PATCH",
+  "patch": "PATCH",
+  "POST": "POST",
+  "post": "POST",
+  "PUT": "PUT",
+  "put": "PUT",
+};
+
 /**
  * @param {string} m
  * @returns {string}
  */
 function validateAndNormalizeMethod(m) {
-  // Fast path for well-known methods
-  if (isKnownMethod(m)) {
-    return m;
-  }
-
-  // Regular path
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, m)) {
+  if (RegExpPrototypeExec(HTTP_TOKEN_CODE_POINT_RE, m) === null) {
     throw new TypeError("Method is not valid.");
   }
   const upperCase = byteUpperCase(m);
@@ -273,15 +276,13 @@ class Request {
    */
   constructor(input, init = {}) {
     const prefix = "Failed to construct 'Request'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    input = webidl.converters["RequestInfo_DOMString"](input, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    input = webidl.converters["RequestInfo_DOMString"](
+      input,
       prefix,
-      context: "Argument 1",
-    });
-    init = webidl.converters["RequestInit"](init, {
-      prefix,
-      context: "Argument 2",
-    });
+      "Argument 1",
+    );
+    init = webidl.converters["RequestInit"](init, prefix, "Argument 2");
 
     this[webidl.brand] = webidl.brand;
 
@@ -322,9 +323,10 @@ class Request {
 
     // 25.
     if (init.method !== undefined) {
-      let method = init.method;
-      method = validateAndNormalizeMethod(method);
-      request.method = method;
+      const method = init.method;
+      // fast path: check for known methods
+      request.method = KNOWN_METHODS[method] ??
+        validateAndNormalizeMethod(method);
     }
 
     // 26.
@@ -341,7 +343,8 @@ class Request {
         throw webidl.makeException(
           TypeError,
           "`client` must be a Deno.HttpClient",
-          { prefix, context: "Argument 2" },
+          prefix,
+          "Argument 2",
         );
       }
       request.clientRid = init.client?.rid ?? null;
@@ -362,20 +365,16 @@ class Request {
     this[_headers] = headersFromHeaderList(request.headerList, "request");
 
     // 32.
-    if (ObjectKeys(init).length > 0) {
-      let headers = ArrayPrototypeSlice(
-        headerListFromHeaders(this[_headers]),
+    if (init.headers || ObjectKeys(init).length > 0) {
+      const headerList = headerListFromHeaders(this[_headers]);
+      const headers = init.headers ?? ArrayPrototypeSlice(
+        headerList,
         0,
-        headerListFromHeaders(this[_headers]).length,
+        headerList.length,
       );
-      if (init.headers !== undefined) {
-        headers = init.headers;
+      if (headerList.length !== 0) {
+        ArrayPrototypeSplice(headerList, 0, headerList.length);
       }
-      ArrayPrototypeSplice(
-        headerListFromHeaders(this[_headers]),
-        0,
-        headerListFromHeaders(this[_headers]).length,
-      );
       fillHeaders(this[_headers], headers);
     }
 
@@ -500,15 +499,15 @@ webidl.converters["Request"] = webidl.createInterfaceConverter(
   "Request",
   RequestPrototype,
 );
-webidl.converters["RequestInfo_DOMString"] = (V, opts) => {
+webidl.converters["RequestInfo_DOMString"] = (V, prefix, context, opts) => {
   // Union for (Request or USVString)
   if (typeof V == "object") {
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
-      return webidl.converters["Request"](V, opts);
+      return webidl.converters["Request"](V, prefix, context, opts);
     }
   }
   // Passed to new URL(...) which implicitly converts DOMString -> USVString
-  return webidl.converters["DOMString"](V, opts);
+  return webidl.converters["DOMString"](V, prefix, context, opts);
 };
 webidl.converters["RequestRedirect"] = webidl.createEnumConverter(
   "RequestRedirect",

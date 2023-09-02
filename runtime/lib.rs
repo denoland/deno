@@ -35,9 +35,7 @@ pub mod worker;
 
 mod worker_bootstrap;
 pub use worker_bootstrap::BootstrapOptions;
+pub use worker_bootstrap::WorkerLogLevel;
 
-pub struct RuntimeNodeEnv;
-impl deno_node::NodeEnv for RuntimeNodeEnv {
-  type P = permissions::PermissionsContainer;
-  type Fs = deno_node::RealFs;
-}
+mod shared;
+pub use shared::runtime;

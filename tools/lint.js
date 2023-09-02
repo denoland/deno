@@ -1,12 +1,6 @@
-#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run
+#!/usr/bin/env -S deno run --unstable --allow-write --allow-read --allow-run --allow-net
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-import {
-  buildMode,
-  getPrebuiltToolPath,
-  getSources,
-  join,
-  ROOT_PATH,
-} from "./util.js";
+import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 
 let didLint = false;
@@ -33,7 +27,7 @@ if (!didLint) {
 
 async function dlint() {
   const configFile = join(ROOT_PATH, ".dlint.json");
-  const execPath = getPrebuiltToolPath("dlint");
+  const execPath = await getPrebuilt("dlint");
 
   const sourceFiles = await getSources(ROOT_PATH, [
     "*.js",
@@ -41,7 +35,6 @@ async function dlint() {
     ":!:.github/mtime_cache/action.js",
     ":!:cli/tests/testdata/swc_syntax_error.ts",
     ":!:cli/tests/testdata/error_008_checkjs.js",
-    ":!:cli/bench/http/node*.js",
     ":!:cli/bench/testdata/npm/*",
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
@@ -55,6 +48,7 @@ async function dlint() {
     ":!:cli/tests/testdata/lint/**",
     ":!:cli/tests/testdata/run/**",
     ":!:cli/tests/testdata/tsc/**",
+    ":!:cli/tests/testdata/test/glob/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
     ":!:test_util/wpt/**",
@@ -91,14 +85,13 @@ async function dlint() {
 // which is different from other lint rules. This is why this dedicated function
 // is needed.
 async function dlintPreferPrimordials() {
-  const execPath = getPrebuiltToolPath("dlint");
+  const execPath = await getPrebuilt("dlint");
   const sourceFiles = await getSources(ROOT_PATH, [
     "runtime/**/*.js",
     "ext/**/*.js",
-    // TODO(petamoriken): enable for node polyfills
-    // "ext/node/polyfills/*.mjs",
-    // "ext/node/polyfills/*.ts",
-    // ":!:ext/node/polyfills/*.d.ts",
+    "ext/node/polyfills/*.mjs",
+    "ext/node/polyfills/*.ts",
+    ":!:ext/node/polyfills/*.d.ts",
     "core/*.js",
     ":!:core/*_test.js",
     ":!:core/examples/**",

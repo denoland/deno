@@ -797,7 +797,7 @@ setInterval(() => {
     Deno.writeFileSync(`${cwd}/${programFile}`, enc.encode(program));
     Deno.writeFileSync(`${cwd}/${childProgramFile}`, enc.encode(childProgram));
     // In this subprocess we are spawning another subprocess which has
-    // an infite interval set. Following call would never resolve unless
+    // an infinite interval set. Following call would never resolve unless
     // child process gets unrefed.
     const { success, stdout, stderr } = await new Deno.Command(
       Deno.execPath(),
@@ -865,5 +865,39 @@ Deno.test(
       Promise.prototype.then = originalThen;
       Array.prototype[Symbol.iterator] = originalSymbolIterator;
     }
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function commandKillAfterStatus() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: ["help"],
+      stdout: "null",
+      stderr: "null",
+    });
+    const child = command.spawn();
+    await child.status;
+    assertThrows(
+      () => child.kill(),
+      TypeError,
+      "Child process has already terminated.",
+    );
+  },
+);
+
+Deno.test(
+  "process that fails to spawn, prints its name in error",
+  async () => {
+    assertThrows(
+      () => new Deno.Command("doesntexist").outputSync(),
+      Error,
+      "Failed to spawn: doesntexist",
+    );
+    await assertRejects(
+      async () => await new Deno.Command("doesntexist").output(),
+      Error,
+      "Failed to spawn: doesntexist",
+    );
   },
 );

@@ -1,98 +1,120 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-use std::sync::atomic::AtomicBool;
+use std::future::Future;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+use deno_semver::package::PackageReq;
 
-use crate::args::package_json::PackageJsonDeps;
+use crate::args::PackageJsonDepsProvider;
+use crate::util::sync::AtomicFlag;
 
-use super::NpmRegistry;
+use super::CliNpmRegistryApi;
 use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
-  has_installed: AtomicBool,
-  npm_registry_api: NpmRegistry,
-  npm_resolution: NpmResolution,
-  package_deps: PackageJsonDeps,
+  deps_provider: Arc<PackageJsonDepsProvider>,
+  has_installed_flag: AtomicFlag,
+  npm_registry_api: Arc<CliNpmRegistryApi>,
+  npm_resolution: Arc<NpmResolution>,
+}
+
+impl PackageJsonDepsInstallerInner {
+  pub fn reqs_with_info_futures<'a>(
+    &self,
+    reqs: &'a [&'a PackageReq],
+  ) -> FuturesOrdered<
+    impl Future<
+      Output = Result<
+        (&'a PackageReq, Arc<deno_npm::registry::NpmPackageInfo>),
+        NpmRegistryPackageInfoLoadError,
+      >,
+    >,
+  > {
+    FuturesOrdered::from_iter(reqs.iter().map(|req| {
+      let api = self.npm_registry_api.clone();
+      async move {
+        let info = api.package_info(&req.name).await?;
+        Ok::<_, NpmRegistryPackageInfoLoadError>((*req, info))
+      }
+    }))
+  }
 }
 
 /// Holds and controls installing dependencies from package.json.
-#[derive(Debug, Clone, Default)]
-pub struct PackageJsonDepsInstaller(Option<Arc<PackageJsonDepsInstallerInner>>);
+#[derive(Debug, Default)]
+pub struct PackageJsonDepsInstaller(Option<PackageJsonDepsInstallerInner>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
-    npm_registry_api: NpmRegistry,
-    npm_resolution: NpmResolution,
-    deps: Option<PackageJsonDeps>,
+    deps_provider: Arc<PackageJsonDepsProvider>,
+    npm_registry_api: Arc<CliNpmRegistryApi>,
+    npm_resolution: Arc<NpmResolution>,
   ) -> Self {
-    Self(deps.map(|package_deps| {
-      Arc::new(PackageJsonDepsInstallerInner {
-        has_installed: AtomicBool::new(false),
-        npm_registry_api,
-        npm_resolution,
-        package_deps,
-      })
+    Self(Some(PackageJsonDepsInstallerInner {
+      deps_provider,
+      has_installed_flag: Default::default(),
+      npm_registry_api,
+      npm_resolution,
     }))
   }
 
-  pub fn package_deps(&self) -> Option<&PackageJsonDeps> {
-    self.0.as_ref().map(|inner| &inner.package_deps)
-  }
-
-  /// Gets if the package.json has the specified package name.
-  pub fn has_package_name(&self, name: &str) -> bool {
-    if let Some(package_deps) = self.package_deps() {
-      // ensure this looks at the package name and not the
-      // bare specifiers (do not look at the keys!)
-      package_deps
-        .values()
-        .filter_map(|r| r.as_ref().ok())
-        .any(|v| v.name == name)
-    } else {
-      false
-    }
+  /// Creates an installer that never installs local packages during
+  /// resolution. A top level install will be a no-op.
+  pub fn no_op() -> Self {
+    Self(None)
   }
 
   /// Installs the top level dependencies in the package.json file
   /// without going through and resolving the descendant dependencies yet.
   pub async fn ensure_top_level_install(&self) -> Result<(), AnyError> {
-    use std::sync::atomic::Ordering;
     let inner = match &self.0 {
       Some(inner) => inner,
       None => return Ok(()),
     };
 
-    if inner.has_installed.swap(true, Ordering::SeqCst) {
+    if !inner.has_installed_flag.raise() {
       return Ok(()); // already installed by something else
     }
 
-    let mut package_reqs = inner
-      .package_deps
-      .values()
-      .filter_map(|r| r.as_ref().ok())
-      .collect::<Vec<_>>();
-    package_reqs.sort(); // deterministic resolution
+    let package_reqs = inner.deps_provider.reqs();
 
-    let mut req_with_infos =
-      FuturesOrdered::from_iter(package_reqs.into_iter().map(|req| {
-        let api = inner.npm_registry_api.clone();
-        async move {
-          let info = api.package_info(&req.name).await?;
-          Ok::<_, AnyError>((req, info))
-        }
-      }));
-
-    while let Some(result) = req_with_infos.next().await {
-      let (req, info) = result?;
+    // check if something needs resolving before bothering to load all
+    // the package information (which is slow)
+    if package_reqs.iter().all(|req| {
       inner
         .npm_resolution
-        .resolve_package_req_as_pending_with_info(req, &info)?;
+        .resolve_pkg_id_from_pkg_req(req)
+        .is_ok()
+    }) {
+      log::debug!(
+        "All package.json deps resolvable. Skipping top level install."
+      );
+      return Ok(()); // everything is already resolvable
+    }
+
+    let mut reqs_with_info_futures =
+      inner.reqs_with_info_futures(&package_reqs);
+
+    while let Some(result) = reqs_with_info_futures.next().await {
+      let (req, info) = result?;
+      let result = inner
+        .npm_resolution
+        .resolve_package_req_as_pending_with_info(req, &info);
+      if let Err(err) = result {
+        if inner.npm_registry_api.mark_force_reload() {
+          log::debug!("Failed to resolve package. Retrying. Error: {err:#}");
+          // re-initialize
+          reqs_with_info_futures = inner.reqs_with_info_futures(&package_reqs);
+        } else {
+          return Err(err.into());
+        }
+      }
     }
 
     Ok(())

@@ -8,16 +8,16 @@ const primordials = globalThis.__bootstrap.primordials;
 const {
   Error,
   ObjectDefineProperties,
+  SafeWeakMap,
   Symbol,
   SymbolFor,
   SymbolToStringTag,
   TypeError,
-  WeakMap,
   WeakMapPrototypeGet,
   WeakMapPrototypeSet,
 } = primordials;
 
-const locationConstructorKey = Symbol("locationConstuctorKey");
+const locationConstructorKey = Symbol("locationConstructorKey");
 
 // The differences between the definitions of `Location` and `WorkerLocation`
 // are because of the `LegacyUnforgeable` attribute only specified upon
@@ -206,7 +206,7 @@ ObjectDefineProperties(Location.prototype, {
   },
 });
 
-const workerLocationUrls = new WeakMap();
+const workerLocationUrls = new SafeWeakMap();
 
 class WorkerLocation {
   constructor(href = null, key = null) {

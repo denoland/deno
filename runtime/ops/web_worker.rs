@@ -6,6 +6,7 @@ use crate::web_worker::WebWorkerInternalHandle;
 use crate::web_worker::WebWorkerType;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 
 use deno_core::CancelFuture;
 use deno_core::OpState;
@@ -25,9 +26,6 @@ deno_core::extension!(
     op_worker_get_type,
     op_worker_sync_fetch,
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
-  },
 );
 
 #[op]
@@ -40,7 +38,8 @@ fn op_worker_post_message(
   Ok(())
 }
 
-#[op(deferred)]
+#[op2(async(lazy))]
+#[serde]
 async fn op_worker_recv_message(
   state: Rc<RefCell<OpState>>,
 ) -> Result<Option<JsMessageData>, AnyError> {

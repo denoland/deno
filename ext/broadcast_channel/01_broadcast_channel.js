@@ -8,6 +8,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   EventTarget,
+  setIsTrusted,
   setTarget,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
@@ -56,6 +57,7 @@ function dispatch(source, name, data) {
         data: core.deserialize(data), // TODO(bnoordhuis) Cache immutables.
         origin: "http://127.0.0.1",
       });
+      setIsTrusted(event, true);
       setTarget(event, channel);
       channel.dispatchEvent(event);
     };
@@ -83,12 +85,9 @@ class BroadcastChannel extends EventTarget {
     super();
 
     const prefix = "Failed to construct 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
-    this[_name] = webidl.converters["DOMString"](name, {
-      prefix,
-      context: "Argument 1",
-    });
+    this[_name] = webidl.converters["DOMString"](name, prefix, "Argument 1");
 
     this[webidl.brand] = webidl.brand;
 
@@ -106,7 +105,7 @@ class BroadcastChannel extends EventTarget {
     webidl.assertBranded(this, BroadcastChannelPrototype);
 
     const prefix = "Failed to execute 'postMessage' on 'BroadcastChannel'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
 
     if (this[_closed]) {
       throw new DOMException("Already closed", "InvalidStateError");

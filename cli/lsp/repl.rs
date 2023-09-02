@@ -284,7 +284,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
-    enable: true,
+    enable: Some(true),
     enable_paths: Vec::new(),
     config: None,
     certificate_stores: None,
@@ -294,6 +294,7 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
     inlay_hints: Default::default(),
     internal_debug: false,
     lint: false,
+    document_preload_limit: 0, // don't pre-load any modules as it's expensive and not useful for the repl
     tls_certificate: None,
     unsafely_ignore_certificate_errors: None,
     unstable: false,

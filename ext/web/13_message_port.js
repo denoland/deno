@@ -14,6 +14,7 @@ import {
   EventTarget,
   MessageEvent,
   setEventTargetData,
+  setIsTrusted,
 } from "ext:deno_web/02_event.js";
 import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
@@ -100,7 +101,7 @@ class MessagePort extends EventTarget {
   postMessage(message, transferOrOptions = {}) {
     webidl.assertBranded(this, MessagePortPrototype);
     const prefix = "Failed to execute 'postMessage' on 'MessagePort'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     message = webidl.converters.any(message);
     let options;
     if (
@@ -110,21 +111,20 @@ class MessagePort extends EventTarget {
     ) {
       const transfer = webidl.converters["sequence<object>"](
         transferOrOptions,
-        { prefix, context: "Argument 2" },
+        prefix,
+        "Argument 2",
       );
       options = { transfer };
     } else {
       options = webidl.converters.StructuredSerializeOptions(
         transferOrOptions,
-        {
-          prefix,
-          context: "Argument 2",
-        },
+        prefix,
+        "Argument 2",
       );
     }
     const { transfer } = options;
     if (ArrayPrototypeIncludes(transfer, this)) {
-      throw new DOMException("Can not tranfer self", "DataCloneError");
+      throw new DOMException("Can not transfer self", "DataCloneError");
     }
     const data = serializeJsMessageData(message, transfer);
     if (this[_id] === null) return;
@@ -156,6 +156,7 @@ class MessagePort extends EventTarget {
           transferables = v[1];
         } catch (err) {
           const event = new MessageEvent("messageerror", { data: err });
+          setIsTrusted(event, true);
           this.dispatchEvent(event);
           return;
         }
@@ -166,6 +167,7 @@ class MessagePort extends EventTarget {
             (t) => ObjectPrototypeIsPrototypeOf(MessagePortPrototype, t),
           ),
         });
+        setIsTrusted(event, true);
         this.dispatchEvent(event);
       }
       this[_enabled] = false;
@@ -260,7 +262,7 @@ function serializeJsMessageData(data, transferables) {
         );
       }
       j++;
-      transferredArrayBuffers.push(ab);
+      ArrayPrototypePush(transferredArrayBuffers, ab);
     }
   }
 
@@ -329,11 +331,12 @@ webidl.converters.StructuredSerializeOptions = webidl
 
 function structuredClone(value, options) {
   const prefix = "Failed to execute 'structuredClone'";
-  webidl.requiredArguments(arguments.length, 1, { prefix });
-  options = webidl.converters.StructuredSerializeOptions(options, {
+  webidl.requiredArguments(arguments.length, 1, prefix);
+  options = webidl.converters.StructuredSerializeOptions(
+    options,
     prefix,
-    context: "Argument 2",
-  });
+    "Argument 2",
+  );
   const messageData = serializeJsMessageData(value, options.transfer);
   return deserializeJsMessageData(messageData)[0];
 }

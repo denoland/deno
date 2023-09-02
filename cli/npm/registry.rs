@@ -5,8 +5,6 @@ use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -31,6 +29,7 @@ use crate::cache::CACHE_PERM;
 use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
+use crate::util::sync::AtomicFlag;
 
 use super::cache::should_sync_download;
 use super::cache::NpmCache;
@@ -53,24 +52,24 @@ static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
   Url::parse("https://registry.npmjs.org").unwrap()
 });
 
-#[derive(Clone, Debug)]
-pub struct NpmRegistry(Option<Arc<NpmRegistryApiInner>>);
+#[derive(Debug)]
+pub struct CliNpmRegistryApi(Option<Arc<CliNpmRegistryApiInner>>);
 
-impl NpmRegistry {
+impl CliNpmRegistryApi {
   pub fn default_url() -> &'static Url {
     &NPM_REGISTRY_DEFAULT_URL
   }
 
   pub fn new(
     base_url: Url,
-    cache: NpmCache,
-    http_client: HttpClient,
+    cache: Arc<NpmCache>,
+    http_client: Arc<HttpClient>,
     progress_bar: ProgressBar,
   ) -> Self {
-    Self(Some(Arc::new(NpmRegistryApiInner {
+    Self(Some(Arc::new(CliNpmRegistryApiInner {
       base_url,
       cache,
-      force_reload: AtomicBool::new(false),
+      force_reload_flag: Default::default(),
       mem_cache: Default::default(),
       previously_reloaded_packages: Default::default(),
       http_client,
@@ -100,19 +99,7 @@ impl NpmRegistry {
     &self.inner().base_url
   }
 
-  /// Marks that new requests for package information should retrieve it
-  /// from the npm registry
-  ///
-  /// Returns true if it was successfully set for the first time.
-  pub fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading is disabled
-    if matches!(self.inner().cache.cache_setting(), CacheSetting::Only) {
-      return false;
-    }
-    !self.inner().force_reload.swap(true, Ordering::SeqCst)
-  }
-
-  fn inner(&self) -> &Arc<NpmRegistryApiInner> {
+  fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
     self.0.as_ref().unwrap()
@@ -123,7 +110,7 @@ static SYNC_DOWNLOAD_TASK_QUEUE: Lazy<TaskQueue> =
   Lazy::new(TaskQueue::default);
 
 #[async_trait]
-impl NpmRegistryApi for NpmRegistry {
+impl NpmRegistryApi for CliNpmRegistryApi {
   async fn package_info(
     &self,
     name: &str,
@@ -146,28 +133,46 @@ impl NpmRegistryApi for NpmRegistry {
       }
     }
   }
+
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.inner().cache.cache_setting(),
+      CacheSetting::Only | CacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.inner().force_reload_flag.raise() {
+      self.clear_memory_cache(); // clear the cache to force reloading
+      true
+    } else {
+      false
+    }
+  }
 }
+
+type CacheItemPendingResult =
+  Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>;
 
 #[derive(Debug)]
 enum CacheItem {
-  Pending(
-    Shared<BoxFuture<'static, Result<Option<Arc<NpmPackageInfo>>, String>>>,
-  ),
+  Pending(Shared<BoxFuture<'static, CacheItemPendingResult>>),
   Resolved(Option<Arc<NpmPackageInfo>>),
 }
 
 #[derive(Debug)]
-struct NpmRegistryApiInner {
+struct CliNpmRegistryApiInner {
   base_url: Url,
-  cache: NpmCache,
-  force_reload: AtomicBool,
+  cache: Arc<NpmCache>,
+  force_reload_flag: AtomicFlag,
   mem_cache: Mutex<HashMap<String, CacheItem>>,
   previously_reloaded_packages: Mutex<HashSet<String>>,
-  http_client: HttpClient,
+  http_client: Arc<HttpClient>,
   progress_bar: ProgressBar,
 }
 
-impl NpmRegistryApiInner {
+impl CliNpmRegistryApiInner {
   pub async fn maybe_package_info(
     self: &Arc<Self>,
     name: &str,
@@ -197,9 +202,15 @@ impl NpmRegistryApiInner {
           let future = {
             let api = self.clone();
             let name = name.to_string();
-            async move { api.load_package_info_from_registry(&name).await }
-              .boxed()
-              .shared()
+            async move {
+              api
+                .load_package_info_from_registry(&name)
+                .await
+                .map(|info| info.map(Arc::new))
+                .map_err(Arc::new)
+            }
+            .boxed()
+            .shared()
           };
           mem_cache
             .insert(name.to_string(), CacheItem::Pending(future.clone()));
@@ -221,16 +232,16 @@ impl NpmRegistryApiInner {
         Err(err) => {
           // purge the item from the cache so it loads next time
           self.mem_cache.lock().remove(name);
-          Err(anyhow!("{}", err))
+          Err(anyhow!("{:#}", err))
         }
       }
     } else {
-      Ok(future.await.map_err(|err| anyhow!("{}", err))?)
+      Ok(future.await.map_err(|err| anyhow!("{:#}", err))?)
     }
   }
 
   fn force_reload(&self) -> bool {
-    self.force_reload.load(Ordering::SeqCst)
+    self.force_reload_flag.is_raised()
   }
 
   fn load_file_cached_package_info(
@@ -296,7 +307,6 @@ impl NpmRegistryApiInner {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
     atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
@@ -304,7 +314,7 @@ impl NpmRegistryApiInner {
   async fn load_package_info_from_registry(
     &self,
     name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, String> {
+  ) -> Result<Option<NpmPackageInfo>, AnyError> {
     self
       .load_package_info_from_registry_inner(name)
       .await
@@ -315,9 +325,6 @@ impl NpmRegistryApiInner {
           name
         )
       })
-      .map(|info| info.map(Arc::new))
-      // make cloneable
-      .map_err(|err| format!("{err:#}"))
   }
 
   async fn load_package_info_from_registry_inner(
@@ -351,7 +358,23 @@ impl NpmRegistryApiInner {
   }
 
   fn get_package_url(&self, name: &str) -> Url {
-    self.base_url.join(name).unwrap()
+    // list of all characters used in npm packages:
+    //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
+    const ASCII_SET: percent_encoding::AsciiSet =
+      percent_encoding::NON_ALPHANUMERIC
+        .remove(b'!')
+        .remove(b'\'')
+        .remove(b'(')
+        .remove(b')')
+        .remove(b'*')
+        .remove(b'-')
+        .remove(b'.')
+        .remove(b'/')
+        .remove(b'@')
+        .remove(b'_')
+        .remove(b'~');
+    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+    self.base_url.join(&name.to_string()).unwrap()
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
@@ -359,7 +382,7 @@ impl NpmRegistryApiInner {
     name_folder_path.join("registry.json")
   }
 
-  pub fn clear_memory_cache(&self) {
+  fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
   }
 

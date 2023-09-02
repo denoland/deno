@@ -1,8 +1,13 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::io::Error;
+use std::io::IsTerminal;
+
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
+use deno_core::ResourceHandle;
 use deno_io::StdFileResource;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
@@ -14,30 +19,39 @@ use rustyline::Modifiers;
 use std::io::Error;
 
 #[cfg(unix)]
+use deno_core::ResourceId;
+#[cfg(unix)]
 use nix::sys::termios;
+#[cfg(unix)]
+use std::cell::RefCell;
+#[cfg(unix)]
+use std::collections::HashMap;
 
-#[cfg(windows)]
-use deno_core::error::custom_error;
+#[cfg(unix)]
+#[derive(Default, Clone)]
+struct TtyModeStore(
+  std::rc::Rc<RefCell<HashMap<ResourceId, termios::Termios>>>,
+);
+
+#[cfg(unix)]
+impl TtyModeStore {
+  pub fn get(&self, id: ResourceId) -> Option<termios::Termios> {
+    self.0.borrow().get(&id).map(ToOwned::to_owned)
+  }
+
+  pub fn take(&self, id: ResourceId) -> Option<termios::Termios> {
+    self.0.borrow_mut().remove(&id)
+  }
+
+  pub fn set(&self, id: ResourceId, mode: termios::Termios) {
+    self.0.borrow_mut().insert(id, mode);
+  }
+}
+
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
-
-#[cfg(windows)]
-fn get_windows_handle(
-  f: &std::fs::File,
-) -> Result<std::os::windows::io::RawHandle, AnyError> {
-  use std::os::windows::io::AsRawHandle;
-  use winapi::um::handleapi;
-
-  let handle = f.as_raw_handle();
-  if handle == handleapi::INVALID_HANDLE_VALUE {
-    return Err(Error::last_os_error().into());
-  } else if handle.is_null() {
-    return Err(custom_error("ReferenceError", "null handle"));
-  }
-  Ok(handle)
-}
 
 deno_core::extension!(
   deno_tty,
@@ -47,8 +61,9 @@ deno_core::extension!(
     op_console_size,
     op_read_line_prompt
   ],
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
+  state = |state| {
+    #[cfg(unix)]
+    state.put(TtyModeStore::default());
   },
 );
 
@@ -79,6 +94,7 @@ fn op_stdin_set_raw(
   cbreak: bool,
 ) -> Result<(), AnyError> {
   let rid = 0; // stdin is always rid=0
+  let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -87,133 +103,102 @@ fn op_stdin_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
-    use std::os::windows::io::AsRawHandle;
     use winapi::shared::minwindef::FALSE;
     use winapi::um::consoleapi;
-    use winapi::um::handleapi;
+
+    let handle = handle_or_fd;
 
     if cbreak {
       return Err(deno_core::error::not_supported());
     }
 
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let handle = std_file.as_raw_handle();
+    let mut original_mode: DWORD = 0;
+    // SAFETY: winapi call
+    if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
+      == FALSE
+    {
+      return Err(Error::last_os_error().into());
+    }
 
-      if handle == handleapi::INVALID_HANDLE_VALUE {
-        return Err(Error::last_os_error().into());
-      } else if handle.is_null() {
-        return Err(custom_error("ReferenceError", "null handle"));
-      }
-      let mut original_mode: DWORD = 0;
-      // SAFETY: winapi call
-      if unsafe { consoleapi::GetConsoleMode(handle, &mut original_mode) }
-        == FALSE
-      {
-        return Err(Error::last_os_error().into());
-      }
+    let new_mode = if is_raw {
+      mode_raw_input_on(original_mode)
+    } else {
+      mode_raw_input_off(original_mode)
+    };
 
-      let new_mode = if is_raw {
-        mode_raw_input_on(original_mode)
-      } else {
-        mode_raw_input_off(original_mode)
-      };
+    // SAFETY: winapi call
+    if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
+      return Err(Error::last_os_error().into());
+    }
 
-      // SAFETY: winapi call
-      if unsafe { consoleapi::SetConsoleMode(handle, new_mode) } == FALSE {
-        return Err(Error::last_os_error().into());
-      }
-
-      Ok(())
-    })
+    Ok(())
   }
   #[cfg(unix)]
   {
-    use std::os::unix::io::AsRawFd;
+    let tty_mode_store = state.borrow::<TtyModeStore>().clone();
+    let previous_mode = tty_mode_store.get(rid);
 
-    StdFileResource::with_file_and_metadata(
-      state,
-      rid,
-      move |std_file, meta_data| {
-        let raw_fd = std_file.as_raw_fd();
+    let raw_fd = handle_or_fd;
 
-        if is_raw {
-          let mut raw = {
-            let mut meta_data = meta_data.lock();
-            let maybe_tty_mode = &mut meta_data.tty.mode;
-            if maybe_tty_mode.is_none() {
-              // Save original mode.
-              let original_mode = termios::tcgetattr(raw_fd)?;
-              maybe_tty_mode.replace(original_mode);
-            }
-            maybe_tty_mode.clone().unwrap()
-          };
-
-          raw.input_flags &= !(termios::InputFlags::BRKINT
-            | termios::InputFlags::ICRNL
-            | termios::InputFlags::INPCK
-            | termios::InputFlags::ISTRIP
-            | termios::InputFlags::IXON);
-
-          raw.control_flags |= termios::ControlFlags::CS8;
-
-          raw.local_flags &= !(termios::LocalFlags::ECHO
-            | termios::LocalFlags::ICANON
-            | termios::LocalFlags::IEXTEN);
-          if !cbreak {
-            raw.local_flags &= !(termios::LocalFlags::ISIG);
-          }
-          raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] =
-            1;
-          raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] =
-            0;
-          termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
-        } else {
-          // Try restore saved mode.
-          if let Some(mode) = meta_data.lock().tty.mode.take() {
-            termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
-          }
+    if is_raw {
+      let mut raw = match previous_mode {
+        Some(mode) => mode,
+        None => {
+          // Save original mode.
+          let original_mode = termios::tcgetattr(raw_fd)?;
+          tty_mode_store.set(rid, original_mode.clone());
+          original_mode
         }
+      };
 
-        Ok(())
-      },
-    )
+      raw.input_flags &= !(termios::InputFlags::BRKINT
+        | termios::InputFlags::ICRNL
+        | termios::InputFlags::INPCK
+        | termios::InputFlags::ISTRIP
+        | termios::InputFlags::IXON);
+
+      raw.control_flags |= termios::ControlFlags::CS8;
+
+      raw.local_flags &= !(termios::LocalFlags::ECHO
+        | termios::LocalFlags::ICANON
+        | termios::LocalFlags::IEXTEN);
+      if !cbreak {
+        raw.local_flags &= !(termios::LocalFlags::ISIG);
+      }
+      raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
+      raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
+      termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)?;
+    } else {
+      // Try restore saved mode.
+      if let Some(mode) = tty_mode_store.take(rid) {
+        termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)?;
+      }
+    }
+
+    Ok(())
   }
 }
 
-#[op(fast)]
-fn op_isatty(
-  state: &mut OpState,
-  rid: u32,
-  out: &mut [u8],
-) -> Result<(), AnyError> {
-  StdFileResource::with_file(state, rid, move |std_file| {
-    #[cfg(windows)]
-    {
-      use winapi::shared::minwindef::FALSE;
-      use winapi::um::consoleapi;
-
-      let handle = get_windows_handle(std_file)?;
-      let mut test_mode: DWORD = 0;
-      // If I cannot get mode out of console, it is not a console.
-      // TODO(bartlomieju):
-      #[allow(clippy::undocumented_unsafe_blocks)]
+#[op2(fast)]
+fn op_isatty(state: &mut OpState, rid: u32) -> Result<bool, AnyError> {
+  let handle = state.resource_table.get_handle(rid)?;
+  // TODO(mmastrac): this can migrate to the deno_core implementation when it lands
+  Ok(match handle {
+    ResourceHandle::Fd(fd) if handle.is_valid() => {
+      #[cfg(windows)]
       {
-        out[0] = unsafe {
-          consoleapi::GetConsoleMode(handle, &mut test_mode) != FALSE
-        } as u8;
+        // SAFETY: The resource remains open for the for the duration of borrow_raw
+        unsafe {
+          std::os::windows::io::BorrowedHandle::borrow_raw(fd).is_terminal()
+        }
+      }
+      #[cfg(unix)]
+      {
+        // SAFETY: The resource remains open for the for the duration of borrow_raw
+        unsafe { std::os::fd::BorrowedFd::borrow_raw(fd).is_terminal() }
       }
     }
-    #[cfg(unix)]
-    {
-      use std::os::unix::io::AsRawFd;
-      let raw_fd = std_file.as_raw_fd();
-      // TODO(bartlomieju):
-      #[allow(clippy::undocumented_unsafe_blocks)]
-      {
-        out[0] = unsafe { libc::isatty(raw_fd as libc::c_int) == 1 } as u8;
-      }
-    }
-    Ok(())
+    _ => false,
   })
 }
 
@@ -227,12 +212,11 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), AnyError> {
-    StdFileResource::with_file(state, rid, move |std_file| {
-      let size = console_size(std_file)?;
-      result[0] = size.cols;
-      result[1] = size.rows;
-      Ok(())
-    })
+    let fd = state.resource_table.get_fd(rid)?;
+    let size = console_size_from_fd(fd)?;
+    result[0] = size.cols;
+    result[1] = size.rows;
+    Ok(())
   }
 
   let mut last_result = Ok(());
@@ -261,40 +245,50 @@ pub fn console_size(
   {
     use std::os::windows::io::AsRawHandle;
     let handle = std_file.as_raw_handle();
-
-    // SAFETY: winapi calls
-    unsafe {
-      let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
-        std::mem::zeroed();
-
-      if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo)
-        == 0
-      {
-        return Err(Error::last_os_error());
-      }
-      Ok(ConsoleSize {
-        cols: bufinfo.dwSize.X as u32,
-        rows: bufinfo.dwSize.Y as u32,
-      })
-    }
+    console_size_from_fd(handle)
   }
-
   #[cfg(unix)]
   {
     use std::os::unix::io::AsRawFd;
-
     let fd = std_file.as_raw_fd();
-    // SAFETY: libc calls
-    unsafe {
-      let mut size: libc::winsize = std::mem::zeroed();
-      if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
-        return Err(Error::last_os_error());
-      }
-      Ok(ConsoleSize {
-        cols: size.ws_col as u32,
-        rows: size.ws_row as u32,
-      })
+    console_size_from_fd(fd)
+  }
+}
+
+#[cfg(windows)]
+fn console_size_from_fd(
+  handle: std::os::windows::io::RawHandle,
+) -> Result<ConsoleSize, std::io::Error> {
+  // SAFETY: winapi calls
+  unsafe {
+    let mut bufinfo: winapi::um::wincon::CONSOLE_SCREEN_BUFFER_INFO =
+      std::mem::zeroed();
+
+    if winapi::um::wincon::GetConsoleScreenBufferInfo(handle, &mut bufinfo) == 0
+    {
+      return Err(Error::last_os_error());
     }
+    Ok(ConsoleSize {
+      cols: bufinfo.dwSize.X as u32,
+      rows: bufinfo.dwSize.Y as u32,
+    })
+  }
+}
+
+#[cfg(not(windows))]
+fn console_size_from_fd(
+  fd: std::os::unix::prelude::RawFd,
+) -> Result<ConsoleSize, std::io::Error> {
+  // SAFETY: libc calls
+  unsafe {
+    let mut size: libc::winsize = std::mem::zeroed();
+    if libc::ioctl(fd, libc::TIOCGWINSZ, &mut size as *mut _) != 0 {
+      return Err(Error::last_os_error());
+    }
+    Ok(ConsoleSize {
+      cols: size.ws_col as u32,
+      rows: size.ws_row as u32,
+    })
   }
 }
 

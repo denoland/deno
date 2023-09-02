@@ -46,6 +46,8 @@ declare global {
     encode(value: string): Uint8Array;
     // deno-lint-ignore no-explicit-any
     ops: Record<string, (...args: unknown[]) => any>;
+    // deno-lint-ignore no-explicit-any
+    asyncOps: Record<string, (...args: unknown[]) => any>;
     print(msg: string, stderr: boolean): void;
     registerErrorClass(
       name: string,
@@ -62,6 +64,7 @@ declare global {
     | GetAssets
     | GetApplicableRefactors
     | GetEditsForRefactor
+    | GetEditsForFileRename
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionDetails
@@ -119,9 +122,18 @@ declare global {
   interface GetEditsForRefactor extends BaseLanguageServerRequest {
     method: "getEditsForRefactor";
     specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
+  }
+
+  interface GetEditsForFileRename extends BaseLanguageServerRequest {
+    method: "getEditsForFileRename";
+    old_specifier: string;
+    new_specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences?: ts.UserPreferences;
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {
@@ -130,6 +142,7 @@ declare global {
     startPosition: number;
     endPosition: number;
     errorCodes: string[];
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCombinedCodeFix extends BaseLanguageServerRequest {
@@ -137,6 +150,7 @@ declare global {
     specifier: string;
     // deno-lint-ignore ban-types
     fixId: {};
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetCompletionDetails extends BaseLanguageServerRequest {
@@ -145,6 +159,7 @@ declare global {
       specifier: string;
       position: number;
       name: string;
+      formatCodeSettings: ts.FormatCodeSettings;
       source?: string;
       preferences?: ts.UserPreferences;
       data?: ts.CompletionEntryData;
@@ -156,6 +171,7 @@ declare global {
     specifier: string;
     position: number;
     preferences: ts.GetCompletionsAtPositionOptions;
+    formatCodeSettings: ts.FormatCodeSettings;
   }
 
   interface GetDiagnosticsRequest extends BaseLanguageServerRequest {

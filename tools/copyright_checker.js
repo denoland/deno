@@ -31,6 +31,7 @@ export async function checkCopyright() {
     ":!:cli/tools/init/templates/**",
     ":!:cli/tests/unit_node/testdata/**",
     ":!:cli/tests/node_compat/test/**",
+    ":!:cli/tools/bench/mitata.rs",
 
     // rust
     "*.rs",
@@ -42,29 +43,47 @@ export async function checkCopyright() {
 
   const errors = [];
   const sourceFilesSet = new Set(sourceFiles);
+  const ERROR_MSG = "Copyright header is missing: ";
+
+  // Acceptable content before the copyright line
+  const ACCEPTABLE_LINES =
+    /^(\/\/ deno-lint-.*|\/\/ Copyright.*|\/\/ Ported.*|\s*|#!\/.*)\n/;
+  const COPYRIGHT_LINE =
+    "Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.";
+  const TOML_COPYRIGHT_LINE = "# " + COPYRIGHT_LINE;
+  const C_STYLE_COPYRIGHT_LINE = "// " + COPYRIGHT_LINE;
 
   for (const file of sourceFilesSet) {
-    const ERROR_MSG = "Copyright header is missing: ";
-
     const fileText = await readFirstPartOfFile(file);
     if (file.endsWith("Cargo.toml")) {
       if (
-        !fileText.startsWith(
-          "# Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-        )
+        !fileText.startsWith(TOML_COPYRIGHT_LINE)
       ) {
         errors.push(ERROR_MSG + file);
       }
       continue;
     }
 
-    // use .includes(...) because the first line might be a shebang
     if (
-      !fileText.includes(
-        "// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.",
-      )
+      !fileText.startsWith(C_STYLE_COPYRIGHT_LINE)
     ) {
-      errors.push(ERROR_MSG + file);
+      let trimmedText = fileText;
+      // Attempt to trim accceptable lines
+      while (
+        ACCEPTABLE_LINES.test(trimmedText) &&
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        trimmedText = trimmedText.split("\n").slice(1).join("\n");
+      }
+      if (
+        !trimmedText.startsWith(C_STYLE_COPYRIGHT_LINE)
+      ) {
+        errors.push(
+          `${ERROR_MSG}${file} (incorrect line is '${
+            trimmedText.split("\n", 1)
+          }')`,
+        );
+      }
     }
   }
 

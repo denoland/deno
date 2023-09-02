@@ -1,7 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -9,11 +11,12 @@ use std::process::Stdio;
 use std::time::Duration;
 use test_util as util;
 use test_util::TempDir;
-use tokio::task::LocalSet;
 use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
+use util::assert_not_contains;
 use util::env_vars_for_npm_tests_no_sync_download;
+use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -95,9 +98,16 @@ itest!(_017_import_redirect {
   output: "run/017_import_redirect.ts.out",
 });
 
-itest!(_017_import_redirect_nocheck {
-  args: "run --quiet --reload --no-check run/017_import_redirect.ts",
+itest!(_017_import_redirect_check {
+  args: "run --quiet --reload --check run/017_import_redirect.ts",
   output: "run/017_import_redirect.ts.out",
+});
+
+itest!(_017_import_redirect_vendor_dir {
+  args:
+    "run --quiet --reload --vendor --check $TESTDATA/run/017_import_redirect.ts",
+  output: "run/017_import_redirect.ts.out",
+  temp_cwd: true,
 });
 
 itest!(_017_import_redirect_info {
@@ -155,6 +165,14 @@ itest!(_027_redirect_typescript {
   http_server: true,
 });
 
+itest!(_027_redirect_typescript_vendor_dir {
+  args:
+    "run --quiet --reload --vendor $TESTDATA/run/027_redirect_typescript.ts",
+  output: "run/027_redirect_typescript.ts.out",
+  http_server: true,
+  temp_cwd: true,
+});
+
 itest!(_028_args {
   args:
     "run --quiet --reload run/028_args.ts --arg1 val1 --arg2=val2 -- arg3 arg4",
@@ -183,6 +201,14 @@ itest!(_033_import_map_remote {
     "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --unstable import_maps/test_remote.ts",
   output: "run/033_import_map_remote.out",
   http_server: true,
+});
+
+itest!(_033_import_map_vendor_dir_remote {
+  args:
+    "run --quiet --reload --import-map=http://127.0.0.1:4545/import_maps/import_map_remote.json --vendor --unstable $TESTDATA/import_maps/test_remote.ts",
+  output: "run/033_import_map_remote.out",
+  http_server: true,
+  temp_cwd: true,
 });
 
 itest!(_033_import_map_data_uri {
@@ -520,8 +546,8 @@ fn _083_legacy_external_source_map() {
   .unwrap();
   // Write a faulty old external source map.
   let faulty_map_path = deno_dir.path().join("gen/http/localhost_PORT4545/9576bd5febd0587c5c4d88d57cb3ac8ebf2600c529142abe3baa9a751d20c334.js.map");
-  std::fs::create_dir_all(faulty_map_path.parent().unwrap()).unwrap();
-  std::fs::write(faulty_map_path, "{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}").unwrap();
+  faulty_map_path.parent().create_dir_all();
+  faulty_map_path.write(r#"{\"version\":3,\"file\":\"\",\"sourceRoot\":\"\",\"sources\":[\"http://localhost:4545/083_legacy_external_source_map.ts\"],\"names\":[],\"mappings\":\";AAAA,MAAM,IAAI,KAAK,CAAC,KAAK,CAAC,CAAC\"}"#);
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
@@ -578,7 +604,7 @@ fn _090_run_permissions_request() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -586,7 +612,7 @@ fn _090_run_permissions_request() {
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -605,7 +631,7 @@ fn _090_run_permissions_request_sync() {
     .with_pty(|mut console| {
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"ls\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -613,7 +639,7 @@ fn _090_run_permissions_request_sync() {
       console.expect("Granted run access to \"ls\".");
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"cat\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -633,7 +659,7 @@ fn permissions_prompt_allow_all() {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
@@ -642,7 +668,7 @@ fn permissions_prompt_allow_all() {
       // "read" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests read access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-read to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
       ));
@@ -651,7 +677,7 @@ fn permissions_prompt_allow_all() {
       // "write" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests write access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-write to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)",
       ));
@@ -659,8 +685,8 @@ fn permissions_prompt_allow_all() {
       console.expect("✅ Granted all write access.");
       // "net" permissions
       console.expect(concat!(
-        "┌ ⚠️  Deno requests network access to \"foo\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "┌ ⚠️  Deno requests net access to \"foo\".\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-net to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all net permissions)",
       ));
@@ -669,7 +695,7 @@ fn permissions_prompt_allow_all() {
       // "env" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests env access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
@@ -678,7 +704,7 @@ fn permissions_prompt_allow_all() {
       // "sys" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-sys to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all sys permissions)",
       ));
@@ -687,7 +713,7 @@ fn permissions_prompt_allow_all() {
       // "ffi" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-ffi to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all ffi permissions)",
       ));
@@ -743,12 +769,42 @@ fn permissions_prompt_allow_all_lowercase_a() {
       // "run" permissions
       console.expect(concat!(
         "┌ ⚠️  Deno requests run access to \"FOO\".\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-run to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all run permissions)",
       ));
       console.write_line_raw("a");
       console.expect("Unrecognized option.");
+    });
+}
+
+itest!(deny_all_permission_args {
+  args: "run --deny-env --deny-read --deny-write --deny-ffi --deny-run --deny-sys --deny-net --deny-hrtime run/deny_all_permission_args.js",
+  output: "run/deny_all_permission_args.out",
+});
+
+itest!(deny_some_permission_args {
+  args: "run --allow-env --deny-env=FOO --allow-read --deny-read=/foo --allow-write --deny-write=/foo --allow-ffi --deny-ffi=/foo --allow-run --deny-run=foo --allow-sys --deny-sys=hostname --allow-net --deny-net=127.0.0.1 --allow-hrtime --deny-hrtime run/deny_some_permission_args.js",
+  output: "run/deny_some_permission_args.out",
+});
+
+#[test]
+fn permissions_cache() {
+  TestContext::default()
+    .new_command()
+    .args_vec(["run", "--quiet", "run/permissions_cache.ts"])
+    .with_pty(|mut console| {
+      console.expect(concat!(
+        "prompt\r\n",
+        "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
+        "├ Run again with --allow-read to bypass this prompt.\r\n",
+        "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
+      ));
+      console.write_line_raw("y");
+      console.expect("✅ Granted read access to \"foo\".");
+      console.expect("granted");
+      console.expect("prompt");
     });
 }
 
@@ -804,10 +860,9 @@ itest!(private_field_presence_no_check {
   output: "run/private_field_presence.ts.out",
 });
 
-// TODO(bartlomieju): remove --unstable once Deno.Command is stabilized
 itest!(lock_write_fetch {
   args:
-    "run --quiet --allow-read --allow-write --allow-env --allow-run --unstable run/lock_write_fetch/main.ts",
+    "run --quiet --allow-read --allow-write --allow-env --allow-run run/lock_write_fetch/main.ts",
   output: "run/lock_write_fetch/main.out",
   http_server: true,
   exit_code: 0,
@@ -855,10 +910,10 @@ itest!(config_file_lock_path {
 });
 
 itest!(lock_flag_overrides_config_file_lock_path {
-     args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
-    output: "run/019_media_types.ts.out",
-    http_server: true,
-  });
+  args: "run --lock=run/lock_check_ok2.json --config=run/config_file_lock_path.json run/019_media_types.ts",
+  output: "run/019_media_types.ts.out",
+  http_server: true,
+});
 
 itest!(lock_v2_check_ok {
   args:
@@ -899,6 +954,119 @@ itest!(lock_only_http_and_https {
   output: "run/lock_only_http_and_https/main.out",
   http_server: true,
 });
+
+#[test]
+fn lock_no_declaration_files() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .build();
+  let output = context
+    .new_command()
+    .args("cache --lock --lock-write $TESTDATA/lockfile/no_dts/main.ts")
+    .run();
+  output.assert_matches_file("lockfile/no_dts/main.cache.out");
+  let lockfile = context.temp_dir().path().join("deno.lock");
+  lockfile.assert_matches_file(
+    context
+      .testdata_path()
+      .join("lockfile/no_dts/deno.lock.out"),
+  );
+}
+
+#[test]
+fn lock_redirects() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}"); // cause a lockfile to be created
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';",
+  );
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  let initial_lockfile_text = r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#;
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text("Hello World\n");
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+
+  // now try changing where the redirect occurs in the lockfile
+  temp_dir.write("deno.lock", r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#);
+
+  // also, add some npm dependency to ensure it doesn't end up in
+  // the redirects as they're currently stored separately
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';\n import 'npm:@denotest/esm-basic';\n",
+  );
+
+  // it should use the echo script instead
+  context
+    .new_command()
+    .args("run main.ts Hi there")
+    .run()
+    .assert_matches_text(
+      concat!(
+        "Download http://localhost:4545/echo.ts\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "Hi, there",
+    ));
+  util::assertions::assert_wildcard_match(
+    &temp_dir.read_to_string("deno.lock"),
+    r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  },
+  "npm": {
+    "specifiers": {
+      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
+    },
+    "packages": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  }
+}
+"#,
+  );
+}
 
 itest!(mts_dmts_mjs {
   args: "run subdir/import.mts",
@@ -1278,11 +1446,20 @@ itest!(type_directives_02 {
   output: "run/type_directives_02.ts.out",
 });
 
-itest!(type_directives_js_main {
-  args: "run --reload -L debug run/type_directives_js_main.js",
-  output: "run/type_directives_js_main.js.out",
-  exit_code: 0,
-});
+#[test]
+fn type_directives_js_main() {
+  let context = TestContext::default();
+  let output = context
+    .new_command()
+    .args("run --reload -L debug --check run/type_directives_js_main.js")
+    .run();
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch() - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  let output = context
+    .new_command()
+    .args("run --reload -L debug run/type_directives_js_main.js")
+    .run();
+  assert_not_contains!(output.combined_output(), "type_reference.d.ts");
+}
 
 itest!(type_directives_redirect {
   args: "run --reload --check run/type_directives_redirect.ts",
@@ -1625,6 +1802,14 @@ itest!(jsx_import_source_pragma_with_config_no_check {
   http_server: true,
 });
 
+itest!(jsx_import_source_pragma_with_config_vendor_dir {
+  args: "run --reload --config jsx/deno-jsx.jsonc --no-lock --vendor $TESTDATA/run/jsx_import_source_pragma.tsx",
+  output: "run/jsx_import_source.out",
+  http_server: true,
+  temp_cwd: true,
+  copy_temp_dir: Some("jsx/"),
+});
+
 itest!(jsx_import_source_no_pragma_no_check {
   args:
     "run --reload --config jsx/deno-jsx.jsonc --no-lock --no-check run/jsx_import_source_no_pragma.tsx",
@@ -1674,6 +1859,13 @@ itest!(references_types_remote {
 itest!(reference_types_error {
   args:
     "run --config run/checkjs.tsconfig.json --check run/reference_types_error.js",
+  output: "run/reference_types_error.js.out",
+  exit_code: 1,
+});
+
+itest!(reference_types_error_vendor_dir {
+  args:
+    "run --config run/checkjs.tsconfig.json --check --vendor $TESTDATA/run/reference_types_error.js",
   output: "run/reference_types_error.js.out",
   exit_code: 1,
 });
@@ -1916,8 +2108,8 @@ fn exec_path() {
     .unwrap();
   assert!(output.status.success());
   let stdout_str = std::str::from_utf8(&output.stdout).unwrap().trim();
-  let actual = std::fs::canonicalize(std::path::Path::new(stdout_str)).unwrap();
-  let expected = std::fs::canonicalize(util::deno_exe_path()).unwrap();
+  let actual = PathRef::new(std::path::Path::new(stdout_str)).canonicalize();
+  let expected = util::deno_exe_path().canonicalize();
   assert_eq!(expected, actual);
 }
 
@@ -1982,7 +2174,7 @@ enum WinProcConstraints {
 
 #[cfg(windows)]
 fn run_deno_script_constrained(
-  script_path: std::path::PathBuf,
+  script_path: test_util::PathRef,
   constraints: WinProcConstraints,
 ) -> Result<(), i64> {
   let file_path = "assets/DenoWinRunner.ps1";
@@ -1991,13 +2183,8 @@ fn run_deno_script_constrained(
     WinProcConstraints::NoStdOut => "2",
     WinProcConstraints::NoStdErr => "4",
   };
-  let deno_exe_path = util::deno_exe_path()
-    .into_os_string()
-    .into_string()
-    .unwrap();
-
-  let deno_script_path = script_path.into_os_string().into_string().unwrap();
-
+  let deno_exe_path = util::deno_exe_path().to_string();
+  let deno_script_path = script_path.to_string();
   let args = vec![&deno_exe_path[..], &deno_script_path[..], constraints];
   util::run_powershell_script_file(file_path, args)
 }
@@ -2190,9 +2377,6 @@ mod permissions {
           "--allow-{0}={1}",
           permission,
           util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap()
         ))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
@@ -2214,15 +2398,8 @@ mod permissions {
         &format!(
           "run --allow-{0}={1} run/complex_permissions_test.ts {0} {2}",
           permission,
-          util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap(),
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
+          util::testdata_path(),
+          util::root_path().join("Cargo.toml"),
         ),
         None,
         None,
@@ -2242,10 +2419,7 @@ mod permissions {
         .arg(format!(
           "--allow-{0}={1}",
           permission,
-          util::testdata_path()
-            .into_os_string()
-            .into_string()
-            .unwrap()
+          util::testdata_path(),
         ))
         .arg("run/complex_permissions_test.ts")
         .arg(permission)
@@ -2261,15 +2435,8 @@ mod permissions {
   #[test]
   fn rw_outside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::testdata_path()
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
+    let test_dir = util::testdata_path();
+    let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let (_, err) = util::run_and_collect_output(
         false,
@@ -2278,11 +2445,7 @@ mod permissions {
           permission,
           test_dir,
           js_dir,
-          util::root_path()
-            .join("Cargo.toml")
-            .into_os_string()
-            .into_string()
-            .unwrap(),
+          util::root_path().join("Cargo.toml"),
         ),
         None,
         None,
@@ -2295,15 +2458,8 @@ mod permissions {
   #[test]
   fn rw_inside_test_and_js_dir() {
     const PERMISSION_VARIANTS: [&str; 2] = ["read", "write"];
-    let test_dir = util::testdata_path()
-      .into_os_string()
-      .into_string()
-      .unwrap();
-    let js_dir = util::root_path()
-      .join("js")
-      .into_os_string()
-      .into_string()
-      .unwrap();
+    let test_dir = util::testdata_path();
+    let js_dir = util::root_path().join("js");
     for permission in &PERMISSION_VARIANTS {
       let status = util::deno_cmd()
         .current_dir(&util::testdata_path())
@@ -2492,7 +2648,7 @@ mod permissions {
 
   #[test]
   fn net_listen_allow_localhost() {
-    // Port 4600 is chosen to not colide with those used by
+    // Port 4600 is chosen to not collide with those used by
     // target/debug/test_server
     let (_, err) = util::run_and_collect_output(
       true,
@@ -2512,14 +2668,14 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2538,14 +2694,14 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"foo\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
         console.write_line_raw("y");
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access to \"bar\".\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2564,7 +2720,7 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2586,7 +2742,7 @@ mod permissions {
       .with_pty(|mut console| {
         console.expect(concat!(
           "┌ ⚠️  Deno requests read access.\r\n",
-          "├ Requested by `Deno.permissions.query()` API.\r\n",
+          "├ Requested by `Deno.permissions.request()` API.\r\n",
           "├ Run again with --allow-read to bypass this prompt.\r\n",
           "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)",
         ));
@@ -2784,6 +2940,11 @@ mod permissions {
       });
   }
 
+  itest!(dynamic_import_static_analysis_no_permissions {
+    args: "run --quiet --reload --no-prompt dynamic_import/static_analysis_no_permissions.ts",
+    output: "dynamic_import/static_analysis_no_permissions.ts.out",
+  });
+
   itest!(dynamic_import_permissions_remote_remote {
     args: "run --quiet --reload --allow-net=localhost:4545 dynamic_import/permissions_remote_remote.ts",
     output: "dynamic_import/permissions_remote_remote.ts.out",
@@ -2845,7 +3006,7 @@ fn issue9750() {
       console.write_line_raw("yy");
       console.expect(concat!(
         "┌ ⚠️  Deno requests env access.\r\n",
-        "├ Requested by `Deno.permissions.query()` API.\r\n",
+        "├ Requested by `Deno.permissions.request()` API.\r\n",
         "├ Run again with --allow-env to bypass this prompt.\r\n",
         "└ Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all env permissions)",
       ));
@@ -3126,7 +3287,7 @@ itest!(
     args: "run -A main.js",
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
-    copy_temp_dir: Some("run/with_package_json/"),
+    copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
     envs: env_vars_for_npm_tests_no_sync_download(),
     http_server: true,
   }
@@ -3149,14 +3310,29 @@ itest!(package_json_auto_discovered_no_package_json_imports {
   copy_temp_dir: Some("run/with_package_json/no_deno_json"),
 });
 
-itest!(package_json_with_deno_json {
-  args: "run --quiet -A main.ts",
-  output: "package_json/deno_json/main.out",
-  cwd: Some("package_json/deno_json/"),
-  copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
-  http_server: true,
-});
+#[test]
+fn package_json_with_deno_json() {
+  let context = TestContextBuilder::for_npm()
+    .use_copy_temp_dir("package_json/deno_json/")
+    .cwd("package_json/deno_json/")
+    .build();
+  let output = context.new_command().args("run --quiet -A main.ts").run();
+  output.assert_matches_file("package_json/deno_json/main.out");
+
+  assert!(context
+    .temp_dir()
+    .path()
+    .join("package_json/deno_json/deno.lock")
+    .exists());
+
+  // run again and ensure the top level install doesn't happen twice
+  let output = context
+    .new_command()
+    .args("run --log-level=debug -A main.ts")
+    .run();
+  let output = output.combined_output();
+  assert_contains!(output, "Skipping top level install.");
+}
 
 #[test]
 fn package_json_error_dep_value_test() {
@@ -3553,9 +3729,20 @@ itest!(test_and_bench_are_noops_in_run {
   output_str: Some(""),
 });
 
+#[cfg(not(target_os = "windows"))]
+itest!(spawn_kill_permissions {
+  args: "run --quiet --unstable --allow-run=cat spawn_kill_permissions.ts",
+  output_str: Some(""),
+});
+
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(allow_run_allowlist_resolution {
+  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  output: "allow_run_allowlist_resolution.ts.out",
 });
 
 itest!(unhandled_rejection {
@@ -3639,35 +3826,23 @@ fn cache_test() {
 fn cache_invalidation_test() {
   let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"42\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"42\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(&fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
   let actual = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(actual, "42\n");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"43\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"43\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
@@ -3679,37 +3854,25 @@ fn cache_invalidation_test() {
 fn cache_invalidation_test_no_check() {
   let deno_dir = TempDir::new();
   let fixture_path = deno_dir.path().join("fixture.ts");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"42\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"42\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(&fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
   let actual = std::str::from_utf8(&output.stdout).unwrap();
   assert_eq!(actual, "42\n");
-  {
-    let mut file = std::fs::File::create(fixture_path.clone())
-      .expect("could not create fixture");
-    file
-      .write_all(b"console.log(\"43\");")
-      .expect("could not write fixture");
-  }
+  fixture_path.write("console.log(\"43\");");
   let output = Command::new(util::deno_exe_path())
     .env("DENO_DIR", deno_dir.path())
     .current_dir(util::testdata_path())
     .arg("run")
     .arg("--no-check")
-    .arg(fixture_path.to_str().unwrap())
+    .arg(fixture_path)
     .output()
     .expect("Failed to spawn script");
   assert!(output.status.success());
@@ -3999,50 +4162,44 @@ async fn test_resolve_dns() {
 
 #[tokio::test]
 async fn http2_request_url() {
-  // TLS streams require the presence of an ambient local task set to gracefully
-  // close dropped connections in the background.
-  LocalSet::new()
-    .run_until(async {
-      let mut child = util::deno_cmd()
-        .current_dir(util::testdata_path())
-        .arg("run")
-        .arg("--unstable")
-        .arg("--quiet")
-        .arg("--allow-net")
-        .arg("--allow-read")
-        .arg("./run/http2_request_url.ts")
-        .arg("4506")
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .unwrap();
-      let stdout = child.stdout.as_mut().unwrap();
-      let mut buffer = [0; 5];
-      let read = stdout.read(&mut buffer).unwrap();
-      assert_eq!(read, 5);
-      let msg = std::str::from_utf8(&buffer).unwrap();
-      assert_eq!(msg, "READY");
+  let mut child = util::deno_cmd()
+    .current_dir(util::testdata_path())
+    .arg("run")
+    .arg("--unstable")
+    .arg("--quiet")
+    .arg("--allow-net")
+    .arg("--allow-read")
+    .arg("./run/http2_request_url.ts")
+    .arg("4506")
+    .stdout(std::process::Stdio::piped())
+    .spawn()
+    .unwrap();
+  let stdout = child.stdout.as_mut().unwrap();
+  let mut buffer = [0; 5];
+  let read = stdout.read(&mut buffer).unwrap();
+  assert_eq!(read, 5);
+  let msg = std::str::from_utf8(&buffer).unwrap();
+  assert_eq!(msg, "READY");
 
-      let cert = reqwest::Certificate::from_pem(include_bytes!(
-        "../testdata/tls/RootCA.crt"
-      ))
-      .unwrap();
+  let cert = reqwest::Certificate::from_pem(include_bytes!(
+    "../testdata/tls/RootCA.crt"
+  ))
+  .unwrap();
 
-      let client = reqwest::Client::builder()
-        .add_root_certificate(cert)
-        .http2_prior_knowledge()
-        .build()
-        .unwrap();
+  let client = reqwest::Client::builder()
+    .add_root_certificate(cert)
+    .http2_prior_knowledge()
+    .build()
+    .unwrap();
 
-      let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
-      assert_eq!(200, res.status());
+  let res = client.get("http://127.0.0.1:4506").send().await.unwrap();
+  assert_eq!(200, res.status());
 
-      let body = res.text().await.unwrap();
-      assert_eq!(body, "http://127.0.0.1:4506/");
+  let body = res.text().await.unwrap();
+  assert_eq!(body, "http://127.0.0.1:4506/");
 
-      child.kill().unwrap();
-      child.wait().unwrap();
-    })
-    .await;
+  child.kill().unwrap();
+  child.wait().unwrap();
 }
 
 #[cfg(not(windows))]
@@ -4211,14 +4368,46 @@ fn websocketstream() {
   assert!(status.success());
 }
 
-#[test]
-fn websocketstream_ping() {
-  use deno_runtime::deno_websocket::tokio_tungstenite::tungstenite;
+#[tokio::test(flavor = "multi_thread")]
+async fn websocketstream_ping() {
   let _g = util::http_server();
 
   let script = util::testdata_path().join("run/websocketstream_ping_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
-  let mut child = util::deno_cmd()
+
+  let srv_fn = hyper::service::service_fn(|mut req| async move {
+    let (response, upgrade_fut) =
+      fastwebsockets::upgrade::upgrade(&mut req).unwrap();
+    tokio::spawn(async move {
+      let mut ws = upgrade_fut.await.unwrap();
+
+      ws.write_frame(fastwebsockets::Frame::text(b"A"[..].into()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::new(
+        true,
+        fastwebsockets::OpCode::Ping,
+        None,
+        vec![].into(),
+      ))
+      .await
+      .unwrap();
+      ws.write_frame(fastwebsockets::Frame::text(b"B"[..].into()))
+        .await
+        .unwrap();
+      let message = ws.read_frame().await.unwrap();
+      assert_eq!(message.opcode, fastwebsockets::OpCode::Pong);
+      ws.write_frame(fastwebsockets::Frame::text(b"C"[..].into()))
+        .await
+        .unwrap();
+      ws.write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
+        .await
+        .unwrap();
+    });
+    Ok::<_, std::convert::Infallible>(response)
+  });
+
+  let child = util::deno_cmd()
     .arg("test")
     .arg("--unstable")
     .arg("--allow-net")
@@ -4228,31 +4417,38 @@ fn websocketstream_ping() {
     .stdout(std::process::Stdio::piped())
     .spawn()
     .unwrap();
+  let server = tokio::net::TcpListener::bind("127.0.0.1:4513")
+    .await
+    .unwrap();
+  tokio::spawn(async move {
+    let (stream, _) = server.accept().await.unwrap();
+    let conn_fut = hyper::server::conn::Http::new()
+      .serve_connection(stream, srv_fn)
+      .with_upgrades();
 
-  let server = std::net::TcpListener::bind("127.0.0.1:4513").unwrap();
-  let (stream, _) = server.accept().unwrap();
-  let mut socket = tungstenite::accept(stream).unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("A")))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Ping(vec![]))
-    .unwrap();
-  socket
-    .write_message(tungstenite::Message::Text(String::from("B")))
-    .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, tungstenite::Message::Pong(vec![]));
-  socket
-    .write_message(tungstenite::Message::Text(String::from("C")))
-    .unwrap();
-  socket.close(None).unwrap();
+    if let Err(e) = conn_fut.await {
+      eprintln!("websocket server error: {e:?}");
+    }
+  });
 
-  assert!(child.wait().unwrap().success());
+  let r = child.wait_with_output().unwrap();
+  assert!(r.status.success());
 }
 
-#[test]
-fn websocket_server_multi_field_connection_header() {
+struct SpawnExecutor;
+
+impl<Fut> hyper::rt::Executor<Fut> for SpawnExecutor
+where
+  Fut: std::future::Future + Send + 'static,
+  Fut::Output: Send + 'static,
+{
+  fn execute(&self, fut: Fut) {
+    deno_core::unsync::spawn(fut);
+  }
+}
+
+#[tokio::test]
+async fn websocket_server_multi_field_connection_header() {
   let script = util::testdata_path()
     .join("run/websocket_server_multi_field_connection_header_test.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4274,25 +4470,40 @@ fn websocket_server_multi_field_connection_header() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .header(http::header::CONNECTION, "keep-alive, Upgrade")
-    .uri("ws://localhost:4319")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4319")
+    .await
     .unwrap();
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4319")
+    .body(hyper::Body::empty())
+    .unwrap();
+
   let (mut socket, _) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
-  let message = socket.read_message().unwrap();
-  assert_eq!(message, deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::Message::Close(None));
-  socket.close(None).unwrap();
+
+  let message = socket.read_frame().await.unwrap();
+  assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
+  assert!(message.payload.is_empty());
+  socket
+    .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
+    .await
+    .unwrap();
   assert!(child.wait().unwrap().success());
 }
 
 // TODO(bartlomieju): this should use `deno run`, not `deno test`; but the
 // test hangs then. https://github.com/denoland/deno/issues/14283
-#[test]
-#[ignore]
-fn websocket_server_idletimeout() {
+#[tokio::test]
+async fn websocket_server_idletimeout() {
   let script =
     util::testdata_path().join("run/websocket_server_idletimeout.ts");
   let root_ca = util::testdata_path().join("tls/RootCA.pem");
@@ -4314,12 +4525,24 @@ fn websocket_server_idletimeout() {
   let msg = std::str::from_utf8(&buffer).unwrap();
   assert_eq!(msg, "READY");
 
-  let req = http::request::Builder::new()
-    .uri("ws://localhost:4509")
-    .body(())
+  let stream = tokio::net::TcpStream::connect("localhost:4509")
+    .await
     .unwrap();
-  let (_ws, _request) =
-    deno_runtime::deno_websocket::tokio_tungstenite::tungstenite::connect(req)
+  let req = hyper::Request::builder()
+    .header(hyper::header::UPGRADE, "websocket")
+    .header(http::header::CONNECTION, "keep-alive, Upgrade")
+    .header(
+      "Sec-WebSocket-Key",
+      fastwebsockets::handshake::generate_key(),
+    )
+    .header("Sec-WebSocket-Version", "13")
+    .uri("ws://localhost:4509")
+    .body(hyper::Body::empty())
+    .unwrap();
+
+  let (_socket, _) =
+    fastwebsockets::handshake::client(&SpawnExecutor, req, stream)
+      .await
       .unwrap();
 
   assert!(child.wait().unwrap().success());
@@ -4398,6 +4621,7 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       std::thread::sleep(Duration::from_millis(50)); // give the other thread some time to output
       console.write_line_raw("invalid");
       console.expect("Unrecognized option.");
+      console.expect("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all write permissions)");
       console.write_line_raw("y");
       console.expect("Granted write access to");
 
@@ -4475,6 +4699,12 @@ itest!(node_prefix_missing {
   exit_code: 1,
 });
 
+itest!(dynamic_import_syntax_error {
+  args: "run -A run/dynamic_import_syntax_error.js",
+  output: "run/dynamic_import_syntax_error.js.out",
+  exit_code: 1,
+});
+
 itest!(extension_import {
   args: "run run/extension_import.ts",
   output: "run/extension_import.ts.out",
@@ -4486,3 +4716,104 @@ itest!(extension_dynamic_import {
   output: "run/extension_dynamic_import.ts.out",
   exit_code: 1,
 });
+
+#[test]
+pub fn vendor_dir_config_file() {
+  let test_context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = test_context.temp_dir();
+  let vendor_dir = temp_dir.path().join("vendor");
+  let rm_vendor_dir = || std::fs::remove_dir_all(&vendor_dir).unwrap();
+
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from 'http://localhost:4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+
+  let deno_run_cmd = test_context.new_command().args("run --quiet main.ts");
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
+  temp_dir.write("deno.json", r#"{ "vendor": false }"#);
+
+  deno_run_cmd.run().assert_matches_text("Hi\n");
+  assert!(!vendor_dir.exists());
+  test_context
+    .new_command()
+    .args("cache --quiet --vendor main.ts")
+    .run();
+  assert!(vendor_dir.exists());
+  rm_vendor_dir();
+
+  temp_dir.write("deno.json", r#"{ "vendor": true }"#);
+  let cache_command = test_context.new_command().args("cache --quiet main.ts");
+  cache_command.run();
+
+  assert!(vendor_dir.exists());
+  let mod1_file = vendor_dir
+    .join("http_localhost_4545")
+    .join("subdir")
+    .join("mod1.ts");
+  mod1_file.write("export function returnsHi() { return 'bye bye bye'; }");
+
+  // won't match the lockfile now
+  deno_run_cmd
+    .run()
+    .assert_matches_text(r#"error: The source code is invalid, as it does not match the expected hash in the lock file.
+  Specifier: http://localhost:4545/subdir/mod1.ts
+  Lock file: [WILDCARD]deno.lock
+"#)
+    .assert_exit_code(10);
+
+  // try updating by deleting the lockfile
+  let lockfile = temp_dir.path().join("deno.lock");
+  lockfile.remove_file();
+  cache_command.run();
+
+  // now it should run
+  deno_run_cmd.run().assert_matches_text("bye bye bye\n");
+  assert!(lockfile.exists());
+
+  // ensure we can add and execute files in directories that have a hash in them
+  test_context
+    .new_command()
+    // http_localhost_4545/subdir/#capitals_c75d7/main.js
+    .args("cache http://localhost:4545/subdir/CAPITALS/main.js")
+    .run()
+    .skip_output_check();
+  assert_eq!(
+    vendor_dir.join("manifest.json").read_json_value(),
+    json!({
+      "folders": {
+        "http://localhost:4545/subdir/CAPITALS/": "http_localhost_4545/subdir/#capitals_c75d7"
+      }
+    })
+  );
+  vendor_dir
+    .join("http_localhost_4545/subdir/#capitals_c75d7/hello_there.ts")
+    .write("console.log('hello there');");
+  test_context
+    .new_command()
+    // todo(dsherret): seems wrong that we don't auto-discover the config file to get the vendor directory for this
+    .args("run --vendor http://localhost:4545/subdir/CAPITALS/hello_there.ts")
+    .run()
+    .assert_matches_text("hello there\n");
+
+  // now try importing directly from the vendor folder
+  temp_dir.write(
+    "main.ts",
+    r#"import { returnsHi } from './vendor/http_localhost_4545/subdir/mod1.ts';
+console.log(returnsHi());"#,
+  );
+  deno_run_cmd
+    .run()
+    .assert_matches_text("error: Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.
+    at [WILDCARD]/main.ts:1:27
+")
+    .assert_exit_code(1);
+}

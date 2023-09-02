@@ -14,8 +14,8 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   SafeArrayIterator,
+  SafeSet,
   SafeSetIterator,
-  Set,
   SetPrototypeAdd,
   SetPrototypeDelete,
   Symbol,
@@ -45,10 +45,15 @@ class AbortSignal extends EventTarget {
 
   static timeout(millis) {
     const prefix = "Failed to call 'AbortSignal.timeout'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    millis = webidl.converters["unsigned long long"](millis, {
-      enforceRange: true,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    millis = webidl.converters["unsigned long long"](
+      millis,
+      prefix,
+      "Argument 1",
+      {
+        enforceRange: true,
+      },
+    );
 
     const signal = new AbortSignal(illegalConstructorKey);
     signal[timerId] = setTimeout(
@@ -69,7 +74,7 @@ class AbortSignal extends EventTarget {
       return;
     }
     if (this[abortAlgos] === null) {
-      this[abortAlgos] = new Set();
+      this[abortAlgos] = new SafeSet();
     }
     SetPrototypeAdd(this[abortAlgos], algorithm);
   }
@@ -81,15 +86,17 @@ class AbortSignal extends EventTarget {
       return;
     }
     this[abortReason] = reason;
-    if (this[abortAlgos] !== null) {
-      for (const algorithm of new SafeSetIterator(this[abortAlgos])) {
-        algorithm();
-      }
-      this[abortAlgos] = null;
-    }
+    const algos = this[abortAlgos];
+    this[abortAlgos] = null;
+
     const event = new Event("abort");
     setIsTrusted(event, true);
     this.dispatchEvent(event);
+    if (algos !== null) {
+      for (const algorithm of new SafeSetIterator(algos)) {
+        algorithm();
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -124,7 +131,7 @@ class AbortSignal extends EventTarget {
     }
   }
 
-  // `addEventListener` and `removeEventListener` have to be overriden in
+  // `addEventListener` and `removeEventListener` have to be overridden in
   // order to have the timer block the event loop while there are listeners.
   // `[add]` and `[remove]` don't ref and unref the timer because they can
   // only be used by Deno internals, which use it to essentially cancel async
@@ -198,4 +205,5 @@ export {
   newSignal,
   remove,
   signalAbort,
+  timerId,
 };
