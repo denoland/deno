@@ -1275,6 +1275,7 @@ impl Inner {
           error!("Cannot set workspace settings: {}", err);
           LspError::internal_error()
         })?;
+        self.config.update_enabled_paths();
       }
       self.config.workspace_folders = params.workspace_folders.map(|folders| {
         folders
@@ -1471,6 +1472,7 @@ impl Inner {
       if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
+      self.config.update_enabled_paths();
     }
 
     self.update_debug_flag();
@@ -3125,7 +3127,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, client_uri, specifier, had_specifier_settings) = {
+    let (client, client_uri, specifier, should_get_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
@@ -3133,24 +3135,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .url_map
         .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
-      let has_specifier_settings =
-        inner.config.has_specifier_settings(&specifier);
+      let should_get_specifier_settings =
+        !inner.config.has_specifier_settings(&specifier)
+          && inner.config.client_capabilities.workspace_configuration;
       if document.is_diagnosable() {
         inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
-        if has_specifier_settings {
+        if !should_get_specifier_settings {
           inner.send_diagnostics_update();
           inner.send_testing_update();
         }
       }
-      (client, client_uri, specifier, has_specifier_settings)
+      (client, client_uri, specifier, should_get_specifier_settings)
     };
 
     // retrieve the specifier settings outside the lock if
     // they haven't been asked for yet
-    if !had_specifier_settings {
+    if should_get_specifier_settings {
       let response = client
         .when_outside_lsp_lock()
         .specifier_configuration(&client_uri)
