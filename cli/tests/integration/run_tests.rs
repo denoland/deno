@@ -2797,77 +2797,60 @@ mod permissions {
         console.expect("undefined");
 
         // alert can display custom text
-        // alert be closed with arbitrary keyboard key (x)
+        // alert can be closed with arbitrary keyboard key (x)
         console.write_line_raw("alert('foo')");
         console.expect("foo [Press any key to continue] ");
         console.write_raw("x");
         console.expect("undefined");
 
         // confirm with no message displays default "Confirm"
-        // confirm displays the options "OK" and "Cancel", with selected option indicated with a chevron
         // confirm returns true by immediately pressing Enter
         console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
+        console.expect("Confirm [Y/n] ");
         console.write_raw("\r"); // Enter
         console.expect("true");
 
-        // confirm returns false by pressing Down arrow to select "Cancel" then pressing Enter
-        console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
-        console.write_raw("\x1b[B"); // Down arrow
-        console.expect("  OK\r\n❯ Cancel");
-        console.write_raw("\r"); // Enter
-        console.expect("false");
-
-        // confirm returns false by pressing Up arrow to select "Cancel" (wrapping around) then pressing Enter
-        console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
-        console.write_raw("\x1b[A"); // Up arrow
-        console.expect("  OK\r\n❯ Cancel");
-        console.write_raw("\r"); // Enter
-        console.expect("false");
-
         // confirm returns false by pressing Escape
         console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
+        console.expect("Confirm [Y/n] ");
         console.write_raw("\x1b"); // Escape
         console.expect("false");
 
         // confirm returns false by pressing Ctrl+C
         console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
+        console.expect("Confirm [Y/n] ");
         console.write_raw("\x03"); // Ctrl+C
         console.expect("false");
 
         // confirm returns false by pressing Ctrl+D
         console.write_line_raw("confirm()");
-        console.expect("Confirm\r\n❯ OK\r\n  Cancel");
+        console.expect("Confirm [Y/n] ");
         console.write_raw("\x04"); // Ctrl+D
         console.expect("false");
 
         // confirm can display custom text
         // confirm returns true by pressing y
         console.write_line_raw("confirm('continue?')");
-        console.expect("continue?\r\n❯ OK\r\n  Cancel");
+        console.expect("continue? [Y/n] ");
         console.write_raw("y");
         console.expect("true");
 
         // confirm returns false by pressing n
         console.write_line_raw("confirm('continue?')");
-        console.expect("continue?\r\n❯ OK\r\n  Cancel");
+        console.expect("continue? [Y/n] ");
         console.write_raw("n");
         console.expect("false");
 
         // confirm can display custom text
         // confirm returns true by pressing Y
         console.write_line_raw("confirm('continue?')");
-        console.expect("continue?\r\n❯ OK\r\n  Cancel");
+        console.expect("continue? [Y/n] ");
         console.write_raw("Y");
         console.expect("true");
 
         // confirm returns false by pressing N
         console.write_line_raw("confirm('continue?')");
-        console.expect("continue?\r\n❯ OK\r\n  Cancel");
+        console.expect("continue? [Y/n] ");
         console.write_raw("N");
         console.expect("false");
 

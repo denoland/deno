@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
 use std::io::Error;
 use std::io::IsTerminal;
 
@@ -8,7 +9,6 @@ use deno_core::op;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::ResourceHandle;
-use deno_io::StdFileResource;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::Cmd;
@@ -16,7 +16,6 @@ use rustyline::Editor;
 use rustyline::KeyCode;
 use rustyline::KeyEvent;
 use rustyline::Modifiers;
-use std::io::Error;
 
 #[cfg(unix)]
 use deno_core::ResourceId;
@@ -59,7 +58,8 @@ deno_core::extension!(
     op_stdin_set_raw,
     op_isatty,
     op_console_size,
-    op_read_line_prompt
+    op_read_line_prompt,
+    op_use_color,
   ],
   state = |state| {
     #[cfg(unix)]
@@ -338,4 +338,9 @@ pub fn op_read_line_prompt(
     Err(ReadlineError::Interrupted | ReadlineError::Eof) => Ok(None),
     Err(err) => Err(err.into()),
   }
+}
+
+#[op(fast)]
+pub fn op_use_color() -> bool {
+  colors::use_color()
 }
