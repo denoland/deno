@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::args::Flags;
 use crate::args::JupyterFlags;
-use crate::tools::repl::ReplSession;
+use crate::tools::repl;
 use crate::util::logger;
 use crate::CliFactory;
 use base64;
@@ -75,7 +75,7 @@ pub async fn kernel(
   worker.setup_repl().await?;
   let worker = worker.into_main_worker();
   let repl_session =
-    ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
+    repl::ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
       .await?;
 
   let mut kernel =
@@ -113,7 +113,7 @@ struct Kernel {
   hb_comm: HbComm,
   identity: String,
   execution_count: u32,
-  repl_session: ReplSession,
+  repl_session: repl::ReplSession,
   stdio_rx: mpsc::UnboundedReceiver<WorkerCommMsg>,
   last_comm_ctx: Option<CommContext>,
 }
@@ -164,7 +164,7 @@ impl Kernel {
   async fn new(
     connection_filepath: &Path,
     stdio_rx: mpsc::UnboundedReceiver<WorkerCommMsg>,
-    repl_session: ReplSession,
+    repl_session: repl::ReplSession,
   ) -> Result<Self, AnyError> {
     let conn_file =
       std::fs::read_to_string(connection_filepath).with_context(|| {
@@ -450,61 +450,50 @@ impl Kernel {
     );
     self.iopub_comm.send(input_msg).await?;
 
-    let output = self
+    let evaluate_response = self
       .repl_session
       .evaluate_line_with_object_wrapping(&exec_request_content.code)
       .await?;
 
-    // TODO(bartlomieju): clean this up - maybe deduplicate with existing code in `ReplSession`.
-    let result = if let Some(ex_details) = &output.value.exception_details {
-      let stack_trace: Vec<String> = ex_details
-        .exception
-        .as_ref()
-        .unwrap()
-        .description
-        .as_ref()
-        .unwrap()
-        .split('\n')
-        .map(|s| s.to_string())
-        .collect();
+    let repl::cdp::EvaluateResponse {
+      result,
+      exception_details,
+    } = evaluate_response.value;
+
+    let exec_result = if let Some(exception_details) = exception_details {
+      let name = if let Some(exception) = exception_details.exception {
+        if let Some(description) = exception.description {
+          description
+        } else if let Some(value) = exception.value {
+          value.to_string()
+        } else {
+          "undefined".to_string()
+        }
+      } else {
+        "Unknown exception".to_string()
+      };
       ExecResult::Error(ExecError {
-        // TODO(apowers313) this could probably use smarter unwrapping -- for example, someone may throw non-object
-        err_name: output
-          .value
-          .exception_details
-          .unwrap()
-          .exception
-          .unwrap()
-          .class_name
-          .unwrap(),
-        err_value: stack_trace.first().unwrap().to_string(),
-        // output.value["exceptionDetails"]["stackTrace"]["callFrames"]
-        stack_trace,
+        err_name: name,
+        err_value: "".to_string(),
+        stack_trace: vec![],
       })
     } else {
-      // TODO(bartlomieju): fix this
-      eprintln!("output {:#?}", output);
-
-      // TODO(bartlomieju): handle exception
-      let output = self
-        .repl_session
-        .get_eval_value(&output.value.result)
-        .await?;
-
-      eprintln!("output serialized {:#?}", output);
-      // TODO(bartlomieju): returning this doesn't print the value in the notebook,
-      // it should probably send the data to stdio topic.
+      let output = self.repl_session.get_eval_value(&result).await?;
       ExecResult::Ok(output)
     };
 
-    match result {
+    // TODO: remove `send_Execute_result` and `send_error`, they can be inlined
+    // here
+    match exec_result {
       ExecResult::Ok(_) => {
         self.send_execute_reply_ok(comm_ctx).await?;
-        self.send_execute_result(comm_ctx, &result).await?;
+        self.send_execute_result(comm_ctx, &exec_result).await?;
       }
       ExecResult::Error(_) => {
-        self.send_execute_reply_error(comm_ctx, &result).await?;
-        self.send_error(comm_ctx, &result).await?;
+        self
+          .send_execute_reply_error(comm_ctx, &exec_result)
+          .await?;
+        self.send_error(comm_ctx, &exec_result).await?;
       }
     };
 

@@ -13,7 +13,7 @@ use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
 
-mod cdp;
+pub(crate) mod cdp;
 mod channel;
 mod editor;
 mod session;
