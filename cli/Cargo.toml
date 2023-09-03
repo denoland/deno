@@ -103,7 +103,7 @@ quick-junit = "^0.3.3"
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
-rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
+rustyline.workspace = true
 rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true

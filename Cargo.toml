@@ -125,6 +125,7 @@ rustls = "0.21.0"
 rustls-pemfile = "1.0.0"
 rustls-webpki = "0.101.4"
 rustls-native-certs = "0.6.2"
+rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 webpki-roots = "0.25.2"
 serde = { version = "1.0.149", features = ["derive"] }
 serde_bytes = "0.11"

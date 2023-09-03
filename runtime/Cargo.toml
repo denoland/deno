@@ -88,7 +88,6 @@ deno_webidl.workspace = true
 deno_websocket.workspace = true
 deno_webstorage.workspace = true
 fastwebsockets.workspace = true
-rustyline = { version = "=10.0.0", default-features = false, features = ["custom-bindings"] }
 
 console_static_text.workspace = true
 dlopen.workspace = true
@@ -104,6 +103,7 @@ notify.workspace = true
 once_cell.workspace = true
 regex.workspace = true
 ring.workspace = true
+rustyline.workspace = true
 serde.workspace = true
 signal-hook-registry = "1.4.0"
 termcolor = "1.1.3"
