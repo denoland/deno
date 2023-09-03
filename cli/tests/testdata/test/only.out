@@ -1,7 +1,8 @@
 Check [WILDCARD]/test/only.ts
-running 1 test from ./test/only.ts
+running 2 tests from ./test/only.ts
 only ... ok ([WILDCARD])
+only2 ... ok ([WILDCARD])
 
-ok | 1 passed | 0 failed | 2 filtered out ([WILDCARD])
+ok | 2 passed | 0 failed | 2 filtered out ([WILDCARD])
 
 error: Test failed because the "only" option was used
