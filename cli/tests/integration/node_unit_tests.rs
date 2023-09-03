@@ -73,6 +73,7 @@ util::unit_test_factory!(
     process_test,
     querystring_test,
     readline_test,
+    repl_test,
     stream_test,
     string_decoder_test,
     timers_test,
@@ -108,6 +109,7 @@ fn node_unit_test(test: String) {
         .join("unit_node")
         .join(format!("{test}.ts")),
     )
+    .envs(env_vars_for_npm_tests())
     .stderr(Stdio::piped())
     .stdout(Stdio::piped())
     .spawn()

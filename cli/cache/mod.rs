@@ -2,6 +2,7 @@
 
 use crate::errors::get_error_class_name;
 use crate::file_fetcher::FileFetcher;
+use crate::util::fs::atomic_write_file;
 
 use deno_core::futures;
 use deno_core::futures::FutureExt;
@@ -12,8 +13,10 @@ use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
 use std::collections::HashMap;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::SystemTime;
 
 mod cache_db;
 mod caches;
@@ -22,7 +25,6 @@ mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
-mod http_cache;
 mod incremental;
 mod node;
 mod parsed_source;
@@ -34,16 +36,58 @@ pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
-pub use http_cache::CachedUrlMetadata;
-pub use http_cache::GlobalHttpCache;
-pub use http_cache::HttpCache;
-pub use http_cache::LocalHttpCache;
 pub use incremental::IncrementalCache;
 pub use node::NodeAnalysisCache;
 pub use parsed_source::ParsedSourceCache;
 
 /// Permissions used to save a file in the disk caches.
 pub const CACHE_PERM: u32 = 0o644;
+
+#[derive(Debug, Clone)]
+pub struct RealDenoCacheEnv;
+
+impl deno_cache_dir::DenoCacheEnv for RealDenoCacheEnv {
+  fn read_file_bytes(&self, path: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+      Ok(s) => Ok(Some(s)),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err),
+    }
+  }
+
+  fn atomic_write_file(
+    &self,
+    path: &Path,
+    bytes: &[u8],
+  ) -> std::io::Result<()> {
+    atomic_write_file(path, bytes, CACHE_PERM)
+  }
+
+  fn modified(&self, path: &Path) -> std::io::Result<Option<SystemTime>> {
+    match std::fs::metadata(path) {
+      Ok(metadata) => Ok(Some(
+        metadata.modified().unwrap_or_else(|_| SystemTime::now()),
+      )),
+      Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+      Err(err) => Err(err),
+    }
+  }
+
+  fn is_file(&self, path: &Path) -> bool {
+    path.is_file()
+  }
+
+  fn time_now(&self) -> SystemTime {
+    SystemTime::now()
+  }
+}
+
+pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<RealDenoCacheEnv>;
+pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<RealDenoCacheEnv>;
+pub type LocalLspHttpCache =
+  deno_cache_dir::LocalLspHttpCache<RealDenoCacheEnv>;
+pub use deno_cache_dir::CachedUrlMetadata;
+pub use deno_cache_dir::HttpCache;
 
 /// A "wrapper" for the FileFetcher and DiskCache for the Deno CLI that provides
 /// a concise interface to the DENO_DIR when building module graphs.

@@ -120,9 +120,9 @@ fn standalone_error() {
   assert_contains!(stderr, "error: Uncaught Error: boom!");
   assert_contains!(stderr, "throw new Error(\"boom!\");");
   assert_contains!(stderr, "\n    at boom (file://");
-  assert_contains!(stderr, "standalone_error.ts:2:11");
+  assert_contains!(stderr, "standalone_error.ts:2:9");
   assert_contains!(stderr, "at foo (file://");
-  assert_contains!(stderr, "standalone_error.ts:5:5");
+  assert_contains!(stderr, "standalone_error.ts:5:3");
   assert_contains!(stderr, "standalone_error.ts:7:1");
 }
 

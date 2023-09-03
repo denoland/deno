@@ -15,7 +15,7 @@ use deno_core::op;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
 use deno_core::serde_v8::ExternalPointer;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::v8;
 use deno_core::OpState;
 use deno_core::ResourceId;
@@ -289,7 +289,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
+    permissions.check_partial(None)?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;
@@ -389,7 +389,7 @@ where
   {
     let mut state = state.borrow_mut();
     let permissions = state.borrow_mut::<FP>();
-    permissions.check(None)?;
+    permissions.check_partial(None)?;
   };
 
   let symbol = PtrSymbol::new(pointer, &def)?;

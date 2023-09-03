@@ -12,6 +12,8 @@ use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
 use super::tsc::TsServer;
+use super::urls::LspClientUrl;
+use super::urls::LspUrlMap;
 
 use crate::args::LintOptions;
 use crate::graph_util;
@@ -26,9 +28,9 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -37,6 +39,7 @@ use deno_lint::rules::LintRule;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -54,6 +57,7 @@ pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub config: Arc<ConfigSnapshot>,
   pub lint_options: LintOptions,
+  pub url_map: LspUrlMap,
 }
 
 struct DiagnosticRecord {
@@ -107,6 +111,7 @@ impl DiagnosticsPublisher {
     &self,
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
+    url_map: &LspUrlMap,
     token: &CancellationToken,
   ) -> usize {
     let mut diagnostics_by_specifier =
@@ -141,7 +146,9 @@ impl DiagnosticsPublisher {
         .client
         .when_outside_lsp_lock()
         .publish_diagnostics(
-          record.specifier,
+          url_map
+            .normalize_specifier(&record.specifier)
+            .unwrap_or(LspClientUrl::new(record.specifier)),
           all_specifier_diagnostics,
           version,
         )
@@ -169,7 +176,9 @@ impl DiagnosticsPublisher {
             .client
             .when_outside_lsp_lock()
             .publish_diagnostics(
-              specifier.clone(),
+              url_map
+                .normalize_specifier(specifier)
+                .unwrap_or_else(|_| LspClientUrl::new(specifier.clone())),
               Vec::new(),
               removed_value.version,
             )
@@ -366,9 +375,11 @@ impl DiagnosticsServer {
                     snapshot,
                     config,
                     lint_options,
+                    url_map,
                   },
                 batch_index,
               } = message;
+              let url_map = Arc::new(url_map);
 
               // cancel the previous run
               token.cancel();
@@ -383,6 +394,7 @@ impl DiagnosticsServer {
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_ts_handle {
                     // Wait on the previous run to complete in order to prevent
@@ -419,7 +431,12 @@ impl DiagnosticsServer {
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Ts, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Ts,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -447,6 +464,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_deps_handle {
                     previous_handle.await;
@@ -463,7 +481,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Deno, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Deno,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -491,6 +514,7 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = config.clone();
+                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
@@ -514,7 +538,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(DiagnosticSource::Lint, diagnostics, &token)
+                      .publish(
+                        DiagnosticSource::Lint,
+                        diagnostics,
+                        &url_map,
+                        &token,
+                      )
                       .await;
 
                     if !token.is_cancelled() {
@@ -848,7 +877,7 @@ pub enum DenoDiagnostic {
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
+  NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -1058,7 +1087,7 @@ impl DenoDiagnostic {
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_ref.req), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
@@ -1131,9 +1160,10 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          if !npm_resolver.is_pkg_req_folder_cached(&pkg_ref.req) {
+          let req = pkg_ref.into_inner().req;
+          if !npm_resolver.is_pkg_req_folder_cached(&req) {
             diagnostics
-              .push(DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone()));
+              .push(DenoDiagnostic::NoCacheNpm(req, specifier.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
@@ -1143,11 +1173,10 @@ fn diagnose_resolution(
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
-          let types_node_ref =
-            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
-          if !npm_resolver.is_pkg_req_folder_cached(&types_node_ref.req) {
+          let types_node_req = PackageReq::from_str("@types/node").unwrap();
+          if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
             diagnostics.push(DenoDiagnostic::NoCacheNpm(
-              types_node_ref,
+              types_node_req,
               ModuleSpecifier::parse("npm:@types/node").unwrap(),
             ));
           }
@@ -1303,6 +1332,7 @@ fn generate_deno_diagnostics(
 mod tests {
   use super::*;
   use crate::cache::GlobalHttpCache;
+  use crate::cache::RealDenoCacheEnv;
   use crate::lsp::config::ConfigSnapshot;
   use crate::lsp::config::Settings;
   use crate::lsp::config::SpecifierSettings;
@@ -1321,7 +1351,10 @@ mod tests {
     location: &Path,
     maybe_import_map: Option<(&str, &str)>,
   ) -> StateSnapshot {
-    let cache = Arc::new(GlobalHttpCache::new(location.to_path_buf()));
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      RealDenoCacheEnv,
+    ));
     let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
@@ -1346,7 +1379,7 @@ mod tests {
       maybe_import_map,
       assets: Default::default(),
       cache_metadata: cache::CacheMetadata::new(Arc::new(
-        GlobalHttpCache::new(location.to_path_buf()),
+        GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
       maybe_node_resolver: None,
       maybe_npm_resolver: None,
@@ -1357,7 +1390,7 @@ mod tests {
     ConfigSnapshot {
       settings: Settings {
         workspace: WorkspaceSettings {
-          enable: true,
+          enable: Some(true),
           lint: true,
           ..Default::default()
         },
@@ -1396,7 +1429,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = Arc::new(GlobalHttpCache::new(cache_location));
+    let cache =
+      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
 
     // test enabled
@@ -1432,7 +1466,7 @@ let c: number = "a";
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
         SpecifierSettings {
-          enable: false,
+          enable: Some(false),
           enable_paths: Vec::new(),
           code_lens: Default::default(),
         },
@@ -1489,7 +1523,8 @@ let c: number = "a";
       None,
     );
     let snapshot = Arc::new(snapshot);
-    let cache = Arc::new(GlobalHttpCache::new(cache_location));
+    let cache =
+      Arc::new(GlobalHttpCache::new(cache_location, RealDenoCacheEnv));
     let ts_server = TsServer::new(Default::default(), cache);
 
     let config = mock_config();

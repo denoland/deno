@@ -2,6 +2,7 @@
 
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
+use async_compression::Level;
 use cache_control::CacheControl;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
@@ -20,7 +21,7 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -114,7 +115,6 @@ deno_core::extension!(
     http_next::op_http_set_promise_complete,
     http_next::op_http_set_response_body_bytes,
     http_next::op_http_set_response_body_resource,
-    http_next::op_http_set_response_body_stream,
     http_next::op_http_set_response_body_text,
     http_next::op_http_set_response_header,
     http_next::op_http_set_response_headers,
@@ -702,6 +702,11 @@ fn http_response(
   compressing: bool,
   encoding: Encoding,
 ) -> Result<(HttpResponseWriter, hyper::Body), AnyError> {
+  // Gzip, after level 1, doesn't produce significant size difference.
+  // This default matches nginx default gzip compression level (1):
+  // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
+  const GZIP_DEFAULT_COMPRESSION_LEVEL: u8 = 1;
+
   match data {
     Some(data) if compressing => match encoding {
       Encoding::Brotli => {
@@ -715,11 +720,10 @@ fn http_response(
         Ok((HttpResponseWriter::Closed, writer.into_inner().into()))
       }
       Encoding::Gzip => {
-        // Gzip, after level 1, doesn't produce significant size difference.
-        // Probably the reason why nginx's default gzip compression level is
-        // 1.
-        // https://nginx.org/en/docs/http/ngx_http_gzip_module.html#gzip_comp_level
-        let mut writer = GzEncoder::new(Vec::new(), Compression::new(1));
+        let mut writer = GzEncoder::new(
+          Vec::new(),
+          Compression::new(GZIP_DEFAULT_COMPRESSION_LEVEL.into()),
+        );
         writer.write_all(&data)?;
         Ok((HttpResponseWriter::Closed, writer.finish()?.into()))
       }
@@ -738,8 +742,13 @@ fn http_response(
       let (reader, _) = tokio::io::split(a);
       let (_, writer) = tokio::io::split(b);
       let writer: Pin<Box<dyn tokio::io::AsyncWrite>> = match encoding {
-        Encoding::Brotli => Box::pin(BrotliEncoder::new(writer)),
-        Encoding::Gzip => Box::pin(GzipEncoder::new(writer)),
+        Encoding::Brotli => {
+          Box::pin(BrotliEncoder::with_quality(writer, Level::Fastest))
+        }
+        Encoding::Gzip => Box::pin(GzipEncoder::with_quality(
+          writer,
+          Level::Precise(GZIP_DEFAULT_COMPRESSION_LEVEL.into()),
+        )),
         _ => unreachable!(), // forbidden by accepts_compression
       };
       let (stream, shutdown_handle) =
@@ -1012,7 +1021,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -1022,7 +1031,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 

@@ -2,13 +2,18 @@
 
 use super::*;
 
+mod common;
 mod compound;
+mod dot;
 mod junit;
 mod pretty;
+mod tap;
 
 pub use compound::CompoundTestReporter;
+pub use dot::DotTestReporter;
 pub use junit::JunitTestReporter;
 pub use pretty::PrettyTestReporter;
+pub use tap::TapTestReporter;
 
 pub trait TestReporter {
   fn report_register(&mut self, description: &TestDescription);

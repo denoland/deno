@@ -5,6 +5,7 @@ const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
+import { setTimeout } from "ext:deno_web/02_timers.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -26,6 +27,7 @@ const {
   Promise,
   SafeArrayIterator,
   Set,
+  StringPrototypeReplaceAll,
   SymbolToStringTag,
   TypeError,
 } = primordials;
@@ -151,7 +153,6 @@ function assertOps(fn) {
       // Defer until next event loop turn - that way timeouts and intervals
       // cleared can actually be removed from resource table, otherwise
       // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
       await opSanitizerDelay();
     }
     const post = core.metrics();
@@ -516,6 +517,21 @@ function withPermissions(fn, permissions) {
   };
 }
 
+const ESCAPE_ASCII_CHARS = [
+  ["\b", "\\b"],
+  ["\f", "\\f"],
+  ["\t", "\\t"],
+  ["\n", "\\n"],
+  ["\r", "\\r"],
+  ["\v", "\\v"],
+];
+
+function escapeName(name) {
+  for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+    name = StringPrototypeReplaceAll(name, escape, replaceWith);
+  }
+  return name;
+}
 /**
  * @typedef {{
  *   id: number,
@@ -677,12 +693,23 @@ function test(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
-  testDesc.location = {
-    fileName: jsError.frames[1].fileName,
-    lineNumber: jsError.frames[1].lineNumber,
-    columnNumber: jsError.frames[1].columnNumber,
-  };
+  let location;
+
+  for (let i = 0; i < jsError.frames.length; i++) {
+    const filename = jsError.frames[i].fileName;
+    if (filename.startsWith("ext:") || filename.startsWith("node:")) {
+      continue;
+    }
+    location = {
+      fileName: jsError.frames[i].fileName,
+      lineNumber: jsError.frames[i].lineNumber,
+      columnNumber: jsError.frames[i].columnNumber,
+    };
+    break;
+  }
+  testDesc.location = location;
   testDesc.fn = wrapTest(testDesc);
+  testDesc.name = escapeName(testDesc.name);
 
   const { id, origin } = ops.op_register_test(testDesc);
   testDesc.id = id;
@@ -808,6 +835,7 @@ function bench(
   benchDesc.async = AsyncFunction === benchDesc.fn.constructor;
   benchDesc.fn = wrapBenchmark(benchDesc);
   benchDesc.warmup = false;
+  benchDesc.name = escapeName(benchDesc.name);
 
   const { id, origin } = ops.op_register_bench(benchDesc);
   benchDesc.id = id;
@@ -821,7 +849,7 @@ function compareMeasurements(a, b) {
   return 0;
 }
 
-function benchStats(n, highPrecision, avg, min, max, all) {
+function benchStats(n, highPrecision, usedExplicitTimers, avg, min, max, all) {
   return {
     n,
     min,
@@ -831,6 +859,8 @@ function benchStats(n, highPrecision, avg, min, max, all) {
     p995: all[MathCeil(n * (99.5 / 100)) - 1],
     p999: all[MathCeil(n * (99.9 / 100)) - 1],
     avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
+    highPrecision,
+    usedExplicitTimers,
   };
 }
 
@@ -898,7 +928,7 @@ async function benchMeasure(timeBudget, fn, async, context) {
   wavg /= c;
 
   // measure step
-  if (wavg > lowPrecisionThresholdInNs || usedExplicitTimers) {
+  if (wavg > lowPrecisionThresholdInNs) {
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
@@ -950,6 +980,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
       }
     }
   } else {
+    context.start = function start() {};
+    context.end = function end() {};
     let iterations = 10;
     let budget = timeBudget * 1e6;
 
@@ -958,8 +990,6 @@ async function benchMeasure(timeBudget, fn, async, context) {
         const t1 = benchNow();
         for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
           fn(context);
-          currentBenchUserExplicitStart = null;
-          currentBenchUserExplicitEnd = null;
         }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
@@ -991,7 +1021,15 @@ async function benchMeasure(timeBudget, fn, async, context) {
   }
 
   all.sort(compareMeasurements);
-  return benchStats(n, wavg > lowPrecisionThresholdInNs, avg, min, max, all);
+  return benchStats(
+    n,
+    wavg > lowPrecisionThresholdInNs,
+    usedExplicitTimers,
+    avg,
+    min,
+    max,
+    all,
+  );
 }
 
 /** @param desc {BenchDescription} */
@@ -1180,7 +1218,8 @@ function createTestContext(desc) {
       stepDesc.level = level + 1;
       stepDesc.parent = desc;
       stepDesc.rootId = rootId;
-      stepDesc.rootName = rootName;
+      stepDesc.name = escapeName(stepDesc.name);
+      stepDesc.rootName = escapeName(rootName);
       stepDesc.fn = wrapTest(stepDesc);
       const { id, origin } = ops.op_register_test_step(stepDesc);
       stepDesc.id = id;

@@ -764,3 +764,25 @@ Deno.test({
     assert(typeof process.stdout.isTTY === "boolean");
   },
 });
+
+Deno.test({
+  name: "process.title",
+  fn() {
+    assertEquals(process.title, "deno");
+    // Verify that setting the value has no effect.
+    process.title = "foo";
+    assertEquals(process.title, "deno");
+  },
+});
+
+Deno.test({
+  name: "process.argv[1] in Worker",
+  async fn() {
+    const worker = new Worker(
+      `data:text/javascript,import process from "node:process";console.log(process.argv[1]);`,
+      { type: "module" },
+    );
+    await delay(10);
+    worker.terminate();
+  },
+});

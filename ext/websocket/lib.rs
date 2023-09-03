@@ -5,6 +5,7 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -365,7 +366,7 @@ impl ServerWebSocket {
   pub async fn write_frame(
     self: &Rc<Self>,
     lock: AsyncMutFuture<()>,
-    frame: Frame,
+    frame: Frame<'_>,
   ) -> Result<(), AnyError> {
     lock.await;
 
@@ -401,7 +402,6 @@ pub fn ws_create_server_stream(
   ws.set_writev(*USE_WRITEV);
   ws.set_auto_close(true);
   ws.set_auto_pong(true);
-
   let rid = state.resource_table.add(ServerWebSocket::new(ws));
   Ok(rid)
 }
@@ -413,9 +413,9 @@ pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
-      .write_frame(lock, Frame::new(true, OpCode::Binary, None, data))
+      .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
       .await
     {
       resource.set_error(Some(err.to_string()));
@@ -431,11 +431,11 @@ pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
   let lock = resource.reserve_lock();
-  deno_core::task::spawn(async move {
+  deno_core::unsync::spawn(async move {
     if let Err(err) = resource
       .write_frame(
         lock,
-        Frame::new(true, OpCode::Text, None, data.into_bytes()),
+        Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
       )
       .await
     {
@@ -460,7 +460,7 @@ pub async fn op_ws_send_binary_async(
   let data = data.to_vec();
   let lock = resource.reserve_lock();
   resource
-    .write_frame(lock, Frame::new(true, OpCode::Binary, None, data))
+    .write_frame(lock, Frame::new(true, OpCode::Binary, None, data.into()))
     .await
 }
 
@@ -479,10 +479,12 @@ pub async fn op_ws_send_text_async(
   resource
     .write_frame(
       lock,
-      Frame::new(true, OpCode::Text, None, data.into_bytes()),
+      Frame::new(true, OpCode::Text, None, data.into_bytes().into()),
     )
     .await
 }
+
+const EMPTY_PAYLOAD: &[u8] = &[];
 
 #[op(fast)]
 pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
@@ -504,7 +506,9 @@ pub async fn op_ws_send_pong(
     .resource_table
     .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
-  resource.write_frame(lock, Frame::pong(vec![])).await
+  resource
+    .write_frame(lock, Frame::pong(EMPTY_PAYLOAD.into()))
+    .await
 }
 
 #[op]
@@ -518,16 +522,19 @@ pub async fn op_ws_send_ping(
     .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
   resource
-    .write_frame(lock, Frame::new(true, OpCode::Ping, None, vec![]))
+    .write_frame(
+      lock,
+      Frame::new(true, OpCode::Ping, None, EMPTY_PAYLOAD.into()),
+    )
     .await
 }
 
-#[op(deferred)]
+#[op2(async(lazy))]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   code: Option<u16>,
-  reason: Option<String>,
+  #[string] reason: Option<String>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -535,7 +542,7 @@ pub async fn op_ws_close(
     .get::<ServerWebSocket>(rid)?;
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
-    .unwrap_or_else(|| Frame::close_raw(vec![]));
+    .unwrap_or_else(|| Frame::close_raw(vec![].into()));
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();
@@ -575,7 +582,8 @@ pub async fn op_ws_next_event(
   let Ok(resource) = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid) else {
+    .get::<ServerWebSocket>(rid)
+  else {
     // op_ws_get_error will correctly handle a bad resource
     return MessageKind::Error as u16;
   };
@@ -602,7 +610,7 @@ pub async fn op_ws_next_event(
     };
 
     break match val.opcode {
-      OpCode::Text => match String::from_utf8(val.payload) {
+      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
         Ok(s) => {
           resource.string.set(Some(s));
           MessageKind::Text as u16
@@ -613,7 +621,7 @@ pub async fn op_ws_next_event(
         }
       },
       OpCode::Binary => {
-        resource.buffer.set(Some(val.payload));
+        resource.buffer.set(Some(val.payload.to_vec()));
         MessageKind::Binary as u16
       }
       OpCode::Close => {
@@ -713,6 +721,6 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::task::spawn(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
