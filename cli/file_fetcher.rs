@@ -85,7 +85,7 @@ fn fetch_local(specifier: &ModuleSpecifier) -> Result<File, AnyError> {
   let local = specifier.to_file_path().map_err(|_| {
     uri_error(format!("Invalid file path.\n  Specifier: {specifier}"))
   })?;
-  let bytes = fs::read(local).map_err(|e| {
+  let bytes = fs::read(&local).map_err(|e| {
     anyhow!("Unable to read {:?} because of: {}", local, e.to_string())
   })?;
   let charset = text_encoding::detect_charset(&bytes).to_string();
