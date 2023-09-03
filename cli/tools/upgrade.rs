@@ -17,11 +17,13 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::BoxFuture;
 use deno_core::futures::FutureExt;
+use deno_core::unsync::spawn;
 use deno_semver::Version;
 use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
+use std::io::IsTerminal;
 use std::ops::Sub;
 use std::path::Path;
 use std::path::PathBuf;
@@ -124,7 +126,7 @@ impl<TEnvironment: UpdateCheckerEnvironment> UpdateChecker<TEnvironment> {
   /// Returns the version if a new one is available and it should be prompted about.
   pub fn should_prompt(&self) -> Option<String> {
     let file = self.maybe_file.as_ref()?;
-    // If the current version saved is not the actualy current version of the binary
+    // If the current version saved is not the actually current version of the binary
     // It means
     // - We already check for a new version today
     // - The user have probably upgraded today
@@ -198,7 +200,7 @@ pub fn check_for_upgrades(
   if update_checker.should_check_for_new_version() {
     let env = update_checker.env.clone();
     // do this asynchronously on a separate task
-    tokio::spawn(async move {
+    spawn(async move {
       // Sleep for a small amount of time to not unnecessarily impact startup
       // time.
       tokio::time::sleep(UPGRADE_CHECK_FETCH_DELAY).await;
@@ -209,7 +211,7 @@ pub fn check_for_upgrades(
 
   // Print a message if an update is available
   if let Some(upgrade_version) = update_checker.should_prompt() {
-    if log::log_enabled!(log::Level::Info) && atty::is(atty::Stream::Stderr) {
+    if log::log_enabled!(log::Level::Info) && std::io::stderr().is_terminal() {
       if version::is_canary() {
         eprint!(
           "{} ",
@@ -230,7 +232,6 @@ pub fn check_for_upgrades(
           "{}",
           colors::italic_gray("Run `deno upgrade` to install it.")
         );
-        print_release_notes(version::deno(), &upgrade_version);
       }
 
       update_checker.store_prompted();
@@ -270,29 +271,39 @@ pub async fn upgrade(
   let factory = CliFactory::from_flags(flags).await?;
   let client = factory.http_client();
   let current_exe_path = std::env::current_exe()?;
-  let metadata = fs::metadata(&current_exe_path)?;
-  let permissions = metadata.permissions();
+  let output_exe_path =
+    upgrade_flags.output.as_ref().unwrap_or(&current_exe_path);
 
-  if permissions.readonly() {
-    bail!(
-      "You do not have write permission to {}",
-      current_exe_path.display()
-    );
-  }
-  #[cfg(unix)]
-  if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
-    && !nix::unistd::Uid::effective().is_root()
-  {
-    bail!(concat!(
-      "You don't have write permission to {} because it's owned by root.\n",
-      "Consider updating deno through your package manager if its installed from it.\n",
-      "Otherwise run `deno upgrade` as root.",
-    ), current_exe_path.display());
-  }
+  let permissions = if let Ok(metadata) = fs::metadata(output_exe_path) {
+    let permissions = metadata.permissions();
+    if permissions.readonly() {
+      bail!(
+        "You do not have write permission to {}",
+        output_exe_path.display()
+      );
+    }
+    #[cfg(unix)]
+    if std::os::unix::fs::MetadataExt::uid(&metadata) == 0
+      && !nix::unistd::Uid::effective().is_root()
+    {
+      bail!(concat!(
+        "You don't have write permission to {} because it's owned by root.\n",
+        "Consider updating deno through your package manager if its installed from it.\n",
+        "Otherwise run `deno upgrade` as root.",
+      ), output_exe_path.display());
+    }
+    permissions
+  } else {
+    fs::metadata(&current_exe_path)?.permissions()
+  };
 
   let install_version = match upgrade_flags.version {
     Some(passed_version) => {
       let re_hash = lazy_regex::regex!("^[0-9a-f]{40}$");
+      let passed_version = passed_version
+        .strip_prefix('v')
+        .unwrap_or(&passed_version)
+        .to_string();
 
       if upgrade_flags.canary && !re_hash.is_match(&passed_version) {
         bail!("Invalid commit hash passed");
@@ -316,9 +327,9 @@ pub async fn upgrade(
       {
         log::info!("Version {} is already installed", crate::version::deno());
         return Ok(());
-      } else {
-        passed_version
       }
+
+      passed_version
     }
     None => {
       let latest_version = if upgrade_flags.canary {
@@ -330,7 +341,7 @@ pub async fn upgrade(
       };
 
       let current_is_most_recent = if upgrade_flags.canary {
-        let latest_hash = latest_version.clone();
+        let latest_hash = &latest_version;
         crate::version::GIT_COMMIT_HASH == latest_hash
       } else if !crate::version::is_canary() {
         let current = Version::parse_standard(crate::version::deno()).unwrap();
@@ -362,7 +373,7 @@ pub async fn upgrade(
 
   let download_url = if upgrade_flags.canary {
     if env!("TARGET") == "aarch64-apple-darwin" {
-      bail!("Canary builds are not available for M1");
+      bail!("Canary builds are not available for M1/M2");
     }
 
     format!(

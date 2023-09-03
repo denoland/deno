@@ -31,6 +31,7 @@ const {
   SafeRegExp,
   Symbol,
   StringFromCharCode,
+  StringPrototypeCharCodeAt,
   StringPrototypeTrim,
   StringPrototypeSlice,
   StringPrototypeSplit,
@@ -41,6 +42,7 @@ const {
   StringPrototypeReplaceAll,
   TypeError,
   TypedArrayPrototypeSubarray,
+  Uint8Array,
 } = primordials;
 
 const entryList = Symbol("entry list");
@@ -358,6 +360,20 @@ function parseContentDisposition(value) {
   return params;
 }
 
+/**
+ * Decodes a string containing UTF-8 mistakenly decoded as Latin-1 and
+ * decodes it correctly.
+ * @param {string} latin1String
+ * @returns {string}
+ */
+function decodeLatin1StringAsUtf8(latin1String) {
+  const buffer = new Uint8Array(latin1String.length);
+  for (let i = 0; i < latin1String.length; i++) {
+    buffer[i] = StringPrototypeCharCodeAt(latin1String, i);
+  }
+  return core.decode(buffer);
+}
+
 const CRLF = "\r\n";
 const LF = StringPrototypeCodePointAt(CRLF, 1);
 const CR = StringPrototypeCodePointAt(CRLF, 0);
@@ -465,23 +481,31 @@ class MultipartParser {
             i - boundaryIndex - 1,
           );
           // https://fetch.spec.whatwg.org/#ref-for-dom-body-formdata
-          const filename = MapPrototypeGet(disposition, "filename");
-          const name = MapPrototypeGet(disposition, "name");
+          // These are UTF-8 decoded as if it was Latin-1.
+          // TODO(@andreubotella): Maybe we shouldn't be parsing entry headers
+          // as Latin-1.
+          const latin1Filename = MapPrototypeGet(disposition, "filename");
+          const latin1Name = MapPrototypeGet(disposition, "name");
 
           state = 5;
           // Reset
           boundaryIndex = 0;
           headerText = "";
 
-          if (!name) {
+          if (!latin1Name) {
             continue; // Skip, unknown name
           }
 
-          if (filename) {
+          const name = decodeLatin1StringAsUtf8(latin1Name);
+          if (latin1Filename) {
             const blob = new Blob([content], {
               type: headers.get("Content-Type") || "application/octet-stream",
             });
-            formData.append(name, blob, filename);
+            formData.append(
+              name,
+              blob,
+              decodeLatin1StringAsUtf8(latin1Filename),
+            );
           } else {
             formData.append(name, core.decode(content));
           }

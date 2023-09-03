@@ -1,5 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 /** NOT IMPLEMENTED
  * ERR_MANIFEST_ASSERT_INTEGRITY
  * ERR_QUICSESSION_VERSION_NEGOTIATION
@@ -13,7 +17,7 @@
  * ERR_INVALID_PACKAGE_CONFIG // package.json stuff, probably useless
  */
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { format, inspect } from "ext:deno_node/internal/util/inspect.mjs";
 import { codes } from "ext:deno_node/internal/error_codes.ts";
 import {
   codeMap,
@@ -832,6 +836,15 @@ export class ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY extends NodeError {
     super(
       "ERR_CRYPTO_ECDH_INVALID_PUBLIC_KEY",
       "Public key is not valid for specified curve",
+    );
+  }
+}
+
+export class ERR_CRYPTO_UNKNOWN_DH_GROUP extends NodeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_UNKNOWN_DH_GROUP",
+      "Unknown DH group",
     );
   }
 }
@@ -2065,7 +2078,7 @@ export class ERR_UNKNOWN_CREDENTIAL extends NodeError {
 }
 export class ERR_UNKNOWN_ENCODING extends NodeTypeError {
   constructor(x: string) {
-    super("ERR_UNKNOWN_ENCODING", `Unknown encoding: ${x}`);
+    super("ERR_UNKNOWN_ENCODING", format("Unknown encoding: %s", x));
   }
 }
 export class ERR_UNKNOWN_FILE_EXTENSION extends NodeTypeError {
@@ -2477,6 +2490,19 @@ export class ERR_FS_RMDIR_ENOTDIR extends NodeSystemError {
       message: "not a directory",
       path,
       syscall: "rmdir",
+      code,
+      errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
+    };
+    super(code, ctx, "Path is not a directory");
+  }
+}
+
+export class ERR_OS_NO_HOMEDIR extends NodeSystemError {
+  constructor() {
+    const code = isWindows ? "ENOENT" : "ENOTDIR";
+    const ctx: NodeSystemErrorCtx = {
+      message: "not a directory",
+      syscall: "home",
       code,
       errno: isWindows ? osConstants.errno.ENOENT : osConstants.errno.ENOTDIR,
     };

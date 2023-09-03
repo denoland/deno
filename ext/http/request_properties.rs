@@ -1,10 +1,10 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::AnyError;
 use deno_core::OpState;
 use deno_core::ResourceId;
-use deno_net::raw::NetworkStream;
-// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_net::raw::take_network_stream_listener_resource;
 use deno_net::raw::take_network_stream_resource;
+use deno_net::raw::NetworkStream;
 use deno_net::raw::NetworkStreamAddress;
 use deno_net::raw::NetworkStreamListener;
 use deno_net::raw::NetworkStreamType;
@@ -12,23 +12,26 @@ use hyper::HeaderMap;
 use hyper::Uri;
 use hyper1::header::HOST;
 use std::borrow::Cow;
+use std::net::Ipv4Addr;
+use std::net::SocketAddr;
+use std::net::SocketAddrV4;
 use std::rc::Rc;
 
 // TODO(mmastrac): I don't like that we have to clone this, but it's one-time setup
 #[derive(Clone)]
 pub struct HttpListenProperties {
-  pub stream_type: NetworkStreamType,
   pub scheme: &'static str,
   pub fallback_host: String,
   pub local_port: Option<u16>,
+  pub stream_type: NetworkStreamType,
 }
 
 #[derive(Clone)]
 pub struct HttpConnectionProperties {
-  pub stream_type: NetworkStreamType,
   pub peer_address: Rc<str>,
   pub peer_port: Option<u16>,
   pub local_port: Option<u16>,
+  pub stream_type: NetworkStreamType,
 }
 
 pub struct HttpRequestProperties {
@@ -37,30 +40,48 @@ pub struct HttpRequestProperties {
 
 /// Pluggable trait to determine listen, connection and request properties
 /// for embedders that wish to provide alternative routes for incoming HTTP.
+#[async_trait::async_trait(?Send)]
 pub trait HttpPropertyExtractor {
-  /// Given a listener [`ResourceId`], returns the [`NetworkStreamListener`].
-  fn get_network_stream_listener_for_rid(
+  type Listener: 'static;
+  type Connection;
+
+  /// Given a listener [`ResourceId`], returns the [`HttpPropertyExtractor::Listener`].
+  fn get_listener_for_rid(
     state: &mut OpState,
     listener_rid: ResourceId,
-  ) -> Result<NetworkStreamListener, AnyError>;
+  ) -> Result<Self::Listener, AnyError>;
 
-  /// Given a connection [`ResourceId`], returns the [`NetworkStream`].
-  fn get_network_stream_for_rid(
+  /// Given a connection [`ResourceId`], returns the [`HttpPropertyExtractor::Connection`].
+  fn get_connection_for_rid(
     state: &mut OpState,
-    rid: ResourceId,
-  ) -> Result<NetworkStream, AnyError>;
+    connection_rid: ResourceId,
+  ) -> Result<Self::Connection, AnyError>;
 
   /// Determines the listener properties.
-  fn listen_properties(
-    stream_type: NetworkStreamType,
-    local_address: &NetworkStreamAddress,
-  ) -> HttpListenProperties;
+  fn listen_properties_from_listener(
+    listener: &Self::Listener,
+  ) -> Result<HttpListenProperties, std::io::Error>;
+
+  /// Determines the listener properties given a [`HttpPropertyExtractor::Connection`].
+  fn listen_properties_from_connection(
+    connection: &Self::Connection,
+  ) -> Result<HttpListenProperties, std::io::Error>;
+
+  /// Accept a new [`HttpPropertyExtractor::Connection`] from the given listener [`HttpPropertyExtractor::Listener`].
+  async fn accept_connection_from_listener(
+    listener: &Self::Listener,
+  ) -> Result<Self::Connection, AnyError>;
 
   /// Determines the connection properties.
   fn connection_properties(
     listen_properties: &HttpListenProperties,
-    peer_address: &NetworkStreamAddress,
+    connection: &Self::Connection,
   ) -> HttpConnectionProperties;
+
+  /// Turn a given [`HttpPropertyExtractor::Connection`] into a [`NetworkStream`].
+  fn to_network_stream_from_connection(
+    connection: Self::Connection,
+  ) -> NetworkStream;
 
   /// Determines the request properties.
   fn request_properties(
@@ -70,17 +91,15 @@ pub trait HttpPropertyExtractor {
   ) -> HttpRequestProperties;
 }
 
-pub struct DefaultHttpRequestProperties {}
+pub struct DefaultHttpPropertyExtractor {}
 
-impl HttpPropertyExtractor for DefaultHttpRequestProperties {
-  fn get_network_stream_for_rid(
-    state: &mut OpState,
-    rid: ResourceId,
-  ) -> Result<NetworkStream, AnyError> {
-    take_network_stream_resource(&mut state.resource_table, rid)
-  }
+#[async_trait::async_trait(?Send)]
+impl HttpPropertyExtractor for DefaultHttpPropertyExtractor {
+  type Listener = NetworkStreamListener;
 
-  fn get_network_stream_listener_for_rid(
+  type Connection = NetworkStream;
+
+  fn get_listener_for_rid(
     state: &mut OpState,
     listener_rid: ResourceId,
   ) -> Result<NetworkStreamListener, AnyError> {
@@ -90,30 +109,52 @@ impl HttpPropertyExtractor for DefaultHttpRequestProperties {
     )
   }
 
-  fn listen_properties(
-    stream_type: NetworkStreamType,
-    local_address: &NetworkStreamAddress,
-  ) -> HttpListenProperties {
-    let scheme = req_scheme_from_stream_type(stream_type);
-    let fallback_host = req_host_from_addr(stream_type, local_address);
-    let local_port: Option<u16> = match local_address {
-      NetworkStreamAddress::Ip(ip) => Some(ip.port()),
-      #[cfg(unix)]
-      NetworkStreamAddress::Unix(_) => None,
-    };
+  fn get_connection_for_rid(
+    state: &mut OpState,
+    stream_rid: ResourceId,
+  ) -> Result<NetworkStream, AnyError> {
+    take_network_stream_resource(&mut state.resource_table, stream_rid)
+  }
 
-    HttpListenProperties {
-      scheme,
-      fallback_host,
-      local_port,
-      stream_type,
-    }
+  async fn accept_connection_from_listener(
+    listener: &NetworkStreamListener,
+  ) -> Result<NetworkStream, AnyError> {
+    listener.accept().await.map_err(Into::into)
+  }
+
+  fn listen_properties_from_listener(
+    listener: &NetworkStreamListener,
+  ) -> Result<HttpListenProperties, std::io::Error> {
+    let stream_type = listener.stream();
+    let local_address = listener.listen_address()?;
+    listener_properties(stream_type, local_address)
+  }
+
+  fn listen_properties_from_connection(
+    connection: &Self::Connection,
+  ) -> Result<HttpListenProperties, std::io::Error> {
+    let stream_type = connection.stream();
+    let local_address = connection.local_address()?;
+    listener_properties(stream_type, local_address)
+  }
+
+  fn to_network_stream_from_connection(
+    connection: Self::Connection,
+  ) -> NetworkStream {
+    connection
   }
 
   fn connection_properties(
     listen_properties: &HttpListenProperties,
-    peer_address: &NetworkStreamAddress,
+    connection: &NetworkStream,
   ) -> HttpConnectionProperties {
+    // We always want some sort of peer address. If we can't get one, just make up one.
+    let peer_address = connection.peer_address().unwrap_or_else(|_| {
+      NetworkStreamAddress::Ip(SocketAddr::V4(SocketAddrV4::new(
+        Ipv4Addr::new(0, 0, 0, 0),
+        0,
+      )))
+    });
     let peer_port: Option<u16> = match peer_address {
       NetworkStreamAddress::Ip(ip) => Some(ip.port()),
       #[cfg(unix)]
@@ -128,10 +169,10 @@ impl HttpPropertyExtractor for DefaultHttpRequestProperties {
     let stream_type = listen_properties.stream_type;
 
     HttpConnectionProperties {
-      stream_type,
       peer_address,
       peer_port,
       local_port,
+      stream_type,
     }
   }
 
@@ -150,6 +191,25 @@ impl HttpPropertyExtractor for DefaultHttpRequestProperties {
 
     HttpRequestProperties { authority }
   }
+}
+
+fn listener_properties(
+  stream_type: NetworkStreamType,
+  local_address: NetworkStreamAddress,
+) -> Result<HttpListenProperties, std::io::Error> {
+  let scheme = req_scheme_from_stream_type(stream_type);
+  let fallback_host = req_host_from_addr(stream_type, &local_address);
+  let local_port: Option<u16> = match local_address {
+    NetworkStreamAddress::Ip(ip) => Some(ip.port()),
+    #[cfg(unix)]
+    NetworkStreamAddress::Unix(_) => None,
+  };
+  Ok(HttpListenProperties {
+    scheme,
+    fallback_host,
+    local_port,
+    stream_type,
+  })
 }
 
 /// Compute the fallback address from the [`NetworkStreamListenAddress`]. If the request has no authority/host in

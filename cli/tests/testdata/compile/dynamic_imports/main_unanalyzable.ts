@@ -1,4 +1,4 @@
-import { join } from "https://deno.land/std@0.178.0/path/mod.ts";
+import { join } from "../../../../../test_util/std/path/mod.ts";
 
 console.log("Starting the main module");
 

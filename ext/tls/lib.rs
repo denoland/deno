@@ -9,16 +9,14 @@ pub use webpki_roots;
 use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 
 use rustls::client::HandshakeSignatureValid;
 use rustls::client::ServerCertVerified;
 use rustls::client::ServerCertVerifier;
-use rustls::client::StoresClientSessions;
 use rustls::client::WebPkiVerifier;
-use rustls::internal::msgs::handshake::DigitallySignedStruct;
 use rustls::Certificate;
 use rustls::ClientConfig;
+use rustls::DigitallySignedStruct;
 use rustls::Error;
 use rustls::PrivateKey;
 use rustls::RootCertStore;
@@ -27,7 +25,6 @@ use rustls_pemfile::certs;
 use rustls_pemfile::pkcs8_private_keys;
 use rustls_pemfile::rsa_private_keys;
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::Cursor;
@@ -145,38 +142,18 @@ pub struct BasicAuth {
   pub password: String,
 }
 
-#[derive(Default)]
-struct ClientSessionMemoryCache(Mutex<HashMap<Vec<u8>, Vec<u8>>>);
-
-impl StoresClientSessions for ClientSessionMemoryCache {
-  fn get(&self, key: &[u8]) -> Option<Vec<u8>> {
-    self.0.lock().get(key).cloned()
-  }
-
-  fn put(&self, key: Vec<u8>, value: Vec<u8>) -> bool {
-    let mut sessions = self.0.lock();
-    // TODO(bnoordhuis) Evict sessions LRU-style instead of arbitrarily.
-    while sessions.len() >= 1024 {
-      let key = sessions.keys().next().unwrap().clone();
-      sessions.remove(&key);
-    }
-    sessions.insert(key, value);
-    true
-  }
-}
-
 pub fn create_default_root_cert_store() -> RootCertStore {
   let mut root_cert_store = RootCertStore::empty();
   // TODO(@justinmchase): Consider also loading the system keychain here
-  root_cert_store.add_server_trust_anchors(
-    webpki_roots::TLS_SERVER_ROOTS.0.iter().map(|ta| {
+  root_cert_store.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(
+    |ta| {
       rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
         ta.subject,
         ta.spki,
         ta.name_constraints,
       )
-    }),
-  );
+    },
+  ));
   root_cert_store
 }
 
@@ -210,7 +187,7 @@ pub fn create_client_config(
     let client =
       if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key {
         client_config
-          .with_single_cert(cert_chain, private_key)
+          .with_client_auth_cert(cert_chain, private_key)
           .expect("invalid client key or certificate")
       } else {
         client_config.with_no_client_auth()
@@ -246,7 +223,7 @@ pub fn create_client_config(
   let client = if let Some((cert_chain, private_key)) = maybe_cert_chain_and_key
   {
     client_config
-      .with_single_cert(cert_chain, private_key)
+      .with_client_auth_cert(cert_chain, private_key)
       .expect("invalid client key or certificate")
   } else {
     client_config.with_no_client_auth()
@@ -293,7 +270,7 @@ fn filter_invalid_encoding_err(
   to_be_filtered: Result<HandshakeSignatureValid, Error>,
 ) -> Result<HandshakeSignatureValid, Error> {
   match to_be_filtered {
-    Err(Error::InvalidCertificateEncoding) => {
+    Err(Error::InvalidCertificate(rustls::CertificateError::BadEncoding)) => {
       Ok(HandshakeSignatureValid::assertion())
     }
     res => res,

@@ -9,9 +9,11 @@ use deno_core::error::not_supported;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::ToJsBuffer;
 
+use deno_core::unsync::spawn_blocking;
+use deno_core::JsBuffer;
 use deno_core::OpState;
-use deno_core::ZeroCopyBuf;
 use serde::Deserialize;
 use shared::operation_error;
 
@@ -68,7 +70,7 @@ use crate::key::Algorithm;
 use crate::key::CryptoHash;
 use crate::key::CryptoNamedCurve;
 use crate::key::HkdfOutput;
-use crate::shared::RawKeyData;
+use crate::shared::V8RawKeyData;
 
 deno_core::extension!(deno_crypto,
   deps = [ deno_webidl, deno_web ],
@@ -88,22 +90,22 @@ deno_core::extension!(deno_crypto,
     op_crypto_unwrap_key,
     op_crypto_base64url_decode,
     op_crypto_base64url_encode,
-    x25519::op_generate_x25519_keypair,
-    x25519::op_derive_bits_x25519,
-    x25519::op_import_spki_x25519,
-    x25519::op_import_pkcs8_x25519,
-    ed25519::op_generate_ed25519_keypair,
-    ed25519::op_import_spki_ed25519,
-    ed25519::op_import_pkcs8_ed25519,
-    ed25519::op_sign_ed25519,
-    ed25519::op_verify_ed25519,
-    ed25519::op_export_spki_ed25519,
-    ed25519::op_export_pkcs8_ed25519,
-    ed25519::op_jwk_x_ed25519,
-    x25519::op_export_spki_x25519,
-    x25519::op_export_pkcs8_x25519,
+    x25519::op_crypto_generate_x25519_keypair,
+    x25519::op_crypto_derive_bits_x25519,
+    x25519::op_crypto_import_spki_x25519,
+    x25519::op_crypto_import_pkcs8_x25519,
+    ed25519::op_crypto_generate_ed25519_keypair,
+    ed25519::op_crypto_import_spki_ed25519,
+    ed25519::op_crypto_import_pkcs8_ed25519,
+    ed25519::op_crypto_sign_ed25519,
+    ed25519::op_crypto_verify_ed25519,
+    ed25519::op_crypto_export_spki_ed25519,
+    ed25519::op_crypto_export_pkcs8_ed25519,
+    ed25519::op_crypto_jwk_x_ed25519,
+    x25519::op_crypto_export_spki_x25519,
+    x25519::op_crypto_export_pkcs8_x25519,
   ],
-  esm = [ "00_crypto.js", "01_webidl.js" ],
+  esm = [ "00_crypto.js" ],
   options = {
     maybe_seed: Option<u64>,
   },
@@ -115,14 +117,15 @@ deno_core::extension!(deno_crypto,
 );
 
 #[op]
-pub fn op_crypto_base64url_decode(data: String) -> ZeroCopyBuf {
-  let data: Vec<u8> =
-    base64::decode_config(data, base64::URL_SAFE_NO_PAD).unwrap();
-  data.into()
+pub fn op_crypto_base64url_decode(
+  data: String,
+) -> Result<ToJsBuffer, AnyError> {
+  let data: Vec<u8> = base64::decode_config(data, base64::URL_SAFE_NO_PAD)?;
+  Ok(data.into())
 }
 
 #[op]
-pub fn op_crypto_base64url_encode(data: ZeroCopyBuf) -> String {
+pub fn op_crypto_base64url_encode(data: JsBuffer) -> String {
   let data: String = base64::encode_config(data, base64::URL_SAFE_NO_PAD);
   data
 }
@@ -170,7 +173,7 @@ pub enum KeyType {
 #[serde(rename_all = "lowercase")]
 pub struct KeyData {
   r#type: KeyType,
-  data: ZeroCopyBuf,
+  data: JsBuffer,
 }
 
 #[derive(Deserialize)]
@@ -186,8 +189,8 @@ pub struct SignArg {
 #[op]
 pub async fn op_crypto_sign_key(
   args: SignArg,
-  zero_copy: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+  zero_copy: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
   let data = &*zero_copy;
   let algorithm = args.algorithm;
 
@@ -295,14 +298,14 @@ pub struct VerifyArg {
   key: KeyData,
   algorithm: Algorithm,
   hash: Option<CryptoHash>,
-  signature: ZeroCopyBuf,
+  signature: JsBuffer,
   named_curve: Option<CryptoNamedCurve>,
 }
 
 #[op]
 pub async fn op_crypto_verify_key(
   args: VerifyArg,
-  zero_copy: ZeroCopyBuf,
+  zero_copy: JsBuffer,
 ) -> Result<bool, AnyError> {
   let data = &*zero_copy;
   let algorithm = args.algorithm;
@@ -412,14 +415,14 @@ pub struct DeriveKeyArg {
   public_key: Option<KeyData>,
   named_curve: Option<CryptoNamedCurve>,
   // HKDF
-  info: Option<ZeroCopyBuf>,
+  info: Option<JsBuffer>,
 }
 
 #[op]
 pub async fn op_crypto_derive_bits(
   args: DeriveKeyArg,
-  zero_copy: Option<ZeroCopyBuf>,
-) -> Result<ZeroCopyBuf, AnyError> {
+  zero_copy: Option<JsBuffer>,
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::Pbkdf2 => {
@@ -599,9 +602,9 @@ pub fn op_crypto_random_uuid(state: &mut OpState) -> Result<String, AnyError> {
 #[op]
 pub async fn op_crypto_subtle_digest(
   algorithm: CryptoHash,
-  data: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
-  let output = tokio::task::spawn_blocking(move || {
+  data: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
+  let output = spawn_blocking(move || {
     digest::digest(algorithm.into(), &data)
       .as_ref()
       .to_vec()
@@ -615,15 +618,15 @@ pub async fn op_crypto_subtle_digest(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WrapUnwrapKeyArg {
-  key: RawKeyData,
+  key: V8RawKeyData,
   algorithm: Algorithm,
 }
 
 #[op]
 pub fn op_crypto_wrap_key(
   args: WrapUnwrapKeyArg,
-  data: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+  data: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
 
   match algorithm {
@@ -651,8 +654,8 @@ pub fn op_crypto_wrap_key(
 #[op]
 pub fn op_crypto_unwrap_key(
   args: WrapUnwrapKeyArg,
-  data: ZeroCopyBuf,
-) -> Result<ZeroCopyBuf, AnyError> {
+  data: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
   let algorithm = args.algorithm;
   match algorithm {
     Algorithm::AesKw => {

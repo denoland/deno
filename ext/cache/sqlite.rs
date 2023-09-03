@@ -10,6 +10,7 @@ use std::time::UNIX_EPOCH;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -91,15 +92,17 @@ impl SqliteBackedCache {
   }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Cache for SqliteBackedCache {
+  type CachePutResourceType = CachePutResource;
+
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.
   async fn storage_open(&self, cache_name: String) -> Result<i64, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let db = db.lock();
       db.execute(
         "INSERT OR IGNORE INTO cache_storage (cache_name) VALUES (?1)",
@@ -124,7 +127,7 @@ impl Cache for SqliteBackedCache {
   /// Note: this doesn't check the disk, it only checks the sqlite db.
   async fn storage_has(&self, cache_name: String) -> Result<bool, AnyError> {
     let db = self.connection.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let db = db.lock();
       let cache_exists = db.query_row(
         "SELECT count(id) FROM cache_storage WHERE cache_name = ?1",
@@ -143,7 +146,7 @@ impl Cache for SqliteBackedCache {
   async fn storage_delete(&self, cache_name: String) -> Result<bool, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       let db = db.lock();
       let maybe_cache_id = db
         .query_row(
@@ -166,10 +169,10 @@ impl Cache for SqliteBackedCache {
     .await?
   }
 
-  async fn put(
+  async fn put_create(
     &self,
     request_response: CachePutRequest,
-  ) -> Result<Option<Rc<dyn Resource>>, AnyError> {
+  ) -> Result<Option<Rc<CachePutResource>>, AnyError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?;
@@ -201,6 +204,13 @@ impl Cache for SqliteBackedCache {
     }
   }
 
+  async fn put_finish(
+    &self,
+    resource: Rc<CachePutResource>,
+  ) -> Result<(), AnyError> {
+    resource.write_to_cache().await
+  }
+
   async fn r#match(
     &self,
     request: CacheMatchRequest,
@@ -210,7 +220,7 @@ impl Cache for SqliteBackedCache {
   > {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
-    let query_result = tokio::task::spawn_blocking(move || {
+    let query_result = spawn_blocking(move || {
       let db = db.lock();
       let result = db.query_row(
         "SELECT response_body_key, response_headers, response_status, response_status_text, request_headers
@@ -269,7 +279,7 @@ impl Cache for SqliteBackedCache {
     request: CacheDeleteRequest,
   ) -> Result<bool, AnyError> {
     let db = self.connection.clone();
-    tokio::task::spawn_blocking(move || {
+    spawn_blocking(move || {
       // TODO(@satyarohith): remove the response body from disk if one exists
       let db = db.lock();
       let rows_effected = db.execute(
@@ -287,7 +297,7 @@ async fn insert_cache_asset(
   put: CachePutRequest,
   response_body_key: Option<String>,
 ) -> Result<Option<String>, deno_core::anyhow::Error> {
-  tokio::task::spawn_blocking(move || {
+  spawn_blocking(move || {
     let maybe_response_body = {
       let db = db.lock();
       db.query_row(
@@ -345,7 +355,7 @@ impl CachePutResource {
     Ok(data.len())
   }
 
-  async fn shutdown(self: Rc<Self>) -> Result<(), AnyError> {
+  async fn write_to_cache(self: Rc<Self>) -> Result<(), AnyError> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
     file.flush().await?;
@@ -376,10 +386,6 @@ impl Resource for CachePutResource {
   }
 
   deno_core::impl_writable!();
-
-  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown())
-  }
 }
 
 pub struct CacheResponseResource {

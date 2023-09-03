@@ -11,6 +11,9 @@ use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
 
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+
 #[derive(Deserialize, Default, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -72,8 +75,11 @@ pub struct FsDirEntry {
   pub is_symlink: bool,
 }
 
+#[allow(clippy::disallowed_types)]
+pub type FileSystemRc = crate::sync::MaybeArc<dyn FileSystem>;
+
 #[async_trait::async_trait(?Send)]
-pub trait FileSystem: std::fmt::Debug + Send + Sync {
+pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
   fn cwd(&self) -> FsResult<PathBuf>;
   fn tmp_dir(&self) -> FsResult<PathBuf>;
   fn chdir(&self, path: &Path) -> FsResult<()>;
@@ -90,11 +96,12 @@ pub trait FileSystem: std::fmt::Debug + Send + Sync {
     options: OpenOptions,
   ) -> FsResult<Rc<dyn File>>;
 
-  fn mkdir_sync(&self, path: &Path, recusive: bool, mode: u32) -> FsResult<()>;
+  fn mkdir_sync(&self, path: &Path, recursive: bool, mode: u32)
+    -> FsResult<()>;
   async fn mkdir_async(
     &self,
     path: PathBuf,
-    recusive: bool,
+    recursive: bool,
     mode: u32,
   ) -> FsResult<()>;
 
@@ -226,23 +233,29 @@ pub trait FileSystem: std::fmt::Debug + Send + Sync {
     Ok(buf)
   }
 
-  fn is_file(&self, path: &Path) -> bool {
+  fn is_file_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).map(|m| m.is_file).unwrap_or(false)
   }
 
-  fn is_dir(&self, path: &Path) -> bool {
+  fn is_dir_sync(&self, path: &Path) -> bool {
     self
       .stat_sync(path)
       .map(|m| m.is_directory)
       .unwrap_or(false)
   }
 
-  fn exists(&self, path: &Path) -> bool {
+  fn exists_sync(&self, path: &Path) -> bool {
     self.stat_sync(path).is_ok()
   }
 
-  fn read_to_string(&self, path: &Path) -> FsResult<String> {
+  fn read_text_file_sync(&self, path: &Path) -> FsResult<String> {
     let buf = self.read_file_sync(path)?;
+    String::from_utf8(buf).map_err(|err| {
+      std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
+    })
+  }
+  async fn read_text_file_async(&self, path: PathBuf) -> FsResult<String> {
+    let buf = self.read_file_async(path).await?;
     String::from_utf8(buf).map_err(|err| {
       std::io::Error::new(std::io::ErrorKind::InvalidData, err).into()
     })

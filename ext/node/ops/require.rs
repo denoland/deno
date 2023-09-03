@@ -9,18 +9,18 @@ use deno_core::url::Url;
 use deno_core::JsRuntimeInspector;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_fs::FileSystemRc;
 use std::cell::RefCell;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use crate::resolution;
 use crate::NodeModuleKind;
 use crate::NodePermissions;
 use crate::NodeResolutionMode;
 use crate::NodeResolver;
-use crate::NpmResolver;
+use crate::NpmResolverRc;
 use crate::PackageJson;
 
 fn ensure_read_permission<P>(
@@ -30,7 +30,7 @@ fn ensure_read_permission<P>(
 where
   P: NodePermissions + 'static,
 {
-  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let resolver = state.borrow::<NpmResolverRc>();
   let permissions = state.borrow::<P>();
   resolver.ensure_read_permission(permissions, file_path)
 }
@@ -93,15 +93,19 @@ pub fn op_require_node_module_paths<P>(
 where
   P: NodePermissions + 'static,
 {
-  let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
+  let fs = state.borrow::<FileSystemRc>();
   // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(
-    &from,
-    &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
-  )
-  .unwrap()
-  .to_file_path()
-  .unwrap();
+  let from = if from.starts_with("file:///") {
+    Url::parse(&from)?.to_file_path().unwrap()
+  } else {
+    deno_core::resolve_path(
+      &from,
+      &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
+    )
+    .unwrap()
+    .to_file_path()
+    .unwrap()
+  };
 
   ensure_read_permission::<P>(state, &from)?;
 
@@ -128,16 +132,11 @@ where
   let mut current_path = from.as_path();
   let mut maybe_parent = Some(current_path);
   while let Some(parent) = maybe_parent {
-    if !parent.ends_with("/node_modules") {
+    if !parent.ends_with("node_modules") {
       paths.push(parent.join("node_modules").to_string_lossy().to_string());
-      current_path = parent;
-      maybe_parent = current_path.parent();
     }
-  }
-
-  if !cfg!(windows) {
-    // Append /node_modules to handle root paths.
-    paths.push("/node_modules".to_string());
+    current_path = parent;
+    maybe_parent = current_path.parent();
   }
 
   Ok(paths)
@@ -189,7 +188,7 @@ fn op_require_resolve_deno_dir(
   request: String,
   parent_filename: String,
 ) -> Option<String> {
-  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let resolver = state.borrow::<NpmResolverRc>();
   resolver
     .resolve_package_folder_from_package(
       &request,
@@ -202,7 +201,7 @@ fn op_require_resolve_deno_dir(
 
 #[op]
 fn op_require_is_deno_dir_package(state: &mut OpState, path: String) -> bool {
-  let resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let resolver = state.borrow::<NpmResolverRc>();
   resolver.in_npm_package_at_path(&PathBuf::from(path))
 }
 
@@ -262,7 +261,7 @@ where
 {
   let path = PathBuf::from(path);
   ensure_read_permission::<P>(state, &path)?;
-  let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
+  let fs = state.borrow::<FileSystemRc>();
   if let Ok(metadata) = fs.stat_sync(&path) {
     if metadata.is_file {
       return Ok(0);
@@ -284,7 +283,7 @@ where
 {
   let path = PathBuf::from(request);
   ensure_read_permission::<P>(state, &path)?;
-  let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
+  let fs = state.borrow::<FileSystemRc>();
   let canonicalized_path =
     deno_core::strip_unc_prefix(fs.realpath_sync(&path)?);
   Ok(canonicalized_path.to_string_lossy().to_string())
@@ -346,7 +345,7 @@ where
 
   if let Some(parent_id) = maybe_parent_id {
     if parent_id == "<repl>" || parent_id == "internal/preload" {
-      let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
+      let fs = state.borrow::<FileSystemRc>();
       if let Ok(cwd) = fs.cwd() {
         ensure_read_permission::<P>(state, &cwd)?;
         return Ok(Some(cwd.to_string_lossy().to_string()));
@@ -376,7 +375,8 @@ where
       &Url::from_file_path(parent_path.unwrap()).unwrap(),
       permissions,
     )
-    .ok();
+    .ok()
+    .flatten();
   if pkg.is_none() {
     return Ok(None);
   }
@@ -429,8 +429,8 @@ where
 {
   let file_path = PathBuf::from(file_path);
   ensure_read_permission::<P>(state, &file_path)?;
-  let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
-  Ok(fs.read_to_string(&file_path)?)
+  let fs = state.borrow::<FileSystemRc>();
+  Ok(fs.read_text_file_sync(&file_path)?)
 }
 
 #[op]
@@ -457,8 +457,8 @@ fn op_require_resolve_exports<P>(
 where
   P: NodePermissions + 'static,
 {
-  let fs = state.borrow::<Arc<dyn deno_fs::FileSystem>>();
-  let npm_resolver = state.borrow::<Arc<dyn NpmResolver>>();
+  let fs = state.borrow::<FileSystemRc>();
+  let npm_resolver = state.borrow::<NpmResolverRc>();
   let node_resolver = state.borrow::<Rc<NodeResolver>>();
   let permissions = state.borrow::<P>();
 
@@ -468,12 +468,12 @@ where
   {
     modules_path
   } else {
-    let orignal = modules_path.clone();
+    let original = modules_path.clone();
     let mod_dir = path_resolve(vec![modules_path, name]);
-    if fs.is_dir(Path::new(&mod_dir)) {
+    if fs.is_dir_sync(Path::new(&mod_dir)) {
       mod_dir
     } else {
-      orignal
+      original
     }
   };
   let pkg = node_resolver.load_package_json(
@@ -504,7 +504,7 @@ where
 fn op_require_read_closest_package_json<P>(
   state: &mut OpState,
   filename: String,
-) -> Result<PackageJson, AnyError>
+) -> Result<Option<PackageJson>, AnyError>
 where
   P: NodePermissions + 'static,
 {

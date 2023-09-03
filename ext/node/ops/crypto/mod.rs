@@ -4,12 +4,15 @@ use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
 use deno_core::serde_v8;
+use deno_core::unsync::spawn_blocking;
+use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
-use deno_core::ZeroCopyBuf;
+use deno_core::ToJsBuffer;
 use hkdf::Hkdf;
 use num_bigint::BigInt;
+use num_bigint_dig::BigUint;
 use num_traits::FromPrimitive;
 use rand::distributions::Distribution;
 use rand::distributions::Uniform;
@@ -57,12 +60,7 @@ pub async fn op_node_check_prime_async(
   checks: usize,
 ) -> Result<bool, AnyError> {
   // TODO(@littledivy): use rayon for CPU-bound tasks
-  Ok(
-    tokio::task::spawn_blocking(move || {
-      primes::is_probably_prime(&num, checks)
-    })
-    .await?,
-  )
+  Ok(spawn_blocking(move || primes::is_probably_prime(&num, checks)).await?)
 }
 
 #[op]
@@ -74,10 +72,8 @@ pub fn op_node_check_prime_bytes_async(
   // TODO(@littledivy): use rayon for CPU-bound tasks
   Ok(async move {
     Ok(
-      tokio::task::spawn_blocking(move || {
-        primes::is_probably_prime(&candidate, checks)
-      })
-      .await?,
+      spawn_blocking(move || primes::is_probably_prime(&candidate, checks))
+        .await?,
     )
   })
 }
@@ -90,6 +86,11 @@ pub fn op_node_create_hash(state: &mut OpState, algorithm: &str) -> u32 {
       Ok(context) => context,
       Err(_) => return 0,
     })
+}
+
+#[op(fast)]
+pub fn op_node_get_hashes() -> Vec<&'static str> {
+  digest::Hash::get_hashes()
 }
 
 #[op(fast)]
@@ -120,7 +121,7 @@ pub fn op_node_hash_update_str(
 pub fn op_node_hash_digest(
   state: &mut OpState,
   rid: ResourceId,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let context = state.resource_table.take::<digest::Context>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Hash context is already in use"))?;
@@ -153,7 +154,7 @@ pub fn op_node_private_encrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -177,7 +178,7 @@ pub fn op_node_private_decrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPrivateKey::from_pkcs8_pem((&key).try_into()?)?;
 
   match padding {
@@ -200,7 +201,7 @@ pub fn op_node_public_encrypt(
   key: StringOrBuffer,
   msg: StringOrBuffer,
   padding: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   let key = RsaPublicKey::from_public_key_pem((&key).try_into()?)?;
 
   let mut rng = rand::thread_rng();
@@ -312,7 +313,7 @@ pub fn op_node_sign(
   key: StringOrBuffer,
   key_type: &str,
   key_format: &str,
-) -> Result<ZeroCopyBuf, AnyError> {
+) -> Result<ToJsBuffer, AnyError> {
   match key_type {
     "rsa" => {
       use rsa::pkcs1v15::SigningKey;
@@ -461,8 +462,8 @@ pub async fn op_node_pbkdf2_async(
   iterations: u32,
   digest: String,
   keylen: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
-  tokio::task::spawn_blocking(move || {
+) -> Result<ToJsBuffer, AnyError> {
+  spawn_blocking(move || {
     let mut derived_key = vec![0; keylen];
     pbkdf2_sync(&password, &salt, iterations, &digest, &mut derived_key)
       .map(|_| derived_key.into())
@@ -476,8 +477,8 @@ pub fn op_node_generate_secret(buf: &mut [u8]) {
 }
 
 #[op]
-pub async fn op_node_generate_secret_async(len: i32) -> ZeroCopyBuf {
-  tokio::task::spawn_blocking(move || {
+pub async fn op_node_generate_secret_async(len: i32) -> ToJsBuffer {
+  spawn_blocking(move || {
     let mut buf = vec![0u8; len as usize];
     rand::thread_rng().fill(&mut buf[..]);
     buf.into()
@@ -530,12 +531,12 @@ pub fn op_node_hkdf(
 #[op]
 pub async fn op_node_hkdf_async(
   hash: String,
-  ikm: ZeroCopyBuf,
-  salt: ZeroCopyBuf,
-  info: ZeroCopyBuf,
+  ikm: JsBuffer,
+  salt: JsBuffer,
+  info: JsBuffer,
   okm_len: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
-  tokio::task::spawn_blocking(move || {
+) -> Result<ToJsBuffer, AnyError> {
+  spawn_blocking(move || {
     let mut okm = vec![0u8; okm_len];
     hkdf_sync(&hash, &ikm, &salt, &info, &mut okm)?;
     Ok(okm.into())
@@ -551,7 +552,7 @@ use self::primes::Prime;
 fn generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let mut rng = rand::thread_rng();
   let private_key = RsaPrivateKey::new_with_exp(
     &mut rng,
@@ -569,7 +570,7 @@ fn generate_rsa(
 pub fn op_node_generate_rsa(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   generate_rsa(modulus_length, public_exponent)
 }
 
@@ -577,17 +578,14 @@ pub fn op_node_generate_rsa(
 pub async fn op_node_generate_rsa_async(
   modulus_length: usize,
   public_exponent: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || {
-    generate_rsa(modulus_length, public_exponent)
-  })
-  .await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(move || generate_rsa(modulus_length, public_exponent)).await?
 }
 
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let mut rng = rand::thread_rng();
   use dsa::pkcs8::EncodePrivateKey;
   use dsa::pkcs8::EncodePublicKey;
@@ -626,7 +624,7 @@ fn dsa_generate(
 pub fn op_node_dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dsa_generate(modulus_length, divisor_length)
 }
 
@@ -634,16 +632,13 @@ pub fn op_node_dsa_generate(
 pub async fn op_node_dsa_generate_async(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || {
-    dsa_generate(modulus_length, divisor_length)
-  })
-  .await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(move || dsa_generate(modulus_length, divisor_length)).await?
 }
 
 fn ec_generate(
   named_curve: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   use ring::signature::EcdsaKeyPair;
   use ring::signature::KeyPair;
 
@@ -669,18 +664,18 @@ fn ec_generate(
 #[op]
 pub fn op_node_ec_generate(
   named_curve: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   ec_generate(named_curve)
 }
 
 #[op]
 pub async fn op_node_ec_generate_async(
   named_curve: String,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || ec_generate(&named_curve)).await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(move || ec_generate(&named_curve)).await?
 }
 
-fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+fn ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   use ring::signature::Ed25519KeyPair;
   use ring::signature::KeyPair;
 
@@ -696,18 +691,18 @@ fn ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
 }
 
 #[op]
-pub fn op_node_ed25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
+pub fn op_node_ed25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError>
 {
   ed25519_generate()
 }
 
 #[op]
 pub async fn op_node_ed25519_generate_async(
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(ed25519_generate).await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(ed25519_generate).await?
 }
 
-fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+fn x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   // u-coordinate of the base point.
   const X25519_BASEPOINT_BYTES: [u8; 32] = [
     9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -731,20 +726,19 @@ fn x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
 }
 
 #[op]
-pub fn op_node_x25519_generate() -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError>
-{
+pub fn op_node_x25519_generate() -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   x25519_generate()
 }
 
 #[op]
 pub async fn op_node_x25519_generate_async(
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(x25519_generate).await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(x25519_generate).await?
 }
 
 fn dh_generate_group(
   group_name: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let dh = match group_name {
     "modp5" => dh::DiffieHellman::group::<dh::Modp1536>(),
     "modp14" => dh::DiffieHellman::group::<dh::Modp2048>(),
@@ -764,22 +758,22 @@ fn dh_generate_group(
 #[op]
 pub fn op_node_dh_generate_group(
   group_name: &str,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dh_generate_group(group_name)
 }
 
 #[op]
 pub async fn op_node_dh_generate_group_async(
   group_name: String,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || dh_generate_group(&group_name)).await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(move || dh_generate_group(&group_name)).await?
 }
 
 fn dh_generate(
   prime: Option<&[u8]>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   let prime = prime
     .map(|p| p.into())
     .unwrap_or_else(|| Prime::generate(prime_len));
@@ -796,20 +790,42 @@ pub fn op_node_dh_generate(
   prime: Option<&[u8]>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
   dh_generate(prime, prime_len, generator)
+}
+
+// TODO(lev): This duplication should be avoided.
+#[op]
+pub fn op_node_dh_generate2(
+  prime: JsBuffer,
+  prime_len: usize,
+  generator: usize,
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  dh_generate(Some(prime).as_deref(), prime_len, generator)
+}
+
+#[op]
+pub fn op_node_dh_compute_secret(
+  prime: JsBuffer,
+  private_key: JsBuffer,
+  their_public_key: JsBuffer,
+) -> Result<ToJsBuffer, AnyError> {
+  let pubkey: BigUint = BigUint::from_bytes_be(their_public_key.as_ref());
+  let privkey: BigUint = BigUint::from_bytes_be(private_key.as_ref());
+  let primei: BigUint = BigUint::from_bytes_be(prime.as_ref());
+  let shared_secret: BigUint = pubkey.modpow(&privkey, &primei);
+
+  Ok(shared_secret.to_bytes_be().into())
 }
 
 #[op]
 pub async fn op_node_dh_generate_async(
-  prime: Option<ZeroCopyBuf>,
+  prime: Option<JsBuffer>,
   prime_len: usize,
   generator: usize,
-) -> Result<(ZeroCopyBuf, ZeroCopyBuf), AnyError> {
-  tokio::task::spawn_blocking(move || {
-    dh_generate(prime.as_deref(), prime_len, generator)
-  })
-  .await?
+) -> Result<(ToJsBuffer, ToJsBuffer), AnyError> {
+  spawn_blocking(move || dh_generate(prime.as_deref(), prime_len, generator))
+    .await?
 }
 
 #[op]
@@ -884,8 +900,8 @@ pub async fn op_node_scrypt_async(
   block_size: u32,
   parallelization: u32,
   maxmem: u32,
-) -> Result<ZeroCopyBuf, AnyError> {
-  tokio::task::spawn_blocking(move || {
+) -> Result<ToJsBuffer, AnyError> {
+  spawn_blocking(move || {
     let mut output_buffer = vec![0u8; keylen as usize];
     let res = scrypt(
       password,
@@ -952,7 +968,7 @@ pub fn op_node_ecdh_generate_keys(
 #[op]
 pub fn op_node_ecdh_compute_secret(
   curve: &str,
-  this_priv: Option<ZeroCopyBuf>,
+  this_priv: Option<JsBuffer>,
   their_pub: &mut [u8],
   secret: &mut [u8],
 ) -> Result<(), AnyError> {
@@ -1068,18 +1084,18 @@ pub fn op_node_ecdh_compute_public_key(
 }
 
 #[inline]
-fn gen_prime(size: usize) -> ZeroCopyBuf {
+fn gen_prime(size: usize) -> ToJsBuffer {
   primes::Prime::generate(size).0.to_bytes_be().into()
 }
 
 #[op]
-pub fn op_node_gen_prime(size: usize) -> ZeroCopyBuf {
+pub fn op_node_gen_prime(size: usize) -> ToJsBuffer {
   gen_prime(size)
 }
 
 #[op]
 pub async fn op_node_gen_prime_async(
   size: usize,
-) -> Result<ZeroCopyBuf, AnyError> {
-  Ok(tokio::task::spawn_blocking(move || gen_prime(size)).await?)
+) -> Result<ToJsBuffer, AnyError> {
+  Ok(spawn_blocking(move || gen_prime(size)).await?)
 }

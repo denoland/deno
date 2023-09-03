@@ -8,9 +8,9 @@ use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
-use deno_semver::npm::NpmPackageReq;
+use deno_semver::package::PackageReq;
 
-use crate::args::package_json::PackageJsonDeps;
+use crate::args::PackageJsonDepsProvider;
 use crate::util::sync::AtomicFlag;
 
 use super::CliNpmRegistryApi;
@@ -18,40 +18,29 @@ use super::NpmResolution;
 
 #[derive(Debug)]
 struct PackageJsonDepsInstallerInner {
+  deps_provider: Arc<PackageJsonDepsProvider>,
   has_installed_flag: AtomicFlag,
   npm_registry_api: Arc<CliNpmRegistryApi>,
   npm_resolution: Arc<NpmResolution>,
-  package_deps: PackageJsonDeps,
 }
 
 impl PackageJsonDepsInstallerInner {
-  pub fn reqs(&self) -> Vec<&NpmPackageReq> {
-    let mut package_reqs = self
-      .package_deps
-      .values()
-      .filter_map(|r| r.as_ref().ok())
-      .collect::<Vec<_>>();
-    package_reqs.sort(); // deterministic resolution
-    package_reqs
-  }
-
-  pub fn reqs_with_info_futures(
+  pub fn reqs_with_info_futures<'a>(
     &self,
+    reqs: &'a [&'a PackageReq],
   ) -> FuturesOrdered<
     impl Future<
       Output = Result<
-        (&NpmPackageReq, Arc<deno_npm::registry::NpmPackageInfo>),
+        (&'a PackageReq, Arc<deno_npm::registry::NpmPackageInfo>),
         NpmRegistryPackageInfoLoadError,
       >,
     >,
   > {
-    let package_reqs = self.reqs();
-
-    FuturesOrdered::from_iter(package_reqs.into_iter().map(|req| {
+    FuturesOrdered::from_iter(reqs.iter().map(|req| {
       let api = self.npm_registry_api.clone();
       async move {
         let info = api.package_info(&req.name).await?;
-        Ok::<_, NpmRegistryPackageInfoLoadError>((req, info))
+        Ok::<_, NpmRegistryPackageInfoLoadError>((*req, info))
       }
     }))
   }
@@ -63,20 +52,22 @@ pub struct PackageJsonDepsInstaller(Option<PackageJsonDepsInstallerInner>);
 
 impl PackageJsonDepsInstaller {
   pub fn new(
+    deps_provider: Arc<PackageJsonDepsProvider>,
     npm_registry_api: Arc<CliNpmRegistryApi>,
     npm_resolution: Arc<NpmResolution>,
-    deps: Option<PackageJsonDeps>,
   ) -> Self {
-    Self(deps.map(|package_deps| PackageJsonDepsInstallerInner {
+    Self(Some(PackageJsonDepsInstallerInner {
+      deps_provider,
       has_installed_flag: Default::default(),
       npm_registry_api,
       npm_resolution,
-      package_deps,
     }))
   }
 
-  pub fn package_deps(&self) -> Option<&PackageJsonDeps> {
-    self.0.as_ref().map(|inner| &inner.package_deps)
+  /// Creates an installer that never installs local packages during
+  /// resolution. A top level install will be a no-op.
+  pub fn no_op() -> Self {
+    Self(None)
   }
 
   /// Installs the top level dependencies in the package.json file
@@ -91,7 +82,24 @@ impl PackageJsonDepsInstaller {
       return Ok(()); // already installed by something else
     }
 
-    let mut reqs_with_info_futures = inner.reqs_with_info_futures();
+    let package_reqs = inner.deps_provider.reqs();
+
+    // check if something needs resolving before bothering to load all
+    // the package information (which is slow)
+    if package_reqs.iter().all(|req| {
+      inner
+        .npm_resolution
+        .resolve_pkg_id_from_pkg_req(req)
+        .is_ok()
+    }) {
+      log::debug!(
+        "All package.json deps resolvable. Skipping top level install."
+      );
+      return Ok(()); // everything is already resolvable
+    }
+
+    let mut reqs_with_info_futures =
+      inner.reqs_with_info_futures(&package_reqs);
 
     while let Some(result) = reqs_with_info_futures.next().await {
       let (req, info) = result?;
@@ -102,7 +110,7 @@ impl PackageJsonDepsInstaller {
         if inner.npm_registry_api.mark_force_reload() {
           log::debug!("Failed to resolve package. Retrying. Error: {err:#}");
           // re-initialize
-          reqs_with_info_futures = inner.reqs_with_info_futures();
+          reqs_with_info_futures = inner.reqs_with_info_futures(&package_reqs);
         } else {
           return Err(err.into());
         }

@@ -1,9 +1,15 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
-import { Buffer } from "ext:deno_node/buffer.ts";
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
+import { Buffer } from "node:buffer";
 import { validateBufferArray } from "ext:deno_node/internal/fs/utils.mjs";
 import { getValidatedFd } from "ext:deno_node/internal/fs/utils.mjs";
 import { maybeCallback } from "ext:deno_node/_fs/_fs_common.ts";
+import * as io from "ext:deno_io/12_io.js";
+import * as fs from "ext:deno_fs/30_fs.js";
 
 export function writev(fd, buffers, position, callback) {
   const innerWritev = async (fd, buffers, position) => {
@@ -17,12 +23,12 @@ export function writev(fd, buffers, position, callback) {
       }
     }
     if (typeof position === "number") {
-      await Deno.seekSync(fd, position, Deno.SeekMode.Start);
+      await fs.seekSync(fd, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += await Deno.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += await io.writeSync(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };
@@ -58,12 +64,12 @@ export function writevSync(fd, buffers, position) {
       }
     }
     if (typeof position === "number") {
-      Deno.seekSync(fd, position, Deno.SeekMode.Start);
+      fs.seekSync(fd, position, io.SeekMode.Start);
     }
     const buffer = Buffer.concat(chunks);
     let currentOffset = 0;
     while (currentOffset < buffer.byteLength) {
-      currentOffset += Deno.writeSync(fd, buffer.subarray(currentOffset));
+      currentOffset += io.writeSync(fd, buffer.subarray(currentOffset));
     }
     return currentOffset - offset;
   };

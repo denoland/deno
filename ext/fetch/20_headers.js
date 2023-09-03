@@ -22,26 +22,23 @@ import {
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayIsArray,
-  ArrayPrototypeMap,
   ArrayPrototypePush,
   ArrayPrototypeSort,
   ArrayPrototypeJoin,
   ArrayPrototypeSplice,
-  ArrayPrototypeFilter,
-  ObjectEntries,
   ObjectHasOwn,
   RegExpPrototypeTest,
-  SafeArrayIterator,
-  SafeRegExp,
   Symbol,
   SymbolFor,
   SymbolIterator,
   StringPrototypeReplaceAll,
+  StringPrototypeCharCodeAt,
   TypeError,
 } = primordials;
 
 const _headerList = Symbol("header list");
 const _iterableHeaders = Symbol("iterable headers");
+const _iterableHeadersCache = Symbol("iterable headers cache");
 const _guard = Symbol("guard");
 
 /**
@@ -87,9 +84,38 @@ function fillHeaders(headers, object) {
   }
 }
 
-// Regex matching illegal chars in a header value
-// deno-lint-ignore no-control-regex
-const ILLEGAL_VALUE_CHARS = new SafeRegExp(/[\x00\x0A\x0D]/);
+function checkForInvalidValueChars(value) {
+  for (let i = 0; i < value.length; i++) {
+    const c = StringPrototypeCharCodeAt(value, i);
+
+    if (c === 0x0a || c === 0x0d || c === 0x00) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+let HEADER_NAME_CACHE = {};
+let HEADER_CACHE_SIZE = 0;
+const HEADER_NAME_CACHE_SIZE_BOUNDARY = 4096;
+function checkHeaderNameForHttpTokenCodePoint(name) {
+  const fromCache = HEADER_NAME_CACHE[name];
+  if (fromCache !== undefined) {
+    return fromCache;
+  }
+
+  const valid = RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name);
+
+  if (HEADER_CACHE_SIZE > HEADER_NAME_CACHE_SIZE_BOUNDARY) {
+    HEADER_NAME_CACHE = {};
+    HEADER_CACHE_SIZE = 0;
+  }
+  HEADER_CACHE_SIZE++;
+  HEADER_NAME_CACHE[name] = valid;
+
+  return valid;
+}
 
 /**
  * https://fetch.spec.whatwg.org/#concept-headers-append
@@ -102,10 +128,10 @@ function appendHeader(headers, name, value) {
   value = normalizeHeaderValue(value);
 
   // 2.
-  if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+  if (!checkHeaderNameForHttpTokenCodePoint(name)) {
     throw new TypeError("Header name is not valid.");
   }
-  if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+  if (!checkForInvalidValueChars(value)) {
     throw new TypeError("Header value is not valid.");
   }
 
@@ -133,13 +159,13 @@ function appendHeader(headers, name, value) {
  */
 function getHeader(list, name) {
   const lowercaseName = byteLowerCase(name);
-  const entries = ArrayPrototypeMap(
-    ArrayPrototypeFilter(
-      list,
-      (entry) => byteLowerCase(entry[0]) === lowercaseName,
-    ),
-    (entry) => entry[1],
-  );
+  const entries = [];
+  for (let i = 0; i < list.length; i++) {
+    if (byteLowerCase(list[i][0]) === lowercaseName) {
+      ArrayPrototypePush(entries, list[i][1]);
+    }
+  }
+
   if (entries.length === 0) {
     return null;
   } else {
@@ -202,10 +228,17 @@ class Headers {
   get [_iterableHeaders]() {
     const list = this[_headerList];
 
+    if (
+      this[_guard] === "immutable" &&
+      this[_iterableHeadersCache] !== undefined
+    ) {
+      return this[_iterableHeadersCache];
+    }
+
     // The order of steps are not similar to the ones suggested by the
     // spec but produce the same result.
-    const headers = {};
-    const cookies = [];
+    const seenHeaders = {};
+    const entries = [];
     for (let i = 0; i < list.length; ++i) {
       const entry = list[i];
       const name = byteLowerCase(entry[0]);
@@ -216,27 +249,27 @@ class Headers {
       // so must be given to the user as multiple headers.
       // The else block of the if statement is spec compliant again.
       if (name === "set-cookie") {
-        ArrayPrototypePush(cookies, [name, value]);
+        ArrayPrototypePush(entries, [name, value]);
       } else {
         // The following code has the same behaviour as getHeader()
         // at the end of loop. But it avoids looping through the entire
         // list to combine multiple values with same header name. It
         // instead gradually combines them as they are found.
-        let header = headers[name];
-        if (header && header.length > 0) {
-          header += "\x2C\x20" + value;
+        const seenHeaderIndex = seenHeaders[name];
+        if (seenHeaderIndex !== undefined) {
+          const entryValue = entries[seenHeaderIndex][1];
+          entries[seenHeaderIndex][1] = entryValue.length > 0
+            ? entryValue + "\x2C\x20" + value
+            : value;
         } else {
-          header = value;
+          seenHeaders[name] = entries.length; // store header index in entries array
+          ArrayPrototypePush(entries, [name, value]);
         }
-        headers[name] = header;
       }
     }
 
-    return ArrayPrototypeSort(
-      [
-        ...new SafeArrayIterator(ObjectEntries(headers)),
-        ...new SafeArrayIterator(cookies),
-      ],
+    ArrayPrototypeSort(
+      entries,
       (a, b) => {
         const akey = a[0];
         const bkey = b[0];
@@ -245,6 +278,10 @@ class Headers {
         return 0;
       },
     );
+
+    this[_iterableHeadersCache] = entries;
+
+    return entries;
   }
 
   /** @param {HeadersInit} [init] */
@@ -278,11 +315,12 @@ class Headers {
    * @param {string} name
    */
   delete(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'delete' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
     if (this[_guard] == "immutable") {
@@ -303,11 +341,12 @@ class Headers {
    * @param {string} name
    */
   get(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'get' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -315,15 +354,30 @@ class Headers {
     return getHeader(list, name);
   }
 
+  getSetCookie() {
+    webidl.assertBranded(this, HeadersPrototype);
+    const list = this[_headerList];
+
+    const entries = [];
+    for (let i = 0; i < list.length; i++) {
+      if (byteLowerCase(list[i][0]) === "set-cookie") {
+        ArrayPrototypePush(entries, list[i][1]);
+      }
+    }
+
+    return entries;
+  }
+
   /**
    * @param {string} name
    */
   has(name) {
+    webidl.assertBranded(this, HeadersPrototype);
     const prefix = "Failed to execute 'has' on 'Headers'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     name = webidl.converters["ByteString"](name, prefix, "Argument 1");
 
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
 
@@ -351,10 +405,10 @@ class Headers {
     value = normalizeHeaderValue(value);
 
     // 2.
-    if (!RegExpPrototypeTest(HTTP_TOKEN_CODE_POINT_RE, name)) {
+    if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError("Header name is not valid.");
     }
-    if (RegExpPrototypeTest(ILLEGAL_VALUE_CHARS, value)) {
+    if (!checkForInvalidValueChars(value)) {
       throw new TypeError("Header value is not valid.");
     }
 
@@ -454,6 +508,14 @@ function guardFromHeaders(headers) {
   return headers[_guard];
 }
 
+/**
+ * @param {Headers} headers
+ * @returns {[string, string][]}
+ */
+function headersEntries(headers) {
+  return headers[_iterableHeaders];
+}
+
 export {
   fillHeaders,
   getDecodeSplitHeader,
@@ -461,5 +523,6 @@ export {
   guardFromHeaders,
   headerListFromHeaders,
   Headers,
+  headersEntries,
   headersFromHeaderList,
 };

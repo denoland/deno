@@ -15,6 +15,8 @@ use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
 use deno_core::InspectorMsg;
 use deno_core::InspectorSessionProxy;
 use deno_core::JsRuntime;
@@ -109,7 +111,7 @@ where
   Fut::Output: 'static,
 {
   fn execute(&self, fut: Fut) {
-    tokio::task::spawn_local(fut);
+    deno_core::unsync::spawn(fut);
   }
 }
 
@@ -160,7 +162,7 @@ fn handle_ws_request(
 
   // spawn a task that will wait for websocket connection and then pump messages between
   // the socket and inspector proxy
-  tokio::task::spawn_local(async move {
+  spawn(async move {
     let websocket = if let Ok(w) = fut.await {
       w
     } else {
@@ -188,11 +190,12 @@ fn handle_ws_request(
 
 fn handle_json_request(
   inspector_map: Rc<RefCell<HashMap<Uuid, InspectorInfo>>>,
+  host: Option<String>,
 ) -> http::Result<http::Response<hyper::Body>> {
   let data = inspector_map
     .borrow()
     .values()
-    .map(|info| info.get_json_metadata())
+    .map(move |info| info.get_json_metadata(&host))
     .collect::<Vec<_>>();
   http::Response::builder()
     .status(http::StatusCode::OK)
@@ -223,7 +226,7 @@ async fn server(
     .map(|info| {
       eprintln!(
         "Debugger listening on {}",
-        info.get_websocket_debugger_url()
+        info.get_websocket_debugger_url(&info.host.to_string())
       );
       eprintln!("Visit chrome://inspect to connect to the debugger.");
       if info.wait_for_session {
@@ -257,6 +260,17 @@ async fn server(
     future::ok::<_, Infallible>(hyper::service::service_fn(
       move |req: http::Request<hyper::Body>| {
         future::ready({
+          // If the host header can make a valid URL, use it
+          let host = req
+            .headers()
+            .get("host")
+            .and_then(|host| host.to_str().ok())
+            .and_then(|host| Url::parse(&format!("http://{host}")).ok())
+            .and_then(|url| match (url.host(), url.port()) {
+              (Some(host), Some(port)) => Some(format!("{host}:{port}")),
+              (Some(host), None) => Some(format!("{host}")),
+              _ => None,
+            });
           match (req.method(), req.uri().path()) {
             (&http::Method::GET, path) if path.starts_with("/ws/") => {
               handle_ws_request(req, Rc::clone(&inspector_map))
@@ -265,10 +279,10 @@ async fn server(
               handle_json_version_request(json_version_response.clone())
             }
             (&http::Method::GET, "/json") => {
-              handle_json_request(Rc::clone(&inspector_map))
+              handle_json_request(Rc::clone(&inspector_map), host)
             }
             (&http::Method::GET, "/json/list") => {
-              handle_json_request(Rc::clone(&inspector_map))
+              handle_json_request(Rc::clone(&inspector_map), host)
             }
             _ => http::Response::builder()
               .status(http::StatusCode::NOT_FOUND)
@@ -324,13 +338,13 @@ async fn pump_websocket_messages(
   'pump: loop {
     tokio::select! {
         Some(msg) = outbound_rx.next() => {
-            let msg = Frame::text(msg.content.into_bytes());
+            let msg = Frame::text(msg.content.into_bytes().into());
             let _ = websocket.write_frame(msg).await;
         }
         Ok(msg) = websocket.read_frame() => {
             match msg.opcode {
                 OpCode::Text => {
-                    if let Ok(s) = String::from_utf8(msg.payload) {
+                    if let Ok(s) = String::from_utf8(msg.payload.to_vec()) {
                       let _ = inbound_tx.unbounded_send(s);
                     }
                 }
@@ -380,27 +394,29 @@ impl InspectorInfo {
     }
   }
 
-  fn get_json_metadata(&self) -> Value {
+  fn get_json_metadata(&self, host: &Option<String>) -> Value {
+    let host_listen = format!("{}", self.host);
+    let host = host.as_ref().unwrap_or(&host_listen);
     json!({
       "description": "deno",
-      "devtoolsFrontendUrl": self.get_frontend_url(),
+      "devtoolsFrontendUrl": self.get_frontend_url(host),
       "faviconUrl": "https://deno.land/favicon.ico",
       "id": self.uuid.to_string(),
       "title": self.get_title(),
       "type": "node",
       "url": self.url.to_string(),
-      "webSocketDebuggerUrl": self.get_websocket_debugger_url(),
+      "webSocketDebuggerUrl": self.get_websocket_debugger_url(host),
     })
   }
 
-  pub fn get_websocket_debugger_url(&self) -> String {
-    format!("ws://{}/ws/{}", &self.host, &self.uuid)
+  pub fn get_websocket_debugger_url(&self, host: &str) -> String {
+    format!("ws://{}/ws/{}", host, &self.uuid)
   }
 
-  fn get_frontend_url(&self) -> String {
+  fn get_frontend_url(&self, host: &str) -> String {
     format!(
         "devtools://devtools/bundled/js_app.html?ws={}/ws/{}&experiments=true&v8only=true",
-        &self.host, &self.uuid
+        host, &self.uuid
       )
   }
 

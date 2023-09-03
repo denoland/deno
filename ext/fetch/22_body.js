@@ -33,6 +33,7 @@ import {
   readableStreamCollectIntoUint8Array,
   readableStreamDisturb,
   ReadableStreamPrototype,
+  readableStreamTee,
   readableStreamThrowIfErrored,
 } from "ext:deno_web/06_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
@@ -194,7 +195,7 @@ class InnerBody {
    * @returns {InnerBody}
    */
   clone() {
-    const { 0: out1, 1: out2 } = this.stream.tee();
+    const { 0: out1, 1: out2 } = readableStreamTee(this.stream, true);
     this.streamOrStatic = out1;
     const second = new InnerBody(out2);
     second.source = core.deserialize(core.serialize(this.source));
@@ -424,6 +425,7 @@ function extractBody(object) {
     ObjectPrototypeIsPrototypeOf(URLSearchParamsPrototype, object)
   ) {
     // TODO(@satyarohith): not sure what primordial here.
+    // deno-lint-ignore prefer-primordials
     source = object.toString();
     contentType = "application/x-www-form-urlencoded;charset=UTF-8";
   } else if (ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, object)) {

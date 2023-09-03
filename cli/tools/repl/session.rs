@@ -25,7 +25,6 @@ use deno_core::serde_json;
 use deno_core::serde_json::Value;
 use deno_core::LocalInspectorSession;
 use deno_graph::source::Resolver;
-use deno_runtime::deno_node;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use once_cell::sync::Lazy;
@@ -123,7 +122,6 @@ struct TsEvaluateResponse {
 }
 
 pub struct ReplSession {
-  has_node_modules_dir: bool,
   npm_resolver: Arc<CliNpmResolver>,
   resolver: Arc<CliGraphResolver>,
   pub worker: MainWorker,
@@ -131,7 +129,6 @@ pub struct ReplSession {
   pub context_id: u64,
   pub language_server: ReplLanguageServer,
   pub notifications: Rc<RefCell<UnboundedReceiver<Value>>>,
-  has_initialized_node_runtime: bool,
   referrer: ModuleSpecifier,
 }
 
@@ -183,14 +180,12 @@ impl ReplSession {
         .unwrap();
 
     let mut repl_session = ReplSession {
-      has_node_modules_dir: cli_options.has_node_modules_dir(),
       npm_resolver,
       resolver,
       worker,
       session,
       context_id,
       language_server,
-      has_initialized_node_runtime: false,
       referrer,
       notifications: Rc::new(RefCell::new(notification_rx)),
     };
@@ -258,9 +253,15 @@ impl ReplSession {
           Ok(if let Some(exception_details) = exception_details {
             session.set_last_thrown_error(&result).await?;
             let description = match exception_details.exception {
-              Some(exception) => exception
-                .description
-                .unwrap_or_else(|| "undefined".to_string()),
+              Some(exception) => {
+                if let Some(description) = exception.description {
+                  description
+                } else if let Some(value) = exception.value {
+                  value.to_string()
+                } else {
+                  "undefined".to_string()
+                }
+              }
               None => "Unknown exception".to_string(),
             };
             EvaluationOutput::Error(format!(
@@ -504,21 +505,12 @@ impl ReplSession {
     let npm_imports = resolved_imports
       .iter()
       .flat_map(|url| NpmPackageReqReference::from_specifier(url).ok())
-      .map(|r| r.req)
+      .map(|r| r.into_inner().req)
       .collect::<Vec<_>>();
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      if !self.has_initialized_node_runtime {
-        deno_node::initialize_runtime(
-          &mut self.worker.js_runtime,
-          self.has_node_modules_dir,
-          None,
-        )?;
-        self.has_initialized_node_runtime = true;
-      }
-
-      self.npm_resolver.add_package_reqs(npm_imports).await?;
+      self.npm_resolver.add_package_reqs(&npm_imports).await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {

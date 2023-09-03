@@ -13,7 +13,6 @@ use crate::web_worker::WorkerControlEvent;
 use crate::web_worker::WorkerId;
 use crate::worker::FormatJsErrorFn;
 use deno_core::error::AnyError;
-use deno_core::futures::future::LocalFutureObj;
 use deno_core::op;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
@@ -40,10 +39,6 @@ pub type CreateWebWorkerCb = dyn Fn(CreateWebWorkerArgs) -> (WebWorker, Sendable
   + Sync
   + Send;
 
-pub type WorkerEventCb = dyn Fn(WebWorker) -> LocalFutureObj<'static, Result<WebWorker, AnyError>>
-  + Sync
-  + Send;
-
 /// A holder for callback that is used to create a new
 /// WebWorker. It's a struct instead of a type alias
 /// because `GothamState` used in `OpState` overrides
@@ -53,12 +48,6 @@ struct CreateWebWorkerCbHolder(Arc<CreateWebWorkerCb>);
 
 #[derive(Clone)]
 struct FormatJsErrorFnHolder(Option<Arc<FormatJsErrorFn>>);
-
-#[derive(Clone)]
-struct PreloadModuleCbHolder(Arc<WorkerEventCb>);
-
-#[derive(Clone)]
-struct PreExecuteModuleCbHolder(Arc<WorkerEventCb>);
 
 pub struct WorkerThread {
   worker_handle: WebWorkerHandle,
@@ -98,8 +87,6 @@ deno_core::extension!(
   ],
   options = {
     create_web_worker_cb: Arc<CreateWebWorkerCb>,
-    preload_module_cb: Arc<WorkerEventCb>,
-    pre_execute_module_cb: Arc<WorkerEventCb>,
     format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   },
   state = |state, options| {
@@ -109,18 +96,9 @@ deno_core::extension!(
     let create_web_worker_cb_holder =
       CreateWebWorkerCbHolder(options.create_web_worker_cb);
     state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb_holder);
-    let preload_module_cb_holder =
-      PreloadModuleCbHolder(options.preload_module_cb);
-    state.put::<PreloadModuleCbHolder>(preload_module_cb_holder);
-    let pre_execute_module_cb_holder =
-      PreExecuteModuleCbHolder(options.pre_execute_module_cb);
-    state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb_holder);
     let format_js_error_fn_holder =
       FormatJsErrorFnHolder(options.format_js_error_fn);
     state.put::<FormatJsErrorFnHolder>(format_js_error_fn_holder);
-  },
-  customizer = |ext: &mut deno_core::ExtensionBuilder| {
-    ext.force_op_registration();
   },
 );
 
@@ -177,10 +155,6 @@ fn op_create_worker(
   let worker_id = state.take::<WorkerId>();
   let create_web_worker_cb = state.take::<CreateWebWorkerCbHolder>();
   state.put::<CreateWebWorkerCbHolder>(create_web_worker_cb.clone());
-  let preload_module_cb = state.take::<PreloadModuleCbHolder>();
-  state.put::<PreloadModuleCbHolder>(preload_module_cb.clone());
-  let pre_execute_module_cb = state.take::<PreExecuteModuleCbHolder>();
-  state.put::<PreExecuteModuleCbHolder>(pre_execute_module_cb.clone());
   let format_js_error_fn = state.take::<FormatJsErrorFnHolder>();
   state.put::<FormatJsErrorFnHolder>(format_js_error_fn.clone());
   state.put::<WorkerId>(worker_id.next().unwrap());
@@ -224,8 +198,6 @@ fn op_create_worker(
       worker,
       module_specifier,
       maybe_source_code,
-      preload_module_cb.0,
-      pre_execute_module_cb.0,
       format_js_error_fn.0,
     )
   })?;

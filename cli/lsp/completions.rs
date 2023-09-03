@@ -5,6 +5,8 @@ use super::config::ConfigSnapshot;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::lsp_custom;
+use super::npm::CliNpmSearchApi;
+use super::npm::NpmSearchApi;
 use super::registries::ModuleRegistry;
 use super::tsc;
 
@@ -19,6 +21,7 @@ use deno_core::resolve_path;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
+use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use import_map::ImportMap;
@@ -134,12 +137,14 @@ fn to_narrow_lsp_range(
 /// Given a specifier, a position, and a snapshot, optionally return a
 /// completion response, which will be valid import completions for the specific
 /// context.
+#[allow(clippy::too_many_arguments)]
 pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,
   config: &ConfigSnapshot,
   client: &Client,
   module_registries: &ModuleRegistry,
+  npm_search_api: &CliNpmSearchApi,
   documents: &Documents,
   maybe_import_map: Option<Arc<ImportMap>>,
 ) -> Option<lsp::CompletionResponse> {
@@ -160,6 +165,11 @@ pub async fn get_import_completions(
     Some(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete: false,
       items: get_local_completions(specifier, &text, &range)?,
+    }))
+  } else if text.starts_with("npm:") {
+    Some(lsp::CompletionResponse::List(lsp::CompletionList {
+      is_incomplete: false,
+      items: get_npm_completions(&text, &range, npm_search_api).await?,
     }))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
@@ -452,6 +462,113 @@ fn get_relative_specifiers(
     .collect()
 }
 
+/// Get completions for `npm:` specifiers.
+async fn get_npm_completions(
+  specifier: &str,
+  range: &lsp::Range,
+  npm_search_api: &impl NpmSearchApi,
+) -> Option<Vec<lsp::CompletionItem>> {
+  debug_assert!(specifier.starts_with("npm:"));
+  let bare_specifier = &specifier[4..];
+
+  // Find the index of the '@' delimiting the package name and version, if any.
+  let v_index = if bare_specifier.starts_with('@') {
+    bare_specifier
+      .find('/')
+      .filter(|idx| !bare_specifier[1..*idx].is_empty())
+      .and_then(|idx| {
+        bare_specifier[idx..]
+          .find('@')
+          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].is_empty())
+          .filter(|idx2| !bare_specifier[(idx + 1)..*idx2].contains('/'))
+      })
+  } else {
+    bare_specifier
+      .find('@')
+      .filter(|idx| !bare_specifier[..*idx].is_empty())
+      .filter(|idx| !bare_specifier[..*idx].contains('/'))
+  };
+
+  // First try to match `npm:some-package@<version-to-complete>`.
+  if let Some(v_index) = v_index {
+    let package_name = &bare_specifier[..v_index];
+    let v_prefix = &bare_specifier[(v_index + 1)..];
+    let versions = &npm_search_api
+      .package_info(package_name)
+      .await
+      .ok()?
+      .versions;
+    let mut versions = versions.keys().collect::<Vec<_>>();
+    versions.sort();
+    let items = versions
+      .into_iter()
+      .rev()
+      .enumerate()
+      .filter_map(|(idx, version)| {
+        let version = version.to_string();
+        if !version.starts_with(v_prefix) {
+          return None;
+        }
+        let specifier = format!("npm:{}@{}", package_name, &version);
+        let command = Some(lsp::Command {
+          title: "".to_string(),
+          command: "deno.cache".to_string(),
+          arguments: Some(vec![json!([&specifier])]),
+        });
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: specifier.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label: specifier,
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some(format!("{:0>10}", idx + 1)),
+          text_edit,
+          command,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+      })
+      .collect();
+    return Some(items);
+  }
+
+  // Otherwise match `npm:<package-to-complete>`.
+  let names = npm_search_api.search(bare_specifier).await.ok()?;
+  let items = names
+    .iter()
+    .enumerate()
+    .map(|(idx, name)| {
+      let specifier = format!("npm:{}", name);
+      let command = Some(lsp::Command {
+        title: "".to_string(),
+        command: "deno.cache".to_string(),
+        arguments: Some(vec![json!([&specifier])]),
+      });
+      let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+        range: *range,
+        new_text: specifier.clone(),
+      }));
+      lsp::CompletionItem {
+        label: specifier,
+        kind: Some(lsp::CompletionItemKind::FILE),
+        detail: Some("(npm)".to_string()),
+        sort_text: Some(format!("{:0>10}", idx + 1)),
+        text_edit,
+        command,
+        commit_characters: Some(
+          IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+        ),
+        ..Default::default()
+      }
+    })
+    .collect();
+  Some(items)
+}
+
 /// Get workspace completions that include modules in the Deno cache which match
 /// the current specifier string.
 fn get_workspace_completions(
@@ -505,27 +622,64 @@ fn get_workspace_completions(
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::cache::GlobalHttpCache;
   use crate::cache::HttpCache;
   use crate::lsp::documents::Documents;
   use crate::lsp::documents::LanguageId;
+  use crate::lsp::npm::NpmSearchApi;
+  use crate::AnyError;
+  use async_trait::async_trait;
   use deno_core::resolve_url;
   use deno_graph::Range;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::TestNpmRegistryApi;
   use std::collections::HashMap;
   use std::path::Path;
   use test_util::TempDir;
+
+  #[derive(Default)]
+  struct TestNpmSearchApi(
+    HashMap<String, Arc<Vec<String>>>,
+    TestNpmRegistryApi,
+  );
+
+  #[async_trait]
+  impl NpmSearchApi for TestNpmSearchApi {
+    async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
+      match self.0.get(query) {
+        Some(names) => Ok(names.clone()),
+        None => Ok(Arc::new(vec![])),
+      }
+    }
+
+    async fn package_info(
+      &self,
+      name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, AnyError> {
+      self.1.package_info(name).await.map_err(|e| e.into())
+    }
+  }
 
   fn mock_documents(
     fixtures: &[(&str, &str, i32, LanguageId)],
     source_fixtures: &[(&str, &str)],
     location: &Path,
   ) -> Documents {
-    let mut documents = Documents::new(location, Default::default());
+    let cache = Arc::new(GlobalHttpCache::new(
+      location.to_path_buf(),
+      crate::cache::RealDenoCacheEnv,
+    ));
+    let mut documents = Documents::new(cache);
     for (specifier, source, version, language_id) in fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
       documents.open(specifier, *version, *language_id, (*source).into());
     }
-    let http_cache = HttpCache::new(location);
+    let http_cache = GlobalHttpCache::new(
+      location.to_path_buf(),
+      crate::cache::RealDenoCacheEnv,
+    );
     for (specifier, source) in source_fixtures {
       let specifier =
         resolve_url(specifier).expect("failed to create specifier");
@@ -546,7 +700,7 @@ mod tests {
     sources: &[(&str, &str)],
   ) -> Documents {
     let location = temp_dir.path().join("deps");
-    mock_documents(documents, sources, &location)
+    mock_documents(documents, sources, location.as_path())
   }
 
   #[test]
@@ -671,6 +825,231 @@ mod tests {
         ),
         ..Default::default()
       }]
+    );
+  }
+
+  #[tokio::test]
+  async fn test_get_npm_completions() {
+    let npm_search_api = TestNpmSearchApi(
+      vec![(
+        "puppe".to_string(),
+        Arc::new(vec![
+          "puppeteer".to_string(),
+          "puppeteer-core".to_string(),
+          "puppeteer-extra-plugin-stealth".to_string(),
+          "puppeteer-extra-plugin".to_string(),
+        ]),
+      )]
+      .into_iter()
+      .collect(),
+      Default::default(),
+    );
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 32,
+      },
+    };
+    let actual = get_npm_completions("npm:puppe", &range, &npm_search_api)
+      .await
+      .unwrap();
+    assert_eq!(
+      actual,
+      vec![
+        lsp::CompletionItem {
+          label: "npm:puppeteer".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000001".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer-core".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000002".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer-core".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer-core"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer-extra-plugin-stealth".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000003".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer-extra-plugin-stealth".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!([
+              "npm:puppeteer-extra-plugin-stealth"
+            ])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer-extra-plugin".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000004".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer-extra-plugin".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer-extra-plugin"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+      ]
+    );
+  }
+
+  #[tokio::test]
+  async fn test_get_npm_completions_for_versions() {
+    let npm_search_api = TestNpmSearchApi::default();
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "20.9.0");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.0");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.1");
+    npm_search_api
+      .1
+      .ensure_package_version("puppeteer", "21.0.2");
+    let range = lsp::Range {
+      start: lsp::Position {
+        line: 0,
+        character: 23,
+      },
+      end: lsp::Position {
+        line: 0,
+        character: 37,
+      },
+    };
+    let actual = get_npm_completions("npm:puppeteer@", &range, &npm_search_api)
+      .await
+      .unwrap();
+    assert_eq!(
+      actual,
+      vec![
+        lsp::CompletionItem {
+          label: "npm:puppeteer@21.0.2".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000001".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer@21.0.2".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer@21.0.2"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer@21.0.1".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000002".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer@21.0.1".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer@21.0.1"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer@21.0.0".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000003".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer@21.0.0".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer@21.0.0"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+        lsp::CompletionItem {
+          label: "npm:puppeteer@20.9.0".to_string(),
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(npm)".to_string()),
+          sort_text: Some("0000000004".to_string()),
+          text_edit: Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+            range,
+            new_text: "npm:puppeteer@20.9.0".to_string(),
+          })),
+          command: Some(lsp::Command {
+            title: "".to_string(),
+            command: "deno.cache".to_string(),
+            arguments: Some(vec![json!(["npm:puppeteer@20.9.0"])])
+          }),
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect()
+          ),
+          ..Default::default()
+        },
+      ]
     );
   }
 
