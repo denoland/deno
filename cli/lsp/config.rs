@@ -718,13 +718,12 @@ impl Config {
     if let Some(workspace_folders) = self.workspace_folders.clone() {
       let mut touched = false;
       for (workspace, _) in workspace_folders {
-        if let Some(settings) = self.settings.specifiers.get(&workspace) {
-          if self.update_enabled_paths_entry(
-            workspace,
-            settings.enable_paths.clone(),
-          ) {
-            touched = true;
-          }
+        let enabled_paths = match self.settings.specifiers.get(&workspace) {
+          Some(settings) => settings.enable_paths.clone(),
+          None => self.settings.workspace.enable_paths.clone(),
+        };
+        if self.update_enabled_paths_entry(workspace, enabled_paths) {
+          touched = true;
         }
       }
       touched
