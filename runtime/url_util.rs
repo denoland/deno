@@ -5,7 +5,7 @@ use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use std::path::PathBuf;
 
-/// Attempts to convert a specifier to a file path. By default, uses the  Url
+/// Attempts to convert a specifier to a file path. By default, uses the Url
 /// crate's `to_file_path()` method, but falls back to try and resolve unix-style
 /// paths on Windows.
 pub fn specifier_to_file_path(
