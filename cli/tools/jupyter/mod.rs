@@ -28,6 +28,7 @@ mod comm;
 mod install;
 mod jupyter_msg;
 mod message_types;
+mod server;
 
 use comm::DealerComm;
 use comm::HbComm;
@@ -579,27 +580,6 @@ impl Default for KernelMetadata {
       protocol_version: "5.3".to_string(),
     }
   }
-}
-
-#[allow(unused)]
-fn kernel_info() -> serde_json::Value {
-  json!({
-    "status": "ok",
-    "protocol_version": "5.3",
-    "implementation_version": crate::version::deno(),
-    "implementation": "Deno kernel",
-    "language_info": {
-      "name": "typescript",
-      "version": crate::version::TYPESCRIPT,
-      "mimetype": "text/x.typescript",
-      "file_extension": ".ts"
-    },
-    "help_links": [{
-      "text": "Visit Deno manual",
-      "url": "https://deno.land/manual"
-    }],
-    "banner": "Welcome to Deno kernel",
-  })
 }
 
 #[derive(Debug, Deserialize)]
