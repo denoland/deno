@@ -12,6 +12,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 mod alloc;
+pub mod brotli;
 mod mode;
 mod stream;
 
@@ -343,7 +344,7 @@ pub fn op_zlib_init(
   window_bits: i32,
   mem_level: i32,
   strategy: i32,
-  dictionary: Option<&[u8]>,
+  dictionary: &[u8],
 ) -> Result<i32, AnyError> {
   let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();
@@ -372,7 +373,11 @@ pub fn op_zlib_init(
 
   zlib.init_stream()?;
 
-  zlib.dictionary = dictionary.map(|buf| buf.to_vec());
+  zlib.dictionary = if !dictionary.is_empty() {
+    Some(dictionary.to_vec())
+  } else {
+    None
+  };
 
   Ok(zlib.err)
 }

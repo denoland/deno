@@ -7,9 +7,7 @@ use util::TestContextBuilder;
 #[test]
 fn init_subcommand_without_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context.new_command().args("init").split_output().run();
 
@@ -21,9 +19,8 @@ fn init_subcommand_without_dir() {
   assert_contains!(stderr, "deno run main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
-  assert_contains!(stderr, "deno bench");
 
-  assert!(cwd.join("deno.jsonc").exists());
+  assert!(cwd.join("deno.json").exists());
 
   let output = context
     .new_command()
@@ -45,22 +42,12 @@ fn init_subcommand_without_dir() {
   output.assert_exit_code(0);
   assert_contains!(output.stdout(), "1 passed");
   output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("bench")
-    .run();
-
-  output.assert_exit_code(0);
-  output.skip_output_check();
 }
 
 #[test]
 fn init_subcommand_with_dir_arg() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context
     .new_command()
@@ -76,9 +63,8 @@ fn init_subcommand_with_dir_arg() {
   assert_contains!(stderr, "deno run main.ts");
   assert_contains!(stderr, "deno task dev");
   assert_contains!(stderr, "deno test");
-  assert_contains!(stderr, "deno bench");
 
-  assert!(cwd.join("my_dir/deno.jsonc").exists());
+  assert!(cwd.join("my_dir/deno.json").exists());
 
   let output = context
     .new_command()
@@ -102,23 +88,12 @@ fn init_subcommand_with_dir_arg() {
   output.assert_exit_code(0);
   assert_contains!(output.stdout(), "1 passed");
   output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("bench my_dir/main_bench.ts")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  output.skip_output_check();
 }
 
 #[test]
 fn init_subcommand_with_quiet_arg() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
-  let deno_dir = context.deno_dir();
-  let cwd = deno_dir.path();
+  let cwd = context.temp_dir().path();
 
   let output = context
     .new_command()
@@ -129,7 +104,7 @@ fn init_subcommand_with_quiet_arg() {
   output.assert_exit_code(0);
 
   assert_eq!(output.stdout(), "");
-  assert!(cwd.join("deno.jsonc").exists());
+  assert!(cwd.join("deno.json").exists());
 
   let output = context
     .new_command()
@@ -151,15 +126,5 @@ fn init_subcommand_with_quiet_arg() {
 
   output.assert_exit_code(0);
   assert_contains!(output.stdout(), "1 passed");
-  output.skip_output_check();
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("bench")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
   output.skip_output_check();
 }

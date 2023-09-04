@@ -3,10 +3,15 @@ import {
   assert,
   assertEquals,
   AssertionError,
+  assertNotEquals,
   assertRejects,
   assertThrows,
+  Deferred,
+  deferred,
 } from "./test_util.ts";
 import { assertType, IsExact } from "../../../test_util/std/testing/types.ts";
+
+const sleep = (time: number) => new Promise((r) => setTimeout(r, time));
 
 let isCI: boolean;
 try {
@@ -14,6 +19,9 @@ try {
 } catch {
   isCI = true;
 }
+
+// Defined in test_util/src/lib.rs
+Deno.env.set("DENO_KV_ACCESS_TOKEN", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
 Deno.test({
   name: "openKv :memory: no permissions",
@@ -41,7 +49,7 @@ Deno.test({
   },
 });
 
-function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
+function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void> | void) {
   Deno.test({
     name,
     // https://github.com/denoland/deno/issues/18363
@@ -53,8 +61,22 @@ function dbTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
       try {
         await fn(db);
       } finally {
-        await db.close();
+        db.close();
       }
+    },
+  });
+}
+
+function queueTest(name: string, fn: (db: Deno.Kv) => Promise<void>) {
+  Deno.test({
+    name,
+    // https://github.com/denoland/deno/issues/18363
+    ignore: Deno.build.os === "darwin" && isCI,
+    async fn() {
+      const db: Deno.Kv = await Deno.openKv(
+        ":memory:",
+      );
+      await fn(db);
     },
   });
 }
@@ -424,7 +446,7 @@ dbTest("atomic mutation type=sum wrap around", async (db) => {
 
 dbTest("atomic mutation type=sum wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "sum" })
@@ -437,7 +459,7 @@ dbTest("atomic mutation type=sum wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=sum wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -478,7 +500,7 @@ dbTest("atomic mutation type=min no exists", async (db) => {
 
 dbTest("atomic mutation type=min wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "min" })
@@ -491,7 +513,7 @@ dbTest("atomic mutation type=min wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=min wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -532,7 +554,7 @@ dbTest("atomic mutation type=max no exists", async (db) => {
 
 dbTest("atomic mutation type=max wrong type in db", async (db) => {
   await db.set(["a"], 1);
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         .mutate({ key: ["a"], value: new Deno.KvU64(1n), type: "max" })
@@ -545,7 +567,7 @@ dbTest("atomic mutation type=max wrong type in db", async (db) => {
 
 dbTest("atomic mutation type=max wrong type in mutation", async (db) => {
   await db.set(["a"], new Deno.KvU64(1n));
-  assertRejects(
+  await assertRejects(
     async () => {
       await db.atomic()
         // @ts-expect-error wrong type is intentional
@@ -1149,7 +1171,7 @@ dbTest("operation size limit", async (db) => {
   const res2 = await collect(db.list({ prefix: ["a"] }, { batchSize: 1000 }));
   assertEquals(res2.length, 0);
 
-  assertRejects(
+  await assertRejects(
     async () => await collect(db.list({ prefix: ["a"] }, { batchSize: 1001 })),
     TypeError,
     "too many entries (max 1000)",
@@ -1192,6 +1214,28 @@ dbTest("operation size limit", async (db) => {
     "too many checks (max 10)",
   );
 
+  const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+  const invalidMutateKeys: Deno.KvKey[] = new Array(1001).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const res4 = await db.atomic()
+    .check(...lastValidKeys.map((key) => ({
+      key,
+      versionstamp: null,
+    })))
+    .mutate(...validMutateKeys.map((key) => ({
+      key,
+      type: "set",
+      value: 1,
+    } satisfies Deno.KvMutation)))
+    .commit();
+  assert(res4);
+
   await assertRejects(
     async () => {
       await db.atomic()
@@ -1199,7 +1243,7 @@ dbTest("operation size limit", async (db) => {
           key,
           versionstamp: null,
         })))
-        .mutate(...firstInvalidKeys.map((key) => ({
+        .mutate(...invalidMutateKeys.map((key) => ({
           key,
           type: "set",
           value: 1,
@@ -1207,7 +1251,35 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many mutations (max 10)",
+    "too many mutations (max 1000)",
+  );
+});
+
+dbTest("total mutation size limit", async (db) => {
+  const keys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  const res = await atomic.commit();
+  assert(res);
+
+  // Use bigger values to trigger "total mutation size too large" error
+  await assertRejects(
+    async () => {
+      const value = new Array(3000).fill("a").join("");
+      const atomic = db.atomic();
+      for (const key of keys) {
+        atomic.set(key, value);
+      }
+      await atomic.commit();
+    },
+    TypeError,
+    "total mutation size too large (max 819200 bytes)",
   );
 });
 
@@ -1304,3 +1376,683 @@ async function _typeCheckingTests() {
   assert(!j.done);
   assertType<IsExact<typeof j.value, Deno.KvEntry<string>>>(true);
 }
+
+queueTest("basic listenQueue and enqueue", async (db) => {
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    dequeuedMessage = msg;
+    promise.resolve();
+  });
+  try {
+    const res = await db.enqueue("test");
+    assert(res.ok);
+    assertNotEquals(res.versionstamp, null);
+    await promise;
+    assertEquals(dequeuedMessage, "test");
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+for (const { name, value } of VALUE_CASES) {
+  queueTest(`listenQueue and enqueue ${name}`, async (db) => {
+    const numEnqueues = 10;
+    let count = 0;
+    const promises: Deferred<void>[] = [];
+    const dequeuedMessages: unknown[] = [];
+    const listeners: Promise<void>[] = [];
+    listeners.push(db.listenQueue((msg) => {
+      dequeuedMessages.push(msg);
+      promises[count++].resolve();
+    }));
+    try {
+      for (let i = 0; i < numEnqueues; i++) {
+        promises.push(deferred());
+        await db.enqueue(value);
+      }
+      for (let i = 0; i < numEnqueues; i++) {
+        await promises[i];
+      }
+      for (let i = 0; i < numEnqueues; i++) {
+        assertEquals(dequeuedMessages[i], value);
+      }
+    } finally {
+      db.close();
+      for (const listener of listeners) {
+        await listener;
+      }
+    }
+  });
+}
+
+queueTest("queue mixed types", async (db) => {
+  let promise: Deferred<void>;
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    dequeuedMessage = msg;
+    promise.resolve();
+  });
+  try {
+    for (const item of VALUE_CASES) {
+      promise = deferred();
+      await db.enqueue(item.value);
+      await promise;
+      assertEquals(dequeuedMessage, item.value);
+    }
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+queueTest("queue delay", async (db) => {
+  let dequeueTime: number | undefined;
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    dequeueTime = Date.now();
+    dequeuedMessage = msg;
+    promise.resolve();
+  });
+  try {
+    const enqueueTime = Date.now();
+    await db.enqueue("test", { delay: 1000 });
+    await promise;
+    assertEquals(dequeuedMessage, "test");
+    assert(dequeueTime !== undefined);
+    assert(dequeueTime - enqueueTime >= 1000);
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+queueTest("queue delay with atomic", async (db) => {
+  let dequeueTime: number | undefined;
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    dequeueTime = Date.now();
+    dequeuedMessage = msg;
+    promise.resolve();
+  });
+  try {
+    const enqueueTime = Date.now();
+    const res = await db.atomic()
+      .enqueue("test", { delay: 1000 })
+      .commit();
+    assert(res.ok);
+
+    await promise;
+    assertEquals(dequeuedMessage, "test");
+    assert(dequeueTime !== undefined);
+    assert(dequeueTime - enqueueTime >= 1000);
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+queueTest("queue delay and now", async (db) => {
+  let count = 0;
+  let dequeueTime: number | undefined;
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    count += 1;
+    if (count == 2) {
+      dequeueTime = Date.now();
+      dequeuedMessage = msg;
+      promise.resolve();
+    }
+  });
+  try {
+    const enqueueTime = Date.now();
+    await db.enqueue("test-1000", { delay: 1000 });
+    await db.enqueue("test");
+    await promise;
+    assertEquals(dequeuedMessage, "test-1000");
+    assert(dequeueTime !== undefined);
+    assert(dequeueTime - enqueueTime >= 1000);
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+dbTest("queue negative delay", async (db) => {
+  await assertRejects(async () => {
+    await db.enqueue("test", { delay: -100 });
+  }, TypeError);
+});
+
+dbTest("queue nan delay", async (db) => {
+  await assertRejects(async () => {
+    await db.enqueue("test", { delay: Number.NaN });
+  }, TypeError);
+});
+
+dbTest("queue large delay", async (db) => {
+  await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 });
+  await assertRejects(async () => {
+    await db.enqueue("test", { delay: 7 * 24 * 60 * 60 * 1000 + 1 });
+  }, TypeError);
+});
+
+queueTest("listenQueue with async callback", async (db) => {
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue(async (msg) => {
+    dequeuedMessage = msg;
+    await sleep(100);
+    promise.resolve();
+  });
+  try {
+    await db.enqueue("test");
+    await promise;
+    assertEquals(dequeuedMessage, "test");
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+queueTest("queue retries", async (db) => {
+  let count = 0;
+  const listener = db.listenQueue(async (_msg) => {
+    count += 1;
+    await sleep(10);
+    throw new TypeError("dequeue error");
+  });
+  try {
+    await db.enqueue("test");
+    await sleep(10000);
+  } finally {
+    db.close();
+    await listener;
+  }
+
+  // There should have been 1 attempt + 3 retries in the 10 seconds
+  assertEquals(4, count);
+});
+
+queueTest("multiple listenQueues", async (db) => {
+  const numListens = 10;
+  let count = 0;
+  const promises: Deferred<void>[] = [];
+  const dequeuedMessages: unknown[] = [];
+  const listeners: Promise<void>[] = [];
+  for (let i = 0; i < numListens; i++) {
+    listeners.push(db.listenQueue((msg) => {
+      dequeuedMessages.push(msg);
+      promises[count++].resolve();
+    }));
+  }
+  try {
+    for (let i = 0; i < numListens; i++) {
+      promises.push(deferred());
+      await db.enqueue("msg_" + i);
+      await promises[i];
+      const msg = dequeuedMessages[i];
+      assertEquals("msg_" + i, msg);
+    }
+  } finally {
+    db.close();
+    for (let i = 0; i < numListens; i++) {
+      await listeners[i];
+    }
+  }
+});
+
+queueTest("enqueue with atomic", async (db) => {
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+  const listener = db.listenQueue((msg) => {
+    dequeuedMessage = msg;
+    promise.resolve();
+  });
+
+  try {
+    await db.set(["t"], "1");
+
+    let currentValue = await db.get(["t"]);
+    assertEquals("1", currentValue.value);
+
+    const res = await db.atomic()
+      .check(currentValue)
+      .set(currentValue.key, "2")
+      .enqueue("test")
+      .commit();
+    assert(res.ok);
+
+    await promise;
+    assertEquals("test", dequeuedMessage);
+
+    currentValue = await db.get(["t"]);
+    assertEquals("2", currentValue.value);
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+queueTest("enqueue with atomic nonce", async (db) => {
+  const promise = deferred();
+  let dequeuedMessage: unknown = null;
+
+  const nonce = crypto.randomUUID();
+
+  const listener = db.listenQueue(async (val) => {
+    const message = val as { msg: string; nonce: string };
+    const nonce = message.nonce;
+    const nonceValue = await db.get(["nonces", nonce]);
+    if (nonceValue.versionstamp === null) {
+      dequeuedMessage = message.msg;
+      promise.resolve();
+      return;
+    }
+
+    assertNotEquals(nonceValue.versionstamp, null);
+    const res = await db.atomic()
+      .check(nonceValue)
+      .delete(["nonces", nonce])
+      .set(["a", "b"], message.msg)
+      .commit();
+    if (res.ok) {
+      // Simulate an error so that the message has to be redelivered
+      throw new Error("injected error");
+    }
+  });
+
+  try {
+    const res = await db.atomic()
+      .check({ key: ["nonces", nonce], versionstamp: null })
+      .set(["nonces", nonce], true)
+      .enqueue({ msg: "test", nonce })
+      .commit();
+    assert(res.ok);
+
+    await promise;
+    assertEquals("test", dequeuedMessage);
+
+    const currentValue = await db.get(["a", "b"]);
+    assertEquals("test", currentValue.value);
+
+    const nonceValue = await db.get(["nonces", nonce]);
+    assertEquals(nonceValue.versionstamp, null);
+  } finally {
+    db.close();
+    await listener;
+  }
+});
+
+Deno.test({
+  name: "queue persistence with inflight messages",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
+    try {
+      let db: Deno.Kv = await Deno.openKv(filename);
+
+      let count = 0;
+      let promise = deferred();
+
+      // Register long-running handler.
+      let listener = db.listenQueue(async (_msg) => {
+        count += 1;
+        if (count == 3) {
+          promise.resolve();
+        }
+        await sleep(60000);
+      });
+
+      // Enqueue 3 messages.
+      await db.enqueue("msg0");
+      await db.enqueue("msg1");
+      await db.enqueue("msg2");
+      await promise;
+
+      // Close the database and wait for the listener to finish.
+      db.close();
+      await listener;
+
+      // Now reopen the database.
+      db = await Deno.openKv(filename);
+
+      count = 0;
+      promise = deferred();
+
+      // Register a handler that will complete quickly.
+      listener = db.listenQueue((_msg) => {
+        count += 1;
+        if (count == 3) {
+          promise.resolve();
+        }
+      });
+
+      // Wait for the handlers to finish.
+      await promise;
+      assertEquals(3, count);
+      db.close();
+      await listener;
+    } finally {
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "queue persistence with delay messages",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "queue_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    try {
+      let db: Deno.Kv = await Deno.openKv(filename);
+
+      let count = 0;
+      let promise = deferred();
+
+      // Register long-running handler.
+      let listener = db.listenQueue((_msg) => {});
+
+      // Enqueue 3 messages into the future.
+      await db.enqueue("msg0", { delay: 10000 });
+      await db.enqueue("msg1", { delay: 10000 });
+      await db.enqueue("msg2", { delay: 10000 });
+
+      // Close the database and wait for the listener to finish.
+      db.close();
+      await listener;
+
+      // Now reopen the database.
+      db = await Deno.openKv(filename);
+
+      count = 0;
+      promise = deferred();
+
+      // Register a handler that will complete quickly.
+      listener = db.listenQueue((_msg) => {
+        count += 1;
+        if (count == 3) {
+          promise.resolve();
+        }
+      });
+
+      // Wait for the handlers to finish.
+      await promise;
+      assertEquals(3, count);
+      db.close();
+      await listener;
+    } finally {
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+dbTest("atomic operation is exposed", (db) => {
+  assert(Deno.AtomicOperation);
+  const ao = db.atomic();
+  assert(ao instanceof Deno.AtomicOperation);
+});
+
+Deno.test({
+  name: "racy open",
+  async fn() {
+    for (let i = 0; i < 100; i++) {
+      const filename = await Deno.makeTempFile({ prefix: "racy_open_db" });
+      try {
+        const [db1, db2, db3] = await Promise.all([
+          Deno.openKv(filename),
+          Deno.openKv(filename),
+          Deno.openKv(filename),
+        ]);
+        db1.close();
+        db2.close();
+        db3.close();
+      } finally {
+        await Deno.remove(filename);
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "racy write",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "racy_write_db" });
+    const concurrency = 20;
+    const iterations = 5;
+    try {
+      const dbs = await Promise.all(
+        Array(concurrency).fill(0).map(() => Deno.openKv(filename)),
+      );
+      try {
+        for (let i = 0; i < iterations; i++) {
+          await Promise.all(
+            dbs.map((db) => db.atomic().sum(["counter"], 1n).commit()),
+          );
+        }
+        assertEquals(
+          ((await dbs[0].get(["counter"])).value as Deno.KvU64).value,
+          BigInt(concurrency * iterations),
+        );
+      } finally {
+        dbs.forEach((db) => db.close());
+      }
+    } finally {
+      await Deno.remove(filename);
+    }
+  },
+});
+
+Deno.test({
+  name: "kv expiration",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      await db.set(["a"], 1, { expireIn: 1000 });
+      await db.set(["b"], 2, { expireIn: 1000 });
+      assertEquals((await db.get(["a"])).value, 1);
+      assertEquals((await db.get(["b"])).value, 2);
+
+      // Value overwrite should also reset expiration
+      await db.set(["b"], 2, { expireIn: 3600 * 1000 });
+
+      // Wait for expiration
+      await sleep(1000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,2]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "kv expiration with atomic",
+  async fn() {
+    const filename = await Deno.makeTempFile({ prefix: "kv_expiration_db" });
+    try {
+      await Deno.remove(filename);
+    } catch {
+      // pass
+    }
+    let db: Deno.Kv | null = null;
+
+    try {
+      db = await Deno.openKv(filename);
+
+      await db.atomic().set(["a"], 1, { expireIn: 1000 }).set(["b"], 2, {
+        expireIn: 1000,
+      }).commit();
+      assertEquals((await db.getMany([["a"], ["b"]])).map((x) => x.value), [
+        1,
+        2,
+      ]);
+
+      // Wait for expiration
+      await sleep(1000);
+
+      // Re-open to trigger immediate cleanup
+      db.close();
+      db = null;
+      db = await Deno.openKv(filename);
+
+      let ok = false;
+      for (let i = 0; i < 50; i++) {
+        await sleep(100);
+        if (
+          JSON.stringify(
+            (await db.getMany([["a"], ["b"]])).map((x) => x.value),
+          ) === "[null,null]"
+        ) {
+          ok = true;
+          break;
+        }
+      }
+
+      if (!ok) {
+        throw new Error("Values did not expire");
+      }
+    } finally {
+      if (db) {
+        try {
+          db.close();
+        } catch {
+          // pass
+        }
+      }
+      try {
+        await Deno.remove(filename);
+      } catch {
+        // pass
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend",
+  async fn() {
+    const db = await Deno.openKv("http://localhost:4545/kv_remote_authorize");
+    try {
+      await db.set(["some-key"], 1);
+      const entry = await db.get(["some-key"]);
+      assertEquals(entry.value, null);
+      assertEquals(entry.versionstamp, null);
+    } finally {
+      db.close();
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid format",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_format",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message.startsWith("Metadata error: Failed to decode metadata: ")
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
+    }
+  },
+});
+
+Deno.test({
+  name: "remote backend invalid version",
+  async fn() {
+    const db = await Deno.openKv(
+      "http://localhost:4545/kv_remote_authorize_invalid_version",
+    );
+    let ok = false;
+    try {
+      await db.set(["some-key"], 1);
+    } catch (e) {
+      if (
+        e.name === "TypeError" &&
+        e.message === "Metadata error: Unsupported metadata version: 2"
+      ) {
+        ok = true;
+      } else {
+        throw e;
+      }
+    } finally {
+      db.close();
+    }
+
+    if (!ok) {
+      throw new Error("did not get expected error");
+    }
+  },
+});

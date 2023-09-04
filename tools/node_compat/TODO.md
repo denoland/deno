@@ -1,9 +1,9 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-NOTE: This file should not be manually edited. Please edit 'cli/tests/node_compat/config.json' and run 'tools/node_compat/setup.ts' instead.
+NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2934
+Total: 2933
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -88,7 +88,6 @@ Total: 2934
 - [internet/test-dns-cares-domains.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-cares-domains.js)
 - [internet/test-dns-txt-sigsegv.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-dns-txt-sigsegv.js)
 - [internet/test-http-dns-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-dns-fail.js)
-- [internet/test-http-https-default-ports.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http-https-default-ports.js)
 - [internet/test-http2-issue-32922.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-http2-issue-32922.js)
 - [internet/test-https-issue-43963.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-https-issue-43963.js)
 - [internet/test-inspector-help-page.js](https://github.com/nodejs/node/tree/v18.12.1/test/internet/test-inspector-help-page.js)
@@ -359,6 +358,7 @@ Total: 2934
 - [parallel/test-cli-syntax-eval.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-eval.js)
 - [parallel/test-cli-syntax-piped-bad.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-bad.js)
 - [parallel/test-cli-syntax-piped-good.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cli-syntax-piped-good.js)
+- [parallel/test-client-request-destroy.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-client-request-destroy.js)
 - [parallel/test-cluster-accept-fail.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-accept-fail.js)
 - [parallel/test-cluster-advanced-serialization.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-advanced-serialization.js)
 - [parallel/test-cluster-basic.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-cluster-basic.js)
@@ -1002,7 +1002,6 @@ Total: 2934
 - [parallel/test-http-connect-req-res.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-connect-req-res.js)
 - [parallel/test-http-connect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-connect.js)
 - [parallel/test-http-content-length-mismatch.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-content-length-mismatch.js)
-- [parallel/test-http-content-length.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-content-length.js)
 - [parallel/test-http-contentLength0.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-contentLength0.js)
 - [parallel/test-http-correct-hostname.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-correct-hostname.js)
 - [parallel/test-http-createConnection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-createConnection.js)

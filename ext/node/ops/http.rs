@@ -10,12 +10,12 @@ use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
 use deno_fetch::get_or_create_client_from_state;
+use deno_fetch::FetchBodyStream;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchRequestBodyResource;
 use deno_fetch::FetchRequestResource;
 use deno_fetch::FetchReturn;
 use deno_fetch::HttpClientResource;
-use deno_fetch::MpscByteStream;
 use reqwest::header::HeaderMap;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
@@ -24,14 +24,17 @@ use reqwest::Body;
 use reqwest::Method;
 
 #[op]
-pub fn op_node_http_request(
+pub fn op_node_http_request<P>(
   state: &mut OpState,
   method: ByteString,
   url: String,
   headers: Vec<(ByteString, ByteString)>,
   client_rid: Option<u32>,
   has_body: bool,
-) -> Result<FetchReturn, AnyError> {
+) -> Result<FetchReturn, AnyError>
+where
+  P: crate::NodePermissions + 'static,
+{
   let client = if let Some(rid) = client_rid {
     let r = state.resource_table.get::<HttpClientResource>(rid)?;
     r.client.clone()
@@ -41,6 +44,11 @@ pub fn op_node_http_request(
 
   let method = Method::from_bytes(&method)?;
   let url = Url::parse(&url)?;
+
+  {
+    let permissions = state.borrow_mut::<P>();
+    permissions.check_net_url(&url, "ClientRequest")?;
+  }
 
   let mut header_map = HeaderMap::new();
   for (key, value) in headers {
@@ -56,12 +64,12 @@ pub fn op_node_http_request(
 
   let request_body_rid = if has_body {
     // If no body is passed, we return a writer for streaming the body.
-    let (stream, tx) = MpscByteStream::new();
+    let (tx, stream) = tokio::sync::mpsc::channel(1);
 
-    request = request.body(Body::wrap_stream(stream));
+    request = request.body(Body::wrap_stream(FetchBodyStream(stream)));
 
     let request_body_rid = state.resource_table.add(FetchRequestBodyResource {
-      body: AsyncRefCell::new(tx),
+      body: AsyncRefCell::new(Some(tx)),
       cancel: CancelHandle::default(),
     });
 

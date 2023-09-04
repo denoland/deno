@@ -2,9 +2,16 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 import * as yaml from "https://deno.land/std@0.173.0/encoding/yaml.ts";
 
+// Bump this number when you want to purge the cache.
+// Note: the tools/release/01_bump_crate_versions.ts script will update this version
+// automatically via regex, so ensure that this line maintains this format.
+const cacheVersion = 52;
+
 const Runners = (() => {
   const ubuntuRunner = "ubuntu-22.04";
   const ubuntuXlRunner = "ubuntu-22.04-xl";
+  const windowsRunner = "windows-2022";
+  const windowsXlRunner = "windows-2022-xl";
 
   return {
     ubuntuXl:
@@ -12,30 +19,37 @@ const Runners = (() => {
     ubuntu: ubuntuRunner,
     linux: ubuntuRunner,
     macos: "macos-12",
-    windows: "windows-2022",
+    windows: windowsRunner,
+    windowsXl:
+      `\${{ github.repository == 'denoland/deno' && '${windowsXlRunner}' || '${windowsRunner}' }}`,
   };
 })();
-// bump the number at the start when you want to purge the cache
 const prCacheKeyPrefix =
-  "26-cargo-target-${{ matrix.os }}-${{ matrix.profile }}-${{ matrix.job }}-";
+  `${cacheVersion}-cargo-target-\${{ matrix.os }}-\${{ matrix.profile }}-\${{ matrix.job }}-`;
 
+// Note that you may need to add more version to the `apt-get remove` line below if you change this
+const llvmVersion = 16;
 const installPkgsCommand =
-  "sudo apt-get install --no-install-recommends debootstrap clang-15 lld-15";
+  `sudo apt-get install --no-install-recommends debootstrap clang-${llvmVersion} lld-${llvmVersion} clang-tools-${llvmVersion} clang-format-${llvmVersion} clang-tidy-${llvmVersion}`;
 const sysRootStep = {
   name: "Set up incremental LTO and sysroot build",
   run: `# Avoid running man-db triggers, which sometimes takes several minutes
 # to complete.
 sudo apt-get remove --purge -y man-db
+# Remove older clang before we install
+sudo apt-get remove 'clang-12*' 'clang-13*' 'clang-14*' 'clang-15*' 'llvm-12*' 'llvm-13*' 'llvm-14*' 'llvm-15*' 'lld-12*' 'lld-13*' 'lld-14*' 'lld-15*'
 
-# Install clang-15, lld-15, and debootstrap.
-echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-15 main" |
-  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-15.list
+# Install clang-XXX, lld-XXX, and debootstrap.
+echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-${llvmVersion} main" |
+  sudo dd of=/etc/apt/sources.list.d/llvm-toolchain-jammy-${llvmVersion}.list
 curl https://apt.llvm.org/llvm-snapshot.gpg.key |
   gpg --dearmor                                 |
 sudo dd of=/etc/apt/trusted.gpg.d/llvm-snapshot.gpg
 sudo apt-get update
 # this was unreliable sometimes, so try again if it fails
 ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && sudo apt-get update && ${installPkgsCommand}
+# Fix alternatives
+(yes '' | sudo update-alternatives --force --all) || true
 
 # Create ubuntu-16.04 sysroot environment, which is used to avoid
 # depending on a very recent version of glibc.
@@ -51,8 +65,8 @@ sudo mount --rbind /sys /sysroot/sys
 sudo mount --rbind /home /sysroot/home
 sudo mount -t proc /proc /sysroot/proc
 
-cp third_party/prebuilt/linux64/libdl/libdl.so.2 .
-cp third_party/prebuilt/linux64/libdl/libdl.a .
+wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.a
+wget https://github.com/denoland/deno_third_party/raw/master/prebuilt/linux64/libdl/libdl.so.2
 
 sudo ln -s libdl.so.2 /sysroot/lib/x86_64-linux-gnu/libdl.so
 sudo ln -s libdl.a /sysroot/lib/x86_64-linux-gnu/libdl.a
@@ -66,19 +80,20 @@ CARGO_PROFILE_RELEASE_INCREMENTAL=false
 CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  --cfg tokio_unstable
   \${{ env.RUSTFLAGS }}
 __1
 RUSTDOCFLAGS<<__1
   -C linker-plugin-lto=true
-  -C linker=clang-15
-  -C link-arg=-fuse-ld=lld-15
+  -C linker=clang-${llvmVersion}
+  -C link-arg=-fuse-ld=lld-${llvmVersion}
   -C link-arg=--sysroot=/sysroot
   -C link-arg=-ldl
   -C link-arg=-Wl,--allow-shlib-undefined
@@ -86,9 +101,25 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
   \${{ env.RUSTFLAGS }}
 __1
-CC=clang-15
+CC=clang-${llvmVersion}
 CFLAGS=-flto=thin --sysroot=/sysroot
 __0`,
+};
+
+const installBenchTools = "./tools/install_prebuilt.js wrk hyperfine";
+
+// The Windows builder is a little strange -- there's lots of room on C: and not so much on D:
+// We'll check out to D:, but then all of our builds should happen on a C:-mapped drive
+const reconfigureWindowsStorage = {
+  name: "Reconfigure Windows Storage",
+  if: [
+    "startsWith(matrix.os, 'windows') && !endsWith(matrix.os, '-xl')",
+  ],
+  shell: "pwsh",
+  run: `
+New-Item -ItemType "directory" -Path "$env:TEMP/__target__"
+New-Item -ItemType Junction -Target "$env:TEMP/__target__" -Path "D:/a/deno/deno"
+`.trim(),
 };
 
 const cloneRepoStep = [{
@@ -136,6 +167,11 @@ const installNodeStep = {
   name: "Install Node",
   uses: "actions/setup-node@v3",
   with: { "node-version": 18 },
+};
+const installProtocStep = {
+  name: "Install protoc",
+  uses: "arduino/setup-protoc@v2",
+  with: { "version": "21.12", "repo-token": "${{ secrets.GITHUB_TOKEN }}" },
 };
 const installDenoStep = {
   name: "Install Deno",
@@ -312,7 +348,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            os: Runners.windows,
+            os: Runners.windowsXl,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -340,6 +376,14 @@ const ci = {
             os: Runners.ubuntu,
             job: "lint",
             profile: "debug",
+          }, {
+            os: Runners.macos,
+            job: "lint",
+            profile: "debug",
+          }, {
+            os: Runners.windows,
+            job: "lint",
+            profile: "debug",
           }]),
         },
         // Always run main branch builds to completion. This allows the cache to
@@ -355,16 +399,16 @@ const ci = {
         RUST_BACKTRACE: "full",
       },
       steps: skipJobsIfPrAndMarkedSkip([
+        reconfigureWindowsStorage,
         ...cloneRepoStep,
         submoduleStep("./test_util/std"),
-        submoduleStep("./third_party"),
         {
           ...submoduleStep("./test_util/wpt"),
           if: "matrix.wpt",
         },
         {
           ...submoduleStep("./tools/node_compat/node"),
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
         },
         {
           name: "Create source tarballs (release, linux)",
@@ -383,7 +427,8 @@ const ci = {
         },
         installRustStep,
         {
-          if: "matrix.job == 'lint' || matrix.job == 'test'",
+          if:
+            "matrix.job == 'lint' || matrix.job == 'test' || matrix.job == 'bench'",
           ...installDenoStep,
         },
         ...installPythonSteps.map((s) =>
@@ -394,6 +439,7 @@ const ci = {
           if: "matrix.job == 'bench'",
           ...installNodeStep,
         },
+        installProtocStep,
         {
           if: [
             "matrix.profile == 'release' &&",
@@ -457,15 +503,17 @@ const ci = {
             "python --version",
             "rustc --version",
             "cargo --version",
-            // Deno is installed when linting.
-            'if [ "${{ matrix.job }}" == "lint" ]',
-            "then",
+            "which dpkg && dpkg -l",
+            // Deno is installed when linting or testing.
+            'if [[ "${{ matrix.job }}" == "lint" ]] || [[ "${{ matrix.job }}" == "test" ]]; then',
             "  deno --version",
             "fi",
             // Node is installed for benchmarks.
             'if [ "${{ matrix.job }}" == "bench" ]',
             "then",
             "  node -v",
+            // Install benchmark tools.
+            "  " + installBenchTools,
             "fi",
           ].join("\n"),
         },
@@ -474,13 +522,15 @@ const ci = {
           uses: "actions/cache@v3",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
             path: [
               "~/.cargo/registry/index",
               "~/.cargo/registry/cache",
-              "~/.cargo/git/db",
             ].join("\n"),
             key:
-              "26-cargo-home-${{ matrix.os }}-${{ hashFiles('Cargo.lock') }}",
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys": `${cacheVersion}-cargo-home-\${{ matrix.os }}`,
           },
         },
         {
@@ -509,31 +559,15 @@ const ci = {
           },
         },
         {
-          // Shallow the cloning the crates.io index makes CI faster because it
-          // obviates the need for Cargo to clone the index. If we don't do this
-          // Cargo will `git clone` the github repository that contains the entire
-          // history of the crates.io index from github. We don't believe the
-          // identifier '1ecc6299db9ec823' will ever change, but if it does then this
-          // command must be updated.
-          name: "Shallow clone crates.io index",
-          run: [
-            "if [ ! -d ~/.cargo/registry/index/github.com-1ecc6299db9ec823/.git ]",
-            "then",
-            "  git clone --depth 1 --no-checkout                      \\",
-            "            https://github.com/rust-lang/crates.io-index \\",
-            "            ~/.cargo/registry/index/github.com-1ecc6299db9ec823",
-            "fi",
-          ].join("\n"),
-        },
-        {
           name: "test_format.js",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/format.js --check",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check",
         },
         {
           name: "Lint PR title",
-          if: "matrix.job == 'lint' && github.event_name == 'pull_request'",
+          if:
+            "matrix.job == 'lint' && github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')",
           env: {
             PR_TITLE: "${{ github.event.pull_request.title }}",
           },
@@ -543,18 +577,23 @@ const ci = {
           name: "lint.js",
           if: "matrix.job == 'lint'",
           run:
-            "deno run --unstable --allow-write --allow-read --allow-run ./tools/lint.js",
+            "deno run --unstable --allow-write --allow-read --allow-run --allow-net ./tools/lint.js",
         },
         {
           name: "node_compat/setup.ts --check",
-          if: "matrix.job == 'lint'",
+          if: "matrix.job == 'lint' && startsWith(matrix.os, 'ubuntu')",
           run:
             "deno run --allow-write --allow-read --allow-run=git ./tools/node_compat/setup.ts --check",
         },
         {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: "cargo build --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --locked --all-targets",
+            "df -h",
+          ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -566,7 +605,12 @@ const ci = {
             "(github.ref == 'refs/heads/main' ||",
             "startsWith(github.ref, 'refs/tags/'))))",
           ].join("\n"),
-          run: "cargo build --release --locked --all-targets",
+          run: [
+            // output fs space before and after building
+            "df -h",
+            "cargo build --release --locked --all-targets",
+            "df -h",
+          ].join("\n"),
         },
         {
           name: "Upload PR artifact (linux)",
@@ -673,7 +717,7 @@ const ci = {
         {
           name: "Test debug (fast)",
           if: [
-            "matrix.job == 'test' && matrix.profile == 'debug' && ",
+            "matrix.job == 'test' && matrix.profile == 'debug' &&",
             "!startsWith(matrix.os, 'ubuntu')",
           ].join("\n"),
           run: [
@@ -681,6 +725,17 @@ const ci = {
             // since they are sometimes very slow on Mac.
             "cargo test --locked --lib",
             "cargo test --locked --test '*'",
+          ].join("\n"),
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
+          name: "Test examples debug",
+          if: "matrix.job == 'test' && matrix.profile == 'debug'",
+          run: [
+            // Only regression tests here for now.
+            // Regression test for https://github.com/denoland/deno/pull/19615.
+            "cargo run -p deno_runtime --example extension_with_esm",
+            "cargo run -p deno_runtime --example extension_with_esm --features include_js_files_for_snapshotting",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },

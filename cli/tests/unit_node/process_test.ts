@@ -2,6 +2,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 import process, { argv, env } from "node:process";
+import { Readable } from "node:stream";
+import { once } from "node:events";
 import {
   assert,
   assertEquals,
@@ -725,5 +727,62 @@ Deno.test({
 
     const decoder = new TextDecoder();
     assertEquals(stripColor(decoder.decode(stdout).trim()), "exit");
+  },
+});
+
+Deno.test({
+  name: "process.reallyExit",
+  async fn() {
+    const command = new Deno.Command(Deno.execPath(), {
+      args: [
+        "run",
+        "--quiet",
+        "--unstable",
+        "./testdata/process_really_exit.ts",
+      ],
+      cwd: testDir,
+    });
+    const { stdout } = await command.output();
+
+    const decoder = new TextDecoder();
+    assertEquals(stripColor(decoder.decode(stdout).trim()), "really exited");
+  },
+});
+
+Deno.test({
+  name: "process.stdout isn't closed when source stream ended",
+  async fn() {
+    const source = Readable.from(["foo", "bar"]);
+
+    source.pipe(process.stdout);
+    await once(source, "end");
+
+    // Wait a bit to ensure that streaming is completely finished.
+    await delay(10);
+
+    // This checks if the rid 1 is still valid.
+    assert(typeof process.stdout.isTTY === "boolean");
+  },
+});
+
+Deno.test({
+  name: "process.title",
+  fn() {
+    assertEquals(process.title, "deno");
+    // Verify that setting the value has no effect.
+    process.title = "foo";
+    assertEquals(process.title, "deno");
+  },
+});
+
+Deno.test({
+  name: "process.argv[1] in Worker",
+  async fn() {
+    const worker = new Worker(
+      `data:text/javascript,import process from "node:process";console.log(process.argv[1]);`,
+      { type: "module" },
+    );
+    await delay(10);
+    worker.terminate();
   },
 });

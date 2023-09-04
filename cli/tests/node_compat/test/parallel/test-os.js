@@ -216,7 +216,6 @@ if (common.isWindows && process.env.USERPROFILE) {
   process.env.HOME = home;
 }
 
-/* TODO(kt3k): Enable this test
 const pwd = os.userInfo();
 is.object(pwd);
 const pwdBuf = os.userInfo({ encoding: 'buffer' });
@@ -245,7 +244,7 @@ is.string(pwd.username);
 assert.ok(pwd.homedir.includes(path.sep));
 assert.strictEqual(pwd.username, pwdBuf.username.toString('utf8'));
 assert.strictEqual(pwd.homedir, pwdBuf.homedir.toString('utf8'));
-*/
+
 
 assert.strictEqual(`${os.hostname}`, os.hostname());
 assert.strictEqual(`${os.homedir}`, os.homedir());

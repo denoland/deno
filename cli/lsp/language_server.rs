@@ -8,15 +8,17 @@ use deno_core::resolve_url;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::ModuleSpecifier;
+use deno_graph::GraphKind;
+use deno_lockfile::Lockfile;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_node::PackageJson;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::deno_web::BlobStore;
 use import_map::ImportMap;
 use log::error;
 use serde_json::from_value;
@@ -35,6 +37,7 @@ use super::analysis::fix_ts_import_changes;
 use super::analysis::ts_changes_to_edit;
 use super::analysis::CodeActionCollection;
 use super::analysis::CodeActionData;
+use super::analysis::TsResponseImportMapper;
 use super::cache;
 use super::capabilities;
 use super::client::Client;
@@ -43,6 +46,7 @@ use super::completions;
 use super::config::Config;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
+use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::documents::to_hover_text;
 use super::documents::to_lsp_range;
@@ -55,6 +59,7 @@ use super::documents::UpdateDocumentConfigOptions;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
 use super::lsp_custom;
+use super::npm::CliNpmSearchApi;
 use super::parent_process_checker;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
@@ -65,12 +70,14 @@ use super::text;
 use super::tsc;
 use super::tsc::Assets;
 use super::tsc::AssetsSnapshot;
+use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use super::urls::LspClientUrl;
 use crate::args::get_root_cert_store;
 use crate::args::package_json;
 use crate::args::resolve_import_map_from_specifier;
+use crate::args::snapshot_from_lockfile;
 use crate::args::CaData;
 use crate::args::CacheSetting;
 use crate::args::CliOptions;
@@ -80,16 +87,21 @@ use crate::args::FmtOptions;
 use crate::args::LintOptions;
 use crate::args::TsConfig;
 use crate::cache::DenoDir;
+use crate::cache::FastInsecureHasher;
+use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
+use crate::cache::LocalLspHttpCache;
 use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClient;
+use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
 use crate::npm::create_npm_fs_resolver;
 use crate::npm::CliNpmRegistryApi;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmCache;
+use crate::npm::NpmCacheDir;
 use crate::npm::NpmResolution;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -106,11 +118,42 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
   }
 }
 
+#[derive(Debug)]
+struct LspNpmServices {
+  /// When this hash changes, the services need updating
+  config_hash: LspNpmConfigHash,
+  /// Npm's registry api.
+  api: Arc<CliNpmRegistryApi>,
+  /// Npm's search api.
+  search_api: CliNpmSearchApi,
+  /// Npm cache
+  cache: Arc<NpmCache>,
+  /// Npm resolution that is stored in memory.
+  resolution: Arc<NpmResolution>,
+  /// Resolver for npm packages.
+  resolver: Arc<CliNpmResolver>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct LspNpmConfigHash(u64);
+
+impl LspNpmConfigHash {
+  pub fn from_inner(inner: &Inner) -> Self {
+    let mut hasher = FastInsecureHasher::new();
+    hasher.write_hashable(inner.config.maybe_node_modules_dir_path());
+    hasher.write_hashable(&inner.maybe_global_cache_path);
+    if let Some(lockfile) = inner.config.maybe_lockfile() {
+      hasher.write_hashable(&*lockfile.lock());
+    }
+    Self(hasher.finish())
+  }
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
@@ -132,7 +175,7 @@ pub struct Inner {
   pub client: Client,
   /// Configuration information.
   pub config: Config,
-  deps_http_cache: HttpCache,
+  deps_http_cache: Arc<dyn HttpCache>,
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
@@ -144,10 +187,7 @@ pub struct Inner {
   module_registries_location: PathBuf,
   /// An optional path to the DENO_DIR which has been specified in the client
   /// options.
-  maybe_cache_path: Option<PathBuf>,
-  /// An optional configuration file which has been specified in the client
-  /// options.
-  maybe_config_file: Option<ConfigFile>,
+  maybe_global_cache_path: Option<PathBuf>,
   /// An optional import map which is used to resolve modules.
   maybe_import_map: Option<Arc<ImportMap>>,
   /// The URL for the import map which is used to determine relative imports.
@@ -160,14 +200,8 @@ pub struct Inner {
   lint_options: LintOptions,
   /// A lazily create "server" for handling test run requests.
   maybe_testing_server: Option<testing::TestServer>,
-  /// Npm's registry api.
-  npm_api: Arc<CliNpmRegistryApi>,
-  /// Npm cache
-  npm_cache: Arc<NpmCache>,
-  /// Npm resolution that is stored in memory.
-  npm_resolution: Arc<NpmResolution>,
-  /// Resolver for npm packages.
-  npm_resolver: Arc<CliNpmResolver>,
+  /// Services used for dealing with npm related functionality.
+  npm: LspNpmServices,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -198,7 +232,8 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      let factory = CliFactory::from_cli_options(Arc::new(cli_options));
+      let cli_options = Arc::new(cli_options);
+      let factory = CliFactory::from_cli_options(cli_options.clone());
       let module_graph_builder = factory.module_graph_builder().await?;
       let mut inner_loader = module_graph_builder.create_graph_loader();
       let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
@@ -206,7 +241,7 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_builder
-        .create_graph_with_loader(roots.clone(), &mut loader)
+        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
         .await?;
       graph_util::graph_valid(
         &graph,
@@ -217,13 +252,23 @@ impl LanguageServer {
           check_js: false,
         },
       )?;
+
+      // Update the lockfile on the file system with anything new
+      // found after caching
+      if let Some(lockfile) = cli_options.maybe_lockfile() {
+        let lockfile = lockfile.lock();
+        if let Err(err) = lockfile.write() {
+          lsp_warn!("Error writing lockfile: {}", err);
+        }
+      }
+
       Ok(())
     }
 
     match params.map(serde_json::from_value) {
       Some(Ok(params)) => {
         // do as much as possible in a read, then do a write outside
-        let maybe_cache_result = {
+        let maybe_prepare_cache_result = {
           let inner = self.0.read().await; // ensure dropped
           match inner.prepare_cache(params) {
             Ok(maybe_cache_result) => maybe_cache_result,
@@ -238,7 +283,7 @@ impl LanguageServer {
             }
           }
         };
-        if let Some(result) = maybe_cache_result {
+        if let Some(result) = maybe_prepare_cache_result {
           let cli_options = result.cli_options;
           let roots = result.roots;
           let open_docs = result.open_docs;
@@ -264,6 +309,22 @@ impl LanguageServer {
       Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
       None => Err(LspError::invalid_params("Missing parameters")),
     }
+  }
+
+  /// This request is only used by the lsp integration tests to
+  /// coordinate the tests receiving the latest diagnostics.
+  pub async fn latest_diagnostic_batch_index_request(
+    &self,
+  ) -> LspResult<Option<Value>> {
+    Ok(
+      self
+        .0
+        .read()
+        .await
+        .diagnostics_server
+        .latest_batch_index()
+        .map(|v| v.into()),
+    )
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
@@ -420,35 +481,25 @@ impl LanguageServer {
       if ls.config.update_enabled_paths() {
         touched = true;
       }
-
-      if touched {
-        ls.refresh_documents_config();
-        ls.diagnostics_server.invalidate_all();
-        ls.send_diagnostics_update();
-      }
     }
     touched
   }
 }
 
-fn create_lsp_structs(
+fn create_npm_api_and_cache(
   dir: &DenoDir,
   http_client: Arc<HttpClient>,
-) -> (
-  Arc<CliNpmRegistryApi>,
-  Arc<NpmCache>,
-  Arc<CliNpmResolver>,
-  Arc<NpmResolution>,
-) {
-  let registry_url = CliNpmRegistryApi::default_url();
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+  registry_url: &ModuleSpecifier,
+  progress_bar: &ProgressBar,
+) -> (Arc<CliNpmRegistryApi>, Arc<NpmCache>) {
   let npm_cache = Arc::new(NpmCache::new(
-    dir.npm_folder_path(),
+    NpmCacheDir::new(dir.npm_folder_path()),
     // Use an "only" cache setting in order to make the
     // user do an explicit "cache" command and prevent
     // the cache from being filled with lots of packages while
     // the user is typing.
     CacheSetting::Only,
+    Arc::new(deno_fs::RealFs),
     http_client.clone(),
     progress_bar.clone(),
   ));
@@ -458,25 +509,41 @@ fn create_lsp_structs(
     http_client,
     progress_bar.clone(),
   ));
-  let resolution =
-    Arc::new(NpmResolution::from_serialized(api.clone(), None, None));
+  (api, npm_cache)
+}
+
+fn create_npm_resolver_and_resolution(
+  registry_url: &ModuleSpecifier,
+  progress_bar: ProgressBar,
+  api: Arc<CliNpmRegistryApi>,
+  npm_cache: Arc<NpmCache>,
+  node_modules_dir_path: Option<PathBuf>,
+  maybe_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
+) -> (Arc<CliNpmResolver>, Arc<NpmResolution>) {
+  let resolution = Arc::new(NpmResolution::from_serialized(
+    api,
+    maybe_snapshot,
+    // Don't provide the lockfile. We don't want these resolvers
+    // updating it. Only the cache request should update the lockfile.
+    None,
+  ));
   let fs = Arc::new(deno_fs::RealFs);
   let fs_resolver = create_npm_fs_resolver(
     fs.clone(),
-    npm_cache.clone(),
+    npm_cache,
     &progress_bar,
     registry_url.clone(),
     resolution.clone(),
-    None,
+    node_modules_dir_path,
     NpmSystemInfo::default(),
   );
   (
-    api,
-    npm_cache,
     Arc::new(CliNpmResolver::new(
       fs,
       resolution.clone(),
       fs_resolver,
+      // Don't provide the lockfile. We don't want these resolvers
+      // updating it. Only the cache request should update the lockfile.
       None,
     )),
     resolution,
@@ -485,19 +552,25 @@ fn create_lsp_structs(
 
 impl Inner {
   fn new(client: Client) -> Self {
-    let maybe_custom_root = env::var("DENO_DIR").map(String::into).ok();
-    let dir =
-      DenoDir::new(maybe_custom_root).expect("could not access DENO_DIR");
+    let dir = DenoDir::new(None).expect("could not access DENO_DIR");
     let module_registries_location = dir.registries_folder_path();
     let http_client = Arc::new(HttpClient::new(None, None));
-    let module_registries =
-      ModuleRegistry::new(&module_registries_location, http_client.clone());
+    let module_registries = ModuleRegistry::new(
+      module_registries_location.clone(),
+      http_client.clone(),
+    );
+    let npm_search_api =
+      CliNpmSearchApi::new(module_registries.file_fetcher.clone(), None);
     let location = dir.deps_folder_path();
-    let documents = Documents::new(&location);
-    let deps_http_cache = HttpCache::new(&location);
+    let deps_http_cache = Arc::new(GlobalHttpCache::new(
+      location,
+      crate::cache::RealDenoCacheEnv,
+    ));
+    let documents = Documents::new(deps_http_cache.clone());
     let cache_metadata = cache::CacheMetadata::new(deps_http_cache.clone());
     let performance = Arc::new(Performance::default());
-    let ts_server = Arc::new(TsServer::new(performance.clone()));
+    let ts_server =
+      Arc::new(TsServer::new(performance.clone(), deps_http_cache.clone()));
     let config = Config::new();
     let diagnostics_server = DiagnosticsServer::new(
       client.clone(),
@@ -505,8 +578,23 @@ impl Inner {
       ts_server.clone(),
     );
     let assets = Assets::new(ts_server.clone());
-    let (npm_api, npm_cache, npm_resolver, npm_resolution) =
-      create_lsp_structs(&dir, http_client.clone());
+    let registry_url = CliNpmRegistryApi::default_url();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+
+    let (npm_api, npm_cache) = create_npm_api_and_cache(
+      &dir,
+      http_client.clone(),
+      registry_url,
+      &progress_bar,
+    );
+    let (npm_resolver, npm_resolution) = create_npm_resolver_and_resolution(
+      registry_url,
+      progress_bar,
+      npm_api.clone(),
+      npm_cache.clone(),
+      None,
+      None,
+    );
 
     Self {
       assets,
@@ -517,8 +605,7 @@ impl Inner {
       diagnostics_server,
       documents,
       http_client,
-      maybe_cache_path: None,
-      maybe_config_file: None,
+      maybe_global_cache_path: None,
       maybe_import_map: None,
       maybe_import_map_uri: None,
       maybe_package_json: None,
@@ -527,10 +614,14 @@ impl Inner {
       maybe_testing_server: None,
       module_registries,
       module_registries_location,
-      npm_api,
-      npm_cache,
-      npm_resolution,
-      npm_resolver,
+      npm: LspNpmServices {
+        config_hash: LspNpmConfigHash(0), // this will be updated in initialize
+        api: npm_api,
+        search_api: npm_search_api,
+        cache: npm_cache,
+        resolution: npm_resolution,
+        resolver: npm_resolver,
+      },
       performance,
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -622,7 +713,7 @@ impl Inner {
         }?;
         lsp_log!("  Resolved configuration file: \"{}\"", config_url);
 
-        let config_file = ConfigFile::from_specifier(&config_url)?;
+        let config_file = ConfigFile::from_specifier(config_url)?;
         return Ok(Some(config_file));
       }
     }
@@ -649,6 +740,10 @@ impl Inner {
     &self,
     maybe_config_file: Option<&ConfigFile>,
   ) -> Result<Option<PackageJson>, AnyError> {
+    if crate::args::has_flag_env_var("DENO_NO_PACKAGE_JSON") {
+      return Ok(None);
+    }
+
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
@@ -696,7 +791,7 @@ impl Inner {
     &self,
     tsconfig: &mut TsConfig,
   ) -> Result<(), AnyError> {
-    if let Some(config_file) = self.maybe_config_file.as_ref() {
+    if let Some(config_file) = self.config.maybe_config_file() {
       let (value, maybe_ignored_options) = config_file.to_compiler_options()?;
       tsconfig.merge(&value);
       if let Some(ignored_options) = maybe_ignored_options {
@@ -712,9 +807,9 @@ impl Inner {
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     // create a new snapshotted npm resolution and resolver
     let npm_resolution = Arc::new(NpmResolution::new(
-      self.npm_api.clone(),
-      self.npm_resolution.snapshot(),
-      None,
+      self.npm.api.clone(),
+      self.npm.resolution.snapshot(),
+      self.config.maybe_lockfile().cloned(),
     ));
     let node_fs = Arc::new(deno_fs::RealFs);
     let npm_resolver = Arc::new(CliNpmResolver::new(
@@ -722,14 +817,14 @@ impl Inner {
       npm_resolution.clone(),
       create_npm_fs_resolver(
         node_fs.clone(),
-        self.npm_cache.clone(),
+        self.npm.cache.clone(),
         &ProgressBar::new(ProgressBarStyle::TextOnly),
-        self.npm_api.base_url().clone(),
+        self.npm.api.base_url().clone(),
         npm_resolution,
-        None,
+        self.config.maybe_node_modules_dir_path().cloned(),
         NpmSystemInfo::default(),
       ),
-      None,
+      self.config.maybe_lockfile().cloned(),
     ));
     let node_resolver =
       Arc::new(NodeResolver::new(node_fs, npm_resolver.clone()));
@@ -743,12 +838,12 @@ impl Inner {
     })
   }
 
-  pub fn update_cache(&mut self) -> Result<(), AnyError> {
+  pub async fn update_cache(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_cache", None::<()>);
     self.performance.measure(mark);
     let maybe_cache = &self.config.workspace_settings().cache;
-    let maybe_cache_path = if let Some(cache_str) = maybe_cache {
-      lsp_log!("Setting cache path from: \"{}\"", cache_str);
+    let maybe_global_cache_path = if let Some(cache_str) = maybe_cache {
+      lsp_log!("Setting global cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
       } else if let Some(root_uri) = &self.config.root_uri {
@@ -765,28 +860,35 @@ impl Inner {
       }?;
       let cache_path = specifier_to_file_path(&cache_url)?;
       lsp_log!(
-        "  Resolved cache path: \"{}\"",
+        "  Resolved global cache path: \"{}\"",
         cache_path.to_string_lossy()
       );
       Some(cache_path)
     } else {
       None
     };
-    if self.maybe_cache_path != maybe_cache_path {
-      self.recreate_http_client_and_dependents(maybe_cache_path)?;
+    if self.maybe_global_cache_path != maybe_global_cache_path {
+      self
+        .set_new_global_cache_path(maybe_global_cache_path)
+        .await?;
     }
     Ok(())
   }
 
+  async fn recreate_http_client_and_dependents(
+    &mut self,
+  ) -> Result<(), AnyError> {
+    self
+      .set_new_global_cache_path(self.maybe_global_cache_path.clone())
+      .await
+  }
+
   /// Recreates the http client and all dependent structs.
-  fn recreate_http_client_and_dependents(
+  async fn set_new_global_cache_path(
     &mut self,
     new_cache_path: Option<PathBuf>,
   ) -> Result<(), AnyError> {
-    let maybe_custom_root = new_cache_path
-      .clone()
-      .or_else(|| env::var("DENO_DIR").map(String::into).ok());
-    let dir = DenoDir::new(maybe_custom_root)?;
+    let dir = DenoDir::new(new_cache_path.clone())?;
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
@@ -808,22 +910,86 @@ impl Inner {
         .clone(),
     ));
     self.module_registries = ModuleRegistry::new(
-      &module_registries_location,
+      module_registries_location.clone(),
       self.http_client.clone(),
     );
+    self.npm.search_api =
+      CliNpmSearchApi::new(self.module_registries.file_fetcher.clone(), None);
     self.module_registries_location = module_registries_location;
-    (
-      self.npm_api,
-      self.npm_cache,
-      self.npm_resolver,
-      self.npm_resolution,
-    ) = create_lsp_structs(&dir, self.http_client.clone());
     // update the cache path
-    let location = dir.deps_folder_path();
-    self.documents.set_location(&location);
-    self.cache_metadata.set_location(&location);
-    self.maybe_cache_path = new_cache_path;
+    let global_cache = Arc::new(GlobalHttpCache::new(
+      dir.deps_folder_path(),
+      crate::cache::RealDenoCacheEnv,
+    ));
+    let maybe_local_cache =
+      self.config.maybe_vendor_dir_path().map(|local_path| {
+        Arc::new(LocalLspHttpCache::new(local_path, global_cache.clone()))
+      });
+    let cache: Arc<dyn HttpCache> = maybe_local_cache
+      .clone()
+      .map(|c| c as Arc<dyn HttpCache>)
+      .unwrap_or(global_cache);
+    self.deps_http_cache = cache.clone();
+    self.documents.set_cache(cache.clone());
+    self.cache_metadata.set_cache(cache);
+    self.url_map.set_cache(maybe_local_cache);
+    self.maybe_global_cache_path = new_cache_path;
     Ok(())
+  }
+
+  async fn get_npm_snapshot(
+    &self,
+  ) -> Option<ValidSerializedNpmResolutionSnapshot> {
+    let lockfile = self.config.maybe_lockfile()?;
+    let snapshot =
+      match snapshot_from_lockfile(lockfile.clone(), &*self.npm.api).await {
+        Ok(snapshot) => snapshot,
+        Err(err) => {
+          lsp_warn!("Failed getting npm snapshot from lockfile: {}", err);
+          return None;
+        }
+      };
+
+    // clear the memory cache to reduce memory usage
+    self.npm.api.clear_memory_cache();
+
+    Some(snapshot)
+  }
+
+  async fn recreate_npm_services_if_necessary(&mut self) {
+    let deno_dir = match DenoDir::new(self.maybe_global_cache_path.clone()) {
+      Ok(deno_dir) => deno_dir,
+      Err(err) => {
+        lsp_warn!("Error getting deno dir: {}", err);
+        return;
+      }
+    };
+    let config_hash = LspNpmConfigHash::from_inner(self);
+    if config_hash == self.npm.config_hash {
+      return; // no need to do anything
+    }
+
+    let registry_url = CliNpmRegistryApi::default_url();
+    let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
+    (self.npm.api, self.npm.cache) = create_npm_api_and_cache(
+      &deno_dir,
+      self.http_client.clone(),
+      registry_url,
+      &progress_bar,
+    );
+    let maybe_snapshot = self.get_npm_snapshot().await;
+    (self.npm.resolver, self.npm.resolution) =
+      create_npm_resolver_and_resolution(
+        registry_url,
+        progress_bar,
+        self.npm.api.clone(),
+        self.npm.cache.clone(),
+        self.config.maybe_node_modules_dir_path().cloned(),
+        maybe_snapshot,
+      );
+
+    // update the hash
+    self.npm.config_hash = config_hash;
   }
 
   pub async fn update_import_map(&mut self) -> Result<(), AnyError> {
@@ -855,7 +1021,7 @@ impl Inner {
   ) -> Result<ImportMap, AnyError> {
     resolve_import_map_from_specifier(
       import_map_url,
-      self.maybe_config_file.as_ref(),
+      self.config.maybe_config_file(),
       &self.create_file_fetcher(cache_setting),
     )
     .await
@@ -874,7 +1040,7 @@ impl Inner {
       cache_setting,
       true,
       self.http_client.clone(),
-      BlobStore::default(),
+      Default::default(),
       None,
     );
     file_fetcher.set_download_log_level(super::logging::lsp_log_level());
@@ -896,7 +1062,7 @@ impl Inner {
           "Setting import map from workspace settings: \"{}\"",
           import_map_str
         );
-        if let Some(config_file) = &self.maybe_config_file {
+        if let Some(config_file) = self.config.maybe_config_file() {
           if let Some(import_map_path) = config_file.to_import_map_path() {
             lsp_log!("Warning: Import map \"{}\" configured in \"{}\" being ignored due to an import map being explicitly configured in workspace settings.", import_map_path, config_file.specifier);
           }
@@ -922,7 +1088,7 @@ impl Inner {
             import_map_str
           ));
         }
-      } else if let Some(config_file) = &self.maybe_config_file {
+      } else if let Some(config_file) = self.config.maybe_config_file() {
         if config_file.is_an_import_map() {
           lsp_log!(
             "Setting import map defined in configuration file: \"{}\"",
@@ -968,7 +1134,7 @@ impl Inner {
 
   async fn update_registries(&mut self) -> Result<(), AnyError> {
     let mark = self.performance.mark("update_registries", None::<()>);
-    self.recreate_http_client_and_dependents(self.maybe_cache_path.clone())?;
+    self.recreate_http_client_and_dependents().await?;
     let workspace_settings = self.config.workspace_settings();
     for (registry, enabled) in workspace_settings.suggest.imports.hosts.iter() {
       if *enabled {
@@ -982,11 +1148,10 @@ impl Inner {
     Ok(())
   }
 
-  fn update_config_file(&mut self) -> Result<(), AnyError> {
-    self.maybe_config_file = None;
+  async fn update_config_file(&mut self) -> Result<(), AnyError> {
+    self.config.clear_config_file();
     self.fmt_options = Default::default();
     self.lint_options = Default::default();
-
     if let Some(config_file) = self.get_config_file()? {
       let lint_options = config_file
         .to_lint_config()
@@ -1005,9 +1170,10 @@ impl Inner {
           anyhow!("Unable to update formatter configuration: {:?}", err)
         })?;
 
-      self.maybe_config_file = Some(config_file);
+      self.config.set_config_file(config_file);
       self.lint_options = lint_options;
       self.fmt_options = fmt_options;
+      self.recreate_http_client_and_dependents().await?;
     }
 
     Ok(())
@@ -1018,7 +1184,7 @@ impl Inner {
   fn update_package_json(&mut self) -> Result<(), AnyError> {
     self.maybe_package_json = None;
     self.maybe_package_json =
-      self.get_package_json(self.maybe_config_file.as_ref())?;
+      self.get_package_json(self.config.maybe_config_file())?;
     Ok(())
   }
 
@@ -1109,6 +1275,7 @@ impl Inner {
           error!("Cannot set workspace settings: {}", err);
           LspError::internal_error()
         })?;
+        self.config.update_enabled_paths();
       }
       self.config.workspace_folders = params.workspace_folders.map(|folders| {
         folders
@@ -1126,10 +1293,10 @@ impl Inner {
 
     self.update_debug_flag();
     // Check to see if we need to change the cache path
-    if let Err(err) = self.update_cache() {
+    if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file() {
+    if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
@@ -1156,7 +1323,8 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
-    self.assets.intitialize(self.snapshot()).await;
+    self.recreate_npm_services_if_necessary().await;
+    self.assets.initialize(self.snapshot()).await;
 
     self.performance.measure(mark);
     Ok(InitializeResult {
@@ -1166,7 +1334,7 @@ impl Inner {
     })
   }
 
-  fn refresh_documents_config(&mut self) {
+  async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
       enabled_urls: self.config.enabled_urls(),
       document_preload_limit: self
@@ -1174,11 +1342,15 @@ impl Inner {
         .workspace_settings()
         .document_preload_limit,
       maybe_import_map: self.maybe_import_map.clone(),
-      maybe_config_file: self.maybe_config_file.as_ref(),
+      maybe_config_file: self.config.maybe_config_file(),
       maybe_package_json: self.maybe_package_json.as_ref(),
-      npm_registry_api: self.npm_api.clone(),
-      npm_resolution: self.npm_resolution.clone(),
+      npm_registry_api: self.npm.api.clone(),
+      npm_resolution: self.npm.resolution.clone(),
     });
+
+    // refresh the npm specifiers because it might have discovered
+    // a @types/node package and now's a good time to do that anyway
+    self.refresh_npm_specifiers().await;
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -1245,11 +1417,10 @@ impl Inner {
 
   async fn refresh_npm_specifiers(&mut self) {
     let package_reqs = self.documents.npm_package_reqs();
-    let npm_resolver = self.npm_resolver.clone();
+    let npm_resolver = self.npm.resolver.clone();
     // spawn to avoid the LSP's Send requirements
-    let handle = spawn(async move {
-      npm_resolver.set_package_reqs((*package_reqs).clone()).await
-    });
+    let handle =
+      spawn(async move { npm_resolver.set_package_reqs(&package_reqs).await });
     if let Err(err) = handle.await.unwrap() {
       lsp_warn!("Could not set npm package requirements. {:#}", err);
     }
@@ -1301,16 +1472,17 @@ impl Inner {
       if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
+      self.config.update_enabled_paths();
     }
 
     self.update_debug_flag();
-    if let Err(err) = self.update_cache() {
+    if let Err(err) = self.update_cache().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_registries().await {
       self.client.show_message(MessageType::WARNING, err);
     }
-    if let Err(err) = self.update_config_file() {
+    if let Err(err) = self.update_config_file().await {
       self.client.show_message(MessageType::WARNING, err);
     }
     if let Err(err) = self.update_package_json() {
@@ -1323,8 +1495,10 @@ impl Inner {
       self.client.show_message(MessageType::WARNING, err);
     }
 
-    self.refresh_documents_config();
+    self.recreate_npm_services_if_necessary().await;
+    self.refresh_documents_config().await;
 
+    self.diagnostics_server.invalidate_all();
     self.send_diagnostics_update();
     self.send_testing_update();
   }
@@ -1333,6 +1507,67 @@ impl Inner {
     &mut self,
     params: DidChangeWatchedFilesParams,
   ) {
+    fn has_lockfile_content_changed(lockfile: &Lockfile) -> bool {
+      match Lockfile::new(lockfile.filename.clone(), false) {
+        Ok(new_lockfile) => {
+          // only update if the lockfile has changed
+          FastInsecureHasher::hash(lockfile)
+            != FastInsecureHasher::hash(new_lockfile)
+        }
+        Err(err) => {
+          lsp_warn!("Error loading lockfile: {:#}", err);
+          false
+        }
+      }
+    }
+
+    fn has_config_changed(config: &Config, changes: &HashSet<Url>) -> bool {
+      // Check the canonicalized specifier here because file watcher
+      // changes will be for the canonicalized path in vscode, but also check the
+      // non-canonicalized specifier in order to please the tests and handle
+      // a client that might send that instead.
+      if config
+        .maybe_config_file_canonicalized_specifier()
+        .map(|s| changes.contains(s))
+        .unwrap_or(false)
+      {
+        return true;
+      }
+      match config.maybe_config_file() {
+        Some(file) => {
+          if changes.contains(&file.specifier) {
+            return true;
+          }
+        }
+        None => {
+          // check for auto-discovery
+          if changes.iter().any(|url| {
+            url.path().ends_with("/deno.json")
+              || url.path().ends_with("/deno.jsonc")
+          }) {
+            return true;
+          }
+        }
+      }
+
+      // if the lockfile has changed, reload the config as well
+      if let Some(lockfile) = config.maybe_lockfile() {
+        let lockfile_matches = config
+          .maybe_lockfile_canonicalized_specifier()
+          .map(|s| changes.contains(s))
+          .or_else(|| {
+            ModuleSpecifier::from_file_path(&lockfile.lock().filename)
+              .ok()
+              .map(|s| changes.contains(&s))
+          })
+          .unwrap_or(false);
+        lockfile_matches && has_lockfile_content_changed(&lockfile.lock())
+      } else {
+        // check for auto-discovery
+        changes.iter().any(|url| url.path().ends_with("/deno.lock"))
+      }
+    }
+
     let mark = self
       .performance
       .mark("did_change_watched_files", Some(&params));
@@ -1344,17 +1579,16 @@ impl Inner {
       .collect();
 
     // if the current deno.json has changed, we need to reload it
-    if let Some(config_file) = &self.maybe_config_file {
-      if changes.contains(&config_file.specifier) {
-        if let Err(err) = self.update_config_file() {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        if let Err(err) = self.update_tsconfig().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    if has_config_changed(&self.config, &changes) {
+      if let Err(err) = self.update_config_file().await {
+        self.client.show_message(MessageType::WARNING, err);
       }
+      if let Err(err) = self.update_tsconfig().await {
+        self.client.show_message(MessageType::WARNING, err);
+      }
+      touched = true;
     }
+
     if let Some(package_json) = &self.maybe_package_json {
       // always update the package json if the deno config changes
       if touched || changes.contains(&package_json.specifier()) {
@@ -1364,19 +1598,24 @@ impl Inner {
         touched = true;
       }
     }
+
     // if the current import map, or config file has changed, we need to
     // reload the import map
-    if let Some(import_map_uri) = &self.maybe_import_map_uri {
-      if touched || changes.contains(import_map_uri) {
-        if let Err(err) = self.update_import_map().await {
-          self.client.show_message(MessageType::WARNING, err);
-        }
-        touched = true;
+    let import_map_changed = self
+      .maybe_import_map_uri
+      .as_ref()
+      .map(|uri| changes.contains(uri))
+      .unwrap_or(false);
+    if touched || import_map_changed {
+      if let Err(err) = self.update_import_map().await {
+        self.client.show_message(MessageType::WARNING, err);
       }
+      touched = true;
     }
+
     if touched {
-      self.refresh_documents_config();
-      self.refresh_npm_specifiers().await;
+      self.recreate_npm_services_if_necessary().await;
+      self.refresh_documents_config().await;
       self.diagnostics_server.invalidate_all();
       self.ts_server.restart(self.snapshot()).await;
       self.send_diagnostics_update();
@@ -1476,24 +1715,33 @@ impl Inner {
       return Ok(None);
     }
 
-    let format_result = match document.maybe_parsed_source() {
-      Some(Ok(parsed_source)) => {
-        format_parsed_source(&parsed_source, &self.fmt_options.options)
+    // spawn a blocking task to allow doing other work while this is occurring
+    let format_result = deno_core::unsync::spawn_blocking({
+      let fmt_options = self.fmt_options.options.clone();
+      let document = document.clone();
+      move || {
+        match document.maybe_parsed_source() {
+          Some(Ok(parsed_source)) => {
+            format_parsed_source(&parsed_source, &fmt_options)
+          }
+          Some(Err(err)) => Err(anyhow!("{}", err)),
+          None => {
+            // the file path is only used to determine what formatter should
+            // be used to format the file, so give the filepath an extension
+            // that matches what the user selected as the language
+            let file_path = document
+              .maybe_language_id()
+              .and_then(|id| id.as_extension())
+              .map(|ext| file_path.with_extension(ext))
+              .unwrap_or(file_path);
+            // it's not a js/ts file, so attempt to format its contents
+            format_file(&file_path, &document.content(), &fmt_options)
+          }
+        }
       }
-      Some(Err(err)) => Err(anyhow!("{}", err)),
-      None => {
-        // the file path is only used to determine what formatter should
-        // be used to format the file, so give the filepath an extension
-        // that matches what the user selected as the language
-        let file_path = document
-          .maybe_language_id()
-          .and_then(|id| id.as_extension())
-          .map(|ext| file_path.with_extension(ext))
-          .unwrap_or(file_path);
-        // it's not a js/ts file, so attempt to format its contents
-        format_file(&file_path, &document.content(), &self.fmt_options.options)
-      }
-    };
+    })
+    .await
+    .unwrap();
 
     let text_edits = match format_result {
       Ok(Some(new_text)) => Some(text::get_edits(
@@ -1635,7 +1883,7 @@ impl Inner {
             }
             _ => false,
           },
-          "deno-lint" => matches!(&d.code, Some(_)),
+          "deno-lint" => d.code.is_some(),
           "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
           _ => false,
         },
@@ -1663,6 +1911,7 @@ impl Inner {
                 line_index.offset_tsc(diagnostic.range.start)?
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
+                (&self.fmt_options.options).into(),
               )
               .await;
             for action in actions {
@@ -1771,7 +2020,11 @@ impl Inner {
         })?;
       let combined_code_actions = self
         .ts_server
-        .get_combined_code_fix(self.snapshot(), &code_action_data)
+        .get_combined_code_fix(
+          self.snapshot(),
+          &code_action_data,
+          (&self.fmt_options.options).into(),
+        )
         .await?;
       if combined_code_actions.commands.is_some() {
         error!("Deno does not support code actions with commands.");
@@ -1782,7 +2035,7 @@ impl Inner {
         fix_ts_import_changes(
           &code_action_data.specifier,
           &combined_code_actions.changes,
-          &self.documents,
+          &self.get_ts_response_import_mapper(),
         )
         .map_err(|err| {
           error!("Unable to remap changes: {}", err);
@@ -1811,19 +2064,14 @@ impl Inner {
         .get_edits_for_refactor(
           self.snapshot(),
           action_data.specifier,
+          (&self.fmt_options.options).into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
         )
         .await?;
-      code_action.edit = refactor_edit_info
-        .to_workspace_edit(self)
-        .await
-        .map_err(|err| {
-          error!("Unable to convert changes to edits: {}", err);
-          LspError::internal_error()
-        })?;
+      code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -1832,6 +2080,15 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(result)
+  }
+
+  pub fn get_ts_response_import_mapper(&self) -> TsResponseImportMapper {
+    TsResponseImportMapper::new(
+      &self.documents,
+      self.maybe_import_map.as_deref(),
+      &self.npm.resolution,
+      &self.npm.resolver,
+    )
   }
 
   async fn code_lens(
@@ -2098,6 +2355,7 @@ impl Inner {
       &self.config.snapshot(),
       &self.client,
       &self.module_registries,
+      &self.npm.search_api,
       &self.documents,
       self.maybe_import_map.clone(),
     )
@@ -2134,10 +2392,10 @@ impl Inner {
                 tsc::ImportModuleSpecifierEnding::Index,
               ),
               include_automatic_optional_chain_completions: Some(true),
-              include_completions_for_import_statements: Some(
+              include_completions_for_import_statements: Some(true),
+              include_completions_for_module_exports: Some(
                 self.config.workspace_settings().suggest.auto_imports,
               ),
-              include_completions_for_module_exports: Some(true),
               include_completions_with_object_literal_method_snippets: Some(
                 use_snippets,
               ),
@@ -2157,6 +2415,7 @@ impl Inner {
             trigger_character,
             trigger_kind,
           },
+          (&self.fmt_options.options).into(),
         )
         .await;
 
@@ -2191,9 +2450,13 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
+        let args = GetCompletionDetailsArgs {
+          format_code_settings: Some((&self.fmt_options.options).into()),
+          ..data.into()
+        };
         let result = self
           .ts_server
-          .get_completion_details(self.snapshot(), data.into())
+          .get_completion_details(self.snapshot(), args)
           .await;
         match result {
           Ok(maybe_completion_info) => {
@@ -2677,6 +2940,37 @@ impl Inner {
     }
   }
 
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    let mut changes = vec![];
+    for rename in params.files {
+      changes.extend(
+        self
+          .ts_server
+          .get_edits_for_file_rename(
+            self.snapshot(),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.old_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            self.url_map.normalize_url(
+              &resolve_url(&rename.new_uri).unwrap(),
+              LspUrlKind::File,
+            ),
+            (&self.fmt_options.options).into(),
+            tsc::UserPreferences {
+              allow_text_changes_in_new_files: Some(true),
+              ..Default::default()
+            },
+          )
+          .await?,
+      );
+    }
+    file_text_changes_to_workspace_edit(&changes, self)
+  }
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -2713,11 +3007,12 @@ impl Inner {
   }
 
   fn send_diagnostics_update(&self) {
-    let snapshot = (
-      self.snapshot(),
-      self.config.snapshot(),
-      self.lint_options.clone(),
-    );
+    let snapshot = DiagnosticServerUpdateMessage {
+      snapshot: self.snapshot(),
+      config: self.config.snapshot(),
+      lint_options: self.lint_options.clone(),
+      url_map: self.url_map.clone(),
+    };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {}", err);
     }
@@ -2746,7 +3041,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn initialized(&self, _: InitializedParams) {
-    let mut maybe_registration = None;
+    let mut registrations = Vec::with_capacity(2);
     let client = {
       let mut ls = self.0.write().await;
       if ls
@@ -2757,19 +3052,33 @@ impl tower_lsp::LanguageServer for LanguageServer {
         // we are going to watch all the JSON files in the workspace, and the
         // notification handler will pick up any of the changes of those files we
         // are interested in.
-        let watch_registration_options =
-          DidChangeWatchedFilesRegistrationOptions {
-            watchers: vec![FileSystemWatcher {
-              glob_pattern: "**/*.{json,jsonc}".to_string(),
-              kind: Some(WatchKind::Change),
-            }],
-          };
-        maybe_registration = Some(Registration {
+        let options = DidChangeWatchedFilesRegistrationOptions {
+          watchers: vec![FileSystemWatcher {
+            glob_pattern: "**/*.{json,jsonc,lock}".to_string(),
+            kind: None,
+          }],
+        };
+        registrations.push(Registration {
           id: "workspace/didChangeWatchedFiles".to_string(),
           method: "workspace/didChangeWatchedFiles".to_string(),
-          register_options: Some(
-            serde_json::to_value(watch_registration_options).unwrap(),
-          ),
+          register_options: Some(serde_json::to_value(options).unwrap()),
+        });
+      }
+      if ls.config.client_capabilities.workspace_will_rename_files {
+        let options = FileOperationRegistrationOptions {
+          filters: vec![FileOperationFilter {
+            scheme: Some("file".to_string()),
+            pattern: FileOperationPattern {
+              glob: "**/*".to_string(),
+              matches: None,
+              options: None,
+            },
+          }],
+        };
+        registrations.push(Registration {
+          id: "workspace/willRenameFiles".to_string(),
+          method: "workspace/willRenameFiles".to_string(),
+          register_options: Some(serde_json::to_value(options).unwrap()),
         });
       }
 
@@ -2784,7 +3093,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       ls.client.clone()
     };
 
-    if let Some(registration) = maybe_registration {
+    for registration in registrations {
       if let Err(err) = client
         .when_outside_lsp_lock()
         .register_capability(vec![registration])
@@ -2794,9 +3103,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
       }
     }
 
-    if !self.refresh_specifiers_from_client().await {
-      // force update config
-      self.0.write().await.refresh_documents_config();
+    self.refresh_specifiers_from_client().await;
+
+    {
+      let mut ls = self.0.write().await;
+      ls.refresh_documents_config().await;
+      ls.diagnostics_server.invalidate_all();
+      ls.send_diagnostics_update();
     }
 
     lsp_log!("Server ready.");
@@ -2814,7 +3127,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, client_uri, specifier, had_specifier_settings) = {
+    let (client, client_uri, specifier, should_get_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
@@ -2822,24 +3135,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .url_map
         .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
-      let has_specifier_settings =
-        inner.config.has_specifier_settings(&specifier);
+      let should_get_specifier_settings =
+        !inner.config.has_specifier_settings(&specifier)
+          && inner.config.client_capabilities.workspace_configuration;
       if document.is_diagnosable() {
         inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
-        if has_specifier_settings {
+        if !should_get_specifier_settings {
           inner.send_diagnostics_update();
           inner.send_testing_update();
         }
       }
-      (client, client_uri, specifier, has_specifier_settings)
+      (client, client_uri, specifier, should_get_specifier_settings)
     };
 
     // retrieve the specifier settings outside the lock if
     // they haven't been asked for yet
-    if !had_specifier_settings {
+    if should_get_specifier_settings {
       let response = client
         .when_outside_lsp_lock()
         .specifier_configuration(&client_uri)
@@ -2862,7 +3176,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .map(|d| d.is_diagnosable())
         .unwrap_or(false)
       {
-        ls.refresh_documents_config();
+        ls.refresh_documents_config().await;
         ls.send_diagnostics_update();
         ls.send_testing_update();
       }
@@ -2950,7 +3264,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
       (ls.performance.clone(), mark)
     };
 
-    self.refresh_specifiers_from_client().await;
+    if self.refresh_specifiers_from_client().await {
+      let mut ls = self.0.write().await;
+      ls.refresh_documents_config().await;
+      ls.diagnostics_server.invalidate_all();
+      ls.send_diagnostics_update();
+    }
     performance.measure(mark);
   }
 
@@ -3109,6 +3428,13 @@ impl tower_lsp::LanguageServer for LanguageServer {
     self.0.read().await.signature_help(params).await
   }
 
+  async fn will_rename_files(
+    &self,
+    params: RenameFilesParams,
+  ) -> LspResult<Option<WorkspaceEdit>> {
+    self.0.read().await.will_rename_files(params).await
+  }
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -3148,23 +3474,26 @@ impl Inner {
       vec![referrer]
     };
 
+    let workspace_settings = self.config.workspace_settings();
     let mut cli_options = CliOptions::new(
       Flags {
-        cache_path: self.maybe_cache_path.clone(),
-        ca_stores: None,
-        ca_data: None,
-        unsafely_ignore_certificate_errors: None,
-        // this is to allow loading npm specifiers, so we can remove this
-        // once stabilizing them
-        unstable: true,
+        cache_path: self.maybe_global_cache_path.clone(),
+        ca_stores: workspace_settings.certificate_stores.clone(),
+        ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
+        unsafely_ignore_certificate_errors: workspace_settings
+          .unsafely_ignore_certificate_errors
+          .clone(),
+        node_modules_dir: Some(
+          self.config.maybe_node_modules_dir_path().is_some(),
+        ),
+        // bit of a hack to force the lsp to cache the @types/node package
+        type_check_mode: crate::args::TypeCheckMode::Local,
         ..Default::default()
       },
       std::env::current_dir().with_context(|| "Failed getting cwd.")?,
-      self.maybe_config_file.clone(),
-      // TODO(#16510): add support for lockfile
-      None,
-      // TODO(bartlomieju): handle package.json dependencies here
-      None,
+      self.config.maybe_config_file().cloned(),
+      self.config.maybe_lockfile().cloned(),
+      self.maybe_package_json.clone(),
     )?;
     cli_options.set_import_map_specifier(self.maybe_import_map_uri.clone());
 
@@ -3198,8 +3527,8 @@ impl Inner {
   fn get_tasks(&self) -> LspResult<Option<Value>> {
     Ok(
       self
-        .maybe_config_file
-        .as_ref()
+        .config
+        .maybe_config_file()
         .and_then(|cf| cf.to_lsp_tasks()),
     )
   }

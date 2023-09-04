@@ -8,4 +8,4 @@ function handler() {
   return new Response("Hello World");
 }
 
-serve({ hostname, port, reusePort: true }, handler);
+serve({ hostname, port: Number(port), reusePort: true }, handler);

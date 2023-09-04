@@ -4,9 +4,13 @@
 // This implementation is inspired by "workerd" AsyncLocalStorage implementation:
 // https://github.com/cloudflare/workerd/blob/77fd0ed6ddba184414f0216508fc62b06e716cab/src/workerd/api/node/async-hooks.c++#L9
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { validateFunction } from "ext:deno_node/internal/validators.mjs";
 
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 function assert(cond: boolean) {
   if (!cond) throw new Error("Assertion failed");
@@ -18,18 +22,15 @@ function pushAsyncFrame(frame: AsyncContextFrame) {
 }
 
 function popAsyncFrame() {
-  assert(asyncContextStack.length > 0);
-  asyncContextStack.pop();
+  if (asyncContextStack.length > 0) {
+    asyncContextStack.pop();
+  }
 }
 
 let rootAsyncFrame: AsyncContextFrame | undefined = undefined;
 let promiseHooksSet = false;
 
 const asyncContext = Symbol("asyncContext");
-function isRejected(promise: Promise<unknown>) {
-  const [state] = core.getPromiseDetails(promise);
-  return state == 2;
-}
 
 function setPromiseHooks() {
   if (promiseHooksSet) {
@@ -40,12 +41,14 @@ function setPromiseHooks() {
   const init = (promise: Promise<unknown>) => {
     const currentFrame = AsyncContextFrame.current();
     if (!currentFrame.isRoot()) {
-      assert(AsyncContextFrame.tryGetContext(promise) == null);
+      if (typeof promise[asyncContext] !== "undefined") {
+        throw new Error("Promise already has async context");
+      }
       AsyncContextFrame.attachContext(promise);
     }
   };
   const before = (promise: Promise<unknown>) => {
-    const maybeFrame = AsyncContextFrame.tryGetContext(promise);
+    const maybeFrame = promise[asyncContext];
     if (maybeFrame) {
       pushAsyncFrame(maybeFrame);
     } else {
@@ -54,16 +57,16 @@ function setPromiseHooks() {
   };
   const after = (promise: Promise<unknown>) => {
     popAsyncFrame();
-    if (!isRejected(promise)) {
+    if (!ops.op_node_is_promise_rejected(promise)) {
       // @ts-ignore promise async context
-      delete promise[asyncContext];
+      promise[asyncContext] = undefined;
     }
   };
   const resolve = (promise: Promise<unknown>) => {
     const currentFrame = AsyncContextFrame.current();
     if (
-      !currentFrame.isRoot() && isRejected(promise) &&
-      AsyncContextFrame.tryGetContext(promise) == null
+      !currentFrame.isRoot() && ops.op_node_is_promise_rejected(promise) &&
+      typeof promise[asyncContext] === "undefined"
     ) {
       AsyncContextFrame.attachContext(promise);
     }
@@ -114,7 +117,6 @@ class AsyncContextFrame {
   }
 
   static attachContext(promise: Promise<unknown>) {
-    assert(!(asyncContext in promise));
     // @ts-ignore promise async context
     promise[asyncContext] = AsyncContextFrame.current();
   }

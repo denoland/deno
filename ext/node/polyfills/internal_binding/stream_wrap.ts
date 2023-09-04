@@ -27,8 +27,11 @@
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.h
 // - https://github.com/nodejs/node/blob/master/src/stream_wrap.cc
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
-import { Buffer } from "ext:deno_node/buffer.ts";
+import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { HandleWrap } from "ext:deno_node/internal_binding/handle_wrap.ts";
 import {
@@ -36,6 +39,9 @@ import {
   providerType,
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
+
+const core = globalThis.Deno.core;
+const { ops } = core;
 
 interface Reader {
   read(p: Uint8Array): Promise<number | null>;
@@ -51,7 +57,7 @@ export interface Closer {
 
 type Ref = { ref(): void; unref(): void };
 
-enum StreamBaseStateFields {
+const enum StreamBaseStateFields {
   kReadBytesOrError,
   kArrayBufferOffset,
   kBytesWritten,
@@ -192,6 +198,35 @@ export class LibuvStreamWrap extends HandleWrap {
     chunks: Buffer[] | (string | Buffer)[],
     allBuffers: boolean,
   ): number {
+    const supportsWritev = this.provider === providerType.TCPSERVERWRAP;
+    const rid = this[kStreamBaseField]!.rid;
+    // Fast case optimization: two chunks, and all buffers.
+    if (
+      chunks.length === 2 && allBuffers && supportsWritev &&
+      ops.op_can_write_vectored(rid)
+    ) {
+      // String chunks.
+      if (typeof chunks[0] === "string") chunks[0] = Buffer.from(chunks[0]);
+      if (typeof chunks[1] === "string") chunks[1] = Buffer.from(chunks[1]);
+
+      ops.op_raw_write_vectored(
+        rid,
+        chunks[0],
+        chunks[1],
+      ).then((nwritten) => {
+        try {
+          req.oncomplete(0);
+        } catch {
+          // swallow callback errors.
+        }
+
+        streamBaseState[kBytesWritten] = nwritten;
+        this.bytesWritten += nwritten;
+      });
+
+      return 0;
+    }
+
     const count = allBuffers ? chunks.length : chunks.length >> 1;
     const buffers: Buffer[] = new Array(count);
 
@@ -276,49 +311,88 @@ export class LibuvStreamWrap extends HandleWrap {
 
   /** Internal method for reading from the attached stream. */
   async #read() {
-    let buf = new Uint8Array(SUGGESTED_SIZE);
-
-    let nread: number | null;
+    // Lock safety: We must hold this lock until we are certain that buf is no longer used
+    // This setup code is a little verbose, but we need to be careful about buffer management
+    let buf, locked = false;
+    if (bufLocked) {
+      // Already locked, allocate
+      buf = new Uint8Array(SUGGESTED_SIZE);
+    } else {
+      // Not locked, take the buffer + lock
+      buf = BUF;
+      locked = bufLocked = true;
+    }
     try {
-      nread = await this[kStreamBaseField]!.read(buf);
-    } catch (e) {
-      if (
-        e instanceof Deno.errors.Interrupted ||
-        e instanceof Deno.errors.BadResource
-      ) {
-        nread = codeMap.get("EOF")!;
-      } else if (
-        e instanceof Deno.errors.ConnectionReset ||
-        e instanceof Deno.errors.ConnectionAborted
-      ) {
-        nread = codeMap.get("ECONNRESET")!;
-      } else {
-        nread = codeMap.get("UNKNOWN")!;
+      let nread: number | null;
+      const ridBefore = this[kStreamBaseField]!.rid;
+      try {
+        nread = await this[kStreamBaseField]!.read(buf);
+      } catch (e) {
+        // Lock safety: we know that the buffer will not be used in this function again
+        // All exits from this block either return or re-assign buf to a different value
+        if (locked) {
+          bufLocked = locked = false;
+        }
+
+        // Try to read again if the underlying stream resource
+        // changed. This can happen during TLS upgrades (eg. STARTTLS)
+        if (ridBefore != this[kStreamBaseField]!.rid) {
+          return this.#read();
+        }
+
+        buf = new Uint8Array(0);
+
+        if (
+          e instanceof Deno.errors.Interrupted ||
+          e instanceof Deno.errors.BadResource
+        ) {
+          nread = codeMap.get("EOF")!;
+        } else if (
+          e instanceof Deno.errors.ConnectionReset ||
+          e instanceof Deno.errors.ConnectionAborted
+        ) {
+          nread = codeMap.get("ECONNRESET")!;
+        } else {
+          nread = codeMap.get("UNKNOWN")!;
+        }
       }
 
-      buf = new Uint8Array(0);
-    }
+      nread ??= codeMap.get("EOF")!;
 
-    nread ??= codeMap.get("EOF")!;
+      streamBaseState[kReadBytesOrError] = nread;
 
-    streamBaseState[kReadBytesOrError] = nread;
+      if (nread > 0) {
+        this.bytesRead += nread;
+      }
 
-    if (nread > 0) {
-      this.bytesRead += nread;
-    }
+      // We release the lock early so a re-entrant read can make use of the shared buffer, but
+      // we need to make a copy of the data in the shared buffer.
+      if (locked) {
+        // Lock safety: we know that the buffer will not be used in this function again
+        // We're making a copy of data that lives in the shared buffer
+        buf = buf.slice(0, nread);
+        bufLocked = locked = false;
+      } else {
+        // The buffer isn't owned, so let's create a subarray view
+        buf = buf.subarray(0, nread);
+      }
 
-    buf = buf.slice(0, nread);
+      streamBaseState[kArrayBufferOffset] = 0;
 
-    streamBaseState[kArrayBufferOffset] = 0;
+      try {
+        this.onread!(buf, nread);
+      } catch {
+        // swallow callback errors.
+      }
 
-    try {
-      this.onread!(buf, nread);
-    } catch {
-      // swallow callback errors.
-    }
-
-    if (nread >= 0 && this.#reading) {
-      this.#read();
+      if (nread >= 0 && this.#reading) {
+        this.#read();
+      }
+    } finally {
+      // Lock safety: we know that the buffer will not be used in this function again
+      if (locked) {
+        bufLocked = locked = false;
+      }
     }
   }
 
@@ -330,15 +404,23 @@ export class LibuvStreamWrap extends HandleWrap {
   async #write(req: WriteWrap<LibuvStreamWrap>, data: Uint8Array) {
     const { byteLength } = data;
 
+    const ridBefore = this[kStreamBaseField]!.rid;
+
+    let nwritten = 0;
     try {
       // TODO(crowlKats): duplicate from runtime/js/13_buffer.js
-      let nwritten = 0;
       while (nwritten < data.length) {
         nwritten += await this[kStreamBaseField]!.write(
           data.subarray(nwritten),
         );
       }
     } catch (e) {
+      // Try to read again if the underlying stream resource
+      // changed. This can happen during TLS upgrades (eg. STARTTLS)
+      if (ridBefore != this[kStreamBaseField]!.rid) {
+        return this.#write(req, data.subarray(nwritten));
+      }
+
       let status: number;
 
       // TODO(cmorten): map err to status codes
@@ -372,3 +454,8 @@ export class LibuvStreamWrap extends HandleWrap {
     return;
   }
 }
+
+// Used in #read above
+const BUF = new Uint8Array(SUGGESTED_SIZE);
+// We need to ensure that only one inflight read request uses the cached buffer above
+let bufLocked = false;

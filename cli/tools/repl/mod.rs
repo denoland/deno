@@ -8,7 +8,7 @@ use crate::factory::CliFactory;
 use crate::file_fetcher::FileFetcher;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_runtime::permissions::Permissions;
 use deno_runtime::permissions::PermissionsContainer;
 use rustyline::error::ReadlineError;
@@ -107,9 +107,12 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
   )?);
   let npm_resolver = factory.npm_resolver().await?.clone();
   let resolver = factory.resolver().await?.clone();
-  let dir = factory.deno_dir()?;
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let history_file_path = factory
+    .deno_dir()
+    .ok()
+    .and_then(|dir| dir.repl_history_file_path());
 
   let mut worker = worker_factory
     .create_main_worker(main_module, permissions)
@@ -126,7 +129,6 @@ pub async fn run(flags: Flags, repl_flags: ReplFlags) -> Result<i32, AnyError> {
     sync_sender: rustyline_channel.0,
   };
 
-  let history_file_path = dir.repl_history_file_path();
   let editor = ReplEditor::new(helper, history_file_path)?;
 
   if let Some(eval_files) = repl_flags.eval_files {

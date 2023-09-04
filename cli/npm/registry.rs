@@ -99,27 +99,6 @@ impl CliNpmRegistryApi {
     &self.inner().base_url
   }
 
-  /// Marks that new requests for package information should retrieve it
-  /// from the npm registry
-  ///
-  /// Returns true if it was successfully set for the first time.
-  pub fn mark_force_reload(&self) -> bool {
-    // never force reload the registry information if reloading
-    // is disabled or if we're already reloading
-    if matches!(
-      self.inner().cache.cache_setting(),
-      CacheSetting::Only | CacheSetting::ReloadAll
-    ) {
-      return false;
-    }
-    if self.inner().force_reload_flag.raise() {
-      self.clear_memory_cache(); // clear the memory cache to force reloading
-      true
-    } else {
-      false
-    }
-  }
-
   fn inner(&self) -> &Arc<CliNpmRegistryApiInner> {
     // this panicking indicates a bug in the code where this
     // wasn't initialized
@@ -152,6 +131,23 @@ impl NpmRegistryApi for CliNpmRegistryApi {
       Err(err) => {
         Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(err)))
       }
+    }
+  }
+
+  fn mark_force_reload(&self) -> bool {
+    // never force reload the registry information if reloading
+    // is disabled or if we're already reloading
+    if matches!(
+      self.inner().cache.cache_setting(),
+      CacheSetting::Only | CacheSetting::ReloadAll
+    ) {
+      return false;
+    }
+    if self.inner().force_reload_flag.raise() {
+      self.clear_memory_cache(); // clear the cache to force reloading
+      true
+    } else {
+      false
     }
   }
 }
@@ -311,7 +307,6 @@ impl CliNpmRegistryApiInner {
   ) -> Result<(), AnyError> {
     let file_cache_path = self.get_package_file_cache_path(name);
     let file_text = serde_json::to_string(&package_info)?;
-    std::fs::create_dir_all(file_cache_path.parent().unwrap())?;
     atomic_write_file(&file_cache_path, file_text, CACHE_PERM)?;
     Ok(())
   }
@@ -363,7 +358,23 @@ impl CliNpmRegistryApiInner {
   }
 
   fn get_package_url(&self, name: &str) -> Url {
-    self.base_url.join(name).unwrap()
+    // list of all characters used in npm packages:
+    //  !, ', (, ), *, -, ., /, [0-9], @, [A-Za-z], _, ~
+    const ASCII_SET: percent_encoding::AsciiSet =
+      percent_encoding::NON_ALPHANUMERIC
+        .remove(b'!')
+        .remove(b'\'')
+        .remove(b'(')
+        .remove(b')')
+        .remove(b'*')
+        .remove(b'-')
+        .remove(b'.')
+        .remove(b'/')
+        .remove(b'@')
+        .remove(b'_')
+        .remove(b'~');
+    let name = percent_encoding::utf8_percent_encode(name, &ASCII_SET);
+    self.base_url.join(&name.to_string()).unwrap()
   }
 
   fn get_package_file_cache_path(&self, name: &str) -> PathBuf {
@@ -371,7 +382,7 @@ impl CliNpmRegistryApiInner {
     name_folder_path.join("registry.json")
   }
 
-  pub fn clear_memory_cache(&self) {
+  fn clear_memory_cache(&self) {
     self.mem_cache.lock().clear();
   }
 

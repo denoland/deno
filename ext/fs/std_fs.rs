@@ -9,7 +9,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
@@ -66,7 +66,11 @@ impl FileSystem for RealFs {
     {
       Ok(r.bits())
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(any(
+      target_os = "macos",
+      target_os = "openbsd",
+      target_os = "freebsd"
+    ))]
     {
       Ok(r.bits() as u32)
     }

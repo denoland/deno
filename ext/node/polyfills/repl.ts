@@ -52,11 +52,13 @@ export const builtinModules = [
   "worker_threads",
   "zlib",
 ];
+export const _builtinLibs = builtinModules;
 export function start() {
   notImplemented("repl.start");
 }
 export default {
   REPLServer,
   builtinModules,
+  _builtinLibs,
   start,
 };

@@ -12,6 +12,7 @@ use deno_core::error::AnyError;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::OpState;
+use deno_core::ResourceHandleFd;
 use deno_core::ResourceId;
 use tokio::task::JoinError;
 
@@ -89,6 +90,10 @@ pub struct FsStat {
   pub rdev: u64,
   pub blksize: u64,
   pub blocks: u64,
+  pub is_block_device: bool,
+  pub is_char_device: bool,
+  pub is_fifo: bool,
+  pub is_socket: bool,
 }
 
 impl FsStat {
@@ -103,6 +108,20 @@ impl FsStat {
         #[cfg(not(unix))]
         {
           0
+        }
+      }};
+    }
+
+    macro_rules! unix_or_false {
+      ($member:ident) => {{
+        #[cfg(unix)]
+        {
+          use std::os::unix::fs::FileTypeExt;
+          metadata.file_type().$member()
+        }
+        #[cfg(not(unix))]
+        {
+          false
         }
       }};
     }
@@ -139,6 +158,10 @@ impl FsStat {
       rdev: unix_or_zero!(rdev),
       blksize: unix_or_zero!(blksize),
       blocks: unix_or_zero!(blocks),
+      is_block_device: unix_or_false!(is_block_device),
+      is_char_device: unix_or_false!(is_char_device),
+      is_fifo: unix_or_false!(is_fifo),
+      is_socket: unix_or_false!(is_socket),
     }
   }
 }
@@ -147,14 +170,10 @@ impl FsStat {
 pub trait File {
   fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize>;
   async fn read(self: Rc<Self>, limit: usize) -> FsResult<BufView> {
-    let vec = vec![0; limit];
-    let buf = BufMutView::from(vec);
-    let (nread, buf) = self.read_byob(buf).await?;
-    let mut vec = buf.unwrap_vec();
-    if vec.len() != nread {
-      vec.truncate(nread);
-    }
-    Ok(BufView::from(vec))
+    let buf = BufMutView::new(limit);
+    let (nread, mut buf) = self.read_byob(buf).await?;
+    buf.truncate(nread);
+    Ok(buf.into_view())
   }
   async fn read_byob(
     self: Rc<Self>,
@@ -214,10 +233,7 @@ pub trait File {
 
   // lower level functionality
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd>;
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle>;
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
 }
 
@@ -231,7 +247,7 @@ impl FileResource {
     Self { name, file }
   }
 
-  pub fn with_resource<F, R>(
+  fn with_resource<F, R>(
     state: &OpState,
     rid: ResourceId,
     f: F,
@@ -337,13 +353,7 @@ impl deno_core::Resource for FileResource {
     self.file.clone().write_sync(data).map_err(|err| err.into())
   }
 
-  #[cfg(unix)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::unix::prelude::RawFd> {
-    self.file.clone().backing_fd()
-  }
-
-  #[cfg(windows)]
-  fn backing_fd(self: Rc<Self>) -> Option<std::os::windows::io::RawHandle> {
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     self.file.clone().backing_fd()
   }
 }

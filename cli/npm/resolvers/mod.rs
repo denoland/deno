@@ -4,6 +4,7 @@ mod common;
 mod global;
 mod local;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,10 +25,8 @@ use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NpmResolver;
 use deno_runtime::deno_node::PathClean;
-use deno_semver::npm::NpmPackageNv;
-use deno_semver::npm::NpmPackageNvReference;
-use deno_semver::npm::NpmPackageReq;
-use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use global::GlobalNpmPackageResolver;
 use serde::Deserialize;
 use serde::Serialize;
@@ -36,10 +35,11 @@ use crate::args::Lockfile;
 use crate::util::fs::canonicalize_path_maybe_not_exists_with_fs;
 use crate::util::progress_bar::ProgressBar;
 
-use self::common::NpmPackageFsResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;
 use super::NpmCache;
+
+pub use self::common::NpmPackageFsResolver;
 
 /// State provided to the process via an environment variable.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -90,9 +90,19 @@ impl CliNpmResolver {
     self.fs_resolver.node_modules_path()
   }
 
+  /// Checks if the provided package req's folder is cached.
+  pub fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool {
+    self
+      .resolve_pkg_id_from_pkg_req(req)
+      .ok()
+      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .map(|folder| folder.exists())
+      .unwrap_or(false)
+  }
+
   pub fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
   }
@@ -122,16 +132,37 @@ impl CliNpmResolver {
   pub fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<PathBuf, AnyError> {
-    let path = self
+  ) -> Result<Option<PathBuf>, AnyError> {
+    let Some(path) = self
       .fs_resolver
-      .resolve_package_folder_from_specifier(specifier)?;
+      .resolve_package_folder_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
     log::debug!(
       "Resolved package folder of {} to {}",
       specifier,
       path.display()
     );
-    Ok(path)
+    Ok(Some(path))
+  }
+
+  /// Resolves the package nv from the provided specifier.
+  pub fn resolve_package_id_from_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<Option<NpmPackageId>, AnyError> {
+    let Some(cache_folder_id) = self
+      .fs_resolver
+      .resolve_package_cache_folder_id_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
+    Ok(Some(
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
+    ))
   }
 
   /// Attempts to get the package size in bytes.
@@ -150,15 +181,10 @@ impl CliNpmResolver {
     specifier.as_ref().starts_with(root_dir_url.as_str())
   }
 
-  /// If the resolver has resolved any npm packages.
-  pub fn has_packages(&self) -> bool {
-    self.resolution.has_packages()
-  }
-
   /// Adds package requirements to the resolver and ensures everything is setup.
   pub async fn add_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[PackageReq],
   ) -> Result<(), AnyError> {
     if packages.is_empty() {
       return Ok(());
@@ -181,7 +207,7 @@ impl CliNpmResolver {
   /// This will retrieve and resolve package information, but not cache any package files.
   pub async fn set_package_reqs(
     &self,
-    packages: Vec<NpmPackageReq>,
+    packages: &[PackageReq],
   ) -> Result<(), AnyError> {
     self.resolution.set_package_reqs(packages).await
   }
@@ -189,13 +215,20 @@ impl CliNpmResolver {
   /// Gets the state of npm for the process.
   pub fn get_npm_process_state(&self) -> String {
     serde_json::to_string(&NpmProcessState {
-      snapshot: self.resolution.serialized_snapshot(),
+      snapshot: self
+        .resolution
+        .serialized_valid_snapshot()
+        .into_serialized(),
       local_node_modules_path: self
         .fs_resolver
         .node_modules_path()
         .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
+  }
+
+  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
+    self.resolution.package_reqs()
   }
 
   pub fn snapshot(&self) -> NpmResolutionSnapshot {
@@ -210,8 +243,8 @@ impl CliNpmResolver {
     &self,
   ) -> Result<(), AnyError> {
     // add and ensure this isn't added to the lockfile
-    let package_reqs = vec![NpmPackageReq::from_str("@types/node").unwrap()];
-    self.resolution.add_package_reqs(package_reqs).await?;
+    let package_reqs = vec![PackageReq::from_str("@types/node").unwrap()];
+    self.resolution.add_package_reqs(&package_reqs).await?;
     self.fs_resolver.cache_packages().await?;
 
     Ok(())
@@ -241,14 +274,14 @@ impl NpmResolver for CliNpmResolver {
   fn resolve_package_folder_from_path(
     &self,
     path: &Path,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<Option<PathBuf>, AnyError> {
     let specifier = path_to_specifier(path)?;
     self.resolve_package_folder_from_specifier(&specifier)
   }
 
   fn resolve_package_folder_from_deno_module(
     &self,
-    pkg_nv: &NpmPackageNv,
+    pkg_nv: &PackageNv,
   ) -> Result<PathBuf, AnyError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(pkg_nv)?;
     self.resolve_pkg_folder_from_pkg_id(&pkg_id)
@@ -256,22 +289,16 @@ impl NpmResolver for CliNpmResolver {
 
   fn resolve_pkg_id_from_pkg_req(
     &self,
-    req: &NpmPackageReq,
+    req: &PackageReq,
   ) -> Result<NpmPackageId, PackageReqNotFoundError> {
     self.resolution.resolve_pkg_id_from_pkg_req(req)
-  }
-
-  fn resolve_nv_ref_from_pkg_req_ref(
-    &self,
-    req_ref: &NpmPackageReqReference,
-  ) -> Result<NpmPackageNvReference, PackageReqNotFoundError> {
-    self.resolution.resolve_nv_ref_from_pkg_req_ref(req_ref)
   }
 
   fn in_npm_package(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .resolve_package_folder_from_specifier(specifier)
-      .is_ok()
+      .map(|p| p.is_some())
+      .unwrap_or(false)
   }
 
   fn ensure_read_permission(

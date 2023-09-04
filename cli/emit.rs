@@ -26,9 +26,7 @@ impl Emitter {
     parsed_source_cache: Arc<ParsedSourceCache>,
     emit_options: deno_ast::EmitOptions,
   ) -> Self {
-    let emit_options_hash = FastInsecureHasher::new()
-      .write_hashable(&emit_options)
-      .finish();
+    let emit_options_hash = FastInsecureHasher::hash(&emit_options);
     Self {
       emit_cache,
       parsed_source_cache,
@@ -64,7 +62,7 @@ impl Emitter {
   }
 
   /// Gets a cached emit if the source matches the hash found in the cache.
-  pub fn maybed_cached_emit(
+  pub fn maybe_cached_emit(
     &self,
     specifier: &ModuleSpecifier,
     source: &str,

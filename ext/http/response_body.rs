@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
 use std::io::Write;
@@ -7,26 +6,24 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Waker;
 
+use brotli::enc::encode::BrotliEncoderParameter;
+use brotli::ffi::compressor::BrotliEncoderState;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::bad_resource;
 use deno_core::error::AnyError;
 use deno_core::futures::ready;
 use deno_core::futures::FutureExt;
-use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufView;
-use deno_core::CancelHandle;
-use deno_core::CancelTryFuture;
-use deno_core::RcRef;
 use deno_core::Resource;
-use deno_core::WriteOutcome;
 use flate2::write::GzEncoder;
 use http::HeaderMap;
 use hyper1::body::Body;
 use hyper1::body::Frame;
 use hyper1::body::SizeHint;
 use pin_project::pin_project;
+
+use crate::slab::HttpRequestBodyAutocloser;
 
 /// Simplification for nested types we use for our streams. We provide a way to convert from
 /// this type into Hyper's body [`Frame`].
@@ -118,13 +115,14 @@ trait PollFrame: Unpin {
 pub enum Compression {
   None,
   GZip,
+  Brotli,
 }
 
 pub enum ResponseStream {
   /// A resource stream, piped in fast mode.
   Resource(ResourceBodyAdapter),
-  /// A JS-backed stream, written in JS and transported via pipe.
-  V8Stream(tokio::sync::mpsc::Receiver<BufView>),
+  #[cfg(test)]
+  TestChannel(tokio::sync::mpsc::Receiver<BufView>),
 }
 
 #[derive(Default)]
@@ -140,6 +138,8 @@ pub enum ResponseBytesInner {
   UncompressedStream(ResponseStream),
   /// A GZip stream.
   GZipStream(GZipResponseStream),
+  /// A Brotli stream.
+  BrotliStream(BrotliResponseStream),
 }
 
 impl std::fmt::Debug for ResponseBytesInner {
@@ -150,6 +150,7 @@ impl std::fmt::Debug for ResponseBytesInner {
       Self::Bytes(..) => f.write_str("Bytes"),
       Self::UncompressedStream(..) => f.write_str("Uncompressed"),
       Self::GZipStream(..) => f.write_str("GZip"),
+      Self::BrotliStream(..) => f.write_str("Brotli"),
     }
   }
 }
@@ -157,26 +158,40 @@ impl std::fmt::Debug for ResponseBytesInner {
 /// This represents the union of possible response types in Deno with the stream-style [`Body`] interface
 /// required by hyper. As the API requires information about request completion (including a success/fail
 /// flag), we include a very lightweight [`CompletionHandle`] for interested parties to listen on.
-#[derive(Debug, Default)]
-pub struct ResponseBytes(ResponseBytesInner, CompletionHandle);
+#[derive(Default)]
+pub struct ResponseBytes {
+  inner: ResponseBytesInner,
+  completion_handle: CompletionHandle,
+  headers: Rc<RefCell<Option<HeaderMap>>>,
+  res: Option<HttpRequestBodyAutocloser>,
+}
 
 impl ResponseBytes {
-  pub fn initialize(&mut self, inner: ResponseBytesInner) {
-    debug_assert!(matches!(self.0, ResponseBytesInner::Empty));
-    self.0 = inner;
+  pub fn initialize(
+    &mut self,
+    inner: ResponseBytesInner,
+    req_body_resource: Option<HttpRequestBodyAutocloser>,
+  ) {
+    debug_assert!(matches!(self.inner, ResponseBytesInner::Empty));
+    self.inner = inner;
+    self.res = req_body_resource;
   }
 
   pub fn completion_handle(&self) -> CompletionHandle {
-    self.1.clone()
+    self.completion_handle.clone()
+  }
+
+  pub fn trailers(&self) -> Rc<RefCell<Option<HeaderMap>>> {
+    self.headers.clone()
   }
 
   fn complete(&mut self, success: bool) -> ResponseBytesInner {
-    if matches!(self.0, ResponseBytesInner::Done) {
+    if matches!(self.inner, ResponseBytesInner::Done) {
       return ResponseBytesInner::Done;
     }
 
-    let current = std::mem::replace(&mut self.0, ResponseBytesInner::Done);
-    self.1.complete(success);
+    let current = std::mem::replace(&mut self.inner, ResponseBytesInner::Done);
+    self.completion_handle.complete(success);
     current
   }
 }
@@ -189,22 +204,18 @@ impl ResponseBytesInner {
       Self::Bytes(bytes) => SizeHint::with_exact(bytes.len() as u64),
       Self::UncompressedStream(res) => res.size_hint(),
       Self::GZipStream(..) => SizeHint::default(),
+      Self::BrotliStream(..) => SizeHint::default(),
     }
   }
 
   fn from_stream(compression: Compression, stream: ResponseStream) -> Self {
-    if compression == Compression::GZip {
-      Self::GZipStream(GZipResponseStream::new(stream))
-    } else {
-      Self::UncompressedStream(stream)
+    match compression {
+      Compression::GZip => Self::GZipStream(GZipResponseStream::new(stream)),
+      Compression::Brotli => {
+        Self::BrotliStream(BrotliResponseStream::new(stream))
+      }
+      _ => Self::UncompressedStream(stream),
     }
-  }
-
-  pub fn from_v8(
-    compression: Compression,
-    rx: tokio::sync::mpsc::Receiver<BufView>,
-  ) -> Self {
-    Self::from_stream(compression, ResponseStream::V8Stream(rx))
   }
 
   pub fn from_resource(
@@ -218,23 +229,46 @@ impl ResponseBytesInner {
     )
   }
 
-  pub fn from_slice(compression: Compression, bytes: &[u8]) -> Self {
-    if compression == Compression::GZip {
-      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
-      writer.write_all(bytes).unwrap();
-      Self::Bytes(BufView::from(writer.finish().unwrap()))
-    } else {
-      Self::Bytes(BufView::from(bytes.to_vec()))
+  pub fn from_bufview(compression: Compression, buf: BufView) -> Self {
+    match compression {
+      Compression::GZip => {
+        let mut writer =
+          GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        writer.write_all(&buf).unwrap();
+        Self::Bytes(BufView::from(writer.finish().unwrap()))
+      }
+      Compression::Brotli => {
+        // quality level 6 is based on google's nginx default value for
+        // on-the-fly compression
+        // https://github.com/google/ngx_brotli#brotli_comp_level
+        // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes
+        // (~4MB)
+        let mut writer =
+          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        writer.write_all(&buf).unwrap();
+        writer.flush().unwrap();
+        Self::Bytes(BufView::from(writer.into_inner()))
+      }
+      _ => Self::Bytes(buf),
     }
   }
 
   pub fn from_vec(compression: Compression, vec: Vec<u8>) -> Self {
-    if compression == Compression::GZip {
-      let mut writer = GzEncoder::new(Vec::new(), flate2::Compression::fast());
-      writer.write_all(&vec).unwrap();
-      Self::Bytes(BufView::from(writer.finish().unwrap()))
-    } else {
-      Self::Bytes(BufView::from(vec))
+    match compression {
+      Compression::GZip => {
+        let mut writer =
+          GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        writer.write_all(&vec).unwrap();
+        Self::Bytes(BufView::from(writer.finish().unwrap()))
+      }
+      Compression::Brotli => {
+        let mut writer =
+          brotli::CompressorWriter::new(Vec::new(), 65 * 1024, 6, 22);
+        writer.write_all(&vec).unwrap();
+        writer.flush().unwrap();
+        Self::Bytes(BufView::from(writer.into_inner()))
+      }
+      _ => Self::Bytes(BufView::from(vec)),
     }
   }
 }
@@ -248,18 +282,26 @@ impl Body for ResponseBytes {
     cx: &mut std::task::Context<'_>,
   ) -> std::task::Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
     let res = loop {
-      let res = match &mut self.0 {
+      let res = match &mut self.inner {
         ResponseBytesInner::Done | ResponseBytesInner::Empty => {
+          if let Some(trailers) = self.headers.borrow_mut().take() {
+            return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+          }
           unreachable!()
         }
         ResponseBytesInner::Bytes(..) => {
-          let ResponseBytesInner::Bytes(data) = self.complete(true) else { unreachable!(); };
+          let ResponseBytesInner::Bytes(data) = self.complete(true) else {
+            unreachable!();
+          };
           return std::task::Poll::Ready(Some(Ok(Frame::data(data))));
         }
         ResponseBytesInner::UncompressedStream(stm) => {
           ready!(Pin::new(stm).poll_frame(cx))
         }
         ResponseBytesInner::GZipStream(stm) => {
+          ready!(Pin::new(stm).poll_frame(cx))
+        }
+        ResponseBytesInner::BrotliStream(stm) => {
           ready!(Pin::new(stm).poll_frame(cx))
         }
       };
@@ -271,26 +313,32 @@ impl Body for ResponseBytes {
     };
 
     if matches!(res, ResponseStreamResult::EndOfStream) {
+      if let Some(trailers) = self.headers.borrow_mut().take() {
+        return std::task::Poll::Ready(Some(Ok(Frame::trailers(trailers))));
+      }
       self.complete(true);
     }
     std::task::Poll::Ready(res.into())
   }
 
   fn is_end_stream(&self) -> bool {
-    matches!(self.0, ResponseBytesInner::Done | ResponseBytesInner::Empty)
+    matches!(
+      self.inner,
+      ResponseBytesInner::Done | ResponseBytesInner::Empty
+    ) && self.headers.borrow_mut().is_none()
   }
 
   fn size_hint(&self) -> SizeHint {
     // The size hint currently only used in the case where it is exact bounds in hyper, but we'll pass it through
     // anyways just in case hyper needs it.
-    self.0.size_hint()
+    self.inner.size_hint()
   }
 }
 
 impl Drop for ResponseBytes {
   fn drop(&mut self) {
     // We won't actually poll_frame for Empty responses so this is where we return success
-    self.complete(matches!(self.0, ResponseBytesInner::Empty));
+    self.complete(matches!(self.inner, ResponseBytesInner::Empty));
   }
 }
 
@@ -318,14 +366,16 @@ impl PollFrame for ResponseStream {
   ) -> std::task::Poll<ResponseStreamResult> {
     match &mut *self {
       ResponseStream::Resource(res) => Pin::new(res).poll_frame(cx),
-      ResponseStream::V8Stream(res) => Pin::new(res).poll_frame(cx),
+      #[cfg(test)]
+      ResponseStream::TestChannel(rx) => Pin::new(rx).poll_frame(cx),
     }
   }
 
   fn size_hint(&self) -> SizeHint {
     match self {
       ResponseStream::Resource(res) => res.size_hint(),
-      ResponseStream::V8Stream(res) => res.size_hint(),
+      #[cfg(test)]
+      ResponseStream::TestChannel(_) => SizeHint::default(),
     }
   }
 }
@@ -364,6 +414,7 @@ impl PollFrame for ResourceBodyAdapter {
   }
 }
 
+#[cfg(test)]
 impl PollFrame for tokio::sync::mpsc::Receiver<BufView> {
   fn poll_frame(
     mut self: Pin<&mut Self>,
@@ -531,49 +582,183 @@ impl PollFrame for GZipResponseStream {
   }
 }
 
-/// A response body object that can be passed to V8. This body will feed byte buffers to a channel which
-/// feed's hyper's HTTP response.
-pub struct V8StreamHttpResponseBody(
-  AsyncRefCell<Option<tokio::sync::mpsc::Sender<BufView>>>,
-  CancelHandle,
-);
+#[derive(Copy, Clone, Debug)]
+enum BrotliState {
+  Streaming,
+  Flushing,
+  EndOfStream,
+}
 
-impl V8StreamHttpResponseBody {
-  pub fn new(sender: tokio::sync::mpsc::Sender<BufView>) -> Self {
-    Self(AsyncRefCell::new(Some(sender)), CancelHandle::default())
+struct BrotliEncoderStateWrapper {
+  stm: *mut BrotliEncoderState,
+}
+
+#[pin_project]
+pub struct BrotliResponseStream {
+  state: BrotliState,
+  stm: BrotliEncoderStateWrapper,
+  current_cursor: usize,
+  output_written_so_far: usize,
+  #[pin]
+  underlying: ResponseStream,
+}
+
+impl Drop for BrotliEncoderStateWrapper {
+  fn drop(&mut self) {
+    // SAFETY: since we are dropping, we can be sure that this instance will not
+    // be used again.
+    unsafe {
+      brotli::ffi::compressor::BrotliEncoderDestroyInstance(self.stm);
+    }
   }
 }
 
-impl Resource for V8StreamHttpResponseBody {
-  fn name(&self) -> Cow<str> {
-    "responseBody".into()
+impl BrotliResponseStream {
+  pub fn new(underlying: ResponseStream) -> Self {
+    // SAFETY: creating an FFI instance should be OK with these args.
+    let stm = unsafe {
+      let stm = brotli::ffi::compressor::BrotliEncoderCreateInstance(
+        None,
+        None,
+        std::ptr::null_mut(),
+      );
+      // Quality level 6 is based on google's nginx default value for on-the-fly compression
+      // https://github.com/google/ngx_brotli#brotli_comp_level
+      // lgwin 22 is equivalent to brotli window size of (2**22)-16 bytes (~4MB)
+      brotli::ffi::compressor::BrotliEncoderSetParameter(
+        stm,
+        BrotliEncoderParameter::BROTLI_PARAM_QUALITY,
+        6,
+      );
+      brotli::ffi::compressor::BrotliEncoderSetParameter(
+        stm,
+        BrotliEncoderParameter::BROTLI_PARAM_LGWIN,
+        22,
+      );
+      BrotliEncoderStateWrapper { stm }
+    };
+    Self {
+      stm,
+      output_written_so_far: 0,
+      current_cursor: 0,
+      state: BrotliState::Streaming,
+      underlying,
+    }
+  }
+}
+
+fn max_compressed_size(input_size: usize) -> usize {
+  if input_size == 0 {
+    return 2;
   }
 
-  fn write(
-    self: Rc<Self>,
-    buf: BufView,
-  ) -> AsyncResult<deno_core::WriteOutcome> {
-    let cancel_handle = RcRef::map(&self, |this| &this.1);
-    Box::pin(
-      async move {
-        let nwritten = buf.len();
+  // [window bits / empty metadata] + N * [uncompressed] + [last empty]
+  let num_large_blocks = input_size >> 14;
+  let overhead = 2 + (4 * num_large_blocks) + 3 + 1;
+  let result = input_size + overhead;
 
-        let res = RcRef::map(self, |this| &this.0).borrow().await;
-        if let Some(tx) = res.as_ref() {
-          tx.send(buf)
-            .await
-            .map_err(|_| bad_resource("failed to write"))?;
-          Ok(WriteOutcome::Full { nwritten })
+  if result < input_size {
+    0
+  } else {
+    result
+  }
+}
+
+impl PollFrame for BrotliResponseStream {
+  fn poll_frame(
+    self: Pin<&mut Self>,
+    cx: &mut std::task::Context<'_>,
+  ) -> std::task::Poll<ResponseStreamResult> {
+    let this = self.get_mut();
+    let state = &mut this.state;
+    let frame = match *state {
+      BrotliState::Streaming => {
+        ready!(Pin::new(&mut this.underlying).poll_frame(cx))
+      }
+      BrotliState::Flushing => ResponseStreamResult::EndOfStream,
+      BrotliState::EndOfStream => {
+        return std::task::Poll::Ready(ResponseStreamResult::EndOfStream);
+      }
+    };
+
+    let res = match frame {
+      ResponseStreamResult::NonEmptyBuf(buf) => {
+        let mut output_written = 0;
+        let mut total_output_written = 0;
+        let mut input_size = buf.len();
+        let input_buffer = buf.as_ref();
+        let mut len = max_compressed_size(input_size);
+        let mut output_buffer = vec![0u8; len];
+        let mut ob_ptr = output_buffer.as_mut_ptr();
+
+        // SAFETY: these are okay arguments to these FFI calls.
+        unsafe {
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_PROCESS,
+            &mut input_size,
+            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
+            &mut len,
+            &mut ob_ptr,
+            &mut output_written,
+          );
+          total_output_written += output_written;
+          output_written = 0;
+
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FLUSH,
+            &mut input_size,
+            &input_buffer.as_ptr() as *const *const u8 as *mut *const u8,
+            &mut len,
+            &mut ob_ptr,
+            &mut output_written,
+          );
+          total_output_written += output_written;
+        };
+
+        output_buffer
+          .truncate(total_output_written - this.output_written_so_far);
+        this.output_written_so_far = total_output_written;
+        ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
+      }
+      ResponseStreamResult::EndOfStream => {
+        let mut len = 1024usize;
+        let mut output_buffer = vec![0u8; len];
+        let mut input_size = 0;
+        let mut output_written = 0;
+        let ob_ptr = output_buffer.as_mut_ptr();
+
+        // SAFETY: these are okay arguments to these FFI calls.
+        unsafe {
+          brotli::ffi::compressor::BrotliEncoderCompressStream(
+            this.stm.stm,
+            brotli::ffi::compressor::BrotliEncoderOperation::BROTLI_OPERATION_FINISH,
+            &mut input_size,
+            std::ptr::null_mut(),
+            &mut len,
+            &ob_ptr as *const *mut u8 as *mut *mut u8,
+            &mut output_written,
+          );
+        };
+
+        if output_written == 0 {
+          this.state = BrotliState::EndOfStream;
+          ResponseStreamResult::EndOfStream
         } else {
-          Err(bad_resource("failed to write"))
+          this.state = BrotliState::Flushing;
+          output_buffer.truncate(output_written - this.output_written_so_far);
+          ResponseStreamResult::NonEmptyBuf(BufView::from(output_buffer))
         }
       }
-      .try_or_cancel(cancel_handle),
-    )
+      _ => frame,
+    };
+
+    std::task::Poll::Ready(res)
   }
 
-  fn close(self: Rc<Self>) {
-    self.1.cancel();
+  fn size_hint(&self) -> SizeHint {
+    SizeHint::default()
   }
 }
 
@@ -655,14 +840,14 @@ mod tests {
     vec![v, v2].into_iter()
   }
 
-  async fn test(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
+  async fn test_gzip(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
     let v = i.collect::<Vec<_>>();
     let mut expected: Vec<u8> = vec![];
     for v in &v {
       expected.extend(v);
     }
     let (tx, rx) = tokio::sync::mpsc::channel(1);
-    let underlying = ResponseStream::V8Stream(rx);
+    let underlying = ResponseStream::TestChannel(rx);
     let mut resp = GZipResponseStream::new(underlying);
     let handle = tokio::task::spawn(async move {
       for chunk in v {
@@ -697,19 +882,66 @@ mod tests {
     handle.await.unwrap();
   }
 
+  async fn test_brotli(i: impl Iterator<Item = Vec<u8>> + Send + 'static) {
+    let v = i.collect::<Vec<_>>();
+    let mut expected: Vec<u8> = vec![];
+    for v in &v {
+      expected.extend(v);
+    }
+    let (tx, rx) = tokio::sync::mpsc::channel(1);
+    let underlying = ResponseStream::TestChannel(rx);
+    let mut resp = BrotliResponseStream::new(underlying);
+    let handle = tokio::task::spawn(async move {
+      for chunk in v {
+        tx.send(chunk.into()).await.ok().unwrap();
+      }
+    });
+    // Limit how many times we'll loop
+    const LIMIT: usize = 1000;
+    let mut v: Vec<u8> = vec![];
+    for i in 0..=LIMIT {
+      assert_ne!(i, LIMIT);
+      let frame = poll_fn(|cx| Pin::new(&mut resp).poll_frame(cx)).await;
+      if matches!(frame, ResponseStreamResult::EndOfStream) {
+        break;
+      }
+      if matches!(frame, ResponseStreamResult::NoData) {
+        continue;
+      }
+      let ResponseStreamResult::NonEmptyBuf(buf) = frame else {
+        panic!("Unexpected stream type");
+      };
+      assert_ne!(buf.len(), 0);
+      v.extend(&*buf);
+    }
+
+    let mut gz = brotli::Decompressor::new(&*v, v.len());
+    let mut v = vec![];
+    if !expected.is_empty() {
+      gz.read_to_end(&mut v).unwrap();
+    }
+
+    assert_eq!(v, expected);
+
+    handle.await.unwrap();
+  }
+
   #[tokio::test]
   async fn test_simple() {
-    test(vec![b"hello world".to_vec()].into_iter()).await
+    test_brotli(vec![b"hello world".to_vec()].into_iter()).await;
+    test_gzip(vec![b"hello world".to_vec()].into_iter()).await;
   }
 
   #[tokio::test]
   async fn test_empty() {
-    test(vec![].into_iter()).await
+    test_brotli(vec![].into_iter()).await;
+    test_gzip(vec![].into_iter()).await;
   }
 
   #[tokio::test]
   async fn test_simple_zeros() {
-    test(vec![vec![0; 0x10000]].into_iter()).await
+    test_brotli(vec![vec![0; 0x10000]].into_iter()).await;
+    test_gzip(vec![vec![0; 0x10000]].into_iter()).await;
   }
 
   macro_rules! test {
@@ -718,31 +950,41 @@ mod tests {
         #[tokio::test]
         async fn chunk() {
           let iter = super::chunk(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
+          let br_iter = super::chunk(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn front_load() {
           let iter = super::front_load(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
+          let br_iter = super::front_load(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn front_load_but_one() {
           let iter = super::front_load_but_one(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
+          let br_iter = super::front_load_but_one(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn back_load() {
           let iter = super::back_load(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
+          let br_iter = super::back_load(super::$vec());
+          super::test_brotli(br_iter).await;
         }
 
         #[tokio::test]
         async fn random() {
           let iter = super::random(super::$vec());
-          super::test(iter).await;
+          super::test_gzip(iter).await;
+          let br_iter = super::random(super::$vec());
+          super::test_brotli(br_iter).await;
         }
       }
     };

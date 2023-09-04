@@ -86,15 +86,17 @@ class AbortSignal extends EventTarget {
       return;
     }
     this[abortReason] = reason;
-    if (this[abortAlgos] !== null) {
-      for (const algorithm of new SafeSetIterator(this[abortAlgos])) {
-        algorithm();
-      }
-      this[abortAlgos] = null;
-    }
+    const algos = this[abortAlgos];
+    this[abortAlgos] = null;
+
     const event = new Event("abort");
     setIsTrusted(event, true);
     this.dispatchEvent(event);
+    if (algos !== null) {
+      for (const algorithm of new SafeSetIterator(algos)) {
+        algorithm();
+      }
+    }
   }
 
   [remove](algorithm) {
@@ -129,7 +131,7 @@ class AbortSignal extends EventTarget {
     }
   }
 
-  // `addEventListener` and `removeEventListener` have to be overriden in
+  // `addEventListener` and `removeEventListener` have to be overridden in
   // order to have the timer block the event loop while there are listeners.
   // `[add]` and `[remove]` don't ref and unref the timer because they can
   // only be used by Deno internals, which use it to essentially cancel async
@@ -203,4 +205,5 @@ export {
   newSignal,
   remove,
   signalAbort,
+  timerId,
 };

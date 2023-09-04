@@ -26,7 +26,7 @@ use deno_core::futures::task::Waker;
 use deno_core::op;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;
@@ -841,7 +841,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.startTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -940,7 +939,6 @@ where
   )?;
 
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable2(&state, "Deno.connectTls#alpnProtocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }
@@ -1057,9 +1055,14 @@ where
     .with_safe_defaults()
     .with_no_client_auth()
     .with_single_cert(cert_chain, key_der)
-    .expect("invalid key or certificate");
+    .map_err(|e| {
+      custom_error(
+        "InvalidData",
+        format!("Error creating TLS certificate: {:?}", e),
+      )
+    })?;
+
   if let Some(alpn_protocols) = args.alpn_protocols {
-    super::check_unstable(state, "Deno.listenTls#alpn_protocols");
     tls_config.alpn_protocols =
       alpn_protocols.into_iter().map(|s| s.into_bytes()).collect();
   }

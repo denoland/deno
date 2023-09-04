@@ -5,10 +5,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::task::LocalFutureObj;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
+use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
@@ -16,24 +18,26 @@ use deno_core::ModuleId;
 use deno_core::ModuleLoader;
 use deno_core::SharedArrayBufferStore;
 use deno_core::SourceMapGetter;
+use deno_lockfile::Lockfile;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::deno_node::NodeResolution;
+use deno_runtime::deno_node::NodeResolutionMode;
 use deno_runtime::deno_node::NodeResolver;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::ops::worker_host::CreateWebWorkerCb;
-use deno_runtime::ops::worker_host::WorkerEventCb;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_runtime::web_worker::WebWorker;
 use deno_runtime::web_worker::WebWorkerOptions;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
+use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 
 use crate::args::StorageKeyResolver;
@@ -70,7 +74,7 @@ pub trait HasNodeSpecifierChecker: Send + Sync {
 #[derive(Clone)]
 pub struct CliMainWorkerOptions {
   pub argv: Vec<String>,
-  pub debug: bool,
+  pub log_level: WorkerLogLevel,
   pub coverage_dir: Option<String>,
   pub enable_testing_features: bool,
   pub has_node_modules_dir: bool,
@@ -91,8 +95,7 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   npm_resolver: Arc<CliNpmResolver>,
   node_resolver: Arc<NodeResolver>,
-  has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
-  blob_store: BlobStore,
+  blob_store: Arc<BlobStore>,
   broadcast_channel: InMemoryBroadcastChannel,
   shared_array_buffer_store: SharedArrayBufferStore,
   compiled_wasm_module_store: CompiledWasmModuleStore,
@@ -100,14 +103,11 @@ struct SharedWorkerState {
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   fs: Arc<dyn deno_fs::FileSystem>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
 }
 
 impl SharedWorkerState {
-  pub fn should_initialize_node_runtime(&self) -> bool {
-    self.npm_resolver.has_packages()
-      || self.has_node_specifier_checker.has_node_specifier()
-      || self.options.is_npm_main
-  }
+  // Currently empty
 }
 
 pub struct CliMainWorker {
@@ -133,7 +133,6 @@ impl CliMainWorker {
     log::debug!("main_module {}", self.main_module);
 
     if self.is_main_cjs {
-      self.initialize_main_module_for_node()?;
       deno_node::load_cjs_module(
         &mut self.worker.js_runtime,
         &self.main_module.to_file_path().unwrap().to_string_lossy(),
@@ -259,20 +258,7 @@ impl CliMainWorker {
     &mut self,
     id: ModuleId,
   ) -> Result<(), AnyError> {
-    if self.shared.should_initialize_node_runtime() {
-      self.initialize_main_module_for_node()?;
-    }
     self.worker.evaluate_module(id).await
-  }
-
-  fn initialize_main_module_for_node(&mut self) -> Result<(), AnyError> {
-    deno_node::initialize_runtime(
-      &mut self.worker.js_runtime,
-      self.shared.options.has_node_modules_dir,
-      self.shared.options.maybe_binary_npm_command_name.as_deref(),
-    )?;
-
-    Ok(())
   }
 
   pub async fn maybe_setup_coverage_collector(
@@ -305,12 +291,12 @@ impl CliMainWorkerFactory {
     storage_key_resolver: StorageKeyResolver,
     npm_resolver: Arc<CliNpmResolver>,
     node_resolver: Arc<NodeResolver>,
-    has_node_specifier_checker: Box<dyn HasNodeSpecifierChecker>,
-    blob_store: BlobStore,
+    blob_store: Arc<BlobStore>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     fs: Arc<dyn deno_fs::FileSystem>,
     maybe_inspector_server: Option<Arc<InspectorServer>>,
+    maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
     options: CliMainWorkerOptions,
   ) -> Self {
     Self {
@@ -319,7 +305,6 @@ impl CliMainWorkerFactory {
         storage_key_resolver,
         npm_resolver,
         node_resolver,
-        has_node_specifier_checker,
         blob_store,
         broadcast_channel: Default::default(),
         shared_array_buffer_store: Default::default(),
@@ -328,6 +313,7 @@ impl CliMainWorkerFactory {
         root_cert_store_provider,
         fs,
         maybe_inspector_server,
+        maybe_lockfile,
       }),
     }
   }
@@ -360,11 +346,22 @@ impl CliMainWorkerFactory {
     {
       shared
         .npm_resolver
-        .add_package_reqs(vec![package_ref.req.clone()])
+        .add_package_reqs(&[package_ref.req().clone()])
         .await?;
       let node_resolution =
-        shared.node_resolver.resolve_binary_export(&package_ref)?;
+        self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
+
+      if let Some(lockfile) = &shared.maybe_lockfile {
+        // For npm binary commands, ensure that the lockfile gets updated
+        // so that we can re-use the npm resolution the next time it runs
+        // for better performance
+        lockfile
+          .lock()
+          .write()
+          .context("Failed writing lockfile.")?;
+      }
+
       (node_resolution.into_url(), is_main_cjs)
     } else if shared.options.is_npm_main {
       let node_resolution =
@@ -384,10 +381,6 @@ impl CliMainWorkerFactory {
 
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
-    let web_worker_preload_module_cb =
-      create_web_worker_preload_module_callback(shared);
-    let web_worker_pre_execute_module_cb =
-      create_web_worker_pre_execute_module_callback(shared.clone());
 
     let maybe_storage_key = shared
       .storage_key_resolver
@@ -417,7 +410,7 @@ impl CliMainWorkerFactory {
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: shared.options.location.clone(),
@@ -428,9 +421,15 @@ impl CliMainWorkerFactory {
         unstable: shared.options.unstable,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
+        has_node_modules_dir: shared.options.has_node_modules_dir,
+        maybe_binary_npm_command_name: shared
+          .options
+          .maybe_binary_npm_command_name
+          .clone(),
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
+      create_params: None,
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -440,8 +439,6 @@ impl CliMainWorkerFactory {
       source_map_getter: maybe_source_map_getter,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       create_web_worker_cb,
-      web_worker_preload_module_cb,
-      web_worker_pre_execute_module_cb,
       maybe_inspector_server,
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
@@ -473,38 +470,67 @@ impl CliMainWorkerFactory {
       shared: shared.clone(),
     })
   }
-}
 
-// TODO(bartlomieju): this callback could have default value
-// and not be required
-fn create_web_worker_preload_module_callback(
-  _shared: &Arc<SharedWorkerState>,
-) -> Arc<WorkerEventCb> {
-  Arc::new(move |worker| {
-    let fut = async move { Ok(worker) };
-    LocalFutureObj::new(Box::new(fut))
-  })
-}
-
-fn create_web_worker_pre_execute_module_callback(
-  shared: Arc<SharedWorkerState>,
-) -> Arc<WorkerEventCb> {
-  Arc::new(move |mut worker| {
-    let shared = shared.clone();
-    let fut = async move {
-      // this will be up to date after pre-load
-      if shared.should_initialize_node_runtime() {
-        deno_node::initialize_runtime(
-          &mut worker.js_runtime,
-          shared.options.has_node_modules_dir,
-          None,
-        )?;
+  fn resolve_binary_entrypoint(
+    &self,
+    package_ref: &NpmPackageReqReference,
+    permissions: &PermissionsContainer,
+  ) -> Result<NodeResolution, AnyError> {
+    match self.shared.node_resolver.resolve_binary_export(package_ref) {
+      Ok(node_resolution) => Ok(node_resolution),
+      Err(original_err) => {
+        // if the binary entrypoint was not found, fallback to regular node resolution
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_ref, permissions);
+        match result {
+          Ok(Some(resolution)) => Ok(resolution),
+          Ok(None) => Err(original_err),
+          Err(fallback_err) => {
+            bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
+          }
+        }
       }
+    }
+  }
 
-      Ok(worker)
+  /// resolve the binary entrypoint using regular node resolution
+  fn resolve_binary_entrypoint_fallback(
+    &self,
+    package_ref: &NpmPackageReqReference,
+    permissions: &PermissionsContainer,
+  ) -> Result<Option<NodeResolution>, AnyError> {
+    // only fallback if the user specified a sub path
+    if package_ref.sub_path().is_none() {
+      // it's confusing to users if the package doesn't have any binary
+      // entrypoint and we just execute the main script which will likely
+      // have blank output, so do not resolve the entrypoint in this case
+      return Ok(None);
+    }
+
+    let Some(resolution) =
+      self.shared.node_resolver.resolve_npm_req_reference(
+        package_ref,
+        NodeResolutionMode::Execution,
+        permissions,
+      )?
+    else {
+      return Ok(None);
     };
-    LocalFutureObj::new(Box::new(fut))
-  })
+    match &resolution {
+      NodeResolution::BuiltIn(_) => Ok(None),
+      NodeResolution::CommonJs(specifier) | NodeResolution::Esm(specifier) => {
+        if specifier
+          .to_file_path()
+          .map(|p| p.exists())
+          .unwrap_or(false)
+        {
+          Ok(Some(resolution))
+        } else {
+          bail!("Cannot find module '{}'", specifier)
+        }
+      }
+    }
+  }
 }
 
 fn create_web_worker_callback(
@@ -522,9 +548,6 @@ fn create_web_worker_callback(
       shared.module_loader_factory.create_source_map_getter();
     let create_web_worker_cb =
       create_web_worker_callback(shared.clone(), stdio.clone());
-    let preload_module_cb = create_web_worker_preload_module_callback(&shared);
-    let pre_execute_module_cb =
-      create_web_worker_pre_execute_module_callback(shared.clone());
 
     let extensions = ops::cli_exts(shared.npm_resolver.clone());
 
@@ -545,7 +568,7 @@ fn create_web_worker_callback(
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
           .unwrap_or(1),
-        debug_flag: shared.options.debug,
+        log_level: shared.options.log_level,
         enable_testing_features: shared.options.enable_testing_features,
         locale: deno_core::v8::icu::get_language_tag(),
         location: Some(args.main_module.clone()),
@@ -556,9 +579,14 @@ fn create_web_worker_callback(
         unstable: shared.options.unstable,
         user_agent: version::get_user_agent().to_string(),
         inspect: shared.options.is_inspecting,
+        has_node_modules_dir: shared.options.has_node_modules_dir,
+        maybe_binary_npm_command_name: shared
+          .options
+          .maybe_binary_npm_command_name
+          .clone(),
       },
       extensions,
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       unsafely_ignore_certificate_errors: shared
         .options
         .unsafely_ignore_certificate_errors
@@ -566,8 +594,6 @@ fn create_web_worker_callback(
       root_cert_store_provider: Some(shared.root_cert_store_provider.clone()),
       seed: shared.options.seed,
       create_web_worker_cb,
-      preload_module_cb,
-      pre_execute_module_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       source_map_getter: maybe_source_map_getter,
       module_loader,
@@ -608,7 +634,7 @@ mod tests {
     let permissions = PermissionsContainer::new(Permissions::default());
 
     let options = WorkerOptions {
-      startup_snapshot: Some(crate::js::deno_isolate_init()),
+      startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()
     };
 

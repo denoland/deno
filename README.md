@@ -2,7 +2,7 @@
 
 [![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
 [![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
-[![YouTube badge][]][Youtube link]
+[![YouTube badge][]][YouTube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
@@ -60,6 +60,11 @@ scoop install deno
 Build and install from source using [Cargo](https://crates.io/crates/deno):
 
 ```sh
+# Install the Protobuf compiler
+apt install -y protobuf-compiler # Linux
+brew install protobuf # macOS
+
+# Build and install Deno
 cargo install deno --locked
 ```
 
@@ -78,12 +83,10 @@ deno run https://deno.land/std/examples/welcome.ts
 Or [setup a simple HTTP server](https://examples.deno.land/http-server):
 
 ```ts
-import { serve } from "https://deno.land/std@0.182.0/http/server.ts";
-
-serve((_req) => new Response("Hello, World!"));
+Deno.serve((_req) => new Response("Hello, World!"));
 ```
 
-[More examples](https://examples.deno.land/).
+[More Examples](https://examples.deno.land)
 
 ### Additional Resources
 
@@ -98,7 +101,7 @@ serve((_req) => new Response("Hello, World!"));
 - **[deno.land/x](https://deno.land/x)** is the registry for third party
   modules.
 - **[Blog](https://deno.com/blog)** is where the Deno team shares important
-  product updates and "how to"s, about solving technical problems.
+  product updates and “how to”s about solving technical problems.
 
 ### Contributing
 
@@ -107,7 +110,7 @@ We appreciate your help!
 To contribute, please read our
 [contributing instructions](https://deno.land/manual/contributing).
 
-[Build Status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
+[Build status - Cirrus]: https://github.com/denoland/deno/workflows/ci/badge.svg?branch=main&event=push
 [Build status]: https://github.com/denoland/deno/actions
 [Twitter badge]: https://img.shields.io/twitter/follow/deno_land.svg?style=social&label=Follow
 [Twitter link]: https://twitter.com/intent/follow?screen_name=deno_land

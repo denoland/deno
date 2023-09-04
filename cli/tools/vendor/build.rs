@@ -9,6 +9,7 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::future::LocalBoxFuture;
 use deno_core::parking_lot::Mutex;
 use deno_graph::EsmModule;
 use deno_graph::Module;
@@ -16,10 +17,12 @@ use deno_graph::ModuleGraph;
 use import_map::ImportMap;
 use import_map::SpecifierMap;
 
+use crate::args::JsxImportSourceConfig;
 use crate::args::Lockfile;
 use crate::cache::ParsedSourceCache;
 use crate::graph_util;
 use crate::graph_util::graph_lock_or_exit;
+use crate::tools::vendor::import_map::BuildImportMapInput;
 
 use super::analyze::has_default_export;
 use super::import_map::build_import_map;
@@ -56,15 +59,47 @@ impl VendorEnvironment for RealVendorEnvironment {
   }
 }
 
+type BuildGraphFuture = LocalBoxFuture<'static, Result<ModuleGraph, AnyError>>;
+
+pub struct BuildInput<
+  'a,
+  TBuildGraphFn: FnOnce(Vec<ModuleSpecifier>) -> BuildGraphFuture,
+  TEnvironment: VendorEnvironment,
+> {
+  pub entry_points: Vec<ModuleSpecifier>,
+  pub build_graph: TBuildGraphFn,
+  pub parsed_source_cache: &'a ParsedSourceCache,
+  pub output_dir: &'a Path,
+  pub maybe_original_import_map: Option<&'a ImportMap>,
+  pub maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
+  pub maybe_jsx_import_source: Option<&'a JsxImportSourceConfig>,
+  pub resolver: &'a dyn deno_graph::source::Resolver,
+  pub environment: &'a TEnvironment,
+}
+
+pub struct BuildOutput {
+  pub vendored_count: usize,
+  pub graph: ModuleGraph,
+}
+
 /// Vendors remote modules and returns how many were vendored.
-pub fn build(
-  graph: ModuleGraph,
-  parsed_source_cache: &ParsedSourceCache,
-  output_dir: &Path,
-  original_import_map: Option<&ImportMap>,
-  maybe_lockfile: Option<Arc<Mutex<Lockfile>>>,
-  environment: &impl VendorEnvironment,
-) -> Result<usize, AnyError> {
+pub async fn build<
+  TBuildGraphFn: FnOnce(Vec<ModuleSpecifier>) -> BuildGraphFuture,
+  TEnvironment: VendorEnvironment,
+>(
+  input: BuildInput<'_, TBuildGraphFn, TEnvironment>,
+) -> Result<BuildOutput, AnyError> {
+  let BuildInput {
+    mut entry_points,
+    build_graph,
+    parsed_source_cache,
+    output_dir,
+    maybe_original_import_map: original_import_map,
+    maybe_lockfile,
+    maybe_jsx_import_source: jsx_import_source,
+    resolver,
+    environment,
+  } = input;
   assert!(output_dir.is_absolute());
   let output_dir_specifier =
     ModuleSpecifier::from_directory_path(output_dir).unwrap();
@@ -72,6 +107,19 @@ pub fn build(
   if let Some(original_im) = &original_import_map {
     validate_original_import_map(original_im, &output_dir_specifier)?;
   }
+
+  // add the jsx import source to the entry points to ensure it is always vendored
+  if let Some(jsx_import_source) = jsx_import_source {
+    if let Some(specifier_text) = jsx_import_source.maybe_specifier_text() {
+      if let Ok(specifier) =
+        resolver.resolve(&specifier_text, &jsx_import_source.base_url)
+      {
+        entry_points.push(specifier);
+      }
+    }
+  }
+
+  let graph = build_graph(entry_points).await?;
 
   // check the lockfile
   if let Some(lockfile) = maybe_lockfile {
@@ -128,18 +176,23 @@ pub fn build(
   // create the import map if necessary
   if !remote_modules.is_empty() {
     let import_map_path = output_dir.join("import_map.json");
-    let import_map_text = build_import_map(
-      &output_dir_specifier,
-      &graph,
-      &all_modules,
-      &mappings,
+    let import_map_text = build_import_map(BuildImportMapInput {
+      base_dir: &output_dir_specifier,
+      graph: &graph,
+      modules: &all_modules,
+      mappings: &mappings,
       original_import_map,
+      jsx_import_source,
+      resolver,
       parsed_source_cache,
-    )?;
+    })?;
     environment.write_file(&import_map_path, &import_map_text)?;
   }
 
-  Ok(remote_modules.len())
+  Ok(BuildOutput {
+    vendored_count: remote_modules.len(),
+    graph,
+  })
 }
 
 fn validate_original_import_map(
@@ -218,6 +271,7 @@ fn build_proxy_module_source(
 
 #[cfg(test)]
 mod test {
+  use crate::args::JsxImportSourceConfig;
   use crate::tools::vendor::test::VendorTestBuilder;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1144,6 +1198,108 @@ mod test {
     assert_eq!(
       output.files,
       to_file_vec(&[("/vendor/deno.land/std/http/mod.ts", "console.log(5);")]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source_jsx_files() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.tsx");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+      base_url: builder.resolve_to_url("/deno.json"),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.tsx", "const myComponent = <div></div>;");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts",
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[(
+        "/vendor/localhost/preact/jsx-runtime.ts",
+        "export function stuff() {}"
+      ),]),
+    );
+  }
+
+  #[tokio::test]
+  async fn existing_import_map_jsx_import_source_no_jsx_files() {
+    let mut builder = VendorTestBuilder::default();
+    builder.add_entry_point("/mod.ts");
+    builder.set_jsx_import_source_config(JsxImportSourceConfig {
+      default_specifier: Some("preact".to_string()),
+      module: "jsx-runtime".to_string(),
+      base_url: builder.resolve_to_url("/deno.json"),
+    });
+    let mut original_import_map = builder.new_import_map("/import_map.json");
+    let imports = original_import_map.imports_mut();
+    imports
+      .append(
+        "preact/".to_string(),
+        "https://localhost/preact/".to_string(),
+      )
+      .unwrap();
+    let output = builder
+      .with_loader(|loader| {
+        loader.add("/mod.ts", "import 'https://localhost/mod.ts';");
+        loader.add("https://localhost/mod.ts", "console.log(1)");
+        loader.add_with_headers(
+          "https://localhost/preact/jsx-runtime",
+          "export function stuff() {}",
+          &[("content-type", "application/typescript")],
+        );
+      })
+      .set_original_import_map(original_import_map)
+      .build()
+      .await
+      .unwrap();
+
+    assert_eq!(
+      output.import_map,
+      Some(json!({
+        "imports": {
+          "https://localhost/": "./localhost/",
+          "preact/jsx-runtime": "./localhost/preact/jsx-runtime.ts"
+        },
+      }))
+    );
+    assert_eq!(
+      output.files,
+      to_file_vec(&[
+        ("/vendor/localhost/mod.ts", "console.log(1)"),
+        (
+          "/vendor/localhost/preact/jsx-runtime.ts",
+          "export function stuff() {}"
+        ),
+      ]),
     );
   }
 

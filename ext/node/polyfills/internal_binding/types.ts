@@ -21,7 +21,11 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
+
 const { core } = globalThis.__bootstrap;
+const { ops } = core;
 
 // https://tc39.es/ecma262/#sec-object.prototype.tostring
 const _toString = Object.prototype.toString;
@@ -86,7 +90,7 @@ function isObjectLike(
 export function isAnyArrayBuffer(
   value: unknown,
 ): value is ArrayBuffer | SharedArrayBuffer {
-  return isArrayBuffer(value) || isSharedArrayBuffer(value);
+  return ops.op_is_any_arraybuffer(value);
 }
 
 export function isArgumentsObject(value: unknown): value is IArguments {

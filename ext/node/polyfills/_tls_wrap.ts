@@ -1,17 +1,19 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
-// deno-lint-ignore-file no-explicit-any
+
+// TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file no-explicit-any prefer-primordials
 
 import {
   ObjectAssign,
   StringPrototypeReplace,
 } from "ext:deno_node/internal/primordials.mjs";
 import assert from "ext:deno_node/internal/assert.mjs";
-import * as net from "ext:deno_node/net.ts";
+import * as net from "node:net";
 import { createSecureContext } from "ext:deno_node/_tls_common.ts";
 import { kStreamBaseField } from "ext:deno_node/internal_binding/stream_wrap.ts";
 import { connResetException } from "ext:deno_node/internal/errors.ts";
-import { emitWarning } from "ext:deno_node/process.ts";
+import { emitWarning } from "node:process";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   constants as TCPConstants,
@@ -21,9 +23,14 @@ import {
   constants as PipeConstants,
   Pipe,
 } from "ext:deno_node/internal_binding/pipe_wrap.ts";
-import { EventEmitter } from "ext:deno_node/events.ts";
+import { EventEmitter } from "node:events";
 import { kEmptyObject } from "ext:deno_node/internal/util.mjs";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
+import { kHandle } from "ext:deno_node/internal/stream_base_commons.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
 
 const kConnectOptions = Symbol("connect-options");
 const kIsVerified = Symbol("verified");
@@ -69,7 +76,11 @@ export class TLSSocket extends net.Socket {
   [kPendingSession]: any;
   [kConnectOptions]: any;
   ssl: any;
-  _start: any;
+
+  _start() {
+    this[kHandle].afterConnect();
+  }
+
   constructor(socket: any, opts: any = kEmptyObject) {
     const tlsOptions = { ...opts };
 
@@ -82,6 +93,9 @@ export class TLSSocket extends net.Socket {
 
     let caCerts = tlsOptions?.secureContext?.ca;
     if (typeof caCerts === "string") caCerts = [caCerts];
+    else if (isArrayBufferView(caCerts) || isAnyArrayBuffer(caCerts)) {
+      caCerts = [new TextDecoder().decode(caCerts)];
+    }
     tlsOptions.caCerts = caCerts;
 
     super({
@@ -137,9 +151,9 @@ export class TLSSocket extends net.Socket {
       handle.afterConnect = async (req: any, status: number) => {
         try {
           const conn = await Deno.startTls(handle[kStreamBaseField], options);
+          handle[kStreamBaseField] = conn;
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-          handle[kStreamBaseField] = conn;
         } catch {
           // TODO(kt3k): Handle this
         }
