@@ -996,7 +996,17 @@ impl DenoDiagnostic {
             command: Some(lsp::Command {
               title: "".to_string(),
               command: "deno.cache".to_string(),
-              arguments: Some(vec![json!([data.specifier])]),
+              arguments: Some(vec![serde_json::to_value(
+                super::lsp_custom::CacheParams {
+                  referrer: lsp::TextDocumentIdentifier {
+                    uri: specifier.clone(),
+                  },
+                  uris: vec![lsp::TextDocumentIdentifier {
+                    uri: data.specifier,
+                  }],
+                },
+              )
+              .unwrap()]),
             }),
             ..Default::default()
           }

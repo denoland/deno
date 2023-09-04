@@ -3036,18 +3036,9 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
     if params.command == "deno.cache" {
-      // We're sending Vec<Vec<uris_to_cache>> in response to deno cache code action
-      let uris: Vec<Vec<String>> = params
-        .arguments
-        .into_iter()
-        .map(|v| serde_json::from_value::<Vec<String>>(v))
-        .map(|v| v.map_err(|e| tower_lsp::jsonrpc::Error::invalid_request())) // FIXME: handle the error
-        .collect::<LspResult<Vec<_>>>()?;
-      return self.cache_request(Some(json!({
-        // TODO: this is wrong, how to get the referrer
-        "referrer": TextDocumentIdentifier{ uri: Url::parse(&uris[0][0]).unwrap()},
-        "uris": uris[0].iter().map(|uri|TextDocumentIdentifier{uri: Url::parse(&uri).unwrap()}).collect::<Vec<_>>(),
-      }))).await;
+      return self
+        .cache_request(params.arguments.into_iter().next())
+        .await;
     }
     Ok(None)
   }
