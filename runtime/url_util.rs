@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
@@ -69,9 +71,8 @@ mod test {
     }
     fn assert_is_error(specifier: &str) {
       let result =
-        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap())
-          .unwrap();
-      assert!(result, Err(()));
+        specifier_to_file_path(&ModuleSpecifier::parse(specifier).unwrap());
+      assert!(result.is_err());
     }
   }
 }

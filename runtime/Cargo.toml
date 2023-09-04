@@ -101,6 +101,7 @@ log.workspace = true
 netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
+percent-encoding = "=2.3.0"
 regex.workspace = true
 ring.workspace = true
 serde.workspace = true
@@ -110,7 +111,6 @@ tokio.workspace = true
 tokio-metrics.workspace = true
 uuid.workspace = true
 which = "4.2.5"
-percent-encoding = "=2.3.0"
 
 [target.'cfg(windows)'.dependencies]
 fwdansi.workspace = true
