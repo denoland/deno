@@ -3054,7 +3054,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
               .map(|uri| TextDocumentIdentifier { uri })
               .collect(),
           })
-          .unwrap(),
+          .expect("well formed json"),
         ))
         .await;
     }
