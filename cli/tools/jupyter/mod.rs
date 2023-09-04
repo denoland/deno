@@ -467,90 +467,71 @@ impl Kernel {
       } else {
         "Unknown exception".to_string()
       };
-      ExecResult::Error(ExecError {
+      let e = ExecError {
         err_name: name,
         err_value: "".to_string(),
         stack_trace: vec![],
-      })
+      };
+
+      println!("sending exec reply error {}", self.execution_count);
+      let msg = ReplyMessage::new(
+        comm_ctx,
+        "execute_reply",
+        ReplyMetadata::Empty,
+        ReplyContent::ExecuteError(ExecuteErrorContent {
+          execution_count: self.execution_count,
+          status: "error".to_string(),
+          payload: vec![],
+          user_expressions: json!({}),
+          // TODO(apowers313) implement error messages
+          ename: e.err_name.clone(),
+          evalue: e.err_value.clone(),
+          traceback: e.stack_trace.clone(),
+        }),
+      );
+      self.shell_comm.send(msg).await?;
+      let msg = SideEffectMessage::new(
+        comm_ctx,
+        "error",
+        ReplyMetadata::Empty,
+        ReplyContent::Error(ErrorContent {
+          ename: e.err_name.clone(),
+          evalue: e.err_value.clone(),
+          traceback: e.stack_trace.clone(),
+        }),
+      );
+      self.iopub_comm.send(msg).await?;
     } else {
       let output = self.repl_session.get_eval_value(&result).await?;
-      ExecResult::Ok(output)
-    };
+      println!("sending exec result {}", self.execution_count);
+      let msg = ReplyMessage::new(
+        comm_ctx,
+        "execute_reply",
+        ReplyMetadata::Empty,
+        ReplyContent::ExecuteReply(ExecuteReplyContent {
+          status: "ok".to_string(),
+          execution_count: self.execution_count,
+          // NOTE(bartlomieju): these two fields are always empty
+          payload: vec![],
+          user_expressions: json!({}),
+        }),
+      );
+      self.shell_comm.send(msg).await?;
 
-    // TODO: remove `send_Execute_result` and `send_error`, they can be inlined
-    // here
-    match exec_result {
-      ExecResult::Ok(_) => {
-        println!("sending exec result {}", self.execution_count);
-        let msg = ReplyMessage::new(
-          comm_ctx,
-          "execute_reply",
-          ReplyMetadata::Empty,
-          ReplyContent::ExecuteReply(ExecuteReplyContent {
-            status: "ok".to_string(),
-            execution_count: self.execution_count,
-            // NOTE(bartlomieju): these two fields are always empty
-            payload: vec![],
-            user_expressions: json!({}),
+      let msg = SideEffectMessage::new(
+        comm_ctx,
+        "execute_result",
+        ReplyMetadata::Empty,
+        ReplyContent::ExecuteResult(ExecuteResultContent {
+          execution_count: self.execution_count,
+          data: json!({
+            "text/plain": output,
           }),
-        );
-        self.shell_comm.send(msg).await?;
-        let ExecResult::Ok(result_str) = exec_result else {
-          unreachable!()
-        };
-
-        let msg = SideEffectMessage::new(
-          comm_ctx,
-          "execute_result",
-          ReplyMetadata::Empty,
-          ReplyContent::ExecuteResult(ExecuteResultContent {
-            execution_count: self.execution_count,
-            data: json!({
-              "text/plain": result_str,
-            }),
-            // data: json!("<not implemented>"),
-            metadata: json!({}),
-          }),
-        );
-        self.iopub_comm.send(msg).await?;
-      }
-      ExecResult::Error(_) => {
-        println!("sending exec reply error {}", self.execution_count);
-        let e = match &exec_result {
-          ExecResult::Error(e) => e,
-          _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
-        };
-        let msg = ReplyMessage::new(
-          comm_ctx,
-          "execute_reply",
-          ReplyMetadata::Empty,
-          ReplyContent::ExecuteError(ExecuteErrorContent {
-            execution_count: self.execution_count,
-            status: "error".to_string(),
-            payload: vec![],
-            user_expressions: json!({}),
-            // TODO(apowers313) implement error messages
-            ename: e.err_name.clone(),
-            evalue: e.err_value.clone(),
-            traceback: e.stack_trace.clone(),
-          }),
-        );
-        self.shell_comm.send(msg).await?;
-        let ExecResult::Error(e) = &exec_result else {
-          unreachable!()
-        };
-        let msg = SideEffectMessage::new(
-          comm_ctx,
-          "error",
-          ReplyMetadata::Empty,
-          ReplyContent::Error(ErrorContent {
-            ename: e.err_name.clone(),
-            evalue: e.err_value.clone(),
-            traceback: e.stack_trace.clone(),
-          }),
-        );
-        self.iopub_comm.send(msg).await?;
-      }
+          // data: json!("<not implemented>"),
+          metadata: json!({}),
+        }),
+      );
+      self.iopub_comm.send(msg).await?;
     };
 
     Ok(())
