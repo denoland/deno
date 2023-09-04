@@ -47,8 +47,15 @@ type TestVector = {
 };
 
 for (
+  // NIST CAVS vectors
   const [bits, vectors] of Object.entries({
+    // <https://csrc.nist.gov/Projects/cryptographic-algorithm-validation-program/CAVP-TESTING-BLOCK-CIPHER-MODES>
+    //
+    // From: `gcmEncryptExtIV128.rsp`
     128: testVectors128,
+    // <https://csrc.nist.gov/Projects/cryptographic-algorithm-validation-program/CAVP-TESTING-BLOCK-CIPHER-MODES>
+    //
+    // From: `gcmEncryptExtIV256.rsp`
     256: testVectors256,
   })
 ) {
