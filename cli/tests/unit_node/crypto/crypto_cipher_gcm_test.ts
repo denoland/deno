@@ -1,3 +1,5 @@
+// Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import testVectors128 from "./gcmEncryptExtIV128.json" assert { type: "json" };
