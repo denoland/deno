@@ -4,31 +4,17 @@
 // Copyright 2020 The Evcxr Authors. MIT license.
 
 use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
+use std::sync::Arc;
 
-use crate::args::Flags;
-use crate::args::JupyterFlags;
 use crate::tools::repl;
-use crate::util::logger;
-use crate::CliFactory;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
-use deno_core::op;
-use deno_core::resolve_url_or_path;
-use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::Op;
-use deno_core::OpState;
-use deno_runtime::permissions::Permissions;
-use deno_runtime::permissions::PermissionsContainer;
-use ring::hmac;
+use tokio::sync::Mutex;
 use zeromq::SocketRecv;
 use zeromq::SocketSend;
 
@@ -44,28 +30,18 @@ pub enum StdioMsg {
 pub struct JupyterServer {
   execution_count: usize,
   last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
-  iopub_socket: Connection<zeromq::PubSocket>,
+  // This is Arc<Mutex<>>, so we don't hold RefCell borrows across await
+  // points.
+  iopub_socket: Arc<Mutex<Connection<zeromq::PubSocket>>>,
   repl_session: repl::ReplSession,
 }
 
 impl JupyterServer {
   pub async fn start(
-    connection_filepath: &Path,
-    stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
+    spec: ConnectionSpec,
+    mut stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
     repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
-    let conn_file =
-      std::fs::read_to_string(connection_filepath).with_context(|| {
-        format!("Couldn't read connection file: {:?}", connection_filepath)
-      })?;
-    let spec: ConnectionSpec =
-      serde_json::from_str(&conn_file).with_context(|| {
-        format!(
-          "Connection file is not a valid JSON: {:?}",
-          connection_filepath
-        )
-      })?;
-
     let mut heartbeat =
       bind_socket::<zeromq::RepSocket>(&spec, spec.hb_port).await?;
     let shell_socket =
@@ -76,11 +52,13 @@ impl JupyterServer {
       bind_socket::<zeromq::RouterSocket>(&spec, spec.stdin_port).await?;
     let iopub_socket =
       bind_socket::<zeromq::PubSocket>(&spec, spec.iopub_port).await?;
+    let iopub_socket = Arc::new(Mutex::new(iopub_socket));
+    let last_execution_request = Rc::new(RefCell::new(None));
 
     let mut server = Self {
       execution_count: 0,
-      iopub_socket,
-      last_execution_request: Rc::new(RefCell::new(None)),
+      iopub_socket: iopub_socket.clone(),
+      last_execution_request: last_execution_request.clone(),
       repl_session,
     };
 
@@ -97,37 +75,36 @@ impl JupyterServer {
     });
 
     let handle3 = deno_core::unsync::spawn(async move {
-      if let Err(err) = (&mut server).handle_shell(shell_socket).await {
+      if let Err(err) = server.handle_shell(shell_socket).await {
         eprintln!("Shell error: {}", err);
       }
     });
 
-    let r = futures::try_join!(handle1, handle2, handle3)?;
+    let handle4 = deno_core::unsync::spawn(async move {
+      while let Some(stdio_msg) = stdio_rx.next().await {
+        if let Some(exec_request) = last_execution_request.borrow().clone() {
+          let (name, text) = match stdio_msg {
+            StdioMsg::Stdout(text) => ("stdout", text),
+            StdioMsg::Stderr(text) => ("stderr", text),
+          };
 
-    // deno_core::unsync::spawn(async move {
-    //   // TODO: handle only if there's a pending execution request
-    //   while let Some(stdio_msg) = stdio_rx.next().await {
-    //     if let Some(exec_request) = server.last_execution_request.as_ref() {
-    //       let (name, text) = match stdio_msg {
-    //         StdioMsg::Stdout(text) => ("stdout", text),
-    //         StdioMsg::Stderr(text) => ("stderr", text),
-    //       };
+          let result = exec_request
+            .new_message("stream")
+            .with_content(json!({
+                "name": name,
+                "text": text
+            }))
+            .send(&mut *iopub_socket.lock().await)
+            .await;
 
-    //       let result = exec_request
-    //         .new_message("stream")
-    //         .with_content(json!({
-    //             "name": name,
-    //             "text": text
-    //         }))
-    //         .send(&mut iopub_socket2)
-    //         .await;
+          if let Err(err) = result {
+            eprintln!("Output {} error: {}", name, err);
+          }
+        }
+      }
+    });
 
-    //       if let Err(err) = result {
-    //         eprintln!("Output {} error: {}", name, err);
-    //       }
-    //     }
-    //   }
-    // });
+    futures::try_join!(handle1, handle2, handle3, handle4)?;
 
     Ok(())
   }
@@ -187,7 +164,7 @@ impl JupyterServer {
     msg
       .new_message("status")
       .with_content(json!({"execution_state": "busy"}))
-      .send(&mut self.iopub_socket)
+      .send(&mut *self.iopub_socket.lock().await)
       .await?;
 
     match msg.message_type() {
@@ -213,7 +190,7 @@ impl JupyterServer {
       "comm_open" => {
         msg
           .comm_close_message()
-          .send(&mut self.iopub_socket)
+          .send(&mut *self.iopub_socket.lock().await)
           .await?;
       }
       "complete_request" => todo!(),
@@ -228,7 +205,7 @@ impl JupyterServer {
     msg
       .new_message("status")
       .with_content(json!({"execution_state": "idle"}))
-      .send(&mut self.iopub_socket)
+      .send(&mut *self.iopub_socket.lock().await)
       .await?;
     Ok(())
   }
@@ -247,7 +224,7 @@ impl JupyterServer {
           "execution_count": self.execution_count,
           "code": msg.code()
       }))
-      .send(&mut self.iopub_socket)
+      .send(&mut *self.iopub_socket.lock().await)
       .await?;
 
     let evaluate_response = self
@@ -271,7 +248,7 @@ impl JupyterServer {
             },
             "metadata": {},
         }))
-        .send(&mut self.iopub_socket)
+        .send(&mut *self.iopub_socket.lock().await)
         .await?;
       msg
         .new_reply()
@@ -303,7 +280,7 @@ impl JupyterServer {
           "evalue": "",
           "traceback": [],
         }))
-        .send(&mut self.iopub_socket)
+        .send(&mut *self.iopub_socket.lock().await)
         .await?;
       msg
         .new_reply()

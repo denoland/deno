@@ -157,18 +157,6 @@ impl JupyterMessage {
     self.content["code"].as_str().unwrap_or("")
   }
 
-  pub(crate) fn cursor_pos(&self) -> u64 {
-    self.content["cursor_pos"].as_u64().unwrap_or_default()
-  }
-
-  pub(crate) fn target_name(&self) -> &str {
-    self.content["target_name"].as_str().unwrap_or("")
-  }
-
-  pub(crate) fn data(&self) -> &serde_json::Value {
-    &self.content["data"]
-  }
-
   pub(crate) fn comm_id(&self) -> &str {
     self.content["comm_id"].as_str().unwrap_or("")
   }
@@ -206,25 +194,11 @@ impl JupyterMessage {
     }))
   }
 
-  pub(crate) fn get_content(&self) -> &serde_json::Value {
-    &self.content
-  }
-
   pub(crate) fn with_content(
     mut self,
     content: serde_json::Value,
   ) -> JupyterMessage {
     self.content = content;
-    self
-  }
-
-  pub(crate) fn with_message_type(mut self, msg_type: &str) -> JupyterMessage {
-    self.header["msg_type"] = serde_json::Value::String(msg_type.to_owned());
-    self
-  }
-
-  pub(crate) fn without_parent_header(mut self) -> JupyterMessage {
-    self.parent_header = json!({});
     self
   }
 

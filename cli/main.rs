@@ -135,11 +135,6 @@ async fn run_subcommand(flags: Flags) -> Result<i32, AnyError> {
       tools::installer::install_command(flags, install_flags).await
     }),
     DenoSubcommand::Jupyter(jupyter_flags) => spawn_subcommand(async {
-      if jupyter_flags.install {
-        tools::jupyter::install()?;
-        return Ok(());
-      }
-
       tools::jupyter::kernel(flags, jupyter_flags).await
     }),
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
