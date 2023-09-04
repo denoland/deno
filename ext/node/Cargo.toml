@@ -34,6 +34,7 @@ hkdf.workspace = true
 idna = "0.3.0"
 indexmap.workspace = true
 lazy-regex.workspace = true
+aead-gcm-stream = "0.1"
 libc.workspace = true
 libz-sys = { version = "1.1.8", features = ["static"] }
 md-5 = "0.10.5"

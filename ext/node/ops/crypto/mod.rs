@@ -236,6 +236,20 @@ pub fn op_node_create_cipheriv(
 }
 
 #[op(fast)]
+pub fn op_node_cipheriv_set_aad(
+  state: &mut OpState,
+  rid: u32,
+  aad: &[u8]
+) -> bool {
+  let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
+}
+
+#[op(fast)]
 pub fn op_node_cipheriv_encrypt(
   state: &mut OpState,
   rid: u32,
@@ -256,7 +270,7 @@ pub fn op_node_cipheriv_final(
   rid: u32,
   input: &[u8],
   output: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<Option<Vec<u8>>, AnyError> {
   let context = state.resource_table.take::<cipher::CipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
@@ -276,6 +290,20 @@ pub fn op_node_create_decipheriv(
       Err(_) => return 0,
     },
   )
+}
+
+#[op(fast)]
+pub fn op_node_decipheriv_set_aad(
+  state: &mut OpState,
+  rid: u32,
+  aad: &[u8]
+) -> bool {
+  let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
+    Ok(context) => context,
+    Err(_) => return false,
+  };
+  context.set_aad(aad);
+  true
 }
 
 #[op(fast)]
@@ -299,11 +327,12 @@ pub fn op_node_decipheriv_final(
   rid: u32,
   input: &[u8],
   output: &mut [u8],
+  auth_tag: &[u8]
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
     .map_err(|_| type_error("Cipher context is already in use"))?;
-  context.r#final(input, output)
+  context.r#final(input, output, auth_tag)
 }
 
 #[op]

@@ -36,6 +36,8 @@ function isStringOrBuffer(val) {
 
 const { ops, encode } = globalThis.__bootstrap.core;
 
+const NO_TAG = new Uint8Array();
+
 export type CipherCCMTypes =
   | "aes-128-ccm"
   | "aes-192-ccm"
@@ -143,6 +145,8 @@ export class Cipheriv extends Transform implements Cipher {
   /** plaintext data cache */
   #cache: BlockModeCache;
 
+  #authTag?: Buffer;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -169,21 +173,22 @@ export class Cipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    ops.op_node_cipheriv_final(this.#context, this.#cache.cache, buf);
+    const maybeTag = ops.op_node_cipheriv_final(this.#context, this.#cache.cache, buf);
+    if (maybeTag) this.#authTag = Buffer.from(maybeTag);
     return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   getAuthTag(): Buffer {
-    notImplemented("crypto.Cipheriv.prototype.getAuthTag");
+    return this.#authTag!;
   }
 
   setAAD(
-    _buffer: ArrayBufferView,
+    buffer: ArrayBufferView,
     _options?: {
       plaintextLength: number;
     },
-  ): this {
-    notImplemented("crypto.Cipheriv.prototype.setAAD");
+  ): this {  
+    ops.op_node_cipheriv_set_aad(this.#context, buffer);
     return this;
   }
 
@@ -262,6 +267,8 @@ export class Decipheriv extends Transform implements Cipher {
   /** ciphertext data cache */
   #cache: BlockModeCache;
 
+  #authTag?: BinaryLike;
+
   constructor(
     cipher: string,
     key: CipherKey,
@@ -288,22 +295,24 @@ export class Decipheriv extends Transform implements Cipher {
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     let buf = new Buffer(16);
-    ops.op_node_decipheriv_final(this.#context, this.#cache.cache, buf);
+    ops.op_node_decipheriv_final(this.#context, this.#cache.cache, buf, this.#authTag || NO_TAG);
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
     return encoding === "buffer" ? buf : buf.toString(encoding);
   }
 
   setAAD(
-    _buffer: ArrayBufferView,
+    buffer: ArrayBufferView,
     _options?: {
       plaintextLength: number;
     },
   ): this {
-    notImplemented("crypto.Decipheriv.prototype.setAAD");
+    ops.op_node_decipheriv_set_aad(this.#context, buffer);
+    return this;
   }
 
-  setAuthTag(_buffer: BinaryLike, _encoding?: string): this {
-    notImplemented("crypto.Decipheriv.prototype.setAuthTag");
+  setAuthTag(buffer: BinaryLike, _encoding?: string): this {
+    this.#authTag = buffer;
+    return this;
   }
 
   setAutoPadding(_autoPadding?: boolean): this {

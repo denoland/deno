@@ -13,15 +13,24 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+type Tag = Option<Vec<u8>>;
+
+type Aes128Gcm = aead_gcm_stream::AesGcm<aes::Aes128>;
+type Aes256Gcm = aead_gcm_stream::AesGcm<aes::Aes256>;
+
 enum Cipher {
   Aes128Cbc(Box<cbc::Encryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Encryptor<aes::Aes128>>),
-  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
+  Aes128Gcm(Box<Aes128Gcm>),
+  Aes256Gcm(Box<Aes256Gcm>),
+  // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, etc.
 }
 
 enum Decipher {
   Aes128Cbc(Box<cbc::Decryptor<aes::Aes128>>),
   Aes128Ecb(Box<ecb::Decryptor<aes::Aes128>>),
+  Aes128Gcm(Box<Aes128Gcm>),
+  Aes256Gcm(Box<Aes256Gcm>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes256Cbc, Aes128GCM, etc.
 }
 
@@ -40,6 +49,10 @@ impl CipherContext {
     })
   }
 
+  pub fn set_aad(&self, aad: &[u8]) {
+    self.cipher.borrow_mut().set_aad(aad);
+  }
+
   pub fn encrypt(&self, input: &[u8], output: &mut [u8]) {
     self.cipher.borrow_mut().encrypt(input, output);
   }
@@ -48,7 +61,7 @@ impl CipherContext {
     self,
     input: &[u8],
     output: &mut [u8],
-  ) -> Result<(), AnyError> {
+  ) -> Result<Tag, AnyError> {
     Rc::try_unwrap(self.cipher)
       .map_err(|_| type_error("Cipher context is already in use"))?
       .into_inner()
@@ -63,6 +76,10 @@ impl DecipherContext {
     })
   }
 
+  pub fn set_aad(&self, aad: &[u8]) {
+    self.decipher.borrow_mut().set_aad(aad);
+  }
+
   pub fn decrypt(&self, input: &[u8], output: &mut [u8]) {
     self.decipher.borrow_mut().decrypt(input, output);
   }
@@ -71,11 +88,12 @@ impl DecipherContext {
     self,
     input: &[u8],
     output: &mut [u8],
+    auth_tag: &[u8]
   ) -> Result<(), AnyError> {
     Rc::try_unwrap(self.decipher)
       .map_err(|_| type_error("Decipher context is already in use"))?
       .into_inner()
-      .r#final(input, output)
+      .r#final(input, output, auth_tag)
   }
 }
 
@@ -103,8 +121,33 @@ impl Cipher {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
+      "aes-128-gcm" => {
+        let mut cipher =  aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
+        cipher.init(iv.try_into()?);
+
+        Aes128Gcm(Box::new(cipher))
+      }
+      "aes-256-gcm" => {
+        let mut cipher =  aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
+        cipher.init(iv.try_into()?);
+
+        Aes256Gcm(Box::new(cipher))
+      }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
+  }
+
+  fn set_aad(&mut self, aad: &[u8]) {
+    use Cipher::*;
+    match self {
+      Aes128Gcm(cipher) => {
+        cipher.set_aad(aad);
+      }
+      Aes256Gcm(cipher) => {
+        cipher.set_aad(aad);
+      }
+      _ => {}
+    }
   }
 
   /// encrypt encrypts the data in the middle of the input.
@@ -123,11 +166,19 @@ impl Cipher {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes128Gcm(cipher) => {
+        output[..input.len()].copy_from_slice(input);
+        cipher.encrypt(output);
+      }
+      Aes256Gcm(cipher) => {
+        output[..input.len()].copy_from_slice(input);
+        cipher.encrypt(output);
+      }
     }
   }
 
   /// r#final encrypts the last block of the input data.
-  fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<(), AnyError> {
+  fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<Tag, AnyError> {
     assert!(input.len() < 16);
     use Cipher::*;
     match self {
@@ -135,13 +186,25 @@ impl Cipher {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot pad the input data"))?;
-        Ok(())
+        Ok(None)
       }
       Aes128Ecb(encryptor) => {
         let _ = (*encryptor)
           .encrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot pad the input data"))?;
-        Ok(())
+        Ok(None)
+      }
+      Aes128Gcm(mut cipher) => {
+        output[..input.len()].copy_from_slice(input);
+        cipher.encrypt(output);
+
+        Ok(Some(cipher.finish().to_vec()))
+      }
+      Aes256Gcm(mut cipher) => {
+        output[..input.len()].copy_from_slice(input);
+        cipher.encrypt(output);
+
+        Ok(Some(cipher.finish().to_vec()))
       }
     }
   }
@@ -159,8 +222,33 @@ impl Decipher {
         Aes128Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Decryptor::new(key.into()))),
+      "aes-128-gcm" => {
+        let mut decipher =  aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into());
+        decipher.init(iv.try_into()?);
+
+        Aes128Gcm(Box::new(decipher))
+      }
+      "aes-256-gcm" => {
+        let mut decipher =  aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into());
+        decipher.init(iv.try_into()?);
+
+        Aes256Gcm(Box::new(decipher))
+      }
       _ => return Err(type_error(format!("Unknown cipher {algorithm_name}"))),
     })
+  }
+
+  fn set_aad(&mut self, aad: &[u8]) {
+    use Decipher::*;
+    match self {
+      Aes128Gcm(decipher) => {
+        decipher.set_aad(aad);
+      }
+      Aes256Gcm(decipher) => {
+        decipher.set_aad(aad);
+      }
+      _ => {}
+    }
   }
 
   /// decrypt decrypts the data in the middle of the input.
@@ -179,11 +267,19 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes128Gcm(decipher) => {
+        output[..input.len()].copy_from_slice(input);
+        decipher.decrypt(output);
+      }
+      Aes256Gcm(decipher) => {
+        output[..input.len()].copy_from_slice(input);
+        decipher.decrypt(output);
+      }
     }
   }
 
   /// r#final decrypts the last block of the input data.
-  fn r#final(self, input: &[u8], output: &mut [u8]) -> Result<(), AnyError> {
+  fn r#final(self, input: &[u8], output: &mut [u8], auth_tag: &[u8]) -> Result<(), AnyError> {
     assert!(input.len() == 16);
     use Decipher::*;
     match self {
@@ -198,6 +294,24 @@ impl Decipher {
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| type_error("Cannot unpad the input data"))?;
         Ok(())
+      }
+      Aes128Gcm(mut decipher) => {
+        output[..input.len()].copy_from_slice(input);
+        decipher.decrypt(output);
+        
+        let _tag = decipher.finish();
+        Ok(())
+      }
+      Aes256Gcm(mut decipher) => {
+        output[..input.len()].copy_from_slice(input);
+        decipher.decrypt(output);
+        
+        let tag = decipher.finish();
+        if tag.as_slice() == auth_tag {
+          Ok(())
+        } else {
+          Err(type_error("Failed to authenticate data"))
+        }
       }
     }
   }
