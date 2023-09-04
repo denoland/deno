@@ -3040,11 +3040,11 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let uris: Vec<Url> = arguments
         .next()
         .and_then(|value| serde_json::from_value(value).ok())
-        .ok_or(LspError::invalid_params("missing uris"))?;
+        .ok_or(LspError::invalid_params("missing or incorrect uris"))?;
       let referrer: Url = arguments
         .next()
         .and_then(|value| serde_json::from_value(value).ok())
-        .ok_or(LspError::invalid_params("missing referrer"))?;
+        .ok_or(LspError::invalid_params("missing or incorrect referrer"))?;
       return self
         .cache_request(Some(
           serde_json::to_value(lsp_custom::CacheParams {
