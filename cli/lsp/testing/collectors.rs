@@ -602,7 +602,6 @@ pub mod tests {
   use super::*;
   use deno_core::resolve_url;
   use lsp::Position;
-  use pretty_assertions::assert_eq;
 
   pub fn new_range(l1: u32, c1: u32, l2: u32, c2: u32) -> Range {
     Range::new(Position::new(l1, c1), Position::new(l2, c2))
@@ -979,7 +978,7 @@ pub mod tests {
         script_version: test_module.script_version.clone(),
         defs: vec![
         (
-          "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(), 
+          "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
           TestDefinition {
             id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
             name: "foo".to_string(),
