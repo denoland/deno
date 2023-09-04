@@ -7,22 +7,17 @@ use crate::args::JupyterFlags;
 use crate::tools::repl;
 use crate::util::logger;
 use crate::CliFactory;
-use base64;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
-use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::StreamExt;
 use deno_core::op;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::JsBuffer;
 use deno_core::Op;
 use deno_core::OpState;
 use deno_runtime::permissions::Permissions;
@@ -486,118 +481,77 @@ impl Kernel {
     // here
     match exec_result {
       ExecResult::Ok(_) => {
-        self.send_execute_reply_ok(comm_ctx).await?;
-        self.send_execute_result(comm_ctx, &exec_result).await?;
+        println!("sending exec result {}", self.execution_count);
+        let msg = ReplyMessage::new(
+          comm_ctx,
+          "execute_reply",
+          ReplyMetadata::Empty,
+          ReplyContent::ExecuteReply(ExecuteReplyContent {
+            status: "ok".to_string(),
+            execution_count: self.execution_count,
+            // NOTE(bartlomieju): these two fields are always empty
+            payload: vec![],
+            user_expressions: json!({}),
+          }),
+        );
+        self.shell_comm.send(msg).await?;
+        let ExecResult::Ok(result_str) = exec_result else {
+          unreachable!()
+        };
+
+        let msg = SideEffectMessage::new(
+          comm_ctx,
+          "execute_result",
+          ReplyMetadata::Empty,
+          ReplyContent::ExecuteResult(ExecuteResultContent {
+            execution_count: self.execution_count,
+            data: json!({
+              "text/plain": result_str,
+            }),
+            // data: json!("<not implemented>"),
+            metadata: json!({}),
+          }),
+        );
+        self.iopub_comm.send(msg).await?;
       }
       ExecResult::Error(_) => {
-        self
-          .send_execute_reply_error(comm_ctx, &exec_result)
-          .await?;
-        self.send_error(comm_ctx, &exec_result).await?;
+        println!("sending exec reply error {}", self.execution_count);
+        let e = match &exec_result {
+          ExecResult::Error(e) => e,
+          _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
+        };
+        let msg = ReplyMessage::new(
+          comm_ctx,
+          "execute_reply",
+          ReplyMetadata::Empty,
+          ReplyContent::ExecuteError(ExecuteErrorContent {
+            execution_count: self.execution_count,
+            status: "error".to_string(),
+            payload: vec![],
+            user_expressions: json!({}),
+            // TODO(apowers313) implement error messages
+            ename: e.err_name.clone(),
+            evalue: e.err_value.clone(),
+            traceback: e.stack_trace.clone(),
+          }),
+        );
+        self.shell_comm.send(msg).await?;
+        let ExecResult::Error(e) = &exec_result else {
+          unreachable!()
+        };
+        let msg = SideEffectMessage::new(
+          comm_ctx,
+          "error",
+          ReplyMetadata::Empty,
+          ReplyContent::Error(ErrorContent {
+            ename: e.err_name.clone(),
+            evalue: e.err_value.clone(),
+            traceback: e.stack_trace.clone(),
+          }),
+        );
+        self.iopub_comm.send(msg).await?;
       }
     };
-
-    Ok(())
-  }
-
-  async fn send_execute_reply_ok(
-    &mut self,
-    comm_ctx: &CommContext,
-  ) -> Result<(), AnyError> {
-    println!("sending exec result {}", self.execution_count);
-    let msg = ReplyMessage::new(
-      comm_ctx,
-      "execute_reply",
-      ReplyMetadata::Empty,
-      ReplyContent::ExecuteReply(ExecuteReplyContent {
-        status: "ok".to_string(),
-        execution_count: self.execution_count,
-        // NOTE(bartlomieju): these two fields are always empty
-        payload: vec![],
-        user_expressions: json!({}),
-      }),
-    );
-    self.shell_comm.send(msg).await?;
-
-    Ok(())
-  }
-
-  async fn send_execute_reply_error(
-    &mut self,
-    comm_ctx: &CommContext,
-    result: &ExecResult,
-  ) -> Result<(), AnyError> {
-    println!("sending exec reply error {}", self.execution_count);
-    let e = match result {
-      ExecResult::Error(e) => e,
-      _ => return Err(anyhow!("send_execute_reply_error: unreachable")),
-    };
-    let msg = ReplyMessage::new(
-      comm_ctx,
-      "execute_reply",
-      ReplyMetadata::Empty,
-      ReplyContent::ExecuteError(ExecuteErrorContent {
-        execution_count: self.execution_count,
-        status: "error".to_string(),
-        payload: vec![],
-        user_expressions: json!({}),
-        // TODO(apowers313) implement error messages
-        ename: e.err_name.clone(),
-        evalue: e.err_value.clone(),
-        traceback: e.stack_trace.clone(),
-      }),
-    );
-    self.shell_comm.send(msg).await?;
-
-    Ok(())
-  }
-
-  async fn send_error(
-    &mut self,
-    comm_ctx: &CommContext,
-    result: &ExecResult,
-  ) -> Result<(), AnyError> {
-    let ExecResult::Error(e) = result else {
-      unreachable!()
-    };
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "error",
-      ReplyMetadata::Empty,
-      ReplyContent::Error(ErrorContent {
-        ename: e.err_name.clone(),
-        evalue: e.err_value.clone(),
-        traceback: e.stack_trace.clone(),
-      }),
-    );
-    self.iopub_comm.send(msg).await?;
-
-    Ok(())
-  }
-
-  async fn send_execute_result(
-    &mut self,
-    comm_ctx: &CommContext,
-    result: &ExecResult,
-  ) -> Result<(), AnyError> {
-    let ExecResult::Ok(result_str) = result else {
-      unreachable!()
-    };
-
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "execute_result",
-      ReplyMetadata::Empty,
-      ReplyContent::ExecuteResult(ExecuteResultContent {
-        execution_count: self.execution_count,
-        data: json!({
-          "text/plain": result_str,
-        }),
-        // data: json!("<not implemented>"),
-        metadata: json!({}),
-      }),
-    );
-    self.iopub_comm.send(msg).await?;
 
     Ok(())
   }
@@ -626,192 +580,6 @@ impl Kernel {
     self.iopub_comm.send(msg).await?;
 
     Ok(())
-  }
-
-  // TODO(bartlomieju): this method shouldn't be using `data: Value` but
-  // a strongly typed struct. All this handling here, is super brittle.
-  async fn display_data_from_result_value(
-    &mut self,
-    data: Value,
-  ) -> Result<MimeSet, AnyError> {
-    let mut d = &data;
-    let mut ret = MimeSet::new();
-    // if we passed in a result, unwrap it
-    d = if d["result"].is_object() {
-      &d["result"]
-    } else {
-      d
-    };
-
-    if !d["type"].is_string() {
-      // not an execution result
-      return Ok(ret);
-    }
-
-    let mut t = match &d["type"] {
-      Value::String(x) => x.to_string(),
-      _ => return Ok(ret),
-    };
-
-    if t == *"object" && d["subtype"] == Value::String("null".to_string()) {
-      // JavaScript null, the gift that keeps on giving
-      t = "null".to_string();
-    }
-
-    match t.as_ref() {
-      // TODO(apowers313) inspect object / call toPng, toHtml, toSvg, toText, toMime
-      "object" => {
-        // TODO: this description isn't very useful
-        let type_list = self.decode_object(data, true).await?;
-        for t in type_list.iter() {
-          ret.add(t.0, t.1.clone());
-        }
-      }
-      "string" => {
-        ret.add("text/plain", d["value"].clone());
-        ret.add("application/json", d["value"].clone());
-      }
-      "null" => {
-        ret.add("text/plain", Value::String("null".to_string()));
-        ret.add("application/json", Value::Null);
-      }
-      "bigint" => {
-        ret.add("text/plain", d["unserializableValue"].clone());
-        ret.add("application/json", d["unserializableValue"].clone());
-      }
-      "symbol" => {
-        ret.add("text/plain", d["description"].clone());
-        ret.add("application/json", d["description"].clone());
-      }
-      "boolean" => {
-        ret.add("text/plain", Value::String(d["value"].to_string()));
-        ret.add("application/json", d["value"].clone());
-      }
-      "number" => {
-        ret.add("text/plain", Value::String(d["value"].to_string()));
-        ret.add("application/json", d["value"].clone());
-      }
-      // TODO(apowers313) currently ignoring "undefined" return value, I think most kernels make this a configuration option
-      "undefined" => return Ok(ret),
-      _ => {
-        println!("unknown type in display_data_from_result_value: {}", t);
-        return Ok(ret);
-      }
-    };
-
-    Ok(ret)
-  }
-
-  async fn decode_object(
-    &mut self,
-    obj: Value,
-    color: bool,
-  ) -> Result<Vec<(&str, Value)>, AnyError> {
-    // let v = self.repl_session.get_eval_value(&obj).await?;
-    // TODO(apowers313) copy and paste from `get_eval_value`, consider refactoring API
-    let obj_inspect_fn = match color {
-      true => {
-        r#"function (object) {
-          try {
-            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: !Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
-        }"#
-      }
-      false => {
-        r#"function (object) {
-          try {
-            return Deno[Deno.internal].inspectArgs(["%o", object], { colors: Deno.noColor });
-          } catch (err) {
-            return Deno[Deno.internal].inspectArgs(["%o", err]);
-          }
-        }"#
-      }
-    };
-
-    let v = self.repl_exec(obj_inspect_fn, Some(json!([obj]))).await?;
-
-    match v["result"]["value"]["description"].to_string().as_ref() {
-      "Symbol(Symbol.toPng)" => println!("found Symbol(Symbol.toPng)"),
-      "Symbol(Symbol.toSvg)" => println!("found Symbol(Symbol.toSvg)"),
-      "Symbol(Symbol.toHtml)" => println!("found Symbol(Symbol.toHtml)"),
-      "Symbol(Symbol.toJson)" => println!("found Symbol(Symbol.toJson)"),
-      "Symbol(Symbol.toJpg)" => println!("found Symbol(Symbol.toJpg)"),
-      "Symbol(Symbol.toMime)" => println!("found Symbol(Symbol.toMime)"),
-      _ => return Ok(vec![("text/plain", v["result"]["value"].clone())]),
-    };
-
-    Ok(vec![])
-  }
-
-  async fn repl_exec(
-    &mut self,
-    code: &str,
-    args: Option<Value>,
-  ) -> Result<Value, AnyError> {
-    let v = self
-      .repl_session
-      .post_message_with_event_loop(
-        "Runtime.callFunctionOn",
-        Some(json!({
-          "executionContextId": self.repl_session.context_id,
-          "functionDeclaration": code,
-          "arguments": args,
-        })),
-      )
-      .await?;
-
-    Ok(v)
-  }
-}
-
-struct MimeSet {
-  data_list: Vec<(String, Value)>,
-}
-
-impl MimeSet {
-  fn new() -> MimeSet {
-    Self { data_list: vec![] }
-  }
-
-  fn add(&mut self, mime_type: &str, data: Value) {
-    self.data_list.push((mime_type.to_string(), data));
-  }
-
-  fn add_buf(
-    &mut self,
-    mime_type: &str,
-    buf: JsBuffer,
-    format: Option<String>,
-  ) -> Result<(), AnyError> {
-    let fmt_str = match format {
-      Some(f) => f,
-      None => "default".to_string(),
-    };
-
-    let json_data = match fmt_str.as_ref() {
-      "string" => json!(String::from_utf8(buf.to_vec())?),
-      "json" => serde_json::from_str(std::str::from_utf8(&buf)?)?,
-      "base64" | "default" => json!(base64::encode(buf)),
-      _ => return Err(anyhow!("unknown display mime format: {}", fmt_str)),
-    };
-    self.add(mime_type, json_data);
-
-    Ok(())
-  }
-
-  fn is_empty(&self) -> bool {
-    self.data_list.is_empty()
-  }
-
-  fn to_object(&self) -> Value {
-    let mut data = json!({});
-    for d in self.data_list.iter() {
-      data[&d.0] = json!(&d.1);
-    }
-
-    data
   }
 }
 
