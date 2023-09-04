@@ -3,7 +3,9 @@
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
 
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 
 use crate::args::Flags;
 use crate::args::JupyterFlags;
@@ -14,6 +16,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::futures;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::StreamExt;
 use deno_core::op;
@@ -33,16 +36,22 @@ use super::jupyter_msg::Connection;
 use super::jupyter_msg::JupyterMessage;
 use super::ConnectionSpec;
 
-struct JupyterServer {
+pub enum StdioMsg {
+  Stdout(String),
+  Stderr(String),
+}
+
+pub struct JupyterServer {
   execution_count: usize,
+  last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
   iopub_socket: Connection<zeromq::PubSocket>,
   repl_session: repl::ReplSession,
 }
 
 impl JupyterServer {
-  async fn start(
+  pub async fn start(
     connection_filepath: &Path,
-    stdio_rx: mpsc::UnboundedReceiver<()>,
+    stdio_rx: mpsc::UnboundedReceiver<StdioMsg>,
     repl_session: repl::ReplSession,
   ) -> Result<(), AnyError> {
     let conn_file =
@@ -63,7 +72,7 @@ impl JupyterServer {
       bind_socket::<zeromq::RouterSocket>(&spec, spec.shell_port).await?;
     let control_socket =
       bind_socket::<zeromq::RouterSocket>(&spec, spec.control_port).await?;
-    let stdin_socket =
+    let _stdin_socket =
       bind_socket::<zeromq::RouterSocket>(&spec, spec.stdin_port).await?;
     let iopub_socket =
       bind_socket::<zeromq::PubSocket>(&spec, spec.iopub_port).await?;
@@ -71,33 +80,56 @@ impl JupyterServer {
     let mut server = Self {
       execution_count: 0,
       iopub_socket,
+      last_execution_request: Rc::new(RefCell::new(None)),
       repl_session,
     };
 
-    deno_core::unsync::spawn(async move {
+    let handle1 = deno_core::unsync::spawn(async move {
       if let Err(err) = Self::handle_heartbeat(&mut heartbeat).await {
         eprintln!("Heartbeat error: {}", err);
       }
     });
 
-    deno_core::unsync::spawn(async move {
+    let handle2 = deno_core::unsync::spawn(async move {
       if let Err(err) = Self::handle_control(control_socket).await {
         eprintln!("Control error: {}", err);
       }
     });
 
-    deno_core::unsync::spawn(async move {
-      if let Err(err) = server.handle_shell(shell_socket).await {
+    let handle3 = deno_core::unsync::spawn(async move {
+      if let Err(err) = (&mut server).handle_shell(shell_socket).await {
         eprintln!("Shell error: {}", err);
       }
     });
 
-    deno_core::unsync::spawn(async move {
-      if let Err(err) = Self::handle_execution_requests().await {
-        eprintln!("Execution error: {}", err);
-      }
-    });
-    todo!()
+    let r = futures::try_join!(handle1, handle2, handle3)?;
+
+    // deno_core::unsync::spawn(async move {
+    //   // TODO: handle only if there's a pending execution request
+    //   while let Some(stdio_msg) = stdio_rx.next().await {
+    //     if let Some(exec_request) = server.last_execution_request.as_ref() {
+    //       let (name, text) = match stdio_msg {
+    //         StdioMsg::Stdout(text) => ("stdout", text),
+    //         StdioMsg::Stderr(text) => ("stderr", text),
+    //       };
+
+    //       let result = exec_request
+    //         .new_message("stream")
+    //         .with_content(json!({
+    //             "name": name,
+    //             "text": text
+    //         }))
+    //         .send(&mut iopub_socket2)
+    //         .await;
+
+    //       if let Err(err) = result {
+    //         eprintln!("Output {} error: {}", name, err);
+    //       }
+    //     }
+    //   }
+    // });
+
+    Ok(())
   }
 
   async fn handle_heartbeat(
@@ -173,7 +205,11 @@ impl JupyterServer {
           .send(connection)
           .await?;
       }
-      "execute_request" => todo!(),
+      "execute_request" => {
+        self
+          .handle_execution_request(msg.clone(), connection)
+          .await?;
+      }
       "comm_open" => {
         msg
           .comm_close_message()
@@ -197,8 +233,89 @@ impl JupyterServer {
     Ok(())
   }
 
-  async fn handle_execution_requests() -> Result<(), AnyError> {
-    todo!();
+  async fn handle_execution_request(
+    &mut self,
+    msg: JupyterMessage,
+    connection: &mut Connection<zeromq::RouterSocket>,
+  ) -> Result<(), AnyError> {
+    self.execution_count += 1;
+    *self.last_execution_request.borrow_mut() = Some(msg.clone());
+
+    msg
+      .new_message("execute_input")
+      .with_content(json!({
+          "execution_count": self.execution_count,
+          "code": msg.code()
+      }))
+      .send(&mut self.iopub_socket)
+      .await?;
+
+    let evaluate_response = self
+      .repl_session
+      .evaluate_line_with_object_wrapping(msg.code())
+      .await?;
+
+    let repl::cdp::EvaluateResponse {
+      result,
+      exception_details,
+    } = evaluate_response.value;
+
+    if exception_details.is_none() {
+      let output = self.repl_session.get_eval_value(&result).await?;
+      msg
+        .new_message("execute_result")
+        .with_content(json!({
+            "execution_count": self.execution_count,
+            "data": {
+                "text/plain": output
+            },
+            "metadata": {},
+        }))
+        .send(&mut self.iopub_socket)
+        .await?;
+      msg
+        .new_reply()
+        .with_content(json!({
+            "status": "ok",
+            "execution_count": self.execution_count,
+        }))
+        .send(connection)
+        .await?;
+    } else {
+      let exception_details = exception_details.unwrap();
+      let name = if let Some(exception) = exception_details.exception {
+        if let Some(description) = exception.description {
+          description
+        } else if let Some(value) = exception.value {
+          value.to_string()
+        } else {
+          "undefined".to_string()
+        }
+      } else {
+        "Unknown exception".to_string()
+      };
+
+      // TODO: fill all the fields
+      msg
+        .new_message("error")
+        .with_content(json!({
+          "ename": name,
+          "evalue": "",
+          "traceback": [],
+        }))
+        .send(&mut self.iopub_socket)
+        .await?;
+      msg
+        .new_reply()
+        .with_content(json!({
+          "status": "error",
+          "execution_count": self.execution_count,
+        }))
+        .send(connection)
+        .await?;
+    }
+
+    Ok(())
   }
 }
 

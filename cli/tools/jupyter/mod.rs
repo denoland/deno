@@ -75,14 +75,15 @@ pub async fn kernel(
     repl::ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
       .await?;
 
-  let mut kernel =
-    Kernel::new(&connection_filepath, stdio_rx, repl_session).await?;
-  println!("[DENO] kernel created: {:#?}", kernel.identity);
+  let mut server =
+    server::JupyterServer::start(&connection_filepath, stdio_rx, repl_session)
+      .await?;
+  // println!("[DENO] kernel created: {:#?}", kernel.identity);
 
-  println!("running kernel...");
+  // println!("running kernel...");
   // TODO(bartlomieju): handle the result
-  let _r = kernel.run().await;
-  println!("done running kernel.");
+  // let _r = kernel.run().await;
+  // println!("done running kernel.");
 
   Ok(())
 }
@@ -129,7 +130,7 @@ pub enum WorkerCommMsg {
 
 deno_core::extension!(deno_jupyter,
   options = {
-    sender: mpsc::UnboundedSender<WorkerCommMsg>,
+    sender: mpsc::UnboundedSender<server::StdioMsg>,
   },
   middleware = |op| match op.name {
     "op_print" => op_print::DECL,
@@ -146,13 +147,13 @@ pub fn op_print(
   msg: String,
   is_err: bool,
 ) -> Result<(), AnyError> {
-  let sender = state.borrow_mut::<mpsc::UnboundedSender<WorkerCommMsg>>();
+  let sender = state.borrow_mut::<mpsc::UnboundedSender<server::StdioMsg>>();
 
   // TODO(bartlomieju): should these results be handled somehow?
   if is_err {
-    let _r = sender.unbounded_send(WorkerCommMsg::Stderr(msg));
+    let _r = sender.unbounded_send(server::StdioMsg::Stderr(msg));
   } else {
-    let _r = sender.unbounded_send(WorkerCommMsg::Stdout(msg));
+    let _r = sender.unbounded_send(server::StdioMsg::Stdout(msg));
   }
   Ok(())
 }
