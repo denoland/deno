@@ -3036,8 +3036,26 @@ impl tower_lsp::LanguageServer for LanguageServer {
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
     if params.command == "deno.cache" {
+      let mut arguments = params.arguments.into_iter();
+      let uris: Vec<Url> = arguments
+        .next()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .ok_or(LspError::invalid_params("Missing uris"))?;
+      let referrer: Url = arguments
+        .next()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .ok_or(LspError::invalid_params("missing referrer"))?;
       return self
-        .cache_request(params.arguments.into_iter().next())
+        .cache_request(Some(
+          serde_json::to_value(lsp_custom::CacheParams {
+            referrer: TextDocumentIdentifier { uri: referrer },
+            uris: uris
+              .into_iter()
+              .map(|uri| TextDocumentIdentifier { uri })
+              .collect(),
+          })
+          .unwrap(),
+        ))
         .await;
     }
     Ok(None)
