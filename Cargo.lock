@@ -979,6 +979,7 @@ dependencies = [
  "base32",
  "base64 0.13.1",
  "bincode",
+ "bytes",
  "cache_control",
  "chrono",
  "clap",

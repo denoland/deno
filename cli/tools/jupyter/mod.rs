@@ -26,6 +26,7 @@ use ring::hmac;
 
 mod comm;
 mod install;
+mod jupyter_msg;
 mod message_types;
 
 use comm::DealerComm;
@@ -580,6 +581,27 @@ impl Default for KernelMetadata {
   }
 }
 
+#[allow(unused)]
+fn kernel_info() -> serde_json::Value {
+  json!({
+    "status": "ok",
+    "protocol_version": "5.3",
+    "implementation_version": crate::version::deno(),
+    "implementation": "Deno kernel",
+    "language_info": {
+      "name": "typescript",
+      "version": crate::version::TYPESCRIPT,
+      "mimetype": "text/x.typescript",
+      "file_extension": ".ts"
+    },
+    "help_links": [{
+      "text": "Visit Deno manual",
+      "url": "https://deno.land/manual"
+    }],
+    "banner": "Welcome to Deno kernel",
+  })
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ConnectionSpec {
   ip: String,
@@ -590,9 +612,6 @@ pub struct ConnectionSpec {
   hb_port: u32,
   iopub_port: u32,
   key: String,
-
-  #[allow(unused)]
-  signature_scheme: String,
 }
 
 #[derive(Debug)]
