@@ -374,16 +374,11 @@ impl Kernel {
       KernelState::Starting => "starting",
     };
 
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "status",
-      ReplyMetadata::Empty,
-      ReplyContent::Status(KernelStatusContent {
-        execution_state: s.to_string(),
-      }),
-    );
+    let content = KernelStatusContent {
+      execution_state: s.to_string(),
+    };
 
-    if let Err(e) = self.iopub_comm.send(msg).await {
+    if let Err(e) = self.iopub_comm.send_status(comm_ctx, content).await {
       println!("[IoPub] Error setting state: {}, reason: {}", s, e);
     }
   }
@@ -411,14 +406,10 @@ impl Kernel {
       debugger: false,
     };
 
-    let reply = ReplyMessage::new(
-      comm_ctx,
-      "kernel_info_reply",
-      ReplyMetadata::Empty,
-      ReplyContent::KernelInfo(content),
-    );
-
-    self.shell_comm.send(reply).await?;
+    self
+      .shell_comm
+      .send_kernel_info_reply(comm_ctx, content)
+      .await?;
 
     Ok(())
   }
@@ -434,16 +425,14 @@ impl Kernel {
       _ => return Err(anyhow!("malformed execution content")),
     };
 
-    let input_msg = SideEffectMessage::new(
-      comm_ctx,
-      "execute_input",
-      ReplyMetadata::Empty,
-      ReplyContent::ExecuteInput(ExecuteInputContent {
-        code: exec_request_content.code.clone(),
-        execution_count: self.execution_count,
-      }),
-    );
-    self.iopub_comm.send(input_msg).await?;
+    let content = ExecuteInputContent {
+      code: exec_request_content.code.clone(),
+      execution_count: self.execution_count,
+    };
+    self
+      .iopub_comm
+      .send_execute_input(comm_ctx, content)
+      .await?;
 
     let evaluate_response = self
       .repl_session
@@ -455,7 +444,7 @@ impl Kernel {
       exception_details,
     } = evaluate_response.value;
 
-    let exec_result = if let Some(exception_details) = exception_details {
+    if let Some(exception_details) = exception_details {
       let name = if let Some(exception) = exception_details.exception {
         if let Some(description) = exception.description {
           description
@@ -474,64 +463,63 @@ impl Kernel {
       };
 
       println!("sending exec reply error {}", self.execution_count);
-      let msg = ReplyMessage::new(
-        comm_ctx,
-        "execute_reply",
-        ReplyMetadata::Empty,
-        ReplyContent::ExecuteError(ExecuteErrorContent {
-          execution_count: self.execution_count,
-          status: "error".to_string(),
-          payload: vec![],
-          user_expressions: json!({}),
-          // TODO(apowers313) implement error messages
-          ename: e.err_name.clone(),
-          evalue: e.err_value.clone(),
-          traceback: e.stack_trace.clone(),
-        }),
-      );
-      self.shell_comm.send(msg).await?;
-      let msg = SideEffectMessage::new(
-        comm_ctx,
-        "error",
-        ReplyMetadata::Empty,
-        ReplyContent::Error(ErrorContent {
-          ename: e.err_name.clone(),
-          evalue: e.err_value.clone(),
-          traceback: e.stack_trace.clone(),
-        }),
-      );
-      self.iopub_comm.send(msg).await?;
+      self
+        .shell_comm
+        .send_execute_error(
+          comm_ctx,
+          ExecuteErrorContent {
+            execution_count: self.execution_count,
+            status: "error".to_string(),
+            payload: vec![],
+            user_expressions: json!({}),
+            // TODO(apowers313) implement error messages
+            ename: e.err_name.clone(),
+            evalue: e.err_value.clone(),
+            traceback: e.stack_trace.clone(),
+          },
+        )
+        .await?;
+      self
+        .iopub_comm
+        .send_error(
+          comm_ctx,
+          ErrorContent {
+            ename: e.err_name.clone(),
+            evalue: e.err_value.clone(),
+            traceback: e.stack_trace.clone(),
+          },
+        )
+        .await?;
     } else {
       let output = self.repl_session.get_eval_value(&result).await?;
       println!("sending exec result {}", self.execution_count);
-      let msg = ReplyMessage::new(
-        comm_ctx,
-        "execute_reply",
-        ReplyMetadata::Empty,
-        ReplyContent::ExecuteReply(ExecuteReplyContent {
-          status: "ok".to_string(),
-          execution_count: self.execution_count,
-          // NOTE(bartlomieju): these two fields are always empty
-          payload: vec![],
-          user_expressions: json!({}),
-        }),
-      );
-      self.shell_comm.send(msg).await?;
-
-      let msg = SideEffectMessage::new(
-        comm_ctx,
-        "execute_result",
-        ReplyMetadata::Empty,
-        ReplyContent::ExecuteResult(ExecuteResultContent {
-          execution_count: self.execution_count,
-          data: json!({
-            "text/plain": output,
-          }),
-          // data: json!("<not implemented>"),
-          metadata: json!({}),
-        }),
-      );
-      self.iopub_comm.send(msg).await?;
+      self
+        .shell_comm
+        .send_execute_reply(
+          comm_ctx,
+          ExecuteReplyContent {
+            status: "ok".to_string(),
+            execution_count: self.execution_count,
+            // NOTE(bartlomieju): these two fields are always empty
+            payload: vec![],
+            user_expressions: json!({}),
+          },
+        )
+        .await?;
+      self
+        .iopub_comm
+        .send_execute_result(
+          comm_ctx,
+          ExecuteResultContent {
+            execution_count: self.execution_count,
+            data: json!({
+              "text/plain": output,
+            }),
+            // data: json!("<not implemented>"),
+            metadata: json!({}),
+          },
+        )
+        .await?;
     };
 
     Ok(())
@@ -550,23 +538,9 @@ impl Kernel {
       },
       text: text.to_string(),
     };
-
-    let msg = SideEffectMessage::new(
-      comm_ctx,
-      "stream",
-      ReplyMetadata::Empty,
-      ReplyContent::Stream(content),
-    );
-
-    self.iopub_comm.send(msg).await?;
-
+    self.iopub_comm.send_stream(comm_ctx, content).await?;
     Ok(())
   }
-}
-
-enum ExecResult {
-  Ok(String),
-  Error(ExecError),
 }
 
 struct ExecError {

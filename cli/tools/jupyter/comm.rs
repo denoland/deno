@@ -7,6 +7,17 @@ use zeromq::util::PeerIdentity;
 use zeromq::SocketOptions;
 
 use super::hmac_verify;
+use super::message_types::CommContext;
+use super::message_types::ErrorContent;
+use super::message_types::ExecuteErrorContent;
+use super::message_types::ExecuteInputContent;
+use super::message_types::ExecuteReplyContent;
+use super::message_types::ExecuteResultContent;
+use super::message_types::KernelInfoReplyContent;
+use super::message_types::KernelStatusContent;
+use super::message_types::ReplyContent;
+use super::message_types::ReplyMetadata;
+use super::message_types::StreamContent;
 use super::ConnectionSpec;
 use super::ReplyMessage;
 use super::RequestMessage;
@@ -54,11 +65,81 @@ impl PubComm {
     Ok(())
   }
 
-  pub async fn send(&mut self, msg: SideEffectMessage) -> Result<(), AnyError> {
+  async fn send(&mut self, msg: SideEffectMessage) -> Result<(), AnyError> {
     log::debug!("==> IoPub SENDING: {:#?}", msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
     self.socket.send(zmq_msg).await?;
     Ok(())
+  }
+
+  pub async fn send_error(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: ErrorContent,
+  ) -> Result<(), AnyError> {
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "error",
+      ReplyMetadata::Empty,
+      ReplyContent::Error(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_execute_result(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: ExecuteResultContent,
+  ) -> Result<(), AnyError> {
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "execute_result",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteResult(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_stream(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: StreamContent,
+  ) -> Result<(), AnyError> {
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "stream",
+      ReplyMetadata::Empty,
+      ReplyContent::Stream(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_execute_input(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: ExecuteInputContent,
+  ) -> Result<(), AnyError> {
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "execute_input",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteInput(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_status(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: KernelStatusContent,
+  ) -> Result<(), AnyError> {
+    let msg = SideEffectMessage::new(
+      comm_ctx,
+      "status",
+      ReplyMetadata::Empty,
+      ReplyContent::Status(content),
+    );
+    self.send(msg).await
   }
 }
 
@@ -157,12 +238,54 @@ impl DealerComm {
     Ok(jup_msg)
   }
 
-  pub async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
+  async fn send(&mut self, msg: ReplyMessage) -> Result<(), AnyError> {
     log::debug!("==> {} SENDING: {:#?}", self.name, msg);
     let zmq_msg = msg.serialize(&self.hmac_key);
     self.socket.send(zmq_msg).await?;
     log::debug!("==> {} SENT", self.name);
     Ok(())
+  }
+
+  pub async fn send_execute_error(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: ExecuteErrorContent,
+  ) -> Result<(), AnyError> {
+    let msg = ReplyMessage::new(
+      comm_ctx,
+      "execute_reply",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteError(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_execute_reply(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: ExecuteReplyContent,
+  ) -> Result<(), AnyError> {
+    let msg = ReplyMessage::new(
+      comm_ctx,
+      "execute_reply",
+      ReplyMetadata::Empty,
+      ReplyContent::ExecuteReply(content),
+    );
+    self.send(msg).await
+  }
+
+  pub async fn send_kernel_info_reply(
+    &mut self,
+    comm_ctx: &CommContext,
+    content: KernelInfoReplyContent,
+  ) -> Result<(), AnyError> {
+    let msg = ReplyMessage::new(
+      comm_ctx,
+      "kernel_info_repl",
+      ReplyMetadata::Empty,
+      ReplyContent::KernelInfo(content),
+    );
+    self.send(msg).await
   }
 }
 
