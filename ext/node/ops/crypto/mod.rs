@@ -239,7 +239,7 @@ pub fn op_node_create_cipheriv(
 pub fn op_node_cipheriv_set_aad(
   state: &mut OpState,
   rid: u32,
-  aad: &[u8]
+  aad: &[u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::CipherContext>(rid) {
     Ok(context) => context,
@@ -296,7 +296,7 @@ pub fn op_node_create_decipheriv(
 pub fn op_node_decipheriv_set_aad(
   state: &mut OpState,
   rid: u32,
-  aad: &[u8]
+  aad: &[u8],
 ) -> bool {
   let context = match state.resource_table.get::<cipher::DecipherContext>(rid) {
     Ok(context) => context,
@@ -327,7 +327,7 @@ pub fn op_node_decipheriv_final(
   rid: u32,
   input: &[u8],
   output: &mut [u8],
-  auth_tag: &[u8]
+  auth_tag: &[u8],
 ) -> Result<(), AnyError> {
   let context = state.resource_table.take::<cipher::DecipherContext>(rid)?;
   let context = Rc::try_unwrap(context)
