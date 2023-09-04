@@ -13,13 +13,26 @@ import { Buffer } from "node:buffer";
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import type { TransformOptions } from "ext:deno_node/_stream.d.ts";
 import { Transform } from "ext:deno_node/_stream.mjs";
-import { KeyObject } from "./keys.ts";
+import {
+  getArrayBufferOrView,
+  KeyObject,
+} from "ext:deno_node/internal/crypto/keys.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
 import type {
   BinaryLike,
   Encoding,
 } from "ext:deno_node/internal/crypto/types.ts";
 import { getDefaultEncoding } from "ext:deno_node/internal/crypto/util.ts";
+import {
+  isAnyArrayBuffer,
+  isArrayBufferView,
+} from "ext:deno_node/internal/util/types.ts";
+
+function isStringOrBuffer(val) {
+  return typeof val === "string" ||
+    isArrayBufferView(val) ||
+    isAnyArrayBuffer(val);
+}
 
 const { ops, encode } = globalThis.__bootstrap.core;
 
@@ -149,6 +162,9 @@ export class Cipheriv extends Transform implements Cipher {
     });
     this.#cache = new BlockModeCache(false);
     this.#context = ops.op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -265,6 +281,9 @@ export class Decipheriv extends Transform implements Cipher {
     });
     this.#cache = new BlockModeCache(true);
     this.#context = ops.op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
+    if (this.#context == 0) {
+      throw new TypeError("Unknown cipher");
+    }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
@@ -355,24 +374,51 @@ export function privateEncrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  return ops.op_node_private_encrypt(privateKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_private_encrypt(data, buffer, padding);
 }
 
 export function privateDecrypt(
   privateKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(privateKey);
   const padding = privateKey.padding || 1;
-  return ops.op_node_private_decrypt(privateKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_private_decrypt(data, buffer, padding);
 }
 
 export function publicEncrypt(
   publicKey: ArrayBufferView | string | KeyObject,
   buffer: ArrayBufferView | string | KeyObject,
 ): Buffer {
+  const { data } = prepareKey(publicKey);
   const padding = publicKey.padding || 1;
-  return ops.op_node_public_encrypt(publicKey, buffer, padding);
+
+  buffer = getArrayBufferOrView(buffer, "buffer");
+  return ops.op_node_public_encrypt(data, buffer, padding);
+}
+
+function prepareKey(key) {
+  // TODO(@littledivy): handle these cases
+  // - node KeyObject
+  // - web CryptoKey
+  if (isStringOrBuffer(key)) {
+    return { data: getArrayBufferOrView(key, "key") };
+  } else if (typeof key == "object") {
+    const { key: data, encoding } = key;
+    if (!isStringOrBuffer(data)) {
+      throw new TypeError("Invalid key type");
+    }
+
+    return { data: getArrayBufferOrView(data, "key", encoding) };
+  }
+
+  throw new TypeError("Invalid key type");
 }
 
 export function publicDecrypt() {

@@ -38,13 +38,13 @@ use crate::npm::NpmPackageFsResolver;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::resolver::CliGraphResolver;
+use crate::resolver::CliGraphResolverOptions;
 use crate::standalone::DenoCompileBinaryWriter;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::HasNodeSpecifierChecker;
 
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -425,13 +425,18 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(async {
         Ok(Arc::new(CliGraphResolver::new(
-          self.options.to_maybe_jsx_import_source_config()?,
-          self.maybe_import_map().await?.clone(),
-          self.options.no_npm(),
           self.npm_api()?.clone(),
           self.npm_resolution().await?.clone(),
           self.package_json_deps_provider().clone(),
           self.package_json_deps_installer().await?.clone(),
+          CliGraphResolverOptions {
+            maybe_jsx_import_source_config: self
+              .options
+              .to_maybe_jsx_import_source_config()?,
+            maybe_import_map: self.maybe_import_map().await?.clone(),
+            maybe_vendor_dir: self.options.vendor_dir_path(),
+            no_npm: self.options.no_npm(),
+          },
         )))
       })
       .await
@@ -469,8 +474,8 @@ impl CliFactory {
       if let Some(ignored_options) = ts_config_result.maybe_ignored_options {
         warn!("{}", ignored_options);
       }
-      let emit_options: deno_ast::EmitOptions =
-        ts_config_result.ts_config.into();
+      let emit_options =
+        crate::args::ts_config_to_emit_options(ts_config_result.ts_config);
       Ok(Arc::new(Emitter::new(
         self.emit_cache()?.clone(),
         self.parsed_source_cache()?.clone(),
@@ -623,7 +628,6 @@ impl CliFactory {
       StorageKeyResolver::from_options(&self.options),
       self.npm_resolver().await?.clone(),
       node_resolver.clone(),
-      Box::new(CliHasNodeSpecifierChecker(self.graph_container().clone())),
       self.blob_store().clone(),
       Box::new(CliModuleLoaderFactory::new(
         &self.options,
@@ -681,13 +685,5 @@ impl CliFactory {
         .clone(),
       unstable: self.options.unstable(),
     })
-  }
-}
-
-struct CliHasNodeSpecifierChecker(Arc<ModuleGraphContainer>);
-
-impl HasNodeSpecifierChecker for CliHasNodeSpecifierChecker {
-  fn has_node_specifier(&self) -> bool {
-    self.0.graph().has_node_specifier
   }
 }

@@ -18,7 +18,6 @@ include!("../util/time.rs");
 
 mod http;
 mod lsp;
-mod websocket;
 
 fn read_json(filename: &Path) -> Result<Value> {
   let f = fs::File::open(filename)?;
@@ -403,7 +402,6 @@ struct BenchResult {
   max_memory: HashMap<String, i64>,
   lsp_exec_time: HashMap<String, i64>,
   req_per_sec: HashMap<String, i64>,
-  ws_msg_per_sec: HashMap<String, f64>,
   syscall_count: HashMap<String, i64>,
   thread_count: HashMap<String, i64>,
 }
@@ -419,7 +417,6 @@ async fn main() -> Result<()> {
     "cargo_deps",
     "lsp",
     "http",
-    "websocket",
     "strace",
     "mem_usage",
   ];
@@ -458,11 +455,6 @@ async fn main() -> Result<()> {
     .to_string(),
     ..Default::default()
   };
-
-  if benchmarks.contains(&"websocket") {
-    let ws = websocket::benchmark()?;
-    new_data.ws_msg_per_sec = ws;
-  }
 
   if benchmarks.contains(&"bundle") {
     let bundle_size = bundle_benchmark(&deno_exe)?;

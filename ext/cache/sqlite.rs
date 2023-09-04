@@ -10,7 +10,7 @@ use std::time::UNIX_EPOCH;
 use async_trait::async_trait;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::task::spawn_blocking;
+use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::ByteString;

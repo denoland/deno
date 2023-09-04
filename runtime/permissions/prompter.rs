@@ -6,6 +6,7 @@ use deno_core::parking_lot::Mutex;
 use once_cell::sync::Lazy;
 use std::fmt::Write;
 use std::io::BufRead;
+use std::io::IsTerminal;
 use std::io::StderrLock;
 use std::io::StdinLock;
 use std::io::Write as IoWrite;
@@ -84,7 +85,7 @@ impl PermissionPrompter for TtyPrompter {
     api_name: Option<&str>,
     is_unary: bool,
   ) -> PromptResponse {
-    if !atty::is(atty::Stream::Stdin) || !atty::is(atty::Stream::Stderr) {
+    if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
       return PromptResponse::Deny;
     };
 

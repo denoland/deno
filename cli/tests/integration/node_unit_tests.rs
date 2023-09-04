@@ -109,6 +109,7 @@ fn node_unit_test(test: String) {
         .join("unit_node")
         .join(format!("{test}.ts")),
     )
+    .envs(env_vars_for_npm_tests())
     .stderr(Stdio::piped())
     .stdout(Stdio::piped())
     .spawn()

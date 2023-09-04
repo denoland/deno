@@ -1,5 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -14,9 +15,10 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_fs::FileSystemRc;
 use deno_media_type::MediaType;
-use deno_semver::npm::NpmPackageNv;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
 
 use crate::errors;
 use crate::AllowAllNodePermissions;
@@ -128,10 +130,10 @@ impl NodeResolver {
     self.npm_resolver.in_npm_package(specifier)
   }
 
-  pub fn in_npm_package_with_cache(&self, specifier: String) -> bool {
+  pub fn in_npm_package_with_cache(&self, specifier: Cow<str>) -> bool {
     let mut cache = self.in_npm_package_cache.lock();
 
-    if let Some(result) = cache.get(&specifier) {
+    if let Some(result) = cache.get(specifier.as_ref()) {
       return *result;
     }
 
@@ -141,7 +143,7 @@ impl NodeResolver {
       } else {
         false
       };
-    cache.insert(specifier, result);
+    cache.insert(specifier.into_owned(), result);
     result
   }
 
@@ -335,11 +337,11 @@ impl NodeResolver {
   ) -> Result<Option<NodeResolution>, AnyError> {
     let pkg_id = self
       .npm_resolver
-      .resolve_pkg_id_from_pkg_req(&reference.req)?;
-    let reference = NpmPackageNvReference {
+      .resolve_pkg_id_from_pkg_req(reference.req())?;
+    let reference = NpmPackageNvReference::new(PackageNvReference {
       nv: pkg_id.nv,
-      sub_path: reference.sub_path.clone(),
-    };
+      sub_path: reference.sub_path().map(ToOwned::to_owned),
+    });
     self.resolve_npm_reference(&reference, mode, permissions)
   }
 
@@ -351,13 +353,12 @@ impl NodeResolver {
   ) -> Result<Option<NodeResolution>, AnyError> {
     let package_folder = self
       .npm_resolver
-      .resolve_package_folder_from_deno_module(&reference.nv)?;
+      .resolve_package_folder_from_deno_module(reference.nv())?;
     let node_module_kind = NodeModuleKind::Esm;
     let maybe_resolved_path = self
       .package_config_resolve(
         &reference
-          .sub_path
-          .as_ref()
+          .sub_path()
           .map(|s| format!("./{s}"))
           .unwrap_or_else(|| ".".to_string()),
         &package_folder,
@@ -391,7 +392,7 @@ impl NodeResolver {
 
   pub fn resolve_binary_commands(
     &self,
-    pkg_nv: &NpmPackageNv,
+    pkg_nv: &PackageNv,
   ) -> Result<Vec<String>, AnyError> {
     let package_folder = self
       .npm_resolver
@@ -415,9 +416,9 @@ impl NodeResolver {
   ) -> Result<NodeResolution, AnyError> {
     let pkg_nv = self
       .npm_resolver
-      .resolve_pkg_id_from_pkg_req(&pkg_ref.req)?
+      .resolve_pkg_id_from_pkg_req(pkg_ref.req())?
       .nv;
-    let bin_name = pkg_ref.sub_path.as_deref();
+    let bin_name = pkg_ref.sub_path();
     let package_folder = self
       .npm_resolver
       .resolve_package_folder_from_deno_module(&pkg_nv)?;
@@ -1052,9 +1053,10 @@ impl NodeResolver {
 
     // ResolveSelf
     let Some(package_config) =
-      self.get_package_scope_config(referrer, permissions)? else {
-        return Ok(None);
-      };
+      self.get_package_scope_config(referrer, permissions)?
+    else {
+      return Ok(None);
+    };
     if package_config.exists
       && package_config.name.as_ref() == Some(&package_name)
     {
@@ -1131,9 +1133,10 @@ impl NodeResolver {
   ) -> Result<Option<PackageJson>, AnyError> {
     let Some(root_folder) = self
       .npm_resolver
-      .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())? else {
-        return Ok(None);
-      };
+      .resolve_package_folder_from_path(&referrer.to_file_path().unwrap())?
+    else {
+      return Ok(None);
+    };
     let package_json_path = root_folder.join("package.json");
     self
       .load_package_json(permissions, package_json_path)
@@ -1145,7 +1148,8 @@ impl NodeResolver {
     url: &ModuleSpecifier,
     permissions: &dyn NodePermissions,
   ) -> Result<Option<PackageJson>, AnyError> {
-    let Some(package_json_path) = self.get_closest_package_json_path(url)? else {
+    let Some(package_json_path) = self.get_closest_package_json_path(url)?
+    else {
       return Ok(None);
     };
     self
@@ -1168,9 +1172,10 @@ impl NodeResolver {
     }
     let Some(root_pkg_folder) = self
       .npm_resolver
-      .resolve_package_folder_from_path(current_dir)? else {
-        return Ok(None);
-      };
+      .resolve_package_folder_from_path(current_dir)?
+    else {
+      return Ok(None);
+    };
     while current_dir.starts_with(&root_pkg_folder) {
       current_dir = current_dir.parent().unwrap();
       let package_json_path = current_dir.join("package.json");
@@ -1287,7 +1292,7 @@ impl NodeResolver {
 }
 
 fn resolve_bin_entry_value<'a>(
-  pkg_nv: &NpmPackageNv,
+  pkg_nv: &PackageNv,
   bin_name: Option<&str>,
   bin: &'a Value,
 ) -> Result<&'a str, AnyError> {
@@ -1599,7 +1604,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        &PackageNv::from_str("test@1.1.1").unwrap(),
         Some("bin1"),
         &value
       )
@@ -1610,7 +1615,7 @@ mod tests {
     // should resolve the value with the same name when not specified
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        &PackageNv::from_str("test@1.1.1").unwrap(),
         None,
         &value
       )
@@ -1621,7 +1626,7 @@ mod tests {
     // should not resolve when specified value does not exist
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test@1.1.1").unwrap(),
+        &PackageNv::from_str("test@1.1.1").unwrap(),
         Some("other"),
         &value
       )
@@ -1641,7 +1646,7 @@ mod tests {
     // should not resolve when default value can't be determined
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("asdf@1.2.3").unwrap(),
+        &PackageNv::from_str("asdf@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1665,7 +1670,7 @@ mod tests {
     });
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
+        &PackageNv::from_str("test@1.2.3").unwrap(),
         None,
         &value
       )
@@ -1677,7 +1682,7 @@ mod tests {
     let value = json!("./value");
     assert_eq!(
       resolve_bin_entry_value(
-        &NpmPackageNv::from_str("test@1.2.3").unwrap(),
+        &PackageNv::from_str("test@1.2.3").unwrap(),
         Some("path"),
         &value
       )

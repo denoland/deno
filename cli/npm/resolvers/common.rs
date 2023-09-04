@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_core::futures;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;

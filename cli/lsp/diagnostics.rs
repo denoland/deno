@@ -28,9 +28,9 @@ use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
-use deno_core::task::spawn;
-use deno_core::task::spawn_blocking;
-use deno_core::task::JoinHandle;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_core::unsync::JoinHandle;
 use deno_core::ModuleSpecifier;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -39,6 +39,7 @@ use deno_lint::rules::LintRule;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
 use log::error;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -876,7 +877,7 @@ pub enum DenoDiagnostic {
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
-  NoCacheNpm(NpmPackageReqReference, ModuleSpecifier),
+  NoCacheNpm(PackageReq, ModuleSpecifier),
   /// A local module was not found on the local file system.
   NoLocal(ModuleSpecifier),
   /// The specifier resolved to a remote specifier that was redirected to
@@ -1086,7 +1087,7 @@ impl DenoDiagnostic {
       Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
-      Self::NoCacheNpm(pkg_ref, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_ref.req), Some(json!({ "specifier": specifier }))),
+      Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
       Self::Redirect { from, to} => (lsp::DiagnosticSeverity::INFORMATION, format!("The import of \"{from}\" was redirected to \"{to}\"."), Some(json!({ "specifier": from, "redirect": to }))),
       Self::ResolutionError(err) => (
@@ -1159,9 +1160,10 @@ fn diagnose_resolution(
       {
         if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // show diagnostics for npm package references that aren't cached
-          if !npm_resolver.is_pkg_req_folder_cached(&pkg_ref.req) {
+          let req = pkg_ref.into_inner().req;
+          if !npm_resolver.is_pkg_req_folder_cached(&req) {
             diagnostics
-              .push(DenoDiagnostic::NoCacheNpm(pkg_ref, specifier.clone()));
+              .push(DenoDiagnostic::NoCacheNpm(req, specifier.clone()));
           }
         }
       } else if let Some(module_name) = specifier.as_str().strip_prefix("node:")
@@ -1171,11 +1173,10 @@ fn diagnose_resolution(
             .push(DenoDiagnostic::InvalidNodeSpecifier(specifier.clone()));
         } else if let Some(npm_resolver) = &snapshot.maybe_npm_resolver {
           // check that a @types/node package exists in the resolver
-          let types_node_ref =
-            NpmPackageReqReference::from_str("npm:@types/node").unwrap();
-          if !npm_resolver.is_pkg_req_folder_cached(&types_node_ref.req) {
+          let types_node_req = PackageReq::from_str("@types/node").unwrap();
+          if !npm_resolver.is_pkg_req_folder_cached(&types_node_req) {
             diagnostics.push(DenoDiagnostic::NoCacheNpm(
-              types_node_ref,
+              types_node_req,
               ModuleSpecifier::parse("npm:@types/node").unwrap(),
             ));
           }
@@ -1389,7 +1390,7 @@ mod tests {
     ConfigSnapshot {
       settings: Settings {
         workspace: WorkspaceSettings {
-          enable: true,
+          enable: Some(true),
           lint: true,
           ..Default::default()
         },
@@ -1465,7 +1466,7 @@ let c: number = "a";
       disabled_config.settings.specifiers.insert(
         specifier.clone(),
         SpecifierSettings {
-          enable: false,
+          enable: Some(false),
           enable_paths: Vec::new(),
           code_lens: Default::default(),
         },

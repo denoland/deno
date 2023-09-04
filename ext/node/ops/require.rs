@@ -95,13 +95,17 @@ where
 {
   let fs = state.borrow::<FileSystemRc>();
   // Guarantee that "from" is absolute.
-  let from = deno_core::resolve_path(
-    &from,
-    &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
-  )
-  .unwrap()
-  .to_file_path()
-  .unwrap();
+  let from = if from.starts_with("file:///") {
+    Url::parse(&from)?.to_file_path().unwrap()
+  } else {
+    deno_core::resolve_path(
+      &from,
+      &(fs.cwd().map_err(AnyError::from)).context("Unable to get CWD")?,
+    )
+    .unwrap()
+    .to_file_path()
+    .unwrap()
+  };
 
   ensure_read_permission::<P>(state, &from)?;
 

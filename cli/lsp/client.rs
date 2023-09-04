@@ -8,7 +8,7 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use deno_core::task::spawn;
+use deno_core::unsync::spawn;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::ConfigurationItem;
 
@@ -359,7 +359,7 @@ impl ClientTrait for ReplClient {
       .into_iter()
       .map(|_| {
         Ok(SpecifierSettings {
-          enable: true,
+          enable: Some(true),
           ..Default::default()
         })
       })
