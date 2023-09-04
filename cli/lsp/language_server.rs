@@ -3040,7 +3040,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       let uris: Vec<Url> = arguments
         .next()
         .and_then(|value| serde_json::from_value(value).ok())
-        .ok_or(LspError::invalid_params("Missing uris"))?;
+        .ok_or(LspError::invalid_params("missing uris"))?;
       let referrer: Url = arguments
         .next()
         .and_then(|value| serde_json::from_value(value).ok())
