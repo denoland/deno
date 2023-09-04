@@ -640,3 +640,32 @@ Deno.test({
     assertEquals(cp.signalCode, "SIGIOT");
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/20373
+Deno.test(async function undefinedValueInEnvVar() {
+  const promise = withTimeout<string>();
+  const env = spawn(
+    `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+    {
+      env: { BAZ: "BAZ", NO_COLOR: "true", VAR_NAME: undefined },
+      shell: true,
+    },
+  );
+  try {
+    let envOutput = "";
+
+    assert(env.stdout);
+    env.on("error", (err: Error) => promise.reject(err));
+    env.stdout.on("data", (data) => {
+      envOutput += data;
+    });
+    env.on("close", () => {
+      promise.resolve(envOutput.trim());
+    });
+    await promise;
+  } finally {
+    env.kill();
+  }
+  const value = await promise;
+  assertEquals(value, "BAZ");
+});

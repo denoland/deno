@@ -53,6 +53,10 @@ export function mapValues<T, O>(
   const entries = Object.entries(record);
 
   for (const [key, value] of entries) {
+    if (typeof value === "undefined") {
+      continue;
+    }
+
     const mappedValue = transformer(value);
 
     ret[key] = mappedValue;
