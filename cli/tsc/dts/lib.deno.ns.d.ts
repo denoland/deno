@@ -812,247 +812,285 @@ declare namespace Deno {
     permissions?: PermissionOptions;
   }
 
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required.
-  //  *
-  //  * ```ts
-  //  * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test({
-  //  *   name: "example test",
-  //  *   fn() {
-  //  *     assertEquals("world", "world");
-  //  *   },
-  //  * });
-  //  *
-  //  * Deno.test({
-  //  *   name: "example ignored test",
-  //  *   ignore: Deno.build.os === "windows",
-  //  *   fn() {
-  //  *     // This test is ignored only on Windows machines
-  //  *   },
-  //  * });
-  //  *
-  //  * Deno.test({
-  //  *   name: "example async test",
-  //  *   async fn() {
-  //  *     const decoder = new TextDecoder("utf-8");
-  //  *     const data = await Deno.readFile("hello_world.txt");
-  //  *     assertEquals(decoder.decode(data), "Hello world");
-  //  *   }
-  //  * });
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(t: TestDefinition): void;
-
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required.
-  //  *
-  //  * ```ts
-  //  * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test("My test description", () => {
-  //  *   assertEquals("hello", "hello");
-  //  * });
-  //  *
-  //  * Deno.test("My async test description", async () => {
-  //  *   const decoder = new TextDecoder("utf-8");
-  //  *   const data = await Deno.readFile("hello_world.txt");
-  //  *   assertEquals(decoder.decode(data), "Hello world");
-  //  * });
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(
-  //   name: string,
-  //   fn: (t: TestContext) => void | Promise<void>,
-  // ): void;
-
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required. Declared function must have a name.
-  //  *
-  //  * ```ts
-  //  * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test(function myTestName() {
-  //  *   assertEquals("hello", "hello");
-  //  * });
-  //  *
-  //  * Deno.test(async function myOtherTestName() {
-  //  *   const decoder = new TextDecoder("utf-8");
-  //  *   const data = await Deno.readFile("hello_world.txt");
-  //  *   assertEquals(decoder.decode(data), "Hello world");
-  //  * });
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(fn: (t: TestContext) => void | Promise<void>): void;
-
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required.
-  //  *
-  //  * ```ts
-  //  * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test("My test description", { permissions: { read: true } }, (): void => {
-  //  *   assertEquals("hello", "hello");
-  //  * });
-  //  *
-  //  * Deno.test("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
-  //  *   const decoder = new TextDecoder("utf-8");
-  //  *   const data = await Deno.readFile("hello_world.txt");
-  //  *   assertEquals(decoder.decode(data), "Hello world");
-  //  * });
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(
-  //   name: string,
-  //   options: Omit<TestDefinition, "fn" | "name">,
-  //   fn: (t: TestContext) => void | Promise<void>,
-  // ): void;
-
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required.
-  //  *
-  //  * ```ts
-  //  * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test(
-  //  *   {
-  //  *     name: "My test description",
-  //  *     permissions: { read: true },
-  //  *   },
-  //  *   () => {
-  //  *     assertEquals("hello", "hello");
-  //  *   },
-  //  * );
-  //  *
-  //  * Deno.test(
-  //  *   {
-  //  *     name: "My async test description",
-  //  *     permissions: { read: false },
-  //  *   },
-  //  *   async () => {
-  //  *     const decoder = new TextDecoder("utf-8");
-  //  *     const data = await Deno.readFile("hello_world.txt");
-  //  *     assertEquals(decoder.decode(data), "Hello world");
-  //  *   },
-  //  * );
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(
-  //   options: Omit<TestDefinition, "fn">,
-  //   fn: (t: TestContext) => void | Promise<void>,
-  // ): void;
-
-  // /** Register a test which will be run when `deno test` is used on the command
-  //  * line and the containing module looks like a test module.
-  //  *
-  //  * `fn` can be async if required. Declared function must have a name.
-  //  *
-  //  * ```ts
-  //  * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
-  //  *
-  //  * Deno.test(
-  //  *   { permissions: { read: true } },
-  //  *   function myTestName() {
-  //  *     assertEquals("hello", "hello");
-  //  *   },
-  //  * );
-  //  *
-  //  * Deno.test(
-  //  *   { permissions: { read: false } },
-  //  *   async function myOtherTestName() {
-  //  *     const decoder = new TextDecoder("utf-8");
-  //  *     const data = await Deno.readFile("hello_world.txt");
-  //  *     assertEquals(decoder.decode(data), "Hello world");
-  //  *   },
-  //  * );
-  //  * ```
-  //  *
-  //  * @category Testing
-  //  */
-  // export function test(
-  //   options: Omit<TestDefinition, "fn" | "name">,
-  //   fn: (t: TestContext) => void | Promise<void>,
-  // ): void;
-
   export const test: DenoTest;
 
   interface DenoTest {
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required.
+     *
+     * ```ts
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test({
+     *   name: "example test",
+     *   fn() {
+     *     assertEquals("world", "world");
+     *   },
+     * });
+     *
+     * Deno.test({
+     *   name: "example ignored test",
+     *   ignore: Deno.build.os === "windows",
+     *   fn() {
+     *     // This test is ignored only on Windows machines
+     *   },
+     * });
+     *
+     * Deno.test({
+     *   name: "example async test",
+     *   async fn() {
+     *     const decoder = new TextDecoder("utf-8");
+     *     const data = await Deno.readFile("hello_world.txt");
+     *     assertEquals(decoder.decode(data), "Hello world");
+     *   }
+     * });
+     * ```
+     *
+     * @category Testing
+     */
     (t: TestDefinition): void;
+
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required.
+     *
+     * ```ts
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test("My test description", () => {
+     *   assertEquals("hello", "hello");
+     * });
+     *
+     * Deno.test("My async test description", async () => {
+     *   const decoder = new TextDecoder("utf-8");
+     *   const data = await Deno.readFile("hello_world.txt");
+     *   assertEquals(decoder.decode(data), "Hello world");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
     (
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required. Declared function must have a name.
+     *
+     * ```ts
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test(function myTestName() {
+     *   assertEquals("hello", "hello");
+     * });
+     *
+     * Deno.test(async function myOtherTestName() {
+     *   const decoder = new TextDecoder("utf-8");
+     *   const data = await Deno.readFile("hello_world.txt");
+     *   assertEquals(decoder.decode(data), "Hello world");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
     (fn: (t: TestContext) => void | Promise<void>): void;
+
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required.
+     *
+     * ```ts
+     * import {assert, fail, assertEquals} from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test("My test description", { permissions: { read: true } }, (): void => {
+     *   assertEquals("hello", "hello");
+     * });
+     *
+     * Deno.test("My async test description", { permissions: { read: false } }, async (): Promise<void> => {
+     *   const decoder = new TextDecoder("utf-8");
+     *   const data = await Deno.readFile("hello_world.txt");
+     *   assertEquals(decoder.decode(data), "Hello world");
+     * });
+     * ```
+     *
+     * @category Testing
+     */
     (
       name: string,
       options: Omit<TestDefinition, "fn" | "name">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required.
+     *
+     * ```ts
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test(
+     *   {
+     *     name: "My test description",
+     *     permissions: { read: true },
+     *   },
+     *   () => {
+     *     assertEquals("hello", "hello");
+     *   },
+     * );
+     *
+     * Deno.test(
+     *   {
+     *     name: "My async test description",
+     *     permissions: { read: false },
+     *   },
+     *   async () => {
+     *     const decoder = new TextDecoder("utf-8");
+     *     const data = await Deno.readFile("hello_world.txt");
+     *     assertEquals(decoder.decode(data), "Hello world");
+     *   },
+     * );
+     * ```
+     *
+     * @category Testing
+     */
     (
       options: Omit<TestDefinition, "fn" | "name">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Register a test which will be run when `deno test` is used on the command
+     * line and the containing module looks like a test module.
+     *
+     * `fn` can be async if required. Declared function must have a name.
+     *
+     * ```ts
+     * import { assertEquals } from "https://deno.land/std/testing/asserts.ts";
+     *
+     * Deno.test(
+     *   { permissions: { read: true } },
+     *   function myTestName() {
+     *     assertEquals("hello", "hello");
+     *   },
+     * );
+     *
+     * Deno.test(
+     *   { permissions: { read: false } },
+     *   async function myOtherTestName() {
+     *     const decoder = new TextDecoder("utf-8");
+     *     const data = await Deno.readFile("hello_world.txt");
+     *     assertEquals(decoder.decode(data), "Hello world");
+     *   },
+     * );
+     * ```
+     *
+     * @category Testing
+     */
     (
       options: Omit<TestDefinition, "fn">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
 
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(t: Omit<TestDefinition, "ignore">): void;
+
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(fn: (t: TestContext) => void | Promise<void>): void;
+
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(
       name: string,
       options: Omit<TestDefinition, "fn" | "name" | "ignore">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(
       options: Omit<TestDefinition, "fn" | "name" | "ignore">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for ignoring a particular test case.
+     *
+     * @category Testing
+     */
     ignore(
       options: Omit<TestDefinition, "fn" | "ignore">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
 
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(t: Omit<TestDefinition, "only">): void;
+
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(
       name: string,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(fn: (t: TestContext) => void | Promise<void>): void;
+
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(
       name: string,
       options: Omit<TestDefinition, "fn" | "name" | "only">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(
       options: Omit<TestDefinition, "fn" | "name" | "only">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Shorthand property for focusing a particular test case.
+     *
+     * @category Testing
+     */
     only(
       options: Omit<TestDefinition, "fn" | "only">,
       fn: (t: TestContext) => void | Promise<void>,

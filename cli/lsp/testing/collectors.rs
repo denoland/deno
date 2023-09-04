@@ -478,7 +478,6 @@ impl Visit for TestCollector {
           }
         }
         ast::Expr::Member(member_expr) => {
-          eprintln!("member_expr {:#?}", member_expr);
           if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
             let ns_prop_ident_name = ns_prop_ident.sym.to_string();
             if ns_prop_ident_name == "test" {
