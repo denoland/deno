@@ -133,7 +133,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
-    if self.parallel {
+    if self.parallel || plan.total == 0 {
       return;
     }
     let inflection = if plan.total == 1 { "test" } else { "tests" };
