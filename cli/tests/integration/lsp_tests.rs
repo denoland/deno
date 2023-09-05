@@ -727,7 +727,7 @@ fn lsp_import_assertions() {
         "severity": 1,
         "code": "no-assert-type",
         "source": "deno",
-        "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+        "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
       }
     ])
   );
@@ -752,7 +752,7 @@ fn lsp_import_assertions() {
             "severity": 1,
             "code": "no-assert-type",
             "source": "deno",
-            "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+            "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
           }],
           "only": ["quickfix"]
         }
@@ -773,7 +773,7 @@ fn lsp_import_assertions() {
           "severity": 1,
           "code": "no-assert-type",
           "source": "deno",
-          "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+          "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
         }
       ],
       "edit": {
