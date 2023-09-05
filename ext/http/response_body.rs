@@ -290,7 +290,9 @@ impl Body for ResponseBytes {
           unreachable!()
         }
         ResponseBytesInner::Bytes(..) => {
-          let ResponseBytesInner::Bytes(data) = self.complete(true) else { unreachable!(); };
+          let ResponseBytesInner::Bytes(data) = self.complete(true) else {
+            unreachable!();
+          };
           return std::task::Poll::Ready(Some(Ok(Frame::data(data))));
         }
         ResponseBytesInner::UncompressedStream(stm) => {

@@ -2403,6 +2403,68 @@ Deno.test(
   },
 );
 
+for (const url of ["text", "file", "stream"]) {
+  // Ensure that we don't panic when the incoming TCP request was dropped
+  // https://github.com/denoland/deno/issues/20315
+  Deno.test({
+    permissions: { read: true, write: true, net: true },
+    name: `httpServerTcpCancellation_${url}`,
+    fn: async function () {
+      const ac = new AbortController();
+      const listeningPromise = deferred();
+      const waitForAbort = deferred();
+      const waitForRequest = deferred();
+      const server = Deno.serve({
+        port: servePort,
+        signal: ac.signal,
+        onListen: onListen(listeningPromise),
+        handler: async (req: Request) => {
+          waitForRequest.resolve();
+          await waitForAbort;
+          // Allocate the request body
+          let _body = req.body;
+          if (req.url.includes("/text")) {
+            return new Response("text");
+          } else if (req.url.includes("/file")) {
+            return new Response((await makeTempFile(1024)).readable);
+          } else if (req.url.includes("/stream")) {
+            return new Response(
+              new ReadableStream({
+                start(controller) {
+                  _body = null;
+                  controller.enqueue(new Uint8Array([1]));
+                  controller.close();
+                },
+              }),
+            );
+          } else {
+            fail();
+          }
+        },
+      });
+
+      await listeningPromise;
+
+      // Create a POST request and drop it once the server has received it
+      const conn = await Deno.connect({ port: servePort });
+      const writer = conn.writable.getWriter();
+      writer.write(new TextEncoder().encode(`POST /${url} HTTP/1.0\n\n`));
+      await waitForRequest;
+      writer.close();
+
+      // Give it a few milliseconds for the serve machinery to work
+      await new Promise((r) => setTimeout(r, 10));
+      waitForAbort.resolve();
+
+      // Give it a few milliseconds for the serve machinery to work
+      await new Promise((r) => setTimeout(r, 10));
+
+      ac.abort();
+      await server.finished;
+    },
+  });
+}
+
 Deno.test(
   { permissions: { read: true, net: true } },
   async function httpServerWithTls() {

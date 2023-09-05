@@ -199,3 +199,27 @@ Deno.test({
     assertEquals(await text(stream), "foo".repeat(15));
   },
 });
+
+Deno.test({
+  name: "createCipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createCipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
+  },
+});
+
+Deno.test({
+  name: "createDecipheriv - invalid algorithm",
+  fn() {
+    assertThrows(
+      () =>
+        crypto.createDecipheriv("foo", new Uint8Array(16), new Uint8Array(16)),
+      TypeError,
+      "Unknown cipher",
+    );
+  },
+});

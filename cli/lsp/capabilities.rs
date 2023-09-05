@@ -53,9 +53,10 @@ pub fn server_capabilities(
     )),
     hover_provider: Some(HoverProviderCapability::Simple(true)),
     completion_provider: Some(CompletionOptions {
+      // Don't include "," here as it leads to confusing completion
+      // behavior with function arguments. See https://github.com/denoland/deno/issues/20160
       all_commit_characters: Some(vec![
         ".".to_string(),
-        ",".to_string(),
         ";".to_string(),
         "(".to_string(),
       ]),

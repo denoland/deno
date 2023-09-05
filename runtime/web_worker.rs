@@ -3,8 +3,8 @@ use crate::colors;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::permissions::PermissionsContainer;
+use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
-use crate::worker::runtime;
 use crate::worker::FormatJsErrorFn;
 use crate::BootstrapOptions;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -484,7 +484,7 @@ impl WebWorker {
       }
       #[cfg(feature = "__runtime_js_sources")]
       {
-        use crate::worker::maybe_transpile_source;
+        use crate::shared::maybe_transpile_source;
         for source in extension.esm_files.to_mut() {
           maybe_transpile_source(source).unwrap();
         }
