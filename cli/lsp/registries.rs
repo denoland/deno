@@ -753,7 +753,10 @@ impl ModuleRegistry {
                             Some(lsp::Command {
                               title: "".to_string(),
                               command: "deno.cache".to_string(),
-                              arguments: Some(vec![json!([item_specifier])]),
+                              arguments: Some(vec![
+                                json!([item_specifier]),
+                                json!(&specifier),
+                              ]),
                             })
                           } else {
                             None
@@ -887,7 +890,10 @@ impl ModuleRegistry {
                               Some(lsp::Command {
                                 title: "".to_string(),
                                 command: "deno.cache".to_string(),
-                                arguments: Some(vec![json!([item_specifier])]),
+                                arguments: Some(vec![
+                                  json!([item_specifier]),
+                                  json!(&specifier),
+                                ]),
                               })
                             } else {
                               None

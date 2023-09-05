@@ -1238,7 +1238,24 @@ impl Inner {
       parent_process_checker::start(parent_pid)
     }
 
-    let capabilities = capabilities::server_capabilities(&params.capabilities);
+    // TODO(nayeemrmn): This flag exists to avoid breaking the extension for the
+    // 1.37.0 release. Eventually make this always true.
+    // See https://github.com/denoland/deno/pull/20111#issuecomment-1705776794.
+    let mut enable_builtin_commands = false;
+    if let Some(value) = &params.initialization_options {
+      if let Some(object) = value.as_object() {
+        if let Some(value) = object.get("enableBuiltinCommands") {
+          if value.as_bool() == Some(true) {
+            enable_builtin_commands = true;
+          }
+        }
+      }
+    }
+
+    let capabilities = capabilities::server_capabilities(
+      &params.capabilities,
+      enable_builtin_commands,
+    );
 
     let version = format!(
       "{} ({}, {})",
@@ -3031,6 +3048,34 @@ impl Inner {
 
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
+  async fn execute_command(
+    &self,
+    params: ExecuteCommandParams,
+  ) -> LspResult<Option<Value>> {
+    if params.command == "deno.cache" {
+      let mut arguments = params.arguments.into_iter();
+      let uris = serde_json::to_value(arguments.next()).unwrap();
+      let uris: Vec<Url> = serde_json::from_value(uris)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      let referrer = serde_json::to_value(arguments.next()).unwrap();
+      let referrer: Url = serde_json::from_value(referrer)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      return self
+        .cache_request(Some(
+          serde_json::to_value(lsp_custom::CacheParams {
+            referrer: TextDocumentIdentifier { uri: referrer },
+            uris: uris
+              .into_iter()
+              .map(|uri| TextDocumentIdentifier { uri })
+              .collect(),
+          })
+          .expect("well formed json"),
+        ))
+        .await;
+    }
+    Ok(None)
+  }
+
   async fn initialize(
     &self,
     params: InitializeParams,

@@ -4257,7 +4257,7 @@ fn lsp_code_actions_deno_cache() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["https://deno.land/x/a/mod.ts"]]
+        "arguments": [["https://deno.land/x/a/mod.ts"], "file:///a/file.ts"]
       }
     }])
   );
@@ -4342,7 +4342,7 @@ fn lsp_code_actions_deno_cache_npm() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["npm:chalk"]]
+        "arguments": [["npm:chalk"], "file:///a/file.ts"]
       }
     }])
   );
