@@ -871,9 +871,9 @@ pub enum DenoDiagnostic {
   /// remapped to an import map import specifier.
   ImportMapRemap { from: String, to: String },
   /// The import assertion type is incorrect.
-  InvalidAssertType(String),
+  InvalidAttributeType(String),
   /// A module requires an assertion type to be a valid import.
-  NoAssertType,
+  NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
   /// A remote npm package reference was not found in the cache.
@@ -897,8 +897,8 @@ impl DenoDiagnostic {
     match self {
       Self::DenoWarn(_) => "deno-warn",
       Self::ImportMapRemap { .. } => "import-map-remap",
-      Self::InvalidAssertType(_) => "invalid-assert-type",
-      Self::NoAssertType => "no-assert-type",
+      Self::InvalidAttributeType(_) => "invalid-attribute-type",
+      Self::NoAttributeType => "no-attribute-type",
       Self::NoCache(_) => "no-cache",
       Self::NoCacheNpm(_, _) => "no-cache-npm",
       Self::NoLocal(_) => "no-local",
@@ -958,15 +958,15 @@ impl DenoDiagnostic {
             ..Default::default()
           }
         }
-        "no-assert-type" => lsp::CodeAction {
-          title: "Insert import assertion.".to_string(),
+        "no-attribute-type" => lsp::CodeAction {
+          title: "Insert import attribute.".to_string(),
           kind: Some(lsp::CodeActionKind::QUICKFIX),
           diagnostics: Some(vec![diagnostic.clone()]),
           edit: Some(lsp::WorkspaceEdit {
             changes: Some(HashMap::from([(
               specifier.clone(),
               vec![lsp::TextEdit {
-                new_text: " assert { type: \"json\" }".to_string(),
+                new_text: " with { type: \"json\" }".to_string(),
                 range: lsp::Range {
                   start: diagnostic.range.end,
                   end: diagnostic.range.end,
@@ -1069,7 +1069,7 @@ impl DenoDiagnostic {
         "import-map-remap"
           | "no-cache"
           | "no-cache-npm"
-          | "no-assert-type"
+          | "no-attribute-type"
           | "redirect"
           | "import-node-prefix-missing"
       )
@@ -1084,8 +1084,8 @@ impl DenoDiagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
-      Self::InvalidAssertType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
-      Self::NoAssertType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
+      Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
+      Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unable to load a local module: {specifier}\n  Please check the file path."), None),
@@ -1149,10 +1149,11 @@ fn diagnose_resolution(
             // not provide a potentially incorrect diagnostic.
             None if is_dynamic => (),
             // The module has an incorrect assertion type, diagnostic
-            Some(assert_type) => diagnostics
-              .push(DenoDiagnostic::InvalidAssertType(assert_type.to_string())),
+            Some(assert_type) => diagnostics.push(
+              DenoDiagnostic::InvalidAttributeType(assert_type.to_string()),
+            ),
             // The module is missing an assertion type, diagnostic
-            None => diagnostics.push(DenoDiagnostic::NoAssertType),
+            None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
       } else if let Ok(pkg_ref) =

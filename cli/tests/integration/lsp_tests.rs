@@ -679,7 +679,7 @@ fn lsp_deno_task() {
 }
 
 #[test]
-fn lsp_import_assertions() {
+fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
@@ -725,7 +725,7 @@ fn lsp_import_assertions() {
           "end": { "line": 0, "character": 27 }
         },
         "severity": 1,
-        "code": "no-assert-type",
+        "code": "no-attribute-type",
         "source": "deno",
         "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
       }
@@ -750,7 +750,7 @@ fn lsp_import_assertions() {
               "end": { "line": 0, "character": 27 }
             },
             "severity": 1,
-            "code": "no-assert-type",
+            "code": "no-attribute-type",
             "source": "deno",
             "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
           }],
@@ -762,7 +762,7 @@ fn lsp_import_assertions() {
   assert_eq!(
     res,
     json!([{
-      "title": "Insert import assertion.",
+      "title": "Insert import attribute.",
       "kind": "quickfix",
       "diagnostics": [
         {
@@ -771,7 +771,7 @@ fn lsp_import_assertions() {
             "end": { "line": 0, "character": 27 }
           },
           "severity": 1,
-          "code": "no-assert-type",
+          "code": "no-attribute-type",
           "source": "deno",
           "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
         }
@@ -784,7 +784,7 @@ fn lsp_import_assertions() {
                 "start": { "line": 0, "character": 27 },
                 "end": { "line": 0, "character": 27 }
               },
-              "newText": " assert { type: \"json\" }"
+              "newText": " with { type: \"json\" }"
             }
           ]
         }
