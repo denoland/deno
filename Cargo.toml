@@ -138,6 +138,7 @@ smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
 tar = "=0.4.40"
 tempfile = "3.4.0"
+termcolor = "1.1.3"
 thiserror = "1.0.40"
 tokio = { version = "1.28.1", features = ["full"] }
 tokio-metrics = { version = "0.3.0", features = ["rt"] }
