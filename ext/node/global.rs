@@ -264,7 +264,9 @@ fn is_managed_key(
 }
 
 fn current_mode(scope: &mut v8::HandleScope) -> Mode {
-  let Some(v8_string) = v8::StackTrace::current_script_name_or_source_url(scope) else {
+  let Some(v8_string) =
+    v8::StackTrace::current_script_name_or_source_url(scope)
+  else {
     return Mode::Deno;
   };
   let op_state = deno_core::JsRuntime::op_state_from(scope);
@@ -375,7 +377,8 @@ pub fn query<'s>(
     return;
   };
 
-  let Some(attributes) = inner.get_property_attributes(scope, key.into()) else {
+  let Some(attributes) = inner.get_property_attributes(scope, key.into())
+  else {
     return;
   };
 
@@ -429,7 +432,9 @@ pub fn enumerator<'s>(
   };
   let inner = v8::Local::new(scope, inner);
 
-  let Some(array) = inner.get_property_names(scope, GetPropertyNamesArgs::default()) else {
+  let Some(array) =
+    inner.get_property_names(scope, GetPropertyNamesArgs::default())
+  else {
     return;
   };
 

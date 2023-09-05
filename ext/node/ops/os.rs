@@ -60,13 +60,6 @@ mod priority {
   use libc::id_t;
   use libc::PRIO_PROCESS;
 
-  #[cfg(target_os = "macos")]
-  #[allow(non_camel_case_types)]
-  type priority_t = i32;
-  #[cfg(target_os = "linux")]
-  #[allow(non_camel_case_types)]
-  type priority_t = u32;
-
   const PRIORITY_HIGH: i32 = -14;
 
   // Ref: https://github.com/libuv/libuv/blob/55376b044b74db40772e8a6e24d67a8673998e02/src/unix/core.c#L1533-L1547
@@ -74,7 +67,7 @@ mod priority {
     set_errno(Errno(0));
     match (
       // SAFETY: libc::getpriority is unsafe
-      unsafe { libc::getpriority(PRIO_PROCESS as priority_t, pid as id_t) },
+      unsafe { libc::getpriority(PRIO_PROCESS, pid as id_t) },
       errno(),
     ) {
       (-1, Errno(0)) => Ok(PRIORITY_HIGH),
@@ -85,9 +78,7 @@ mod priority {
 
   pub fn set_priority(pid: u32, priority: i32) -> Result<(), AnyError> {
     // SAFETY: libc::setpriority is unsafe
-    match unsafe {
-      libc::setpriority(PRIO_PROCESS as priority_t, pid as id_t, priority)
-    } {
+    match unsafe { libc::setpriority(PRIO_PROCESS, pid as id_t, priority) } {
       -1 => Err(std::io::Error::last_os_error().into()),
       _ => Ok(()),
     }

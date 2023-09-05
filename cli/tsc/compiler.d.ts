@@ -64,6 +64,7 @@ declare global {
     | GetAssets
     | GetApplicableRefactors
     | GetEditsForRefactor
+    | GetEditsForFileRename
     | GetCodeFixes
     | GetCombinedCodeFix
     | GetCompletionDetails
@@ -125,6 +126,14 @@ declare global {
     range: ts.TextRange;
     refactorName: string;
     actionName: string;
+  }
+
+  interface GetEditsForFileRename extends BaseLanguageServerRequest {
+    method: "getEditsForFileRename";
+    old_specifier: string;
+    new_specifier: string;
+    formatCodeSettings: ts.FormatCodeSettings;
+    preferences?: ts.UserPreferences;
   }
 
   interface GetCodeFixes extends BaseLanguageServerRequest {

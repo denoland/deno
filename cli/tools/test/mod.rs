@@ -15,7 +15,6 @@ use crate::graph_util::graph_valid_with_cli_options;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::ops;
-use crate::util::checksum;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::get_extension;
@@ -89,6 +88,7 @@ use reporters::CompoundTestReporter;
 use reporters::DotTestReporter;
 use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
+use reporters::TapTestReporter;
 use reporters::TestReporter;
 
 /// The test mode is used to determine how a specifier is to be tested.
@@ -171,12 +171,6 @@ pub struct TestDescription {
   pub only: bool,
   pub origin: String,
   pub location: TestLocation,
-}
-
-impl TestDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[self.location.file_name.as_bytes(), self.name.as_bytes()])
-  }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
@@ -296,16 +290,6 @@ pub struct TestStepDescription {
   pub root_name: String,
 }
 
-impl TestStepDescription {
-  pub fn static_id(&self) -> String {
-    checksum::gen(&[
-      self.location.file_name.as_bytes(),
-      &self.level.to_be_bytes(),
-      self.name.as_bytes(),
-    ])
-  }
-}
-
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -404,6 +388,9 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
     }
+    TestReporterConfig::Tap => Box::new(TapTestReporter::new(
+      options.concurrent_jobs > NonZeroUsize::new(1).unwrap(),
+    )),
   };
 
   if let Some(junit_path) = &options.junit_path {
