@@ -3,7 +3,7 @@
 
 NOTE: This file should not be manually edited. Please edit `cli/tests/node_compat/config.json` and run `deno task setup` in `tools/node_compat` dir instead.
 
-Total: 2933
+Total: 2934
 
 - [abort/test-abort-backtrace.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-backtrace.js)
 - [abort/test-abort-fatal-error.js](https://github.com/nodejs/node/tree/v18.12.1/test/abort/test-abort-fatal-error.js)
@@ -1002,6 +1002,7 @@ Total: 2933
 - [parallel/test-http-connect-req-res.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-connect-req-res.js)
 - [parallel/test-http-connect.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-connect.js)
 - [parallel/test-http-content-length-mismatch.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-content-length-mismatch.js)
+- [parallel/test-http-content-length.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-content-length.js)
 - [parallel/test-http-contentLength0.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-contentLength0.js)
 - [parallel/test-http-correct-hostname.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-correct-hostname.js)
 - [parallel/test-http-createConnection.js](https://github.com/nodejs/node/tree/v18.12.1/test/parallel/test-http-createConnection.js)

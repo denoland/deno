@@ -643,6 +643,87 @@ fn lsp_import_map_node_specifiers() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/19802.
+// Disable the `workspace/configuration` capability. Ensure the LSP falls back
+// to using `enablePaths` from the `InitializationOptions`.
+#[test]
+fn lsp_workspace_enable_paths_no_workspace_configuration() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("main_disabled.ts", "Date.now()");
+  temp_dir.write("main_enabled.ts", "Date.now()");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.with_capabilities(|capabilities| {
+      capabilities.workspace.as_mut().unwrap().configuration = Some(false);
+    });
+    builder.set_workspace_folders(vec![lsp::WorkspaceFolder {
+      uri: temp_dir.uri(),
+      name: "project".to_string(),
+    }]);
+    builder.set_root_uri(temp_dir.uri());
+    builder.set_enable_paths(vec!["./main_enabled.ts".to_string()]);
+  });
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("main_disabled.ts"),
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("main_enabled.ts"),
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 5 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 5 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+      ],
+      "range": {
+        "start": { "line": 0, "character": 5, },
+        "end": { "line": 0, "character": 8, }
+      }
+    })
+  );
+
+  client.shutdown();
+}
+
 #[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();

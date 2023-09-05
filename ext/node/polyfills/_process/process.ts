@@ -102,7 +102,7 @@ export const env: InstanceType<ObjectConstructor> & Record<string, string> =
  * it pointed to Deno version, but that led to incompability
  * with some packages.
  */
-export const version = "v18.12.1";
+export const version = "v18.17.1";
 
 /**
  * https://nodejs.org/api/process.html#process_process_versions
@@ -113,7 +113,7 @@ export const version = "v18.12.1";
  * with some packages. Value of `v8` field is still taken from `Deno.version`.
  */
 export const versions = {
-  node: "18.12.1",
+  node: "18.17.1",
   uv: "1.43.0",
   zlib: "1.2.11",
   brotli: "1.0.9",

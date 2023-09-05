@@ -1315,6 +1315,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "termcolor",
  "tokio",
  "url",
  "uuid",
