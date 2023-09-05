@@ -39,6 +39,7 @@ fn code_action_capabilities(
 
 pub fn server_capabilities(
   client_capabilities: &ClientCapabilities,
+  enable_builtin_commands: bool,
 ) -> ServerCapabilities {
   let code_action_provider = code_action_capabilities(client_capabilities);
   ServerCapabilities {
@@ -119,7 +120,11 @@ pub fn server_capabilities(
     document_link_provider: None,
     color_provider: None,
     execute_command_provider: Some(ExecuteCommandOptions {
-      commands: vec!["deno.cache".into()],
+      commands: if enable_builtin_commands {
+        vec!["deno.cache".into()]
+      } else {
+        vec![]
+      },
       ..Default::default()
     }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
