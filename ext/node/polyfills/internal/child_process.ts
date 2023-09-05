@@ -56,6 +56,9 @@ export function mapValues<T, O>(
     if (typeof value === "undefined") {
       continue;
     }
+    if (value === null) {
+      continue;
+    }
 
     const mappedValue = transformer(value);
 
@@ -840,7 +843,7 @@ export function spawnSync(
     const output = new Deno.Command(command, {
       args,
       cwd,
-      env,
+      env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(normalizedStdio[1]),
       stderr: toDenoStdio(normalizedStdio[2]),
       uid,
