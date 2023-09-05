@@ -11,6 +11,9 @@ use std::path::PathBuf;
 pub fn specifier_to_file_path(
   specifier: &ModuleSpecifier,
 ) -> Result<PathBuf, AnyError> {
+  dbg!(&specifier);
+  dbg!(&specifier.as_str());
+
   let result = if !specifier.as_str().starts_with("file:///") {
     Err(())
   } else if cfg!(windows) {
