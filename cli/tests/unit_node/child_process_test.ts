@@ -13,7 +13,7 @@ import {
 import { Deferred, deferred } from "../../../test_util/std/async/deferred.ts";
 import * as path from "../../../test_util/std/path/mod.ts";
 
-const { spawn, execFile, execFileSync, ChildProcess } = CP;
+const { spawn, spawnSync, execFile, execFileSync, ChildProcess } = CP;
 
 function withTimeout<T>(timeoutInMS = 10_000): Deferred<T> {
   const promise = deferred<T>();
@@ -639,4 +639,59 @@ Deno.test({
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
   },
+});
+
+// Regression test for https://github.com/denoland/deno/issues/20373
+Deno.test(async function undefinedValueInEnvVar() {
+  const promise = withTimeout<string>();
+  const env = spawn(
+    `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+    {
+      env: {
+        BAZ: "BAZ",
+        NO_COLOR: "true",
+        UNDEFINED_ENV: undefined,
+        // deno-lint-ignore no-explicit-any
+        NULL_ENV: null as any,
+      },
+      shell: true,
+    },
+  );
+  try {
+    let envOutput = "";
+
+    assert(env.stdout);
+    env.on("error", (err: Error) => promise.reject(err));
+    env.stdout.on("data", (data) => {
+      envOutput += data;
+    });
+    env.on("close", () => {
+      promise.resolve(envOutput.trim());
+    });
+    await promise;
+  } finally {
+    env.kill();
+  }
+  const value = await promise;
+  assertEquals(value, "BAZ");
+});
+
+// Regression test for https://github.com/denoland/deno/issues/20373
+Deno.test(function spawnSyncUndefinedValueInEnvVar() {
+  const ret = spawnSync(
+    `"${Deno.execPath()}" eval -p "Deno.env.toObject().BAZ"`,
+    {
+      env: {
+        BAZ: "BAZ",
+        NO_COLOR: "true",
+        UNDEFINED_ENV: undefined,
+        // deno-lint-ignore no-explicit-any
+        NULL_ENV: null as any,
+      },
+      shell: true,
+    },
+  );
+
+  assertEquals(ret.status, 0);
+  assertEquals(ret.stdout.toString("utf-8").trim(), "BAZ");
 });

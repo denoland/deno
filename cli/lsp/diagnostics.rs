@@ -996,7 +996,7 @@ impl DenoDiagnostic {
             command: Some(lsp::Command {
               title: "".to_string(),
               command: "deno.cache".to_string(),
-              arguments: Some(vec![json!([data.specifier])]),
+              arguments: Some(vec![json!([data.specifier]), json!(&specifier)]),
             }),
             ..Default::default()
           }

@@ -1238,7 +1238,24 @@ impl Inner {
       parent_process_checker::start(parent_pid)
     }
 
-    let capabilities = capabilities::server_capabilities(&params.capabilities);
+    // TODO(nayeemrmn): This flag exists to avoid breaking the extension for the
+    // 1.37.0 release. Eventually make this always true.
+    // See https://github.com/denoland/deno/pull/20111#issuecomment-1705776794.
+    let mut enable_builtin_commands = false;
+    if let Some(value) = &params.initialization_options {
+      if let Some(object) = value.as_object() {
+        if let Some(value) = object.get("enableBuiltinCommands") {
+          if value.as_bool() == Some(true) {
+            enable_builtin_commands = true;
+          }
+        }
+      }
+    }
+
+    let capabilities = capabilities::server_capabilities(
+      &params.capabilities,
+      enable_builtin_commands,
+    );
 
     let version = format!(
       "{} ({}, {})",
@@ -1275,6 +1292,7 @@ impl Inner {
           error!("Cannot set workspace settings: {}", err);
           LspError::internal_error()
         })?;
+        self.config.update_enabled_paths();
       }
       self.config.workspace_folders = params.workspace_folders.map(|folders| {
         folders
@@ -1471,6 +1489,7 @@ impl Inner {
       if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
+      self.config.update_enabled_paths();
     }
 
     self.update_debug_flag();
@@ -3029,6 +3048,34 @@ impl Inner {
 
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
+  async fn execute_command(
+    &self,
+    params: ExecuteCommandParams,
+  ) -> LspResult<Option<Value>> {
+    if params.command == "deno.cache" {
+      let mut arguments = params.arguments.into_iter();
+      let uris = serde_json::to_value(arguments.next()).unwrap();
+      let uris: Vec<Url> = serde_json::from_value(uris)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      let referrer = serde_json::to_value(arguments.next()).unwrap();
+      let referrer: Url = serde_json::from_value(referrer)
+        .map_err(|err| LspError::invalid_params(err.to_string()))?;
+      return self
+        .cache_request(Some(
+          serde_json::to_value(lsp_custom::CacheParams {
+            referrer: TextDocumentIdentifier { uri: referrer },
+            uris: uris
+              .into_iter()
+              .map(|uri| TextDocumentIdentifier { uri })
+              .collect(),
+          })
+          .expect("well formed json"),
+        ))
+        .await;
+    }
+    Ok(None)
+  }
+
   async fn initialize(
     &self,
     params: InitializeParams,
@@ -3125,7 +3172,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
       return;
     }
 
-    let (client, client_uri, specifier, had_specifier_settings) = {
+    let (client, client_uri, specifier, should_get_specifier_settings) = {
       let mut inner = self.0.write().await;
       let client = inner.client.clone();
       let client_uri = LspClientUrl::new(params.text_document.uri.clone());
@@ -3133,24 +3180,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
         .url_map
         .normalize_url(client_uri.as_url(), LspUrlKind::File);
       let document = inner.did_open(&specifier, params).await;
-      let has_specifier_settings =
-        inner.config.has_specifier_settings(&specifier);
+      let should_get_specifier_settings =
+        !inner.config.has_specifier_settings(&specifier)
+          && inner.config.client_capabilities.workspace_configuration;
       if document.is_diagnosable() {
         inner.refresh_npm_specifiers().await;
         let specifiers = inner.documents.dependents(&specifier);
         inner.diagnostics_server.invalidate(&specifiers);
         // don't send diagnostics yet if we don't have the specifier settings
-        if has_specifier_settings {
+        if !should_get_specifier_settings {
           inner.send_diagnostics_update();
           inner.send_testing_update();
         }
       }
-      (client, client_uri, specifier, has_specifier_settings)
+      (client, client_uri, specifier, should_get_specifier_settings)
     };
 
     // retrieve the specifier settings outside the lock if
     // they haven't been asked for yet
-    if !had_specifier_settings {
+    if should_get_specifier_settings {
       let response = client
         .when_outside_lsp_lock()
         .specifier_configuration(&client_uri)
