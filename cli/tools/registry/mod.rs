@@ -16,6 +16,7 @@ use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
 use serde::Deserialize;
+use sha2::Digest;
 
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -125,27 +126,20 @@ pub async fn login(_flags: Flags) -> Result<(), AnyError> {
   Ok(())
 }
 
-struct AuthToken {
-  token: String,
-}
-
 struct OidcConfig {
   url: String,
   token: String,
 }
 
 enum AuthMethod {
-  Token(AuthToken),
+  Auto,
   Oidc(OidcConfig),
 }
 
 async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
-  let auth_method = match ensure_token() {
-    Ok(token) => AuthMethod::Token(AuthToken { token }),
-    Err(_) => {
-      let (url, token) = get_oidc_env_vars()?;
-      AuthMethod::Oidc(OidcConfig { url, token })
-    }
+  let auth_method = match get_oidc_env_vars() {
+    Ok((url, token)) => AuthMethod::Oidc(OidcConfig { url, token }),
+    Err(_) => AuthMethod::Auto,
   };
 
   let initial_cwd =
@@ -187,16 +181,106 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
 
   let client = reqwest::Client::new();
 
+  let tarball_sha = sha2::Sha256::digest(&tarball);
+  let hash_bytes: Vec<u8> = tarball_sha.iter().cloned().collect();
+  let mut hash_hex = format!("sha256-");
+  for byte in hash_bytes {
+    write!(&mut hash_hex, "{:02x}", byte).unwrap();
+  }
+
   let authorization = match auth_method {
-    AuthMethod::Token(token) => format!("Bearer {}", token.token),
+    AuthMethod::Auto => {
+      let verifier = uuid::Uuid::new_v4().to_string();
+      let challenge_bytes = sha2::Sha256::digest(&verifier);
+      let challenge = base64::encode(&challenge_bytes);
+
+      let response = client
+        .post(format!("{}/authorizations", urls::REGISTRY_URL))
+        .json(&serde_json::json!({
+          "challenge": challenge,
+          "permissions": [
+            {
+              "permission": "package/publish",
+              "scope": scope,
+              "package": package_name,
+              "version": version,
+              "tarballHash": hash_hex,
+            }
+          ]
+        }))
+        .send()
+        .await?
+        .error_for_status()?;
+
+      #[derive(serde::Deserialize)]
+      #[serde(rename_all = "camelCase")]
+      struct CreateResp {
+        verification_url: String,
+        code: String,
+        exchange_token: String,
+        poll_interval: u64,
+      }
+
+      let create_resp: CreateResp = response.json().await?;
+
+      println!(
+        "Authorize this publish by visiting {}",
+        colors::cyan(format!(
+          "{}?code={}",
+          create_resp.verification_url, create_resp.code
+        ))
+      );
+
+      loop {
+        tokio::time::sleep(std::time::Duration::from_secs(
+          create_resp.poll_interval,
+        ))
+        .await;
+        let response = client
+          .post(format!("{}/authorizations/exchange", urls::REGISTRY_URL))
+          .json(&serde_json::json!({
+            "exchangeToken": create_resp.exchange_token,
+            "verifier": verifier,
+          }))
+          .send()
+          .await?;
+
+        #[derive(serde::Deserialize)]
+        #[serde(untagged)]
+        enum Resp {
+          Err { code: String, message: String },
+          Success { token: String, user: User },
+        }
+
+        #[derive(serde::Deserialize)]
+        struct User {
+          name: String,
+        }
+
+        let resp: Resp = response.json().await?;
+
+        match resp {
+          Resp::Err { code, message } => {
+            if code == "authorizationPending" {
+              continue;
+            } else {
+              bail!("Failed to authorize: {}", message);
+            }
+          }
+          Resp::Success { token, user } => {
+            println!(
+              "{} {} {}",
+              colors::green("Authorization successful."),
+              colors::gray("Authenticated as"),
+              colors::cyan(user.name)
+            );
+            break format!("Bearer {}", token);
+          }
+        }
+      }
+    }
     AuthMethod::Oidc(oidc_config) => {
       use sha2::Digest;
-      let tarball_sha = sha2::Sha256::digest(&tarball);
-      let hash_bytes: Vec<u8> = tarball_sha.iter().cloned().collect();
-      let mut hash_hex = format!("sha256-");
-      for byte in hash_bytes {
-        write!(&mut hash_hex, "{:02x}", byte).unwrap();
-      }
       let audience =
         format!("deno:@{}/{}@{}#{}", scope, package_name, version, hash_hex);
       // curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE"
@@ -233,7 +317,7 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
     version
   );
 
-  println!("authenticating with {authorization}");
+  // println!("authenticating with {authorization}");
 
   let response = client
     .post(url)

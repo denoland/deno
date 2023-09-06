@@ -3,6 +3,6 @@
     "@std/fmt/": "deno:/@std/fmt/",
     "express": "npm:express"
   },
-  "name": "@foo/some_package",
-  "version": "0.0.4"
+  "name": "@luca/some_package",
+  "version": "0.0.7"
 }
