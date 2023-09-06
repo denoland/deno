@@ -138,7 +138,7 @@ export function getPrebuiltToolPath(toolName) {
 }
 
 const downloadUrl =
-  `https://raw.githubusercontent.com/denoland/deno_third_party/master/prebuilt/${platformDirName}`;
+  `https://raw.githubusercontent.com/denoland/deno_third_party/7f1a41fee1bfbffd56674269db8f1e19263cf751/prebuilt/${platformDirName}`;
 
 export async function downloadPrebuilt(toolName) {
   const spinner = wait("Downloading prebuilt tool: " + toolName).start();
