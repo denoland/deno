@@ -91,6 +91,11 @@ itest!(test_with_malformed_config {
   output: "test/collect_with_malformed_config.out",
 });
 
+itest!(test_filtered_out_only {
+  args: "test --quiet --filter foo test/filtered_out_only.ts",
+  output: "test/filtered_out_only.out",
+});
+
 itest!(parallel_flag {
   args: "test test/short-pass.ts --parallel",
   exit_code: 0,
