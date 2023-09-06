@@ -1,0 +1,4 @@
+running 1 test from ./test/filtered_out_only.ts
+test a ... ok ([WILDCARD])
+
+ok | 1 passed | 0 failed | 1 filtered out ([WILDCARD])
