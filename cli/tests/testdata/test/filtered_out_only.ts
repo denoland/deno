@@ -1,2 +1,2 @@
-Deno.test("test a", () => {});
-Deno.test("test b", { only: true }, () => {});
+Deno.test("foo", () => {});
+Deno.test("bar", { only: true }, () => {});
