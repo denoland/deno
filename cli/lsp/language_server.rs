@@ -407,18 +407,16 @@ impl LanguageServer {
       let ls = self.0.read().await;
       let specifiers = if ls.config.client_capabilities.workspace_configuration
       {
-        let root_capacity = match &ls.config.workspace_folders {
-          Some(folder) => folder.len(),
-          None => 1,
-        };
+        let mut root_capacity = ls.config.workspace_folders.len();
+        if root_capacity == 0 {
+          root_capacity = 1;
+        }
         let config_specifiers = ls.config.get_specifiers();
         let mut specifiers =
           HashMap::with_capacity(root_capacity + config_specifiers.len());
-        if let Some(workspace_folders) = &ls.config.workspace_folders {
-          for (specifier, folder) in workspace_folders {
-            specifiers
-              .insert(specifier.clone(), LspClientUrl::new(folder.uri.clone()));
-          }
+        for (specifier, folder) in &ls.config.workspace_folders {
+          specifiers
+            .insert(specifier.clone(), LspClientUrl::new(folder.uri.clone()));
         }
         specifiers.extend(
           ls.config
@@ -1273,8 +1271,8 @@ impl Inner {
           LspError::internal_error()
         })?;
       }
-      self.config.workspace_folders = params.workspace_folders.map(|folders| {
-        folders
+      if let Some(folders) = params.workspace_folders {
+        self.config.workspace_folders = folders
           .into_iter()
           .map(|folder| {
             (
@@ -1282,16 +1280,20 @@ impl Inner {
               folder,
             )
           })
-          .collect()
-      });
+          .collect();
+      }
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       if let Some(root_uri) = params.root_uri {
-        let folders = self.config.workspace_folders.get_or_insert(vec![]);
-        if !folders.iter().any(|(_, f)| f.uri == root_uri) {
+        if !self
+          .config
+          .workspace_folders
+          .iter()
+          .any(|(_, f)| f.uri == root_uri)
+        {
           let name = root_uri.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
-          folders.insert(
+          self.config.workspace_folders.insert(
             0,
             (
               self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
@@ -1653,18 +1655,16 @@ impl Inner {
         )
       })
       .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
-    if let Some(current_folders) = &self.config.workspace_folders {
-      for (specifier, folder) in current_folders {
-        if !params.event.removed.is_empty()
-          && params.event.removed.iter().any(|f| f.uri == folder.uri)
-        {
-          continue;
-        }
-        workspace_folders.push((specifier.clone(), folder.clone()));
+    for (specifier, folder) in &self.config.workspace_folders {
+      if !params.event.removed.is_empty()
+        && params.event.removed.iter().any(|f| f.uri == folder.uri)
+      {
+        continue;
       }
+      workspace_folders.push((specifier.clone(), folder.clone()));
     }
 
-    self.config.workspace_folders = Some(workspace_folders);
+    self.config.workspace_folders = workspace_folders;
   }
 
   async fn document_symbol(

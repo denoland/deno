@@ -403,7 +403,7 @@ pub struct ConfigSnapshot {
   pub excluded_paths: Option<Vec<Url>>,
   pub has_config_file: bool,
   pub settings: Settings,
-  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
 }
 
 impl ConfigSnapshot {
@@ -413,7 +413,7 @@ impl ConfigSnapshot {
       specifier,
       &self.settings,
       self.excluded_paths.as_ref(),
-      self.workspace_folders.as_ref(),
+      &self.workspace_folders,
       self.has_config_file,
     )
   }
@@ -447,7 +447,7 @@ struct LspConfigFileInfo {
 pub struct Config {
   pub client_capabilities: ClientCapabilities,
   settings: Settings,
-  pub workspace_folders: Option<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
   /// An optional configuration file which has been specified in the client
   /// options along with some data that is computed after the config file is set.
   maybe_config_file_info: Option<LspConfigFileInfo>,
@@ -459,7 +459,7 @@ impl Config {
       client_capabilities: ClientCapabilities::default(),
       /// Root provided by the initialization parameters.
       settings: Default::default(),
-      workspace_folders: None,
+      workspace_folders: vec![],
       maybe_config_file_info: None,
     }
   }
@@ -469,22 +469,18 @@ impl Config {
     let mut config = Self::new();
     let name = root_uri.path_segments().and_then(|s| s.last());
     let name = name.unwrap_or_default().to_string();
-    config.workspace_folders = Some(vec![(
+    config.workspace_folders = vec![(
       root_uri.clone(),
       lsp::WorkspaceFolder {
         uri: root_uri,
         name,
       },
-    )]);
+    )];
     config
   }
 
   pub fn root_uri(&self) -> Option<&Url> {
-    self
-      .workspace_folders
-      .as_ref()
-      .and_then(|f| f.get(0))
-      .map(|p| &p.0)
+    self.workspace_folders.get(0).map(|p| &p.0)
   }
 
   pub fn maybe_node_modules_dir_path(&self) -> Option<&PathBuf> {
@@ -624,7 +620,7 @@ impl Config {
         .maybe_config_file_info
         .as_ref()
         .map(|i| &i.excluded_paths),
-      self.workspace_folders.as_ref(),
+      &self.workspace_folders,
       self.has_config_file(),
     )
   }
@@ -636,32 +632,30 @@ impl Config {
   /// represented as file urls.
   pub fn enabled_urls(&self) -> Vec<Url> {
     let mut urls = vec![];
-    if let Some(workspace_folders) = &self.workspace_folders {
-      for (workspace_uri, _) in workspace_folders {
-        let specifier_settings = self.settings.specifiers.get(workspace_uri);
-        let enable = specifier_settings
-          .and_then(|s| s.enable)
-          .or(self.settings.workspace.enable)
-          .unwrap_or(self.has_config_file());
-        let enable_paths = specifier_settings
-          .and_then(|s| s.enable_paths.as_ref())
-          .or(self.settings.workspace.enable_paths.as_ref());
-        if let Some(enable_paths) = enable_paths {
-          let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
-            lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
-            return vec![];
+    for (workspace_uri, _) in &self.workspace_folders {
+      let specifier_settings = self.settings.specifiers.get(workspace_uri);
+      let enable = specifier_settings
+        .and_then(|s| s.enable)
+        .or(self.settings.workspace.enable)
+        .unwrap_or(self.has_config_file());
+      let enable_paths = specifier_settings
+        .and_then(|s| s.enable_paths.as_ref())
+        .or(self.settings.workspace.enable_paths.as_ref());
+      if let Some(enable_paths) = enable_paths {
+        let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
+          lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
+          return vec![];
+        };
+        for path in enable_paths {
+          let path = scope_path.join(path);
+          let Ok(path_uri) = Url::from_file_path(&path) else {
+            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
+            continue;
           };
-          for path in enable_paths {
-            let path = scope_path.join(path);
-            let Ok(path_uri) = Url::from_file_path(&path) else {
-              lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-              continue;
-            };
-            urls.push(path_uri);
-          }
-        } else if enable {
-          urls.push(workspace_uri.clone());
+          urls.push(path_uri);
         }
+      } else if enable {
+        urls.push(workspace_uri.clone());
       }
     }
 
@@ -762,7 +756,7 @@ fn specifier_enabled(
   specifier: &Url,
   settings: &Settings,
   excluded_urls: Option<&Vec<Url>>,
-  workspace_folders: Option<&Vec<(Url, lsp::WorkspaceFolder)>>,
+  workspace_folders: &Vec<(Url, lsp::WorkspaceFolder)>,
   workspace_has_config_file: bool,
 ) -> bool {
   if let Some(excluded_urls) = excluded_urls {
@@ -785,35 +779,33 @@ fn specifier_enabled(
       return settings.enable.unwrap_or(root_enable);
     }
   }
-  if let Some(workspace_folders) = workspace_folders {
-    for (workspace_uri, _) in workspace_folders {
-      if specifier.as_str().starts_with(workspace_uri.as_str()) {
-        let specifier_settings = settings.specifiers.get(workspace_uri);
-        let enable = specifier_settings
-          .and_then(|s| s.enable)
-          .unwrap_or(root_enable);
-        let enable_paths = specifier_settings
-          .and_then(|s| s.enable_paths.as_ref())
-          .or(settings.workspace.enable_paths.as_ref());
-        if let Some(enable_paths) = enable_paths {
-          let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
-            lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
-            return false;
-          };
-          for path in enable_paths {
-            let path = scope_path.join(path);
-            let Ok(path_uri) = Url::from_file_path(&path) else {
-              lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-              continue;
-            };
-            if specifier.as_str().starts_with(path_uri.as_str()) {
-              return true;
-            }
-          }
+  for (workspace_uri, _) in workspace_folders {
+    if specifier.as_str().starts_with(workspace_uri.as_str()) {
+      let specifier_settings = settings.specifiers.get(workspace_uri);
+      let enable = specifier_settings
+        .and_then(|s| s.enable)
+        .unwrap_or(root_enable);
+      let enable_paths = specifier_settings
+        .and_then(|s| s.enable_paths.as_ref())
+        .or(settings.workspace.enable_paths.as_ref());
+      if let Some(enable_paths) = enable_paths {
+        let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
+          lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
           return false;
-        } else {
-          return enable;
+        };
+        for path in enable_paths {
+          let path = scope_path.join(path);
+          let Ok(path_uri) = Url::from_file_path(&path) else {
+            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
+            continue;
+          };
+          if specifier.as_str().starts_with(path_uri.as_str()) {
+            return true;
+          }
         }
+        return false;
+      } else {
+        return enable;
       }
     }
   }
@@ -1052,7 +1044,7 @@ mod tests {
     let root_dir1 = Url::parse("file:///root1/").unwrap();
     let root_dir2 = Url::parse("file:///root2/").unwrap();
     let root_dir3 = Url::parse("file:///root3/").unwrap();
-    config.workspace_folders = Some(vec![
+    config.workspace_folders = vec![
       (
         root_dir1.clone(),
         lsp::WorkspaceFolder {
@@ -1074,7 +1066,7 @@ mod tests {
           name: "3".to_string(),
         },
       ),
-    ]);
+    ];
     config.set_specifier_settings(
       root_dir1.clone(),
       SpecifierSettings {

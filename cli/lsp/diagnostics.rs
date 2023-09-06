@@ -1397,13 +1397,13 @@ mod tests {
         },
         ..Default::default()
       },
-      workspace_folders: Some(vec![(
+      workspace_folders: vec![(
         root_uri.clone(),
         lsp::WorkspaceFolder {
           uri: root_uri,
           name: "".to_string(),
         },
-      )]),
+      )],
       ..Default::default()
     }
   }
