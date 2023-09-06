@@ -1303,13 +1303,6 @@ impl Inner {
           );
         }
       }
-      if let Some(workspace_folders) = &self.config.workspace_folders {
-        for (uri, folder) in workspace_folders {
-          dbg!(uri.to_string());
-          dbg!(folder.uri.to_string());
-          dbg!(&folder.name);
-        }
-      }
       self.config.update_capabilities(&params.capabilities);
     }
 
