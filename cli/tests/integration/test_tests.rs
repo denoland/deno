@@ -278,6 +278,12 @@ itest!(clear_timeout {
   output: "test/clear_timeout.out",
 });
 
+itest!(hide_empty_suites {
+  args: "test --filter none test/pass.ts",
+  exit_code: 0,
+  output: "test/hide_empty_suites.out",
+});
+
 itest!(finally_timeout {
   args: "test test/finally_timeout.ts",
   exit_code: 1,
