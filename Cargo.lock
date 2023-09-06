@@ -38,6 +38,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aead-gcm-stream"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a09ecb526d53de2842cc876ee5c9b51161ee60399edeca4cf74892a01b48177"
+dependencies = [
+ "aead",
+ "aes",
+ "cipher",
+ "ctr",
+ "ghash",
+ "subtle",
+]
+
+[[package]]
 name = "aes"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1375,6 +1389,7 @@ dependencies = [
 name = "deno_node"
 version = "0.55.0"
 dependencies = [
+ "aead-gcm-stream",
  "aes",
  "brotli",
  "cbc",
