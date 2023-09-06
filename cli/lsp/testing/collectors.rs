@@ -379,54 +379,63 @@ impl Visit for TestStepCollector<'_> {
   fn visit_var_decl(&mut self, node: &ast::VarDecl) {
     if let Some(test_context) = &self.maybe_test_context {
       for decl in &node.decls {
-        if let Some(init) = &decl.init {
-          match init.as_ref() {
-            // Identify destructured assignments of `step` from test context
-            ast::Expr::Ident(ident) => {
-              if ident.sym == *test_context {
-                if let ast::Pat::Object(object_pat) = &decl.name {
-                  for prop in &object_pat.props {
-                    match prop {
-                      ast::ObjectPatProp::Assign(prop) => {
-                        if prop.key.sym.eq("step") {
-                          self.vars.insert(prop.key.sym.to_string());
-                        }
-                      }
-                      ast::ObjectPatProp::KeyValue(prop) => {
-                        if let ast::PropName::Ident(key_ident) = &prop.key {
-                          if key_ident.sym.eq("step") {
-                            if let ast::Pat::Ident(value_ident) =
-                              &prop.value.as_ref()
-                            {
-                              self.vars.insert(value_ident.id.sym.to_string());
-                            }
-                          }
-                        }
-                      }
-                      _ => (),
-                    }
+        let Some(init) = &decl.init else {
+          continue;
+        };
+
+        match init.as_ref() {
+          // Identify destructured assignments of `step` from test context
+          ast::Expr::Ident(ident) => {
+            if ident.sym != *test_context {
+              continue;
+            }
+            let ast::Pat::Object(object_pat) = &decl.name else {
+              continue;
+            };
+
+            for prop in &object_pat.props {
+              match prop {
+                ast::ObjectPatProp::Assign(prop) => {
+                  if prop.key.sym.eq("step") {
+                    self.vars.insert(prop.key.sym.to_string());
                   }
                 }
-              }
-            }
-            // Identify variable assignments where the init is test context
-            // `.step`
-            ast::Expr::Member(member_expr) => {
-              if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-                if obj_ident.sym == *test_context {
-                  if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop
-                  {
-                    if prop_ident.sym.eq("step") {
-                      if let ast::Pat::Ident(binding_ident) = &decl.name {
-                        self.vars.insert(binding_ident.id.sym.to_string());
+                ast::ObjectPatProp::KeyValue(prop) => {
+                  if let ast::PropName::Ident(key_ident) = &prop.key {
+                    if key_ident.sym.eq("step") {
+                      if let ast::Pat::Ident(value_ident) = &prop.value.as_ref()
+                      {
+                        self.vars.insert(value_ident.id.sym.to_string());
                       }
                     }
                   }
                 }
+                _ => (),
               }
             }
-            _ => (),
           }
+          // Identify variable assignments where the init is test context
+          // `.step`
+          ast::Expr::Member(member_expr) => {
+            let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() else {
+              continue;
+            };
+
+            if obj_ident.sym != *test_context {
+              continue;
+            }
+
+            let ast::MemberProp::Ident(prop_ident) = &member_expr.prop else {
+              continue;
+            };
+
+            if prop_ident.sym.eq("step") {
+              if let ast::Pat::Ident(binding_ident) = &decl.name {
+                self.vars.insert(binding_ident.id.sym.to_string());
+              }
+            }
+          }
+          _ => (),
         }
       }
     }
@@ -549,53 +558,65 @@ impl Visit for TestCollector {
 
   fn visit_var_decl(&mut self, node: &ast::VarDecl) {
     for decl in &node.decls {
-      if let Some(init) = &decl.init {
-        match init.as_ref() {
-          // Identify destructured assignments of `test` from `Deno`
-          ast::Expr::Ident(ident) => {
-            if ident.sym.to_string() == "Deno" {
-              if let ast::Pat::Object(object_pat) = &decl.name {
-                for prop in &object_pat.props {
-                  match prop {
-                    ast::ObjectPatProp::Assign(prop) => {
-                      let name = prop.key.sym.to_string();
-                      if name == "test" {
-                        self.vars.insert(name);
-                      }
-                    }
-                    ast::ObjectPatProp::KeyValue(prop) => {
-                      if let ast::PropName::Ident(key_ident) = &prop.key {
-                        if key_ident.sym.to_string() == "test" {
-                          if let ast::Pat::Ident(value_ident) =
-                            &prop.value.as_ref()
-                          {
-                            self.vars.insert(value_ident.id.sym.to_string());
-                          }
-                        }
-                      }
-                    }
-                    _ => (),
+      let Some(init) = &decl.init else { continue };
+
+      match init.as_ref() {
+        // Identify destructured assignments of `test` from `Deno`
+        ast::Expr::Ident(ident) => {
+          if ident.sym.to_string() != "Deno" {
+            continue;
+          }
+
+          let ast::Pat::Object(object_pat) = &decl.name else {
+            continue;
+          };
+
+          for prop in &object_pat.props {
+            match prop {
+              ast::ObjectPatProp::Assign(prop) => {
+                let name = prop.key.sym.to_string();
+                if name == "test" {
+                  self.vars.insert(name);
+                }
+              }
+              ast::ObjectPatProp::KeyValue(prop) => {
+                let ast::PropName::Ident(key_ident) = &prop.key else {
+                  continue;
+                };
+
+                if key_ident.sym.to_string() == "test" {
+                  if let ast::Pat::Ident(value_ident) = &prop.value.as_ref() {
+                    self.vars.insert(value_ident.id.sym.to_string());
                   }
                 }
               }
+              _ => (),
             }
           }
-          // Identify variable assignments where the init is `Deno.test`
-          ast::Expr::Member(member_expr) => {
-            if let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() {
-              if obj_ident.sym.to_string() == "Deno" {
-                if let ast::MemberProp::Ident(prop_ident) = &member_expr.prop {
-                  if prop_ident.sym.to_string() == "test" {
-                    if let ast::Pat::Ident(binding_ident) = &decl.name {
-                      self.vars.insert(binding_ident.id.sym.to_string());
-                    }
-                  }
-                }
-              }
-            }
-          }
-          _ => (),
         }
+        // Identify variable assignments where the init is `Deno.test`
+        ast::Expr::Member(member_expr) => {
+          let ast::Expr::Ident(obj_ident) = member_expr.obj.as_ref() else {
+            continue;
+          };
+
+          if obj_ident.sym.to_string() != "Deno" {
+            continue;
+          };
+
+          let ast::MemberProp::Ident(prop_ident) = &member_expr.prop else {
+            continue;
+          };
+
+          if prop_ident.sym.to_string() != "test" {
+            continue;
+          }
+
+          if let ast::Pat::Ident(binding_ident) = &decl.name {
+            self.vars.insert(binding_ident.id.sym.to_string());
+          }
+        }
+        _ => (),
       }
     }
   }
@@ -614,7 +635,6 @@ pub mod tests {
   use super::*;
   use deno_core::resolve_url;
   use lsp::Position;
-  use pretty_assertions::assert_eq;
 
   pub fn new_range(l1: u32, c1: u32, l2: u32, c2: u32) -> Range {
     Range::new(Position::new(l1, c1), Position::new(l2, c2))
@@ -1001,29 +1021,29 @@ pub mod tests {
               step_ids: Default::default(),
             },
           ),
-          
-        (
-          "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(), 
-          TestDefinition {
-            id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
-            name: "someFunction".to_string(),
-            range: Some(new_range(1, 11, 1, 15)),
-            is_dynamic: false,
-            parent_id: None,
-            step_ids: Default::default(),
-          }
-        ), 
-        (
-          "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
-          TestDefinition {
-            id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
-            name: "bar".to_string(),
-            range: Some(new_range(3, 16, 3, 20)),
+          (
+            "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(), 
+            TestDefinition {
+              id: "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(),
+              name: "someFunction".to_string(),
+              range: Some(new_range(1, 11, 1, 15)),
               is_dynamic: false,
               parent_id: None,
               step_ids: Default::default(),
-          }
-        ),]
+            }
+          ),
+          (
+            "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
+            TestDefinition {
+              id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
+              name: "bar".to_string(),
+              range: Some(new_range(3, 16, 3, 20)),
+                is_dynamic: false,
+                parent_id: None,
+                step_ids: Default::default(),
+            }
+          )
+        ]
         .into_iter()
         .collect(),
       }
