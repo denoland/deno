@@ -527,8 +527,8 @@ impl Visit for TestCollector {
           self,
           node,
           &ns_prop_ident.range(),
-          &ns_prop_ident,
-          &member_expr,
+          ns_prop_ident,
+          member_expr,
         );
 
         if ns_prop_ident_name == "ignore" || ns_prop_ident_name == "only" {
@@ -547,8 +547,8 @@ impl Visit for TestCollector {
             self,
             node,
             &ns_prop_ident.range(),
-            &child_ns_prop_ident,
-            &child_member_expr,
+            child_ns_prop_ident,
+            child_member_expr,
           );
         }
       }
