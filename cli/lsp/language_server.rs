@@ -477,10 +477,6 @@ impl LanguageServer {
           }
         }
       }
-
-      if ls.config.update_enabled_paths() {
-        touched = true;
-      }
     }
     touched
   }
@@ -1292,7 +1288,6 @@ impl Inner {
           error!("Cannot set workspace settings: {}", err);
           LspError::internal_error()
         })?;
-        self.config.update_enabled_paths();
       }
       self.config.workspace_folders = params.workspace_folders.map(|folders| {
         folders
@@ -1489,7 +1484,6 @@ impl Inner {
       if let Err(err) = self.config.set_workspace_settings(value) {
         error!("failed to update settings: {}", err);
       }
-      self.config.update_enabled_paths();
     }
 
     self.update_debug_flag();
@@ -3208,7 +3202,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
         Ok(specifier_settings) => {
           ls.config
             .set_specifier_settings(specifier.clone(), specifier_settings);
-          ls.config.update_enabled_paths();
         }
         Err(err) => {
           error!("{}", err);

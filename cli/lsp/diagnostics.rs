@@ -1396,6 +1396,7 @@ mod tests {
         },
         ..Default::default()
       },
+      root_uri: Some(resolve_url("file:///").unwrap()),
       ..Default::default()
     }
   }
@@ -1467,7 +1468,7 @@ let c: number = "a";
         specifier.clone(),
         SpecifierSettings {
           enable: Some(false),
-          enable_paths: Vec::new(),
+          enable_paths: None,
           code_lens: Default::default(),
         },
       );
