@@ -6,11 +6,15 @@ import testVectors128 from "./gcmEncryptExtIV128.json" assert { type: "json" };
 import testVectors256 from "./gcmEncryptExtIV256.json" assert { type: "json" };
 import { assertEquals } from "../../../../test_util/std/testing/asserts.ts";
 
-const aesGcm = (bits: number, key: Uint8Array) => {
-  const ALGO = `aes-${bits}-gcm`;
+const aesGcm = (bits: string, key: Uint8Array) => {
+  const ALGO = bits == "128" ? `aes-128-gcm` : `aes-256-gcm`;
 
   // encrypt returns base64-encoded ciphertext
-  const encrypt = (iv: Uint8Array, str: string, aad: Uint8Array) => {
+  const encrypt = (
+    iv: Uint8Array,
+    str: string,
+    aad: Uint8Array,
+  ): [string, Buffer] => {
     const cipher = crypto.createCipheriv(ALGO, key, iv);
     cipher.setAAD(aad);
     let enc = cipher.update(str, "base64", "base64");
