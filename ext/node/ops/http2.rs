@@ -25,10 +25,10 @@ use deno_net::raw::NetworkStream;
 use h2;
 use h2::RecvStream;
 use http;
-use http::Response;
-use http::StatusCode;
 use http::request::Parts;
 use http::HeaderMap;
+use http::Response;
+use http::StatusCode;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
 use tokio::net::TcpStream;
@@ -100,7 +100,7 @@ impl Resource for Http2ServerConnection {
 }
 
 pub struct Http2ServerSendResponse {
-  pub send_response: AsyncRefCell<h2::server::SendResponse<Bytes>>
+  pub send_response: AsyncRefCell<h2::server::SendResponse<Bytes>>,
 }
 
 impl Resource for Http2ServerSendResponse {
@@ -216,9 +216,12 @@ pub async fn op_http2_accept(
       req_headers.push((key.as_str().into(), val.as_bytes().into()));
     }
 
-    let resp = state.borrow_mut().resource_table.add(Http2ServerSendResponse {
-      send_response: AsyncRefCell::new(resp)
-    });
+    let resp = state
+      .borrow_mut()
+      .resource_table
+      .add(Http2ServerSendResponse {
+        send_response: AsyncRefCell::new(resp),
+      });
 
     Ok(Some((req_headers, stm, resp)))
   } else {
@@ -233,8 +236,13 @@ pub async fn op_http2_send_response(
   status: u16,
   headers: Vec<(ByteString, ByteString)>,
 ) -> Result<(ResourceId, u32), AnyError> {
-  let resource = state.borrow().resource_table.get::<Http2ServerSendResponse>(rid)?;
-  let mut send_response = RcRef::map(resource, |r| &r.send_response).borrow_mut().await;
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<Http2ServerSendResponse>(rid)?;
+  let mut send_response = RcRef::map(resource, |r| &r.send_response)
+    .borrow_mut()
+    .await;
   let mut response = Response::new(());
   if let Ok(status) = StatusCode::from_u16(status) {
     *response.status_mut() = status;
@@ -248,7 +256,7 @@ pub async fn op_http2_send_response(
 
   let stream = send_response.send_response(response, false)?;
   let stream_id = stream.stream_id();
-  
+
   Ok((rid, stream_id.into()))
 }
 

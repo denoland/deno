@@ -934,16 +934,22 @@ export class ClientHttp2Stream extends Duplex {
         this.__response.bodyRid,
       );
 
-      tempDebug(">>> chunk", chunk, finished);
+      tempDebug(">>> chunk", chunk, finished, this.__response.bodyRid);
       if (chunk === null) {
-        const trailerList = await core.opAsync(
-          "op_http2_client_get_response_trailers",
-          this.__response.bodyRid,
-        );
-        if (trailerList) {
-          const trailers = Object.fromEntries(trailerList);
-          this.emit("trailers", trailers);
+        if (!finished) {
+          console.log("before trailer list");
+          const trailerList = await core.opAsync(
+            "op_http2_client_get_response_trailers",
+            this.__response.bodyRid,
+          );
+          console.log("after trailer list");
+          if (trailerList) {
+            const trailers = Object.fromEntries(trailerList);
+            this.emit("trailers", trailers);
+          }
         }
+
+        tempDebug("tryClose");
         core.tryClose(this.__response.bodyRid);
         // if (finished) {
         //   this.#hasTrailersToRead = true;
