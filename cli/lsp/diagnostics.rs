@@ -872,7 +872,7 @@ pub enum DenoDiagnostic {
   ImportMapRemap { from: String, to: String },
   /// The import assertion type is incorrect.
   InvalidAttributeType(String),
-  /// A module requires an assertion type to be a valid import.
+  /// A module requires an attribute type to be a valid import.
   NoAttributeType,
   /// A remote module was not found in the cache.
   NoCache(ModuleSpecifier),
@@ -1084,7 +1084,7 @@ impl DenoDiagnostic {
     let (severity, message, data) = match self {
       Self::DenoWarn(message) => (lsp::DiagnosticSeverity::WARNING, message.to_string(), None),
       Self::ImportMapRemap { from, to } => (lsp::DiagnosticSeverity::HINT, format!("The import specifier can be remapped to \"{to}\" which will resolve it via the active import map."), Some(json!({ "from": from, "to": to }))),
-      Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an assertion type of \"json\". Instead got \"{assert_type}\"."), None),
+      Self::InvalidAttributeType(assert_type) => (lsp::DiagnosticSeverity::ERROR, format!("The module is a JSON module and expected an attribute type of \"json\". Instead got \"{assert_type}\"."), None),
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NoCacheNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing npm package: {}", pkg_req), Some(json!({ "specifier": specifier }))),
@@ -1144,7 +1144,7 @@ fn diagnose_resolution(
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
             Some("json") => (),
-            // The dynamic import statement is missing an assertion type, which
+            // The dynamic import statement is missing an attribute type, which
             // we might not be able to statically detect, therefore we will
             // not provide a potentially incorrect diagnostic.
             None if is_dynamic => (),
@@ -1152,7 +1152,7 @@ fn diagnose_resolution(
             Some(assert_type) => diagnostics.push(
               DenoDiagnostic::InvalidAttributeType(assert_type.to_string()),
             ),
-            // The module is missing an assertion type, diagnostic
+            // The module is missing an attribute type, diagnostic
             None => diagnostics.push(DenoDiagnostic::NoAttributeType),
           }
         }
