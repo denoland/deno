@@ -92,7 +92,7 @@ itest!(test_with_malformed_config {
 });
 
 itest!(test_filtered_out_only {
-  args: "test --quiet test/filtered_out_only.ts",
+  args: "test --quiet --filter \"test a\" test/filtered_out_only.ts",
   output: "test/filtered_out_only.out",
 });
 
