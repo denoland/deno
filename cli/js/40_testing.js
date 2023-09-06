@@ -600,11 +600,11 @@ let currentBenchUserExplicitStart = null;
 /** @type {number | null} */
 let currentBenchUserExplicitEnd = null;
 
-// Main test function provided by Deno.
-function test(
+function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
+  overrides = {},
 ) {
   if (typeof ops.op_register_test != "function") {
     return;
@@ -690,6 +690,8 @@ function test(
     testDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
   }
 
+  testDesc = { ...testDesc, ...overrides };
+
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
@@ -720,6 +722,27 @@ function test(
     completed: false,
   });
 }
+
+// Main test function provided by Deno.
+function test(
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
+}
+
+test.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { ignore: true });
+};
+
+test.only = function (
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
 
 let registeredWarmupBench = false;
 
