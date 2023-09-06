@@ -516,7 +516,13 @@ pub async fn op_http2_client_get_response_body_chunk(
 
         continue;
       }
-      DataOrTrailers::Eof => return Ok((None, true)),
+      DataOrTrailers::Eof => {
+        RcRef::map(&resource, |r| &r.trailers_tx)
+          .borrow_mut()
+          .await
+          .take();
+        return Ok((None, true));
+      }
     };
   }
 }
@@ -535,7 +541,7 @@ pub async fn op_http2_client_get_response_trailers(
     .await
     .take();
   if let Some(trailers) = trailers {
-    if let Some(trailers) = trailers.await? {
+    if let Ok(Some(trailers)) = trailers.await {
       let mut v = Vec::with_capacity(trailers.len());
       for (key, value) in trailers.iter() {
         v.push((
