@@ -19,7 +19,11 @@ pub struct PrettyTestReporter {
 }
 
 impl PrettyTestReporter {
-  pub fn new(parallel: bool, echo_output: bool, filter: bool) -> PrettyTestReporter {
+  pub fn new(
+    parallel: bool,
+    echo_output: bool,
+    filter: bool,
+  ) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
       echo_output,

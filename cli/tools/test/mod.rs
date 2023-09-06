@@ -385,7 +385,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
-      options.filter
+      options.filter,
     )),
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
