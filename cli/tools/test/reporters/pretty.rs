@@ -8,6 +8,7 @@ pub struct PrettyTestReporter {
   parallel: bool,
   echo_output: bool,
   in_new_line: bool,
+  filter: bool,
   scope_test_id: Option<usize>,
   cwd: Url,
   did_have_user_output: bool,
@@ -18,11 +19,12 @@ pub struct PrettyTestReporter {
 }
 
 impl PrettyTestReporter {
-  pub fn new(parallel: bool, echo_output: bool) -> PrettyTestReporter {
+  pub fn new(parallel: bool, echo_output: bool, filter: bool) -> PrettyTestReporter {
     PrettyTestReporter {
       parallel,
       echo_output,
       in_new_line: true,
+      filter,
       scope_test_id: None,
       cwd: Url::from_directory_path(std::env::current_dir().unwrap()).unwrap(),
       did_have_user_output: false,
@@ -133,7 +135,7 @@ impl TestReporter for PrettyTestReporter {
   fn report_plan(&mut self, plan: &TestPlan) {
     self.summary.total += plan.total;
     self.summary.filtered_out += plan.filtered_out;
-    if self.parallel || plan.total == 0 {
+    if self.parallel || (self.filter && plan.total == 0) {
       return;
     }
     let inflection = if plan.total == 1 { "test" } else { "tests" };

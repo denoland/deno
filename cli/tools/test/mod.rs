@@ -343,6 +343,7 @@ struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
+  filter: bool,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
@@ -384,6 +385,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
+      options.filter
     )),
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
@@ -1144,6 +1146,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
@@ -1276,6 +1279,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {
