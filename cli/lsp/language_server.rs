@@ -403,47 +403,37 @@ impl LanguageServer {
   }
 
   pub async fn refresh_specifiers_from_client(&self) -> bool {
-    let (client, specifiers) =
+    let (client, specifiers) = {
+      let ls = self.0.read().await;
+      let specifiers = if ls.config.client_capabilities.workspace_configuration
       {
-        let ls = self.0.read().await;
-        let specifiers =
-          if ls.config.client_capabilities.workspace_configuration {
-            let root_capacity = match &ls.config.workspace_folders {
-              Some(folder) => folder.len(),
-              None => 1,
-            };
-            let config_specifiers = ls.config.get_specifiers();
-            let mut specifiers =
-              HashMap::with_capacity(root_capacity + config_specifiers.len());
-            match &ls.config.workspace_folders {
-              Some(entry) => {
-                for (specifier, folder) in entry {
-                  specifiers.insert(
-                    specifier.clone(),
-                    LspClientUrl::new(folder.uri.clone()),
-                  );
-                }
-              }
-              None => {
-                if let Some(root_uri) = &ls.config.root_uri {
-                  specifiers.insert(
-                    root_uri.clone(),
-                    ls.url_map.normalize_specifier(root_uri).unwrap(),
-                  );
-                }
-              }
-            }
-            specifiers.extend(ls.config.get_specifiers().iter().map(|s| {
-              (s.clone(), ls.url_map.normalize_specifier(s).unwrap())
-            }));
+        let root_capacity = match &ls.config.workspace_folders {
+          Some(folder) => folder.len(),
+          None => 1,
+        };
+        let config_specifiers = ls.config.get_specifiers();
+        let mut specifiers =
+          HashMap::with_capacity(root_capacity + config_specifiers.len());
+        if let Some(workspace_folders) = &ls.config.workspace_folders {
+          for (specifier, folder) in workspace_folders {
+            specifiers
+              .insert(specifier.clone(), LspClientUrl::new(folder.uri.clone()));
+          }
+        }
+        specifiers.extend(
+          ls.config
+            .get_specifiers()
+            .iter()
+            .map(|s| (s.clone(), ls.url_map.normalize_specifier(s).unwrap())),
+        );
 
-            Some(specifiers.into_iter().collect::<Vec<_>>())
-          } else {
-            None
-          };
-
-        (ls.client.clone(), specifiers)
+        Some(specifiers.into_iter().collect::<Vec<_>>())
+      } else {
+        None
       };
+
+      (ls.client.clone(), specifiers)
+    };
 
     let mut touched = false;
     if let Some(specifiers) = specifiers {
@@ -697,7 +687,7 @@ impl Inner {
         lsp_log!("Setting Deno configuration from: \"{}\"", config_str);
         let config_url = if let Ok(url) = Url::from_file_path(config_str) {
           Ok(url)
-        } else if let Some(root_uri) = &self.config.root_uri {
+        } else if let Some(root_uri) = self.config.root_uri() {
           root_uri.join(config_str).map_err(|_| {
             anyhow!("Bad file path for configuration file: \"{}\"", config_str)
           })
@@ -719,7 +709,7 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = &self.config.root_uri {
+    if let Some(root_uri) = self.config.root_uri() {
       let root_path = specifier_to_file_path(root_uri)?;
       let mut checked = std::collections::HashSet::new();
       let maybe_config = ConfigFile::discover_from(&root_path, &mut checked)?;
@@ -743,7 +733,7 @@ impl Inner {
     // It is possible that root_uri is not set, for example when having a single
     // file open and not a workspace.  In those situations we can't
     // automatically discover the configuration
-    if let Some(root_uri) = &self.config.root_uri {
+    if let Some(root_uri) = self.config.root_uri() {
       let root_path = specifier_to_file_path(root_uri)?;
       let maybe_package_json = package_json::discover_from(
         &root_path,
@@ -842,7 +832,7 @@ impl Inner {
       lsp_log!("Setting global cache path from: \"{}\"", cache_str);
       let cache_url = if let Ok(url) = Url::from_file_path(cache_str) {
         Ok(url)
-      } else if let Some(root_uri) = &self.config.root_uri {
+      } else if let Some(root_uri) = self.config.root_uri() {
         let root_path = specifier_to_file_path(root_uri)?;
         let cache_path = root_path.join(cache_str);
         Url::from_file_path(cache_path).map_err(|_| {
@@ -888,8 +878,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
@@ -1070,7 +1059,7 @@ impl Inner {
             anyhow!("Bad data url for import map: {}", import_map_str)
           })?;
           Some(import_map_url)
-        } else if let Some(root_uri) = &self.config.root_uri {
+        } else if let Some(root_uri) = self.config.root_uri() {
           let root_path = specifier_to_file_path(root_uri)?;
           let import_map_path = root_path.join(&import_map_str);
           let import_map_url =
@@ -1278,11 +1267,6 @@ impl Inner {
     }
 
     {
-      // sometimes this root uri may not have a trailing slash, so force it to
-      self.config.root_uri = params
-        .root_uri
-        .map(|s| self.url_map.normalize_url(&s, LspUrlKind::Folder));
-
       if let Some(value) = params.initialization_options {
         self.config.set_workspace_settings(value).map_err(|err| {
           error!("Cannot set workspace settings: {}", err);
@@ -1300,6 +1284,32 @@ impl Inner {
           })
           .collect()
       });
+      // rootUri is deprecated by the LSP spec. If it's specified, merge it into
+      // workspace_folders.
+      if let Some(root_uri) = params.root_uri {
+        let folders = self.config.workspace_folders.get_or_insert(vec![]);
+        if !folders.iter().any(|(_, f)| f.uri == root_uri) {
+          let name = root_uri.path_segments().and_then(|s| s.last());
+          let name = name.unwrap_or_default().to_string();
+          folders.insert(
+            0,
+            (
+              self.url_map.normalize_url(&root_uri, LspUrlKind::Folder),
+              WorkspaceFolder {
+                uri: root_uri,
+                name,
+              },
+            ),
+          );
+        }
+      }
+      if let Some(workspace_folders) = &self.config.workspace_folders {
+        for (uri, folder) in workspace_folders {
+          dbg!(uri.to_string());
+          dbg!(folder.uri.to_string());
+          dbg!(&folder.name);
+        }
+      }
       self.config.update_capabilities(&params.capabilities);
     }
 
@@ -2621,8 +2631,7 @@ impl Inner {
 
     let maybe_root_path_owned = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
@@ -2665,8 +2674,7 @@ impl Inner {
 
     let maybe_root_path_owned = self
       .config
-      .root_uri
-      .as_ref()
+      .root_uri()
       .and_then(|uri| specifier_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
@@ -2714,8 +2722,7 @@ impl Inner {
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let maybe_root_path_owned = self
         .config
-        .root_uri
-        .as_ref()
+        .root_uri()
         .and_then(|uri| specifier_to_file_path(uri).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
@@ -3125,7 +3132,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
         let test_server = testing::TestServer::new(
           ls.client.clone(),
           ls.performance.clone(),
-          ls.config.root_uri.clone(),
+          ls.config.root_uri().cloned(),
         );
         ls.maybe_testing_server = Some(test_server);
       }

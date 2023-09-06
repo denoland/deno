@@ -1387,6 +1387,7 @@ mod tests {
   }
 
   fn mock_config() -> ConfigSnapshot {
+    let root_uri = resolve_url("file:///").unwrap();
     ConfigSnapshot {
       settings: Settings {
         workspace: WorkspaceSettings {
@@ -1396,7 +1397,13 @@ mod tests {
         },
         ..Default::default()
       },
-      root_uri: Some(resolve_url("file:///").unwrap()),
+      workspace_folders: Some(vec![(
+        root_uri.clone(),
+        lsp::WorkspaceFolder {
+          uri: root_uri,
+          name: "".to_string(),
+        },
+      )]),
       ..Default::default()
     }
   }
