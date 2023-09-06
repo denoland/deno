@@ -2,7 +2,6 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file camelcase prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
@@ -31,6 +30,9 @@ export {
   randomFillSync,
 } from "ext:deno_node/internal/crypto/_randomFill.ts";
 export { default as randomInt } from "ext:deno_node/internal/crypto/_randomInt.ts";
+
+const primordials = globalThis.__bootstrap.primordials;
+const { StringPrototypePadStart, StringPrototypeToString } = primordials;
 
 const { core } = globalThis.__bootstrap;
 const { ops } = core;
@@ -286,8 +288,8 @@ function unsignedBigIntToBuffer(bigint: bigint, name: string) {
     throw new ERR_OUT_OF_RANGE(name, ">= 0", bigint);
   }
 
-  const hex = bigint.toString(16);
-  const padded = hex.padStart(hex.length + (hex.length % 2), 0);
+  const hex = StringPrototypeToString(bigint, 16);
+  const padded = StringPrototypePadStart(hex, hex.length + (hex.length % 2), 0);
   return Buffer.from(padded, "hex");
 }
 

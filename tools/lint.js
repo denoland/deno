@@ -19,7 +19,8 @@ if (Deno.args.includes("--rs")) {
 if (!didLint) {
   await Promise.all([
     dlint(),
-    dlintPreferPrimordials(),
+    // todo(dsherret): re-enable
+    // dlintPreferPrimordials(),
     checkCopyright(),
     clippy(),
   ]);

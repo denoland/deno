@@ -139,7 +139,6 @@ export function equal(c: unknown, d: unknown): boolean {
   })(c, d);
 }
 
-// deno-lint-ignore ban-types
 function constructorsEqual(a: object, b: object) {
   return a.constructor === b.constructor ||
     a.constructor === Object && !b.constructor ||
