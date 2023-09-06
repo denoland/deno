@@ -463,75 +463,87 @@ impl TestCollector {
 
 impl Visit for TestCollector {
   fn visit_call_expr(&mut self, node: &ast::CallExpr) {
-    if let ast::Callee::Expr(callee_expr) = &node.callee {
-      match callee_expr.as_ref() {
-        ast::Expr::Ident(ident) => {
-          if self.vars.contains(&ident.sym.to_string()) {
-            visit_call_expr(
-              node,
-              Some(&self.fns),
-              source_range_to_lsp_range(&ident.range(), &self.text_info),
-              None,
-              &self.text_info,
-              &mut self.test_module,
-            );
-          }
+    fn visit_if_deno_test(
+      collector: &mut TestCollector,
+      node: &ast::CallExpr,
+      range: &deno_ast::SourceRange,
+      ns_prop_ident: &ast::Ident,
+      member_expr: &ast::MemberExpr,
+    ) {
+      if ns_prop_ident.sym.to_string() == "test" {
+        let ast::Expr::Ident(ident) = member_expr.obj.as_ref() else {
+          return;
+        };
+
+        if ident.sym.to_string() != "Deno" {
+          return;
         }
-        ast::Expr::Member(member_expr) => {
-          if let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop {
-            let ns_prop_ident_name = ns_prop_ident.sym.to_string();
-            if ns_prop_ident_name == "test" {
-              if let ast::Expr::Ident(ident) = member_expr.obj.as_ref() {
-                if ident.sym.to_string() == "Deno" {
-                  visit_call_expr(
-                    node,
-                    Some(&self.fns),
-                    source_range_to_lsp_range(
-                      &ns_prop_ident.range(),
-                      &self.text_info,
-                    ),
-                    None,
-                    &self.text_info,
-                    &mut self.test_module,
-                  );
-                }
-              }
-            } else if ns_prop_ident_name == "ignore"
-              || ns_prop_ident_name == "only"
-            {
-              if let ast::Expr::Member(child_member_expr) =
-                member_expr.obj.as_ref()
-              {
-                if let ast::MemberProp::Ident(ns_prop_ident) =
-                  &child_member_expr.prop
-                {
-                  let ns_prop_ident_name = ns_prop_ident.sym.to_string();
-                  if ns_prop_ident_name == "test" {
-                    if let ast::Expr::Ident(ident) =
-                      child_member_expr.obj.as_ref()
-                    {
-                      if ident.sym.to_string() == "Deno" {
-                        visit_call_expr(
-                          node,
-                          Some(&self.fns),
-                          source_range_to_lsp_range(
-                            &ns_prop_ident.range(),
-                            &self.text_info,
-                          ),
-                          None,
-                          &self.text_info,
-                          &mut self.test_module,
-                        );
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        _ => (),
+
+        visit_call_expr(
+          node,
+          Some(&collector.fns),
+          source_range_to_lsp_range(range, &collector.text_info),
+          None,
+          &collector.text_info,
+          &mut collector.test_module,
+        );
       }
+    }
+
+    let ast::Callee::Expr(callee_expr) = &node.callee else {
+      return;
+    };
+
+    match callee_expr.as_ref() {
+      ast::Expr::Ident(ident) => {
+        if self.vars.contains(&ident.sym.to_string()) {
+          visit_call_expr(
+            node,
+            Some(&self.fns),
+            source_range_to_lsp_range(&ident.range(), &self.text_info),
+            None,
+            &self.text_info,
+            &mut self.test_module,
+          );
+        }
+      }
+      ast::Expr::Member(member_expr) => {
+        let ast::MemberProp::Ident(ns_prop_ident) = &member_expr.prop else {
+          return;
+        };
+
+        let ns_prop_ident_name = ns_prop_ident.sym.to_string();
+
+        visit_if_deno_test(
+          self,
+          node,
+          &ns_prop_ident.range(),
+          &ns_prop_ident,
+          &member_expr,
+        );
+
+        if ns_prop_ident_name == "ignore" || ns_prop_ident_name == "only" {
+          let ast::Expr::Member(child_member_expr) = member_expr.obj.as_ref()
+          else {
+            return;
+          };
+
+          let ast::MemberProp::Ident(child_ns_prop_ident) =
+            &child_member_expr.prop
+          else {
+            return;
+          };
+
+          visit_if_deno_test(
+            self,
+            node,
+            &ns_prop_ident.range(),
+            &child_ns_prop_ident,
+            &child_member_expr,
+          );
+        }
+      }
+      _ => (),
     }
   }
 
@@ -602,6 +614,7 @@ pub mod tests {
   use super::*;
   use deno_core::resolve_url;
   use lsp::Position;
+  use pretty_assertions::assert_eq;
 
   pub fn new_range(l1: u32, c1: u32, l2: u32, c2: u32) -> Range {
     Range::new(Position::new(l1, c1), Position::new(l2, c2))
@@ -977,17 +990,18 @@ pub mod tests {
         specifier: test_module.specifier.clone(),
         script_version: test_module.script_version.clone(),
         defs: vec![
-        (
-          "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
-          TestDefinition {
-            id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
-            name: "foo".to_string(),
-            range: Some(new_range(2, 11, 2, 15)),
-            is_dynamic: false,
-            parent_id: None,
-            step_ids: Default::default(),
-          },
-        ),
+          (
+            "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
+            TestDefinition {
+              id: "87f28e06f5ddadd90a74a93b84df2e31b9edced8301b0ad4c8fbab8d806ec99d".to_string(),
+              name: "foo".to_string(),
+              range: Some(new_range(2, 16, 2, 22)),
+              is_dynamic: false,
+              parent_id: None,
+              step_ids: Default::default(),
+            },
+          ),
+          
         (
           "e0f6a73647b763f82176c98a019e54200b799a32007f9859fb782aaa9e308568".to_string(), 
           TestDefinition {
@@ -998,18 +1012,18 @@ pub mod tests {
             parent_id: None,
             step_ids: Default::default(),
           }
-        ),
+        ), 
         (
           "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
           TestDefinition {
             id: "e1bd61cdaf5e64863d3d85baffe3e43bd57cdb8dc0b5d6a9e03ade18b7f68d47".to_string(),
             name: "bar".to_string(),
-            range: Some(new_range(3, 11, 3, 15)),
+            range: Some(new_range(3, 16, 3, 20)),
               is_dynamic: false,
               parent_id: None,
               step_ids: Default::default(),
           }
-        )]
+        ),]
         .into_iter()
         .collect(),
       }
