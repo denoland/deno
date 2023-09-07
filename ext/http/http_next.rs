@@ -1152,6 +1152,7 @@ pub async fn op_http_close(
     .take::<HttpJoinHandle>(rid)?;
 
   if graceful {
+    deno_net::check_unstable2(&state, "Deno.Server.shutdown");
     // In a graceful shutdown, we close the listener and allow all the remaining connections to drain
     join_handle.listen_cancel_handle().cancel();
   } else {

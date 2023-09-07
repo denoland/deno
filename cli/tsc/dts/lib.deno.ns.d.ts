@@ -5916,8 +5916,6 @@ declare namespace Deno {
      */
     finished: Promise<void>;
 
-    shutdown(): Promise<void>;
-
     /**
      * Make the server block the event loop from finishing.
      *
