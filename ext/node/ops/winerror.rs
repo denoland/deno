@@ -24,10 +24,11 @@
 // - https://github.com/libuv/libuv/blob/master/src/win/error.c
 #![allow(unused)]
 
-use deno_core::op;
+use deno_core::op2;
 
-#[op]
-fn op_node_sys_to_uv_error(err: i32) -> String {
+#[op2]
+#[string]
+pub fn op_node_sys_to_uv_error(err: i32) -> String {
   let uv_err = match err {
     ERROR_ACCESS_DENIED => "EACCES",
     ERROR_NOACCESS => "EACCES",
