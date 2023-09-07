@@ -2,6 +2,7 @@
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
+// deno-lint-ignore-file prefer-primordials
 
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import randomBytes from "ext:deno_node/internal/crypto/_randomBytes.ts";
