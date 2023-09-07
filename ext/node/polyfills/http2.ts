@@ -1140,7 +1140,7 @@ export class ClientHttp2Stream extends Duplex {
 
   setTimeout(_msecs: number, _callback?: () => void) {
     // setStreamTimeout(this, msecs, callback);
-    notImplemented("ClientHttp2Stream.setTimeout");
+    // notImplemented("ClientHttp2Stream.setTimeout");
   }
 }
 
@@ -1217,35 +1217,43 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 function finishCloseStream(stream, code) {
   tempDebug(">>> finishCloseStream", stream, code);
   if (stream.pending) {
-    this.push(null);
-    this.once("ready", () => {
+    stream.push(null);
+    stream.once("ready", () => {
       core.opAsync(
         "op_http2_client_reset_stream",
-        this.__rid,
+        stream.__rid,
         code,
       ).then(() => {
         tempDebug(
           ">>> finishCloseStream close",
-          this.__rid,
-          this.__response.bodyRid,
+          stream.__rid,
+          stream.__response.bodyRid,
         );
-        core.tryClose(this.__rid);
-        core.tryClose(this.__response.bodyRid);
+        core.tryClose(stream.__rid);
+        core.tryClose(stream.__response.bodyRid);
       });
     });
   } else {
     core.opAsync(
       "op_http2_client_reset_stream",
-      this.__rid,
+      stream.__rid,
       code,
     ).then(() => {
       tempDebug(
         ">>> finishCloseStream close2",
-        this.__rid,
-        this.__response.bodyRid,
+        stream.__rid,
+        stream.__response.bodyRid,
       );
-      core.tryClose(this.__rid);
-      core.tryClose(this.__response.bodyRid);
+      core.tryClose(stream.__rid);
+      core.tryClose(stream.__response.bodyRid);
+    }).catch(() => {
+      tempDebug(
+        ">>> finishCloseStream close2 catch",
+        stream.__rid,
+        stream.__response.bodyRid,
+      );
+      core.tryClose(stream.__rid);
+      core.tryClose(stream.__response.bodyRid);
     });
   }
 }
