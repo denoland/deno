@@ -407,10 +407,7 @@ impl LanguageServer {
       let ls = self.0.read().await;
       let specifiers = if ls.config.client_capabilities.workspace_configuration
       {
-        let mut root_capacity = ls.config.workspace_folders.len();
-        if root_capacity == 0 {
-          root_capacity = 1;
-        }
+        let root_capacity = std::cmp::max(ls.config.workspace_folders.len(), 1);
         let config_specifiers = ls.config.get_specifiers();
         let mut specifiers =
           HashMap::with_capacity(root_capacity + config_specifiers.len());

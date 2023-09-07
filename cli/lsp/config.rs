@@ -782,9 +782,6 @@ fn specifier_enabled(
   for (workspace_uri, _) in workspace_folders {
     if specifier.as_str().starts_with(workspace_uri.as_str()) {
       let specifier_settings = settings.specifiers.get(workspace_uri);
-      let enable = specifier_settings
-        .and_then(|s| s.enable)
-        .unwrap_or(root_enable);
       let enable_paths = specifier_settings
         .and_then(|s| s.enable_paths.as_ref())
         .or(settings.workspace.enable_paths.as_ref());
@@ -805,7 +802,9 @@ fn specifier_enabled(
         }
         return false;
       } else {
-        return enable;
+        return specifier_settings
+          .and_then(|s| s.enable)
+          .unwrap_or(root_enable);
       }
     }
   }
