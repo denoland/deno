@@ -722,7 +722,7 @@ export class ClientHttp2Stream extends Duplex {
       this.#rid = streamRid;
       // TODO(bartlomieju): clean this up
       this.__rid = streamRid;
-      this[kID] = streamId;
+      this[kInit](streamId);
       tempDebug(">>> after request promise", session._clientRid, this.#rid);
       const response = await core.opAsync(
         "op_http2_client_get_response",
@@ -764,6 +764,7 @@ export class ClientHttp2Stream extends Duplex {
 
     // TODO(bartlomieju): handle socket handle
 
+    console.log("kInit called, uncorking");
     this[kID] = id;
     this.uncork();
     this.emit("ready");
@@ -832,6 +833,7 @@ export class ClientHttp2Stream extends Duplex {
 
   // TODO(bartlomieju): clean up
   _write(chunk, encoding, callback?: () => void) {
+    console.log("calling write", chunk, callback);
     tempDebug(">>> _write", callback);
     if (typeof encoding === "function") {
       callback = encoding;
