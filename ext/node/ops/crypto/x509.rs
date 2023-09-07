@@ -2,7 +2,7 @@
 
 use deno_core::error::bad_resource_id;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 
@@ -54,10 +54,10 @@ impl Resource for Certificate {
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_x509_parse(
   state: &mut OpState,
-  buf: &[u8],
+  #[buffer] buf: &[u8],
 ) -> Result<u32, AnyError> {
   let pem = match pem::parse_x509_pem(buf) {
     Ok((_, pem)) => Some(pem),
@@ -80,7 +80,7 @@ pub fn op_node_x509_parse(
   Ok(rid)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_x509_ca(
   state: &mut OpState,
   rid: u32,
@@ -92,11 +92,11 @@ pub fn op_node_x509_ca(
   Ok(cert.is_ca())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_x509_check_email(
   state: &mut OpState,
   rid: u32,
-  email: &str,
+  #[string] email: &str,
 ) -> Result<bool, AnyError> {
   let cert = state
     .resource_table
@@ -134,7 +134,8 @@ pub fn op_node_x509_check_email(
   Ok(false)
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_fingerprint(
   state: &mut OpState,
   rid: u32,
@@ -146,7 +147,8 @@ pub fn op_node_x509_fingerprint(
   Ok(cert.fingerprint::<sha1::Sha1>())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_fingerprint256(
   state: &mut OpState,
   rid: u32,
@@ -158,7 +160,8 @@ pub fn op_node_x509_fingerprint256(
   Ok(cert.fingerprint::<sha2::Sha256>())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_fingerprint512(
   state: &mut OpState,
   rid: u32,
@@ -170,7 +173,8 @@ pub fn op_node_x509_fingerprint512(
   Ok(cert.fingerprint::<sha2::Sha512>())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_get_issuer(
   state: &mut OpState,
   rid: u32,
@@ -182,7 +186,8 @@ pub fn op_node_x509_get_issuer(
   Ok(x509name_to_string(cert.issuer(), oid_registry())?)
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_get_subject(
   state: &mut OpState,
   rid: u32,
@@ -254,7 +259,8 @@ fn x509name_to_string(
   })
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_get_valid_from(
   state: &mut OpState,
   rid: u32,
@@ -266,7 +272,8 @@ pub fn op_node_x509_get_valid_from(
   Ok(cert.validity().not_before.to_string())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_get_valid_to(
   state: &mut OpState,
   rid: u32,
@@ -278,7 +285,8 @@ pub fn op_node_x509_get_valid_to(
   Ok(cert.validity().not_after.to_string())
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_node_x509_get_serial_number(
   state: &mut OpState,
   rid: u32,
@@ -292,7 +300,7 @@ pub fn op_node_x509_get_serial_number(
   Ok(s)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_node_x509_key_usage(
   state: &mut OpState,
   rid: u32,
