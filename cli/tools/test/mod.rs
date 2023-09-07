@@ -1199,7 +1199,9 @@ pub async fn run_tests_with_watch(
         let test_options = cli_options.resolve_test_options(test_flags)?;
 
         let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(test_options.files.include.clone());
+        if let Some(include) = &test_options.files.include {
+          let _ = sender.send(include.clone());
+        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let log_level = cli_options.log_level();

@@ -200,7 +200,7 @@ fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
     .ignore_node_modules()
     .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
-    .collect_files(&files.include)
+    .collect_files(files.include.as_deref())
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
