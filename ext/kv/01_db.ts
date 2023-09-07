@@ -323,9 +323,11 @@ class AtomicOperation {
   #checks: [Deno.KvKey, string | null][] = [];
   #mutations: [Deno.KvKey, string, RawValue | null, number | undefined][] = [];
   #enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][] = [];
+  #startTime: number;
 
   constructor(rid: number) {
     this.#rid = rid;
+    this.#startTime = Date.now();
   }
 
   check(...checks: Deno.AtomicCheck[]): this {
@@ -350,7 +352,7 @@ class AtomicOperation {
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
-            expireAt = Date.now() + mutation.expireIn;
+            expireAt = this.#startTime + mutation.expireIn;
           }
           /* falls through */
         case "sum":
@@ -391,7 +393,7 @@ class AtomicOperation {
     options?: { expireIn?: number },
   ): this {
     const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
+      ? this.#startTime + options.expireIn
       : undefined;
     this.#mutations.push([key, "set", serializeValue(value), expireAt]);
     return this;
