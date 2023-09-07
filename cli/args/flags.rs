@@ -262,16 +262,14 @@ pub struct VendorFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum DepsSubcommand {
-  Add(String),
+pub struct PublishFlags {
+  pub directory: PathBuf,
+  pub token: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum RegistrySubcommand {
-  Info,
-  Login,
-  Publish(PathBuf),
-  Scope,
+pub enum DepsSubcommand {
+  Add(String),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -300,7 +298,7 @@ pub enum DenoSubcommand {
   Upgrade(UpgradeFlags),
   Vendor(VendorFlags),
   // TODO:
-  Registry(RegistrySubcommand),
+  Publish(PublishFlags),
   Deps(DepsSubcommand),
 }
 
@@ -695,7 +693,7 @@ impl Flags {
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
       | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_)
-      | Registry(_) | Deps(_) => None,
+      | Publish(_) | Deps(_) => None,
     }
   }
 
@@ -845,7 +843,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "upgrade" => upgrade_parse(&mut flags, &mut m),
       "vendor" => vendor_parse(&mut flags, &mut m),
       // TODO:
-      "reg" => reg_parse(&mut flags, &mut m),
+      "publish" => publish_parse(&mut flags, &mut m),
       "deps" => deps_parse(&mut flags, &mut m),
       _ => unreachable!(),
     }
@@ -3495,21 +3493,11 @@ fn vendor_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   });
 }
 
-fn reg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
-  let registry_subcommand = match matches.remove_subcommand() {
-    Some((subcommand, mut m)) => match subcommand.as_str() {
-      "info" => RegistrySubcommand::Info,
-      "login" => RegistrySubcommand::Login,
-      "publish" => {
-        let directory = m.remove_one::<PathBuf>("directory").unwrap();
-        RegistrySubcommand::Publish(directory)
-      }
-      "scope" => RegistrySubcommand::Scope,
-      _ => unreachable!(),
-    },
-    None => unreachable!(),
-  };
-  flags.subcommand = DenoSubcommand::Registry(registry_subcommand);
+fn publish_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  flags.subcommand = DenoSubcommand::Publish(PublishFlags {
+    directory: matches.remove_one::<PathBuf>("directory").unwrap(),
+    token: matches.remove_one::<String>("token"),
+  });
 }
 
 fn deps_parse(flags: &mut Flags, matches: &mut ArgMatches) {

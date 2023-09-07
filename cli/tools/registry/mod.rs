@@ -1,130 +1,32 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::fmt::Write;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
-use chrono::DateTime;
-use chrono::Utc;
 use deno_config::ConfigFile;
+use deno_core::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::serde_json::json;
 use deno_core::url::Url;
 use deno_runtime::colors;
 use deno_runtime::deno_fetch::reqwest;
 use http::header::AUTHORIZATION;
 use http::header::CONTENT_ENCODING;
-use serde::Deserialize;
+use hyper::body::Bytes;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use sha2::Digest;
 
 use crate::args::Flags;
+use crate::args::PublishFlags;
 use crate::factory::CliFactory;
-use crate::tools::registry::auth::ensure_token;
 
-mod auth;
 mod tar;
 mod urls;
-
-pub async fn info(_flags: Flags) -> Result<(), AnyError> {
-  let token = auth::ensure_token()?;
-  let user_info = get_user_info(token).await?;
-  eprintln!("{:#?}", user_info);
-  Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UserInfo {
-  pub id: uuid::Uuid,
-  pub name: String,
-  pub email: Option<String>,
-  pub avatar_url: String,
-  pub updated_at: DateTime<Utc>,
-  pub created_at: DateTime<Utc>,
-  pub is_admin: bool,
-}
-
-async fn get_user_info(token: String) -> Result<UserInfo, AnyError> {
-  let client = reqwest::Client::new();
-  let user_info: UserInfo = client
-    .get(format!("{}/user", urls::REGISTRY_URL))
-    .bearer_auth(token)
-    .send()
-    .await?
-    .json()
-    .await?;
-  Ok(user_info)
-}
-
-#[derive(Debug, Deserialize)]
-struct DeviceLoginResponse {
-  uri: String,
-  code: String,
-  id: uuid::Uuid,
-  interval: f32,
-  expires_in: f32,
-}
-
-pub async fn login(_flags: Flags) -> Result<(), AnyError> {
-  let device_login_response =
-    reqwest::get(format!("{}/login/device", urls::AUTH_REGISTRY_URL))
-      .await
-      .context("Failed to obtain device login info")?;
-
-  let device_login: DeviceLoginResponse = device_login_response.json().await?;
-
-  println!("Copy the code {}", colors::cyan(device_login.code));
-  println!(
-    "And enter it at {} to sign in",
-    colors::cyan(device_login.uri)
-  );
-  println!("\n{}", colors::gray("Waiting for login to complete..."));
-
-  let start = std::time::Instant::now();
-
-  let token = loop {
-    tokio::time::sleep(std::time::Duration::from_secs(
-      device_login.interval as u64,
-    ))
-    .await;
-    let res = reqwest::get(format!(
-      "{}/login/device/exchange?id={}",
-      urls::AUTH_REGISTRY_URL,
-      device_login.id
-    ))
-    .await?;
-    if res.status().is_success() {
-      let token: String = res.json().await?;
-      break token;
-    }
-    if std::time::Instant::now() - start
-      > std::time::Duration::from_secs(device_login.expires_in as u64)
-    {
-      bail!("{}", colors::red("Login took too long, please try again"));
-    }
-  };
-
-  let user_info = match get_user_info(token.clone()).await {
-    Ok(info) => info,
-    Err(err) => {
-      bail!(
-        "Failed to obtain user info. Please try logging in again. Reason: {}",
-        err
-      );
-    }
-  };
-
-  auth::save_token(token)?;
-  println!(
-    "{} {} {}",
-    colors::green("Sign in successful."),
-    colors::gray("Authenticated as"),
-    colors::cyan(user_info.name)
-  );
-
-  Ok(())
-}
 
 struct OidcConfig {
   url: String,
@@ -132,16 +34,37 @@ struct OidcConfig {
 }
 
 enum AuthMethod {
-  Auto,
+  Interactive,
+  Token(String),
   Oidc(OidcConfig),
 }
 
-async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
-  let auth_method = match get_oidc_env_vars() {
-    Ok((url, token)) => AuthMethod::Oidc(OidcConfig { url, token }),
-    Err(_) => AuthMethod::Auto,
-  };
+struct PreparedPublishPackage {
+  scope: String,
+  package: String,
+  version: String,
+  tarball_hash: String,
+  tarball: Bytes,
+}
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishingTaskError {
+  pub code: String,
+  pub message: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublishingTask {
+  pub id: String,
+  pub status: String,
+  pub error: Option<PublishingTaskError>,
+}
+
+async fn prepare_publish(
+  directory: PathBuf,
+) -> Result<PreparedPublishPackage, AnyError> {
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
   // TODO: handle publishing without deno.json
@@ -179,111 +102,218 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
   let tarball = tar::create_tarball(directory_path, unfurler)
     .context("Failed to create a tarball")?;
 
-  let client = reqwest::Client::new();
-
-  let tarball_sha = sha2::Sha256::digest(&tarball);
-  let hash_bytes: Vec<u8> = tarball_sha.iter().cloned().collect();
-  let mut hash_hex = format!("sha256-");
-  for byte in hash_bytes {
-    write!(&mut hash_hex, "{:02x}", byte).unwrap();
+  let tarball_hash_bytes: Vec<u8> =
+    sha2::Sha256::digest(&tarball).iter().cloned().collect();
+  let mut tarball_hash = format!("sha256-");
+  for byte in tarball_hash_bytes {
+    write!(&mut tarball_hash, "{:02x}", byte).unwrap();
   }
 
+  Ok(PreparedPublishPackage {
+    scope: scope.to_string(),
+    package: package_name.to_string(),
+    version: version.to_string(),
+    tarball_hash,
+    tarball,
+  })
+}
+
+#[derive(Serialize)]
+#[serde(tag = "permission")]
+pub enum Permission<'s> {
+  #[serde(rename = "package/publish", rename_all = "camelCase")]
+  VersionPublish {
+    scope: &'s str,
+    package: &'s str,
+    version: &'s str,
+    tarball_hash: &'s str,
+  },
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateAuthorizationResponse {
+  verification_url: String,
+  code: String,
+  exchange_token: String,
+  poll_interval: u64,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExchangeAuthorizationResponse {
+  token: String,
+  user: User,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct User {
+  name: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApiError {
+  pub code: String,
+  pub message: String,
+  #[serde(skip)]
+  pub x_deno_ray: Option<String>,
+}
+
+impl std::fmt::Display for ApiError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{} ({})", self.message, self.code)?;
+    if let Some(x_deno_ray) = &self.x_deno_ray {
+      write!(f, "[x-deno-ray: {}]", x_deno_ray)?;
+    }
+    Ok(())
+  }
+}
+
+impl std::fmt::Debug for ApiError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    std::fmt::Display::fmt(self, f)
+  }
+}
+
+impl std::error::Error for ApiError {}
+
+async fn parse_response<T: DeserializeOwned>(
+  response: reqwest::Response,
+) -> Result<T, ApiError> {
+  let status = response.status();
+  let x_deno_ray = response
+    .headers()
+    .get("x-deno-ray")
+    .and_then(|value| value.to_str().ok())
+    .map(|s| s.to_string());
+  let text = response.text().await.unwrap();
+
+  if !status.is_success() {
+    match serde_json::from_str::<ApiError>(&text) {
+      Ok(mut err) => {
+        err.x_deno_ray = x_deno_ray;
+        return Err(err);
+      }
+      Err(_) => {
+        let err = ApiError {
+          code: "unknown".to_string(),
+          message: format!("{}: {}", status, text),
+          x_deno_ray,
+        };
+        return Err(err);
+      }
+    }
+  }
+
+  serde_json::from_str(&text).map_err(|err| ApiError {
+    code: "unknown".to_string(),
+    message: format!("Failed to parse response: {}, response: '{}'", err, text),
+    x_deno_ray,
+  })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OidcTokenResponse {
+  value: String,
+}
+
+async fn perform_publish(
+  packages: Vec<PreparedPublishPackage>,
+  auth_method: AuthMethod,
+) -> Result<(), AnyError> {
+  let client = reqwest::Client::new();
+
   let authorization = match auth_method {
-    AuthMethod::Auto => {
+    AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
-      let challenge_bytes = sha2::Sha256::digest(&verifier);
-      let challenge = base64::encode(&challenge_bytes);
+      let challenge = base64::encode(&sha2::Sha256::digest(&verifier));
+
+      let permissions = packages
+        .iter()
+        .map(|package| Permission::VersionPublish {
+          scope: &package.scope,
+          package: &package.package,
+          version: &package.version,
+          tarball_hash: &package.tarball_hash,
+        })
+        .collect::<Vec<_>>();
 
       let response = client
         .post(format!("{}/authorizations", urls::REGISTRY_URL))
         .json(&serde_json::json!({
           "challenge": challenge,
-          "permissions": [
-            {
-              "permission": "package/publish",
-              "scope": scope,
-              "package": package_name,
-              "version": version,
-              "tarballHash": hash_hex,
-            }
-          ]
+          "permissions": permissions,
         }))
         .send()
-        .await?
-        .error_for_status()?;
+        .await
+        .context("Failed to create interactive authorization")?;
+      let auth = parse_response::<CreateAuthorizationResponse>(response)
+        .await
+        .context("Failed to create interactive authorization")?;
 
-      #[derive(serde::Deserialize)]
-      #[serde(rename_all = "camelCase")]
-      struct CreateResp {
-        verification_url: String,
-        code: String,
-        exchange_token: String,
-        poll_interval: u64,
+      print!(
+        "Visit {} to authorize publishing of",
+        colors::cyan(format!("{}?code={}", auth.verification_url, auth.code))
+      );
+      if packages.len() > 1 {
+        println!(" {} packages", packages.len());
+      } else {
+        println!(" @{}/{}", packages[0].scope, packages[0].package);
       }
 
-      let create_resp: CreateResp = response.json().await?;
+      println!("{}", colors::gray("Waiting..."));
 
-      println!(
-        "Authorize this publish by visiting {}",
-        colors::cyan(format!(
-          "{}?code={}",
-          create_resp.verification_url, create_resp.code
-        ))
-      );
+      let interval = std::time::Duration::from_secs(auth.poll_interval);
 
       loop {
-        tokio::time::sleep(std::time::Duration::from_secs(
-          create_resp.poll_interval,
-        ))
-        .await;
+        tokio::time::sleep(interval).await;
         let response = client
           .post(format!("{}/authorizations/exchange", urls::REGISTRY_URL))
           .json(&serde_json::json!({
-            "exchangeToken": create_resp.exchange_token,
+            "exchangeToken": auth.exchange_token,
             "verifier": verifier,
           }))
           .send()
-          .await?;
-
-        #[derive(serde::Deserialize)]
-        #[serde(untagged)]
-        enum Resp {
-          Err { code: String, message: String },
-          Success { token: String, user: User },
-        }
-
-        #[derive(serde::Deserialize)]
-        struct User {
-          name: String,
-        }
-
-        let resp: Resp = response.json().await?;
-
-        match resp {
-          Resp::Err { code, message } => {
-            if code == "authorizationPending" {
-              continue;
-            } else {
-              bail!("Failed to authorize: {}", message);
-            }
-          }
-          Resp::Success { token, user } => {
+          .await
+          .context("Failed to exchange authorization")?;
+        let res =
+          parse_response::<ExchangeAuthorizationResponse>(response).await;
+        match res {
+          Ok(res) => {
             println!(
               "{} {} {}",
               colors::green("Authorization successful."),
               colors::gray("Authenticated as"),
-              colors::cyan(user.name)
+              colors::cyan(res.user.name)
             );
-            break format!("Bearer {}", token);
+            break format!("Bearer {}", res.token);
+          }
+          Err(err) => {
+            if err.code == "authorizationPending" {
+              continue;
+            } else {
+              return Err(err).context("Failed to exchange authorization");
+            }
           }
         }
       }
     }
+    AuthMethod::Token(token) => format!("Bearer {}", token),
     AuthMethod::Oidc(oidc_config) => {
-      use sha2::Digest;
-      let audience =
-        format!("deno:@{}/{}@{}#{}", scope, package_name, version, hash_hex);
-      // curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE"
+      let permissions = packages
+        .iter()
+        .map(|package| Permission::VersionPublish {
+          scope: &package.scope,
+          package: &package.package,
+          version: &package.version,
+          tarball_hash: &package.tarball_hash,
+        })
+        .collect::<Vec<_>>();
+      let audience = json!({ "permissions": permissions }).to_string();
+
       let url = format!(
         "{}&audience={}",
         oidc_config.url,
@@ -292,116 +322,154 @@ async fn do_publish(directory: PathBuf) -> Result<(), AnyError> {
           percent_encoding::NON_ALPHANUMERIC
         )
       );
+
       let response = client
         .get(url)
         .bearer_auth(oidc_config.token)
         .send()
-        .await?
-        .error_for_status()?;
-      #[derive(serde::Deserialize)]
-      struct Token {
-        value: String,
+        .await
+        .context("Failed to get OIDC token")?;
+      let status = response.status();
+      let text = response.text().await.with_context(|| {
+        format!("Failed to get OIDC token: status {}", status)
+      })?;
+      if !status.is_success() {
+        bail!(
+          "Failed to get OIDC token: status {}, response: '{}'",
+          status,
+          text
+        );
       }
-
-      let token: Token = response.json().await?;
-
-      format!("githuboidc {}", token.value)
+      let OidcTokenResponse { value } = serde_json::from_str(&text)
+        .with_context(|| {
+          format!("Failed to parse OIDC token: '{}' (status {})", text, status)
+        })?;
+      format!("githuboidc {}", value)
     }
   };
 
-  let url = format!(
-    "{}/scopes/{}/packages/{}/versions/{}",
-    urls::REGISTRY_URL,
-    scope,
-    package_name,
-    version
-  );
+  for package in packages {
+    println!(
+      "{} @{}/{}@{} ...",
+      colors::intense_blue("Publishing"),
+      package.scope,
+      package.package,
+      package.version
+    );
 
-  // println!("authenticating with {authorization}");
+    let url = format!(
+      "{}/scopes/{}/packages/{}/versions/{}",
+      urls::REGISTRY_URL,
+      package.scope,
+      package.package,
+      package.version
+    );
 
-  let response = client
-    .post(url)
-    .header(AUTHORIZATION, authorization)
-    .header(CONTENT_ENCODING, "gzip")
-    .body(tarball)
-    .send()
-    .await?;
-
-  let status = response.status();
-  let data: serde_json::Value = response.json().await?;
-
-  if !status.is_success() {
-    bail!("Failed to publish, status: {} {}", status, data);
-  }
-
-  let task_id = data["id"].as_str().unwrap();
-
-  loop {
-    let resp = client
-      .get(format!("{}/publish_status/{}", urls::REGISTRY_URL, task_id))
+    let response = client
+      .post(url)
+      .header(AUTHORIZATION, &authorization)
+      .header(CONTENT_ENCODING, "gzip")
+      .body(package.tarball)
       .send()
       .await?;
 
-    let status = resp.status();
-    let data: serde_json::Value = resp.json().await?;
-    if !status.is_success() {
-      bail!("Failed to get publishing status {:?}", data);
+    let mut task = parse_response::<PublishingTask>(response)
+      .await
+      .with_context(|| {
+        format!(
+          "Failed to publish @{}/{} at {}",
+          package.scope, package.package, package.version
+        )
+      })?;
+
+    let interval = std::time::Duration::from_secs(2);
+    while task.status != "success" && task.status != "failure" {
+      tokio::time::sleep(interval).await;
+      let resp = client
+        .get(format!("{}/publish_status/{}", urls::REGISTRY_URL, task.id))
+        .send()
+        .await
+        .with_context(|| {
+          format!(
+            "Failed to get publishing status for @{}/{} at {}",
+            package.scope, package.package, package.version
+          )
+        })?;
+      task =
+        parse_response::<PublishingTask>(resp)
+          .await
+          .with_context(|| {
+            format!(
+              "Failed to get publishing status for @{}/{} at {}",
+              package.scope, package.package, package.version
+            )
+          })?;
     }
 
-    let data_status = data["status"].as_str().unwrap();
-    if data_status == "success" {
-      println!(
-        "{} @{}/{}@{}",
-        colors::green("Successfully published"),
-        data["packageScope"].as_str().unwrap(),
-        data["packageName"].as_str().unwrap(),
-        data["packageVersion"].as_str().unwrap()
-      );
-      println!(
-        "https://deno-registry-staging.net/@{}/{}/{}_meta.json",
-        data["packageScope"].as_str().unwrap(),
-        data["packageName"].as_str().unwrap(),
-        data["packageVersion"].as_str().unwrap()
-      );
-      break;
-    } else if data_status == "failure" {
+    if let Some(error) = task.error {
       bail!(
-        "{} {}",
-        colors::red("Publishing failed"),
-        serde_json::to_string_pretty(&data).unwrap()
+        "{} @{}/{} at {}: {}",
+        colors::red("Failed to publish"),
+        package.scope,
+        package.package,
+        package.version,
+        error.message
       );
-    } else {
-      println!("{}", colors::gray("Waiting"));
-      tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
+
+    println!(
+      "{} @{}/{}@{}",
+      colors::green("Successfully published"),
+      package.scope,
+      package.package,
+      package.version
+    );
+    println!(
+      "https://deno-registry-staging.net/@{}/{}/{}_meta.json",
+      package.scope, package.package, package.version
+    );
   }
 
   Ok(())
 }
 
-fn get_oidc_env_vars() -> Result<(String, String), AnyError> {
-  let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL")?;
-  let token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN")?;
-
-  Ok((url, token))
+fn get_gh_oidc_env_vars() -> Option<Result<(String, String), AnyError>> {
+  if std::env::var("GITHUB_ACTIONS").unwrap_or_default() == "true" {
+    let url = std::env::var("ACTIONS_ID_TOKEN_REQUEST_URL");
+    let token = std::env::var("ACTIONS_ID_TOKEN_REQUEST_TOKEN");
+    match (url, token) {
+      (Ok(url), Ok(token)) => Some(Ok((url, token))),
+      (Err(_), Err(_)) => Some(Err(anyhow::anyhow!(
+        "No means to authenticate. Pass a token to `--token`, or enable tokenless publishing from GitHub Actions using OIDC. Learn more at https://deno.co/ghoidc"
+      ))),
+      _ => None,
+    }
+  } else {
+    None
+  }
 }
 
 pub async fn publish(
   _flags: Flags,
-  directory: PathBuf,
+  publish_flags: PublishFlags,
 ) -> Result<(), AnyError> {
-  match auth::ensure_token() {
-    Ok(_) => {}
-    Err(_) => {
-      get_oidc_env_vars()?;
-    }
-  }
+  let auth_method = match publish_flags.token {
+    Some(token) => AuthMethod::Token(token),
+    None => match get_gh_oidc_env_vars() {
+      Some(Ok((url, token))) => AuthMethod::Oidc(OidcConfig { url, token }),
+      Some(Err(err)) => return Err(err),
+      None if std::io::stdin().is_terminal() => AuthMethod::Interactive,
+      None => {
+        bail!("No means to authenticate. Please pass a token to `--token`.")
+      }
+    },
+  };
 
   let initial_cwd =
     std::env::current_dir().with_context(|| "Failed getting cwd.")?;
   // TODO: handle publishing without deno.json
 
-  let directory_path = initial_cwd.join(directory);
+  let directory_path = initial_cwd.join(publish_flags.directory);
   // TODO: doesn't handle jsonc
   let deno_json_path = directory_path.join("deno.json");
   let deno_json = ConfigFile::read(&deno_json_path).with_context(|| {
@@ -411,27 +479,24 @@ pub async fn publish(
     )
   })?;
 
+  let mut packages = Vec::new();
+
   let members = deno_json.json.members.clone();
-  if !members.is_empty() {
-    // TODO(bartlomieju): this should be smart enough to figure out dependencies
-    // between workspace members and publish in correct order. Or error out
-    // if there are circular dependencies between the packages.
+  if members.is_empty() {
+    packages.push(prepare_publish(directory_path).await?);
+  } else {
     println!("Publishing a workspace...");
     for member in members {
       let member_dir = directory_path.join(member);
-      println!("Publishing {}", member_dir.display());
-      do_publish(member_dir).await?;
+      packages.push(prepare_publish(member_dir).await?);
     }
-    return Ok(());
   }
 
-  do_publish(directory_path).await?;
-  Ok(())
-}
+  if packages.is_empty() {
+    bail!("No packages to publish");
+  }
 
-pub async fn scope(_flags: Flags) -> Result<(), AnyError> {
-  eprintln!("deno reg scope is not yet implemented");
-  Ok(())
+  perform_publish(packages, auth_method).await
 }
 
 pub async fn deps_add(flags: Flags, specifier: String) -> Result<(), AnyError> {
@@ -446,8 +511,8 @@ pub async fn deps_add(flags: Flags, specifier: String) -> Result<(), AnyError> {
     cli_options.maybe_config_file()
   {
     let Ok(path) = config_file.specifier.to_file_path() else {
-        bail!("Can't add a dependency to a remote configuration file");
-      };
+      bail!("Can't add a dependency to a remote configuration file");
+    };
 
     let mut json = config_file.json.clone();
     json.imports = Some(json.imports.unwrap_or_else(|| serde_json::json!({})));
