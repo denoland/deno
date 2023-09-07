@@ -609,12 +609,6 @@ async function sendBeacon(url, data = null) {
             : undefined,
         }),
       ),
-      // "POST",
-      // url,
-      // () => [["content-type", contentType]],
-      // body,
-      // true,
-      //   ),
       true,
       abortSignal.newSignal(),
     );
