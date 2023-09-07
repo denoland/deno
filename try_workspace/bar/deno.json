@@ -1,10 +1,10 @@
 {
-  "name": "@foo/bar",
+  "name": "@luca/bar",
   "version": "0.0.6",
   "imports": {
     "codeBlockWriter": "deno:@foo/code_block_writer",
     "@std/fmt/": "deno:/@std/fmt/",
-    "foo/": "deno:/@foo/foo/"
+    "foo/": "deno:/@luca/foo/"
   },
   "scopes": {
     "/nested/": {

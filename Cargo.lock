@@ -6537,7 +6537,3 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_config"
-version = "0.2.1"

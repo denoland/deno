@@ -229,7 +229,7 @@ async fn perform_publish(
   let authorization = match auth_method {
     AuthMethod::Interactive => {
       let verifier = uuid::Uuid::new_v4().to_string();
-      let challenge = base64::encode(&sha2::Sha256::digest(&verifier));
+      let challenge = base64::encode(sha2::Sha256::digest(&verifier));
 
       let permissions = packages
         .iter()

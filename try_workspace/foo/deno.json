@@ -1,8 +1,8 @@
 {
-  "name": "@foo/foo",
+  "name": "@luca/foo",
   "version": "0.0.12",
   "imports": {
-    "codeBlockWriter": "deno:@foo/code_block_writer",
+    "codeBlockWriter": "deno:@luca/code_block_writer",
     "tsMorph": "deno:@foo/ts_morph",
     "@std/assert/": "deno:/@std/assert/",
     "@std/path/": "deno:/@std/path/"

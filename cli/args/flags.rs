@@ -946,7 +946,7 @@ fn clap_root() -> Command {
         .subcommand(upgrade_subcommand())
         .subcommand(vendor_subcommand())
         // TODO(bartlomieju):
-        .subcommand(reg_subcommand())
+        .subcommand(publish_subcommand())
         .subcommand(deps_subcommand())
     })
     .long_about(DENO_HELP)
@@ -2122,28 +2122,25 @@ Remote modules and multiple modules may also be specified:
       .arg(ca_file_arg()))
 }
 
-fn reg_subcommand() -> Command {
-  let login_subcommand = Command::new("login").about("Login to the registry");
-  let info_subcommand =
-    Command::new("info").about("Show info about currently logged in user");
-  let scope_subcommand = Command::new("scope").about("Manage scopes");
-
-  let publish_subcommand = Command::new("publish")
-    .about("Publish a package to the registry")
-    .arg(
-      Arg::new("directory")
-        .required(true)
-        .value_parser(value_parser!(PathBuf))
-        .value_hint(ValueHint::DirPath),
-    );
-
-  Command::new("reg")
-    .about("Registry management tool")
-    .long_about("")
-    .subcommand(info_subcommand)
-    .subcommand(login_subcommand)
-    .subcommand(publish_subcommand)
-    .subcommand(scope_subcommand)
+fn publish_subcommand() -> Command {
+  Command::new("publish")
+      .about("Publish a package to the Deno registry")
+      // TODO: .long_about()
+      .defer(|cmd| cmd
+      .arg(
+        Arg::new("directory")
+          .help("The directory to the package, or workspace of packages to publish")
+          .value_parser(value_parser!(PathBuf))
+          .value_hint(ValueHint::DirPath),
+      )
+      .arg(
+        Arg::new("token")
+          .long("token")
+          .help(
+            "Specify a token to use when authenting to the registry during publish",
+          )
+          .value_name("TOKEN")
+        ))
 }
 
 fn deps_subcommand() -> Command {
