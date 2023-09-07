@@ -349,7 +349,7 @@ impl CliMainWorkerFactory {
     {
       // For main_module that exists in package.json deps,
       // use the version defined in package.json instead of adding new dependency.
-      let existing_package_req = shared
+      let existing_package_ref = shared
         .options
         .maybe_package_json_deps
         .as_ref()
@@ -362,24 +362,24 @@ impl CliMainWorkerFactory {
             })
             .map(|existing_req| {
               let existing_req = existing_req.as_ref().unwrap();
-              existing_req
+              NpmPackageReqReference::from_str(
+                format!(
+                  "npm:{}/{}",
+                  existing_req,
+                  package_ref.sub_path().unwrap_or("")
+                )
+                .as_ref(),
+              )
+              .unwrap()
             })
-        });
+        })
+        .unwrap_or(package_ref);
       shared
         .npm_resolver
-        .add_package_reqs(&[existing_package_req
-          .unwrap_or_else(|| package_ref.req())
-          .clone()])
+        .add_package_reqs(&[existing_package_ref.req().clone()])
         .await?;
-      let node_resolution = self.resolve_binary_entrypoint(
-        &(existing_package_req
-          .map(|req| {
-            NpmPackageReqReference::from_str(format!("npm:{}", req).as_ref())
-              .unwrap()
-          })
-          .unwrap_or_else(|| package_ref)),
-        &permissions,
-      )?;
+      let node_resolution =
+        self.resolve_binary_entrypoint(&existing_package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
