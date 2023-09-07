@@ -111,6 +111,21 @@ declare interface Navigator {
 declare var Navigator: {
   readonly prototype: Navigator;
   new (): never;
+  /** sends a POST request containing a fragment of data to a web server and
+ * returns whether or not the request was successful.
+ *
+ * ```ts
+ * const data = JSON.stringify({
+      event: "Hello world!",
+      time: performance.now()
+    });
+    navigator.sendBeacon('/collector', data);
+ * ```
+ *
+ * @tags allow-net, allow-read
+ * @category Beacon API
+ */
+  sendBeacon(url: string, data?: BodyInit | null): boolean;
 };
 
 /** @category Web APIs */
