@@ -73,7 +73,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const tempDebugEnabled = false;
+const tempDebugEnabled = true;
 function tempDebug(...args) {
   if (tempDebugEnabled) {
     console.log(...args);
@@ -1039,12 +1039,16 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   close(code: number = constants.NGHTTP2_NO_ERROR, callback?: () => void) {
+    console.log("client stream close", code, callback, this.closed);
     tempDebug(">>> close", callback);
     tempDebug("Stream close");
 
     if (this.closed) {
       return;
     }
+    this.once("close", () => {
+      console.log("close callback called");
+    });
     if (typeof callback !== "undefined") {
       this.once("close", callback);
     }
@@ -1116,25 +1120,26 @@ export class ClientHttp2Stream extends Duplex {
         return;
       }
 
-      const state = this[kState];
-      tempDebug(
-        "state here, sent headers",
-        this.headersSent,
-        "has trailers",
-        !(state.flags & STREAM_FLAGS_HAS_TRAILERS),
-        "didRead",
-        state.didRead,
-        "readableFlowing",
-        this.readableFlowing,
-      );
-      if (
-        this.headersSent && !(state.flags & STREAM_FLAGS_HAS_TRAILERS) &&
-        !state.didRead && this.readableFlowing === null
-      ) {
-        setImmediate(() => {
-          this.close();
-        });
-      }
+      // TODO: this is only valid for server session. Remove?
+      // const state = this[kState];
+      // tempDebug(
+      //   "state here, sent headers",
+      //   this.headersSent,
+      //   "has trailers",
+      //   !(state.flags & STREAM_FLAGS_HAS_TRAILERS),
+      //   "didRead",
+      //   state.didRead,
+      //   "readableFlowing",
+      //   this.readableFlowing,
+      // );
+      // if (
+      //   this.headersSent && !(state.flags & STREAM_FLAGS_HAS_TRAILERS) &&
+      //   !state.didRead && this.readableFlowing === null
+      // ) {
+      //   setImmediate(() => {
+      //     this.close();
+      //   });
+      // }
     }
   }
 
@@ -1203,6 +1208,13 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
   }
 
   if (rstStreamStatus != kNoRstStream) {
+    console.log(
+      "closeStream",
+      !ending,
+      stream.writableFinished,
+      code !== constants.NGHTTP2_NO_ERROR,
+      rstStreamStatus === kForceRstStream,
+    );
     if (
       !ending || stream.writableFinished ||
       code !== constants.NGHTTP2_NO_ERROR || rstStreamStatus === kForceRstStream
@@ -1215,7 +1227,9 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
 }
 
 function finishCloseStream(stream, code) {
-  tempDebug(">>> finishCloseStream", stream, code);
+  // console.log(">>> finishCloseStream", stream, code);
+  tempDebug(">>> finishCloseStream", stream.readableEnded, code);
+  console.log("stream.pending", stream.pending);
   if (stream.pending) {
     stream.push(null);
     stream.once("ready", () => {
