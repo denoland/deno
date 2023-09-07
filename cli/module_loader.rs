@@ -145,6 +145,8 @@ impl ModuleLoadPreparer {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;

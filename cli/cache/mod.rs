@@ -1,17 +1,22 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::args::CacheSetting;
 use crate::errors::get_error_class_name;
+use crate::file_fetcher::FetchOptions;
 use crate::file_fetcher::FileFetcher;
 use crate::util::fs::atomic_write_file;
 
+use deno_ast::MediaType;
 use deno_core::futures;
 use deno_core::futures::FutureExt;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
 use deno_runtime::permissions::PermissionsContainer;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
@@ -96,6 +101,7 @@ pub struct FetchCacher {
   file_fetcher: Arc<FileFetcher>,
   file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   global_http_cache: Arc<GlobalHttpCache>,
+  parsed_source_cache: Arc<ParsedSourceCache>,
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
@@ -107,6 +113,7 @@ impl FetchCacher {
     file_fetcher: Arc<FileFetcher>,
     file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
     global_http_cache: Arc<GlobalHttpCache>,
+    parsed_source_cache: Arc<ParsedSourceCache>,
     permissions: PermissionsContainer,
     maybe_local_node_modules_url: Option<ModuleSpecifier>,
   ) -> Self {
@@ -115,6 +122,7 @@ impl FetchCacher {
       file_fetcher,
       file_header_overrides,
       global_http_cache,
+      parsed_source_cache,
       permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
@@ -153,7 +161,29 @@ impl FetchCacher {
   }
 }
 
+static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "DENO_REGISTRY_URL";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+});
+
 impl Loader for FetchCacher {
+  fn registry_url(&self) -> &Url {
+    &DENO_REGISTRY_URL
+  }
+
   fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
     if !self.cache_info_enabled {
       return None;
@@ -180,7 +210,10 @@ impl Loader for FetchCacher {
     &mut self,
     specifier: &ModuleSpecifier,
     _is_dynamic: bool,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
+    use deno_graph::source::CacheSetting as LoaderCacheSetting;
+
     if let Some(node_modules_url) = self.maybe_local_node_modules_url.as_ref() {
       // The specifier might be in a completely different symlinked tree than
       // what the resolved node_modules_url is in (ex. `/my-project-1/node_modules`
@@ -198,14 +231,31 @@ impl Loader for FetchCacher {
       }
     }
 
-    let permissions = self.permissions.clone();
     let file_fetcher = self.file_fetcher.clone();
     let file_header_overrides = self.file_header_overrides.clone();
+    let permissions = self.permissions.clone();
     let specifier = specifier.clone();
 
     async move {
+      let maybe_cache_setting = match cache_setting {
+        LoaderCacheSetting::Use => None,
+        LoaderCacheSetting::Reload => {
+          if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
+            return Err(deno_core::anyhow::anyhow!(
+              "Failed to resolve version constraint. Try running again without --cached-only"
+            ));
+          }
+          Some(CacheSetting::ReloadAll)
+        }
+        LoaderCacheSetting::Only => Some(CacheSetting::Only),
+      };
       file_fetcher
-        .fetch(&specifier, permissions)
+        .fetch_with_options(FetchOptions {
+          specifier: &specifier,
+          permissions,
+          maybe_accept: None,
+          maybe_cache_setting: maybe_cache_setting.as_ref(),
+        })
         .await
         .map(|file| {
           let maybe_headers =
@@ -235,5 +285,26 @@ impl Loader for FetchCacher {
         })
     }
     .boxed()
+  }
+
+  fn cache_module_info(
+    &mut self,
+    specifier: &ModuleSpecifier,
+    source: &str,
+    module_info: &deno_graph::ModuleInfo,
+  ) {
+    let result = self.parsed_source_cache.cache_module_info(
+      specifier,
+      MediaType::from_specifier(specifier),
+      source,
+      module_info,
+    );
+    if let Err(err) = result {
+      log::debug!(
+        "Error saving module cache info for {}. {:#}",
+        specifier,
+        err
+      );
+    }
   }
 }

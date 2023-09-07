@@ -1,6 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-// deno-lint-ignore-file camelcase
 /// <reference path="../../core/internal.d.ts" />
 
 const core = globalThis.Deno.core;
@@ -46,8 +45,7 @@ const {
   SymbolFor,
   TypedArrayPrototypeGetByteLength,
 } = primordials;
-const op_ws_check_permission_and_cancel_handle =
-  core.ops.op_ws_check_permission_and_cancel_handle;
+const { op_ws_check_permission_and_cancel_handle } = core.ops;
 const {
   op_ws_create,
   op_ws_close,
