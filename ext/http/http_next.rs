@@ -10,6 +10,7 @@ use crate::request_properties::HttpPropertyExtractor;
 use crate::response_body::Compression;
 use crate::response_body::ResponseBytes;
 use crate::response_body::ResponseBytesInner;
+use crate::slab::http_trace;
 use crate::slab::slab_drop;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
@@ -717,8 +718,10 @@ pub fn new_slab_future(
   let rx = slab_get(index).promise();
   SlabFuture(index, async move {
     if tx.send(index).await.is_ok() {
+      http_trace!(index, "SlabFuture await");
       // We only need to wait for completion if we aren't closed
       rx.await;
+      http_trace!(index, "SlabFuture complete");
     }
   })
 }
@@ -762,6 +765,7 @@ fn serve_http11_unconditional(
   async {
     match conn.or_abort(cancel).await {
       Err(mut conn) => {
+        println!("abort 1!");
         Pin::new(&mut conn).graceful_shutdown();
         conn.await
       }
@@ -780,6 +784,7 @@ fn serve_http2_unconditional(
   async {
     match conn.or_abort(cancel).await {
       Err(mut conn) => {
+        println!("abort 2!");
         Pin::new(&mut conn).graceful_shutdown();
         conn.await
       }

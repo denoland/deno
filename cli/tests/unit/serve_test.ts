@@ -254,29 +254,40 @@ Deno.test(
 Deno.test(
   { permissions: { net: true, write: true, read: true } },
   async function httpServerShutdownGracefulResources() {
-    let waitForAbort = deferred();
     const waitForRequest = deferred();
-    const { finished, shutdown, abort } = await makeServer(async (_req) => {
-      console.log(1);
+    const { finished, shutdown } = await makeServer(async (_req) => {
       waitForRequest.resolve(null);
-      console.log(2);
-      await waitForAbort;
-      console.log(3);
       await new Promise((r) => setTimeout(r, 10));
-      console.log(4);
       return new Response((await makeTempFile(1024 * 1024)).readable);
     });
 
     const f = fetch(`http://localhost:${servePort}`);
     await waitForRequest;
-    // const s = shutdown();
-    waitForAbort.resolve(null);
-    // await s;
-    console.log(5);
-    await (await f).text();
-    console.log(6);
+    assertEquals((await (await f).text()).length, 1048576);
     await shutdown();
-    console.log(7);
+    await finished;
+  },
+);
+
+// Ensure that resources don't leak during a graceful shutdown
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerShutdownGracefulResources2() {
+    const waitForAbort = deferred();
+    const waitForRequest = deferred();
+    const { finished, shutdown } = await makeServer(async (_req) => {
+      waitForRequest.resolve(null);
+      await waitForAbort;
+      await new Promise((r) => setTimeout(r, 10));
+      return new Response((await makeTempFile(1024 * 1024)).readable);
+    });
+
+    const f = fetch(`http://localhost:${servePort}`);
+    await waitForRequest;
+    const s = shutdown();
+    waitForAbort.resolve(null);
+    assertEquals((await (await f).text()).length, 1048576);
+    await s;
     await finished;
   },
 );

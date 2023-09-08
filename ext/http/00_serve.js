@@ -337,6 +337,7 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  closing;
 
   constructor(signal, args) {
     // The abort signal triggers a non-graceful shutdown
@@ -647,7 +648,7 @@ function serveHttpOn(context, callback) {
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
 
-    if (!context.closed) {
+    if (!context.closed && !context.closing) {
       context.closed = true;
       await op_http_close(rid, false);
       context.close();
@@ -657,10 +658,11 @@ function serveHttpOn(context, callback) {
   return {
     finished,
     async shutdown() {
-      if (!context.closed) {
+      if (!context.closed && !context.closing) {
         // Shut this HTTP server down gracefully
+        context.closing = true;
+        await op_http_close(context.serverRid, true);
         context.closed = true;
-        return await op_http_close(context.serverRid, true);
       } else {
         return PromiseResolve(null);
       }

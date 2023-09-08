@@ -67,14 +67,14 @@ pub struct HttpSlabRecord {
 }
 
 thread_local! {
-  static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
+  pub(crate) static SLAB: RefCell<Slab<HttpSlabRecord>> = const { RefCell::new(Slab::new()) };
 }
 
 macro_rules! http_trace {
   ($index:expr, $args:tt) => {
     #[cfg(feature = "__http_tracing")]
     {
-      let total = SLAB.with(|x| x.try_borrow().map(|x| x.len()));
+      let total = $crate::slab::SLAB.with(|x| x.try_borrow().map(|x| x.len()));
       if let Ok(total) = total {
         println!("HTTP id={} total={}: {}", $index, total, format!($args));
       } else {
@@ -83,6 +83,8 @@ macro_rules! http_trace {
     }
   };
 }
+
+pub(crate) use http_trace;
 
 /// Hold a lock on the slab table and a reference to one entry in the table.
 pub struct SlabEntry(
