@@ -252,17 +252,12 @@ pub struct TestingSettings {
   /// a workspace.
   #[serde(default)]
   pub args: Vec<String>,
-  /// Enable or disable the testing API if the client is capable of supporting
-  /// the testing API.
-  #[serde(default = "is_true")]
-  pub enable: bool,
 }
 
 impl Default for TestingSettings {
   fn default() -> Self {
     Self {
       args: vec!["--allow-all".to_string(), "--no-check".to_string()],
-      enable: true,
     }
   }
 }
@@ -971,7 +966,6 @@ mod tests {
         },
         testing: TestingSettings {
           args: vec!["--allow-all".to_string(), "--no-check".to_string()],
-          enable: true
         },
         tls_certificate: None,
         unsafely_ignore_certificate_errors: None,

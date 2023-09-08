@@ -308,9 +308,6 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
     },
-    testing: TestingSettings {
-      args: vec![],
-      enable: false,
-    },
+    testing: TestingSettings { args: vec![] },
   }
 }
