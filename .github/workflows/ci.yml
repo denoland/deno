@@ -434,14 +434,16 @@ jobs:
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') && startsWith(matrix.os, 'ubuntu'))
-        run: cargo test --locked 'lsp::'
+        run: cargo test --locked
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test debug (fast)
         if: |-
           !(github.event_name == 'pull_request' && matrix.skip_pr) && (matrix.job == 'test' && matrix.profile == 'debug' &&
           !startsWith(matrix.os, 'ubuntu'))
-        run: cargo test --locked 'lsp::'
+        run: |-
+          cargo test --locked --lib
+          cargo test --locked --test '*'
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test examples debug
@@ -457,7 +459,7 @@ jobs:
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           github.ref == 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/'))))
-        run: cargo test --release --locked 'lsp::'
+        run: cargo test --release --locked
       - name: Check deno binary
         if: '!(github.event_name == ''pull_request'' && matrix.skip_pr) && (matrix.profile == ''release'' && startsWith(github.ref, ''refs/tags/''))'
         run: target/release/deno eval "console.log(1+2)" | grep 3
