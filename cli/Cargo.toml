@@ -46,19 +46,19 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir = "=0.5.2"
+deno_cache_dir = "=0.6.0"
 deno_config = "=0.2.4"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = "=0.65.0"
-deno_emit = "=0.26.0"
-deno_graph = "=0.52.0"
-deno_lint = { version = "=0.50.2", features = ["docs"] }
+deno_doc = "=0.66.0"
+deno_emit = "=0.27.0"
+deno_graph = "=0.54.0"
+deno_lint = { version = "=0.51.0", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.13.2"
-eszip = "=0.50.1"
+eszip = "=0.51.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -77,7 +77,7 @@ data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.4"
 dprint-plugin-markdown = "=0.16.0"
-dprint-plugin-typescript = "=0.86.2"
+dprint-plugin-typescript = "=0.87.1"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"

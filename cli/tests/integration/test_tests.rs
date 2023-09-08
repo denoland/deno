@@ -91,6 +91,11 @@ itest!(test_with_malformed_config {
   output: "test/collect_with_malformed_config.out",
 });
 
+itest!(test_filtered_out_only {
+  args: "test --quiet --filter foo test/filtered_out_only.ts",
+  output: "test/filtered_out_only.out",
+});
+
 itest!(parallel_flag {
   args: "test test/short-pass.ts --parallel",
   exit_code: 0,
@@ -276,6 +281,12 @@ itest!(clear_timeout {
   args: "test test/clear_timeout.ts",
   exit_code: 0,
   output: "test/clear_timeout.out",
+});
+
+itest!(hide_empty_suites {
+  args: "test --filter none test/pass.ts",
+  exit_code: 0,
+  output: "test/hide_empty_suites.out",
 });
 
 itest!(finally_timeout {

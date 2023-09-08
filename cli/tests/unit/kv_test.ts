@@ -1283,6 +1283,21 @@ dbTest("total mutation size limit", async (db) => {
   );
 });
 
+dbTest("total key size limit", async (db) => {
+  const longString = new Array(1100).fill("a").join("");
+  const keys: Deno.KvKey[] = new Array(80).fill(0).map(() => [longString]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  await assertRejects(
+    () => atomic.commit(),
+    TypeError,
+    "total key size too large (max 81920 bytes)",
+  );
+});
+
 dbTest("keys must be arrays", async (db) => {
   await assertRejects(
     // @ts-expect-error invalid type

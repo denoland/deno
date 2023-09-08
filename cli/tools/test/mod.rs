@@ -343,6 +343,7 @@ struct TestSpecifiersOptions {
   concurrent_jobs: NonZeroUsize,
   fail_fast: Option<NonZeroUsize>,
   log_level: Option<log::Level>,
+  filter: bool,
   specifier: TestSpecifierOptions,
   reporter: TestReporterConfig,
   junit_path: Option<String>,
@@ -384,6 +385,7 @@ fn get_test_reporter(options: &TestSpecifiersOptions) -> Box<dyn TestReporter> {
     TestReporterConfig::Pretty => Box::new(PrettyTestReporter::new(
       parallel,
       options.log_level != Some(Level::Error),
+      options.filter,
     )),
     TestReporterConfig::Junit => {
       Box::new(JunitTestReporter::new("-".to_string()))
@@ -462,14 +464,14 @@ pub async fn test_specifier(
     std::mem::take(&mut state.borrow_mut::<ops::testing::TestContainer>().0)
   };
   let unfiltered = tests.len();
-  let (only, no_only): (Vec<_>, Vec<_>) =
-    tests.into_iter().partition(|(d, _)| d.only);
-  let used_only = !only.is_empty();
-  let tests = if used_only { only } else { no_only };
-  let mut tests = tests
+  let tests = tests
     .into_iter()
     .filter(|(d, _)| options.filter.includes(&d.name))
     .collect::<Vec<_>>();
+  let (only, no_only): (Vec<_>, Vec<_>) =
+    tests.into_iter().partition(|(d, _)| d.only);
+  let used_only = !only.is_empty();
+  let mut tests = if used_only { only } else { no_only };
   if let Some(seed) = options.shuffle {
     tests.shuffle(&mut SmallRng::seed_from_u64(seed));
   }
@@ -1144,6 +1146,7 @@ pub async fn run_tests(
       concurrent_jobs: test_options.concurrent_jobs,
       fail_fast: test_options.fail_fast,
       log_level,
+      filter: test_options.filter.is_some(),
       reporter: test_options.reporter,
       junit_path: test_options.junit_path,
       specifier: TestSpecifierOptions {
@@ -1276,6 +1279,7 @@ pub async fn run_tests_with_watch(
             concurrent_jobs: test_options.concurrent_jobs,
             fail_fast: test_options.fail_fast,
             log_level,
+            filter: test_options.filter.is_some(),
             reporter: test_options.reporter,
             junit_path: test_options.junit_path,
             specifier: TestSpecifierOptions {

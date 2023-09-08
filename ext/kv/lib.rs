@@ -39,7 +39,8 @@ const MAX_READ_RANGES: usize = 10;
 const MAX_READ_ENTRIES: usize = 1000;
 const MAX_CHECKS: usize = 10;
 const MAX_MUTATIONS: usize = 1000;
-const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 819200;
+const MAX_TOTAL_MUTATION_SIZE_BYTES: usize = 800 * 1024;
+const MAX_TOTAL_KEY_SIZE_BYTES: usize = 80 * 1024;
 
 struct UnstableChecker {
   pub unstable: bool,
@@ -640,6 +641,7 @@ where
     .with_context(|| "invalid enqueue")?;
 
   let mut total_payload_size = 0usize;
+  let mut total_key_size = 0usize;
 
   for key in checks
     .iter()
@@ -650,7 +652,9 @@ where
       return Err(type_error("key cannot be empty"));
     }
 
-    total_payload_size += check_write_key_size(key)?;
+    let checked_size = check_write_key_size(key)?;
+    total_payload_size += checked_size;
+    total_key_size += checked_size;
   }
 
   for value in mutations.iter().flat_map(|m| m.kind.value()) {
@@ -665,6 +669,13 @@ where
     return Err(type_error(format!(
       "total mutation size too large (max {} bytes)",
       MAX_TOTAL_MUTATION_SIZE_BYTES
+    )));
+  }
+
+  if total_key_size > MAX_TOTAL_KEY_SIZE_BYTES {
+    return Err(type_error(format!(
+      "total key size too large (max {} bytes)",
+      MAX_TOTAL_KEY_SIZE_BYTES
     )));
   }
 

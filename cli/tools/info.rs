@@ -645,7 +645,7 @@ impl<'a> GraphDisplayContext<'a> {
     match err {
       ModuleGraphError::ModuleError(err) => match err {
         ModuleError::InvalidTypeAssertion { .. } => {
-          self.build_error_msg(specifier, "(invalid import assertion)")
+          self.build_error_msg(specifier, "(invalid import attribute)")
         }
         ModuleError::LoadingErr(_, _, _) => {
           self.build_error_msg(specifier, "(loading error)")
@@ -653,14 +653,20 @@ impl<'a> GraphDisplayContext<'a> {
         ModuleError::ParseErr(_, _) => {
           self.build_error_msg(specifier, "(parsing error)")
         }
-        ModuleError::UnsupportedImportAssertionType { .. } => {
-          self.build_error_msg(specifier, "(unsupported import assertion)")
+        ModuleError::UnsupportedImportAttributeType { .. } => {
+          self.build_error_msg(specifier, "(unsupported import attribute)")
         }
         ModuleError::UnsupportedMediaType { .. } => {
           self.build_error_msg(specifier, "(unsupported)")
         }
         ModuleError::Missing(_, _) | ModuleError::MissingDynamic(_, _) => {
           self.build_error_msg(specifier, "(missing)")
+        }
+        ModuleError::UnknownPackage { .. } => {
+          self.build_error_msg(specifier, "(unknown package)")
+        }
+        ModuleError::UnknownPackageReq { .. } => {
+          self.build_error_msg(specifier, "(unknown package constraint)")
         }
       },
       ModuleGraphError::ResolutionError(_) => {
