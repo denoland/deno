@@ -147,6 +147,7 @@ class Kv {
       checks,
       mutations,
       [],
+      Date.now(),
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
     return { ok: true, versionstamp };
@@ -164,6 +165,7 @@ class Kv {
       checks,
       mutations,
       [],
+      Date.now(),
     );
     if (!result) throw new TypeError("Failed to set value");
   }
@@ -245,6 +247,7 @@ class Kv {
       [],
       [],
       enqueues,
+      Date.now(),
     );
     if (versionstamp === null) throw new TypeError("Failed to enqueue value");
     return { ok: true, versionstamp };
