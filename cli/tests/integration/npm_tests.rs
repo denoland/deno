@@ -1261,7 +1261,7 @@ fn lock_file_missing_top_level_package() {
       "\n",
       "Caused by:\n",
       "    0: The lockfile is corrupt. You can recreate it with --lock-write\n",
-      "    1: Could not find referenced package 'cowsay@1.5.0' in the list of packages.\n"
+      "    1: Could not find 'cowsay@1.5.0' in the list of packages.\n"
     )
   );
 }
@@ -1280,13 +1280,12 @@ fn lock_file_lock_write() {
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
-  "version": "2",
-  "remote": {},
-  "npm": {
+  "version": "3",
+  "packages": {
     "specifiers": {
-      "cowsay@1.5.0": "cowsay@1.5.0"
+      "npm:cowsay@1.5.0": "npm:cowsay@1.5.0"
     },
-    "packages": {
+    "npm": {
       "ansi-regex@3.0.1": {
         "integrity": "sha512-+O9Jct8wf++lXxxFc4hc8LsjaSq0HFzzL7cVsw8pRDIPdjKD2mT4ytDZlLuSBZ4cLKZFXIrMGO7DbQCtMJJMKw==",
         "dependencies": {}
@@ -1472,7 +1471,8 @@ fn lock_file_lock_write() {
         }
       }
     }
-  }
+  },
+  "remote": {}
 }
 "#;
   temp_dir.write("deno.lock", lock_file_content);
@@ -1514,17 +1514,17 @@ fn auto_discover_lock_file() {
 
   // write a lock file with borked integrity
   let lock_file_content = r#"{
-    "version": "2",
-    "remote": {},
-    "npm": {
-      "specifiers": { "@denotest/bin": "@denotest/bin@1.0.0" },
-      "packages": {
+    "version": "3",
+    "packages": {
+      "specifiers": { "npm:@denotest/bin": "npm:@denotest/bin@1.0.0" },
+      "npm": {
         "@denotest/bin@1.0.0": {
           "integrity": "sha512-foobar",
           "dependencies": {}
         }
       }
-    }
+    },
+    "remote": {}
   }"#;
   temp_dir.write("deno.lock", lock_file_content);
 

@@ -993,7 +993,7 @@ fn lock_redirects() {
     .run()
     .skip_output_check();
   let initial_lockfile_text = r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
   },
@@ -1012,7 +1012,7 @@ fn lock_redirects() {
 
   // now try changing where the redirect occurs in the lockfile
   temp_dir.write("deno.lock", r#"{
-  "version": "2",
+  "version": "3",
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
@@ -1044,24 +1044,24 @@ fn lock_redirects() {
   util::assertions::assert_wildcard_match(
     &temp_dir.read_to_string("deno.lock"),
     r#"{
-  "version": "2",
+  "version": "3",
+  "packages": {
+    "specifiers": {
+      "npm:@denotest/esm-basic": "npm:@denotest/esm-basic@1.0.0"
+    },
+    "npm": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  },
   "redirects": {
     "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
   },
   "remote": {
     "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
     "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
-  },
-  "npm": {
-    "specifiers": {
-      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
-    },
-    "packages": {
-      "@denotest/esm-basic@1.0.0": {
-        "integrity": "sha512-[WILDCARD]",
-        "dependencies": {}
-      }
-    }
   }
 }
 "#,
@@ -4515,9 +4515,16 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
     console.write_line(
       r#"Deno.permissions.request({ name: "env", variable: "\rDo you like ice cream? y/n" });"#
     );
-    console.expect(
-      "┌ ⚠️  Deno requests env access to \"Do you like ice cream? y/n\".",
-    )
+    // will be uppercase on windows
+    let env_name = if cfg!(windows) {
+      "DO YOU LIKE ICE CREAM? Y/N"
+    } else {
+      "Do you like ice cream? y/n"
+    };
+    console.expect(format!(
+      "┌ ⚠️  Deno requests env access to \"{}\".",
+      env_name
+    ))
   });
 
   util::with_pty(&["repl"], |mut console| {
