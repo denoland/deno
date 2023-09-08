@@ -3634,7 +3634,6 @@ var require_readable = __commonJS({
       debug("endReadable", state.endEmitted);
       if (!state.endEmitted) {
         state.ended = true;
-        console.log("endReadableNt", new Error());
         process.nextTick(endReadableNT, state, stream);
       }
     }

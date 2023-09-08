@@ -1141,9 +1141,9 @@ export class ClientHttp2Stream extends Duplex {
     }
   }
 
-  setTimeout(_msecs: number, _callback?: () => void) {
-    // setStreamTimeout(this, msecs, callback);
-    // notImplemented("ClientHttp2Stream.setTimeout");
+  setTimeout(msecs: number, callback?: () => void) {
+    // TODO: fix this
+    setStreamTimeout.call(this, msecs, callback);
   }
 }
 
@@ -1187,7 +1187,6 @@ const kSubmitRstStream = 1;
 const kForceRstStream = 2;
 
 function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
-  console.log(">>>!!@#!@# close stram!!!!");
   const state = stream[kState];
   state.flags |= STREAM_FLAGS_CLOSED;
   state.rstCode = code;
