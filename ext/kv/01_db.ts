@@ -134,11 +134,8 @@ class Kv {
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
     const mutations = [
-      [key, "set", value, expireAt],
+      [key, "set", value, options?.expireIn],
     ];
 
     const versionstamp = await core.opAsync(
@@ -147,7 +144,6 @@ class Kv {
       checks,
       mutations,
       [],
-      Date.now(),
     );
     if (versionstamp === null) throw new TypeError("Failed to set value");
     return { ok: true, versionstamp };
@@ -165,7 +161,6 @@ class Kv {
       checks,
       mutations,
       [],
-      Date.now(),
     );
     if (!result) throw new TypeError("Failed to set value");
   }
@@ -247,7 +242,6 @@ class Kv {
       [],
       [],
       enqueues,
-      Date.now(),
     );
     if (versionstamp === null) throw new TypeError("Failed to enqueue value");
     return { ok: true, versionstamp };
@@ -424,14 +418,12 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
-    const currentTimestamp = Date.now();
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
       this.#mutations,
       this.#enqueues,
-      currentTimestamp,
     );
     if (versionstamp === null) return { ok: false };
     return { ok: true, versionstamp };

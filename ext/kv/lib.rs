@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
@@ -603,11 +604,11 @@ async fn op_kv_atomic_write<DBH>(
   checks: Vec<V8KvCheck>,
   mutations: Vec<V8KvMutation>,
   enqueues: Vec<V8Enqueue>,
-  current_timestamp: u64,
 ) -> Result<Option<String>, AnyError>
 where
   DBH: DatabaseHandler + 'static,
 {
+  let current_timestamp = Utc::now().timestamp_millis() as u64;
   let db = {
     let state = state.borrow();
     let resource =
