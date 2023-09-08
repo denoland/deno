@@ -262,9 +262,9 @@ Deno.test(
       console.log(2);
       await waitForAbort;
       console.log(3);
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
       console.log(4);
-      return new Response((await makeTempFile(1024*1024)).readable);
+      return new Response((await makeTempFile(1024 * 1024)).readable);
     });
 
     const f = fetch(`http://localhost:${servePort}`);

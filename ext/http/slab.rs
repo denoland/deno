@@ -20,21 +20,9 @@ pub type Request = hyper1::Request<Incoming>;
 pub type Response = hyper1::Response<ResponseBytes>;
 pub type SlabId = u32;
 
-#[derive(Default)]
+#[repr(transparent)]
+#[derive(Clone, Default)]
 pub struct RefCount(pub Rc<()>);
-
-impl Clone for RefCount {
-  fn clone(&self) -> Self {
-    println!("RefCount Clone\n{}\n", std::backtrace::Backtrace::force_capture());
-    Self(self.0.clone())
-  }
-}
-
-impl Drop for RefCount {
-  fn drop(&mut self) {
-    println!("RefCount Drop\n{}\n", std::backtrace::Backtrace::force_capture());
-  }
-}
 
 enum RequestBodyState {
   Incoming(Incoming),

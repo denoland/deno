@@ -14,14 +14,13 @@ use crate::slab::slab_drop;
 use crate::slab::slab_get;
 use crate::slab::slab_init;
 use crate::slab::slab_insert;
-use crate::slab::RefCount;
 use crate::slab::HttpRequestBodyAutocloser;
+use crate::slab::RefCount;
 use crate::slab::SlabId;
 use crate::websocket_upgrade::WebSocketUpgrade;
 use crate::LocalExecutor;
 use cache_control::CacheControl;
 use deno_core::error::AnyError;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op;
 use deno_core::op2;
@@ -753,39 +752,40 @@ fn serve_http11_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), AnyError>> + 'static {
-  let mut conn = http1::Builder::new()
+) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+  let conn = http1::Builder::new()
     .keep_alive(true)
     .writev(*USE_WRITEV)
     .serve_connection(TokioIo::new(io), svc)
     .with_upgrades();
 
-  poll_fn(move |cx| {
-    if cancel.is_canceled() {
-      println!("cancel!");
-      // Should be safe to call repeatedly
-      Pin::new(&mut conn).graceful_shutdown();
+  async {
+    match conn.or_abort(cancel).await {
+      Err(mut conn) => {
+        Pin::new(&mut conn).graceful_shutdown();
+        conn.await
+      }
+      Ok(res) => res,
     }
-    conn.try_poll_unpin(cx)
-  })
-  .map_err(AnyError::from)
+  }
 }
 
 fn serve_http2_unconditional(
   io: impl HttpServeStream,
   svc: impl HttpService<Incoming, ResBody = ResponseBytes> + 'static,
   cancel: Rc<CancelHandle>,
-) -> impl Future<Output = Result<(), AnyError>> + 'static {
-  let mut conn =
+) -> impl Future<Output = Result<(), hyper1::Error>> + 'static {
+  let conn =
     http2::Builder::new(LocalExecutor).serve_connection(TokioIo::new(io), svc);
-  poll_fn(move |cx| {
-    if cancel.is_canceled() {
-      // Should be safe to call repeatedly
-      Pin::new(&mut conn).graceful_shutdown();
+  async {
+    match conn.or_abort(cancel).await {
+      Err(mut conn) => {
+        Pin::new(&mut conn).graceful_shutdown();
+        conn.await
+      }
+      Ok(res) => res,
     }
-    conn.try_poll_unpin(cx)
-  })
-  .map_err(AnyError::from)
+  }
 }
 
 async fn serve_http2_autodetect(
@@ -796,9 +796,13 @@ async fn serve_http2_autodetect(
   let prefix = NetworkStreamPrefixCheck::new(io, HTTP2_PREFIX);
   let (matches, io) = prefix.match_prefix().await?;
   if matches {
-    serve_http2_unconditional(io, svc, cancel).await
+    serve_http2_unconditional(io, svc, cancel)
+      .await
+      .map_err(|e| e.into())
   } else {
-    serve_http11_unconditional(io, svc, cancel).await
+    serve_http11_unconditional(io, svc, cancel)
+      .await
+      .map_err(|e| e.into())
   }
 }
 
@@ -824,9 +828,13 @@ fn serve_https(
       // based on the prefix bytes
       let handshake = io.get_ref().1.alpn_protocol();
       if handshake == Some(TLS_ALPN_HTTP_2) {
-        serve_http2_unconditional(io, svc, listen_cancel_handle).await
+        serve_http2_unconditional(io, svc, listen_cancel_handle)
+          .await
+          .map_err(|e| e.into())
       } else if handshake == Some(TLS_ALPN_HTTP_11) {
-        serve_http11_unconditional(io, svc, listen_cancel_handle).await
+        serve_http11_unconditional(io, svc, listen_cancel_handle)
+          .await
+          .map_err(|e| e.into())
       } else {
         serve_http2_autodetect(io, svc, listen_cancel_handle).await
       }
@@ -1154,14 +1162,12 @@ pub async fn op_http_close(
 
   // Async spin on the refcount while we wait for everything to drain
   while Rc::strong_count(&join_handle.refcount.0) > 1 {
-    println!("{}", Rc::strong_count(&join_handle.refcount.0));
     tokio::time::sleep(Duration::from_millis(10)).await;
   }
 
   let mut join_handle = RcRef::map(&join_handle, |this| &this.join_handle)
     .borrow_mut()
     .await;
-  println!("wait");
   if let Some(join_handle) = join_handle.take() {
     join_handle.await??;
   }
