@@ -573,7 +573,11 @@ fn collect_coverages(
   .ignore_node_modules()
   .ignore_vendor_folder()
   .add_ignore_paths(&files.ignore)
-  .collect_files(&files.include)?;
+  .collect_files(if files.include.is_empty() {
+    None
+  } else {
+    Some(&files.include)
+  })?;
 
   for file_path in file_paths {
     let json = fs::read_to_string(file_path.as_path())?;
