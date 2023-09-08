@@ -639,6 +639,7 @@ interface ImportMeta {
  */
 interface ImportCallOptions {
     assert?: ImportAssertions;
+    with?: ImportAssertions;
 }
 
 /**

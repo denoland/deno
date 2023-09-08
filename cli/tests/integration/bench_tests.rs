@@ -187,7 +187,7 @@ itest!(bench_explicit_start_end {
   exit_code: 1,
 });
 
-itest!(bench_explicit_start_end_low_precision {
+itest_flaky!(bench_explicit_start_end_low_precision {
   args: "bench --quiet -A bench/explicit_start_and_end_low_precision.ts",
   output: "bench/explicit_start_and_end_low_precision.out",
 });

@@ -870,6 +870,7 @@ mod tests {
       &mut self,
       specifier: &ModuleSpecifier,
       _is_dynamic: bool,
+      _cache_setting: deno_graph::source::CacheSetting,
     ) -> deno_graph::source::LoadFuture {
       let specifier_text = specifier
         .to_string()

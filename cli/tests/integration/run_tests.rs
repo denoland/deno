@@ -3,6 +3,7 @@
 use deno_core::serde_json::json;
 use deno_core::url;
 use deno_runtime::deno_fetch::reqwest;
+use pretty_assertions::assert_eq;
 use std::io::Read;
 use std::io::Write;
 use std::process::Command;
@@ -970,6 +971,100 @@ fn lock_no_declaration_files() {
     context
       .testdata_path()
       .join("lockfile/no_dts/deno.lock.out"),
+  );
+}
+
+#[test]
+fn lock_redirects() {
+  let context = TestContextBuilder::new()
+    .use_temp_cwd()
+    .use_http_server()
+    .add_npm_env_vars()
+    .build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("deno.json", "{}"); // cause a lockfile to be created
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';",
+  );
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .skip_output_check();
+  let initial_lockfile_text = r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/run/001_hello.js"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#;
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+  context
+    .new_command()
+    .args("run main.ts")
+    .run()
+    .assert_matches_text("Hello World\n");
+  assert_eq!(temp_dir.read_to_string("deno.lock"), initial_lockfile_text);
+
+  // now try changing where the redirect occurs in the lockfile
+  temp_dir.write("deno.lock", r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  }
+}
+"#);
+
+  // also, add some npm dependency to ensure it doesn't end up in
+  // the redirects as they're currently stored separately
+  temp_dir.write(
+    "main.ts",
+    "import 'http://localhost:4546/run/001_hello.js';\n import 'npm:@denotest/esm-basic';\n",
+  );
+
+  // it should use the echo script instead
+  context
+    .new_command()
+    .args("run main.ts Hi there")
+    .run()
+    .assert_matches_text(
+      concat!(
+        "Download http://localhost:4545/echo.ts\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+        "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
+        "Hi, there",
+    ));
+  util::assertions::assert_wildcard_match(
+    &temp_dir.read_to_string("deno.lock"),
+    r#"{
+  "version": "2",
+  "redirects": {
+    "http://localhost:4546/run/001_hello.js": "http://localhost:4545/echo.ts"
+  },
+  "remote": {
+    "http://localhost:4545/echo.ts": "829eb4d67015a695d70b2a33c78b631b29eea1dbac491a6bfcf394af2a2671c2",
+    "http://localhost:4545/run/001_hello.js": "c479db5ea26965387423ca438bb977d0b4788d5901efcef52f69871e4c1048c5"
+  },
+  "npm": {
+    "specifiers": {
+      "@denotest/esm-basic": "@denotest/esm-basic@1.0.0"
+    },
+    "packages": {
+      "@denotest/esm-basic@1.0.0": {
+        "integrity": "sha512-[WILDCARD]",
+        "dependencies": {}
+      }
+    }
+  }
+}
+"#,
   );
 }
 
@@ -1971,14 +2066,14 @@ itest!(shebang_swc {
 });
 
 itest!(shebang_with_json_imports_tsc {
-  args: "run --quiet import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
 itest!(shebang_with_json_imports_swc {
-  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet --no-check import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -2955,36 +3050,36 @@ itest!(issue_13562 {
   output: "run/issue13562.ts.out",
 });
 
-itest!(import_assertions_static_import {
-  args: "run --allow-read import_assertions/static_import.ts",
-  output: "import_assertions/static_import.out",
+itest!(import_attributes_static_import {
+  args: "run --allow-read import_attributes/static_import.ts",
+  output: "import_attributes/static_import.out",
 });
 
-itest!(import_assertions_static_export {
-  args: "run --allow-read import_assertions/static_export.ts",
-  output: "import_assertions/static_export.out",
+itest!(import_attributes_static_export {
+  args: "run --allow-read import_attributes/static_export.ts",
+  output: "import_attributes/static_export.out",
 });
 
-itest!(import_assertions_static_error {
-  args: "run --allow-read import_assertions/static_error.ts",
-  output: "import_assertions/static_error.out",
+itest!(import_attributes_static_error {
+  args: "run --allow-read import_attributes/static_error.ts",
+  output: "import_attributes/static_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_dynamic_import {
-  args: "run --allow-read import_assertions/dynamic_import.ts",
-  output: "import_assertions/dynamic_import.out",
+itest!(import_attributes_dynamic_import {
+  args: "run --allow-read --check import_attributes/dynamic_import.ts",
+  output: "import_attributes/dynamic_import.out",
 });
 
-itest!(import_assertions_dynamic_error {
-  args: "run --allow-read import_assertions/dynamic_error.ts",
-  output: "import_assertions/dynamic_error.out",
+itest!(import_attributes_dynamic_error {
+  args: "run --allow-read import_attributes/dynamic_error.ts",
+  output: "import_attributes/dynamic_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_type_check {
-  args: "run --allow-read --check import_assertions/type_check.ts",
-  output: "import_assertions/type_check.out",
+itest!(import_attributes_type_check {
+  args: "run --allow-read --check import_attributes/type_check.ts",
+  output: "import_attributes/type_check.out",
   exit_code: 1,
 });
 
@@ -3520,6 +3615,11 @@ itest!(spawn_kill_permissions {
 itest!(followup_dyn_import_resolved {
   args: "run --unstable --allow-read run/followup_dyn_import_resolves/main.ts",
   output: "run/followup_dyn_import_resolves/main.ts.out",
+});
+
+itest!(allow_run_allowlist_resolution {
+  args: "run --quiet --unstable -A allow_run_allowlist_resolution.ts",
+  output: "allow_run_allowlist_resolution.ts.out",
 });
 
 itest!(unhandled_rejection {

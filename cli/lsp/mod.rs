@@ -22,6 +22,7 @@ mod documents;
 pub mod language_server;
 mod logging;
 mod lsp_custom;
+mod npm;
 mod parent_process_checker;
 mod path_to_regex;
 mod performance;
