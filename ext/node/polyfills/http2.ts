@@ -1046,9 +1046,6 @@ export class ClientHttp2Stream extends Duplex {
     if (this.closed) {
       return;
     }
-    this.once("close", () => {
-      console.log("close callback called");
-    });
     if (typeof callback !== "undefined") {
       this.once("close", callback);
     }
@@ -1075,6 +1072,7 @@ export class ClientHttp2Stream extends Duplex {
       }
     }
 
+    console.log("_destroy", this.closed);
     if (!this.closed) {
       // TODO(bartlomieju): this not handle `socket handle`
       closeStream(this, code, kNoRstStream);
@@ -1189,6 +1187,7 @@ const kSubmitRstStream = 1;
 const kForceRstStream = 2;
 
 function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
+  console.log(">>>!!@#!@# close stram!!!!");
   const state = stream[kState];
   state.flags |= STREAM_FLAGS_CLOSED;
   state.rstCode = code;
@@ -1245,6 +1244,7 @@ function finishCloseStream(stream, code) {
         );
         core.tryClose(stream.__rid);
         core.tryClose(stream.__response.bodyRid);
+        stream.emit("close");
       });
     });
   } else {
@@ -1260,6 +1260,7 @@ function finishCloseStream(stream, code) {
       );
       core.tryClose(stream.__rid);
       core.tryClose(stream.__response.bodyRid);
+      stream.emit("close");
     }).catch(() => {
       tempDebug(
         ">>> finishCloseStream close2 catch",
@@ -1268,6 +1269,7 @@ function finishCloseStream(stream, code) {
       );
       core.tryClose(stream.__rid);
       core.tryClose(stream.__response.bodyRid);
+      stream.emit("close");
     });
   }
 }
