@@ -421,27 +421,14 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
-    let mutations = this.#mutations;
-
-    // Translate expireIn to expireAt, without overwriting `this.#mutations`
-    if (mutations.findIndex((x) => x[3] !== undefined) !== -1) {
-      const now = Date.now();
-      mutations = mutations.map(([key, type, value, expireIn]) => {
-        return [
-          key,
-          type,
-          value,
-          expireIn !== undefined ? now + expireIn : undefined,
-        ];
-      });
-    }
-
+    const currentTimestamp = Date.now();
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
-      mutations,
+      this.#mutations,
       this.#enqueues,
+      currentTimestamp,
     );
     if (versionstamp === null) return { ok: false };
     return { ok: true, versionstamp };
