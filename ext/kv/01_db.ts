@@ -323,11 +323,9 @@ class AtomicOperation {
   #checks: [Deno.KvKey, string | null][] = [];
   #mutations: [Deno.KvKey, string, RawValue | null, number | undefined][] = [];
   #enqueues: [Uint8Array, number, Deno.KvKey[], number[] | null][] = [];
-  #startTime: number;
 
   constructor(rid: number) {
     this.#rid = rid;
-    this.#startTime = Date.now();
   }
 
   check(...checks: Deno.AtomicCheck[]): this {
@@ -342,7 +340,7 @@ class AtomicOperation {
       const key = mutation.key;
       let type: string;
       let value: RawValue | null;
-      let expireAt: number | undefined = undefined;
+      let expireIn: number | undefined = undefined;
       switch (mutation.type) {
         case "delete":
           type = "delete";
@@ -352,7 +350,7 @@ class AtomicOperation {
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
-            expireAt = this.#startTime + mutation.expireIn;
+            expireIn = mutation.expireIn;
           }
           /* falls through */
         case "sum":
@@ -367,7 +365,7 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value, expireAt]);
+      this.#mutations.push([key, type, value, expireIn]);
     }
     return this;
   }
@@ -392,10 +390,12 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
-    const expireAt = typeof options?.expireIn === "number"
-      ? this.#startTime + options.expireIn
-      : undefined;
-    this.#mutations.push([key, "set", serializeValue(value), expireAt]);
+    this.#mutations.push([
+      key,
+      "set",
+      serializeValue(value),
+      options?.expireIn,
+    ]);
     return this;
   }
 
@@ -421,11 +421,26 @@ class AtomicOperation {
   }
 
   async commit(): Promise<Deno.KvCommitResult | Deno.KvCommitError> {
+    let mutations = this.#mutations;
+
+    // Translate expireIn to expireAt, without overwriting `this.#mutations`
+    if (mutations.findIndex((x) => x[3] !== undefined) !== -1) {
+      const now = Date.now();
+      mutations = mutations.map(([key, type, value, expireIn]) => {
+        return [
+          key,
+          type,
+          value,
+          expireIn !== undefined ? now + expireIn : undefined,
+        ];
+      });
+    }
+
     const versionstamp = await core.opAsync(
       "op_kv_atomic_write",
       this.#rid,
       this.#checks,
-      this.#mutations,
+      mutations,
       this.#enqueues,
     );
     if (versionstamp === null) return { ok: false };
