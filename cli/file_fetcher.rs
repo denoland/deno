@@ -163,6 +163,13 @@ pub fn map_content_type(
   }
 }
 
+pub struct FetchOptions<'a> {
+  pub specifier: &'a ModuleSpecifier,
+  pub permissions: PermissionsContainer,
+  pub maybe_accept: Option<&'a str>,
+  pub maybe_cache_setting: Option<&'a CacheSetting>,
+}
+
 /// A structure for resolving, fetching and caching source files.
 #[derive(Debug, Clone)]
 pub struct FileFetcher {
@@ -197,6 +204,10 @@ impl FileFetcher {
       download_log_level: log::Level::Info,
       progress_bar,
     }
+  }
+
+  pub fn cache_setting(&self) -> &CacheSetting {
+    &self.cache_setting
   }
 
   /// Sets the log level to use when outputting the download message.
@@ -328,6 +339,7 @@ impl FileFetcher {
     permissions: PermissionsContainer,
     redirect_limit: i64,
     maybe_accept: Option<String>,
+    cache_setting: &CacheSetting,
   ) -> Pin<Box<dyn Future<Output = Result<File, AnyError>> + Send>> {
     debug!("FileFetcher::fetch_remote() - specifier: {}", specifier);
     if redirect_limit < 0 {
@@ -339,7 +351,7 @@ impl FileFetcher {
       return futures::future::err(err).boxed();
     }
 
-    if self.should_use_cache(specifier) {
+    if self.should_use_cache(specifier, cache_setting) {
       match self.fetch_cached(specifier, redirect_limit) {
         Ok(Some(file)) => {
           return futures::future::ok(file).boxed();
@@ -351,7 +363,7 @@ impl FileFetcher {
       }
     }
 
-    if self.cache_setting == CacheSetting::Only {
+    if *cache_setting == CacheSetting::Only {
       return futures::future::err(custom_error(
         "NotCached",
         format!(
@@ -383,6 +395,7 @@ impl FileFetcher {
     let specifier = specifier.clone();
     let client = self.http_client.clone();
     let file_fetcher = self.clone();
+    let cache_setting = cache_setting.clone();
     // A single pass of fetch either yields code or yields a redirect, server
     // error causes a single retry to avoid crashing hard on intermittent failures.
 
@@ -432,6 +445,7 @@ impl FileFetcher {
                 permissions,
                 redirect_limit - 1,
                 maybe_accept,
+                &cache_setting,
               )
               .await
           }
@@ -468,8 +482,12 @@ impl FileFetcher {
   }
 
   /// Returns if the cache should be used for a given specifier.
-  fn should_use_cache(&self, specifier: &ModuleSpecifier) -> bool {
-    match &self.cache_setting {
+  fn should_use_cache(
+    &self,
+    specifier: &ModuleSpecifier,
+    cache_setting: &CacheSetting,
+  ) -> bool {
+    match cache_setting {
       CacheSetting::ReloadAll => false,
       CacheSetting::Use | CacheSetting::Only => true,
       CacheSetting::RespectHeaders => {
@@ -514,18 +532,24 @@ impl FileFetcher {
     specifier: &ModuleSpecifier,
     permissions: PermissionsContainer,
   ) -> Result<File, AnyError> {
-    debug!("FileFetcher::fetch() - specifier: {}", specifier);
-    self.fetch_with_accept(specifier, permissions, None).await
+    self
+      .fetch_with_options(FetchOptions {
+        specifier,
+        permissions,
+        maybe_accept: None,
+        maybe_cache_setting: None,
+      })
+      .await
   }
 
-  pub async fn fetch_with_accept(
+  pub async fn fetch_with_options(
     &self,
-    specifier: &ModuleSpecifier,
-    permissions: PermissionsContainer,
-    maybe_accept: Option<&str>,
+    options: FetchOptions<'_>,
   ) -> Result<File, AnyError> {
+    let specifier = options.specifier;
+    debug!("FileFetcher::fetch() - specifier: {}", specifier);
     let scheme = get_validated_scheme(specifier)?;
-    permissions.check_specifier(specifier)?;
+    options.permissions.check_specifier(specifier)?;
     if let Some(file) = self.cache.get(specifier) {
       Ok(file)
     } else if scheme == "file" {
@@ -545,9 +569,10 @@ impl FileFetcher {
       let result = self
         .fetch_remote(
           specifier,
-          permissions,
+          options.permissions,
           10,
-          maybe_accept.map(String::from),
+          options.maybe_accept.map(String::from),
+          options.maybe_cache_setting.unwrap_or(&self.cache_setting),
         )
         .await;
       if let Ok(file) = &result {
@@ -764,7 +789,13 @@ mod tests {
     let _http_server_guard = test_util::http_server();
     let (file_fetcher, _) = setup(CacheSetting::ReloadAll, None);
     let result: Result<File, AnyError> = file_fetcher
-      .fetch_remote(specifier, PermissionsContainer::allow_all(), 1, None)
+      .fetch_remote(
+        specifier,
+        PermissionsContainer::allow_all(),
+        1,
+        None,
+        &file_fetcher.cache_setting,
+      )
       .await;
     let cache_key = file_fetcher.http_cache.cache_item_key(specifier).unwrap();
     (
@@ -1452,12 +1483,24 @@ mod tests {
         .unwrap();
 
     let result = file_fetcher
-      .fetch_remote(&specifier, PermissionsContainer::allow_all(), 2, None)
+      .fetch_remote(
+        &specifier,
+        PermissionsContainer::allow_all(),
+        2,
+        None,
+        &file_fetcher.cache_setting,
+      )
       .await;
     assert!(result.is_ok());
 
     let result = file_fetcher
-      .fetch_remote(&specifier, PermissionsContainer::allow_all(), 1, None)
+      .fetch_remote(
+        &specifier,
+        PermissionsContainer::allow_all(),
+        1,
+        None,
+        &file_fetcher.cache_setting,
+      )
       .await;
     assert!(result.is_err());
 

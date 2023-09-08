@@ -352,21 +352,56 @@ impl ModuleGraphBuilder {
       }
     }
 
+    // todo(dsherret): uncomment when adding deno: specifier support
+    // add the deno specifiers to the graph if it's the first time executing
+    // if graph.deno_specifiers.is_empty() {
+    //   if let Some(lockfile) = &self.lockfile {
+    //     let lockfile = lockfile.lock();
+    //     for (key, value) in &lockfile.content.packages.specifiers {
+    //       if let Some(key) = key
+    //         .strip_prefix("deno:")
+    //         .and_then(|key| PackageReq::from_str(key))
+    //       {
+    //         if let Ok(value) = value
+    //           .strip_prefix("deno:")
+    //           .and_then(|value| PackageNv::from_str(value))
+    //         {
+    //           graph.deno_specifiers.add(key, value);
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+
     graph.build(roots, loader, options).await;
 
     // add the redirects in the graph to the lockfile
     if !graph.redirects.is_empty() {
       if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph
-          .redirects
-          .iter()
-          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"));
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
         let mut lockfile = lockfile.lock();
         for (from, to) in graph_redirects {
           lockfile.insert_redirect(from.to_string(), to.to_string());
         }
       }
     }
+
+    // todo(dsherret): uncomment when adding support for deno specifiers
+    // add the deno specifiers in the graph to the lockfile
+    // if !graph.deno_specifiers.is_empty() {
+    //   if let Some(lockfile) = &self.lockfile {
+    //     let mappings = graph.deno_specifiers.mappings();
+    //     let mut lockfile = lockfile.lock();
+    //     for (from, to) in mappings {
+    //       lockfile.insert_package_specifier(
+    //         format!("deno:{}", from),
+    //         format!("deno:{}", to),
+    //       );
+    //     }
+    //   }
+    // }
 
     // ensure that the top level package.json is installed if a
     // specifier was matched in the package.json

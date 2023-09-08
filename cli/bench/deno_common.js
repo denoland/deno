@@ -7,7 +7,6 @@ Deno.bench("date_now", { n: 5e5 }, () => {
 
 // Fast API calls
 {
-  // deno-lint-ignore camelcase
   const { op_add } = Deno[Deno.internal].core.ops;
   // deno-lint-ignore no-inner-declarations
   function add(a, b) {
@@ -21,7 +20,6 @@ Deno.bench("date_now", { n: 5e5 }, () => {
   Deno.bench("add_js", () => addJS(1, 2));
 }
 
-// deno-lint-ignore camelcase
 const { op_void_sync } = Deno[Deno.internal].core.ops;
 function sync() {
   return op_void_sync();

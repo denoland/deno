@@ -2066,14 +2066,14 @@ itest!(shebang_swc {
 });
 
 itest!(shebang_with_json_imports_tsc {
-  args: "run --quiet import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
 itest!(shebang_with_json_imports_swc {
-  args: "run --quiet --no-check import_assertions/json_with_shebang.ts",
-  output: "import_assertions/json_with_shebang.ts.out",
+  args: "run --quiet --no-check import_attributes/json_with_shebang.ts",
+  output: "import_attributes/json_with_shebang.ts.out",
   exit_code: 1,
 });
 
@@ -3050,36 +3050,36 @@ itest!(issue_13562 {
   output: "run/issue13562.ts.out",
 });
 
-itest!(import_assertions_static_import {
-  args: "run --allow-read import_assertions/static_import.ts",
-  output: "import_assertions/static_import.out",
+itest!(import_attributes_static_import {
+  args: "run --allow-read import_attributes/static_import.ts",
+  output: "import_attributes/static_import.out",
 });
 
-itest!(import_assertions_static_export {
-  args: "run --allow-read import_assertions/static_export.ts",
-  output: "import_assertions/static_export.out",
+itest!(import_attributes_static_export {
+  args: "run --allow-read import_attributes/static_export.ts",
+  output: "import_attributes/static_export.out",
 });
 
-itest!(import_assertions_static_error {
-  args: "run --allow-read import_assertions/static_error.ts",
-  output: "import_assertions/static_error.out",
+itest!(import_attributes_static_error {
+  args: "run --allow-read import_attributes/static_error.ts",
+  output: "import_attributes/static_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_dynamic_import {
-  args: "run --allow-read import_assertions/dynamic_import.ts",
-  output: "import_assertions/dynamic_import.out",
+itest!(import_attributes_dynamic_import {
+  args: "run --allow-read --check import_attributes/dynamic_import.ts",
+  output: "import_attributes/dynamic_import.out",
 });
 
-itest!(import_assertions_dynamic_error {
-  args: "run --allow-read import_assertions/dynamic_error.ts",
-  output: "import_assertions/dynamic_error.out",
+itest!(import_attributes_dynamic_error {
+  args: "run --allow-read import_attributes/dynamic_error.ts",
+  output: "import_attributes/dynamic_error.out",
   exit_code: 1,
 });
 
-itest!(import_assertions_type_check {
-  args: "run --allow-read --check import_assertions/type_check.ts",
-  output: "import_assertions/type_check.out",
+itest!(import_attributes_type_check {
+  args: "run --allow-read --check import_attributes/type_check.ts",
+  output: "import_attributes/type_check.out",
   exit_code: 1,
 });
 

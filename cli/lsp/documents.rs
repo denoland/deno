@@ -46,7 +46,7 @@ use deno_runtime::deno_node::PackageJson;
 use deno_runtime::permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use indexmap1::IndexMap;
+use indexmap::IndexMap;
 use lsp::Url;
 use once_cell::sync::Lazy;
 use package_json::PackageJsonDepsProvider;
@@ -1574,36 +1574,19 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
 }
 
 impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+  fn registry_url(&self) -> &Url {
+    self.inner_loader.registry_url()
+  }
+
   fn load(
     &mut self,
     specifier: &ModuleSpecifier,
     is_dynamic: bool,
+    cache_setting: deno_graph::source::CacheSetting,
   ) -> deno_graph::source::LoadFuture {
     match self.load_from_docs(specifier) {
       Some(fut) => fut,
-      None => self.inner_loader.load(specifier, is_dynamic),
-    }
-  }
-
-  fn load_no_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    match self.load_from_docs(specifier) {
-      Some(fut) => fut,
-      None => self.inner_loader.load_no_cache(specifier, is_dynamic),
-    }
-  }
-
-  fn load_from_cache(
-    &mut self,
-    specifier: &deno_ast::ModuleSpecifier,
-    is_dynamic: bool,
-  ) -> deno_emit::LoadFuture {
-    match self.load_from_docs(specifier) {
-      Some(fut) => fut,
-      None => self.inner_loader.load_from_cache(specifier, is_dynamic),
+      None => self.inner_loader.load(specifier, is_dynamic, cache_setting),
     }
   }
 
