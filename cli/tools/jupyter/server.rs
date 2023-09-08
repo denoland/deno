@@ -11,6 +11,9 @@ use crate::tools::repl;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::mpsc;
+use deno_core::futures::future::Either;
+use deno_core::futures::FutureExt;
+use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -55,6 +58,8 @@ impl JupyterServer {
     let iopub_socket = Arc::new(Mutex::new(iopub_socket));
     let last_execution_request = Rc::new(RefCell::new(None));
 
+    let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded();
+
     let mut server = Self {
       execution_count: 0,
       iopub_socket: iopub_socket.clone(),
@@ -69,7 +74,8 @@ impl JupyterServer {
     });
 
     let handle2 = deno_core::unsync::spawn(async move {
-      if let Err(err) = Self::handle_control(control_socket).await {
+      if let Err(err) = Self::handle_control(control_socket, shutdown_tx).await
+      {
         eprintln!("Control error: {}", err);
       }
     });
@@ -104,7 +110,17 @@ impl JupyterServer {
       }
     });
 
-    futures::try_join!(handle1, handle2, handle3, handle4)?;
+    let shutdown_fut = async move {
+      let _ = shutdown_rx.next().await;
+    }
+    .boxed_local();
+    let join_fut =
+      futures::future::try_join_all(vec![handle1, handle2, handle3, handle4]);
+    if let Either::Left((join_fut, _)) =
+      futures::future::select(join_fut, shutdown_fut).await
+    {
+      join_fut?;
+    };
 
     Ok(())
   }
@@ -123,6 +139,7 @@ impl JupyterServer {
 
   async fn handle_control(
     mut connection: Connection<zeromq::RouterSocket>,
+    mut shutdown_tx: mpsc::UnboundedSender<()>,
   ) -> Result<(), AnyError> {
     loop {
       let msg = JupyterMessage::read(&mut connection).await?;
@@ -134,8 +151,12 @@ impl JupyterServer {
             .send(&mut connection)
             .await?;
         }
-        "shutdown_request" => todo!(),
-        "interrupt_request" => todo!(),
+        "shutdown_request" => {
+          let _ = shutdown_tx.send(()).await;
+        }
+        "interrupt_request" => {
+          eprintln!("Interrupt request currently not supported");
+        }
         _ => {
           eprintln!(
             "Unrecognized control message type: {}",
@@ -316,7 +337,10 @@ fn kernel_info() -> serde_json::Value {
       "name": "typescript",
       "version": crate::version::TYPESCRIPT,
       "mimetype": "text/x.typescript",
-      "file_extension": ".ts"
+      "file_extension": ".ts",
+      "pygments_lexer": "typescript",
+      // TODO(bartlomieju):
+      // "nb_converter":
     },
     "help_links": [{
       "text": "Visit Deno manual",
