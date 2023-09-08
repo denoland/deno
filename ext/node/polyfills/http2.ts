@@ -1248,6 +1248,7 @@ function finishCloseStream(stream, code) {
       });
     });
   } else {
+    stream.resume();
     core.opAsync(
       "op_http2_client_reset_stream",
       stream.__rid,
