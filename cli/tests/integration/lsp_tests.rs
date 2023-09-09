@@ -7960,11 +7960,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 331,
+            "line": 346,
             "character": 0,
           },
           "end": {
-            "line": 371,
+            "line": 388,
             "character": 1,
           },
         },
