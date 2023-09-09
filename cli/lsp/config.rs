@@ -396,8 +396,7 @@ impl WorkspaceSettings {
 #[derive(Debug, Clone, Default)]
 pub struct ConfigSnapshot {
   pub client_capabilities: ClientCapabilities,
-  pub excluded_paths: Option<Vec<Url>>,
-  pub has_config_file: bool,
+  pub config_file: Option<ConfigFile>,
   pub settings: Settings,
   pub workspace_folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
 }
@@ -407,11 +406,27 @@ impl ConfigSnapshot {
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     specifier_enabled(
       specifier,
+      self.config_file.as_ref(),
       &self.settings,
-      self.excluded_paths.as_ref(),
       &self.workspace_folders,
-      self.has_config_file,
     )
+  }
+
+  pub fn specifier_enabled_for_test(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> bool {
+    if let Some(cf) = &self.config_file {
+      if let Some(options) = cf.to_test_config().ok().flatten() {
+        if !options.files.matches_specifier(specifier) {
+          return false;
+        }
+      }
+    }
+    if !self.specifier_enabled(specifier) {
+      return false;
+    }
+    true
   }
 }
 
@@ -436,7 +451,6 @@ struct LspConfigFileInfo {
   maybe_lockfile: Option<WithCanonicalizedSpecifier<Arc<Mutex<Lockfile>>>>,
   /// The canonicalized node_modules directory, which is found relative to the config file.
   maybe_node_modules_dir: Option<PathBuf>,
-  excluded_paths: Vec<Url>,
 }
 
 #[derive(Debug)]
@@ -551,15 +565,6 @@ impl Config {
         },
       ),
       maybe_node_modules_dir: resolve_node_modules_dir(&config_file),
-      excluded_paths: config_file
-        .to_files_config()
-        .ok()
-        .flatten()
-        .map(|c| c.exclude)
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|path| ModuleSpecifier::from_file_path(path).ok())
-        .collect(),
       config_file: WithCanonicalizedSpecifier {
         canonicalized_specifier: config_file
           .specifier
@@ -594,11 +599,7 @@ impl Config {
   pub fn snapshot(&self) -> Arc<ConfigSnapshot> {
     Arc::new(ConfigSnapshot {
       client_capabilities: self.client_capabilities.clone(),
-      excluded_paths: self
-        .maybe_config_file_info
-        .as_ref()
-        .map(|i| i.excluded_paths.clone()),
-      has_config_file: self.has_config_file(),
+      config_file: self.maybe_config_file().cloned(),
       settings: self.settings.clone(),
       workspace_folders: self.workspace_folders.clone(),
     })
@@ -611,14 +612,27 @@ impl Config {
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
     specifier_enabled(
       specifier,
+      self.maybe_config_file(),
       &self.settings,
-      self
-        .maybe_config_file_info
-        .as_ref()
-        .map(|i| &i.excluded_paths),
       &self.workspace_folders,
-      self.has_config_file(),
     )
+  }
+
+  pub fn specifier_enabled_for_test(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> bool {
+    if let Some(cf) = self.maybe_config_file() {
+      if let Some(options) = cf.to_test_config().ok().flatten() {
+        if !options.files.matches_specifier(specifier) {
+          return false;
+        }
+      }
+    }
+    if !self.specifier_enabled(specifier) {
+      return false;
+    }
+    true
   }
 
   /// Gets the directories or specifically enabled file paths based on the
@@ -750,23 +764,19 @@ impl Config {
 
 fn specifier_enabled(
   specifier: &Url,
+  config_file: Option<&ConfigFile>,
   settings: &Settings,
-  excluded_urls: Option<&Vec<Url>>,
   workspace_folders: &Vec<(Url, lsp::WorkspaceFolder)>,
-  workspace_has_config_file: bool,
 ) -> bool {
-  if let Some(excluded_urls) = excluded_urls {
-    for excluded_path in excluded_urls {
-      if specifier.as_str().starts_with(excluded_path.as_str()) {
+  if let Some(cf) = config_file {
+    if let Some(files) = cf.to_files_config().ok().flatten() {
+      if !files.matches_specifier(specifier) {
         return false;
       }
     }
   }
 
-  let root_enable = settings
-    .workspace
-    .enable
-    .unwrap_or(workspace_has_config_file);
+  let root_enable = settings.workspace.enable.unwrap_or(config_file.is_some());
 
   if let Some(settings) = settings.specifiers.get(specifier) {
     // TODO(nayeemrmn): We don't know from where to resolve `enable_paths` in
@@ -1110,5 +1120,110 @@ mod tests {
       ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
     );
     assert_eq!(config.enabled_urls(), vec![root_uri]);
+  }
+
+  #[test]
+  fn config_specifier_enabled_for_test() {
+    let root_uri = resolve_url("file:///root/").unwrap();
+    let mut config = Config::new_with_root(root_uri.clone());
+    config.settings.workspace.enable = Some(true);
+
+    config.settings.workspace.enable_paths = Some(vec!["mod1.ts".to_string()]);
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+    config.settings.workspace.enable_paths = None;
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "exclude": ["mod2.ts"],
+          "test": {
+            "exclude": ["mod3.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
+    );
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "test": {
+            "include": ["mod1.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "test": {
+            "exclude": ["mod2.ts"],
+            "include": ["mod2.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+  }
+
+  #[test]
+  fn config_snapshot_specifier_enabled_for_test() {
+    let root_uri = resolve_url("file:///root/").unwrap();
+    let mut config = Config::new_with_root(root_uri.clone());
+    config.settings.workspace.enable = Some(true);
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "exclude": ["mod2.ts"],
+          "test": {
+            "exclude": ["mod3.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    let config_snapshot = config.snapshot();
+    assert!(config_snapshot
+      .specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap()));
+    assert!(!config_snapshot
+      .specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap()));
+    assert!(!config_snapshot
+      .specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap()));
   }
 }
