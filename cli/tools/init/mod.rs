@@ -16,7 +16,11 @@ fn create_file(
 ) -> Result<(), AnyError> {
   let path = dir.join(filename);
   if path.exists() {
-    info!("ℹ️ Skipped creating {filename} as already exists");
+    info!(
+      "ℹ️ {}",
+      colors::gray(format!("Skipped creating {filename} as already exists"))
+    );
+    info!("{}", colors::gray("Run these commands to get started"));
     Ok(())
   } else {
     let mut file = std::fs::OpenOptions::new()
