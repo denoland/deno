@@ -20,7 +20,6 @@ fn create_file(
       "ℹ️ {}",
       colors::gray(format!("Skipped creating {filename} as it already exists"))
     );
-    info!("{}", colors::gray("Run these commands to get started"));
     Ok(())
   } else {
     let mut file = std::fs::OpenOptions::new()
