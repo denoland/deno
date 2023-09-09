@@ -418,9 +418,7 @@ impl ConfigSnapshot {
   ) -> bool {
     if let Some(cf) = &self.config_file {
       if let Some(options) = cf.to_test_config().ok().flatten() {
-        if specifier.scheme() == "file"
-          && !options.files.matches_specifier(specifier)
-        {
+        if !options.files.matches_specifier(specifier) {
           return false;
         }
       }
@@ -626,9 +624,7 @@ impl Config {
   ) -> bool {
     if let Some(cf) = self.maybe_config_file() {
       if let Some(options) = cf.to_test_config().ok().flatten() {
-        if specifier.scheme() == "file"
-          && !options.files.matches_specifier(specifier)
-        {
+        if !options.files.matches_specifier(specifier) {
           return false;
         }
       }
@@ -774,7 +770,7 @@ fn specifier_enabled(
 ) -> bool {
   if let Some(cf) = config_file {
     if let Some(files) = cf.to_files_config().ok().flatten() {
-      if specifier.scheme() == "file" && !files.matches_specifier(specifier) {
+      if !files.matches_specifier(specifier) {
         return false;
       }
     }
