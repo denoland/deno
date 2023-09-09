@@ -163,6 +163,6 @@ fn init_subcommand_with_existing_file() {
   output.assert_exit_code(0);
   assert_eq!(
     output.stdout().as_bytes(),
-    b"Log from main.ts that Already exists\n"
+    b"Log from main.ts that already exists\n"
   );
 }
