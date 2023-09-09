@@ -150,7 +150,7 @@ impl LspNpmConfigHash {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
+pub struct LanguageServer(pub Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
 #[derive(Debug)]
@@ -3129,6 +3129,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
       if ls.config.client_capabilities.testing_api {
         let test_server = testing::TestServer::new(
+          self.clone(),
           ls.client.clone(),
           ls.performance.clone(),
           ls.config.root_uri.clone(),

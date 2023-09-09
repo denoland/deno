@@ -612,6 +612,23 @@ impl Config {
     )
   }
 
+  pub fn specifier_enabled_for_test(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> bool {
+    if !self.specifier_enabled(specifier) {
+      return false;
+    }
+    if let Some(cf) = self.maybe_config_file() {
+      if let Some(options) = cf.to_test_config().ok().flatten() {
+        if !options.files.matches_specifier(specifier) {
+          return false;
+        }
+      }
+    }
+    true
+  }
+
   /// Gets the directories or specifically enabled file paths based on the
   /// workspace config.
   ///
@@ -1083,5 +1100,86 @@ mod tests {
       ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
     );
     assert_eq!(config.enabled_urls(), vec![root_uri]);
+  }
+
+  #[test]
+  fn config_specifier_enabled_for_test() {
+    let mut config = Config::new();
+    let root_uri = Url::parse("file:///root/").unwrap();
+    config.root_uri = Some(root_uri.clone());
+    config.settings.workspace.enable = Some(true);
+
+    config.settings.workspace.enable_paths = vec!["mod1.ts".to_string()];
+    config.update_enabled_paths();
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+    config.settings.workspace.enable_paths = vec![];
+    config.update_enabled_paths();
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "exclude": ["mod2.ts"],
+          "test": {
+            "exclude": ["mod3.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
+    );
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "test": {
+            "include": ["mod1.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+
+    config.set_config_file(
+      ConfigFile::new(
+        &json!({
+          "test": {
+            "exclude": ["mod2.ts"],
+            "include": ["mod2.ts"],
+          },
+        })
+        .to_string(),
+        root_uri.join("deno.json").unwrap(),
+      )
+      .unwrap(),
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
   }
 }
