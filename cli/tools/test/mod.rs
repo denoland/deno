@@ -1218,6 +1218,15 @@ async fn fetch_specifiers_with_test_mode(
       *mode = TestMode::Documentation
     }
 
+    // If the `--filter` argument is set, we do a quick AST pass
+    // to check if any of the tests in this file match the filter.
+    // If one matches or when we cannot statically determine if a
+    // test case matches, we'll mark this file as needing to be run.
+    // If we analyze all tests cases and none of them match, we'll
+    // filter this test out. Even though this may seem a bit wasteful
+    // because we don't re-use the parsed AST result, this is roughly
+    // about 166x faster than running the JS test file only to realize
+    // after that, that none of the tests in it matched.
     if let Some(filter) = filter_opt {
       let mut collector = TestFilterCollector::new(filter);
       let parsed_module = parse_module(ParseParams {
