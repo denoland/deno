@@ -1131,21 +1131,18 @@ mod tests {
 
   #[test]
   fn config_specifier_enabled_for_test() {
-    let mut config = Config::new();
-    let root_uri = Url::parse("file:///root/").unwrap();
-    config.root_uri = Some(root_uri.clone());
+    let root_uri = resolve_url("file:///root/").unwrap();
+    let mut config = Config::new_with_root(root_uri.clone());
     config.settings.workspace.enable = Some(true);
 
-    config.settings.workspace.enable_paths = vec!["mod1.ts".to_string()];
-    config.update_enabled_paths();
+    config.settings.workspace.enable_paths = Some(vec!["mod1.ts".to_string()]);
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
     assert!(
       !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
     );
-    config.settings.workspace.enable_paths = vec![];
-    config.update_enabled_paths();
+    config.settings.workspace.enable_paths = None;
 
     config.set_config_file(
       ConfigFile::new(
