@@ -128,3 +128,49 @@ fn init_subcommand_with_quiet_arg() {
   assert_contains!(output.stdout(), "1 passed");
   output.skip_output_check();
 }
+
+#[test]
+fn init_subcommand_with_existing_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+
+  let testdata_init_dir = context.testdata_path().join("init");
+  let testdata_init_main_ts = testdata_init_dir.join("main.ts");
+  let cwd_main_ts = cwd.join("main.ts");
+  testdata_init_main_ts.copy(&cwd_main_ts);
+
+  let output = context.new_command().args("init").split_output().run();
+
+  output.assert_exit_code(0);
+
+  let stderr = output.stderr();
+  assert_contains!(stderr, "Skipped creating main.ts as already exists");
+  assert_contains!(stderr, "Project initialized");
+  assert!(!stderr.contains("cd"));
+  assert_contains!(stderr, "deno run main.ts");
+  assert_contains!(stderr, "deno task dev");
+  assert_contains!(stderr, "deno test");
+
+  assert!(cwd.join("deno.json").exists());
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("run main.ts")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_eq!(output.stdout().as_bytes(), b"Add 1 + 2 = 3\n");
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("test")
+    .split_output()
+    .run();
+
+  output.assert_exit_code(0);
+  assert_contains!(output.stdout(), "1 passed");
+  output.skip_output_check();
+}

@@ -14,13 +14,19 @@ fn create_file(
   filename: &str,
   content: &str,
 ) -> Result<(), AnyError> {
-  let mut file = std::fs::OpenOptions::new()
-    .write(true)
-    .create_new(true)
-    .open(dir.join(filename))
-    .with_context(|| format!("Failed to create {filename} file"))?;
-  file.write_all(content.as_bytes())?;
-  Ok(())
+  let path = dir.join(filename);
+  if path.exists() {
+    info!("ℹ️ Skipped creating {filename} as already exists");
+    Ok(())
+  } else {
+    let mut file = std::fs::OpenOptions::new()
+      .write(true)
+      .create_new(true)
+      .open(path)
+      .with_context(|| format!("Failed to create {filename} file"))?;
+    file.write_all(content.as_bytes())?;
+    Ok(())
+  }
 }
 
 pub async fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
