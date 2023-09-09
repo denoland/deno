@@ -141,14 +141,22 @@ fn init_subcommand_with_existing_file() {
   let output = context.new_command().args("init").split_output().run();
 
   output.assert_exit_code(0);
+  output.assert_stderr_matches_text(
+    "ℹ️ Skipped creating main.ts as already exists
+✅ Project initialized
 
-  let stderr = output.stderr();
-  assert_contains!(stderr, "Skipped creating main.ts as already exists");
-  assert_contains!(stderr, "Project initialized");
-  assert!(!stderr.contains("cd"));
-  assert_contains!(stderr, "deno run main.ts");
-  assert_contains!(stderr, "deno task dev");
-  assert_contains!(stderr, "deno test");
+Run these commands to get started
+
+  # Run the program
+  deno run main.ts
+
+  # Run the program and watch for file changes
+  deno task dev
+
+  # Run the tests
+  deno test
+",
+  );
 
   assert!(cwd.join("deno.json").exists());
 
