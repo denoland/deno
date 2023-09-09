@@ -161,16 +161,8 @@ fn init_subcommand_with_existing_file() {
     .run();
 
   output.assert_exit_code(0);
-  assert_eq!(output.stdout().as_bytes(), b"Add 1 + 2 = 3\n");
-
-  let output = context
-    .new_command()
-    .env("NO_COLOR", "1")
-    .args("test")
-    .split_output()
-    .run();
-
-  output.assert_exit_code(0);
-  assert_contains!(output.stdout(), "1 passed");
-  output.skip_output_check();
+  assert_eq!(
+    output.stdout().as_bytes(),
+    b"Log from main.ts that Already exists\n"
+  );
 }
