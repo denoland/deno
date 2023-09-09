@@ -49,24 +49,55 @@ const timerTasks = [];
  * @type {number}
  */
 let timerNestingLevel = 0;
+let nextExpiry = Infinity;
 
 function handleTimerMacrotask() {
-  // We have no work to do, tell the runtime that we don't
-  // need to perform microtask checkpoint.
-  if (timerTasks.length === 0) {
-    return undefined;
+  nextExpiry = Infinity;
+
+  // 2. Wait until any invocations of this algorithm that had the same
+  // global and orderingIdentifier, that started before this one, and
+  // whose milliseconds is equal to or less than this one's, have
+  // completed.
+  // 4. Perform completionSteps.
+
+  // IMPORTANT: Since the sleep ops aren't guaranteed to resolve in the
+  // right order, whenever one resolves, we run through the scheduled
+  // timers list (which is in the order in which they were scheduled), and
+  // we call the callback for every timer which both:
+  //   a) has resolved, and
+  //   b) its timeout is lower than the lowest unresolved timeout found so
+  //      far in the list.
+  const now = performance.now();
+  let currentEntry = scheduledTimers.head;
+  let i = 0;
+  while (currentEntry !== null) {
+    if (currentEntry.expiry > now) {
+      nextExpiry = currentEntry.expiry;
+      op_sleep(nextExpiry, currentEntry.cancelRid);
+      break;
+    }
+
+    const idleStart = currentEntry.expiry - currentEntry.millis;
+    const diff = now - idleStart;
+
+    if (diff >= currentEntry.millis) {
+      currentEntry.resolved = true;
+      removeFromScheduledTimers(currentEntry);
+      const task = currentEntry.task;
+      timerNestingLevel = task.nestingLevel;
+
+      try {
+        task.action();
+      } finally {
+        timerNestingLevel = 0;
+        i++;
+      }
+    }
+
+    currentEntry = currentEntry.next;
   }
 
-  const task = ArrayPrototypeShift(timerTasks);
-
-  timerNestingLevel = task.nestingLevel;
-
-  try {
-    task.action();
-  } finally {
-    timerNestingLevel = 0;
-  }
-  return timerTasks.length === 0;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +251,7 @@ const scheduledTimers = { head: null, tail: null };
  */
 function runAfterTimeout(task, millis, timerInfo) {
   const cancelRid = timerInfo.cancelRid;
-  let sleepPromise;
+  let sleepPromise, expiry;
   // If this timeout is scheduled for 0ms it means we want it to run at the
   // end of the event loop turn. There's no point in setting up a Tokio timer,
   // since its lowest resolution is 1ms. Firing of a "void async" op is better
@@ -228,12 +259,18 @@ function runAfterTimeout(task, millis, timerInfo) {
   if (millis === 0) {
     sleepPromise = op_void_async_deferred();
   } else {
-    sleepPromise = op_sleep(millis, cancelRid);
+    const now = performance.now();
+    expiry = millis + now;
+    if (nextExpiry > expiry) {
+      op_sleep(millis, cancelRid);
+      nextExpiry = expiry;
+    }
   }
-  timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
-  if (!timerInfo.isRef) {
-    core.unrefOp(timerInfo.promiseId);
-  }
+
+  // timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+  // if (!timerInfo.isRef) {
+  //   core.unrefOp(timerInfo.promiseId);
+  // }
 
   /** @type {ScheduledTimer} */
   const timerObject = {
@@ -242,6 +279,8 @@ function runAfterTimeout(task, millis, timerInfo) {
     prev: scheduledTimers.tail,
     next: null,
     task,
+    expiry,
+    cancelRid,
   };
 
   // Add timerObject to the end of the list.
@@ -252,51 +291,6 @@ function runAfterTimeout(task, millis, timerInfo) {
     scheduledTimers.tail.next = timerObject;
     scheduledTimers.tail = timerObject;
   }
-
-  // 1.
-  PromisePrototypeThen(
-    sleepPromise,
-    (cancelled) => {
-      if (timerObject.resolved) {
-        return;
-      }
-
-      // "op_void_async_deferred" returns null
-      if (cancelled !== null && !cancelled) {
-        // The timer was cancelled.
-        removeFromScheduledTimers(timerObject);
-        return;
-      }
-      // 2. Wait until any invocations of this algorithm that had the same
-      // global and orderingIdentifier, that started before this one, and
-      // whose milliseconds is equal to or less than this one's, have
-      // completed.
-      // 4. Perform completionSteps.
-
-      // IMPORTANT: Since the sleep ops aren't guaranteed to resolve in the
-      // right order, whenever one resolves, we run through the scheduled
-      // timers list (which is in the order in which they were scheduled), and
-      // we call the callback for every timer which both:
-      //   a) has resolved, and
-      //   b) its timeout is lower than the lowest unresolved timeout found so
-      //      far in the list.
-
-      let currentEntry = scheduledTimers.head;
-      while (currentEntry !== null) {
-        if (currentEntry.millis <= timerObject.millis) {
-          currentEntry.resolved = true;
-          ArrayPrototypePush(timerTasks, currentEntry.task);
-          removeFromScheduledTimers(currentEntry);
-
-          if (currentEntry === timerObject) {
-            break;
-          }
-        }
-
-        currentEntry = currentEntry.next;
-      }
-    },
-  );
 }
 
 /** @param {ScheduledTimer} timerObj */

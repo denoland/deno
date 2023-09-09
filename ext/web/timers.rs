@@ -79,13 +79,13 @@ pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
 /// [`TimerHandle`] resource given by `rid` has been canceled.
 ///
 /// If the timer is canceled, this returns `false`. Otherwise, it returns `true`.
-#[op(deferred)]
-pub async fn op_sleep(
-  state: Rc<RefCell<OpState>>,
+#[op]
+pub fn op_sleep(
+  state: &mut OpState,
   millis: u64,
   rid: ResourceId,
-) -> Result<bool, AnyError> {
-  let handle = state.borrow().resource_table.get::<TimerHandle>(rid)?;
+) -> Result<(), AnyError> {
+  let handle = state.resource_table.get::<TimerHandle>(rid)?;
 
   // If a timer is requested with <=100ms resolution, request the high-res timer. Since the default
   // Windows timer period is 15ms, this means a 100ms timer could fire at 115ms (15% late). We assume that
@@ -100,10 +100,12 @@ pub async fn op_sleep(
     None
   };
 
-  let res = tokio::time::sleep(Duration::from_millis(millis))
-    .or_cancel(handle.0.clone())
-    .await;
+  deno_core::unsync::spawn(async move {
+    let _res = tokio::time::sleep(Duration::from_millis(millis))
+      .or_cancel(handle.0.clone())
+      .await;
+    // We release the high-res timer lock here, either by being cancelled or resolving.
+  });
 
-  // We release the high-res timer lock here, either by being cancelled or resolving.
-  Ok(res.is_ok())
+  Ok(())
 }
