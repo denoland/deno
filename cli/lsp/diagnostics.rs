@@ -1382,6 +1382,7 @@ mod tests {
       cache_metadata: cache::CacheMetadata::new(Arc::new(
         GlobalHttpCache::new(location.to_path_buf(), RealDenoCacheEnv),
       )),
+      config: Default::default(),
       maybe_node_resolver: None,
       maybe_npm_resolver: None,
     }

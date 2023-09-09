@@ -44,6 +44,7 @@ use super::client::Client;
 use super::code_lens;
 use super::completions;
 use super::config::Config;
+use super::config::ConfigSnapshot;
 use super::config::SETTINGS_SECTION;
 use super::diagnostics;
 use super::diagnostics::DiagnosticServerUpdateMessage;
@@ -150,13 +151,14 @@ impl LspNpmConfigHash {
 }
 
 #[derive(Debug, Clone)]
-pub struct LanguageServer(pub Arc<tokio::sync::RwLock<Inner>>);
+pub struct LanguageServer(Arc<tokio::sync::RwLock<Inner>>);
 
 /// Snapshot of the state used by TSC.
 #[derive(Debug)]
 pub struct StateSnapshot {
   pub assets: AssetsSnapshot,
   pub cache_metadata: cache::CacheMetadata,
+  pub config: Arc<ConfigSnapshot>,
   pub documents: Documents,
   pub maybe_import_map: Option<Arc<ImportMap>>,
   pub maybe_node_resolver: Option<Arc<NodeResolver>>,
@@ -812,6 +814,7 @@ impl Inner {
     Arc::new(StateSnapshot {
       assets: self.assets.snapshot(),
       cache_metadata: self.cache_metadata.clone(),
+      config: self.config.snapshot(),
       documents: self.documents.clone(),
       maybe_import_map: self.maybe_import_map.clone(),
       maybe_node_resolver: Some(node_resolver),
@@ -3120,7 +3123,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
       if ls.config.client_capabilities.testing_api {
         let test_server = testing::TestServer::new(
-          self.clone(),
           ls.client.clone(),
           ls.performance.clone(),
           ls.config.root_uri().cloned(),

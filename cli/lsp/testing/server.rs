@@ -11,7 +11,6 @@ use crate::lsp::config;
 use crate::lsp::documents::DocumentsFilter;
 use crate::lsp::language_server::StateSnapshot;
 use crate::lsp::performance::Performance;
-use crate::lsp::LanguageServer;
 
 use deno_ast::swc::visit::VisitWith;
 use deno_core::error::AnyError;
@@ -56,7 +55,6 @@ pub struct TestServer {
 
 impl TestServer {
   pub fn new(
-    language_server: LanguageServer,
     client: Client,
     performance: Arc<Performance>,
     maybe_root_uri: Option<ModuleSpecifier>,
@@ -89,7 +87,6 @@ impl TestServer {
           match update_rx.recv().await {
             None => break,
             Some(snapshot) => {
-              let config = &language_server.0.read().await.config;
               let mark = performance.mark("testing_update", None::<()>);
               let mut tests = tests.lock();
               // we create a list of test modules we currently are tracking
@@ -101,7 +98,7 @@ impl TestServer {
                 .documents(DocumentsFilter::AllDiagnosable)
               {
                 let specifier = document.specifier();
-                if !config.specifier_enabled_for_test(specifier) {
+                if !snapshot.config.specifier_enabled_for_test(specifier) {
                   continue;
                 }
                 keys.remove(specifier);
