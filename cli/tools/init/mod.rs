@@ -18,7 +18,7 @@ fn create_file(
   if path.exists() {
     info!(
       "ℹ️ {}",
-      colors::gray(format!("Skipped creating {filename} as already exists"))
+      colors::gray(format!("Skipped creating {filename} as it already exists"))
     );
     info!("{}", colors::gray("Run these commands to get started"));
     Ok(())
