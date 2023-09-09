@@ -591,6 +591,7 @@ impl LspClientBuilder {
       writer,
       deno_dir,
       stderr_lines_rx,
+      config: json!("{}"),
       supports_workspace_configuration: false,
     })
   }
@@ -605,6 +606,7 @@ pub struct LspClient {
   deno_dir: TempDir,
   context: TestContext,
   stderr_lines_rx: Option<mpsc::Receiver<String>>,
+  config: serde_json::Value,
   supports_workspace_configuration: bool,
 }
 
@@ -699,21 +701,14 @@ impl LspClient {
     };
     self.write_request("initialize", params);
     self.write_notification("initialized", json!({}));
+    self.config = config;
     if self.supports_workspace_configuration {
-      self.handle_configuration_request(config);
+      self.handle_configuration_request(self.config.clone());
     }
   }
 
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
-    self.did_open_with_config(
-      params,
-      json!([{
-        "enable": true,
-        "codeLens": {
-          "test": true
-        }
-      }]),
-    )
+    self.did_open_with_config(params, self.config.clone())
   }
 
   pub fn did_open_with_config(
