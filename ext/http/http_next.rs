@@ -765,7 +765,6 @@ fn serve_http11_unconditional(
   async {
     match conn.or_abort(cancel).await {
       Err(mut conn) => {
-        println!("abort 1!");
         Pin::new(&mut conn).graceful_shutdown();
         conn.await
       }
@@ -784,7 +783,6 @@ fn serve_http2_unconditional(
   async {
     match conn.or_abort(cancel).await {
       Err(mut conn) => {
-        println!("abort 2!");
         Pin::new(&mut conn).graceful_shutdown();
         conn.await
       }
