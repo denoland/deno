@@ -922,6 +922,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-lsp",
+ "tracing",
  "trust-dns-client",
  "trust-dns-server",
  "twox-hash",

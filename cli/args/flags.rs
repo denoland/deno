@@ -796,6 +796,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
     flags.log_level = match log_level.as_str() {
+      "trace" => Some(Level::Trace),
       "debug" => Some(Level::Debug),
       "info" => Some(Level::Info),
       _ => unreachable!(),
@@ -891,7 +892,7 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .value_parser(["debug", "info"])
+        .value_parser(["trace", "debug", "info"])
         .global(true),
     )
     .arg(
