@@ -134,10 +134,9 @@ fn init_subcommand_with_existing_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let cwd = context.temp_dir().path();
 
-  let testdata_init_dir = context.testdata_path().join("init");
-  let testdata_init_main_ts = testdata_init_dir.join("main.ts");
-  let cwd_main_ts = cwd.join("main.ts");
-  testdata_init_main_ts.copy(&cwd_main_ts);
+  cwd
+    .join("main.ts")
+    .write("console.log('Log from main.ts that already exists');");
 
   let output = context.new_command().args("init").split_output().run();
 
@@ -157,12 +156,8 @@ fn init_subcommand_with_existing_file() {
     .new_command()
     .env("NO_COLOR", "1")
     .args("run main.ts")
-    .split_output()
     .run();
 
   output.assert_exit_code(0);
-  assert_eq!(
-    output.stdout().as_bytes(),
-    b"Log from main.ts that already exists\n"
-  );
+  output.assert_matches_text("Log from main.ts that already exists\n");
 }
