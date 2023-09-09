@@ -416,15 +416,15 @@ impl ConfigSnapshot {
     &self,
     specifier: &ModuleSpecifier,
   ) -> bool {
-    if !self.specifier_enabled(specifier) {
-      return false;
-    }
     if let Some(cf) = &self.config_file {
       if let Some(options) = cf.to_test_config().ok().flatten() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
       }
+    }
+    if !self.specifier_enabled(specifier) {
+      return false;
     }
     true
   }
@@ -622,15 +622,15 @@ impl Config {
     &self,
     specifier: &ModuleSpecifier,
   ) -> bool {
-    if !self.specifier_enabled(specifier) {
-      return false;
-    }
     if let Some(cf) = self.maybe_config_file() {
       if let Some(options) = cf.to_test_config().ok().flatten() {
         if !options.files.matches_specifier(specifier) {
           return false;
         }
       }
+    }
+    if !self.specifier_enabled(specifier) {
+      return false;
     }
     true
   }
@@ -769,8 +769,8 @@ fn specifier_enabled(
   workspace_folders: &Vec<(Url, lsp::WorkspaceFolder)>,
 ) -> bool {
   if let Some(cf) = config_file {
-    if let Some(options) = cf.to_test_config().ok().flatten() {
-      if !options.files.matches_specifier(specifier) {
+    if let Some(files) = cf.to_files_config().ok().flatten() {
+      if !files.matches_specifier(specifier) {
         return false;
       }
     }
