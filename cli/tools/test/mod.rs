@@ -1219,7 +1219,6 @@ async fn fetch_specifiers_with_test_mode(
     }
 
     if let Some(filter) = filter_opt {
-      println!("source {:?} {:?}", filter, file.source.to_string());
       let mut collector = TestFilterCollector::new(filter);
       let parsed_module = parse_module(ParseParams {
         specifier: specifier.to_string(),
