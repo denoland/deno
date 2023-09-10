@@ -290,14 +290,17 @@ impl JupyterServer {
 
             (candidates, cursor_pos - expr.len())
           };
-          eprintln!("completions {:#?}", completions);
+          eprintln!(
+            "completions {} {} {:#?}",
+            cursor_pos, cursor_start, completions
+          );
           msg
             .new_reply()
             .with_content(json!({
               "status": "ok",
               "matches": completions,
               "cursor_start": cursor_start,
-              "cursor_end": cursor_start,
+              "cursor_end": cursor_pos,
               "metadata": {},
             }))
             .send(connection)
