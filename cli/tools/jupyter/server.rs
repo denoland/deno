@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::tools::repl;
+use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::mpsc;
@@ -215,39 +216,93 @@ impl JupyterServer {
           .await?;
       }
       "complete_request" => {
-
         let user_code = msg.code();
         let cursor_pos = msg.cursor_pos();
+        eprintln!("complete request {} {}", user_code, cursor_pos);
 
-        let completions = self.repl_session.language_server.completions(user_code, cursor_pos).await;
+        let lsp_completions = self
+          .repl_session
+          .language_server
+          .completions(user_code, cursor_pos)
+          .await;
 
-        let matches: Vec<String> = completions
-          .iter()
-          .map(|item| item.new_text.clone())
-          .collect();
+        if !lsp_completions.is_empty() {
+          let matches: Vec<String> = lsp_completions
+            .iter()
+            .map(|item| item.new_text.clone())
+            .collect();
 
-        let cursor_start = completions
-          .first()
-          .map(|item| item.range.start)
-          .unwrap_or(cursor_pos);
+          let cursor_start = lsp_completions
+            .first()
+            .map(|item| item.range.start)
+            .unwrap_or(cursor_pos);
 
-        let cursor_end = completions
-          .last()
-          .map(|item| item.range.end)
-          .unwrap_or(cursor_pos);
+          let cursor_end = lsp_completions
+            .last()
+            .map(|item| item.range.end)
+            .unwrap_or(cursor_pos);
 
+          msg
+            .new_reply()
+            .with_content(json!({
+              "status": "ok",
+              "matches": matches,
+              "cursor_start": cursor_start,
+              "cursor_end": cursor_end,
+              "metadata": {},
+            }))
+            .send(connection)
+            .await?;
+        } else {
+          let expr = get_expr_from_line_at_pos(user_code, cursor_pos);
+          // check if the expression is in the form `obj.prop`
+          let (completions, cursor_start) = if let Some(index) = expr.rfind('.')
+          {
+            let sub_expr = &expr[..index];
+            let prop_name = &expr[index + 1..];
+            let candidates =
+              get_expression_property_names(&mut self.repl_session, sub_expr)
+                .await
+                .into_iter()
+                .filter(|n| {
+                  !n.starts_with("Symbol(")
+                    && n.starts_with(prop_name)
+                    && n != &*repl::REPL_INTERNALS_NAME
+                })
+                .collect();
 
-        msg
-          .new_reply()
-          .with_content(json!({
-            "status": "ok",
-            "matches": matches,
-            "cursor_start": cursor_start,
-            "cursor_end": cursor_end,
-            "metadata": {},
-          }))
-          .send(connection)
-          .await?;
+            (candidates, cursor_pos - prop_name.len())
+          } else {
+            // combine results of declarations and globalThis properties
+            let mut candidates = get_expression_property_names(
+              &mut self.repl_session,
+              "globalThis",
+            )
+            .await
+            .into_iter()
+            .chain(get_global_lexical_scope_names(&mut self.repl_session).await)
+            .filter(|n| n.starts_with(expr) && n != &*repl::REPL_INTERNALS_NAME)
+            .collect::<Vec<_>>();
+
+            // sort and remove duplicates
+            candidates.sort();
+            candidates.dedup(); // make sure to sort first
+
+            (candidates, cursor_pos - expr.len())
+          };
+          eprintln!("completions {:#?}", completions);
+          msg
+            .new_reply()
+            .with_content(json!({
+              "status": "ok",
+              "matches": completions,
+              "cursor_start": cursor_start,
+              "cursor_end": cursor_start,
+              "metadata": {},
+            }))
+            .send(connection)
+            .await?;
+        }
       }
       "comm_msg" | "comm_info_request" | "history_request" => {
         // We don't handle these messages
@@ -382,4 +437,154 @@ fn kernel_info() -> serde_json::Value {
     }],
     "banner": "Welcome to Deno kernel",
   })
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+fn get_expr_from_line_at_pos(line: &str, cursor_pos: usize) -> &str {
+  let start = line[..cursor_pos].rfind(is_word_boundary).unwrap_or(0);
+  let end = line[cursor_pos..]
+    .rfind(is_word_boundary)
+    .map(|i| cursor_pos + i)
+    .unwrap_or(cursor_pos);
+
+  let word = &line[start..end];
+  let word = word.strip_prefix(is_word_boundary).unwrap_or(word);
+  let word = word.strip_suffix(is_word_boundary).unwrap_or(word);
+
+  word
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+fn is_word_boundary(c: char) -> bool {
+  if matches!(c, '.' | '_' | '$') {
+    false
+  } else {
+    char::is_ascii_whitespace(&c) || char::is_ascii_punctuation(&c)
+  }
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+async fn get_global_lexical_scope_names(
+  session: &mut repl::ReplSession,
+) -> Vec<String> {
+  let evaluate_response = session
+    .post_message_with_event_loop(
+      "Runtime.globalLexicalScopeNames",
+      Some(cdp::GlobalLexicalScopeNamesArgs {
+        execution_context_id: Some(session.context_id),
+      }),
+    )
+    .await
+    .unwrap();
+  let evaluate_response: cdp::GlobalLexicalScopeNamesResponse =
+    serde_json::from_value(evaluate_response).unwrap();
+  evaluate_response.names
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+async fn get_expression_property_names(
+  session: &mut repl::ReplSession,
+  expr: &str,
+) -> Vec<String> {
+  // try to get the properties from the expression
+  if let Some(properties) = get_object_expr_properties(session, expr).await {
+    return properties;
+  }
+
+  // otherwise fall back to the prototype
+  let expr_type = get_expression_type(session, expr).await;
+  let object_expr = match expr_type.as_deref() {
+    // possibilities: https://chromedevtools.github.io/devtools-protocol/v8/Runtime/#type-RemoteObject
+    Some("object") => "Object.prototype",
+    Some("function") => "Function.prototype",
+    Some("string") => "String.prototype",
+    Some("boolean") => "Boolean.prototype",
+    Some("bigint") => "BigInt.prototype",
+    Some("number") => "Number.prototype",
+    _ => return Vec::new(), // undefined, symbol, and unhandled
+  };
+
+  get_object_expr_properties(session, object_expr)
+    .await
+    .unwrap_or_default()
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+async fn get_expression_type(
+  session: &mut repl::ReplSession,
+  expr: &str,
+) -> Option<String> {
+  evaluate_expression(session, expr)
+    .await
+    .map(|res| res.result.kind)
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+async fn get_object_expr_properties(
+  session: &mut repl::ReplSession,
+  object_expr: &str,
+) -> Option<Vec<String>> {
+  let evaluate_result = evaluate_expression(session, object_expr).await?;
+  let object_id = evaluate_result.result.object_id?;
+
+  let get_properties_response = session
+    .post_message_with_event_loop(
+      "Runtime.getProperties",
+      Some(cdp::GetPropertiesArgs {
+        object_id,
+        own_properties: None,
+        accessor_properties_only: None,
+        generate_preview: None,
+        non_indexed_properties_only: Some(true),
+      }),
+    )
+    .await
+    .ok()?;
+  let get_properties_response: cdp::GetPropertiesResponse =
+    serde_json::from_value(get_properties_response).ok()?;
+  Some(
+    get_properties_response
+      .result
+      .into_iter()
+      .map(|prop| prop.name)
+      .collect(),
+  )
+}
+
+// TODO(bartlomieju): dedup with repl::editor
+async fn evaluate_expression(
+  session: &mut repl::ReplSession,
+  expr: &str,
+) -> Option<cdp::EvaluateResponse> {
+  let evaluate_response = session
+    .post_message_with_event_loop(
+      "Runtime.evaluate",
+      Some(cdp::EvaluateArgs {
+        expression: expr.to_string(),
+        object_group: None,
+        include_command_line_api: None,
+        silent: None,
+        context_id: Some(session.context_id),
+        return_by_value: None,
+        generate_preview: None,
+        user_gesture: None,
+        await_promise: None,
+        throw_on_side_effect: Some(true),
+        timeout: Some(200),
+        disable_breaks: None,
+        repl_mode: None,
+        allow_unsafe_eval_blocked_by_csp: None,
+        unique_context_id: None,
+      }),
+    )
+    .await
+    .ok()?;
+  let evaluate_response: cdp::EvaluateResponse =
+    serde_json::from_value(evaluate_response).ok()?;
+
+  if evaluate_response.exception_details.is_some() {
+    None
+  } else {
+    Some(evaluate_response)
+  }
 }

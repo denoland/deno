@@ -26,6 +26,7 @@ use editor::EditorHelper;
 use editor::ReplEditor;
 pub use session::EvaluationOutput;
 pub use session::ReplSession;
+pub use session::REPL_INTERNALS_NAME;
 
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
@@ -55,7 +56,9 @@ async fn read_line_and_poll(
             line_text,
             position,
           }) => {
+            eprintln!("repl completions {} {}", line_text, position);
             let result = repl_session.language_server.completions(&line_text, position).await;
+            eprintln!("completion result {:#?}", result);
             message_handler.send(RustylineSyncResponse::LspCompletions(result)).unwrap();
           }
           None => {}, // channel closed
