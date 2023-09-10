@@ -1064,6 +1064,7 @@ dependencies = [
  "tokio",
  "tokio-util 0.7.8",
  "tower-lsp",
+ "tracing",
  "trust-dns-client",
  "trust-dns-server",
  "twox-hash",
@@ -1192,9 +1193,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.2.4"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc0c89c37b55d33bdd3374fddb9e6bf74dd7d071d1217d1ef3ab7d09bcefb6d3"
+checksum = "ed5999e360fec39bbfee5d85bac82c5f557ed93a58660bc255026a90796138c6"
 dependencies = [
  "anyhow",
  "deno_semver",
@@ -1478,9 +1479,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.16.2"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1038f33740cd29127efa0f7858a869cef5df6baed7fd97c1c0db19213b11f5ef"
+checksum = "c7673d66847223bd4115075a96b0699da71b1755524aeb3956f0a3edf3af3217"
 dependencies = [
  "ring",
  "serde",
@@ -1584,9 +1585,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.13.0"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f4f1ce6bc2738c0068f205cef30b33d46103f65a26031affcd8c3994db0ca51"
+checksum = "48ec636e8e1a92cb70b2451d9450698f1738f973b0436fe195cb934a51dcdb01"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1944,9 +1945,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e9c557186cbae35d90a72fd6081c5c321ff002e5883d134497c433961992fc8c"
+checksum = "faf3e228c56be47b43af72309c2b8025491012b41d5397cd7b91172ce1368cf3"
 dependencies = [
  "anyhow",
  "dprint-core",
@@ -2227,9 +2228,9 @@ dependencies = [
 
 [[package]]
 name = "eszip"
-version = "0.51.0"
+version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15bfd903f4d76ae830b12b5b159d38d8def03e21be1bb93ad631d522b1191573"
+checksum = "4baf8c2353535c8ba042249c73b80d289c2ea82cd1eee4838560fa96b77dc392"
 dependencies = [
  "anyhow",
  "base64 0.21.2",

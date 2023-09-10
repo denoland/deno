@@ -526,12 +526,27 @@ const ESCAPE_ASCII_CHARS = [
   ["\v", "\\v"],
 ];
 
+/**
+ * @param {string} name
+ * @returns {string}
+ */
 function escapeName(name) {
-  for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
-    name = StringPrototypeReplaceAll(name, escape, replaceWith);
+  // Check if we need to escape a character
+  for (let i = 0; i < name.length; i++) {
+    const ch = name.charCodeAt(i);
+    if (ch <= 13 && ch >= 8) {
+      // Slow path: We do need to escape it
+      for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+        name = StringPrototypeReplaceAll(name, escape, replaceWith);
+      }
+      return name;
+    }
   }
+
+  // We didn't need to escape anything, return original string
   return name;
 }
+
 /**
  * @typedef {{
  *   id: number,

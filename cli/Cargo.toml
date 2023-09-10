@@ -47,7 +47,7 @@ winres.workspace = true
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "dep_graph", "module_specifier", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
 deno_cache_dir = "=0.6.0"
-deno_config = "=0.2.4"
+deno_config = "=0.3.1"
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = "=0.66.0"
 deno_emit = "=0.27.0"
@@ -58,7 +58,7 @@ deno_npm.workspace = true
 deno_runtime = { workspace = true, features = ["dont_create_runtime_snapshot", "exclude_runtime_main_js", "include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
 deno_task_shell = "=0.13.2"
-eszip = "=0.51.0"
+eszip = "=0.52.0"
 napi_sym.workspace = true
 
 async-trait.workspace = true
@@ -76,7 +76,7 @@ data-encoding.workspace = true
 data-url.workspace = true
 dissimilar = "=1.0.4"
 dprint-plugin-json = "=0.17.4"
-dprint-plugin-markdown = "=0.16.0"
+dprint-plugin-markdown = "=0.16.1"
 dprint-plugin-typescript = "=0.87.1"
 encoding_rs.workspace = true
 env_logger = "=0.10.0"
@@ -118,6 +118,7 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
+tracing.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }

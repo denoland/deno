@@ -57,7 +57,7 @@
   "plugins": [
     "https://plugins.dprint.dev/typescript-0.87.1.wasm",
     "https://plugins.dprint.dev/json-0.17.4.wasm",
-    "https://plugins.dprint.dev/markdown-0.16.0.wasm",
+    "https://plugins.dprint.dev/markdown-0.16.1.wasm",
     "https://plugins.dprint.dev/toml-0.5.4.wasm",
     "https://plugins.dprint.dev/exec-0.4.3.json@42343548b8022c99b1d750be6b894fe6b6c7ee25f72ae9f9082226dd2e515072"
   ]

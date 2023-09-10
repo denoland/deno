@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use chrono::Utc;
 use codec::decode_key;
 use codec::encode_key;
 use deno_core::anyhow::Context;
@@ -383,9 +384,11 @@ impl TryFrom<V8KvCheck> for KvCheck {
 
 type V8KvMutation = (KvKey, String, Option<FromV8Value>, Option<u64>);
 
-impl TryFrom<V8KvMutation> for KvMutation {
+impl TryFrom<(V8KvMutation, u64)> for KvMutation {
   type Error = AnyError;
-  fn try_from(value: V8KvMutation) -> Result<Self, AnyError> {
+  fn try_from(
+    (value, current_timstamp): (V8KvMutation, u64),
+  ) -> Result<Self, AnyError> {
     let key = encode_v8_key(value.0)?;
     let kind = match (value.1.as_str(), value.2) {
       ("set", Some(value)) => MutationKind::Set(value.try_into()?),
@@ -405,7 +408,7 @@ impl TryFrom<V8KvMutation> for KvMutation {
     Ok(KvMutation {
       key,
       kind,
-      expire_at: value.3,
+      expire_at: value.3.map(|expire_in| current_timstamp + expire_in),
     })
   }
 }
@@ -606,6 +609,7 @@ async fn op_kv_atomic_write<DBH>(
 where
   DBH: DatabaseHandler + 'static,
 {
+  let current_timestamp = Utc::now().timestamp_millis() as u64;
   let db = {
     let state = state.borrow();
     let resource =
@@ -631,7 +635,7 @@ where
     .with_context(|| "invalid check")?;
   let mutations = mutations
     .into_iter()
-    .map(TryInto::try_into)
+    .map(|mutation| TryFrom::try_from((mutation, current_timestamp)))
     .collect::<Result<Vec<KvMutation>, AnyError>>()
     .with_context(|| "invalid mutation")?;
   let enqueues = enqueues
