@@ -157,6 +157,10 @@ impl JupyterMessage {
     self.content["code"].as_str().unwrap_or("")
   }
 
+  pub(crate) fn cursor_pos(&self) -> usize {
+    self.content["cursor_pos"].as_u64().unwrap_or(0) as usize
+  }
+
   pub(crate) fn comm_id(&self) -> &str {
     self.content["comm_id"].as_str().unwrap_or("")
   }
