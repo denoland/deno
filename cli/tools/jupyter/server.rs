@@ -214,7 +214,41 @@ impl JupyterServer {
           .send(&mut *self.iopub_socket.lock().await)
           .await?;
       }
-      "complete_request" => todo!(),
+      "complete_request" => {
+
+        let user_code = msg.code();
+        let cursor_pos = msg.cursor_pos();
+
+        let completions = self.repl_session.language_server.completions(user_code, cursor_pos).await;
+
+        let matches: Vec<String> = completions
+          .iter()
+          .map(|item| item.new_text.clone())
+          .collect();
+
+        let cursor_start = completions
+          .first()
+          .map(|item| item.range.start)
+          .unwrap_or(cursor_pos);
+
+        let cursor_end = completions
+          .last()
+          .map(|item| item.range.end)
+          .unwrap_or(cursor_pos);
+
+
+        msg
+          .new_reply()
+          .with_content(json!({
+            "status": "ok",
+            "matches": matches,
+            "cursor_start": cursor_start,
+            "cursor_end": cursor_end,
+            "metadata": {},
+          }))
+          .send(connection)
+          .await?;
+      }
       "comm_msg" | "comm_info_request" | "history_request" => {
         // We don't handle these messages
       }
