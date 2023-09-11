@@ -32,7 +32,6 @@ deno_core::ops!(
     op_network_interfaces,
     op_os_release,
     op_os_uptime,
-    op_node_unstable_os_uptime,
     op_set_env,
     op_set_exit_code,
     op_system_memory_info,
@@ -477,14 +476,7 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   Ok(sys_info::os_uptime())
 }
 
-#[op2]
-#[bigint]
+#[op]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
-  os_uptime(state)
-}
-
-#[op2]
-#[bigint]
-fn op_node_unstable_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)
 }
