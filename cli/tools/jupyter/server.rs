@@ -4,6 +4,7 @@
 // Copyright 2020 The Evcxr Authors. MIT license.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -218,7 +219,6 @@ impl JupyterServer {
       "complete_request" => {
         let user_code = msg.code();
         let cursor_pos = msg.cursor_pos();
-        eprintln!("complete request {} {}", user_code, cursor_pos);
 
         let lsp_completions = self
           .repl_session
@@ -290,10 +290,6 @@ impl JupyterServer {
 
             (candidates, cursor_pos - expr.len())
           };
-          eprintln!(
-            "completions {} {} {:#?}",
-            cursor_pos, cursor_start, completions
-          );
           msg
             .new_reply()
             .with_content(json!({
@@ -351,14 +347,14 @@ impl JupyterServer {
     } = evaluate_response.value;
 
     if exception_details.is_none() {
-      let output = self.repl_session.get_eval_value(&result).await?;
+      let output =
+        get_jupyter_display_or_eval_value(&mut self.repl_session, &result)
+          .await?;
       msg
         .new_message("execute_result")
         .with_content(json!({
             "execution_count": self.execution_count,
-            "data": {
-                "text/plain": output
-            },
+            "data": output,
             "metadata": {},
         }))
         .send(&mut *self.iopub_socket.lock().await)
@@ -440,6 +436,79 @@ fn kernel_info() -> serde_json::Value {
     }],
     "banner": "Welcome to Deno kernel",
   })
+}
+
+async fn get_jupyter_display_or_eval_value(
+  session: &mut repl::ReplSession,
+  evaluate_result: &cdp::RemoteObject,
+) -> Result<HashMap<String, serde_json::Value>, AnyError> {
+  let mut data = HashMap::default();
+  let response = session
+    .call_function_on_args(
+      r#"function (object) {{
+        return object[Symbol.for("Jupyter.display")]();
+      }}"#
+        .to_string(),
+      &[evaluate_result.clone()],
+    )
+    .await?;
+
+  if response.exception_details.is_none() {
+    let object_id = response.result.object_id.unwrap();
+
+    if let Some(get_properties_response) = session
+      .post_message_with_event_loop(
+        "Runtime.getProperties",
+        Some(cdp::GetPropertiesArgs {
+          object_id,
+          own_properties: Some(true),
+          accessor_properties_only: None,
+          generate_preview: None,
+          non_indexed_properties_only: Some(true),
+        }),
+      )
+      .await
+      .ok()
+    {
+      let get_properties_response: cdp::GetPropertiesResponse =
+        serde_json::from_value(get_properties_response).unwrap();
+
+      for prop in get_properties_response.result.into_iter() {
+        if let Some(value) = &prop.value {
+          data.insert(
+            prop.name.to_string(),
+            value
+              .value
+              .clone()
+              .unwrap_or_else(|| serde_json::Value::Null),
+          );
+        }
+      }
+
+      if !data.is_empty() {
+        return Ok(data);
+      }
+    }
+  }
+
+  let response = session
+    .call_function_on_args(
+      format!(
+        r#"function (object) {{
+        try {{
+          return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+        }} catch (err) {{
+          return {0}.inspectArgs(["%o", err]);
+        }}
+      }}"#,
+        *repl::REPL_INTERNALS_NAME
+      ),
+      &[evaluate_result.clone()],
+    )
+    .await?;
+  let value = response.result.value.unwrap();
+  data.insert("text/plain".to_string(), value);
+  Ok(data)
 }
 
 // TODO(bartlomieju): dedup with repl::editor

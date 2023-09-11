@@ -396,29 +396,24 @@ impl ReplSession {
     Ok(())
   }
 
-  pub async fn get_eval_value(
+  pub async fn call_function_on_args(
     &mut self,
-    evaluate_result: &cdp::RemoteObject,
-  ) -> Result<String, AnyError> {
-    // TODO(caspervonb) we should investigate using previews here but to keep things
-    // consistent with the previous implementation we just get the preview result from
-    // Deno.inspectArgs.
+    function_declaration: String,
+    args: &[cdp::RemoteObject],
+  ) -> Result<cdp::CallFunctionOnResponse, AnyError> {
+    let arguments: Option<Vec<cdp::CallArgument>> = if args.is_empty() {
+      None
+    } else {
+      Some(args.iter().map(|a| a.into()).collect())
+    };
+
     let inspect_response = self
       .post_message_with_event_loop(
         "Runtime.callFunctionOn",
         Some(cdp::CallFunctionOnArgs {
-          function_declaration: format!(
-            r#"function (object) {{
-          try {{
-            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
-          }} catch (err) {{
-            return {0}.inspectArgs(["%o", err]);
-          }}
-        }}"#,
-            *REPL_INTERNALS_NAME
-          ),
+          function_declaration,
           object_id: None,
-          arguments: Some(vec![evaluate_result.into()]),
+          arguments,
           silent: None,
           return_by_value: None,
           generate_preview: None,
@@ -433,6 +428,31 @@ impl ReplSession {
 
     let response: cdp::CallFunctionOnResponse =
       serde_json::from_value(inspect_response)?;
+    Ok(response)
+  }
+
+  pub async fn get_eval_value(
+    &mut self,
+    evaluate_result: &cdp::RemoteObject,
+  ) -> Result<String, AnyError> {
+    // TODO(caspervonb) we should investigate using previews here but to keep things
+    // consistent with the previous implementation we just get the preview result from
+    // Deno.inspectArgs.
+    let response = self
+      .call_function_on_args(
+        format!(
+          r#"function (object) {{
+          try {{
+            return {0}.inspectArgs(["%o", object], {{ colors: !{0}.noColor }});
+          }} catch (err) {{
+            return {0}.inspectArgs(["%o", err]);
+          }}
+        }}"#,
+          *REPL_INTERNALS_NAME
+        ),
+        &[evaluate_result.clone()],
+      )
+      .await?;
     let value = response.result.value.unwrap();
     let s = value.as_str().unwrap();
 
