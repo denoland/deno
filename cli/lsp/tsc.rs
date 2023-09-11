@@ -3270,14 +3270,11 @@ fn op_load(
   let specifier = state.normalize_specifier(args.specifier)?;
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
-  Ok(match asset_or_document {
-    Some(doc) => Some(LoadResponse {
-      data: doc.text(),
-      script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-      version: state.script_version(&specifier),
-    }),
-    None => None,
-  })
+  Ok(asset_or_document.map(|doc| LoadResponse {
+    data: doc.text(),
+    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+    version: state.script_version(&specifier),
+  }))
 }
 
 #[op]
