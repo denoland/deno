@@ -227,6 +227,20 @@ fn create_command(
   command.args(args.args);
 
   if let Some(cwd) = args.cwd {
+    if let Ok(cwd_metadata) = std::fs::metadata(cwd.clone()) {
+      if !cwd_metadata.is_dir() {
+        return Err::<std::process::Command, _>(AnyError::msg(format!(
+          "The runtime path '{}' is not a directory.",
+          cwd.clone()
+        )));
+      }
+    } else {
+      return Err::<std::process::Command, _>(AnyError::msg(format!(
+        "Unable to access the runtime path '{}'.",
+        cwd.clone()
+      )));
+    }
+
     command.current_dir(cwd);
   }
 
