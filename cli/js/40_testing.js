@@ -5,7 +5,6 @@ const ops = core.ops;
 import { setExitHandler } from "ext:runtime/30_os.js";
 import { Console } from "ext:deno_console/01_console.js";
 import { serializePermissions } from "ext:runtime/10_permissions.js";
-import { setTimeoutUnclamped } from "ext:deno_web/02_timers.js";
 import { assert } from "ext:deno_web/00_infra.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
@@ -55,9 +54,7 @@ async function opSanitizerDelay() {
     await core.opAsync("op_void_async_deferred");
   }
   return new Promise((resolve) => {
-    ArrayPrototypePush(opSanitizerDelayResolveQueue, () => {
-      resolve();
-    });
+    ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
   });
 }
 
