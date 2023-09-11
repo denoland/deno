@@ -336,11 +336,11 @@ fn op_spawn_child(
 
 // TODO(bartlomieju): op2 doesn't support clippy allows
 #[op]
+#[allow(clippy::await_holding_refcell_ref)]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
   rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
-  #![allow(clippy::await_holding_refcell_ref)]
   let resource = state
     .borrow_mut()
     .resource_table
