@@ -2,7 +2,7 @@
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
@@ -39,10 +39,11 @@ impl Resource for CompressionResource {
   }
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_compression_new(
   state: &mut OpState,
-  format: &str,
+  #[string] format: &str,
   is_decoder: bool,
 ) -> ResourceId {
   let w = Vec::new();
@@ -65,11 +66,12 @@ pub fn op_compression_new(
   state.resource_table.add(resource)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_compression_write(
   state: &mut OpState,
-  rid: ResourceId,
-  input: &[u8],
+  #[smi] rid: ResourceId,
+  #[buffer] input: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.get::<CompressionResource>(rid)?;
   let mut inner = resource.0.borrow_mut();
@@ -109,10 +111,11 @@ pub fn op_compression_write(
   Ok(out.into())
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_compression_finish(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ToJsBuffer, AnyError> {
   let resource = state.resource_table.take::<CompressionResource>(rid)?;
   let resource = Rc::try_unwrap(resource).unwrap();

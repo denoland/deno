@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
@@ -165,8 +165,12 @@ impl BlobPart for SlicedBlobPart {
   }
 }
 
-#[op]
-pub fn op_blob_create_part(state: &mut OpState, data: JsBuffer) -> Uuid {
+#[op2]
+#[serde]
+pub fn op_blob_create_part(
+  state: &mut OpState,
+  #[buffer] data: JsBuffer,
+) -> Uuid {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = InMemoryBlobPart(data.to_vec());
   blob_store.insert_part(Arc::new(part))
@@ -179,11 +183,12 @@ pub struct SliceOptions {
   len: usize,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_blob_slice_part(
   state: &mut OpState,
-  id: Uuid,
-  options: SliceOptions,
+  #[serde] id: Uuid,
+  #[serde] options: SliceOptions,
 ) -> Result<Uuid, AnyError> {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   let part = blob_store
@@ -205,10 +210,11 @@ pub fn op_blob_slice_part(
   Ok(id)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_blob_read_part(
   state: Rc<RefCell<OpState>>,
-  id: Uuid,
+  #[serde] id: Uuid,
 ) -> Result<ToJsBuffer, AnyError> {
   let part = {
     let state = state.borrow();
@@ -220,17 +226,18 @@ pub async fn op_blob_read_part(
   Ok(ToJsBuffer::from(buf.to_vec()))
 }
 
-#[op]
-pub fn op_blob_remove_part(state: &mut OpState, id: Uuid) {
+#[op2]
+pub fn op_blob_remove_part(state: &mut OpState, #[serde] id: Uuid) {
   let blob_store = state.borrow::<Arc<BlobStore>>();
   blob_store.remove_part(&id);
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_blob_create_object_url(
   state: &mut OpState,
-  media_type: String,
-  part_ids: Vec<Uuid>,
+  #[string] media_type: String,
+  #[serde] part_ids: Vec<Uuid>,
 ) -> Result<String, AnyError> {
   let mut parts = Vec::with_capacity(part_ids.len());
   let blob_store = state.borrow::<Arc<BlobStore>>();
@@ -252,10 +259,10 @@ pub fn op_blob_create_object_url(
   Ok(url.to_string())
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_blob_revoke_object_url(
-  state: &mut deno_core::OpState,
-  url: &str,
+  state: &mut OpState,
+  #[string] url: &str,
 ) -> Result<(), AnyError> {
   let url = Url::parse(url)?;
   let blob_store = state.borrow::<Arc<BlobStore>>();
@@ -275,10 +282,11 @@ pub struct ReturnBlobPart {
   pub size: usize,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_blob_from_object_url(
   state: &mut OpState,
-  url: String,
+  #[string] url: String,
 ) -> Result<Option<ReturnBlob>, AnyError> {
   let url = Url::parse(&url)?;
   if url.scheme() != "blob" {

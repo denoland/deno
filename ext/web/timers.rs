@@ -5,6 +5,7 @@
 use crate::hr_timer_lock::hr_timer_lock;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::OpState;
@@ -27,8 +28,8 @@ pub type StartTime = Instant;
 // since the start time of the deno runtime.
 // If the High precision flag is not set, the
 // nanoseconds are rounded on 2ms.
-#[op(fast)]
-pub fn op_now<TP>(state: &mut OpState, buf: &mut [u8])
+#[op2(fast)]
+pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
 where
   TP: TimersPermission + 'static,
 {
@@ -68,7 +69,8 @@ impl Resource for TimerHandle {
 
 /// Creates a [`TimerHandle`] resource that can be used to cancel invocations of
 /// [`op_sleep`].
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_timer_handle(state: &mut OpState) -> ResourceId {
   state
     .resource_table
