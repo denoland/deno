@@ -44,15 +44,20 @@ let hasSetOpSanitizerDelayMacrotask = false;
 // will have an associated op. An additional `setTimeout` of 0 is needed
 // before that, though, in order to give time for worker message ops to finish
 // (since timeouts of 0 don't queue tasks in the timer queue immediately).
-function opSanitizerDelay() {
+async function opSanitizerDelay() {
   if (!hasSetOpSanitizerDelayMacrotask) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
     hasSetOpSanitizerDelayMacrotask = true;
   }
+
+  // Spin the event loop for a little bit to let all async ops settle.
+  for (let i = 0; i < 100; i++) {
+    await core.opAsync("op_void_async_deferred");
+  }
   return new Promise((resolve) => {
-    setTimeoutUnclamped(() => {
-      ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 1);
+    ArrayPrototypePush(opSanitizerDelayResolveQueue, () => {
+      resolve();
+    });
   });
 }
 
