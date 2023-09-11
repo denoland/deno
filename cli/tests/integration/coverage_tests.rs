@@ -472,3 +472,35 @@ fn no_internal_code() {
     assert_starts_with!(url, "file:");
   }
 }
+
+#[test]
+fn no_internal_node_code() {
+  let context = TestContext::default();
+  let tempdir = context.temp_dir();
+  let tempdir = tempdir.path().join("cov");
+
+  let output = context
+    .new_command()
+    .args_vec(vec![
+      "test".to_string(),
+      "--quiet".to_string(),
+      "--no-check".to_string(),
+      format!("--coverage={}", tempdir),
+      "coverage/no_internal_node_code_test.ts".to_string(),
+    ])
+    .run();
+
+  output.assert_exit_code(0);
+  output.skip_output_check();
+
+  // Check that coverage files contain no internal urls
+  let paths = fs::read_dir(tempdir).unwrap();
+  for path in paths {
+    let unwrapped = path.unwrap().path();
+    let data = fs::read_to_string(&unwrapped.clone()).unwrap();
+
+    let value: serde_json::Value = serde_json::from_str(&data).unwrap();
+    let url = value["url"].as_str().unwrap();
+    assert_starts_with!(url, "file:");
+  }
+}
