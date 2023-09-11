@@ -5,7 +5,6 @@ mod urlpattern;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
@@ -32,7 +31,6 @@ deno_core::extension!(
   esm = ["00_url.js", "01_urlpattern.js"],
 );
 
-// TODO(bartlomieju): op2 is missing &mut [u32] support
 /// Parse `href` with a `base_href`. Fills the out `buf` with URL components.
 #[op]
 pub fn op_url_parse_with_base(
@@ -57,13 +55,11 @@ pub enum ParseStatus {
 
 struct UrlSerialization(String);
 
-#[op2]
-#[string]
+#[op]
 pub fn op_url_get_serialization(state: &mut OpState) -> String {
   state.take::<UrlSerialization>().0
 }
 
-// TODO(bartlomieju): op2 is missing &mut [u32] support
 /// Parse `href` without a `base_url`. Fills the out `buf` with URL components.
 #[op(fast)]
 pub fn op_url_parse(state: &mut OpState, href: &str, buf: &mut [u32]) -> u32 {
@@ -152,14 +148,13 @@ fn as_u32_slice(slice: &mut [u8]) -> &mut [u32] {
   }
 }
 
-#[op2(fast)]
-#[smi]
+#[op]
 pub fn op_url_reparse(
   state: &mut OpState,
-  #[string] href: String,
+  href: String,
   setter: u8,
-  #[string] setter_value: String,
-  #[buffer] buf: &mut [u8],
+  setter_value: String,
+  buf: &mut [u8],
 ) -> u32 {
   let mut url = match Url::options().parse(&href) {
     Ok(url) => url,
@@ -222,7 +217,6 @@ pub fn op_url_reparse(
   }
 }
 
-// TODO(bartlomieju): op2 is missing Option<JuBuffer> support
 #[op]
 pub fn op_url_parse_search_params(
   args: Option<String>,
@@ -242,11 +236,8 @@ pub fn op_url_parse_search_params(
   Ok(params)
 }
 
-#[op2]
-#[string]
-pub fn op_url_stringify_search_params(
-  #[serde] args: Vec<(String, String)>,
-) -> String {
+#[op]
+pub fn op_url_stringify_search_params(args: Vec<(String, String)>) -> String {
   let search = form_urlencoded::Serializer::new(String::new())
     .extend_pairs(args)
     .finish();
