@@ -13,6 +13,7 @@ mod ts {
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
   use deno_core::op;
+  use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Deserialize;
@@ -28,6 +29,7 @@ mod ts {
     specifier: String,
   }
 
+  // TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
   #[op]
   fn op_build_info(state: &mut OpState) -> Value {
     let build_specifier = "asset:///bootstrap.ts";
@@ -41,11 +43,12 @@ mod ts {
     })
   }
 
-  #[op]
+  #[op2(fast)]
   fn op_is_node_file() -> bool {
     false
   }
 
+  // TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
   #[op]
   fn op_script_version(
     _state: &mut OpState,
@@ -54,6 +57,7 @@ mod ts {
     Ok(Some("1".to_string()))
   }
 
+  // TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
   #[op]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
