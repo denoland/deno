@@ -127,6 +127,11 @@ impl CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
+      // Filter out internal JS files from being included in coverage reports
+      if script_coverage.url.starts_with("ext:") || script_coverage.url.starts_with("[ext:") {
+        continue;
+      }
+
       let filename = format!("{}.json", Uuid::new_v4());
       let filepath = self.dir.join(filename);
 
