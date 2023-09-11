@@ -41,7 +41,6 @@ const {
   Error,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
-  PromiseResolve,
   Symbol,
   SymbolFor,
   TypeError,
