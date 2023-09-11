@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -733,10 +733,10 @@ impl crate::fs::File for StdFileResourceInner {
 }
 
 // override op_print to use the stdout and stderr in the resource table
-#[op]
+#[op2(fast)]
 pub fn op_print(
   state: &mut OpState,
-  msg: &str,
+  #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), AnyError> {
   let rid = if is_err { 2 } else { 1 };
