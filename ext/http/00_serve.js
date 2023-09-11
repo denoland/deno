@@ -663,8 +663,6 @@ function serveHttpOn(context, callback) {
         context.closing = true;
         await op_http_close(context.serverRid, true);
         context.closed = true;
-      } else {
-        return PromiseResolve(null);
       }
     },
     then() {
