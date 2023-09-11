@@ -733,12 +733,9 @@ struct RespondArgs {
 }
 
 #[op]
-fn op_respond(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
+fn op_respond(state: &mut OpState, args: RespondArgs) {
   let state = state.borrow_mut::<State>();
-  let v: RespondArgs = serde_json::from_value(args)
-    .context("Error converting the result for \"op_respond\".")?;
-  state.maybe_response = Some(v);
-  Ok(json!(true))
+  state.maybe_response = Some(args);
 }
 
 /// Execute a request on the supplied snapshot, returning a response which
@@ -1160,21 +1157,18 @@ mod tests {
   #[tokio::test]
   async fn test_respond() {
     let mut state = setup(None, None, None).await;
-    let actual = op_respond::call(
-      &mut state,
-      json!({
-        "diagnostics": [
-          {
-            "messageText": "Unknown compiler option 'invalid'.",
-            "category": 1,
-            "code": 5023
-          }
-        ],
-        "stats": [["a", 12]]
-      }),
-    )
-    .expect("should have invoked op");
-    assert_eq!(actual, json!(true));
+    let args = serde_json::from_value(json!({
+      "diagnostics": [
+        {
+          "messageText": "Unknown compiler option 'invalid'.",
+          "category": 1,
+          "code": 5023
+        }
+      ],
+      "stats": [["a", 12]]
+    }))
+    .unwrap();
+    op_respond::call(&mut state, args);
     let state = state.borrow::<State>();
     assert_eq!(
       state.maybe_response,
