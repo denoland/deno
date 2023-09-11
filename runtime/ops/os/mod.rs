@@ -6,6 +6,7 @@ use crate::worker::ExitCode;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Op;
@@ -61,7 +62,8 @@ deno_core::extension!(
   },
 );
 
-#[op]
+#[op2]
+#[string]
 fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   let current_exe = env::current_exe().unwrap();
   state
@@ -75,11 +77,11 @@ fn op_exec_path(state: &mut OpState) -> Result<String, AnyError> {
   into_string(path.into_os_string())
 }
 
-#[op]
+#[op2(fast)]
 fn op_set_env(
   state: &mut OpState,
-  key: &str,
-  value: &str,
+  #[string] key: &str,
+  #[string] value: &str,
 ) -> Result<(), AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env(key)?;
   if key.is_empty() {
@@ -99,16 +101,18 @@ fn op_set_env(
   Ok(())
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_env(state: &mut OpState) -> Result<HashMap<String, String>, AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env_all()?;
   Ok(env::vars().collect())
 }
 
-#[op]
+#[op2]
+#[string]
 fn op_get_env(
   state: &mut OpState,
-  key: String,
+  #[string] key: String,
 ) -> Result<Option<String>, AnyError> {
   let skip_permission_check = NODE_ENV_VAR_ALLOWLIST.contains(&key);
 
@@ -133,8 +137,11 @@ fn op_get_env(
   Ok(r)
 }
 
-#[op]
-fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
+#[op2(fast)]
+fn op_delete_env(
+  state: &mut OpState,
+  #[string] key: String,
+) -> Result<(), AnyError> {
   state.borrow_mut::<PermissionsContainer>().check_env(&key)?;
   if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
     return Err(type_error("Key contains invalid characters."));
@@ -143,18 +150,19 @@ fn op_delete_env(state: &mut OpState, key: String) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[op]
-fn op_set_exit_code(state: &mut OpState, code: i32) {
+#[op2(fast)]
+fn op_set_exit_code(state: &mut OpState, #[smi] code: i32) {
   state.borrow_mut::<ExitCode>().set(code);
 }
 
-#[op]
+#[op2(fast)]
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
   std::process::exit(code)
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -162,7 +170,8 @@ fn op_loadavg(state: &mut OpState) -> Result<(f64, f64, f64), AnyError> {
   Ok(sys_info::loadavg())
 }
 
-#[op]
+#[op2]
+#[string]
 fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -170,7 +179,8 @@ fn op_hostname(state: &mut OpState) -> Result<String, AnyError> {
   Ok(sys_info::hostname())
 }
 
-#[op]
+#[op2]
+#[string]
 fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   state
     .borrow_mut::<PermissionsContainer>()
@@ -178,7 +188,8 @@ fn op_os_release(state: &mut OpState) -> Result<String, AnyError> {
   Ok(sys_info::os_release())
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_network_interfaces(
   state: &mut OpState,
 ) -> Result<Vec<NetworkInterface>, AnyError> {
@@ -229,7 +240,8 @@ impl From<netif::Interface> for NetworkInterface {
   }
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_system_memory_info(
   state: &mut OpState,
 ) -> Result<Option<sys_info::MemInfo>, AnyError> {
@@ -239,6 +251,7 @@ fn op_system_memory_info(
   Ok(sys_info::mem_info())
 }
 
+// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
@@ -252,6 +265,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
+// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
 #[op]
 fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
@@ -261,6 +275,7 @@ fn op_gid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   Ok(None)
 }
 
+// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(not(windows))]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
@@ -274,6 +289,7 @@ fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
   }
 }
 
+// TODO(bartlomieju): op2 doesn't support cfg attrs
 #[cfg(windows)]
 #[op]
 fn op_uid(state: &mut OpState) -> Result<Option<u32>, AnyError> {
@@ -293,7 +309,8 @@ struct MemoryUsage {
   external: usize,
 }
 
-#[op(v8)]
+#[op2]
+#[serde]
 fn op_runtime_memory_usage(scope: &mut v8::HandleScope) -> MemoryUsage {
   let mut s = v8::HeapStatistics::default();
   scope.get_heap_statistics(&mut s);
@@ -460,12 +477,14 @@ fn os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   Ok(sys_info::os_uptime())
 }
 
-#[op]
+#[op2]
+#[bigint]
 fn op_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)
 }
 
-#[op]
+#[op2]
+#[bigint]
 fn op_node_unstable_os_uptime(state: &mut OpState) -> Result<u64, AnyError> {
   os_uptime(state)
 }
