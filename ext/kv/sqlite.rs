@@ -1065,8 +1065,10 @@ fn shared_queue_waker_channel(
     }
   };
 
-  let waker_tx =
-    waker.wakers_tx.entry(waker_key.to_path_buf()).or_insert_with(|| {
+  let waker_tx = waker
+    .wakers_tx
+    .entry(waker_key.to_path_buf())
+    .or_insert_with(|| {
       let (waker_tx, _) = broadcast::channel(1);
       waker_tx
     });
