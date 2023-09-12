@@ -51,11 +51,11 @@ impl MessagePort {
     Ok(())
   }
 
+  #[allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
   pub async fn recv(
     &self,
     state: Rc<RefCell<OpState>>,
   ) -> Result<Option<JsMessageData>, AnyError> {
-    #![allow(clippy::await_holding_refcell_ref)] // TODO(ry) remove!
     let mut rx = self
       .rx
       .try_borrow_mut()
