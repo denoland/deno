@@ -5864,9 +5864,8 @@ declare namespace Deno {
     info: ServeHandlerInfo,
   ) =>
     | Response
-    | Promise<Response>
     | ServeHandlerResponse
-    | Promise<ServeHandlerResponse>;
+    | Promise<Response | ServeHandlerResponse>;
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
    *
