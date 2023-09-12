@@ -777,7 +777,6 @@ fn specifier_enabled(
   }
 
   let root_enable = settings.workspace.enable.unwrap_or(config_file.is_some());
-
   if let Some(settings) = settings.specifiers.get(specifier) {
     // TODO(nayeemrmn): We don't know from where to resolve `enable_paths` in
     // this case. If it's detected, instead defer to workspace scopes.
@@ -785,24 +784,24 @@ fn specifier_enabled(
       return settings.enable.unwrap_or(root_enable);
     }
   }
+  let Ok(path) = specifier_to_file_path(specifier) else {
+    // Non-file URLs are not disabled by these settings.
+    return true;
+  };
   for (workspace_uri, _) in workspace_folders {
-    if specifier.as_str().starts_with(workspace_uri.as_str()) {
+    let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
+      lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
+      continue;
+    };
+    if path.starts_with(&workspace_path) {
       let specifier_settings = settings.specifiers.get(workspace_uri);
       let enable_paths = specifier_settings
         .and_then(|s| s.enable_paths.as_ref())
         .or(settings.workspace.enable_paths.as_ref());
       if let Some(enable_paths) = enable_paths {
-        let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
-          lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
-          return false;
-        };
-        for path in enable_paths {
-          let path = scope_path.join(path);
-          let Ok(path_uri) = specifier_from_file_path(&path) else {
-            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-            continue;
-          };
-          if specifier.as_str().starts_with(path_uri.as_str()) {
+        for enable_path in enable_paths {
+          let enable_path = workspace_path.join(enable_path);
+          if path.starts_with(&enable_path) {
             return true;
           }
         }
@@ -814,7 +813,6 @@ fn specifier_enabled(
       }
     }
   }
-
   root_enable
 }
 
@@ -1120,6 +1118,15 @@ mod tests {
       ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
     );
     assert_eq!(config.enabled_urls(), vec![root_uri]);
+  }
+
+  // Regression test for https://github.com/denoland/vscode_deno/issues/917.
+  #[test]
+  fn config_specifier_enabled_matches_by_path_component() {
+    let root_uri = resolve_url("file:///root/").unwrap();
+    let mut config = Config::new_with_root(root_uri.clone());
+    config.settings.workspace.enable_paths = Some(vec!["mo".to_string()]);
+    assert!(!config.specifier_enabled(&root_uri.join("mod.ts").unwrap()));
   }
 
   #[test]
