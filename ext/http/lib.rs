@@ -126,6 +126,8 @@ deno_core::extension!(
     http_next::op_can_write_vectored,
     http_next::op_http_try_wait,
     http_next::op_http_wait,
+    http_next::op_http_close,
+    http_next::op_http_cancel,
   ],
   esm = ["00_serve.js", "01_http.js"],
 );
