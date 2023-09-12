@@ -23,7 +23,7 @@ use deno_core::futures::task::Poll;
 use deno_core::futures::task::RawWaker;
 use deno_core::futures::task::RawWakerVTable;
 use deno_core::futures::task::Waker;
-use deno_core::op;
+use deno_core::op2;
 
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn;
@@ -779,10 +779,11 @@ pub struct StartTlsArgs {
   alpn_protocols: Option<Vec<String>>,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_start<NP>(
   state: Rc<RefCell<OpState>>,
-  args: StartTlsArgs,
+  #[serde] args: StartTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -860,11 +861,12 @@ where
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_tls<NP>(
   state: Rc<RefCell<OpState>>,
-  addr: IpAddr,
-  args: ConnectTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ConnectTlsArgs,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1000,11 +1002,12 @@ pub struct ListenTlsArgs {
   reuse_port: bool,
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_tls<NP>(
   state: &mut OpState,
-  addr: IpAddr,
-  args: ListenTlsArgs,
+  #[serde] addr: IpAddr,
+  #[serde] args: ListenTlsArgs,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -1101,10 +1104,11 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_accept_tls(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
   let resource = state
     .borrow()
@@ -1142,10 +1146,11 @@ pub async fn op_net_accept_tls(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_tls_handshake(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<TlsHandshakeInfo, AnyError> {
   let resource = state
     .borrow()
