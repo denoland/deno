@@ -38,9 +38,11 @@ import {
 import { listen, TcpConn } from "ext:deno_net/01_net.js";
 import { listenTls } from "ext:deno_net/02_tls.js";
 const {
+  ArrayIsArray,
   ArrayPrototypePush,
   Error,
   ObjectPrototypeIsPrototypeOf,
+  ObjectEntries,
   PromisePrototypeCatch,
   Symbol,
   SymbolFor,
@@ -490,10 +492,10 @@ function mapToCallback(context, callback, onError) {
       status = response.status ?? 200;
       body = response.body;
       if (response.headers) {
-        headers = Array.isArray(response.headers)
+        headers = ArrayIsArray(response.headers)
           ? response.headers
           : (headerListFromHeaders(response.headers) ??
-            Object.entries(response.headers));
+            ObjectEntries(response.headers));
       }
     }
 
