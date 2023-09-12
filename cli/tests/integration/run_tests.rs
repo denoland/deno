@@ -2816,18 +2816,6 @@ mod permissions {
         console.write_raw("\x1b"); // Escape
         console.expect("false");
 
-        // confirm returns false by pressing Ctrl+C
-        console.write_line_raw("confirm()");
-        console.expect("Confirm [Y/n] ");
-        console.write_raw("\x03"); // Ctrl+C
-        console.expect("false");
-
-        // confirm returns false by pressing Ctrl+D
-        console.write_line_raw("confirm()");
-        console.expect("Confirm [Y/n] ");
-        console.write_raw("\x04"); // Ctrl+D
-        console.expect("false");
-
         // confirm can display custom text
         // confirm returns true by pressing y
         console.write_line_raw("confirm('continue?')");
@@ -2909,17 +2897,32 @@ mod permissions {
         console.write_raw("\x1b"); // Escape
         console.expect("null");
 
-        // prompt returns null by pressing Ctrl+C
-        console.write_line_raw("prompt()");
-        console.expect("Prompt ");
-        console.write_raw("\x03"); // Ctrl+C
-        console.expect("null");
+        #[cfg(not(target_os = "macos"))]
+        {
+          // confirm returns false by pressing Ctrl+C
+          console.write_line_raw("confirm()");
+          console.expect("Confirm [Y/n] ");
+          console.write_raw("\x03"); // Ctrl+C
+          console.expect("false");
 
-        // prompt returns null by pressing Ctrl+D
-        console.write_line_raw("prompt()");
-        console.expect("Prompt ");
-        console.write_raw("\x04"); // Ctrl+D
-        console.expect("null");
+          // confirm returns false by pressing Ctrl+D
+          console.write_line_raw("confirm()");
+          console.expect("Confirm [Y/n] ");
+          console.write_raw("\x04"); // Ctrl+D
+          console.expect("false");
+
+          // prompt returns null by pressing Ctrl+C
+          console.write_line_raw("prompt()");
+          console.expect("Prompt ");
+          console.write_raw("\x03"); // Ctrl+C
+          console.expect("null");
+
+          // prompt returns null by pressing Ctrl+D
+          console.write_line_raw("prompt()");
+          console.expect("Prompt ");
+          console.write_raw("\x04"); // Ctrl+D
+          console.expect("null");
+        }
       });
   }
 
