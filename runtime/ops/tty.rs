@@ -73,7 +73,7 @@ fn mode_raw_input_off(original_mode: DWORD) -> DWORD {
   original_mode & !wincon::ENABLE_VIRTUAL_TERMINAL_INPUT | COOKED_MODE
 }
 
-#[op(fast)]
+#[op2(fast)]
 fn op_stdin_set_raw(
   state: &mut OpState,
   is_raw: bool,

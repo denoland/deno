@@ -118,7 +118,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower-lsp.workspace = true
-tracing.workspace = true
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.1"
 uuid = { workspace = true, features = ["serde"] }

@@ -28,12 +28,12 @@ pub use session::EvaluationOutput;
 pub use session::ReplSession;
 pub use session::REPL_INTERNALS_NAME;
 
+#[allow(clippy::await_holding_refcell_ref)]
 async fn read_line_and_poll(
   repl_session: &mut ReplSession,
   message_handler: &mut RustylineSyncMessageHandler,
   editor: ReplEditor,
 ) -> Result<String, ReadlineError> {
-  #![allow(clippy::await_holding_refcell_ref)]
   let mut line_fut = spawn_blocking(move || editor.readline());
   let mut poll_worker = true;
   let notifications_rc = repl_session.notifications.clone();
