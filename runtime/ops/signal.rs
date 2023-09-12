@@ -2,6 +2,7 @@
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -580,10 +581,10 @@ fn op_signal_bind(
   Ok(rid)
 }
 
-#[op]
+#[op2(async)]
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<bool, AnyError> {
   let resource = state
     .borrow_mut()
@@ -599,10 +600,10 @@ async fn op_signal_poll(
   }
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_signal_unbind(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   state.resource_table.close(rid)?;
   Ok(())

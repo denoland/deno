@@ -5500,6 +5500,45 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+fn lsp_semantic_tokens_for_disabled_module() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_with_config(
+    |builder| {
+      builder.set_deno_enable(false);
+    },
+    json!({
+      "enable": false
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const someConst = 1; someConst"
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "data": [0, 6, 9, 7, 9, 0, 15, 9, 7, 8],
+    })
+  );
+}
+
+#[test]
 fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -7960,11 +7999,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 331,
+            "line": 346,
             "character": 0,
           },
           "end": {
-            "line": 371,
+            "line": 388,
             "character": 1,
           },
         },

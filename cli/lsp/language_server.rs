@@ -2832,9 +2832,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&specifier)
-      || !self.config.specifier_enabled(&specifier)
-    {
+    if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
 
@@ -2869,9 +2867,7 @@ impl Inner {
     let specifier = self
       .url_map
       .normalize_url(&params.text_document.uri, LspUrlKind::File);
-    if !self.is_diagnosable(&specifier)
-      || !self.config.specifier_enabled(&specifier)
-    {
+    if !self.is_diagnosable(&specifier) {
       return Ok(None);
     }
 
