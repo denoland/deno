@@ -227,20 +227,6 @@ fn create_command(
   command.args(args.args);
 
   if let Some(cwd) = args.cwd {
-    if let Ok(cwd_metadata) = std::fs::metadata(cwd.clone()) {
-      if !cwd_metadata.is_dir() {
-        return Err::<std::process::Command, _>(AnyError::msg(format!(
-          "The runtime path '{}' is not a directory.",
-          cwd.clone()
-        )));
-      }
-    } else {
-      return Err::<std::process::Command, _>(AnyError::msg(format!(
-        "Unable to access the runtime path '{}'.",
-        cwd.clone()
-      )));
-    }
-
     command.current_dir(cwd);
   }
 
@@ -301,10 +287,22 @@ fn spawn_child(
   command.kill_on_drop(true);
 
   let mut child = command.spawn().with_context(|| {
-    format!(
-      "Failed to spawn: {}",
-      command.as_std().get_program().to_string_lossy()
-    )
+    let mut _cmd = command.as_std();
+
+    if let Some(cwd) = _cmd.get_current_dir() {
+      if !cwd.exists() {
+        return format!("Can't find cwd path `{}`", cwd.to_string_lossy());
+      }
+
+      if !cwd.is_dir() {
+        return format!(
+          "cwd path is not a directory `{}`",
+          cwd.to_string_lossy()
+        );
+      }
+    }
+
+    format!("Failed to spawn: {}", _cmd.get_program().to_string_lossy())
   })?;
   let pid = child.id().expect("Process ID should be set.");
 
