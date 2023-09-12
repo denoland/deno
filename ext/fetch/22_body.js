@@ -392,6 +392,10 @@ function extractBody(object) {
     if (object.type.length !== 0) {
       contentType = object.type;
     }
+  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
+    source = object;
+  } else if (ObjectPrototypeIsPrototypeOf(Uint8Array, object)) {
+    source = object;
   } else if (ArrayBufferIsView(object)) {
     const tag = TypedArrayPrototypeGetSymbolToStringTag(object);
     if (tag !== undefined) {
@@ -413,8 +417,6 @@ function extractBody(object) {
       );
     }
     source = TypedArrayPrototypeSlice(object);
-  } else if (ObjectPrototypeIsPrototypeOf(ArrayBufferPrototype, object)) {
-    source = TypedArrayPrototypeSlice(new Uint8Array(object));
   } else if (ObjectPrototypeIsPrototypeOf(FormDataPrototype, object)) {
     const res = formDataToBlob(object);
     stream = res.stream();

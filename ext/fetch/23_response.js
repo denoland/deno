@@ -30,6 +30,7 @@ import {
   headerListFromHeaders,
   headersFromHeaderList,
 } from "ext:deno_fetch/20_headers.js";
+import { ReadableStreamPrototype } from "ext:deno_web/06_streams.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeMap,
@@ -43,6 +44,7 @@ const {
   Symbol,
   SymbolFor,
   TypeError,
+  Uint8ArrayPrototype,
 } = primordials;
 
 const VCHAR = ["\x21-\x7E"];
@@ -305,6 +307,43 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
+    this[webidl.brand] = webidl.brand;
+    if (arguments.length == 1) {
+      if (typeof body == "string") {
+        this[_response] = {
+          type: "default",
+          body: { streamOrStatic: { body } },
+          headerList: [["Content-Type", "text/plain;charset=UTF-8"]],
+          urlList: [],
+          status: 200,
+          statusMessage: "",
+          aborted: false,
+          url() {
+            return null;
+          },
+        };
+        return;
+      }
+      if (
+        ObjectPrototypeIsPrototypeOf(Uint8ArrayPrototype, body) ||
+        ObjectPrototypeIsPrototypeOf(ReadableStreamPrototype, body)
+      ) {
+        this[_response] = {
+          type: "default",
+          body: { streamOrStatic: { body } },
+          headerList: [],
+          urlList: [],
+          status: 200,
+          statusMessage: "",
+          aborted: false,
+          url() {
+            return null;
+          },
+        };
+        return;
+      }
+    }
+
     const prefix = "Failed to construct 'Response'";
     body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
@@ -320,7 +359,6 @@ class Response {
       bodyWithType = extractBody(body);
     }
     initializeAResponse(this, init, bodyWithType);
-    this[webidl.brand] = webidl.brand;
   }
 
   /**
