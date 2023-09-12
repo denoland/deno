@@ -3252,26 +3252,29 @@ fn op_is_node_file(state: &mut OpState, path: String) -> bool {
   }
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadResponse {
+  data: Arc<str>,
+  script_kind: i32,
+  version: Option<String>,
+}
+
 #[op]
 fn op_load(
   state: &mut OpState,
   args: SpecifierArgs,
-) -> Result<Value, AnyError> {
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
-  Ok(match asset_or_document {
-    Some(doc) => {
-      json!({
-        "data": doc.text(),
-        "scriptKind": crate::tsc::as_ts_script_kind(doc.media_type()),
-        "version": state.script_version(&specifier),
-      })
-    }
-    None => Value::Null,
-  })
+  Ok(asset_or_document.map(|doc| LoadResponse {
+    data: doc.text(),
+    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+    version: state.script_version(&specifier),
+  }))
 }
 
 #[op]
@@ -3312,10 +3315,9 @@ fn op_resolve(
 }
 
 #[op]
-fn op_respond(state: &mut OpState, args: Response) -> bool {
+fn op_respond(state: &mut OpState, args: Response) {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
-  true
 }
 
 #[op]
