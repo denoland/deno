@@ -237,6 +237,8 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;
@@ -280,6 +282,8 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;
@@ -320,7 +324,74 @@ impl ModuleGraphBuilder {
       self.resolver.force_top_level_package_json_install().await?;
     }
 
+    // add the lockfile redirects to the graph if it's the first time executing
+    if graph.redirects.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let lockfile = lockfile.lock();
+        for (from, to) in &lockfile.content.redirects {
+          if let Ok(from) = ModuleSpecifier::parse(from) {
+            if let Ok(to) = ModuleSpecifier::parse(to) {
+              if !matches!(from.scheme(), "file" | "npm")
+                && !matches!(to.scheme(), "file" | "npm")
+              {
+                graph.redirects.insert(from, to);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // todo(dsherret): uncomment when adding deno: specifier support
+    // add the deno specifiers to the graph if it's the first time executing
+    // if graph.deno_specifiers.is_empty() {
+    //   if let Some(lockfile) = &self.lockfile {
+    //     let lockfile = lockfile.lock();
+    //     for (key, value) in &lockfile.content.packages.specifiers {
+    //       if let Some(key) = key
+    //         .strip_prefix("deno:")
+    //         .and_then(|key| PackageReq::from_str(key))
+    //       {
+    //         if let Ok(value) = value
+    //           .strip_prefix("deno:")
+    //           .and_then(|value| PackageNv::from_str(value))
+    //         {
+    //           graph.deno_specifiers.add(key, value);
+    //         }
+    //       }
+    //     }
+    //   }
+    // }
+
     graph.build(roots, loader, options).await;
+
+    // add the redirects in the graph to the lockfile
+    if !graph.redirects.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
+        let mut lockfile = lockfile.lock();
+        for (from, to) in graph_redirects {
+          lockfile.insert_redirect(from.to_string(), to.to_string());
+        }
+      }
+    }
+
+    // todo(dsherret): uncomment when adding support for deno specifiers
+    // add the deno specifiers in the graph to the lockfile
+    // if !graph.deno_specifiers.is_empty() {
+    //   if let Some(lockfile) = &self.lockfile {
+    //     let mappings = graph.deno_specifiers.mappings();
+    //     let mut lockfile = lockfile.lock();
+    //     for (from, to) in mappings {
+    //       lockfile.insert_package_specifier(
+    //         format!("deno:{}", from),
+    //         format!("deno:{}", to),
+    //       );
+    //     }
+    //   }
+    // }
 
     // ensure that the top level package.json is installed if a
     // specifier was matched in the package.json
@@ -350,6 +421,7 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
+      self.parsed_source_cache.clone(),
       permissions,
       self.options.node_modules_dir_specifier(),
     )

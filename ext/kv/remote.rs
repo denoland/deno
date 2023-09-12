@@ -1,6 +1,8 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use std::cell::RefCell;
+use std::fmt;
+use std::io::Write;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -29,6 +31,10 @@ use deno_core::OpState;
 use prost::Message;
 use rand::Rng;
 use serde::Deserialize;
+use termcolor::Ansi;
+use termcolor::Color;
+use termcolor::ColorSpec;
+use termcolor::WriteColor;
 use tokio::sync::watch;
 use url::Url;
 use uuid::Uuid;
@@ -272,10 +278,26 @@ impl<P: RemoteDbHandlerPermissions> Database for RemoteDb<P> {
     &self,
     _state: Rc<RefCell<OpState>>,
   ) -> Result<Self::QMH, AnyError> {
+    let msg = "Deno.Kv.listenQueue is not supported for remote KV databases";
+    eprintln!("{}", yellow(msg));
     deno_core::futures::future::pending().await
   }
 
   fn close(&self) {}
+}
+
+fn yellow<S: AsRef<str>>(s: S) -> impl fmt::Display {
+  if std::env::var_os("NO_COLOR").is_some() {
+    return String::from(s.as_ref());
+  }
+  let mut style_spec = ColorSpec::new();
+  style_spec.set_fg(Some(Color::Yellow));
+  let mut v = Vec::new();
+  let mut ansi_writer = Ansi::new(&mut v);
+  ansi_writer.set_color(&style_spec).unwrap();
+  ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
+  ansi_writer.reset().unwrap();
+  String::from_utf8_lossy(&v).into_owned()
 }
 
 fn decode_value(
@@ -494,9 +516,15 @@ async fn call_remote<
       // `unwrap()` never fails because `tx` is owned by the task held by `refresher`.
       metadata_rx.changed().await.unwrap();
     };
-    let Some(sc_endpoint) = metadata.endpoints.iter().find(|x| x.consistency == "strong") else {
-        return Err(type_error("No strong consistency endpoint is available for this database"));
-      };
+    let Some(sc_endpoint) = metadata
+      .endpoints
+      .iter()
+      .find(|x| x.consistency == "strong")
+    else {
+      return Err(type_error(
+        "No strong consistency endpoint is available for this database",
+      ));
+    };
 
     let full_url = format!("{}/{}", sc_endpoint.url, method);
     {

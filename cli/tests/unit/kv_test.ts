@@ -1214,6 +1214,28 @@ dbTest("operation size limit", async (db) => {
     "too many checks (max 10)",
   );
 
+  const validMutateKeys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+  const invalidMutateKeys: Deno.KvKey[] = new Array(1001).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const res4 = await db.atomic()
+    .check(...lastValidKeys.map((key) => ({
+      key,
+      versionstamp: null,
+    })))
+    .mutate(...validMutateKeys.map((key) => ({
+      key,
+      type: "set",
+      value: 1,
+    } satisfies Deno.KvMutation)))
+    .commit();
+  assert(res4);
+
   await assertRejects(
     async () => {
       await db.atomic()
@@ -1221,7 +1243,7 @@ dbTest("operation size limit", async (db) => {
           key,
           versionstamp: null,
         })))
-        .mutate(...firstInvalidKeys.map((key) => ({
+        .mutate(...invalidMutateKeys.map((key) => ({
           key,
           type: "set",
           value: 1,
@@ -1229,7 +1251,50 @@ dbTest("operation size limit", async (db) => {
         .commit();
     },
     TypeError,
-    "too many mutations (max 10)",
+    "too many mutations (max 1000)",
+  );
+});
+
+dbTest("total mutation size limit", async (db) => {
+  const keys: Deno.KvKey[] = new Array(1000).fill(0).map((
+    _,
+    i,
+  ) => ["a", i]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  const res = await atomic.commit();
+  assert(res);
+
+  // Use bigger values to trigger "total mutation size too large" error
+  await assertRejects(
+    async () => {
+      const value = new Array(3000).fill("a").join("");
+      const atomic = db.atomic();
+      for (const key of keys) {
+        atomic.set(key, value);
+      }
+      await atomic.commit();
+    },
+    TypeError,
+    "total mutation size too large (max 819200 bytes)",
+  );
+});
+
+dbTest("total key size limit", async (db) => {
+  const longString = new Array(1100).fill("a").join("");
+  const keys: Deno.KvKey[] = new Array(80).fill(0).map(() => [longString]);
+
+  const atomic = db.atomic();
+  for (const key of keys) {
+    atomic.set(key, "foo");
+  }
+  await assertRejects(
+    () => atomic.commit(),
+    TypeError,
+    "total key size too large (max 81920 bytes)",
   );
 });
 

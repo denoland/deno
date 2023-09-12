@@ -290,16 +290,7 @@ pub struct SqliteDb {
 
 impl Drop for SqliteDb {
   fn drop(&mut self) {
-    self.expiration_watcher.abort();
-
-    // The above `abort()` operation is asynchronous. It's not
-    // guaranteed that the sqlite connection will be closed immediately.
-    // So here we synchronously take the conn mutex and drop the connection.
-    //
-    // This blocks the event loop if the connection is still being used,
-    // but ensures correctness - deleting the database file after calling
-    // the `close` method will always work.
-    self.conn.conn.lock().unwrap().take();
+    self.close();
   }
 }
 
@@ -355,7 +346,7 @@ impl SqliteDb {
     spawn_blocking(move || {
       let mut db = db.try_lock().ok();
       let Some(db) = db.as_mut().and_then(|x| x.as_mut()) else {
-        return Err(type_error(ERROR_USING_CLOSED_DATABASE))
+        return Err(type_error(ERROR_USING_CLOSED_DATABASE));
       };
       let result = match db.transaction() {
         Ok(tx) => f(tx),
@@ -449,9 +440,22 @@ impl SqliteQueue {
       Self::requeue_inflight_messages(conn.clone()).await.unwrap();
 
       // Continuous dequeue loop.
-      Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
+      match Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
         .await
-        .unwrap();
+      {
+        Ok(_) => Ok(()),
+        Err(e) => {
+          // Exit the dequeue loop cleanly if the database has been closed.
+          if get_custom_error_class(&e) == Some("TypeError")
+            && e.to_string() == ERROR_USING_CLOSED_DATABASE
+          {
+            Ok(())
+          } else {
+            Err(e)
+          }
+        }
+      }
+      .unwrap();
     });
 
     Self {
@@ -490,7 +494,7 @@ impl SqliteQueue {
   }
 
   fn shutdown(&self) {
-    self.shutdown_tx.send(()).unwrap();
+    let _ = self.shutdown_tx.send(());
   }
 
   async fn dequeue_loop(
@@ -573,7 +577,7 @@ impl SqliteQueue {
         };
         tokio::select! {
           _ = sleep_fut => {}
-          _ = waker_rx.recv() => {}
+          x = waker_rx.recv() => if x.is_none() {return Ok(());},
           _ = shutdown_rx.changed() => return Ok(())
         }
       }
@@ -626,16 +630,17 @@ impl SqliteQueue {
     tx: &rusqlite::Transaction<'_>,
   ) -> Result<bool, AnyError> {
     let Some((_, id, data, backoff_schedule, keys_if_undelivered)) = tx
-    .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
-    .query_row([id], |row| {
-      let deadline: u64 = row.get(0)?;
-      let id: String = row.get(1)?;
-      let data: Vec<u8> = row.get(2)?;
-      let backoff_schedule: String = row.get(3)?;
-      let keys_if_undelivered: String = row.get(4)?;
-      Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
-    })
-    .optional()? else {
+      .prepare_cached(STATEMENT_QUEUE_GET_RUNNING_BY_ID)?
+      .query_row([id], |row| {
+        let deadline: u64 = row.get(0)?;
+        let id: String = row.get(1)?;
+        let data: Vec<u8> = row.get(2)?;
+        let backoff_schedule: String = row.get(3)?;
+        let keys_if_undelivered: String = row.get(4)?;
+        Ok((deadline, id, data, backoff_schedule, keys_if_undelivered))
+      })
+      .optional()?
+    else {
       return Ok(false);
     };
 
@@ -912,6 +917,17 @@ impl Database for SqliteDb {
     if let Some(queue) = self.queue.get() {
       queue.shutdown();
     }
+
+    self.expiration_watcher.abort();
+
+    // The above `abort()` operation is asynchronous. It's not
+    // guaranteed that the sqlite connection will be closed immediately.
+    // So here we synchronously take the conn mutex and drop the connection.
+    //
+    // This blocks the event loop if the connection is still being used,
+    // but ensures correctness - deleting the database file after calling
+    // the `close` method will always work.
+    self.conn.conn.lock().unwrap().take();
   }
 }
 
@@ -926,7 +942,9 @@ fn mutate_le64(
   mutate: impl FnOnce(u64, u64) -> u64,
 ) -> Result<(), AnyError> {
   let Value::U64(operand) = *operand else {
-    return Err(type_error(format!("Failed to perform '{op_name}' mutation on a non-U64 operand")));
+    return Err(type_error(format!(
+      "Failed to perform '{op_name}' mutation on a non-U64 operand"
+    )));
   };
 
   let old_value = tx

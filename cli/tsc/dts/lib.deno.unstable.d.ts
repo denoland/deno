@@ -1995,6 +1995,17 @@ declare namespace Deno {
     request: Request,
     options?: UpgradeWebSocketOptions,
   ): WebSocketStreamUpgrade;
+
+  /** An instance of the server created using `Deno.serve()` API.
+   *
+   * @category HTTP Server
+   */
+  export interface Server {
+    /** Gracefully close the server. No more new connections will be accepted,
+     * while pending requests will be allowed to finish.
+     */
+    shutdown(): Promise<void>;
+  }
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.

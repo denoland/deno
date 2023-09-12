@@ -160,6 +160,10 @@ pub fn npm_registry_url() -> String {
   "http://localhost:4545/npm/registry/".to_string()
 }
 
+pub fn npm_registry_unset_url() -> String {
+  "http://NPM_CONFIG_REGISTRY.is.unset".to_string()
+}
+
 pub fn std_path() -> PathRef {
   root_path().join("test_util").join("std")
 }
@@ -1228,11 +1232,14 @@ async fn main_server(
       let body = hyper::body::to_bytes(req.into_body())
         .await
         .unwrap_or_default();
-      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..]) else {
-        return Ok(Response::builder()
-          .status(StatusCode::BAD_REQUEST)
-          .body(Body::empty())
-          .unwrap());
+      let Ok(body): Result<SnapshotRead, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::empty())
+            .unwrap(),
+        );
       };
       if body.ranges.is_empty() {
         return Ok(
@@ -1280,11 +1287,14 @@ async fn main_server(
       let body = hyper::body::to_bytes(req.into_body())
         .await
         .unwrap_or_default();
-      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..]) else {
-        return Ok(Response::builder()
-          .status(StatusCode::BAD_REQUEST)
-          .body(Body::empty())
-          .unwrap());
+      let Ok(_body): Result<AtomicWrite, _> = prost::Message::decode(&body[..])
+      else {
+        return Ok(
+          Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .body(Body::empty())
+            .unwrap(),
+        );
       };
       Ok(
         Response::builder()
@@ -2303,6 +2313,7 @@ pub fn deno_cmd_with_deno_dir(deno_dir: &TempDir) -> DenoCmd {
   assert!(exe_path.exists());
   let mut cmd = Command::new(exe_path);
   cmd.env("DENO_DIR", deno_dir.path());
+  cmd.env("NPM_CONFIG_REGISTRY", npm_registry_unset_url());
   DenoCmd {
     _deno_dir: deno_dir.clone(),
     cmd,

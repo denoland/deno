@@ -225,6 +225,7 @@ pub enum TestReporterConfig {
   Pretty,
   Dot,
   Junit,
+  Tap,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -795,6 +796,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
     flags.log_level = match log_level.as_str() {
+      "trace" => Some(Level::Trace),
       "debug" => Some(Level::Debug),
       "info" => Some(Level::Info),
       _ => unreachable!(),
@@ -890,7 +892,7 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .value_parser(["debug", "info"])
+        .value_parser(["trace", "debug", "info"])
         .global(true),
     )
     .arg(
@@ -1110,7 +1112,6 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
-      .arg(script_arg().required(true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1151,6 +1152,7 @@ supported in canary.
           .action(ArgAction::SetTrue),
       )
       .arg(executable_ext_arg())
+      .arg(script_arg().required(true).trailing_var_arg(true))
     })
 }
 
@@ -1980,7 +1982,7 @@ Directory arguments are expanded to all contained files matching the glob
       Arg::new("reporter")
         .long("reporter")
         .help("Select reporter to use. Default to 'pretty'.")
-        .value_parser(["pretty", "dot", "junit"])
+        .value_parser(["pretty", "dot", "junit", "tap"])
     )
   )
 }
@@ -3369,13 +3371,14 @@ fn test_parse(flags: &mut Flags, matches: &mut ArgMatches) {
         "pretty" => TestReporterConfig::Pretty,
         "junit" => TestReporterConfig::Junit,
         "dot" => TestReporterConfig::Dot,
+        "tap" => TestReporterConfig::Tap,
         _ => unreachable!(),
       }
     } else {
       TestReporterConfig::Pretty
     };
 
-  if matches!(reporter, TestReporterConfig::Dot) {
+  if matches!(reporter, TestReporterConfig::Dot | TestReporterConfig::Tap) {
     flags.log_level = Some(Level::Error);
   }
 
@@ -6839,6 +6842,21 @@ mod tests {
       }
     );
 
+    let r = flags_from_vec(svec!["deno", "test", "--reporter=tap"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Test(TestFlags {
+          reporter: TestReporterConfig::Tap,
+          ..Default::default()
+        }),
+        no_prompt: true,
+        type_check_mode: TypeCheckMode::Local,
+        log_level: Some(Level::Error),
+        ..Flags::default()
+      }
+    );
+
     let r = flags_from_vec(svec![
       "deno",
       "test",
@@ -7245,14 +7263,14 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
-          args: svec!["foo", "bar"],
+          args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
           include: vec![]

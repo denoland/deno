@@ -16,6 +16,7 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use std::collections::HashSet;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -98,7 +99,7 @@ pub struct PrintConfig {
 
 fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   move || {
-    if clear_screen && atty::is(atty::Stream::Stderr) {
+    if clear_screen && std::io::stderr().is_terminal() {
       eprint!("{CLEAR_SCREEN}");
     }
     info!(

@@ -91,6 +91,11 @@ itest!(test_with_malformed_config {
   output: "test/collect_with_malformed_config.out",
 });
 
+itest!(test_filtered_out_only {
+  args: "test --quiet --filter foo test/filtered_out_only.ts",
+  output: "test/filtered_out_only.out",
+});
+
 itest!(parallel_flag {
   args: "test test/short-pass.ts --parallel",
   exit_code: 0,
@@ -278,6 +283,12 @@ itest!(clear_timeout {
   output: "test/clear_timeout.out",
 });
 
+itest!(hide_empty_suites {
+  args: "test --filter none test/pass.ts",
+  exit_code: 0,
+  output: "test/hide_empty_suites.out",
+});
+
 itest!(finally_timeout {
   args: "test test/finally_timeout.ts",
   exit_code: 1,
@@ -354,6 +365,25 @@ itest!(steps_dot_ignored_steps {
   args: "test --reporter=dot test/steps/ignored_steps.ts",
   exit_code: 0,
   output: "test/steps/ignored_steps.dot.out",
+});
+
+itest!(steps_tap_passing_steps {
+  args: "test --reporter=tap test/steps/passing_steps.ts",
+  exit_code: 0,
+  output: "test/steps/passing_steps.tap.out",
+});
+
+itest!(steps_tap_failing_steps {
+  args: "test --reporter=tap test/steps/failing_steps.ts",
+  exit_code: 1,
+  envs: vec![("NO_COLOR".to_owned(), "1".to_owned())],
+  output: "test/steps/failing_steps.tap.out",
+});
+
+itest!(steps_tap_ignored_steps {
+  args: "test --reporter=tap test/steps/ignored_steps.ts",
+  exit_code: 0,
+  output: "test/steps/ignored_steps.tap.out",
 });
 
 itest!(steps_invalid_usage {

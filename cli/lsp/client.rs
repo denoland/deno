@@ -359,7 +359,7 @@ impl ClientTrait for ReplClient {
       .into_iter()
       .map(|_| {
         Ok(SpecifierSettings {
-          enable: true,
+          enable: Some(true),
           ..Default::default()
         })
       })

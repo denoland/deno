@@ -100,9 +100,10 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   ) -> Result<PathBuf, AnyError> {
     let Some(referrer_pkg_id) = self
       .cache
-      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url) else {
-        bail!("could not find npm package for '{}'", referrer);
-      };
+      .resolve_package_folder_id_from_specifier(referrer, &self.registry_url)
+    else {
+      bail!("could not find npm package for '{}'", referrer);
+    };
     let pkg = if mode.is_types() && !name.starts_with("@types/") {
       // attempt to resolve the types package first, then fallback to the regular package
       match self.resolve_types_package(name, &referrer_pkg_id) {
@@ -123,10 +124,10 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(pkg_folder_id) = self.cache.resolve_package_folder_id_from_specifier(
-      specifier,
-      &self.registry_url,
-    ) else {
+    let Some(pkg_folder_id) = self
+      .cache
+      .resolve_package_folder_id_from_specifier(specifier, &self.registry_url)
+    else {
       return Ok(None);
     };
     Ok(Some(

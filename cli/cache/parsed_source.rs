@@ -135,6 +135,18 @@ impl ParsedSourceCache {
   pub fn as_capturing_parser(&self) -> CapturingModuleParser {
     CapturingModuleParser::new(None, &self.sources)
   }
+
+  pub fn cache_module_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    source: &str,
+    module_info: &ModuleInfo,
+  ) -> Result<(), AnyError> {
+    let source_hash = compute_source_hash(source.as_bytes());
+    ParsedSourceCacheModuleAnalyzer::new(self.db.clone(), self.sources.clone())
+      .set_module_info(specifier, media_type, &source_hash, module_info)
+  }
 }
 
 struct ParsedSourceCacheModuleAnalyzer {

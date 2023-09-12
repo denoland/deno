@@ -365,7 +365,7 @@ async fn inspector_break_on_first_line() {
     .await;
   tester
     .assert_received_messages(
-      &[r#"{"id":4,"result":{"result":{"type":"undefined"}}}"#],
+      &[r#"{"id":4,"result":{"result":{"type":"object","subtype":"null","value":null}}}"#],
       &[],
     )
     .await;

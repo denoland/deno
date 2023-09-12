@@ -9,6 +9,7 @@ use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -261,7 +262,7 @@ impl CacheDB {
     };
 
     // Failed, try deleting it
-    let is_tty = atty::is(atty::Stream::Stderr);
+    let is_tty = std::io::stderr().is_terminal();
     log::log!(
       if is_tty { log::Level::Warn } else { log::Level::Trace },
       "Could not initialize cache database '{}', deleting and retrying... ({err:?})",
