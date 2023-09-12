@@ -36,7 +36,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -3253,27 +3252,30 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   }
 }
 
-// TODO(bartlomieju): op2 can't handle `serde_json::Value`
-#[op]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadResponse {
+  data: Arc<str>,
+  script_kind: i32,
+  version: Option<String>,
+}
+
+#[op2]
+#[serde]
 fn op_load(
   state: &mut OpState,
-  args: SpecifierArgs,
-) -> Result<Value, AnyError> {
+  #[serde] args: SpecifierArgs,
+) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
   let specifier = state.normalize_specifier(args.specifier)?;
   let asset_or_document = state.get_asset_or_document(&specifier);
   state.performance.measure(mark);
-  Ok(match asset_or_document {
-    Some(doc) => {
-      json!({
-        "data": doc.text(),
-        "scriptKind": crate::tsc::as_ts_script_kind(doc.media_type()),
-        "version": state.script_version(&specifier),
-      })
-    }
-    None => Value::Null,
-  })
+  Ok(asset_or_document.map(|doc| LoadResponse {
+    data: doc.text(),
+    script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+    version: state.script_version(&specifier),
+  }))
 }
 
 #[op2]
@@ -3315,10 +3317,9 @@ fn op_resolve(
 }
 
 #[op2]
-fn op_respond(state: &mut OpState, #[serde] args: Response) -> bool {
+fn op_respond(state: &mut OpState, #[serde] args: Response) {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
-  true
 }
 
 #[op2]
