@@ -429,7 +429,9 @@ pub async fn run_benchmarks_with_watch(
         let bench_options = cli_options.resolve_bench_options(bench_flags)?;
 
         let _ = sender.send(cli_options.watch_paths());
-        let _ = sender.send(bench_options.files.include.clone());
+        if let Some(include) = &bench_options.files.include {
+          let _ = sender.send(include.clone());
+        }
 
         let graph_kind = cli_options.type_check_mode().as_graph_kind();
         let module_graph_builder = factory.module_graph_builder().await?;
