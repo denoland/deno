@@ -21,7 +21,6 @@ mod install;
 mod jupyter_msg;
 mod server;
 
-
 pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
@@ -73,7 +72,7 @@ pub async fn kernel(
   let repl_session =
     repl::ReplSession::initialize(cli_options, npm_resolver, resolver, worker)
       .await?;
-  
+
   server::JupyterServer::start(spec, stdio_rx, repl_session).await?;
 
   Ok(())
