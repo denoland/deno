@@ -285,7 +285,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: Some(true),
-    enable_paths: Vec::new(),
+    enable_paths: None,
     config: None,
     certificate_stores: None,
     cache: None,
@@ -308,9 +308,6 @@ pub fn get_repl_workspace_settings() -> WorkspaceSettings {
         hosts: HashMap::from([("https://deno.land".to_string(), true)]),
       },
     },
-    testing: TestingSettings {
-      args: vec![],
-      enable: false,
-    },
+    testing: TestingSettings { args: vec![] },
   }
 }

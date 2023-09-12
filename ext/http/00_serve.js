@@ -1,10 +1,10 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
+
 const core = globalThis.Deno.core;
 const primordials = globalThis.__bootstrap.primordials;
 const internals = globalThis.__bootstrap.internals;
 
-const { BadResourcePrototype } = core;
+const { BadResourcePrototype, InterruptedPrototype } = core;
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
 import {
@@ -65,6 +65,8 @@ const {
   op_http_upgrade_websocket_next,
   op_http_try_wait,
   op_http_wait,
+  op_http_cancel,
+  op_http_close,
 } = core.ensureFastOps();
 const _upgraded = Symbol("_upgraded");
 
@@ -334,11 +336,15 @@ class CallbackContext {
   fallbackHost;
   serverRid;
   closed;
+  closing;
 
   constructor(signal, args) {
+    // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
-      () => this.close(),
+      () => {
+        op_http_cancel(this.serverRid, false);
+      },
       { once: true },
     );
     this.abortController = new AbortController();
@@ -630,6 +636,9 @@ function serveHttpOn(context, callback) {
         if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
           break;
         }
+        if (ObjectPrototypeIsPrototypeOf(InterruptedPrototype, error)) {
+          break;
+        }
         throw new Deno.errors.Http(error);
       }
       if (req === -1) {
@@ -637,10 +646,24 @@ function serveHttpOn(context, callback) {
       }
       PromisePrototypeCatch(callback(req), promiseErrorHandler);
     }
+
+    if (!context.closed && !context.closing) {
+      context.closed = true;
+      await op_http_close(rid, false);
+      context.close();
+    }
   })();
 
   return {
     finished,
+    async shutdown() {
+      if (!context.closed && !context.closing) {
+        // Shut this HTTP server down gracefully
+        context.closing = true;
+        await op_http_close(context.serverRid, true);
+        context.closed = true;
+      }
+    },
     then() {
       throw new Error(
         "Deno.serve no longer returns a promise. await server.finished instead of server.",
