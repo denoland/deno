@@ -482,7 +482,7 @@ function mapToCallback(context, callback, onError) {
     let headers;
     let body;
 
-    let inner = toInnerResponse(response);
+    const inner = toInnerResponse(response);
     if (inner) {
       status = inner.status;
       headers = inner.headerList;
