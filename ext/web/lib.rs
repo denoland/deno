@@ -425,22 +425,17 @@ fn op_encoding_encode_into(
   out_buf[1] = boundary as u32;
 }
 
-// TODO(bartlomieju): op2 doesn't support v8::ArrayBuffer
-#[op(v8)]
+#[op2]
 fn op_transfer_arraybuffer<'a>(
   scope: &mut v8::HandleScope<'a>,
-  input: serde_v8::Value<'a>,
-) -> Result<serde_v8::Value<'a>, AnyError> {
-  let ab = v8::Local::<v8::ArrayBuffer>::try_from(input.v8_value)?;
+  ab: &v8::ArrayBuffer,
+) -> Result<v8::Local<'a, v8::ArrayBuffer>, AnyError> {
   if !ab.is_detachable() {
     return Err(type_error("ArrayBuffer is not detachable"));
   }
   let bs = ab.get_backing_store();
   ab.detach(None);
-  let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
-  Ok(serde_v8::Value {
-    v8_value: ab.into(),
-  })
+  Ok(v8::ArrayBuffer::with_backing_store(scope, &bs))
 }
 
 #[op2]
