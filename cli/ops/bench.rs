@@ -7,6 +7,7 @@ use std::time;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -47,10 +48,11 @@ deno_core::extension!(deno_bench,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: ChildPermissionsArg,
+  #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
@@ -73,10 +75,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op]
+#[op2]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  token: Uuid,
+  #[serde] token: Uuid,
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -114,11 +116,12 @@ struct BenchRegisterResult {
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op(v8)]
+#[op2]
+#[serde]
 fn op_register_bench<'a>(
   scope: &mut v8::HandleScope<'a>,
   state: &mut OpState,
-  info: BenchInfo<'a>,
+  #[serde] info: BenchInfo<'a>,
 ) -> Result<BenchRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
@@ -143,8 +146,8 @@ fn op_register_bench<'a>(
   Ok(BenchRegisterResult { id, origin })
 }
 
-#[op]
-fn op_dispatch_bench_event(state: &mut OpState, event: BenchEvent) {
+#[op2]
+fn op_dispatch_bench_event(state: &mut OpState, #[serde] event: BenchEvent) {
   assert!(
     matches!(event, BenchEvent::Output(_)),
     "Only output events are expected from JS."
@@ -153,6 +156,7 @@ fn op_dispatch_bench_event(state: &mut OpState, event: BenchEvent) {
   sender.send(event).ok();
 }
 
+// TODO(bartlomieju): op2 forces to use bigint, but JS doesn't expect a bigint
 #[op]
 fn op_bench_now(state: &mut OpState) -> Result<u64, AnyError> {
   let ns = state.borrow::<time::Instant>().elapsed().as_nanos();
