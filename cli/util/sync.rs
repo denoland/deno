@@ -41,9 +41,8 @@ struct TaskQueueTasks {
 /// A queue that executes tasks sequentially one after the other
 /// ensuring order and that no task runs at the same time as another.
 ///
-/// Note that tokio's semaphore doesn't seem to maintain order
-/// and so we can't use that in the code that uses this or use
-/// that here.
+/// Note that this differs from tokio's semaphore in that the order
+/// is acquired synchronously.
 #[derive(Debug, Default)]
 pub struct TaskQueue {
   tasks: Mutex<TaskQueueTasks>,
