@@ -5,6 +5,7 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -108,11 +109,12 @@ impl Resource for WsCancelResource {
 // This op is needed because creating a WS instance in JavaScript is a sync
 // operation and should throw error when permissions are not fulfilled,
 // but actual op that connects WS is async.
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_ws_check_permission_and_cancel_handle<WP>(
   state: &mut OpState,
-  api_name: String,
-  url: String,
+  #[string] api_name: String,
+  #[string] url: String,
   cancel_handle: bool,
 ) -> Result<Option<ResourceId>, AnyError>
 where
@@ -167,14 +169,15 @@ async fn handshake<S: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
   Ok((stream, response))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_ws_create<WP>(
   state: Rc<RefCell<OpState>>,
-  api_name: String,
-  url: String,
-  protocols: String,
-  cancel_handle: Option<ResourceId>,
-  headers: Option<Vec<(ByteString, ByteString)>>,
+  #[string] api_name: String,
+  #[string] url: String,
+  #[string] protocols: String,
+  #[smi] cancel_handle: Option<ResourceId>,
+  #[serde] headers: Option<Vec<(ByteString, ByteString)>>,
 ) -> Result<CreateResponse, AnyError>
 where
   WP: WebSocketPermissions + 'static,
@@ -407,8 +410,12 @@ pub fn ws_create_server_stream(
   Ok(rid)
 }
 
-#[op(fast)]
-pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
+#[op2(fast)]
+pub fn op_ws_send_binary(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[buffer] data: &[u8],
+) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let data = data.to_vec();
   let len = data.len();
@@ -426,8 +433,12 @@ pub fn op_ws_send_binary(state: &mut OpState, rid: ResourceId, data: &[u8]) {
   });
 }
 
-#[op(fast)]
-pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
+#[op2(fast)]
+pub fn op_ws_send_text(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
+) {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   let len = data.len();
   resource.buffered.set(resource.buffered.get() + len);
@@ -448,11 +459,11 @@ pub fn op_ws_send_text(state: &mut OpState, rid: ResourceId, data: String) {
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_binary_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] data: JsBuffer,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -466,11 +477,11 @@ pub async fn op_ws_send_binary_async(
 }
 
 /// Async version of send. Does not update buffered amount as we rely on the socket itself for backpressure.
-#[op(fast)]
+#[op2(async)]
 pub async fn op_ws_send_text_async(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  data: String,
+  #[smi] rid: ResourceId,
+  #[string] data: String,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -487,8 +498,12 @@ pub async fn op_ws_send_text_async(
 
 const EMPTY_PAYLOAD: &[u8] = &[];
 
-#[op(fast)]
-pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
+#[op2(fast)]
+#[smi]
+pub fn op_ws_get_buffered_amount(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> u32 {
   state
     .resource_table
     .get::<ServerWebSocket>(rid)
@@ -497,10 +512,10 @@ pub fn op_ws_get_buffered_amount(state: &mut OpState, rid: ResourceId) -> u32 {
     .get() as u32
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_pong(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -512,10 +527,10 @@ pub async fn op_ws_send_pong(
     .await
 }
 
-#[op]
+#[op2(async)]
 pub async fn op_ws_send_ping(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -551,23 +566,29 @@ pub async fn op_ws_close(
   Ok(())
 }
 
-#[op]
-pub fn op_ws_get_buffer(state: &mut OpState, rid: ResourceId) -> ToJsBuffer {
+#[op2]
+#[serde]
+pub fn op_ws_get_buffer(
+  state: &mut OpState,
+  #[smi] rid: ResourceId,
+) -> ToJsBuffer {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.buffer.take().unwrap().into()
 }
 
-#[op]
+#[op2]
+#[string]
 pub fn op_ws_get_buffer_as_string(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> String {
   let resource = state.resource_table.get::<ServerWebSocket>(rid).unwrap();
   resource.string.take().unwrap()
 }
 
-#[op]
-pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
+#[op2]
+#[string]
+pub fn op_ws_get_error(state: &mut OpState, #[smi] rid: ResourceId) -> String {
   let Ok(resource) = state.resource_table.get::<ServerWebSocket>(rid) else {
     return "Bad resource".into();
   };
@@ -575,10 +596,11 @@ pub fn op_ws_get_error(state: &mut OpState, rid: ResourceId) -> String {
   resource.error.take().unwrap_or_default()
 }
 
-#[op(fast)]
+#[op2(async)]
+#[smi]
 pub async fn op_ws_next_event(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> u16 {
   let Ok(resource) = state
     .borrow_mut()
