@@ -336,10 +336,34 @@ impl JupyterServer {
       .send(&mut *self.iopub_socket.lock().await)
       .await?;
 
-    let evaluate_response = self
+    let result = self
       .repl_session
       .evaluate_line_with_object_wrapping(msg.code())
-      .await?;
+      .await;
+
+    let evaluate_response = match result {
+      Ok(eval_response) => eval_response,
+      Err(err) => {
+        msg
+          .new_message("error")
+          .with_content(json!({
+            "ename": err.to_string(),
+            "evalue": "",
+            "traceback": [],
+          }))
+          .send(&mut *self.iopub_socket.lock().await)
+          .await?;
+        msg
+          .new_reply()
+          .with_content(json!({
+            "status": "error",
+            "execution_count": self.execution_count,
+          }))
+          .send(connection)
+          .await?;
+        return Ok(());
+      }
+    };
 
     let repl::cdp::EvaluateResponse {
       result,
