@@ -796,6 +796,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
     flags.log_level = match log_level.as_str() {
+      "trace" => Some(Level::Trace),
       "debug" => Some(Level::Debug),
       "info" => Some(Level::Info),
       _ => unreachable!(),
@@ -891,7 +892,7 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .value_parser(["debug", "info"])
+        .value_parser(["trace", "debug", "info"])
         .global(true),
     )
     .arg(
@@ -1111,7 +1112,6 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
-      .arg(script_arg().required(true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1152,6 +1152,7 @@ supported in canary.
           .action(ArgAction::SetTrue),
       )
       .arg(executable_ext_arg())
+      .arg(script_arg().required(true).trailing_var_arg(true))
     })
 }
 
@@ -7262,14 +7263,14 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
-          args: svec!["foo", "bar"],
+          args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
           include: vec![]

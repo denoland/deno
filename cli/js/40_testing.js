@@ -526,12 +526,27 @@ const ESCAPE_ASCII_CHARS = [
   ["\v", "\\v"],
 ];
 
+/**
+ * @param {string} name
+ * @returns {string}
+ */
 function escapeName(name) {
-  for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
-    name = StringPrototypeReplaceAll(name, escape, replaceWith);
+  // Check if we need to escape a character
+  for (let i = 0; i < name.length; i++) {
+    const ch = name.charCodeAt(i);
+    if (ch <= 13 && ch >= 8) {
+      // Slow path: We do need to escape it
+      for (const [escape, replaceWith] of ESCAPE_ASCII_CHARS) {
+        name = StringPrototypeReplaceAll(name, escape, replaceWith);
+      }
+      return name;
+    }
   }
+
+  // We didn't need to escape anything, return original string
   return name;
 }
+
 /**
  * @typedef {{
  *   id: number,
@@ -600,11 +615,11 @@ let currentBenchUserExplicitStart = null;
 /** @type {number | null} */
 let currentBenchUserExplicitEnd = null;
 
-// Main test function provided by Deno.
-function test(
+function testInner(
   nameOrFnOrOptions,
   optionsOrFn,
   maybeFn,
+  overrides = {},
 ) {
   if (typeof ops.op_register_test != "function") {
     return;
@@ -690,6 +705,8 @@ function test(
     testDesc = { ...defaults, ...nameOrFnOrOptions, fn, name };
   }
 
+  testDesc = { ...testDesc, ...overrides };
+
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
   const jsError = core.destructureError(new Error());
@@ -720,6 +737,27 @@ function test(
     completed: false,
   });
 }
+
+// Main test function provided by Deno.
+function test(
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn);
+}
+
+test.ignore = function (nameOrFnOrOptions, optionsOrFn, maybeFn) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { ignore: true });
+};
+
+test.only = function (
+  nameOrFnOrOptions,
+  optionsOrFn,
+  maybeFn,
+) {
+  return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
 
 let registeredWarmupBench = false;
 

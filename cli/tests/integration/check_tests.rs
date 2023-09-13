@@ -86,13 +86,17 @@ itest!(check_static_response_json {
 itest!(check_node_builtin_modules_ts {
   args: "check --quiet check/node_builtin_modules/mod.ts",
   output: "check/node_builtin_modules/mod.ts.out",
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(check_node_builtin_modules_js {
   args: "check --quiet check/node_builtin_modules/mod.js",
   output: "check/node_builtin_modules/mod.js.out",
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
+  http_server: true,
 });
 
 itest!(check_no_error_truncation {
@@ -366,9 +370,9 @@ fn npm_module_check_then_error() {
     lockfile.read_json::<deno_lockfile::LockfileContent>();
 
   // make the specifier resolve to version 1
-  lockfile_content.npm.specifiers.insert(
-    "@denotest/breaking-change-between-versions".to_string(),
-    "@denotest/breaking-change-between-versions@1.0.0".to_string(),
+  lockfile_content.packages.specifiers.insert(
+    "npm:@denotest/breaking-change-between-versions".to_string(),
+    "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
   );
   lockfile.write_json(&lockfile_content);
   temp_dir.write(
@@ -381,9 +385,9 @@ fn npm_module_check_then_error() {
 
   // now update the lockfile to use version 2 instead, which should cause a
   // type checking error because the oldName no longer exists
-  lockfile_content.npm.specifiers.insert(
-    "@denotest/breaking-change-between-versions".to_string(),
-    "@denotest/breaking-change-between-versions@2.0.0".to_string(),
+  lockfile_content.packages.specifiers.insert(
+    "npm:@denotest/breaking-change-between-versions".to_string(),
+    "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
   );
   lockfile.write_json(&lockfile_content);
 

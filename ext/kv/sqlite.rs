@@ -290,16 +290,7 @@ pub struct SqliteDb {
 
 impl Drop for SqliteDb {
   fn drop(&mut self) {
-    self.expiration_watcher.abort();
-
-    // The above `abort()` operation is asynchronous. It's not
-    // guaranteed that the sqlite connection will be closed immediately.
-    // So here we synchronously take the conn mutex and drop the connection.
-    //
-    // This blocks the event loop if the connection is still being used,
-    // but ensures correctness - deleting the database file after calling
-    // the `close` method will always work.
-    self.conn.conn.lock().unwrap().take();
+    self.close();
   }
 }
 
@@ -449,9 +440,22 @@ impl SqliteQueue {
       Self::requeue_inflight_messages(conn.clone()).await.unwrap();
 
       // Continuous dequeue loop.
-      Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
+      match Self::dequeue_loop(conn.clone(), dequeue_tx, shutdown_rx, waker_rx)
         .await
-        .unwrap();
+      {
+        Ok(_) => Ok(()),
+        Err(e) => {
+          // Exit the dequeue loop cleanly if the database has been closed.
+          if get_custom_error_class(&e) == Some("TypeError")
+            && e.to_string() == ERROR_USING_CLOSED_DATABASE
+          {
+            Ok(())
+          } else {
+            Err(e)
+          }
+        }
+      }
+      .unwrap();
     });
 
     Self {
@@ -490,7 +494,7 @@ impl SqliteQueue {
   }
 
   fn shutdown(&self) {
-    self.shutdown_tx.send(()).unwrap();
+    let _ = self.shutdown_tx.send(());
   }
 
   async fn dequeue_loop(
@@ -573,7 +577,7 @@ impl SqliteQueue {
         };
         tokio::select! {
           _ = sleep_fut => {}
-          _ = waker_rx.recv() => {}
+          x = waker_rx.recv() => if x.is_none() {return Ok(());},
           _ = shutdown_rx.changed() => return Ok(())
         }
       }
@@ -913,6 +917,17 @@ impl Database for SqliteDb {
     if let Some(queue) = self.queue.get() {
       queue.shutdown();
     }
+
+    self.expiration_watcher.abort();
+
+    // The above `abort()` operation is asynchronous. It's not
+    // guaranteed that the sqlite connection will be closed immediately.
+    // So here we synchronously take the conn mutex and drop the connection.
+    //
+    // This blocks the event loop if the connection is still being used,
+    // but ensures correctness - deleting the database file after calling
+    // the `close` method will always work.
+    self.conn.conn.lock().unwrap().take();
   }
 }
 

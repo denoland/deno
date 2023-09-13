@@ -756,3 +756,20 @@ Deno.test({
     assertEquals(timeoutsFired.length, 300);
   },
 });
+
+// Regression test for https://github.com/denoland/deno/issues/20367
+Deno.test({
+  name: "regression for #20367",
+  fn: async () => {
+    const promise = deferred<number>();
+    const start = performance.now();
+    setTimeout(() => {
+      const end = performance.now();
+      promise.resolve(end - start);
+    }, 1000);
+    clearTimeout(setTimeout(() => {}, 1000));
+
+    const result = await promise;
+    assert(result >= 1000);
+  },
+});

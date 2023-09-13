@@ -72,7 +72,6 @@
       "test-fs-rmdir-recursive.js",
       "test-fs-write-file.js",
       "test-fs-write.js",
-      "test-http-content-length.js",
       "test-net-better-error-messages-path.js",
       "test-net-connect-buffer.js",
       "test-net-connect-buffer2.js",
@@ -364,7 +363,6 @@
       // TODO(lev): ClientRequest.socket is not polyfilled so this test keeps
       //            failing
       //"test-http-client-set-timeout.js",
-      "test-http-content-length.js",
       "test-http-localaddress.js",
       // TODO(bartlomieju): temporarily disabled while we iterate on the HTTP client
       // "test-http-outgoing-buffer.js",
