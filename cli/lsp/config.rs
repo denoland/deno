@@ -239,6 +239,10 @@ pub struct SpecifierSettings {
   /// A flag that indicates if Deno is enabled for this specifier or not.
   pub enable: Option<bool>,
   /// A list of paths, using the workspace folder as a base that should be Deno
+  /// disabled.
+  #[serde(default)]
+  pub disable_paths: Vec<String>,
+  /// A list of paths, using the workspace folder as a base that should be Deno
   /// enabled.
   pub enable_paths: Option<Vec<String>>,
   /// Code lens specific settings for the resource.
@@ -284,6 +288,11 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
   pub enable: Option<bool>,
+
+  /// A list of paths, using the root_uri as a base that should be Deno
+  /// disabled.
+  #[serde(default)]
+  pub disable_paths: Vec<String>,
 
   /// A list of paths, using the root_uri as a base that should be Deno enabled.
   pub enable_paths: Option<Vec<String>>,
@@ -353,6 +362,7 @@ impl Default for WorkspaceSettings {
   fn default() -> Self {
     WorkspaceSettings {
       enable: None,
+      disable_paths: vec![],
       enable_paths: None,
       cache: None,
       certificate_stores: None,
@@ -643,34 +653,96 @@ impl Config {
   pub fn enabled_urls(&self) -> Vec<Url> {
     let mut urls = vec![];
     for (workspace_uri, _) in &self.workspace_folders {
+      let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
+        lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
+        continue;
+      };
       let specifier_settings = self.settings.specifiers.get(workspace_uri);
       let enable = specifier_settings
         .and_then(|s| s.enable)
         .or(self.settings.workspace.enable)
         .unwrap_or(self.has_config_file());
+      let disable_paths = specifier_settings
+        .map(|s| &s.disable_paths)
+        .unwrap_or(&self.settings.workspace.disable_paths);
+      let resolved_disable_paths = disable_paths
+        .iter()
+        .map(|p| workspace_path.join(p))
+        .collect::<Vec<_>>();
       let enable_paths = specifier_settings
         .and_then(|s| s.enable_paths.as_ref())
         .or(self.settings.workspace.enable_paths.as_ref());
       if let Some(enable_paths) = enable_paths {
-        let Ok(scope_path) = specifier_to_file_path(workspace_uri) else {
-          lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
-          return vec![];
-        };
         for path in enable_paths {
-          let path = scope_path.join(path);
+          let path = workspace_path.join(path);
           let Ok(path_uri) = specifier_from_file_path(&path) else {
             lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
             continue;
           };
-          urls.push(path_uri);
+          if !resolved_disable_paths.iter().any(|p| path.starts_with(p)) {
+            urls.push(path_uri);
+          }
         }
-      } else if enable {
+      } else if enable
+        && !resolved_disable_paths
+          .iter()
+          .any(|p| workspace_path.starts_with(p))
+      {
         urls.push(workspace_uri.clone());
       }
     }
 
     // sort for determinism
     urls.sort();
+    urls.dedup();
+    urls
+  }
+
+  pub fn disabled_urls(&self) -> Vec<Url> {
+    let root_enable = self
+      .settings
+      .workspace
+      .enable
+      .unwrap_or(self.has_config_file());
+    let mut urls = vec![];
+    if let Some(cf) = self.maybe_config_file() {
+      if let Some(files) = cf.to_files_config().ok().flatten() {
+        for path in files.exclude {
+          let Ok(path_uri) = specifier_from_file_path(&path) else {
+            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
+            continue;
+          };
+          urls.push(path_uri);
+        }
+      }
+    }
+    for (workspace_uri, _) in &self.workspace_folders {
+      let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
+        lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
+        continue;
+      };
+      let specifier_settings = self.settings.specifiers.get(workspace_uri);
+      let enable = specifier_settings
+        .and_then(|s| s.enable)
+        .unwrap_or(root_enable);
+      if enable {
+        let disable_paths = specifier_settings
+          .map(|s| &s.disable_paths)
+          .unwrap_or(&self.settings.workspace.disable_paths);
+        for path in disable_paths {
+          let path = workspace_path.join(path);
+          let Ok(path_uri) = specifier_from_file_path(&path) else {
+            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
+            continue;
+          };
+          urls.push(path_uri);
+        }
+      } else {
+        urls.push(workspace_uri.clone());
+      }
+    }
+    urls.sort();
+    urls.dedup();
     urls
   }
 
@@ -778,9 +850,9 @@ fn specifier_enabled(
 
   let root_enable = settings.workspace.enable.unwrap_or(config_file.is_some());
   if let Some(settings) = settings.specifiers.get(specifier) {
-    // TODO(nayeemrmn): We don't know from where to resolve `enable_paths` in
-    // this case. If it's detected, instead defer to workspace scopes.
-    if settings.enable_paths.is_none() {
+    // TODO(nayeemrmn): We don't know from where to resolve path lists in this
+    // case. If they're detected, instead defer to workspace scopes.
+    if settings.enable_paths.is_none() && settings.disable_paths.is_empty() {
       return settings.enable.unwrap_or(root_enable);
     }
   }
@@ -795,13 +867,22 @@ fn specifier_enabled(
     };
     if path.starts_with(&workspace_path) {
       let specifier_settings = settings.specifiers.get(workspace_uri);
+      let disable_paths = specifier_settings
+        .map(|s| &s.disable_paths)
+        .unwrap_or(&settings.workspace.disable_paths);
+      let resolved_disable_paths = disable_paths
+        .iter()
+        .map(|p| workspace_path.join(p))
+        .collect::<Vec<_>>();
       let enable_paths = specifier_settings
         .and_then(|s| s.enable_paths.as_ref())
         .or(settings.workspace.enable_paths.as_ref());
       if let Some(enable_paths) = enable_paths {
         for enable_path in enable_paths {
           let enable_path = workspace_path.join(enable_path);
-          if path.starts_with(&enable_path) {
+          if path.starts_with(&enable_path)
+            && !resolved_disable_paths.iter().any(|p| path.starts_with(p))
+          {
             return true;
           }
         }
@@ -809,7 +890,8 @@ fn specifier_enabled(
       } else {
         return specifier_settings
           .and_then(|s| s.enable)
-          .unwrap_or(root_enable);
+          .unwrap_or(root_enable)
+          && !resolved_disable_paths.iter().any(|p| path.starts_with(p));
       }
     }
   }
@@ -920,6 +1002,20 @@ mod tests {
   }
 
   #[test]
+  fn test_config_specifier_disabled_path() {
+    let root_uri = resolve_url("file:///root/").unwrap();
+    let mut config = Config::new_with_root(root_uri.clone());
+    config.settings.workspace.enable = Some(true);
+    config.settings.workspace.enable_paths =
+      Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
+    config.settings.workspace.disable_paths = vec!["mod2.ts".to_string()];
+
+    assert!(config.specifier_enabled(&root_uri.join("mod1.ts").unwrap()));
+    assert!(!config.specifier_enabled(&root_uri.join("mod2.ts").unwrap()));
+    assert!(!config.specifier_enabled(&root_uri.join("mod3.ts").unwrap()));
+  }
+
+  #[test]
   fn test_set_workspace_settings_defaults() {
     let mut config = Config::new();
     config
@@ -929,6 +1025,7 @@ mod tests {
       config.workspace_settings().clone(),
       WorkspaceSettings {
         enable: None,
+        disable_paths: vec![],
         enable_paths: None,
         cache: None,
         certificate_stores: None,
@@ -1135,12 +1232,17 @@ mod tests {
     let mut config = Config::new_with_root(root_uri.clone());
     config.settings.workspace.enable = Some(true);
 
-    config.settings.workspace.enable_paths = Some(vec!["mod1.ts".to_string()]);
+    config.settings.workspace.enable_paths =
+      Some(vec!["mod1.ts".to_string(), "mod2.ts".to_string()]);
+    config.settings.workspace.disable_paths = vec!["mod2.ts".to_string()];
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
     assert!(
       !config.specifier_enabled_for_test(&root_uri.join("mod2.ts").unwrap())
+    );
+    assert!(
+      !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
     );
     config.settings.workspace.enable_paths = None;
 

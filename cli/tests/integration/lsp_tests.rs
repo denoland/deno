@@ -1298,13 +1298,14 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
-fn lsp_workspace_enable_paths() {
+fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
     temp_dir.create_dir_all("worker");
     temp_dir.write("worker/shared.ts", "export const a = 1");
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
+    temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
 
     let root_specifier = temp_dir.uri();
 
@@ -1312,6 +1313,7 @@ fn lsp_workspace_enable_paths() {
     client.initialize_with_config(
       |builder| {
         builder
+          .set_disable_paths(vec!["./worker/node.ts".to_string()])
           .set_enable_paths(vec!["./worker".to_string()])
           .set_root_uri(root_specifier.clone())
           .set_workspace_folders(vec![lsp::WorkspaceFolder {
@@ -1329,6 +1331,7 @@ fn lsp_workspace_enable_paths() {
       },
       json!([{
         "enable": false,
+        "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
       }]),
     );
@@ -1391,6 +1394,17 @@ fn lsp_workspace_enable_paths() {
           "uri": root_specifier.join("./other/file.ts").unwrap(),
         },
         "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/node.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 0 }
       }),
     );
     assert_eq!(res, json!(null));
