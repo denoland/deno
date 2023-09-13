@@ -13,6 +13,8 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::sync::TaskQueue;
+use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -20,8 +22,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_core::TaskQueue;
-use deno_core::TaskQueuePermit;
 use deno_graph::source::Loader;
 use deno_graph::GraphKind;
 use deno_graph::Module;
