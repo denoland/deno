@@ -343,9 +343,11 @@ async fn op_spawn_wait(
   let resource = state
     .borrow_mut()
     .resource_table
-    .take::<ChildResource>(rid)?;
+    .get::<ChildResource>(rid)?;
   let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
-  resource.close();
+  if let Ok(resource) = state.borrow_mut().resource_table.take_any(rid) {
+    resource.close();
+  }
   result
 }
 
