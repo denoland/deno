@@ -2812,7 +2812,7 @@
       ],
       "class-string-iterator-prototype-object.any.worker.html": [
         "Object.prototype.toString applied after deleting @@toStringTag"
-      ],     
+      ],
       "class-string-named-properties-object.window.html": false,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
@@ -4058,7 +4058,6 @@
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
       "URL: Setting <non-spec:/>.pathname = '//p'",
       "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path",
-      "URL: Setting <sc:/nospace>.pathname = 'space '",
       "URL: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
       "URL: Setting <sc:space  ?query#fragment>.search = ''"
     ],
@@ -4081,7 +4080,6 @@
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
       "URL: Setting <non-spec:/>.pathname = '//p'",
       "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path",
-      "URL: Setting <sc:/nospace>.pathname = 'space '",
       "URL: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
       "URL: Setting <sc:space  ?query#fragment>.search = ''"
     ],
