@@ -451,8 +451,7 @@ fn kernel_info() -> serde_json::Value {
       "mimetype": "text/x.typescript",
       "file_extension": ".ts",
       "pygments_lexer": "typescript",
-      // TODO(bartlomieju):
-      // "nb_converter":
+      "nb_converter": "script"
     },
     "help_links": [{
       "text": "Visit Deno manual",
