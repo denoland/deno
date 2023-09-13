@@ -5,7 +5,6 @@ use crate::permissions::PermissionsContainer;
 use deno_core::anyhow::Context;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::serde_json;
 use deno_core::AsyncMutFuture;
@@ -334,23 +333,19 @@ fn op_spawn_child(
   spawn_child(state, command)
 }
 
-// TODO(bartlomieju): op2 doesn't support clippy allows
-#[op]
+#[op2(async)]
 #[allow(clippy::await_holding_refcell_ref)]
+#[serde]
 async fn op_spawn_wait(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<ChildStatus, AnyError> {
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ChildResource>(rid)?;
+    .take::<ChildResource>(rid)?;
   let result = resource.0.try_borrow_mut()?.wait().await?.try_into();
-  state
-    .borrow_mut()
-    .resource_table
-    .close(rid)
-    .expect("shouldn't have closed until now");
+  resource.close();
   result
 }
 

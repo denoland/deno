@@ -1156,7 +1156,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("writefile", &path)?;
@@ -1213,7 +1215,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("readfile", &path)?
@@ -1269,7 +1273,9 @@ where
     let res = fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     res?.context_path("readfile", &path)?
