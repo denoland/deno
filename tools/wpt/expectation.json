@@ -2186,14 +2186,6 @@
         "importVectorKeys step: EdDSA Ed448 verifying with wrong algorithm name"
       ]
     },
-    "wrapKey_unwrapKey": {
-      "wrapKey_unwrapKey.https.any.worker.html": {
-        "ignore": true
-      },
-      "wrapKey_unwrapKey.https.any.html": {
-        "ignore": true
-      }
-    },
     "algorithm-discards-context.https.window.html": false
   },
   "console": {
@@ -2214,9 +2206,7 @@
       "AbortSignal.any.html": true,
       "AbortSignal.any.worker.html": true,
       "event.any.html": true,
-      "event.any.worker.html": true,
-      "abort-signal-any.tentative.any.html": false,
-      "abort-signal-any.tentative.any.worker.html": false
+      "event.any.worker.html": true
     },
     "events": {
       "AddEventListenerOptions-once.any.html": true,
@@ -2455,7 +2445,6 @@
       "general.any.worker.html": true,
       "non-transferable-buffers.any.html": true,
       "non-transferable-buffers.any.worker.html": true,
-      "enqueue-with-detached-buffer.window.html": false,
       "tee.any.html": true,
       "tee.any.worker.html": true,
       "respond-after-enqueue.any.html": true,
@@ -2719,8 +2708,6 @@
         "is.tentative.any.worker.html": true,
         "toString.tentative.any.html": true,
         "toString.tentative.any.worker.html": true,
-        "type.tentative.any.html": false,
-        "type.tentative.any.worker.html": false,
         "identity.tentative.any.html": true,
         "identity.tentative.any.worker.html": true
       },
@@ -2817,9 +2804,6 @@
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
       ],
-      "global-immutable-prototype.any.worker.html": {
-        "ignore": true
-      },
       "global-object-implicit-this-value.any.html": [
         "Global object's getter throws when called on incompatible object",
         "Global object's setter throws when called on incompatible object",
@@ -3052,106 +3036,6 @@
       "≯ (using <area>.host)",
       "≯ (using <area>.hostname)"
     ],
-    "url-constructor.any.html": [
-      "Parsing: </> against <file://h/C:/a/b>",
-      "Parsing: <file:\\\\//> against <about:blank>",
-      "Parsing: <file:\\\\\\\\> against <about:blank>",
-      "Parsing: <file:\\\\\\\\?fox> against <about:blank>",
-      "Parsing: <file:\\\\\\\\#guppy> against <about:blank>",
-      "Parsing: <file://spider///> against <about:blank>",
-      "Parsing: <file:\\\\localhost//> against <about:blank>",
-      "Parsing: <file://\\/localhost//cat> against <about:blank>",
-      "Parsing: <file://localhost//a//../..//> against <about:blank>",
-      "Parsing: </////mouse> against <file:///elephant>",
-      "Parsing: <\\/localhost//pig> against <file://lion/>",
-      "Parsing: <//localhost//pig> against <file://lion/>",
-      "Parsing: </..//localhost//pig> against <file://lion/>",
-      "Parsing: <C|> against <file://host/dir/file>",
-      "Parsing: <C|> against <file://host/D:/dir1/dir2/file>",
-      "Parsing: <C|#> against <file://host/dir/file>",
-      "Parsing: <C|?> against <file://host/dir/file>",
-      "Parsing: <C|/> against <file://host/dir/file>",
-      "Parsing: <C|\n/> against <file://host/dir/file>",
-      "Parsing: <C|\\> against <file://host/dir/file>",
-      "Parsing: </c:/foo/bar> against <file://host/path>",
-      "Parsing: <file://example.net/C:/> against <about:blank>",
-      "Parsing: <file://1.2.3.4/C:/> against <about:blank>",
-      "Parsing: <file://[1::8]/C:/> against <about:blank>",
-      "Parsing: <C|/> against <file://host/>",
-      "Parsing: </C:/> against <file://host/>",
-      "Parsing: <file:C:/> against <file://host/>",
-      "Parsing: <file:/C:/> against <file://host/>",
-      "Parsing: <file://localhost//a//../..//foo> against <about:blank>",
-      "Parsing: <file://localhost////foo> against <about:blank>",
-      "Parsing: <file:////foo> against <about:blank>",
-      "Parsing: <file:////one/two> against <file:///>",
-      "Parsing: <////one/two> against <file:///>",
-      "Parsing: <file:///.//> against <file:////>",
-      "Parsing: <file:.//p> against <about:blank>",
-      "Parsing: <file:/.//p> against <about:blank>",
-      "Parsing: <non-spec:/.//> against <about:blank>",
-      "Parsing: <non-spec:/..//> against <about:blank>",
-      "Parsing: <non-spec:/a/..//> against <about:blank>",
-      "Parsing: <non-spec:/.//path> against <about:blank>",
-      "Parsing: <non-spec:/..//path> against <about:blank>",
-      "Parsing: <non-spec:/a/..//path> against <about:blank>",
-      "Parsing: </.//path> against <non-spec:/p>",
-      "Parsing: </..//path> against <non-spec:/p>",
-      "Parsing: <..//path> against <non-spec:/p>",
-      "Parsing: <a/..//path> against <non-spec:/p>",
-      "Parsing: <> against <non-spec:/..//p>",
-      "Parsing: <path> against <non-spec:/..//p>"
-    ],
-    "url-constructor.any.worker.html": [
-      "Parsing: </> against <file://h/C:/a/b>",
-      "Parsing: <file:\\\\//> against <about:blank>",
-      "Parsing: <file:\\\\\\\\> against <about:blank>",
-      "Parsing: <file:\\\\\\\\?fox> against <about:blank>",
-      "Parsing: <file:\\\\\\\\#guppy> against <about:blank>",
-      "Parsing: <file://spider///> against <about:blank>",
-      "Parsing: <file:\\\\localhost//> against <about:blank>",
-      "Parsing: <file://\\/localhost//cat> against <about:blank>",
-      "Parsing: <file://localhost//a//../..//> against <about:blank>",
-      "Parsing: </////mouse> against <file:///elephant>",
-      "Parsing: <\\/localhost//pig> against <file://lion/>",
-      "Parsing: <//localhost//pig> against <file://lion/>",
-      "Parsing: </..//localhost//pig> against <file://lion/>",
-      "Parsing: <C|> against <file://host/dir/file>",
-      "Parsing: <C|> against <file://host/D:/dir1/dir2/file>",
-      "Parsing: <C|#> against <file://host/dir/file>",
-      "Parsing: <C|?> against <file://host/dir/file>",
-      "Parsing: <C|/> against <file://host/dir/file>",
-      "Parsing: <C|\n/> against <file://host/dir/file>",
-      "Parsing: <C|\\> against <file://host/dir/file>",
-      "Parsing: </c:/foo/bar> against <file://host/path>",
-      "Parsing: <file://example.net/C:/> against <about:blank>",
-      "Parsing: <file://1.2.3.4/C:/> against <about:blank>",
-      "Parsing: <file://[1::8]/C:/> against <about:blank>",
-      "Parsing: <C|/> against <file://host/>",
-      "Parsing: </C:/> against <file://host/>",
-      "Parsing: <file:C:/> against <file://host/>",
-      "Parsing: <file:/C:/> against <file://host/>",
-      "Parsing: <file://localhost//a//../..//foo> against <about:blank>",
-      "Parsing: <file://localhost////foo> against <about:blank>",
-      "Parsing: <file:////foo> against <about:blank>",
-      "Parsing: <file:////one/two> against <file:///>",
-      "Parsing: <////one/two> against <file:///>",
-      "Parsing: <file:///.//> against <file:////>",
-      "Parsing: <file:.//p> against <about:blank>",
-      "Parsing: <file:/.//p> against <about:blank>",
-      "Parsing: <non-spec:/.//> against <about:blank>",
-      "Parsing: <non-spec:/..//> against <about:blank>",
-      "Parsing: <non-spec:/a/..//> against <about:blank>",
-      "Parsing: <non-spec:/.//path> against <about:blank>",
-      "Parsing: <non-spec:/..//path> against <about:blank>",
-      "Parsing: <non-spec:/a/..//path> against <about:blank>",
-      "Parsing: </.//path> against <non-spec:/p>",
-      "Parsing: </..//path> against <non-spec:/p>",
-      "Parsing: <..//path> against <non-spec:/p>",
-      "Parsing: <a/..//path> against <non-spec:/p>",
-      "Parsing: <> against <non-spec:/..//p>",
-      "Parsing: <path> against <non-spec:/..//p>"
-    ],
     "url-origin.any.html": [
       "Origin parsing: <blob:blob:https://example.org/> without base",
       "Origin parsing: <blob:ftp://host/path> without base",
@@ -3231,36 +3115,6 @@
     "urlsearchparams-sort.any.worker.html": true,
     "urlsearchparams-stringifier.any.html": true,
     "urlsearchparams-stringifier.any.worker.html": true,
-    "url-setters.any.html": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
-      "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
-      "URL: Setting <non-spec:/.//p>.hostname = ''",
-      "URL: Setting <foo://somehost/some/path>.pathname = '' Non-special URLs can have their paths erased",
-      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
-      "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
-      "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
-      "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
-      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
-      "URL: Setting <non-spec:/>.pathname = '/..//p'",
-      "URL: Setting <non-spec:/>.pathname = '//p'",
-      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
-    ],
-    "url-setters.any.worker.html": [
-      "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
-      "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
-      "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
-      "URL: Setting <non-spec:/.//p>.hostname = ''",
-      "URL: Setting <foo://somehost/some/path>.pathname = '' Non-special URLs can have their paths erased",
-      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
-      "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
-      "URL: Setting <file:///unicorn>.pathname = '//\\/' File URLs and (back)slashes",
-      "URL: Setting <file:///unicorn>.pathname = '//monkey/..//' File URLs and (back)slashes",
-      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
-      "URL: Setting <non-spec:/>.pathname = '/..//p'",
-      "URL: Setting <non-spec:/>.pathname = '//p'",
-      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
-    ],
     "idlharness-shadowrealm.window.html": false,
     "percent-encoding.window.html": [
       "Input † with encoding big5",
@@ -3278,9 +3132,6 @@
       "Input − with encoding utf-8",
       "Input á| with encoding utf-8"
     ],
-    "url-setters-a-area.window.html": {
-      "ignore": true
-    },
     "IdnaTestV2.window.html": [
       "ToASCII(\"a‌b\") C1",
       "ToASCII(\"A‌B\") C1",
@@ -4592,9 +4443,6 @@
         "accept-header.any.worker.html": true,
         "conditional-get.any.html": false,
         "conditional-get.any.worker.html": false,
-        "error-after-response.any.html": {
-          "ignore": true
-        },
         "header-value-combining.any.html": false,
         "header-value-combining.any.worker.html": false,
         "header-value-null-byte.any.html": true,
@@ -4603,25 +4451,6 @@
         "historical.any.worker.html": true,
         "http-response-code.any.html": true,
         "http-response-code.any.worker.html": true,
-        "request-upload.any.html": [
-          "Fetch with POST with ReadableStream containing String",
-          "Fetch with POST with ReadableStream containing null",
-          "Fetch with POST with ReadableStream containing number",
-          "Fetch with POST with ReadableStream containing ArrayBuffer",
-          "Fetch with POST with ReadableStream containing Blob",
-          "Fetch with POST with text body on 421 response should be retried once on new connection."
-        ],
-        "request-upload.any.worker.html": [
-          "Fetch with POST with ReadableStream containing String",
-          "Fetch with POST with ReadableStream containing null",
-          "Fetch with POST with ReadableStream containing number",
-          "Fetch with POST with ReadableStream containing ArrayBuffer",
-          "Fetch with POST with ReadableStream containing Blob",
-          "Fetch with POST with text body on 421 response should be retried once on new connection."
-        ],
-        "response-null-body.any.worker.html": {
-          "ignore": true
-        },
         "response-url.sub.any.html": true,
         "response-url.sub.any.worker.html": true,
         "scheme-about.any.html": true,
@@ -4661,12 +4490,6 @@
         "error-after-response.any.worker.html": false,
         "keepalive.any.html": false,
         "mediasource.window.html": false,
-        "mode-no-cors.sub.any.html": {
-          "ignore": true
-        },
-        "mode-no-cors.sub.any.worker.html": {
-          "ignore": true
-        },
         "mode-same-origin.any.html": [
           "Fetch https://web-platform.test:8443/fetch/api/resources/top.txt with same-origin mode",
           "Fetch http://www1.web-platform.test:8000/fetch/api/resources/top.txt with same-origin mode",
@@ -4814,10 +4637,7 @@
           "header X-METHOD-OVERRIDE is forbidden to use value trace,"
         ],
         "request-referrer.any.html": false,
-        "request-referrer.any.worker.html": false,
-        "response-null-body.any.html": {
-          "ignore": true
-        }
+        "request-referrer.any.worker.html": false
       },
       "response": {
         "json.any.html": true,
@@ -6013,7 +5833,6 @@
       "preflight-cache.https.window.html": false,
       "redirect.https.window.html": false,
       "service-worker-background-fetch.https.window.html": false,
-      "service-worker-fetch.https.window.html": false,
       "service-worker-update.https.window.html": false,
       "service-worker.https.window.html": false,
       "shared-worker-blob-fetch.https.window.html": false,
@@ -6703,7 +6522,6 @@
         "service-worker-coep-credentialless-proxy.https.window.html": false,
         "service-worker-coep-none-proxy.https.window.html": false,
         "service-worker.https.window.html": false,
-        "shared-worker.https.window.html": false,
         "video.https.window.html": false
       },
       "cross-origin-isolated-permission-iframe.https.window.html": false,
@@ -7648,12 +7466,6 @@
         "constructor.any.html?wss": true,
         "constructor.any.worker.html?wpt_flags=h2": false,
         "constructor.any.worker.html?wss": true,
-        "abort.any.html?wpt_flags=h2": {
-          "ignore": true
-        },
-        "abort.any.worker.html?wpt_flags=h2": {
-          "ignore": true
-        },
         "backpressure-receive.any.worker.html?wpt_flags=h2": false
       }
     },
@@ -7734,9 +7546,6 @@
         ],
         "unexpected-self-properties.worker.html": true
       }
-    },
-    "dedicated-worker-from-blob-url.window.html": {
-      "ignore": true
     },
     "dedicated-worker-in-data-url-context.window.html": [
       "Create a dedicated worker in a data url frame",
