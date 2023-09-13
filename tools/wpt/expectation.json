@@ -4047,10 +4047,6 @@
       "<area>: Setting <mailto:me@example.net>.pathname = '/foo' Opaque paths cannot be set"
     ],
     "url-setters.any.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://test/>.protocol = 'https\u0000' Non-tab/newline C0 controls result in no-op",
-      "URL: Setting <http://test/>.protocol = 'https\f'",
-      "URL: Setting <http://test/>.protocol = 'https\u000e'",
-      "URL: Setting <http://test/>.protocol = 'https '",
       "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
@@ -4062,7 +4058,6 @@
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
       "URL: Setting <non-spec:/>.pathname = '//p'",
       "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path",
-      "URL: Setting <data:/nospace>.pathname = 'space ' Non-special URLs with non-opaque paths percent-encode U+0020",
       "URL: Setting <sc:/nospace>.pathname = 'space '",
       "URL: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
       "URL: Setting <sc:space  ?query#fragment>.search = ''"
@@ -4075,10 +4070,6 @@
     "url-setters.any.html?include=javascript": true,
     "url-setters.any.html?include=mailto": true,
     "url-setters.any.worker.html?exclude=(file|javascript|mailto)": [
-      "URL: Setting <http://test/>.protocol = 'https\u0000' Non-tab/newline C0 controls result in no-op",
-      "URL: Setting <http://test/>.protocol = 'https\f'",
-      "URL: Setting <http://test/>.protocol = 'https\u000e'",
-      "URL: Setting <http://test/>.protocol = 'https '",
       "URL: Setting <http://example.net/path>.hostname = 'example.com:8080' : delimiter invalidates entire value",
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
@@ -4090,7 +4081,6 @@
       "URL: Setting <non-spec:/>.pathname = '/..//p'",
       "URL: Setting <non-spec:/>.pathname = '//p'",
       "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path",
-      "URL: Setting <data:/nospace>.pathname = 'space ' Non-special URLs with non-opaque paths percent-encode U+0020",
       "URL: Setting <sc:/nospace>.pathname = 'space '",
       "URL: Setting <data:space  ?query#fragment>.search = '' Do not drop trailing spaces from non-trailing opaque paths",
       "URL: Setting <sc:space  ?query#fragment>.search = ''"
