@@ -4,8 +4,6 @@ const core = globalThis.Deno.core;
 const ops = core.ops;
 const primordials = globalThis.__bootstrap.primordials;
 const {
-  ArrayPrototypePush,
-  ArrayPrototypeShift,
   FunctionPrototypeCall,
   MapPrototypeDelete,
   MapPrototypeGet,
@@ -13,7 +11,6 @@ const {
   MapPrototypeSet,
   Uint8Array,
   Uint32Array,
-  PromisePrototypeThen,
   SafeArrayIterator,
   SafeMap,
   SymbolFor,
@@ -36,13 +33,6 @@ function opNow() {
 // ---------------------------------------------------------------------------
 
 /**
- * The task queue corresponding to the timer task source.
- *
- * @type { {action: () => void, nestingLevel: number}[] }
- */
-const timerTasks = [];
-
-/**
  * The current task's timer nesting level, or zero if we're not currently
  * running a timer task (since the minimum nesting level is 1).
  *
@@ -50,6 +40,7 @@ const timerTasks = [];
  */
 let timerNestingLevel = 0;
 let nextExpiry = Infinity;
+let expiryRefed = false;
 
 function handleTimerMacrotask() {
   nextExpiry = Infinity;
@@ -72,8 +63,28 @@ function handleTimerMacrotask() {
   let i = 0;
   while (currentEntry !== null) {
     if (currentEntry.expiry > now) {
+      if (currentEntry.scheduled) {
+        currentEntry = currentEntry.next;
+        continue;
+      }
+
       nextExpiry = currentEntry.expiry;
-      op_sleep(nextExpiry, currentEntry.cancelRid);
+      const sleepPromise = op_sleep(nextExpiry, currentEntry.cancelRid);
+      currentEntry.promiseId =
+        sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+      currentEntry.scheduled = true;
+
+      const ref = isRef(currentEntry.id);
+
+      if (!ref) {
+        core.unrefOp(currentEntry.promiseId);
+      }
+
+      if (expiryRefed !== false) {
+        core.refOp(expiryRefed);
+      }
+
+      expiryRefed = !ref ? currentEntry.promiseId : false;
       break;
     }
 
@@ -221,6 +232,7 @@ function initializeTimer(
     task,
     timeout,
     timerInfo,
+    id,
   );
 
   return id;
@@ -248,8 +260,9 @@ const scheduledTimers = { head: null, tail: null };
  * after the timeout, if it hasn't been cancelled.
  * @param {number} millis
  * @param {{ cancelRid: number, isRef: boolean, promiseId: number }} timerInfo
+ * @param {number} id
  */
-function runAfterTimeout(task, millis, timerInfo) {
+function runAfterTimeout(task, millis, timerInfo, id) {
   const cancelRid = timerInfo.cancelRid;
   let sleepPromise, expiry;
   // If this timeout is scheduled for 0ms it means we want it to run at the
@@ -262,15 +275,24 @@ function runAfterTimeout(task, millis, timerInfo) {
     const now = performance.now();
     expiry = millis + now;
     if (nextExpiry > expiry) {
-      op_sleep(millis, cancelRid);
+      sleepPromise = op_sleep(millis, cancelRid);
       nextExpiry = expiry;
     }
   }
 
-  // timerInfo.promiseId = sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
-  // if (!timerInfo.isRef) {
-  //   core.unrefOp(timerInfo.promiseId);
-  // }
+  if (sleepPromise) {
+    timerInfo.promiseId =
+      sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
+    if (!timerInfo.isRef) {
+      core.unrefOp(timerInfo.promiseId);
+    }
+
+    if (expiryRefed !== false) {
+      core.refOp(expiryRefed);
+    }
+
+    expiryRefed = !timerInfo.isRef ? timerInfo.promiseId : false;
+  }
 
   /** @type {ScheduledTimer} */
   const timerObject = {
@@ -281,6 +303,7 @@ function runAfterTimeout(task, millis, timerInfo) {
     task,
     expiry,
     cancelRid,
+    id,
   };
 
   // Add timerObject to the end of the list.
@@ -379,7 +402,18 @@ function unrefTimer(id) {
     return;
   }
   timerInfo.isRef = false;
+  if (expiryRefed == timerInfo.promiseId) {
+    expiryRefed = false;
+  }
   core.unrefOp(timerInfo.promiseId);
+}
+
+function isRef(id) {
+  const timerInfo = MapPrototypeGet(activeTimers, id);
+  if (timerInfo === undefined || !timerInfo.isRef) {
+    return false;
+  }
+  return true;
 }
 
 export {
