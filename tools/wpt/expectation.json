@@ -3170,13 +3170,13 @@
       "Setting port with leading U+0000 (https:)",
       "Setting port with leading U+001F (https:)",
       "Setting port with leading U+0000 (wpt++:)",
-      "Setting port with leading U+001F (wpt++:)",
+      "Setting port with leading U+001F (wpt++:)"
     ],
     "url-setters-stripping.any.worker.html": [
       "Setting port with leading U+0000 (https:)",
       "Setting port with leading U+001F (https:)",
       "Setting port with leading U+0000 (wpt++:)",
-      "Setting port with leading U+001F (wpt++:)",
+      "Setting port with leading U+001F (wpt++:)"
     ],
     "url-tojson.any.html": true,
     "url-tojson.any.worker.html": true,
