@@ -525,6 +525,12 @@ async fn get_jupyter_display_or_eval_value(
   session: &mut repl::ReplSession,
   evaluate_result: &cdp::RemoteObject,
 ) -> Result<HashMap<String, serde_json::Value>, AnyError> {
+  // Printing "undefined" generates a lot of noise, so let's skip
+  // these.
+  if evaluate_result.kind == "undefined" {
+    return Ok(HashMap::default());
+  }
+
   if let Some(data) = get_jupyter_display(session, evaluate_result).await? {
     return Ok(data);
   }
@@ -544,9 +550,11 @@ async fn get_jupyter_display_or_eval_value(
       &[evaluate_result.clone()],
     )
     .await?;
-  let value = response.result.value.unwrap();
   let mut data = HashMap::default();
-  data.insert("text/plain".to_string(), value);
+  if let Some(value) = response.result.value {
+    data.insert("text/plain".to_string(), value);
+  }
+
   Ok(data)
 }
 
