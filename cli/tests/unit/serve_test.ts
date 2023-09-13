@@ -3641,12 +3641,20 @@ Deno.test(
         headers?: [string, string][];
       };
       response: {
-        body: string | Uint8Array | ReadableStream;
+        body?: string | Uint8Array | ReadableStream;
         status?: number;
         headers?: Headers | HeadersInit;
       };
     };
     const responses: ResponseItem[] = [
+      {
+        expect: {
+          status: 204,
+          body: "",
+        },
+        response: { status: 204 },
+      },
+
       {
         expect: {
           status: 200,
