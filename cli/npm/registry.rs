@@ -18,7 +18,6 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::TaskQueue;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
@@ -30,6 +29,7 @@ use crate::http_util::HttpClient;
 use crate::util::fs::atomic_write_file;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::sync::AtomicFlag;
+use crate::util::sync::TaskQueue;
 
 use super::cache::should_sync_download;
 use super::cache::NpmCache;
@@ -118,7 +118,7 @@ impl NpmRegistryApi for CliNpmRegistryApi {
     let result = if should_sync_download() {
       let inner = self.inner().clone();
       SYNC_DOWNLOAD_TASK_QUEUE
-        .queue(async move { inner.maybe_package_info(name).await })
+        .run(async move { inner.maybe_package_info(name).await })
         .await
     } else {
       self.inner().maybe_package_info(name).await
