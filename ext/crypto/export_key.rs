@@ -4,7 +4,7 @@ use const_oid::AssociatedOid;
 use const_oid::ObjectIdentifier;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::sec1::ToEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
@@ -90,10 +90,11 @@ pub enum ExportKeyResult {
   },
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_key(
-  opts: ExportKeyOptions,
-  key_data: V8RawKeyData,
+  #[serde] opts: ExportKeyOptions,
+  #[serde] key_data: V8RawKeyData,
 ) -> Result<ExportKeyResult, AnyError> {
   match opts.algorithm {
     ExportKeyAlgorithm::RsassaPkcs1v15 {}
