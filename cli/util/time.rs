@@ -19,5 +19,5 @@ pub fn utc_now() -> chrono::DateTime<chrono::Utc> {
     now.subsec_nanos(),
   )
   .unwrap();
-  chrono::DateTime::from_utc(naive, chrono::Utc)
+  chrono::DateTime::from_naive_utc_and_offset(naive, chrono::Utc)
 }

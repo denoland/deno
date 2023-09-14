@@ -20,7 +20,6 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::deno_node::NodeResolutionMode;
 
-use crate::npm::cache::should_sync_download;
 use crate::npm::NpmCache;
 
 /// Part of the resolution that interacts with the file system.
@@ -127,17 +126,10 @@ impl RegistryReadPermissionChecker {
 
 /// Caches all the packages in parallel.
 pub async fn cache_packages(
-  mut packages: Vec<NpmResolutionPackage>,
+  packages: Vec<NpmResolutionPackage>,
   cache: &Arc<NpmCache>,
   registry_url: &Url,
 ) -> Result<(), AnyError> {
-  let sync_download = should_sync_download();
-  if sync_download {
-    // we're running the tests not with --quiet
-    // and we want the output to be deterministic
-    packages.sort_by(|a, b| a.id.cmp(&b.id));
-  }
-
   let mut handles = Vec::with_capacity(packages.len());
   for package in packages {
     let cache = cache.clone();
@@ -147,11 +139,7 @@ pub async fn cache_packages(
         .ensure_package(&package.id.nv, &package.dist, &registry_url)
         .await
     });
-    if sync_download {
-      handle.await??;
-    } else {
-      handles.push(handle);
-    }
+    handles.push(handle);
   }
   let results = futures::future::join_all(handles).await;
   for result in results {
