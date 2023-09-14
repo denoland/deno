@@ -3366,8 +3366,7 @@ var require_readable = __commonJS({
     function flow(stream) {
       const state = stream._readableState;
       debug("flow", state.flowing);
-      ////// TODO: why are we not flowing here in GRPC?
-      while ((console.log("   >>>>    flow", state.flowing) || state.flowing) && stream.read() !== null);
+      while (state.flowing && stream.read() !== null);
     }
     Readable.prototype.wrap = function (stream) {
       let paused = false;
