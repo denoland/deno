@@ -2410,57 +2410,189 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   }
 }
 
-pub fn wildcard_match(pattern: &str, s: &str) -> bool {
-  pattern_match(pattern, s, "[WILDCARD]")
+pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  // Normalize line endings
+  let original_text = text.replace("\r\n", "\n");
+  let mut current_text = original_text.as_str();
+  let pattern = pattern.replace("\r\n", "\n");
+  let mut output_lines = Vec::new();
+
+  let parts = parse_wildcard_match_text(&pattern);
+
+  let mut was_last_wildcard = false;
+  for (i, part) in parts.iter().enumerate() {
+    match part {
+      WildcardMatchPart::Wildcard => {
+        output_lines.push("<WILDCARD />".to_string());
+      }
+      WildcardMatchPart::Text(search_text) => {
+        let is_last = i + 1 == parts.len();
+        let search_index = if is_last && was_last_wildcard {
+          // search from the end of the file
+          current_text.rfind(search_text)
+        } else {
+          current_text.find(search_text)
+        };
+        match search_index {
+          Some(found_index) if was_last_wildcard || found_index == 0 => {
+            output_lines.push(format!("<FOUND>{}</FOUND>", search_text));
+            current_text = &current_text[found_index + search_text.len()..];
+          }
+          Some(index) => {
+            output_lines.push(
+              "==== FOUND SEARCH TEXT IN WRONG POSITION ====".to_string(),
+            );
+            output_lines.push(search_text.to_string());
+            output_lines
+              .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
+            output_lines.push(current_text[..index].to_string());
+            eprintln!("{}", output_lines.join("\n"));
+            return false;
+          }
+          None => {
+            output_lines
+              .push("==== COULD NOT FIND SEARCH TEXT ====".to_string());
+            output_lines.push(search_text.to_string());
+            eprintln!("{}", output_lines.join("\n"));
+            return false;
+          }
+        }
+      }
+      WildcardMatchPart::UnorderedLines(expected_lines) => {
+        assert!(!was_last_wildcard, "unsupported");
+        let mut lines = Vec::with_capacity(expected_lines.len());
+        for _ in 0..expected_lines.len() {
+          match current_text.find('\n') {
+            Some(end_line_index) => {
+              lines.push(&current_text[..end_line_index]);
+              current_text = &current_text[end_line_index + 1..];
+            }
+            None => {
+              break;
+            }
+          }
+        }
+        lines.sort_unstable();
+        let mut expected_lines = expected_lines.clone();
+        expected_lines.sort_unstable();
+
+        if lines.len() != expected_lines.len() {
+          output_lines
+            .push("==== HAD WRONG NUMBER OF UNORDERED LINES ====".to_string());
+          output_lines.extend(expected_lines.iter().map(|l| l.to_string()));
+          return false;
+        }
+        for (actual, expected) in lines.iter().zip(expected_lines.iter()) {
+          if actual != expected {
+            output_lines
+              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
+            output_lines.push(format!("  ACTUAL: {}", actual));
+            output_lines.push(format!("EXPECTED: {}", expected));
+            return false;
+          }
+        }
+        output_lines.push("# Found matching unordered lines".to_string());
+      }
+    }
+    was_last_wildcard = matches!(part, WildcardMatchPart::Wildcard);
+  }
+
+  if was_last_wildcard || current_text.is_empty() {
+    true
+  } else {
+    output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
+    output_lines.push(current_text.to_string());
+    eprintln!("{}", output_lines.join("\n"));
+    false
+  }
 }
 
-pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
-  // Normalize line endings
-  let mut s = s.replace("\r\n", "\n");
-  let pattern = pattern.replace("\r\n", "\n");
+#[derive(Debug)]
+enum WildcardMatchPart<'a> {
+  Wildcard,
+  Text(&'a str),
+  UnorderedLines(Vec<&'a str>),
+}
 
-  if pattern == wildcard {
-    return true;
-  }
+fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
+  use monch::*;
 
-  let parts = pattern.split(wildcard).collect::<Vec<&str>>();
-  if parts.len() == 1 {
-    return pattern == s;
-  }
-
-  if !s.starts_with(parts[0]) {
-    return false;
-  }
-
-  // If the first line of the pattern is just a wildcard the newline character
-  // needs to be pre-pended so it can safely match anything or nothing and
-  // continue matching.
-  if pattern.lines().next() == Some(wildcard) {
-    s.insert(0, '\n');
-  }
-
-  let mut t = s.split_at(parts[0].len());
-
-  for (i, part) in parts.iter().enumerate() {
-    if i == 0 {
-      continue;
-    }
-    dbg!(part, i);
-    if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
-      dbg!("exit 1 true", i);
-      return true;
-    }
-    if let Some(found) = t.1.find(*part) {
-      dbg!("found ", found);
-      t = t.1.split_at(found + part.len());
-    } else {
-      dbg!("exit false ", i);
-      return false;
+  fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
+    const END_TEXT: &str = "\n[UNORDERED_END]\n";
+    let (input, _) = tag("[UNORDERED_START]\n")(input)?;
+    match input.find(END_TEXT) {
+      Some(end_index) => ParseResult::Ok((
+        &input[end_index + END_TEXT.len()..],
+        input[..end_index].lines().collect::<Vec<_>>(),
+      )),
+      None => ParseError::fail(input, format!("Could not find {}", END_TEXT)),
     }
   }
 
-  dbg!("end ", t.1.len());
-  t.1.is_empty()
+  enum InnerPart<'a> {
+    Wildcard,
+    UnorderedLines(Vec<&'a str>),
+    Char,
+  }
+
+  struct Parser<'a> {
+    current_input: &'a str,
+    last_text_input: &'a str,
+    parts: Vec<WildcardMatchPart<'a>>,
+  }
+
+  impl<'a> Parser<'a> {
+    fn parse(mut self) -> ParseResult<'a, Vec<WildcardMatchPart<'a>>> {
+      while !self.current_input.is_empty() {
+        let (next_input, inner_part) = or3(
+          map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
+          map(parse_unordered_lines, |lines| {
+            InnerPart::UnorderedLines(lines)
+          }),
+          map(next_char, |_| InnerPart::Char),
+        )(self.current_input)?;
+        match inner_part {
+          InnerPart::Wildcard => {
+            self.queue_previous_text(next_input);
+            self.parts.push(WildcardMatchPart::Wildcard);
+          }
+          InnerPart::UnorderedLines(expected_lines) => {
+            self.queue_previous_text(next_input);
+            self
+              .parts
+              .push(WildcardMatchPart::UnorderedLines(expected_lines));
+          }
+          InnerPart::Char => {
+            // ignore
+          }
+        }
+        self.current_input = next_input;
+      }
+
+      self.queue_previous_text("");
+
+      ParseResult::Ok(("", self.parts))
+    }
+
+    fn queue_previous_text(&mut self, next_input: &'a str) {
+      let previous_text = &self.last_text_input
+        [..self.last_text_input.len() - self.current_input.len()];
+      if !previous_text.is_empty() {
+        self.parts.push(WildcardMatchPart::Text(previous_text));
+      }
+      self.last_text_input = next_input;
+    }
+  }
+
+  with_failure_handling(|input| {
+    Parser {
+      current_input: input,
+      last_text_input: input,
+      parts: Vec::new(),
+    }
+    .parse()
+  })(text)
+  .unwrap()
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
@@ -2733,16 +2865,15 @@ mod tests {
   }
 
   #[test]
-  fn test_pattern_match() {
+  fn test_wildcard_match2() {
     // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
 
-    let wildcard = "[BAR]";
-    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
-    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+    assert!(wildcard_match("foo[WILDCARD]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCARD]baz", "foobazbar"));
 
-    let multiline_pattern = "[BAR]
+    let multiline_pattern = "[WILDCARD]
 foo:
-[BAR]baz[BAR]";
+[WILDCARD]baz[WILDCARD]";
 
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
@@ -2767,31 +2898,52 @@ grault",
     );
 
     // Correct input & leading line
-    assert!(pattern_match(
+    assert!(wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", Some("QUX=quux")),
-      wildcard
     ));
 
-    // Correct input & no leading line
-    assert!(pattern_match(
+    // Should fail when leading line
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", None),
-      wildcard
     ));
 
     // Incorrect input & leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", Some("QUX=quux")),
-      wildcard
     ));
 
     // Incorrect input & no leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", None),
-      wildcard
+    ));
+  }
+
+  #[test]
+  fn test_wildcard_match_unordered_lines() {
+    // matching
+    assert!(wildcard_match(
+      concat!("[UNORDERED_START]\n", "B\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different line
+    assert!(!wildcard_match(
+      concat!("[UNORDERED_START]\n", "Ba\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different number of lines
+    assert!(!wildcard_match(
+      concat!(
+        "[UNORDERED_START]\n",
+        "B\n",
+        "A\n",
+        "C\n",
+        "[UNORDERED_END]\n"
+      ),
+      concat!("A\n", "B\n",)
     ));
   }
 

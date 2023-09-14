@@ -5446,6 +5446,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "lsp-types",
+ "monch",
  "nix 0.26.2",
  "once_cell",
  "os_pipe",

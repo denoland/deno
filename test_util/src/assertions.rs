@@ -52,7 +52,7 @@ macro_rules! assert_not_contains {
 
 #[track_caller]
 pub fn assert_wildcard_match(actual: &str, expected: &str) {
-  if !expected.contains("[WILDCARD]") {
+  if !expected.contains("[WILDCARD]") && !expected.contains("[IGNORE_START]") {
     pretty_assertions::assert_eq!(actual, expected);
   } else if !crate::wildcard_match(expected, actual) {
     println!("OUTPUT START\n{actual}\nOUTPUT END");
