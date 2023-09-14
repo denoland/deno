@@ -264,6 +264,11 @@ pub fn main() {
 
   let args: Vec<String> = env::args().collect();
 
+  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
+  // initalize the V8 platform on a parent thread of all threads that will spawn
+  // V8 isolates.
+  deno_core::JsRuntime::init_platform(None);
+
   let future = async move {
     let current_exe_path = current_exe()?;
     let standalone_res =
