@@ -82,7 +82,7 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-chrono = { version = "=0.4.26", default-features = false, features = ["std", "serde", "clock"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
 dlopen = "0.1.8"
