@@ -294,6 +294,7 @@ impl TestRun {
             specifier,
             sender.clone(),
             fail_fast_tracker,
+            None,
             test::TestSpecifierOptions {
               filter,
               shuffle: None,

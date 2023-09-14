@@ -411,6 +411,7 @@ pub async fn test_specifier(
   specifier: ModuleSpecifier,
   mut sender: TestEventSender,
   fail_fast_tracker: FailFastTracker,
+  v8_platform: Option<v8::SharedRef<v8::Platform>>,
   options: TestSpecifierOptions,
 ) -> Result<(), AnyError> {
   if fail_fast_tracker.should_stop() {
@@ -428,6 +429,7 @@ pub async fn test_specifier(
         stdout,
         stderr,
       },
+      v8_platform,
     )
     .await?;
 
@@ -815,6 +817,12 @@ async fn test_specifiers(
     specifiers
   };
 
+  // NOTE(bartlomieju): due to new PKU feature introduced in V8 11.6 we need to
+  // use `new_unprotected` platform here, that disables the PKU. This is done,
+  // because we were getting segfaults if isolates were not created on the main
+  // thread.
+  let v8_platform = v8::Platform::new_unprotected(0, false).make_shared();
+
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
@@ -828,6 +836,7 @@ async fn test_specifiers(
   let mut reporter = get_test_reporter(&options);
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
+    let v8_platform = v8_platform.clone();
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let sender = sender.clone();
@@ -840,6 +849,7 @@ async fn test_specifiers(
         specifier,
         sender.clone(),
         fail_fast_tracker,
+        Some(v8_platform.clone()),
         specifier_options,
       ))
     })

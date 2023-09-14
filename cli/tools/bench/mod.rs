@@ -166,6 +166,7 @@ async fn bench_specifier(
   specifier: ModuleSpecifier,
   sender: UnboundedSender<BenchEvent>,
   filter: TestFilter,
+  v8_platform: Option<v8::SharedRef<v8::Platform>>,
 ) -> Result<(), AnyError> {
   let mut worker = worker_factory
     .create_custom_worker(
@@ -173,6 +174,7 @@ async fn bench_specifier(
       PermissionsContainer::new(permissions),
       vec![ops::bench::deno_bench::init_ops(sender.clone())],
       Default::default(),
+      v8_platform,
     )
     .await?;
 
@@ -240,8 +242,14 @@ async fn bench_specifiers(
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
   let log_level = options.log_level;
   let option_for_handles = options.clone();
+  // NOTE(bartlomieju): due to new PKU feature introduced in V8 11.6 we need to
+  // use `new_unprotected` platform here, that disables the PKU. This is done,
+  // because we were getting segfaults if isolates were not created on the main
+  // thread.
+  let v8_platform = v8::Platform::new_unprotected(0, false).make_shared();
 
   let join_handles = specifiers.into_iter().map(move |specifier| {
+    let v8_platform = v8_platform.clone();
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();
     let specifier = specifier;
@@ -254,6 +262,7 @@ async fn bench_specifiers(
         specifier,
         sender,
         options.filter,
+        Some(v8_platform.clone()),
       );
       create_and_run_current_thread(future)
     })
