@@ -136,6 +136,31 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
+// Ops that are synchronously closed, that do not have a mechanism to await
+// async cleanup. These cause the op sanitizer to sleep for a short period of
+// time before collecting metrics to avoid false positive failures.
+const asyncClosingOps = ["op_sleep"];
+
+function collectReliableOpMetrics() {
+  let metrics = core.metrics();
+  if (metrics.opsDispatched > metrics.opsCompleted) {
+    let shouldDelay = false;
+    for (let i = 0; i < asyncClosingOps.length; i++) {
+      const opMetrics = metrics.ops[asyncClosingOps[i]];
+      if (opMetrics.opsDispatched > opMetrics.opsCompleted) shouldDelay = true;
+    }
+    if (shouldDelay) {
+      return opSanitizerDelay().then(() => {
+        metrics = core.metrics();
+        const traces = new Map(core.opCallTraces);
+        return { metrics, traces };
+      });
+    }
+  }
+  const traces = new Map(core.opCallTraces);
+  return { metrics, traces };
+}
+
 // Wrap test function in additional assertion that makes sure
 // the test case does not leak async "ops" - ie. number of async
 // completed ops after the test is the same as number of dispatched
@@ -144,19 +169,26 @@ const OP_DETAILS = {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    const pre = core.metrics();
-    const preTraces = new Map(core.opCallTraces);
+    let metrics = collectReliableOpMetrics();
+    if (metrics.then) {
+      // We're delaying so await to get the result asynchronously.
+      metrics = await metrics;
+    }
+    const { metrics: pre, traces: preTraces } = metrics;
+    let post;
+    let postTraces;
+
     try {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
+      let metrics = collectReliableOpMetrics();
+      if (metrics.then) {
+        // We're delaying so await to get the result asynchronously.
+        metrics = await metrics;
+      }
+      ({ metrics: post, traces: postTraces } = metrics);
     }
-    const post = core.metrics();
-    const postTraces = new Map(core.opCallTraces);
 
     // We're checking diff because one might spawn HTTP server in the background
     // that will be a pending async op before test starts.
@@ -232,6 +264,7 @@ function assertOps(fn) {
         ArrayPrototypePush(details, message);
       }
     }
+
     return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
   };
 }
