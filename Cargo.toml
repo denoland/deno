@@ -40,7 +40,7 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "0.29.1", features = ["transpiling"] }
 
-deno_core = { version = "0.210.0" }
+deno_core = { version = "0.211.0" }
 
 deno_runtime = { version = "0.126.0", path = "./runtime" }
 napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
