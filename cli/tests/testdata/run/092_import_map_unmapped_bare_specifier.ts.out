@@ -1,4 +1,3 @@
-[WILDCARD]
 error: Uncaught (in promise) TypeError: Relative import path "unmapped" not prefixed with / or ./ or ../ and not in import map from "file://[WILDCARD]/092_import_map_unmapped_bare_specifier.ts"
     at file://[WILDCARD]/092_import_map_unmapped_bare_specifier.ts:1:14
 

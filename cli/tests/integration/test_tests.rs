@@ -255,6 +255,12 @@ itest!(trace_ops_catch_error {
 //  output: "test/ops_sanitizer_missing_details.out",
 // });
 
+itest!(ops_sanitizer_closed_inside_started_before {
+  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_closed_inside_started_before.out",
+});
+
 itest!(ops_sanitizer_nexttick {
   args: "test --no-check test/ops_sanitizer_nexttick.ts",
   output: "test/ops_sanitizer_nexttick.out",

@@ -224,7 +224,7 @@ dependencies = [
  "num-traits",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time",
 ]
 
 [[package]]
@@ -561,18 +561,17 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.26"
+version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec837a71355b28f6556dbd569b37b3f363091c0bd4b2e735674521b4c5fd9bc5"
+checksum = "defd4e7873dbddba6c7c91e199c7fcb946abc4a6a4ac3195400bcfb01b5de877"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
  "js-sys",
  "num-traits",
  "serde",
- "time 0.1.45",
  "wasm-bindgen",
- "winapi",
+ "windows-targets",
 ]
 
 [[package]]
@@ -1101,9 +1100,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.29.1"
+version = "0.29.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8bb902bcaa072210ca7b2f28c391f77bb16f6ef64664331c5d928d99943303c"
+checksum = "577ec3850834c2578eb44afa9250f9a807f8497664e6e2aaae19cea0aac2fe3b"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
@@ -1217,14 +1216,14 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.210.0"
+version = "0.213.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1abaede1f57501d6c92075d678f522aea22794b82523e67db8130ca1a6a1cb5d"
+checksum = "d1799de49977a9b73cd8f931ff429b452f3adfb2d5e9648098905923381a374f"
 dependencies = [
  "anyhow",
  "bytes",
  "deno_ops",
- "deno_unsync",
+ "deno_unsync 0.2.1",
  "futures",
  "indexmap 2.0.0",
  "libc",
@@ -1442,7 +1441,7 @@ dependencies = [
  "base64 0.13.1",
  "chrono",
  "deno_core",
- "deno_unsync",
+ "deno_unsync 0.1.1",
  "hex",
  "log",
  "num-bigint",
@@ -1601,9 +1600,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.88.0"
+version = "0.90.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cefc6c32ef8b4c701d6d5aee05f92cdf3b252e209db860bccb7da47043cccac0"
+checksum = "568aba570695e05f08c2181bcd6cd3579684af42f489b9ae42712348044b4af7"
 dependencies = [
  "deno-proc-macro-rules",
  "lazy-regex",
@@ -1722,6 +1721,15 @@ name = "deno_unsync"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac0984205f25e71ddd1be603d76e70255953c12ff864707359ab195d26dfc7b3"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "deno_unsync"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0720e562455d6374a5292baec3fc895ed8bfed0937428e3245e50979924e5b15"
 dependencies = [
  "tokio",
 ]
@@ -4770,9 +4778,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.106"
+version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cc66a619ed80bf7a0f6b17dd063a84b88f6dea1813737cf469aef1d081142c2"
+checksum = "6b420ce6e3d8bd882e9b243c6eed35dbc9a6110c9769e74b584e0d68d1f20c65"
 dependencies = [
  "indexmap 2.0.0",
  "itoa",
@@ -4805,9 +4813,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.121.0"
+version = "0.123.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb2432ec29330973536a977aea8798fbef4e50cb0e72a8772877051039678bba"
+checksum = "cc3e1c4d2b20f6983e86077c66b25b8d768f2e102e09659af2af034ac47ae709"
 dependencies = [
  "bytes",
  "derive_more",
@@ -5647,6 +5655,7 @@ dependencies = [
  "lazy-regex",
  "libc",
  "lsp-types",
+ "monch",
  "nix 0.26.2",
  "once_cell",
  "os_pipe",
@@ -5663,6 +5672,7 @@ dependencies = [
  "serde_json",
  "tar",
  "tempfile",
+ "termcolor",
  "tokio",
  "tokio-rustls",
  "url",
@@ -5702,17 +5712,6 @@ dependencies = [
  "proc-macro2 1.0.67",
  "quote 1.0.33",
  "syn 2.0.33",
-]
-
-[[package]]
-name = "time"
-version = "0.1.45"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b797afad3f312d1c66a56d11d0316f916356d11bd158fbc6ca6389ff6bf805a"
-dependencies = [
- "libc",
- "wasi 0.10.0+wasi-snapshot-preview1",
- "winapi",
 ]
 
 [[package]]
@@ -6013,7 +6012,7 @@ dependencies = [
  "radix_trie",
  "rand 0.8.5",
  "thiserror",
- "time 0.3.28",
+ "time",
  "tokio",
  "tracing",
  "trust-dns-proto",
@@ -6080,7 +6079,7 @@ dependencies = [
  "futures-util",
  "serde",
  "thiserror",
- "time 0.3.28",
+ "time",
  "tokio",
  "toml",
  "tracing",
@@ -6366,12 +6365,6 @@ name = "wasi"
 version = "0.9.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
-
-[[package]]
-name = "wasi"
-version = "0.10.0+wasi-snapshot-preview1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
 
 [[package]]
 name = "wasi"
@@ -6662,7 +6655,7 @@ dependencies = [
  "oid-registry",
  "rusticata-macros",
  "thiserror",
- "time 0.3.28",
+ "time",
 ]
 
 [[package]]

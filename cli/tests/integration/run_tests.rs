@@ -870,7 +870,7 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -917,7 +917,7 @@ itest!(lock_flag_overrides_config_file_lock_path {
 
 itest!(lock_v2_check_ok {
   args:
-    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -4701,3 +4701,8 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});
