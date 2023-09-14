@@ -26,7 +26,6 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
-use crate::util::sync::TaskQueue;
 
 /// Result of checking if a specifier is mapped via
 /// an import map or package.json.
@@ -110,7 +109,6 @@ pub struct CliGraphResolver {
   npm_resolution: Arc<NpmResolution>,
   package_json_deps_installer: Arc<PackageJsonDepsInstaller>,
   found_package_json_dep_flag: Arc<AtomicFlag>,
-  sync_download_queue: Option<Arc<TaskQueue>>,
 }
 
 impl Default for CliGraphResolver {
@@ -136,7 +134,6 @@ impl Default for CliGraphResolver {
       npm_resolution,
       package_json_deps_installer: Default::default(),
       found_package_json_dep_flag: Default::default(),
-      sync_download_queue: Self::create_sync_download_queue(),
     }
   }
 }
@@ -176,15 +173,6 @@ impl CliGraphResolver {
       npm_resolution,
       package_json_deps_installer,
       found_package_json_dep_flag: Default::default(),
-      sync_download_queue: Self::create_sync_download_queue(),
-    }
-  }
-
-  fn create_sync_download_queue() -> Option<Arc<TaskQueue>> {
-    if crate::npm::should_sync_download() {
-      Some(Default::default())
-    } else {
-      None
     }
   }
 
@@ -314,21 +302,12 @@ impl NpmResolver for CliGraphResolver {
     // this will internally cache the package information
     let package_name = package_name.to_string();
     let api = self.npm_registry_api.clone();
-    let maybe_sync_download_queue = self.sync_download_queue.clone();
     async move {
-      let permit = if let Some(task_queue) = &maybe_sync_download_queue {
-        Some(task_queue.acquire().await)
-      } else {
-        None
-      };
-
-      let result = api
+      api
         .package_info(&package_name)
         .await
         .map(|_| ())
-        .map_err(|err| err.into());
-      drop(permit);
-      result
+        .map_err(|err| err.into())
     }
     .boxed()
   }

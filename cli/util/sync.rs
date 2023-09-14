@@ -57,6 +57,7 @@ impl TaskQueue {
 
   /// Alternate API that acquires a permit internally
   /// for the duration of the future.
+  #[allow(unused)]
   pub fn run<'a, R>(
     &'a self,
     future: impl Future<Output = R> + 'a,
