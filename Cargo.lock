@@ -1074,14 +1074,14 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.210.0"
+version = "0.211.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1abaede1f57501d6c92075d678f522aea22794b82523e67db8130ca1a6a1cb5d"
+checksum = "2e63f2803555dae13a88f66e0d6b97a5339753fc86651b118f56de3733ba2f57"
 dependencies = [
  "anyhow",
  "bytes",
  "deno_ops",
- "deno_unsync",
+ "deno_unsync 0.2.1",
  "futures",
  "indexmap 2.0.0",
  "libc",
@@ -1299,7 +1299,7 @@ dependencies = [
  "base64 0.13.1",
  "chrono",
  "deno_core",
- "deno_unsync",
+ "deno_unsync 0.1.1",
  "hex",
  "log",
  "num-bigint",
@@ -1579,6 +1579,15 @@ name = "deno_unsync"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac0984205f25e71ddd1be603d76e70255953c12ff864707359ab195d26dfc7b3"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
+name = "deno_unsync"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0720e562455d6374a5292baec3fc895ed8bfed0937428e3245e50979924e5b15"
 dependencies = [
  "tokio",
 ]
