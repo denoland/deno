@@ -7,7 +7,6 @@ use deno_core::futures::future;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
-use deno_core::TaskQueue;
 use deno_graph::source::NpmPackageReqResolution;
 use deno_graph::source::NpmResolver;
 use deno_graph::source::Resolver;
@@ -27,6 +26,7 @@ use crate::npm::CliNpmRegistryApi;
 use crate::npm::NpmResolution;
 use crate::npm::PackageJsonDepsInstaller;
 use crate::util::sync::AtomicFlag;
+use crate::util::sync::TaskQueue;
 
 /// Result of checking if a specifier is mapped via
 /// an import map or package.json.

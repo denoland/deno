@@ -1477,6 +1477,7 @@ let c: number = "a";
         specifier.clone(),
         SpecifierSettings {
           enable: Some(false),
+          disable_paths: vec![],
           enable_paths: None,
           code_lens: Default::default(),
         },

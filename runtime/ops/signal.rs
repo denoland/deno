@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelFuture;
@@ -537,10 +536,11 @@ pub fn signal_int_to_str(s: libc::c_int) -> Result<&'static str, AnyError> {
 }
 
 #[cfg(unix)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   if signal_hook_registry::FORBIDDEN.contains(&signo) {
@@ -557,10 +557,11 @@ fn op_signal_bind(
 }
 
 #[cfg(windows)]
-#[op]
+#[op2(fast)]
+#[smi]
 fn op_signal_bind(
   state: &mut OpState,
-  sig: &str,
+  #[string] sig: &str,
 ) -> Result<ResourceId, AnyError> {
   let signo = signal_str_to_int(sig)?;
   let resource = SignalStreamResource {
@@ -605,6 +606,6 @@ pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
 ) -> Result<(), AnyError> {
-  state.resource_table.close(rid)?;
+  state.resource_table.take_any(rid)?.close();
   Ok(())
 }

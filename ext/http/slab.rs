@@ -46,7 +46,9 @@ impl HttpRequestBodyAutocloser {
 
 impl Drop for HttpRequestBodyAutocloser {
   fn drop(&mut self) {
-    _ = self.1.borrow_mut().resource_table.close(self.0);
+    if let Ok(res) = self.1.borrow_mut().resource_table.take_any(self.0) {
+      res.close();
+    }
   }
 }
 

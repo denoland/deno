@@ -408,7 +408,9 @@ pub fn op_zlib_close_if_pending(
   };
   if pending_close {
     drop(resource);
-    state.resource_table.close(handle)?;
+    if let Ok(res) = state.resource_table.take_any(handle) {
+      res.close();
+    }
   }
 
   Ok(())
