@@ -17,6 +17,7 @@ const {
   TypedArrayPrototypeGetBuffer,
   TypeError,
   indirectEval,
+  PromisePrototypeCatch,
 } = primordials;
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { reportException } from "ext:deno_web/02_event.js";
@@ -69,7 +70,16 @@ function handleTimerMacrotask() {
       }
 
       nextExpiry = currentEntry.expiry;
-      const sleepPromise = op_sleep(nextExpiry, currentEntry.cancelRid);
+      const sleepPromise = PromisePrototypeCatch(
+        op_sleep(nextExpiry, currentEntry.cancelRid),
+        () => {
+          // timer has been cancelled
+          nextExpiry = Infinity;
+          expiryRefed = false;
+          removeFromScheduledTimers(currentEntry);
+        },
+      );
+
       currentEntry.promiseId =
         sleepPromise[SymbolFor("Deno.core.internalPromiseId")];
       currentEntry.scheduled = true;
