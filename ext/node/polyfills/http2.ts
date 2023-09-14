@@ -56,6 +56,11 @@ const kState = Symbol("state");
 const kType = Symbol("type");
 const kTimeout = Symbol("timeout");
 
+const kDenoResponse = Symbol("kDenoResponse");
+const kDenoRid = Symbol("kDenoRid");
+const kDenoClientRid = Symbol("kDenoClientRid");
+const kDenoConnRid = Symbol("kDenoConnRid");
+
 const STREAM_FLAGS_PENDING = 0x0;
 const STREAM_FLAGS_READY = 0x1;
 const STREAM_FLAGS_CLOSED = 0x2;
@@ -194,8 +199,8 @@ export class Http2Session extends EventEmitter {
     _opaqueData: Buffer | TypedArray | DataView,
   ) {
     warnNotImplemented("Http2Session.goaway");
-    core.tryClose(this._connRid);
-    core.tryClose(this._clientRid);
+    core.tryClose(this[kDenoConnRid]);
+    core.tryClose(this[kDenoClientRid]);
   }
 
   destroy(error = constants.NGHTTP2_NO_ERROR, code?: number) {
@@ -286,9 +291,13 @@ function closeSession(session: Http2Session, code?: number, error?: Error) {
   }
 
   // TODO(bartlomieju): handle sockets
-  debugHttp2(">>> closeSession", session._connRid, session._clientRid);
-  core.tryClose(session._connRid);
-  core.tryClose(session._clientRid);
+  debugHttp2(
+    ">>> closeSession",
+    session[kDenoConnRid],
+    session[kDenoClientRid],
+  );
+  core.tryClose(session[kDenoConnRid]);
+  core.tryClose(session[kDenoClientRid]);
 
   finishSessionClose(session, error);
 }
@@ -325,8 +334,6 @@ function assertValidPseudoHeader(header: string) {
 
 export class ClientHttp2Session extends Http2Session {
   #connectPromise: Promise<void>;
-  _clientRid: number;
-  _connRid: number;
 
   constructor(
     authority: string | URL,
@@ -334,6 +341,8 @@ export class ClientHttp2Session extends Http2Session {
   ) {
     super(constants.NGHTTP2_SESSION_CLIENT, options);
     this[kPendingRequestCalls] = null;
+    this[kDenoClientRid] = undefined;
+    this[kDenoConnRid] = undefined;
 
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
@@ -343,12 +352,15 @@ export class ClientHttp2Session extends Http2Session {
         authority.toString(),
       );
       debugHttp2(">>> after connect");
-      this._clientRid = clientRid;
-      this._connRid = connRid;
+      this[kDenoClientRid] = clientRid;
+      this[kDenoConnRid] = connRid;
       // TODO(bartlomieju): save this promise, so the session can be unrefed
       (async () => {
         try {
-          await core.opAsync("op_http2_poll_client_connection", this._connRid);
+          await core.opAsync(
+            "op_http2_poll_client_connection",
+            this[kDenoConnRid],
+          );
         } catch (e) {
           this.emit("error", e);
         }
@@ -664,7 +676,7 @@ async function clientHttp2Request(
 
   return await core.opAsync(
     "op_http2_client_request",
-    session._clientRid,
+    session[kDenoClientRid],
     pseudoHeaders,
     reqHeaders,
   );
@@ -701,6 +713,8 @@ export class ClientHttp2Stream extends Duplex {
       endAfterHeaders: false,
       shutdownWritableCalled: false,
     };
+    this[kDenoResponse] = undefined;
+    this[kDenoRid] = undefined;
 
     this.#requestPromise = clientHttp2Request(
       session,
@@ -711,13 +725,16 @@ export class ClientHttp2Stream extends Duplex {
     debugHttp2(">>> created clienthttp2stream");
     // TODO(bartlomieju): save it so we can unref
     this.#responsePromise = (async () => {
-      debugHttp2(">>> before request promise", session._clientRid);
+      debugHttp2(">>> before request promise", session[kDenoClientRid]);
       const [streamRid, streamId] = await this.#requestPromise;
       this.#rid = streamRid;
-      // TODO(bartlomieju): clean this up, use `this[kDenoRid]`.
-      this.__rid = streamRid;
+      this[kDenoRid] = streamRid;
       this[kInit](streamId);
-      debugHttp2(">>> after request promise", session._clientRid, this.#rid);
+      debugHttp2(
+        ">>> after request promise",
+        session[kDenoClientRid],
+        this.#rid,
+      );
       const response = await core.opAsync(
         "op_http2_client_get_response",
         this.#rid,
@@ -729,8 +746,7 @@ export class ClientHttp2Stream extends Duplex {
       };
       debugHttp2(">>> emitting response", headers);
       this.emit("response", headers, 0);
-      // TODO(bartlomieju): clean this up, use `this[kDenoResponse]`
-      this.__response = response;
+      this[kDenoResponse] = response;
       this.emit("ready");
     })();
   }
@@ -892,7 +908,7 @@ export class ClientHttp2Stream extends Duplex {
     //   this.once("ready", () => streamOnResume(this));
     // }
 
-    if (!this.__response) {
+    if (!this[kDenoResponse]) {
       this.once("ready", this._read);
       return;
     }
@@ -902,14 +918,14 @@ export class ClientHttp2Stream extends Duplex {
     (async () => {
       const [chunk, finished] = await core.opAsync(
         "op_http2_client_get_response_body_chunk",
-        this.__response.bodyRid,
+        this[kDenoResponse].bodyRid,
       );
 
-      debugHttp2(">>> chunk", chunk, finished, this.__response.bodyRid);
+      debugHttp2(">>> chunk", chunk, finished, this[kDenoResponse].bodyRid);
       if (chunk === null) {
         const trailerList = await core.opAsync(
           "op_http2_client_get_response_trailers",
-          this.__response.bodyRid,
+          this[kDenoResponse].bodyRid,
         );
         if (trailerList) {
           const trailers = Object.fromEntries(trailerList);
@@ -917,7 +933,7 @@ export class ClientHttp2Stream extends Duplex {
         }
 
         debugHttp2("tryClose");
-        core.tryClose(this.__response.bodyRid);
+        core.tryClose(this[kDenoResponse].bodyRid);
         this.push(null);
         debugHttp2(">>> read null chunk");
         this[kMaybeDestroy]();
@@ -1142,16 +1158,16 @@ function finishCloseStream(stream, code) {
     stream.once("ready", () => {
       core.opAsync(
         "op_http2_client_reset_stream",
-        stream.__rid,
+        stream[kDenoRid],
         code,
       ).then(() => {
         debugHttp2(
           ">>> finishCloseStream close",
-          stream.__rid,
-          stream.__response.bodyRid,
+          stream[kDenoRid],
+          stream[kDenoResponse].bodyRid,
         );
-        core.tryClose(stream.__rid);
-        core.tryClose(stream.__response.bodyRid);
+        core.tryClose(stream[kDenoRid]);
+        core.tryClose(stream[kDenoResponse].bodyRid);
         stream.emit("close");
       });
     });
@@ -1159,25 +1175,25 @@ function finishCloseStream(stream, code) {
     stream.resume();
     core.opAsync(
       "op_http2_client_reset_stream",
-      stream.__rid,
+      stream[kDenoRid],
       code,
     ).then(() => {
       debugHttp2(
         ">>> finishCloseStream close2",
-        stream.__rid,
-        stream.__response.bodyRid,
+        stream[kDenoRid],
+        stream[kDenoResponse].bodyRid,
       );
-      core.tryClose(stream.__rid);
-      core.tryClose(stream.__response.bodyRid);
+      core.tryClose(stream[kDenoRid]);
+      core.tryClose(stream[kDenoResponse].bodyRid);
       stream.emit("close");
     }).catch(() => {
       debugHttp2(
         ">>> finishCloseStream close2 catch",
-        stream.__rid,
-        stream.__response.bodyRid,
+        stream[kDenoRid],
+        stream[kDenoResponse].bodyRid,
       );
-      core.tryClose(stream.__rid);
-      core.tryClose(stream.__response.bodyRid);
+      core.tryClose(stream[kDenoRid]);
+      core.tryClose(stream[kDenoResponse].bodyRid);
       stream.emit("close");
     });
   }
