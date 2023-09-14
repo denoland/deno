@@ -433,6 +433,13 @@ pub async fn test_specifier(
 
   let mut coverage_collector = worker.maybe_setup_coverage_collector().await?;
 
+  if options.trace_ops {
+    worker.execute_script_static(
+      located_script_name!(),
+      "Deno[Deno.internal].core.enableOpCallTracing();",
+    )?;
+  }
+
   // We execute the main module as a side module so that import.meta.main is not set.
   match worker.execute_side_module_possibly_with_npm().await {
     Ok(()) => {}
@@ -450,12 +457,7 @@ pub async fn test_specifier(
   }
 
   let mut worker = worker.into_main_worker();
-  if options.trace_ops {
-    worker.js_runtime.execute_script_static(
-      located_script_name!(),
-      "Deno[Deno.internal].core.enableOpCallTracing();",
-    )?;
-  }
+
   worker.dispatch_load_event(located_script_name!())?;
 
   let tests = {

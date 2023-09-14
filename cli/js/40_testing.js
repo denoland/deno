@@ -206,15 +206,30 @@ function assertOps(fn) {
       } else if (dispatchedDiff < completedDiff) {
         const [name, hint] = OP_DETAILS[key] || [key, null];
         const count = completedDiff - dispatchedDiff;
-        ArrayPrototypePush(
-          details,
-          `${count} async operation${count === 1 ? "" : "s"} to ${name} ${
-            count === 1 ? "was" : "were"
-          } started before this test, but ${
-            count === 1 ? "was" : "were"
-          } completed during the test. Async operations should not complete in a test if they were not started in that test.
-            ${hint ? `This is often caused by not ${hint}.` : ""}`,
-        );
+        let message = `${count} async operation${
+          count === 1 ? "" : "s"
+        } to ${name} ${
+          count === 1 ? "was" : "were"
+        } started before this test, but ${
+          count === 1 ? "was" : "were"
+        } completed during the test. Async operations should not complete in a test if they were not started in that test.`;
+        if (hint) {
+          message += ` This is often caused by not ${hint}.`;
+        }
+        const traces = [];
+        for (const [id, { opName, stack }] of preTraces) {
+          if (opName !== key) continue;
+          if (MapPrototypeHas(postTraces, id)) continue;
+          ArrayPrototypePush(traces, stack);
+        }
+        if (traces.length === 1) {
+          message += " The operation was started here:\n";
+          message += traces[0];
+        } else if (traces.length > 1) {
+          message += " The operations were started here:\n";
+          message += ArrayPrototypeJoin(traces, "\n\n");
+        }
+        ArrayPrototypePush(details, message);
       }
     }
     return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
