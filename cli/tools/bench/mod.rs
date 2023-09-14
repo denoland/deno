@@ -241,11 +241,6 @@ async fn bench_specifiers(
   let log_level = options.log_level;
   let option_for_handles = options.clone();
 
-  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
-  // V8 isolates.
-  deno_core::JsRuntime::init_platform(None);
-
   let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions = permissions.clone();

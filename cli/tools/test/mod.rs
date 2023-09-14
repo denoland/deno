@@ -815,11 +815,6 @@ async fn test_specifiers(
     specifiers
   };
 
-  // NOTE(lucacasonato): due to new PKU feature introduced in V8 11.6 we need to
-  // initalize the V8 platform on a parent thread of all threads that will spawn
-  // V8 isolates.
-  deno_core::JsRuntime::init_platform(None);
-
   let (sender, mut receiver) = unbounded_channel::<TestEvent>();
   let sender = TestEventSender::new(sender);
   let concurrent_jobs = options.concurrent_jobs;
