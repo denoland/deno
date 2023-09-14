@@ -71,6 +71,9 @@ import {
   workerRuntimeGlobalProperties,
 } from "ext:runtime/98_global_scope.js";
 
+Symbol.dispose ??= Symbol("Symbol.dispose");
+Symbol.asyncDispose ??= Symbol("Symbol.asyncDispose");
+
 let windowIsClosing = false;
 let globalThis_;
 
