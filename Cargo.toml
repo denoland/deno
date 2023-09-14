@@ -38,9 +38,9 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "0.29.1", features = ["transpiling"] }
+deno_ast = { version = "0.29.3", features = ["transpiling"] }
 
-deno_core = { version = "0.211.0" }
+deno_core = { version = "0.213.0" }
 
 deno_runtime = { version = "0.126.0", path = "./runtime" }
 napi_sym = { version = "0.48.0", path = "./cli/napi/sym" }
@@ -82,7 +82,7 @@ brotli = "3.3.4"
 bytes = "1.4.0"
 cache_control = "=0.2.0"
 cbc = { version = "=0.1.2", features = ["alloc"] }
-chrono = { version = "=0.4.26", default-features = false, features = ["std", "serde", "clock"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
 dlopen = "0.1.8"
@@ -105,6 +105,7 @@ libc = "0.2.126"
 log = "=0.4.20"
 lsp-types = "=0.93.2" # used by tower-lsp and "proposed" feature is unstable in patch releases
 memmem = "0.1.1"
+monch = "=0.4.3"
 notify = "=5.0.0"
 num-bigint = { version = "0.4", features = ["rand"] }
 once_cell = "1.17.1"
