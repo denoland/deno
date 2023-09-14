@@ -5,11 +5,8 @@ import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
-// TODO(bartlomieju): reenable sanitizers
 Deno.test("[node/http2 client]", {
   ignore: Deno.build.os === "windows",
-  sanitizeOps: false,
-  sanitizeResources: false,
 }, async () => {
   // Create a server to respond to the HTTP2 requests
   const client = http2.connect("http://localhost:4246", {});

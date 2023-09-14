@@ -72,7 +72,7 @@ const SESSION_FLAGS_DESTROYED = 0x4;
 const ENCODER = new TextEncoder();
 type Http2Headers = Record<string, string | string[]>;
 
-const debugHttp2Enabled = true;
+const debugHttp2Enabled = false;
 function debugHttp2(...args) {
   if (debugHttp2Enabled) {
     console.log(...args);
@@ -638,7 +638,7 @@ async function clientHttp2Request(
   options,
 ) {
   debugHttp2(
-    "waiting for connect promise",
+    ">>> waiting for connect promise",
     sessionConnectPromise,
     headers,
     options,
