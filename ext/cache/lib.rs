@@ -154,10 +154,11 @@ where
   cache.storage_delete(cache_name).await
 }
 
-#[op]
+#[op2(async)]
+#[smi]
 pub async fn op_cache_put<CA>(
   state: Rc<RefCell<OpState>>,
-  request_response: CachePutRequest,
+  #[serde] request_response: CachePutRequest,
 ) -> Result<Option<ResourceId>, AnyError>
 where
   CA: Cache,

@@ -11,7 +11,6 @@ use std::rc::Rc;
 
 use async_trait::async_trait;
 use deno_core::error::AnyError;
-use deno_core::op;
 use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
