@@ -279,11 +279,12 @@ function runAfterTimeout(task, millis, timerInfo, id) {
   // end of the event loop turn. There's no point in setting up a Tokio timer,
   // since its lowest resolution is 1ms. Firing of a "void async" op is better
   // in this case, because the timer will take closer to 0ms instead of >1ms.
+  if (millis < 0) millis = 0;
+  const now = performance.now();
+  expiry = millis + now;
   if (millis === 0) {
     sleepPromise = op_void_async_deferred();
   } else {
-    const now = performance.now();
-    expiry = millis + now;
     if (nextExpiry > expiry) {
       sleepPromise = op_sleep(millis, cancelRid);
       nextExpiry = expiry;
