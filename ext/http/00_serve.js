@@ -41,9 +41,11 @@ const {
   ArrayIsArray,
   ArrayPrototypePush,
   Error,
+  NumberIsInteger,
   ObjectPrototypeIsPrototypeOf,
   ObjectEntries,
   PromisePrototypeCatch,
+  RangeError,
   Symbol,
   SymbolFor,
   TypeError,
@@ -478,7 +480,7 @@ function mapToCallback(context, callback, onError) {
       return;
     }
 
-    let status;
+    let status = 200;
     let headers;
     let body;
 
@@ -489,8 +491,21 @@ function mapToCallback(context, callback, onError) {
       body = inner.body;
     } else {
       // response is a ServeHandlerResponse
-      status = response.status ?? 200;
       body = response.body;
+
+      if (response.status) {
+        status = response.status;
+        if (!NumberIsInteger(status)) {
+          throw new TypeError(`Invalid status (${status})`);
+        }
+
+        if ((status < 200 || status > 599) && status != 101) {
+          throw new RangeError(
+            `The status provided (${status}) is not equal to 101 and outside the range [200, 599].`,
+          );
+        }
+      }
+
       if (response.headers) {
         headers = ArrayIsArray(response.headers)
           ? response.headers

@@ -3723,7 +3723,7 @@ Deno.test(
 
         response: {
           body: new ReadableStream({
-            async start(controller) {
+            start(controller) {
               controller.enqueue(bodyU8);
               controller.close();
             },
@@ -3741,7 +3741,7 @@ Deno.test(
 
         response: {
           body: new ReadableStream({
-            async start(controller) {
+            start(controller) {
               controller.enqueue(new Uint8Array([97]));
               controller.close();
             },
@@ -3783,5 +3783,36 @@ Deno.test(
 
     ac.abort();
     await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function testServeHandlerResponseInvalidStatus() {
+    const invalidStatus = [50, "foo", {}, 600, 100, "200"];
+
+    for (const status of invalidStatus) {
+      const listeningPromise = deferred();
+      const ac = new AbortController();
+      const server = Deno.serve(
+        {
+          onListen: ({ port }: { port: number }) =>
+            listeningPromise.resolve(port),
+          signal: ac.signal,
+        }, // @ts-ignore - testing invalid status
+        () => ({ status }),
+      );
+
+      const port = await listeningPromise;
+
+      const fetchPromise = fetch(`http://localhost:${port}/`)
+        .catch((e) => e.message);
+
+      await server.finished;
+      assertMatch(
+        await fetchPromise,
+        /connection closed before message completed/,
+      );
+    }
   },
 );
