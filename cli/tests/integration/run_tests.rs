@@ -4701,3 +4701,8 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});
