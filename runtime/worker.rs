@@ -91,9 +91,6 @@ pub struct WorkerOptions {
   /// Optional isolate creation parameters, such as heap limits.
   pub create_params: Option<v8::CreateParams>,
 
-  // Optional `v8::Platform` to use to create the associated `JsRuntime`.
-  pub v8_platform: Option<v8::SharedRef<v8::Platform>>,
-
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
   pub seed: Option<u64>,
@@ -173,7 +170,6 @@ impl Default for WorkerOptions {
       extensions: Default::default(),
       startup_snapshot: Default::default(),
       create_params: Default::default(),
-      v8_platform: Default::default(),
       bootstrap: Default::default(),
       stdio: Default::default(),
     }
@@ -337,7 +333,6 @@ impl MainWorker {
         .startup_snapshot
         .or_else(crate::js::deno_isolate_init),
       create_params: options.create_params,
-      v8_platform: options.v8_platform,
       source_map_getter: options.source_map_getter,
       get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: options.shared_array_buffer_store.clone(),
@@ -346,6 +341,7 @@ impl MainWorker {
       preserve_snapshotted_modules,
       inspector: options.maybe_inspector_server.is_some(),
       is_main: true,
+      ..Default::default()
     });
 
     if let Some(server) = options.maybe_inspector_server.clone() {

@@ -329,7 +329,6 @@ impl CliMainWorkerFactory {
         permissions,
         vec![],
         Default::default(),
-        None,
       )
       .await
   }
@@ -340,7 +339,6 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     mut custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-    v8_platform: Option<deno_core::v8::SharedRef<deno_core::v8::Platform>>,
   ) -> Result<CliMainWorker, AnyError> {
     let shared = &self.shared;
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
@@ -457,7 +455,6 @@ impl CliMainWorkerFactory {
         shared.compiled_wasm_module_store.clone(),
       ),
       stdio,
-      v8_platform,
     };
 
     let worker = MainWorker::bootstrap_from_options(
