@@ -1,3 +1,4 @@
+[UNORDERED_START]
 Download http://localhost:4545/npm/registry/yargs
 Download http://localhost:4545/npm/registry/cliui
 Download http://localhost:4545/npm/registry/decamelize
@@ -24,6 +25,8 @@ Download http://localhost:4545/npm/registry/color-convert
 Download http://localhost:4545/npm/registry/p-limit
 Download http://localhost:4545/npm/registry/color-name
 Download http://localhost:4545/npm/registry/p-try
+[UNORDERED_END]
+[UNORDERED_START]
 Download http://localhost:4545/npm/registry/ansi-regex/ansi-regex-5.0.1.tgz
 Initialize ansi-regex@5.0.1
 Download http://localhost:4545/npm/registry/ansi-styles/ansi-styles-4.3.0.tgz
@@ -76,5 +79,6 @@ Download http://localhost:4545/npm/registry/yargs/yargs-15.4.1.tgz
 Initialize yargs@15.4.1
 Download http://localhost:4545/npm/registry/yargs-parser/yargs-parser-18.1.3.tgz
 Initialize yargs-parser@18.1.3
+[UNORDERED_END]
 start server on :8000
 [WILDCARD]
