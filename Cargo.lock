@@ -5463,6 +5463,7 @@ dependencies = [
  "serde_json",
  "tar",
  "tempfile",
+ "termcolor",
  "tokio",
  "tokio-rustls",
  "url",

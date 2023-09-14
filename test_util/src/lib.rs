@@ -2411,21 +2411,43 @@ impl<'a> CheckOutputIntegrationTest<'a> {
 }
 
 pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  match wildcard_match_detailed(pattern, text) {
+    WildcardMatchResult::Success => true,
+    WildcardMatchResult::Fail(debug_output) => {
+      eprintln!("{}", debug_output);
+      false
+    }
+  }
+}
+
+pub enum WildcardMatchResult {
+  Success,
+  Fail(String),
+}
+
+pub fn wildcard_match_detailed(
+  pattern: &str,
+  text: &str,
+) -> WildcardMatchResult {
+  fn annotate_whitespace(text: &str) -> String {
+    text.replace('\t', "\u{2192}").replace(' ', "\u{00B7}")
+  }
+
   // Normalize line endings
   let original_text = text.replace("\r\n", "\n");
   let mut current_text = original_text.as_str();
   let pattern = pattern.replace("\r\n", "\n");
   let mut output_lines = Vec::new();
 
-  let parts = parse_wildcard_match_text(&pattern);
+  let parts = parse_wildcard_pattern_text(&pattern).unwrap();
 
   let mut was_last_wildcard = false;
   for (i, part) in parts.iter().enumerate() {
     match part {
-      WildcardMatchPart::Wildcard => {
+      WildcardPatternPart::Wildcard => {
         output_lines.push("<WILDCARD />".to_string());
       }
-      WildcardMatchPart::Text(search_text) => {
+      WildcardPatternPart::Text(search_text) => {
         let is_last = i + 1 == parts.len();
         let search_index = if is_last && was_last_wildcard {
           // search from the end of the file
@@ -2435,36 +2457,73 @@ pub fn wildcard_match(pattern: &str, text: &str) -> bool {
         };
         match search_index {
           Some(found_index) if was_last_wildcard || found_index == 0 => {
-            output_lines.push(format!("<FOUND>{}</FOUND>", search_text));
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(search_text))
+            ));
             current_text = &current_text[found_index + search_text.len()..];
           }
           Some(index) => {
             output_lines.push(
               "==== FOUND SEARCH TEXT IN WRONG POSITION ====".to_string(),
             );
-            output_lines.push(search_text.to_string());
+            output_lines.push(colors::gray(annotate_whitespace(search_text)));
             output_lines
               .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
-            output_lines.push(current_text[..index].to_string());
-            eprintln!("{}", output_lines.join("\n"));
-            return false;
+            output_lines
+              .push(colors::red(annotate_whitespace(&current_text[..index])));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
           None => {
+            let mut max_found_index = 0;
+            for (index, _) in search_text.char_indices() {
+              let sub_string = &search_text[..index];
+              if let Some(found_index) = current_text.find(sub_string) {
+                if was_last_wildcard || found_index == 0 {
+                  max_found_index = index;
+                } else {
+                  break;
+                }
+              } else {
+                break;
+              }
+            }
+            if !was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "<FOUND>{}</FOUND>",
+                colors::gray(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
             output_lines
               .push("==== COULD NOT FIND SEARCH TEXT ====".to_string());
-            output_lines.push(search_text.to_string());
-            eprintln!("{}", output_lines.join("\n"));
-            return false;
+            output_lines.push(colors::green(annotate_whitespace(
+              if was_last_wildcard {
+                search_text
+              } else {
+                &search_text[max_found_index..]
+              },
+            )));
+            if was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "==== MAX FOUND ====\n{}",
+                colors::red(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
       }
-      WildcardMatchPart::UnorderedLines(expected_lines) => {
+      WildcardPatternPart::UnorderedLines(expected_lines) => {
         assert!(!was_last_wildcard, "unsupported");
-        let mut lines = Vec::with_capacity(expected_lines.len());
+        let mut actual_lines = Vec::with_capacity(expected_lines.len());
         for _ in 0..expected_lines.len() {
           match current_text.find('\n') {
             Some(end_line_index) => {
-              lines.push(&current_text[..end_line_index]);
+              actual_lines.push(&current_text[..end_line_index]);
               current_text = &current_text[end_line_index + 1..];
             }
             None => {
@@ -2472,49 +2531,68 @@ pub fn wildcard_match(pattern: &str, text: &str) -> bool {
             }
           }
         }
-        lines.sort_unstable();
+        actual_lines.sort_unstable();
         let mut expected_lines = expected_lines.clone();
         expected_lines.sort_unstable();
 
-        if lines.len() != expected_lines.len() {
+        if actual_lines.len() != expected_lines.len() {
           output_lines
             .push("==== HAD WRONG NUMBER OF UNORDERED LINES ====".to_string());
-          output_lines.extend(expected_lines.iter().map(|l| l.to_string()));
-          return false;
+          output_lines.push("# ACTUAL".to_string());
+          output_lines.extend(
+            actual_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          output_lines.push("# EXPECTED".to_string());
+          output_lines.extend(
+            expected_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          return WildcardMatchResult::Fail(output_lines.join("\n"));
         }
-        for (actual, expected) in lines.iter().zip(expected_lines.iter()) {
+        for (actual, expected) in actual_lines.iter().zip(expected_lines.iter())
+        {
           if actual != expected {
             output_lines
               .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
-            output_lines.push(format!("  ACTUAL: {}", actual));
-            output_lines.push(format!("EXPECTED: {}", expected));
-            return false;
+            output_lines.push(format!(
+              "  ACTUAL: {}",
+              colors::red(annotate_whitespace(actual))
+            ));
+            output_lines.push(format!(
+              "EXPECTED: {}",
+              colors::green(annotate_whitespace(expected))
+            ));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
         output_lines.push("# Found matching unordered lines".to_string());
       }
     }
-    was_last_wildcard = matches!(part, WildcardMatchPart::Wildcard);
+    was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);
   }
 
   if was_last_wildcard || current_text.is_empty() {
-    true
+    WildcardMatchResult::Success
   } else {
     output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
-    output_lines.push(current_text.to_string());
-    eprintln!("{}", output_lines.join("\n"));
-    false
+    output_lines.push(colors::red(annotate_whitespace(current_text)));
+    WildcardMatchResult::Fail(output_lines.join("\n"))
   }
 }
 
 #[derive(Debug)]
-enum WildcardMatchPart<'a> {
+enum WildcardPatternPart<'a> {
   Wildcard,
   Text(&'a str),
   UnorderedLines(Vec<&'a str>),
 }
 
-fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
+fn parse_wildcard_pattern_text(
+  text: &str,
+) -> Result<Vec<WildcardPatternPart>, monch::ParseErrorFailureError> {
   use monch::*;
 
   fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
@@ -2525,7 +2603,7 @@ fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
         &input[end_index + END_TEXT.len()..],
         input[..end_index].lines().collect::<Vec<_>>(),
       )),
-      None => ParseError::fail(input, format!("Could not find {}", END_TEXT)),
+      None => ParseError::fail(input, "Could not find [UNORDERED_END]"),
     }
   }
 
@@ -2538,11 +2616,11 @@ fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
   struct Parser<'a> {
     current_input: &'a str,
     last_text_input: &'a str,
-    parts: Vec<WildcardMatchPart<'a>>,
+    parts: Vec<WildcardPatternPart<'a>>,
   }
 
   impl<'a> Parser<'a> {
-    fn parse(mut self) -> ParseResult<'a, Vec<WildcardMatchPart<'a>>> {
+    fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
       while !self.current_input.is_empty() {
         let (next_input, inner_part) = or3(
           map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
@@ -2554,13 +2632,13 @@ fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
         match inner_part {
           InnerPart::Wildcard => {
             self.queue_previous_text(next_input);
-            self.parts.push(WildcardMatchPart::Wildcard);
+            self.parts.push(WildcardPatternPart::Wildcard);
           }
           InnerPart::UnorderedLines(expected_lines) => {
             self.queue_previous_text(next_input);
             self
               .parts
-              .push(WildcardMatchPart::UnorderedLines(expected_lines));
+              .push(WildcardPatternPart::UnorderedLines(expected_lines));
           }
           InnerPart::Char => {
             // ignore
@@ -2578,7 +2656,7 @@ fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
       let previous_text = &self.last_text_input
         [..self.last_text_input.len() - self.current_input.len()];
       if !previous_text.is_empty() {
-        self.parts.push(WildcardMatchPart::Text(previous_text));
+        self.parts.push(WildcardPatternPart::Text(previous_text));
       }
       self.last_text_input = next_input;
     }
@@ -2592,7 +2670,6 @@ fn parse_wildcard_match_text(text: &str) -> Vec<WildcardMatchPart> {
     }
     .parse()
   })(text)
-  .unwrap()
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
@@ -2736,6 +2813,67 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   None
 }
 
+pub(crate) mod colors {
+  use std::io::Write;
+
+  use termcolor::Ansi;
+  use termcolor::Color;
+  use termcolor::ColorSpec;
+  use termcolor::WriteColor;
+
+  pub fn bold<S: AsRef<str>>(s: S) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style(s, style_spec)
+  }
+
+  pub fn red<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Red)
+  }
+
+  pub fn bold_red<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Red)
+  }
+
+  pub fn green<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Green)
+  }
+
+  pub fn bold_green<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Green)
+  }
+
+  pub fn bold_blue<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Blue)
+  }
+
+  pub fn gray<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Ansi256(245))
+  }
+
+  fn bold_fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn style<S: AsRef<str>>(s: S, colorspec: ColorSpec) -> String {
+    let mut v = Vec::new();
+    let mut ansi_writer = Ansi::new(&mut v);
+    ansi_writer.set_color(&colorspec).unwrap();
+    ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
+    ansi_writer.reset().unwrap();
+    String::from_utf8_lossy(&v).into_owned()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -2819,6 +2957,15 @@ mod tests {
     assert_eq!(strace.get("total").unwrap().calls, 543);
     assert_eq!(strace.get("total").unwrap().errors, 36);
     assert_eq!(strace.get("total").unwrap().usecs_per_call, Some(6));
+  }
+
+  #[test]
+  fn parse_parse_wildcard_match_text() {
+    let result =
+      parse_wildcard_pattern_text("[UNORDERED_START]\ntesting\ntesting")
+        .err()
+        .unwrap();
+    assert_contains!(result.to_string(), "Could not find [UNORDERED_END]");
   }
 
   #[test]

@@ -1,5 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
+use crate::colors;
+
 #[macro_export]
 macro_rules! assert_starts_with {
   ($string:expr, $($test:expr),+) => {
@@ -54,9 +56,38 @@ macro_rules! assert_not_contains {
 pub fn assert_wildcard_match(actual: &str, expected: &str) {
   if !expected.contains("[WILDCARD]") && !expected.contains("[IGNORE_START]") {
     pretty_assertions::assert_eq!(actual, expected);
-  } else if !crate::wildcard_match(expected, actual) {
-    println!("OUTPUT START\n{actual}\nOUTPUT END");
-    println!("EXPECTED START\n{expected}\nEXPECTED END");
-    panic!("pattern match failed");
+  } else {
+    match crate::wildcard_match_detailed(expected, actual) {
+      crate::WildcardMatchResult::Success => {
+        // ignore
+      }
+      crate::WildcardMatchResult::Fail(debug_output) => {
+        println!(
+          "{}{}{}",
+          colors::bold("-- "),
+          colors::bold_red("OUTPUT"),
+          colors::bold(" START --"),
+        );
+        println!("{}", actual);
+        println!("{}", colors::bold("-- OUTPUT END --"));
+        println!(
+          "{}{}{}",
+          colors::bold("-- "),
+          colors::bold_green("EXPECTED"),
+          colors::bold(" START --"),
+        );
+        println!("{}", expected);
+        println!("{}", colors::bold("-- EXPECTED END --"));
+        println!(
+          "{}{}{}",
+          colors::bold("-- "),
+          colors::bold_blue("DEBUG"),
+          colors::bold(" START --"),
+        );
+        println!("{debug_output}");
+        println!("{}", colors::bold("-- DEBUG END --"));
+        panic!("pattern match failed");
+      }
+    }
   }
 }
