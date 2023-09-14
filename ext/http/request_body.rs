@@ -36,6 +36,9 @@ impl Stream for ReadFuture {
           }
         }
       }
+      std::task::Poll::Ready(Some(Err(e))) => {
+        return std::task::Poll::Ready(Some(Err(e.into())));
+      }
       std::task::Poll::Ready(None) => return std::task::Poll::Ready(None),
       _ => {}
     }
