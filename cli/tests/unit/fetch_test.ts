@@ -1978,18 +1978,18 @@ Deno.test(
   },
 );
 
-//Deno.test("Request with subarray TypedArray body", async () => {
-//  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
-//  const req = new Request("https://example.com", { method: "POST", body });
-//  const actual = new Uint8Array(await req.arrayBuffer());
-//  const expected = new Uint8Array([2, 3, 4, 5]);
-//  assertEquals(actual, expected);
-//});
-//
-//Deno.test("Response with subarray TypedArray body", async () => {
-//  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
-//  const req = new Response(body);
-//  const actual = new Uint8Array(await req.arrayBuffer());
-//  const expected = new Uint8Array([2, 3, 4, 5]);
-//  assertEquals(actual, expected);
-//});
+Deno.test("Request with subarray TypedArray body", async () => {
+  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
+  const req = new Request("https://example.com", { method: "POST", body });
+  const actual = new Uint8Array(await req.arrayBuffer());
+  const expected = new Uint8Array([2, 3, 4, 5]);
+  assertEquals(actual, expected);
+});
+
+Deno.test("Response with subarray TypedArray body", async () => {
+  const body = new Uint8Array([1, 2, 3, 4, 5]).subarray(1);
+  const req = new Response(body);
+  const actual = new Uint8Array(await req.arrayBuffer());
+  const expected = new Uint8Array([2, 3, 4, 5]);
+  assertEquals(actual, expected);
+});
