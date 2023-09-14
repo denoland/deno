@@ -391,6 +391,11 @@ impl JupyterServer {
         }))
         .send(connection)
         .await?;
+      // Let's sleep here for a few ms, so we give a chance to the task that is
+      // handling stdout and stderr streams to receive and flush the content.
+      // Otherwise, executing multiple cells one-by-one might lead to output
+      // from various cells be grouped together in another cell result.
+      tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     } else {
       let exception_details = exception_details.unwrap();
       let name = if let Some(exception) = exception_details.exception {
