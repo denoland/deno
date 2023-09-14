@@ -256,9 +256,9 @@ itest!(trace_ops_catch_error {
 // });
 
 itest!(ops_sanitizer_closed_inside_started_before {
- args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
- exit_code: 1,
- output: "test/ops_sanitizer_closed_inside_started_before.out",
+  args: "test --trace-ops test/ops_sanitizer_closed_inside_started_before.ts",
+  exit_code: 1,
+  output: "test/ops_sanitizer_closed_inside_started_before.out",
 });
 
 itest!(ops_sanitizer_nexttick {
