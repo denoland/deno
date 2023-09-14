@@ -7,8 +7,7 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
@@ -129,19 +128,20 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-#[op]
+#[op2]
+#[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op(fast)]
-fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
-  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
+#[op2(fast)]
+fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
+  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
-#[op(fast)]
-fn op_node_is_promise_rejected(value: serde_v8::Value) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value.v8_value) else {
+#[op2(fast)]
+fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
   };
 
