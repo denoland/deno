@@ -127,21 +127,11 @@ pub fn env_vars_for_npm_tests() -> Vec<(String, String)> {
   env_vars
 }
 
-pub fn env_vars_for_jsr_tests_no_sync_download() -> Vec<(String, String)> {
+pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
   vec![
     ("DENO_REGISTRY_URL".to_string(), jsr_registry_url()),
     ("NO_COLOR".to_string(), "1".to_string()),
   ]
-}
-
-pub fn env_vars_for_jsr_tests() -> Vec<(String, String)> {
-  let mut env_vars = env_vars_for_jsr_tests_no_sync_download();
-  env_vars.push((
-    // make downloads deterministic
-    "DENO_UNSTABLE_JSR_SYNC_DOWNLOAD".to_string(),
-    "1".to_string(),
-  ));
-  env_vars
 }
 
 pub fn root_path() -> PathRef {

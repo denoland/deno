@@ -105,7 +105,6 @@ pub struct FetchCacher {
   permissions: PermissionsContainer,
   cache_info_enabled: bool,
   maybe_local_node_modules_url: Option<ModuleSpecifier>,
-  sync_download_queue: Option<Arc<deno_core::TaskQueue>>,
 }
 
 impl FetchCacher {
@@ -127,15 +126,6 @@ impl FetchCacher {
       permissions,
       cache_info_enabled: false,
       maybe_local_node_modules_url,
-      sync_download_queue: std::env::var("DENO_UNSTABLE_JSR_SYNC_DOWNLOAD")
-        .ok()
-        .and_then(|value| {
-          if value == "1" {
-            Some(Default::default())
-          } else {
-            None
-          }
-        }),
     }
   }
 
@@ -169,10 +159,57 @@ impl FetchCacher {
         .ok()
     }
   }
+}
 
-  fn load_inner(
+static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
+  let env_var_name = "DENO_REGISTRY_URL";
+  if let Ok(registry_url) = std::env::var(env_var_name) {
+    // ensure there is a trailing slash for the directory
+    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
+    match Url::parse(&registry_url) {
+      Ok(url) => {
+        return url;
+      }
+      Err(err) => {
+        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
+      }
+    }
+  }
+
+  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
+});
+
+impl Loader for FetchCacher {
+  fn registry_url(&self) -> &Url {
+    &DENO_REGISTRY_URL
+  }
+
+  fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
+    if !self.cache_info_enabled {
+      return None;
+    }
+
+    #[allow(deprecated)]
+    let local = self.get_local_path(specifier)?;
+    if local.is_file() {
+      let emit = self
+        .emit_cache
+        .get_emit_filepath(specifier)
+        .filter(|p| p.is_file());
+      Some(CacheInfo {
+        local: Some(local),
+        emit,
+        map: None,
+      })
+    } else {
+      None
+    }
+  }
+
+  fn load(
     &mut self,
     specifier: &ModuleSpecifier,
+    _is_dynamic: bool,
     cache_setting: deno_graph::source::CacheSetting,
   ) -> LoadFuture {
     use deno_graph::source::CacheSetting as LoaderCacheSetting;
@@ -253,66 +290,6 @@ impl FetchCacher {
         })
     }
     .boxed()
-  }
-}
-
-static DENO_REGISTRY_URL: Lazy<Url> = Lazy::new(|| {
-  let env_var_name = "DENO_REGISTRY_URL";
-  if let Ok(registry_url) = std::env::var(env_var_name) {
-    // ensure there is a trailing slash for the directory
-    let registry_url = format!("{}/", registry_url.trim_end_matches('/'));
-    match Url::parse(&registry_url) {
-      Ok(url) => {
-        return url;
-      }
-      Err(err) => {
-        log::debug!("Invalid {} environment variable: {:#}", env_var_name, err,);
-      }
-    }
-  }
-
-  deno_graph::source::DEFAULT_DENO_REGISTRY_URL.clone()
-});
-
-impl Loader for FetchCacher {
-  fn registry_url(&self) -> &Url {
-    &DENO_REGISTRY_URL
-  }
-
-  fn get_cache_info(&self, specifier: &ModuleSpecifier) -> Option<CacheInfo> {
-    if !self.cache_info_enabled {
-      return None;
-    }
-
-    #[allow(deprecated)]
-    let local = self.get_local_path(specifier)?;
-    if local.is_file() {
-      let emit = self
-        .emit_cache
-        .get_emit_filepath(specifier)
-        .filter(|p| p.is_file());
-      Some(CacheInfo {
-        local: Some(local),
-        emit,
-        map: None,
-      })
-    } else {
-      None
-    }
-  }
-
-  fn load(
-    &mut self,
-    specifier: &ModuleSpecifier,
-    _is_dynamic: bool,
-    cache_setting: deno_graph::source::CacheSetting,
-  ) -> LoadFuture {
-    let fut = self.load_inner(specifier, cache_setting);
-    if let Some(queue) = &self.sync_download_queue {
-      queue.queue(fut).boxed_local()
-    } else {
-      fut
-    }
   }
 
   fn cache_module_info(
