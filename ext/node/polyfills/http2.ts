@@ -1061,7 +1061,8 @@ export class ClientHttp2Stream extends Duplex {
   }
 
   setTimeout(msecs: number, callback?: () => void) {
-    // TODO: fix this
+    // TODO(bartlomieju): fix this call, it's crashing on `this` being undefined;
+    // some strange transpilation quirk going on here.
     setStreamTimeout.call(this, msecs, callback);
   }
 }
