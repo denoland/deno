@@ -4,6 +4,7 @@ use deno_core::error::bad_resource_id;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::OpState;
 use libz_sys::*;
 use std::borrow::Cow;
@@ -252,8 +253,12 @@ impl deno_core::Resource for Zlib {
   }
 }
 
-#[op]
-pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
+#[op2(fast)]
+#[smi]
+pub fn op_zlib_new(
+  state: &mut OpState,
+  #[smi] mode: i32,
+) -> Result<u32, AnyError> {
   let mode = Mode::try_from(mode)?;
 
   let inner = ZlibInner {
@@ -266,8 +271,11 @@ pub fn op_zlib_new(state: &mut OpState, mode: i32) -> Result<u32, AnyError> {
   }))
 }
 
-#[op]
-pub fn op_zlib_close(state: &mut OpState, handle: u32) -> Result<(), AnyError> {
+#[op2(fast)]
+pub fn op_zlib_close(
+  state: &mut OpState,
+  #[smi] handle: u32,
+) -> Result<(), AnyError> {
   let resource = zlib(state, handle)?;
   let mut zlib = resource.inner.borrow_mut();
 
@@ -382,10 +390,11 @@ pub fn op_zlib_init(
   Ok(zlib.err)
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_zlib_reset(
   state: &mut OpState,
-  handle: u32,
+  #[smi] handle: u32,
 ) -> Result<i32, AnyError> {
   let resource = zlib(state, handle)?;
 
@@ -395,10 +404,10 @@ pub fn op_zlib_reset(
   Ok(zlib.err)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_zlib_close_if_pending(
   state: &mut OpState,
-  handle: u32,
+  #[smi] handle: u32,
 ) -> Result<(), AnyError> {
   let resource = zlib(state, handle)?;
   let pending_close = {
@@ -408,7 +417,9 @@ pub fn op_zlib_close_if_pending(
   };
   if pending_close {
     drop(resource);
-    state.resource_table.close(handle)?;
+    if let Ok(res) = state.resource_table.take_any(handle) {
+      res.close();
+    }
   }
 
   Ok(())

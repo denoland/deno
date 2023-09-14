@@ -12,7 +12,7 @@ mod ts {
   use super::*;
   use deno_core::error::custom_error;
   use deno_core::error::AnyError;
-  use deno_core::op;
+  use deno_core::op2;
   use deno_core::OpState;
   use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
   use serde::Deserialize;
@@ -35,8 +35,9 @@ mod ts {
     node_built_in_module_names: Vec<String>,
   }
 
-  #[op]
-  fn op_build_info<'s>(state: &mut OpState) -> BuildInfoResponse {
+  #[op2]
+  #[serde]
+  fn op_build_info(state: &mut OpState) -> BuildInfoResponse {
     let build_specifier = "asset:///bootstrap.ts".to_string();
     let build_libs = state
       .borrow::<Vec<&str>>()
@@ -54,7 +55,7 @@ mod ts {
     }
   }
 
-  #[op]
+  #[op2(fast)]
   fn op_is_node_file() -> bool {
     false
   }
@@ -65,10 +66,11 @@ mod ts {
     specifier: String,
   }
 
-  #[op]
+  #[op2]
+  #[string]
   fn op_script_version(
     _state: &mut OpState,
-    _args: ScriptVersionArgs,
+    #[serde] _args: ScriptVersionArgs,
   ) -> Result<Option<String>, AnyError> {
     Ok(Some("1".to_string()))
   }
@@ -81,12 +83,13 @@ mod ts {
     script_kind: i32,
   }
 
-  #[op]
+  #[op2]
+  #[serde]
   // using the same op that is used in `tsc.rs` for loading modules and reading
   // files, but a slightly different implementation at build time.
   fn op_load(
     state: &mut OpState,
-    args: LoadArgs,
+    #[serde] args: LoadArgs,
   ) -> Result<LoadResponse, AnyError> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();

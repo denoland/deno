@@ -36,7 +36,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::serde::de;
@@ -3232,14 +3232,14 @@ struct SpecifierArgs {
   specifier: String,
 }
 
-#[op]
+#[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
   let state = state.borrow_mut::<State>();
   state.token.is_cancelled()
 }
 
-#[op]
-fn op_is_node_file(state: &mut OpState, path: String) -> bool {
+#[op2(fast)]
+fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(&path) {
     Ok(specifier) => state
@@ -3260,10 +3260,11 @@ struct LoadResponse {
   version: Option<String>,
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_load(
   state: &mut OpState,
-  args: SpecifierArgs,
+  #[serde] args: SpecifierArgs,
 ) -> Result<Option<LoadResponse>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_load", Some(&args));
@@ -3277,10 +3278,11 @@ fn op_load(
   }))
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_resolve(
   state: &mut OpState,
-  args: ResolveArgs,
+  #[serde] args: ResolveArgs,
 ) -> Result<Vec<Option<(String, String)>>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("op_resolve", Some(&args));
@@ -3314,13 +3316,14 @@ fn op_resolve(
   result
 }
 
-#[op]
-fn op_respond(state: &mut OpState, args: Response) {
+#[op2]
+fn op_respond(state: &mut OpState, #[serde] args: Response) {
   let state = state.borrow_mut::<State>();
   state.response = Some(args);
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_script_names(state: &mut OpState) -> Vec<String> {
   let state = state.borrow_mut::<State>();
   let documents = &state.state_snapshot.documents;
@@ -3371,10 +3374,11 @@ struct ScriptVersionArgs {
   specifier: String,
 }
 
-#[op]
+#[op2]
+#[string]
 fn op_script_version(
   state: &mut OpState,
-  args: ScriptVersionArgs,
+  #[serde] args: ScriptVersionArgs,
 ) -> Result<Option<String>, AnyError> {
   let state = state.borrow_mut::<State>();
   // this op is very "noisy" and measuring its performance is not useful, so we

@@ -14,6 +14,7 @@ use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
@@ -377,8 +378,9 @@ fn normalize_specifier(
   resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
 }
 
-#[op]
-fn op_create_hash(s: &mut OpState, text: &str) -> String {
+#[op2]
+#[string]
+fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
   let state = s.borrow_mut::<State>();
   get_hash(text, state.hash_data)
 }
@@ -393,8 +395,8 @@ struct EmitArgs {
   file_name: String,
 }
 
-#[op]
-fn op_emit(state: &mut OpState, args: EmitArgs) -> bool {
+#[op2]
+fn op_emit(state: &mut OpState, #[serde] args: EmitArgs) -> bool {
   let state = state.borrow_mut::<State>();
   match args.file_name.as_ref() {
     "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
@@ -435,6 +437,7 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
   }
 }
 
+// TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
 #[op]
 fn op_load(state: &mut OpState, args: Value) -> Result<Value, AnyError> {
   let state = state.borrow_mut::<State>();
@@ -528,10 +531,11 @@ pub struct ResolveArgs {
   pub specifiers: Vec<String>,
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_resolve(
   state: &mut OpState,
-  args: ResolveArgs,
+  #[serde] args: ResolveArgs,
 ) -> Result<Vec<(String, String)>, AnyError> {
   let state = state.borrow_mut::<State>();
   let mut resolved: Vec<(String, String)> =
@@ -713,8 +717,8 @@ fn resolve_non_graph_specifier_types(
   }
 }
 
-#[op]
-fn op_is_node_file(state: &mut OpState, path: &str) -> bool {
+#[op2(fast)]
+fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
   let state = state.borrow::<State>();
   match ModuleSpecifier::parse(path) {
     Ok(specifier) => state
@@ -732,6 +736,7 @@ struct RespondArgs {
   pub stats: Stats,
 }
 
+// TODO(bartlomieju): `op2` doesn't support `serde_json::Value`
 #[op]
 fn op_respond(state: &mut OpState, args: RespondArgs) {
   let state = state.borrow_mut::<State>();

@@ -1689,8 +1689,10 @@ itest!(non_existent_dep {
   http_server: true,
   exit_code: 1,
   output_str: Some(concat!(
+    "[UNORDERED_START]\n",
     "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep\n",
     "Download http://localhost:4545/npm/registry/@denotest/non-existent\n",
+    "[UNORDERED_END]\n",
     "error: npm package '@denotest/non-existent' does not exist.\n"
   )),
 });
@@ -1701,12 +1703,16 @@ itest!(non_existent_dep_version {
   http_server: true,
   exit_code: 1,
   output_str: Some(concat!(
+    "[UNORDERED_START]\n",
     "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "[UNORDERED_END]\n",
     // does two downloads because when failing once it max tries to
     // get the latest version a second time
+    "[UNORDERED_START]\n",
     "Download http://localhost:4545/npm/registry/@denotest/non-existent-dep-version\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
+    "[UNORDERED_END]\n",
     "error: Could not find npm package '@denotest/esm-basic' matching '=99.99.99'.\n"
   )),
 });
@@ -1760,12 +1766,14 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .args("cache main.ts npm:@denotest/esm-basic@1.0.0")
     .run();
   output.assert_matches_text(concat!(
+    "[UNORDERED_START]\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
     "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
     "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export/1.0.0.tgz\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-basic/1.0.0.tgz\n",
     "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default/1.0.0.tgz\n",
+    "[UNORDERED_END]\n",
   ));
 
   // test in dependency
@@ -1788,8 +1796,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // now try running without it, it should download the package now
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
+      "[UNORDERED_START]\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
     output.assert_exit_code(0);
@@ -1818,8 +1828,10 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // now try running, it should work
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
+      "[UNORDERED_START]\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
     output.assert_exit_code(0);
@@ -1854,10 +1866,14 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // now try running, it should work
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
+      "[UNORDERED_START]\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "[UNORDERED_END]\n",
+      "[UNORDERED_START]\n",
       "Initialize @denotest/cjs-default-export@1.0.0\n",
       "Initialize @denotest/esm-import-cjs-default@1.0.0\n",
+      "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
     output.assert_exit_code(0);
@@ -1887,9 +1903,11 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // now try running, it should work and only initialize the new package
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
+      "[UNORDERED_START]\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
+      "[UNORDERED_END]\n",
       "Initialize @denotest/esm-basic@1.0.0\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
@@ -1923,9 +1941,11 @@ fn reload_info_not_found_cache_but_exists_remote() {
     // now try running, it should work and only initialize the new package
     let output = test_context.new_command().args("run main.ts").run();
     output.assert_matches_text(concat!(
+      "[UNORDERED_START]\n",
       "Download http://localhost:4545/npm/registry/@denotest/cjs-default-export\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-basic\n",
       "Download http://localhost:4545/npm/registry/@denotest/esm-import-cjs-default\n",
+      "[UNORDERED_END]\n",
       "Node esm importing node cjs\n[WILDCARD]",
     ));
     output.assert_exit_code(0);
