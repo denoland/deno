@@ -13,12 +13,11 @@ use crate::tools::repl::cdp;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::channel::mpsc;
-use deno_core::futures::future::Either;
-use deno_core::futures::FutureExt;
-use deno_core::futures::SinkExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
 use tokio::sync::Mutex;
 use zeromq::SocketRecv;
 use zeromq::SocketSend;
@@ -60,7 +59,8 @@ impl JupyterServer {
     let iopub_socket = Arc::new(Mutex::new(iopub_socket));
     let last_execution_request = Rc::new(RefCell::new(None));
 
-    let (shutdown_tx, mut shutdown_rx) = mpsc::unbounded();
+    let cancel_handle = CancelHandle::new_rc();
+    let cancel_handle2 = CancelHandle::new_rc();
 
     let mut server = Self {
       execution_count: 0,
@@ -76,7 +76,8 @@ impl JupyterServer {
     });
 
     let handle2 = deno_core::unsync::spawn(async move {
-      if let Err(err) = Self::handle_control(control_socket, shutdown_tx).await
+      if let Err(err) =
+        Self::handle_control(control_socket, cancel_handle2).await
       {
         eprintln!("Control error: {}", err);
       }
@@ -99,17 +100,12 @@ impl JupyterServer {
       }
     });
 
-    let shutdown_fut = async move {
-      let _ = shutdown_rx.next().await;
-    }
-    .boxed_local();
     let join_fut =
       futures::future::try_join_all(vec![handle1, handle2, handle3, handle4]);
-    if let Either::Left((join_fut, _)) =
-      futures::future::select(join_fut, shutdown_fut).await
-    {
-      join_fut?;
-    };
+
+    if let Ok(result) = join_fut.or_cancel(cancel_handle).await {
+      result?;
+    }
 
     Ok(())
   }
@@ -155,7 +151,7 @@ impl JupyterServer {
 
   async fn handle_control(
     mut connection: Connection<zeromq::RouterSocket>,
-    mut shutdown_tx: mpsc::UnboundedSender<()>,
+    cancel_handle: Rc<CancelHandle>,
   ) -> Result<(), AnyError> {
     loop {
       let msg = JupyterMessage::read(&mut connection).await?;
@@ -168,7 +164,7 @@ impl JupyterServer {
             .await?;
         }
         "shutdown_request" => {
-          let _ = shutdown_tx.send(()).await;
+          cancel_handle.cancel();
         }
         "interrupt_request" => {
           eprintln!("Interrupt request currently not supported");
