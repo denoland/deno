@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::future::Future;
 use std::rc::Rc;
 use std::task::Poll;
 
@@ -11,7 +10,6 @@ use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::op;
-use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -110,16 +108,12 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[op2(async)]
-#[serde]
-pub fn op_http2_connect(
+#[op]
+pub async fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
-  #[string] url: &str,
-) -> Result<
-  impl Future<Output = Result<(ResourceId, ResourceId), AnyError>>,
-  AnyError,
-> {
+  rid: ResourceId,
+  url: String,
+) -> Result<(ResourceId, ResourceId), AnyError> {
   // No permission check necessary because we're using an existing connection
   let network_stream = {
     let mut state = state.borrow_mut();
@@ -128,19 +122,17 @@ pub fn op_http2_connect(
 
   let url = Url::parse(&url)?;
 
-  Ok(async move {
-    let (client, conn) = h2::client::handshake(network_stream).await?;
-    let mut state = state.borrow_mut();
-    let client_rid = state.resource_table.add(Http2Client {
-      client: AsyncRefCell::new(client),
-      url,
-    });
-    let conn_rid = state.resource_table.add(Http2ClientConn {
-      conn: AsyncRefCell::new(conn),
-      cancel_handle: CancelHandle::new(),
-    });
-    Ok((client_rid, conn_rid))
-  })
+  let (client, conn) = h2::client::handshake(network_stream).await?;
+  let mut state = state.borrow_mut();
+  let client_rid = state.resource_table.add(Http2Client {
+    client: AsyncRefCell::new(client),
+    url,
+  });
+  let conn_rid = state.resource_table.add(Http2ClientConn {
+    conn: AsyncRefCell::new(conn),
+    cancel_handle: CancelHandle::new(),
+  });
+  Ok((client_rid, conn_rid))
 }
 
 #[op]

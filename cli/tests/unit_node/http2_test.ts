@@ -5,61 +5,63 @@ import * as net from "node:net";
 import { deferred } from "../../../test_util/std/async/deferred.ts";
 import { assertEquals } from "../../../test_util/std/testing/asserts.ts";
 
-Deno.test("[node/http2 client]", {
-  ignore: Deno.build.os === "windows",
-}, async () => {
-  // Create a server to respond to the HTTP2 requests
-  const client = http2.connect("http://127.0.0.1:4246", {});
-  client.on("error", (err) => console.error(err));
+for (const url of ["http://127.0.0.1:4246", "https://127.0.0.1:4247"]) {
+  Deno.test(`[node/http2 client] ${url}`, {
+    ignore: Deno.build.os === "windows",
+  }, async () => {
+    // Create a server to respond to the HTTP2 requests
+    const client = http2.connect(url, {});
+    client.on("error", (err) => console.error(err));
 
-  const req = client.request({ ":method": "POST", ":path": "/" }, {
-    waitForTrailers: true,
+    const req = client.request({ ":method": "POST", ":path": "/" }, {
+      waitForTrailers: true,
+    });
+
+    let receivedTrailers;
+    let receivedHeaders;
+    let receivedData = "";
+
+    req.on("response", (headers, _flags) => {
+      receivedHeaders = headers;
+    });
+
+    req.write("hello");
+    req.setEncoding("utf8");
+
+    req.on("wantTrailers", () => {
+      req.sendTrailers({ foo: "bar" });
+    });
+
+    req.on("trailers", (trailers, _flags) => {
+      receivedTrailers = trailers;
+    });
+
+    req.on("data", (chunk) => {
+      receivedData += chunk;
+    });
+    req.end();
+
+    const endPromise = deferred();
+    setTimeout(() => {
+      try {
+        client.close();
+      } catch (_) {
+        // pass
+      }
+      endPromise.resolve();
+    }, 2000);
+
+    await endPromise;
+    assertEquals(receivedHeaders, { ":status": 200 });
+    assertEquals(receivedData, "hello world\n");
+
+    assertEquals(receivedTrailers, {
+      "abc": "def",
+      "opr": "stv",
+      "foo": "bar",
+    });
   });
-
-  let receivedTrailers;
-  let receivedHeaders;
-  let receivedData = "";
-
-  req.on("response", (headers, _flags) => {
-    receivedHeaders = headers;
-  });
-
-  req.write("hello");
-  req.setEncoding("utf8");
-
-  req.on("wantTrailers", () => {
-    req.sendTrailers({ foo: "bar" });
-  });
-
-  req.on("trailers", (trailers, _flags) => {
-    receivedTrailers = trailers;
-  });
-
-  req.on("data", (chunk) => {
-    receivedData += chunk;
-  });
-  req.end();
-
-  const endPromise = deferred();
-  setTimeout(() => {
-    try {
-      client.close();
-    } catch (_) {
-      // pass
-    }
-    endPromise.resolve();
-  }, 2000);
-
-  await endPromise;
-  assertEquals(receivedHeaders, { ":status": 200 });
-  assertEquals(receivedData, "hello world\n");
-
-  assertEquals(receivedTrailers, {
-    "abc": "def",
-    "opr": "stv",
-    "foo": "bar",
-  });
-});
+}
 
 // TODO(bartlomieju): reenable sanitizers
 Deno.test("[node/http2 server]", { sanitizeOps: false }, async () => {
