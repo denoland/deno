@@ -639,9 +639,15 @@ Deno.test({
     // Spawn an infinite cat
     const cp = spawn("cat", ["-"]);
     const p = withTimeout();
+    const pStdout = withTimeout();
+    const pStderr = withTimeout();
     cp.on("exit", () => p.resolve());
+    cp.stdout.on("close", () => pStdout.resolve());
+    cp.stderr.on("close", () => pStderr.resolve());
     cp.kill("SIGIOT");
     await p;
+    await pStdout;
+    await pStderr;
     assert(cp.killed);
     assertEquals(cp.signalCode, "SIGIOT");
   },
