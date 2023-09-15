@@ -344,20 +344,20 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // add the deno specifiers to the graph if it's the first time executing
-    if graph.deno_specifiers.is_empty() {
+    // add the jsr specifiers to the graph if it's the first time executing
+    if graph.packages.is_empty() {
       if let Some(lockfile) = &self.lockfile {
         let lockfile = lockfile.lock();
         for (key, value) in &lockfile.content.packages.specifiers {
           if let Some(key) = key
-            .strip_prefix("deno:")
+            .strip_prefix("jsr:")
             .and_then(|key| PackageReq::from_str(key).ok())
           {
             if let Some(value) = value
-              .strip_prefix("deno:")
+              .strip_prefix("jsr:")
               .and_then(|value| PackageNv::from_str(value).ok())
             {
-              graph.deno_specifiers.add(key, value);
+              graph.packages.add(key, value);
             }
           }
         }
@@ -379,15 +379,15 @@ impl ModuleGraphBuilder {
       }
     }
 
-    // add the deno specifiers in the graph to the lockfile
-    if !graph.deno_specifiers.is_empty() {
+    // add the jsr specifiers in the graph to the lockfile
+    if !graph.packages.is_empty() {
       if let Some(lockfile) = &self.lockfile {
-        let mappings = graph.deno_specifiers.mappings();
+        let mappings = graph.packages.mappings();
         let mut lockfile = lockfile.lock();
         for (from, to) in mappings {
           lockfile.insert_package_specifier(
-            format!("deno:{}", from),
-            format!("deno:{}", to),
+            format!("jsr:{}", from),
+            format!("jsr:{}", to),
           );
         }
       }

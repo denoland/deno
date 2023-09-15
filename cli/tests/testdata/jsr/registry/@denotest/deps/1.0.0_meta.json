@@ -3,14 +3,14 @@
     "/mod.ts": {
       "dependencies": [{
         "kind": "import",
-        "range": [[0, 0], [0, 63]],
-        "specifier": "deno:@denotest/module_graph@1/other.ts",
-        "specifierRange": [[0, 22], [0, 62]]
+        "range": [[0, 0], [0, 62]],
+        "specifier": "jsr:@denotest/module_graph@1/other.ts",
+        "specifierRange": [[0, 22], [0, 61]]
       }, {
         "kind": "import",
-        "range": [[1, 0], [1, 65]],
-        "specifier": "deno:@denotest/no_module_graph@^0.1/mod.ts",
-        "specifierRange": [[1, 20], [1, 64]]
+        "range": [[1, 0], [1, 64]],
+        "specifier": "jsr:@denotest/no_module_graph@^0.1/mod.ts",
+        "specifierRange": [[1, 20], [1, 63]]
       }]
     }
   }

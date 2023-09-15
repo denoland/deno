@@ -1,3 +1,3 @@
-import { Test } from "deno:@denotest/module_graph/mod.ts";
+import { Test } from "jsr:@denotest/module_graph/mod.ts";
 
 console.log(new Test());

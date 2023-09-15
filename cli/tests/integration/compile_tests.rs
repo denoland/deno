@@ -792,10 +792,7 @@ fn dynamic_import_unanalyzable() {
 
 #[test]
 fn compile_npm_specifiers() {
-  let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
   let temp_dir = context.temp_dir();
   temp_dir.write(
@@ -1012,10 +1009,7 @@ struct RunNpmBinCompileOptions<'a> {
 }
 
 fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
-  let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
-    .use_temp_cwd()
-    .build();
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
   let temp_dir = context.temp_dir();
   let testdata_path = context.testdata_path();
@@ -1066,7 +1060,6 @@ fn run_npm_bin_compile_test(opts: RunNpmBinCompileOptions) {
 #[test]
 fn compile_node_modules_symlink_outside() {
   let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
     .use_copy_temp_dir("compile/node_modules_symlink_outside")
     .cwd("compile/node_modules_symlink_outside")
     .build();

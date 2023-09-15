@@ -4,8 +4,10 @@ Download http://localhost:4545/jsr/registry/@denotest/module_graph/meta.json
 Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/meta.json
 Download http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0_meta.json
 Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0_meta.json
+[UNORDERED_START]
 Download http://localhost:4545/jsr/registry/@denotest/deps/1.0.0/mod.ts
 Download http://localhost:4545/jsr/registry/@denotest/module_graph/1.4.0/other.ts
 Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0/mod.ts
 Download http://localhost:4545/jsr/registry/@denotest/no_module_graph/0.1.0/TestClass.ts
+[UNORDERED_END]
 { version: "0.1.0", other: Other {} }

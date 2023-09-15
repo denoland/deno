@@ -2,7 +2,6 @@
 
 use test_util as util;
 use util::env_vars_for_jsr_tests;
-use util::env_vars_for_jsr_tests_no_sync_download;
 
 itest!(no_module_graph_run {
   args: "run jsr/no_module_graph/main.ts",
@@ -21,7 +20,7 @@ itest!(no_module_graph_info {
 itest!(same_package_multiple_versions {
   args: "run --quiet jsr/no_module_graph/multiple.ts",
   output: "jsr/no_module_graph/multiple.out",
-  envs: env_vars_for_jsr_tests_no_sync_download(),
+  envs: env_vars_for_jsr_tests(),
   http_server: true,
 });
 
@@ -37,4 +36,12 @@ itest!(deps {
   output: "jsr/deps/main.out",
   envs: env_vars_for_jsr_tests(),
   http_server: true,
+});
+
+itest!(version_not_found {
+  args: "run jsr/version_not_found/main.ts",
+  output: "jsr/version_not_found/main.out",
+  envs: env_vars_for_jsr_tests(),
+  http_server: true,
+  exit_code: 1,
 });
