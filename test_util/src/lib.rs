@@ -2519,15 +2519,15 @@ pub fn wildcard_match_detailed(
             let next_text_len =
               std::cmp::min(max_next_text_len, actual_next_text.len());
             output_lines.push(format!(
-              "==== NEXT ACTUAL TEXT{} ====\n{}",
+              "==== NEXT ACTUAL TEXT ====\n{}{}",
+              colors::red(annotate_whitespace(
+                &actual_next_text[..next_text_len]
+              )),
               if actual_next_text.len() > max_next_text_len {
-                " (TRUNCATED)"
+                "[TRUNCATED]"
               } else {
                 ""
               },
-              colors::red(annotate_whitespace(
-                &actual_next_text[..next_text_len]
-              ))
             ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
