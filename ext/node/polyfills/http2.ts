@@ -39,6 +39,12 @@ import {
   ERR_INVALID_HTTP_TOKEN,
 } from "ext:deno_node/internal/errors.ts";
 import { _checkIsHttpToken } from "ext:deno_node/_http_common.ts";
+import { TcpConn } from "ext:deno_net/01_net.js";
+import { TlsConn } from "ext:deno_net/02_tls.js";
+
+const {
+  op_http2_connect,
+} = core.ensureFastOps();
 
 const kSession = Symbol("session");
 const kAlpnProtocol = Symbol("alpnProtocol");
@@ -336,7 +342,8 @@ export class ClientHttp2Session extends Http2Session {
   #connectPromise: Promise<void>;
 
   constructor(
-    authority: string | URL,
+    connPromise: Promise<TcpConn> | Promise<TlsConn>,
+    url: string,
     options: Record<string, unknown>,
   ) {
     super(constants.NGHTTP2_SESSION_CLIENT, options);
@@ -347,10 +354,8 @@ export class ClientHttp2Session extends Http2Session {
     // TODO(bartlomieju): cleanup
     this.#connectPromise = (async () => {
       debugHttp2(">>> before connect");
-      const [clientRid, connRid] = await core.opAsync(
-        "op_http2_connect",
-        authority.toString(),
-      );
+      const conn = await connPromise;
+      const [clientRid, connRid] = await op_http2_connect(conn.rid, url);
       debugHttp2(">>> after connect");
       this[kDenoClientRid] = clientRid;
       this[kDenoConnRid] = connRid;
@@ -1457,15 +1462,20 @@ export function connect(
   }
 
   const protocol = authority.protocol || options.protocol || "https:";
-  let port = "";
+  let port = 0;
 
   if (authority.port !== "") {
-    port += authority.port;
+    port = Number(authority.port);
   } else if (protocol === "http:") {
-    port += 80;
+    port = 80;
   } else {
-    port += 443;
+    port = 443;
   }
+
+  if (port == 0) {
+    throw new Error("Invalid port");
+  }
+
   let host = "localhost";
 
   if (authority.hostname) {
@@ -1484,7 +1494,18 @@ export function connect(
     // notImplemented("http2.connect.options.createConnection");
   }
 
-  const session = new ClientHttp2Session(authority, options);
+  let conn, url;
+  if (protocol == "http:") {
+    conn = Deno.connect({ port, hostname: host });
+    url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+  } else if (protocol == "https:") {
+    conn = Deno.connectTls({ port, hostname: host });
+    url = `http://${host}${port == 443 ? "" : (":" + port)}`;
+  } else {
+    throw new TypeError("Unexpected URL protocol");
+  }
+
+  const session = new ClientHttp2Session(conn, url, options);
   session[kAuthority] = `${options.servername || host}:${port}`;
   session[kProtocol] = protocol;
 

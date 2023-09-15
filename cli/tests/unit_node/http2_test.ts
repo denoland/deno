@@ -9,7 +9,7 @@ Deno.test("[node/http2 client]", {
   ignore: Deno.build.os === "windows",
 }, async () => {
   // Create a server to respond to the HTTP2 requests
-  const client = http2.connect("http://localhost:4246", {});
+  const client = http2.connect("http://127.0.0.1:4246", {});
   client.on("error", (err) => console.error(err));
 
   const req = client.request({ ":method": "POST", ":path": "/" }, {

@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
 use std::rc::Rc;
 use std::task::Poll;
 
@@ -10,6 +11,7 @@ use bytes::Bytes;
 use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::serde::Serialize;
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
@@ -31,7 +33,6 @@ use http::Response;
 use http::StatusCode;
 use reqwest::header::HeaderName;
 use reqwest::header::HeaderValue;
-use tokio::net::TcpStream;
 use url::Url;
 
 pub struct Http2Client {
@@ -47,7 +48,7 @@ impl Resource for Http2Client {
 
 #[derive(Debug)]
 pub struct Http2ClientConn {
-  pub conn: AsyncRefCell<h2::client::Connection<TcpStream>>,
+  pub conn: AsyncRefCell<h2::client::Connection<NetworkStream>>,
   cancel_handle: CancelHandle,
 }
 
@@ -109,39 +110,37 @@ impl Resource for Http2ServerSendResponse {
   }
 }
 
-#[op]
-pub async fn op_http2_connect<P>(
+#[op2(async)]
+#[serde]
+pub fn op_http2_connect(
   state: Rc<RefCell<OpState>>,
-  url: String,
-) -> Result<(ResourceId, ResourceId), AnyError>
-where
-  P: crate::NodePermissions + 'static,
-{
-  // TODO(bartlomieju): I think we might not get a full URL here. Anyway,
-  // we should be taking a `rid` for an existing socket instead of connecting
-  // manually in this op.
+  #[smi] rid: ResourceId,
+  #[string] url: &str,
+) -> Result<
+  impl Future<Output = Result<(ResourceId, ResourceId), AnyError>>,
+  AnyError,
+> {
+  // No permission check necessary because we're using an existing connection
+  let network_stream = {
+    let mut state = state.borrow_mut();
+    take_network_stream_resource(&mut state.resource_table, rid)?
+  };
+
   let url = Url::parse(&url)?;
 
-  {
+  Ok(async move {
+    let (client, conn) = h2::client::handshake(network_stream).await?;
     let mut state = state.borrow_mut();
-    let permissions = state.borrow_mut::<P>();
-    permissions.check_net_url(&url, "http2.ClientHttp2Session.request")?;
-  }
-
-  // TODO(bartlomieju): handle urls gracefully
-  let ip = format!("{}:{}", url.host_str().unwrap(), url.port().unwrap());
-  let tcp = TcpStream::connect(ip).await?;
-  let (client, conn) = h2::client::handshake(tcp).await?;
-  let mut state = state.borrow_mut();
-  let client_rid = state.resource_table.add(Http2Client {
-    client: AsyncRefCell::new(client),
-    url,
-  });
-  let conn_rid = state.resource_table.add(Http2ClientConn {
-    conn: AsyncRefCell::new(conn),
-    cancel_handle: CancelHandle::new(),
-  });
-  Ok((client_rid, conn_rid))
+    let client_rid = state.resource_table.add(Http2Client {
+      client: AsyncRefCell::new(client),
+      url,
+    });
+    let conn_rid = state.resource_table.add(Http2ClientConn {
+      conn: AsyncRefCell::new(conn),
+      cancel_handle: CancelHandle::new(),
+    });
+    Ok((client_rid, conn_rid))
+  })
 }
 
 #[op]
