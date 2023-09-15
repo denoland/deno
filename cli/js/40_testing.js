@@ -44,7 +44,12 @@ let hasSetOpSanitizerDelayMacrotask = false;
 // callback without delaying is sufficient, because when the macrotask callback
 // runs after async op dispatch, we know that all async ops that can currently
 // return `Poll::Ready` have done so, and have been dispatched to JS.
-function opSanitizerDelay() {
+//
+// Worker ops are an exception to this, because there is no way for the user to
+// await shutdown of the worker from the thread calling `worker.terminate()`.
+// Because of this, we give extra leeway for worker ops to complete, by waiting
+// for a whole millisecond if there are pending worker ops.
+function opSanitizerDelay(hasPendingWorkerOps) {
   if (!hasSetOpSanitizerDelayMacrotask) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
     hasSetOpSanitizerDelayMacrotask = true;
@@ -56,7 +61,7 @@ function opSanitizerDelay() {
     // event loop tick as the timeout callback.
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 0);
+    }, hasPendingWorkerOps ? 1 : 0);
   });
   return p;
 }
@@ -152,7 +157,13 @@ function collectReliableOpMetrics() {
     // If there are still async ops pending, we drain the event loop to the
     // point where all ops that can return `Poll::Ready` have done so, to ensure
     // that any ops are ready because of user cleanup code are completed.
-    return opSanitizerDelay().then(() => {
+    const hasPendingWorkerOps = metrics.ops.op_host_recv_message && (
+      metrics.ops.op_host_recv_message.opsDispatched >
+        metrics.ops.op_host_recv_message.opsCompleted ||
+      metrics.ops.op_host_recv_ctrl.opsDispatched >
+        metrics.ops.op_host_recv_ctrl.opsCompleted
+    );
+    return opSanitizerDelay(hasPendingWorkerOps).then(() => {
       metrics = core.metrics();
       const traces = new Map(core.opCallTraces);
       return { metrics, traces };
