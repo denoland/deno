@@ -6,7 +6,12 @@ use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use std::env::current_exe;
+use std::io::Write;
+use std::path::Path;
 use tempfile::TempDir;
+
+const DENO_ICON_32: &[u8] = include_bytes!("./resources/deno-logo-32x32.png");
+const DENO_ICON_64: &[u8] = include_bytes!("./resources/deno-logo-64x64.png");
 
 pub fn status() -> Result<(), AnyError> {
   let output = std::process::Command::new("jupyter")
@@ -30,6 +35,17 @@ pub fn status() -> Result<(), AnyError> {
   Ok(())
 }
 
+fn install_icon(
+  dir_path: &Path,
+  filename: &str,
+  icon_data: &[u8],
+) -> Result<(), AnyError> {
+  let path = dir_path.join(filename);
+  let mut file = std::fs::File::create(path)?;
+  file.write_all(icon_data)?;
+  Ok(())
+}
+
 pub fn install() -> Result<(), AnyError> {
   let temp_dir = TempDir::new().unwrap();
   let kernel_json_path = temp_dir.path().join("kernel.json");
@@ -45,6 +61,8 @@ pub fn install() -> Result<(), AnyError> {
 
   let f = std::fs::File::create(kernel_json_path)?;
   serde_json::to_writer_pretty(f, &json_data)?;
+  install_icon(temp_dir.path(), "icon-32x32.png", DENO_ICON_32)?;
+  install_icon(temp_dir.path(), "icon-64x64.png", DENO_ICON_64)?;
 
   let child_result = std::process::Command::new("jupyter")
     .args([
@@ -56,8 +74,6 @@ pub fn install() -> Result<(), AnyError> {
       &temp_dir.path().to_string_lossy(),
     ])
     .spawn();
-
-  // TODO(bartlomieju): copy icons the the kernelspec directory
 
   if let Ok(mut child) = child_result {
     let wait_result = child.wait();
@@ -74,6 +90,6 @@ pub fn install() -> Result<(), AnyError> {
   }
 
   let _ = std::fs::remove_dir(temp_dir);
-  println!("Deno kernelspec installed successfully.");
+  println!("✅ Deno kernelspec installed successfully.");
   Ok(())
 }
