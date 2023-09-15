@@ -967,12 +967,9 @@ function createStreamTest(count: number, delay: number, action: string) {
       await listeningPromise;
       const resp = await fetch(`http://127.0.0.1:${servePort}/`);
       if (action == "Throw") {
-        try {
+        await assertRejects(async () => {
           await resp.text();
-          fail();
-        } catch (_) {
-          // expected
-        }
+        });
       } else {
         const text = await resp.text();
 
@@ -985,7 +982,7 @@ function createStreamTest(count: number, delay: number, action: string) {
       }
     } finally {
       ac.abort();
-      await server.finished;
+      await server.shutdown();
     }
   });
 }
