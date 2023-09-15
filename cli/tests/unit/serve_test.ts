@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assertMatch,
+  assertRejects,
+} from "../../../test_util/std/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -872,6 +875,43 @@ Deno.test(
     assert(readResult);
     assert(readResult > 0);
 
+    conn.close();
+    await promise;
+    ac.abort();
+    await server.finished;
+  },
+);
+
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAbortedRequestBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (request) => {
+        await assertRejects(async () => {
+          await request.text();
+        });
+        promise.resolve();
+        // Not actually used
+        return new Response();
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const conn = await Deno.connect({ port: servePort });
+    // Send POST request with a body + content-length, but don't send it all
+    const encoder = new TextEncoder();
+    const body =
+      `POST / HTTP/1.1\r\nHost: 127.0.0.1:${servePort}\r\nContent-Length: 10\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
     conn.close();
     await promise;
     ac.abort();
