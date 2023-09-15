@@ -25,10 +25,17 @@ pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
-  let Some(connection_filepath) = jupyter_flags.conn_file else {
+  if !jupyter_flags.install && !jupyter_flags.kernel {
+    install::status()?;
+    return Ok(());
+  }
+
+  if jupyter_flags.install {
     install::install()?;
     return Ok(());
-  };
+  }
+
+  let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   // This env var might be set by notebook
   if std::env::var("DEBUG").is_ok() {
