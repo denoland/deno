@@ -1499,7 +1499,7 @@ export function connect(
     conn = Deno.connect({ port, hostname: host });
     url = `http://${host}${port == 80 ? "" : (":" + port)}`;
   } else if (protocol == "https:") {
-    conn = Deno.connectTls({ port, hostname: host });
+    conn = Deno.connectTls({ port, hostname: host, alpnProtocols: ["h2"] });
     url = `http://${host}${port == 443 ? "" : (":" + port)}`;
   } else {
     throw new TypeError("Unexpected URL protocol");
