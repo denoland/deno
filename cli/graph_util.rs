@@ -333,9 +333,7 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm")
-                && !matches!(to.scheme(), "file" | "npm")
-              {
+              if !matches!(from.scheme(), "file" | "npm" | "jsr") {
                 graph.redirects.insert(from, to);
               }
             }

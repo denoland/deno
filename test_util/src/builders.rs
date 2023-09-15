@@ -15,6 +15,7 @@ use os_pipe::pipe;
 
 use crate::assertions::assert_wildcard_match;
 use crate::deno_exe_path;
+use crate::env_vars_for_jsr_tests;
 use crate::env_vars_for_npm_tests;
 use crate::fs::PathRef;
 use crate::http_server;
@@ -48,6 +49,10 @@ impl TestContextBuilder {
 
   pub fn for_npm() -> Self {
     Self::new().use_http_server().add_npm_env_vars()
+  }
+
+  pub fn for_jsr() -> Self {
+    Self::new().use_http_server().add_jsr_env_vars()
   }
 
   pub fn temp_dir_path(mut self, path: impl AsRef<Path>) -> Self {
@@ -99,6 +104,13 @@ impl TestContextBuilder {
 
   pub fn add_npm_env_vars(mut self) -> Self {
     for (key, value) in env_vars_for_npm_tests() {
+      self = self.env(key, value);
+    }
+    self
+  }
+
+  pub fn add_jsr_env_vars(mut self) -> Self {
+    for (key, value) in env_vars_for_jsr_tests() {
       self = self.env(key, value);
     }
     self
