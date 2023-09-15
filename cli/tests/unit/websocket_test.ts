@@ -81,13 +81,13 @@ Deno.test(
       signal: ac.signal,
       onListen: () => listeningPromise.resolve(),
       hostname: "localhost",
-      port: 4246,
+      port: 4247,
     });
 
     await listeningPromise;
     const promise = deferred();
-    const ws = new WebSocket("ws://localhost:4246/");
-    assertEquals(ws.url, "ws://localhost:4246/");
+    const ws = new WebSocket("ws://localhost:4247/");
+    assertEquals(ws.url, "ws://localhost:4247/");
     ws.onerror = () => fail();
     ws.onmessage = (e) => {
       assertEquals(e.data, "Hello");
