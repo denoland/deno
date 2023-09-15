@@ -40,25 +40,34 @@ let hasSetOpSanitizerDelayMacrotask = false;
 // that resolves when it's (probably) fine to run the op sanitizer.
 //
 // This is implemented by adding a macrotask callback that runs after the
-// timer macrotasks, so we can guarantee that a currently running interval
-// will have an associated op. An additional `setTimeout` of 0 is needed
-// before that, though, in order to give time for worker message ops to finish
-// (since timeouts of 0 don't queue tasks in the timer queue immediately).
+// all ready async ops resolve, and the timer macrotask. Using just a macrotask
+// callback without delaying is sufficient, because when the macrotask callback
+// runs after async op dispatch, we know that all async ops that can currently
+// return `Poll::Ready` have done so, and have been dispatched to JS.
 function opSanitizerDelay() {
   if (!hasSetOpSanitizerDelayMacrotask) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
     hasSetOpSanitizerDelayMacrotask = true;
   }
-  return new Promise((resolve) => {
+  const p = new Promise((resolve) => {
+    // Schedule an async op to complete immediately to ensure the macrotask is
+    // run. We rely on the fact that enqueueing the resolver callback during the
+    // timeout callback will mean that the resolver gets called in the same
+    // event loop tick as the timeout callback.
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 1);
+    }, 0);
   });
+  return p;
 }
 
 function handleOpSanitizerDelayMacrotask() {
-  ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
-  return opSanitizerDelayResolveQueue.length === 0;
+  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
+  if (resolve) {
+    resolve();
+    return opSanitizerDelayResolveQueue.length === 0;
+  }
+  return undefined; // we performed no work, so can skip microtasks checkpoint
 }
 
 // An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
@@ -126,7 +135,8 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_worker_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
@@ -139,7 +149,13 @@ const OP_DETAILS = {
 // Ops that are synchronously closed, that do not have a mechanism to await
 // async cleanup. These cause the op sanitizer to sleep for a short period of
 // time before collecting metrics to avoid false positive failures.
-const asyncClosingOps = ["op_sleep"];
+const asyncClosingOps = [
+  "op_sleep",
+  "op_worker_recv_message",
+  "op_host_recv_message",
+  "op_host_recv_ctrl",
+  "op_void_async_deferred",
+];
 
 function collectReliableOpMetrics() {
   let metrics = core.metrics();
