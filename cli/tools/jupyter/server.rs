@@ -410,7 +410,7 @@ impl JupyterServer {
         "Unknown exception".to_string()
       };
 
-      // TODO: fill all the fields
+      // TODO(bartlomieju): fill all the fields
       msg
         .new_message("error")
         .with_content(json!({
