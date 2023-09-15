@@ -15,8 +15,9 @@ import DOMException from "ext:deno_web/01_dom_exception.js";
 const primordials = globalThis.__bootstrap.primordials;
 const {
   ArrayPrototypeIndexOf,
-  ArrayPrototypeSplice,
   ArrayPrototypePush,
+  ArrayPrototypeSplice,
+  PromiseThen,
   Symbol,
   Uint8Array,
 } = primordials;
@@ -70,7 +71,7 @@ function dispatch(source, name, data) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  core.ops.op_void_async_deferred().then(() => go());
+  PromiseThen(core.ops.op_void_async_deferred(), () => go());
 }
 
 class BroadcastChannel extends EventTarget {
