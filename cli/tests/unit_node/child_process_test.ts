@@ -497,9 +497,15 @@ Deno.test({
     );
     const childProcess = spawn(Deno.execPath(), ["run", script]);
     const p = withTimeout();
+    const pStdout = withTimeout();
+    const pStderr = withTimeout();
     childProcess.on("exit", () => p.resolve());
+    childProcess.stdout.on("close", () => pStdout.resolve());
+    childProcess.stderr.on("close", () => pStderr.resolve());
     childProcess.kill("SIGKILL");
     await p;
+    await pStdout;
+    await pStderr;
     assert(childProcess.killed);
     assertEquals(childProcess.signalCode, "SIGKILL");
     assertExists(childProcess.exitCode);
