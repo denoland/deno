@@ -2514,6 +2514,21 @@ pub fn wildcard_match_detailed(
                 ))
               ));
             }
+            let actual_next_text = &current_text[max_found_index..];
+            let max_next_text_len = 40;
+            let next_text_len =
+              std::cmp::min(max_next_text_len, actual_next_text.len());
+            output_lines.push(format!(
+              "==== NEXT ACTUAL TEXT{} ====\n{}",
+              if actual_next_text.len() > max_next_text_len {
+                " (TRUNCATED)"
+              } else {
+                ""
+              },
+              colors::red(annotate_whitespace(
+                &actual_next_text[..next_text_len]
+              ))
+            ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
           }
         }
@@ -2567,9 +2582,13 @@ pub fn wildcard_match_detailed(
               colors::green(annotate_whitespace(expected))
             ));
             return WildcardMatchResult::Fail(output_lines.join("\n"));
+          } else {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(expected))
+            ));
           }
         }
-        output_lines.push("# Found matching unordered lines".to_string());
       }
     }
     was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);
