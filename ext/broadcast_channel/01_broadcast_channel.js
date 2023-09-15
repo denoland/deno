@@ -17,7 +17,7 @@ const {
   ArrayPrototypeIndexOf,
   ArrayPrototypePush,
   ArrayPrototypeSplice,
-  PromiseThen,
+  PromisePrototypeThen,
   Symbol,
   Uint8Array,
 } = primordials;
@@ -71,7 +71,7 @@ function dispatch(source, name, data) {
 // for that reason: it lets promises make forward progress but can
 // still starve other parts of the event loop.
 function defer(go) {
-  PromiseThen(core.ops.op_void_async_deferred(), () => go());
+  PromisePrototypeThen(core.ops.op_void_async_deferred(), () => go());
 }
 
 class BroadcastChannel extends EventTarget {
