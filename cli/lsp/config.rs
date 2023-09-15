@@ -4,7 +4,6 @@ use super::logging::lsp_log;
 use crate::args::ConfigFile;
 use crate::lsp::logging::lsp_warn;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::path::specifier_from_file_path;
 use crate::util::path::specifier_to_file_path;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -645,77 +644,44 @@ impl Config {
     true
   }
 
-  /// Gets the directories or specifically enabled file paths based on the
-  /// workspace config.
-  ///
-  /// WARNING: This may incorrectly have some directory urls as being
-  /// represented as file urls.
-  pub fn enabled_urls(&self) -> Vec<Url> {
-    let mut urls = vec![];
+  pub fn get_enabled_paths(&self) -> Vec<PathBuf> {
+    let mut paths = vec![];
     for (workspace_uri, _) in &self.workspace_folders {
       let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
         lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
         continue;
       };
       let specifier_settings = self.settings.specifiers.get(workspace_uri);
-      let enable = specifier_settings
-        .and_then(|s| s.enable)
-        .or(self.settings.workspace.enable)
-        .unwrap_or(self.has_config_file());
-      let disable_paths = specifier_settings
-        .map(|s| &s.disable_paths)
-        .unwrap_or(&self.settings.workspace.disable_paths);
-      let resolved_disable_paths = disable_paths
-        .iter()
-        .map(|p| workspace_path.join(p))
-        .collect::<Vec<_>>();
       let enable_paths = specifier_settings
         .and_then(|s| s.enable_paths.as_ref())
         .or(self.settings.workspace.enable_paths.as_ref());
       if let Some(enable_paths) = enable_paths {
         for path in enable_paths {
-          let path = workspace_path.join(path);
-          let Ok(path_uri) = specifier_from_file_path(&path) else {
-            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-            continue;
-          };
-          if !resolved_disable_paths.iter().any(|p| path.starts_with(p)) {
-            urls.push(path_uri);
-          }
+          paths.push(workspace_path.join(path));
         }
-      } else if enable
-        && !resolved_disable_paths
-          .iter()
-          .any(|p| workspace_path.starts_with(p))
-      {
-        urls.push(workspace_uri.clone());
+      } else {
+        paths.push(workspace_path);
       }
     }
-
-    // sort for determinism
-    urls.sort();
-    urls.dedup();
-    urls
+    paths.sort();
+    paths.dedup();
+    paths
   }
 
-  pub fn disabled_urls(&self) -> Vec<Url> {
+  pub fn get_disabled_paths(&self) -> Vec<PathBuf> {
+    let mut paths = vec![];
+    if let Some(cf) = self.maybe_config_file() {
+      if let Some(files) = cf.to_files_config().ok().flatten() {
+        for path in files.exclude {
+          paths.push(path);
+        }
+      }
+    }
     let root_enable = self
       .settings
       .workspace
       .enable
       .unwrap_or(self.has_config_file());
-    let mut urls = vec![];
-    if let Some(cf) = self.maybe_config_file() {
-      if let Some(files) = cf.to_files_config().ok().flatten() {
-        for path in files.exclude {
-          let Ok(path_uri) = specifier_from_file_path(&path) else {
-            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-            continue;
-          };
-          urls.push(path_uri);
-        }
-      }
-    }
     for (workspace_uri, _) in &self.workspace_folders {
       let Ok(workspace_path) = specifier_to_file_path(workspace_uri) else {
         lsp_log!("Unable to convert uri \"{}\" to path.", workspace_uri);
@@ -730,20 +696,15 @@ impl Config {
           .map(|s| &s.disable_paths)
           .unwrap_or(&self.settings.workspace.disable_paths);
         for path in disable_paths {
-          let path = workspace_path.join(path);
-          let Ok(path_uri) = specifier_from_file_path(&path) else {
-            lsp_log!("Unable to convert path \"{}\" to uri.", path.display());
-            continue;
-          };
-          urls.push(path_uri);
+          paths.push(workspace_path.join(path));
         }
       } else {
-        urls.push(workspace_uri.clone());
+        paths.push(workspace_path);
       }
     }
-    urls.sort();
-    urls.dedup();
-    urls
+    paths.sort();
+    paths.dedup();
+    paths
   }
 
   pub fn specifier_code_lens_test(&self, specifier: &ModuleSpecifier) -> bool {
@@ -1129,45 +1090,33 @@ mod tests {
   }
 
   #[test]
-  fn config_enabled_urls() {
-    let root_dir = resolve_url("file:///example/").unwrap();
-    let mut config = Config::new_with_root(root_dir.clone());
-    config.settings.workspace.enable = Some(false);
-    config.settings.workspace.enable_paths = None;
-    assert_eq!(config.enabled_urls(), vec![]);
-
-    config.settings.workspace.enable = Some(true);
-    assert_eq!(config.enabled_urls(), vec![root_dir]);
-
-    config.settings.workspace.enable = Some(false);
-    let root_dir1 = Url::parse("file:///root1/").unwrap();
-    let root_dir2 = Url::parse("file:///root2/").unwrap();
-    let root_dir3 = Url::parse("file:///root3/").unwrap();
+  fn config_get_enabled_paths() {
+    let mut config = Config::new();
     config.workspace_folders = vec![
       (
-        root_dir1.clone(),
+        Url::parse("file:///root1/").unwrap(),
         lsp::WorkspaceFolder {
-          uri: root_dir1.clone(),
+          uri: Url::parse("file:///root1/").unwrap(),
           name: "1".to_string(),
         },
       ),
       (
-        root_dir2.clone(),
+        Url::parse("file:///root2/").unwrap(),
         lsp::WorkspaceFolder {
-          uri: root_dir2.clone(),
+          uri: Url::parse("file:///root2/").unwrap(),
           name: "2".to_string(),
         },
       ),
       (
-        root_dir3.clone(),
+        Url::parse("file:///root3/").unwrap(),
         lsp::WorkspaceFolder {
-          uri: root_dir3.clone(),
+          uri: Url::parse("file:///root3/").unwrap(),
           name: "3".to_string(),
         },
       ),
     ];
     config.set_specifier_settings(
-      root_dir1.clone(),
+      Url::parse("file:///root1/").unwrap(),
       SpecifierSettings {
         enable_paths: Some(vec![
           "sub_dir".to_string(),
@@ -1178,14 +1127,14 @@ mod tests {
       },
     );
     config.set_specifier_settings(
-      root_dir2.clone(),
+      Url::parse("file:///root2/").unwrap(),
       SpecifierSettings {
         enable_paths: Some(vec!["other.ts".to_string()]),
         ..Default::default()
       },
     );
     config.set_specifier_settings(
-      root_dir3.clone(),
+      Url::parse("file:///root3/").unwrap(),
       SpecifierSettings {
         enable: Some(true),
         ..Default::default()
@@ -1193,13 +1142,13 @@ mod tests {
     );
 
     assert_eq!(
-      config.enabled_urls(),
+      config.get_enabled_paths(),
       vec![
-        root_dir1.join("sub_dir").unwrap(),
-        root_dir1.join("sub_dir/other").unwrap(),
-        root_dir1.join("test.ts").unwrap(),
-        root_dir2.join("other.ts").unwrap(),
-        root_dir3
+        PathBuf::from("/root1/sub_dir"),
+        PathBuf::from("/root1/sub_dir/other"),
+        PathBuf::from("/root1/test.ts"),
+        PathBuf::from("/root2/other.ts"),
+        PathBuf::from("/root3/"),
       ]
     );
   }
@@ -1209,12 +1158,12 @@ mod tests {
     let root_uri = resolve_url("file:///root/").unwrap();
     let mut config = Config::new_with_root(root_uri.clone());
     config.settings.workspace.enable = None;
-    assert_eq!(config.enabled_urls(), vec![]);
+    assert!(!config.specifier_enabled(&root_uri));
 
     config.set_config_file(
       ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
     );
-    assert_eq!(config.enabled_urls(), vec![root_uri]);
+    assert!(config.specifier_enabled(&root_uri));
   }
 
   // Regression test for https://github.com/denoland/vscode_deno/issues/917.

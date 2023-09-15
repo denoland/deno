@@ -1353,8 +1353,8 @@ impl Inner {
 
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
-      enabled_urls: self.config.enabled_urls(),
-      disabled_urls: self.config.disabled_urls(),
+      enabled_paths: self.config.get_enabled_paths(),
+      disabled_paths: self.config.get_disabled_paths(),
       document_preload_limit: self
         .config
         .workspace_settings()

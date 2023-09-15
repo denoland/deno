@@ -110,28 +110,6 @@ pub fn specifier_to_file_path(
   }
 }
 
-/// Attempts to convert a file path to a specifier. By default, uses the Url
-/// crate's `from_file_path()` method, but falls back to try and resolve
-/// unix-style paths on Windows.
-pub fn specifier_from_file_path(
-  path: &Path,
-) -> Result<ModuleSpecifier, AnyError> {
-  if cfg!(windows) {
-    match ModuleSpecifier::from_file_path(path) {
-      Ok(url) => Ok(url),
-      Err(()) => {
-        let mut url = ModuleSpecifier::parse("file:///").unwrap();
-        url.set_path(&path.to_string_lossy());
-        Ok(url)
-      }
-    }
-  } else {
-    ModuleSpecifier::from_file_path(path).map_err(|()| {
-      uri_error(format!("Invalid file path.\n  Path: {}", path.display()))
-    })
-  }
-}
-
 /// `from.make_relative(to)` but with fixes.
 pub fn relative_specifier(
   from: &ModuleSpecifier,
