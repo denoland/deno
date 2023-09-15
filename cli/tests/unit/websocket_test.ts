@@ -8,7 +8,7 @@ import {
 } from "./test_util.ts";
 
 const servePort = 4248;
-const serveUrl = `ws://localhost:${servePort}`;
+const serveUrl = `ws://localhost:${servePort}/`;
 
 Deno.test({ permissions: "none" }, function websocketPermissionless() {
   assertThrows(
