@@ -96,6 +96,7 @@ futures = "0.3.21"
 glob = "0.3.1"
 hex = "0.4"
 http = "0.2.9"
+h2 = "0.3.17"
 httparse = "1.8.0"
 hyper = { version = "0.14.26", features = ["runtime", "http1"] }
 # TODO(mmastrac): indexmap 2.0 will require multiple synchronized changes
