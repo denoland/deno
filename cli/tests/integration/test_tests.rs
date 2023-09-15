@@ -182,7 +182,7 @@ itest!(quiet {
 });
 
 itest!(fail_fast {
-  args: "test --fail-fast test/fail_fast.ts",
+  args: "test --fail-fast test/fail_fast.ts test/fail_fast_other.ts",
   exit_code: 1,
   output: "test/fail_fast.out",
 });
