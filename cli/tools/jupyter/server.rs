@@ -303,6 +303,24 @@ impl JupyterServer {
             .await?;
         }
       }
+      "inspect_request" => {
+        eprintln!("msg {:#?}", msg);
+        // Content: {
+        //   "code": "Deno.chmod",
+        //   "cursor_pos": 10,
+        //   "detail_level": 0
+        // }
+        let req = json!({
+          "textDocument": {
+            "uri": uri
+          },
+          "position": { "line": 2, "character": 12 }
+        });
+        // let res = client.write_request(
+        //   "textDocument/hover",
+
+        // );
+      }
       "comm_msg" | "comm_info_request" | "history_request" => {
         // We don't handle these messages
       }
