@@ -51,7 +51,7 @@ impl RawMessage {
     let delimiter_index = multipart
       .iter()
       .position(|part| &part[..] == DELIMITER)
-      .ok_or_else(|| anyhow!("Missing delimeter"))?;
+      .ok_or_else(|| anyhow!("Missing delimiter"))?;
     let mut parts = multipart.into_vec();
     let jparts: Vec<_> = parts.drain(delimiter_index + 2..).collect();
     let expected_hmac = parts.pop().unwrap();

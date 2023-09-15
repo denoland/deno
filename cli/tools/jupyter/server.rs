@@ -90,25 +90,12 @@ impl JupyterServer {
 
     let handle4 = deno_core::unsync::spawn(async move {
       while let Some(stdio_msg) = stdio_rx.next().await {
-        if let Some(exec_request) = last_execution_request.borrow().clone() {
-          let (name, text) = match stdio_msg {
-            StdioMsg::Stdout(text) => ("stdout", text),
-            StdioMsg::Stderr(text) => ("stderr", text),
-          };
-
-          let result = exec_request
-            .new_message("stream")
-            .with_content(json!({
-                "name": name,
-                "text": text
-            }))
-            .send(&mut *iopub_socket.lock().await)
-            .await;
-
-          if let Err(err) = result {
-            eprintln!("Output {} error: {}", name, err);
-          }
-        }
+        Self::handle_stdio_msg(
+          iopub_socket.clone(),
+          last_execution_request.clone(),
+          stdio_msg,
+        )
+        .await;
       }
     });
 
@@ -125,6 +112,33 @@ impl JupyterServer {
     };
 
     Ok(())
+  }
+
+  async fn handle_stdio_msg<S: zeromq::SocketSend>(
+    iopub_socket: Arc<Mutex<Connection<S>>>,
+    last_execution_request: Rc<RefCell<Option<JupyterMessage>>>,
+    stdio_msg: StdioMsg,
+  ) {
+    let maybe_exec_result = last_execution_request.borrow().clone();
+    if let Some(exec_request) = maybe_exec_result {
+      let (name, text) = match stdio_msg {
+        StdioMsg::Stdout(text) => ("stdout", text),
+        StdioMsg::Stderr(text) => ("stderr", text),
+      };
+
+      let result = exec_request
+        .new_message("stream")
+        .with_content(json!({
+            "name": name,
+            "text": text
+        }))
+        .send(&mut *iopub_socket.lock().await)
+        .await;
+
+      if let Err(err) = result {
+        eprintln!("Output {} error: {}", name, err);
+      }
+    }
   }
 
   async fn handle_heartbeat(

@@ -113,11 +113,15 @@ pub fn op_print(
 ) -> Result<(), AnyError> {
   let sender = state.borrow_mut::<mpsc::UnboundedSender<server::StdioMsg>>();
 
-  // TODO(bartlomieju): should these results be handled somehow?
   if is_err {
-    let _r = sender.unbounded_send(server::StdioMsg::Stderr(msg));
-  } else {
-    let _r = sender.unbounded_send(server::StdioMsg::Stdout(msg));
+    if let Err(err) = sender.unbounded_send(server::StdioMsg::Stderr(msg)) {
+      eprintln!("Failed to send stderr message: {}", err);
+    }
+    return Ok(());
+  }
+
+  if let Err(err) = sender.unbounded_send(server::StdioMsg::Stdout(msg)) {
+    eprintln!("Failed to send stdout message: {}", err);
   }
   Ok(())
 }
