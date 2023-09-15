@@ -146,32 +146,17 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
-// Ops that are synchronously closed, that do not have a mechanism to await
-// async cleanup. These cause the op sanitizer to sleep for a short period of
-// time before collecting metrics to avoid false positive failures.
-const asyncClosingOps = [
-  "op_sleep",
-  "op_worker_recv_message",
-  "op_host_recv_message",
-  "op_host_recv_ctrl",
-  "op_void_async_deferred",
-];
-
 function collectReliableOpMetrics() {
   let metrics = core.metrics();
   if (metrics.opsDispatched > metrics.opsCompleted) {
-    let shouldDelay = false;
-    for (let i = 0; i < asyncClosingOps.length; i++) {
-      const opMetrics = metrics.ops[asyncClosingOps[i]];
-      if (opMetrics.opsDispatched > opMetrics.opsCompleted) shouldDelay = true;
-    }
-    if (shouldDelay) {
-      return opSanitizerDelay().then(() => {
-        metrics = core.metrics();
-        const traces = new Map(core.opCallTraces);
-        return { metrics, traces };
-      });
-    }
+    // If there are still async ops pending, we drain the event loop to the
+    // point where all ops that can return `Poll::Ready` have done so, to ensure
+    // that any ops are ready because of user cleanup code are completed.
+    return opSanitizerDelay().then(() => {
+      metrics = core.metrics();
+      const traces = new Map(core.opCallTraces);
+      return { metrics, traces };
+    });
   }
   const traces = new Map(core.opCallTraces);
   return { metrics, traces };
