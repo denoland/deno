@@ -25,6 +25,13 @@ pub async fn kernel(
   flags: Flags,
   jupyter_flags: JupyterFlags,
 ) -> Result<(), AnyError> {
+  if !flags.unstable {
+    eprintln!(
+      "Unstable subcommand 'deno jupyter'. The --unstable flag must be provided."
+    );
+    std::process::exit(70);
+  }
+
   if !jupyter_flags.install && !jupyter_flags.kernel {
     install::status()?;
     return Ok(());
