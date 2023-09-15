@@ -1705,15 +1705,14 @@ async fn create_tls_server_config() -> Arc<rustls::ServerConfig> {
   let cert_file = "tls/localhost.crt";
   let key_file = "tls/localhost.key";
   let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
+  get_tls_config(
     cert_file,
     key_file,
     ca_cert_file,
     SupportedHttpVersions::Http2Only,
   )
   .await
-  .unwrap();
-  tls_config
+  .unwrap()
 }
 
 async fn wrap_https_h1_only_server() {
