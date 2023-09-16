@@ -2890,7 +2890,7 @@ impl CompletionEntry {
       }
       label_details
         .get_or_insert_with(Default::default)
-        .description = Some(format!("import {:?}", source));
+        .description = Some(source);
     }
 
     let text_edit =

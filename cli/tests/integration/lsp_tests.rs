@@ -5213,7 +5213,7 @@ fn lsp_completions_auto_import() {
   let req = json!({
     "label": "foo",
     "labelDetails": {
-      "description": "import \"./b.ts\""
+      "description": "./b.ts",
     },
     "kind": 6,
     "sortText": "￿16",
@@ -5247,7 +5247,7 @@ fn lsp_completions_auto_import() {
     json!({
       "label": "foo",
       "labelDetails": {
-        "description": "import \"./b.ts\""
+        "description": "./b.ts",
       },
       "kind": 6,
       "detail": "const foo: \"foo\"",
@@ -5330,7 +5330,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     json!({
       "label": "getClient",
       "labelDetails": {
-        "description": "import \"npm:@denotest/types-exports-subpaths@1/client\""
+        "description": "npm:@denotest/types-exports-subpaths@1/client",
       },
       "kind": 3,
       "detail": "function getClient(): 5",
@@ -5445,7 +5445,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     json!({
       "label": "chalk",
       "labelDetails": {
-        "description": "import \"npm:chalk@5.0\""
+        "description": "npm:chalk@5.0",
       },
       "kind": 6,
       "sortText": "￿16",
@@ -5648,7 +5648,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     json!({
       "label": "getClient",
       "labelDetails": {
-        "description": "import \"types-exports-subpaths/client\""
+        "description": "types-exports-subpaths/client",
       },
       "kind": 3,
       "detail": "function getClient(): 5",
@@ -5763,7 +5763,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     json!({
       "label": "chalk",
       "labelDetails": {
-        "description": "import \"chalk\""
+        "description": "chalk",
       },
       "kind": 6,
       "sortText": "￿16",
@@ -5873,7 +5873,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     json!({
       "label": "printHello",
       "labelDetails": {
-        "description": "import \"print_hello\""
+        "description": "print_hello",
       },
       "kind": 3,
       "sortText": "￿16",
