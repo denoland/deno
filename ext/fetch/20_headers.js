@@ -286,6 +286,11 @@ class Headers {
 
   /** @param {HeadersInit} [init] */
   constructor(init = undefined) {
+    if (init === webidl.brand) {
+      this[webidl.brand] = webidl.brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Headers'";
     if (init !== undefined) {
       init = webidl.converters["HeadersInit"](init, prefix, "Argument 1");
@@ -486,7 +491,7 @@ webidl.converters["Headers"] = webidl.createInterfaceConverter(
  * @returns {Headers}
  */
 function headersFromHeaderList(list, guard) {
-  const headers = webidl.createBranded(Headers);
+  const headers = new Headers(webidl.brand);
   headers[_headerList] = list;
   headers[_guard] = guard;
   return headers;

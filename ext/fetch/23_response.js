@@ -305,6 +305,11 @@ class Response {
    * @param {ResponseInit} init
    */
   constructor(body = null, init = undefined) {
+    if (body === webidl.brand) {
+      this[webidl.brand] = webidl.brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Response'";
     body = webidl.converters["BodyInit_DOMString?"](body, prefix, "Argument 1");
     init = webidl.converters["ResponseInit_fast"](init, prefix, "Argument 2");
@@ -489,7 +494,7 @@ function toInnerResponse(response) {
  * @returns {Response}
  */
 function fromInnerResponse(inner, guard) {
-  const response = webidl.createBranded(Response);
+  const response = new Response(webidl.brand);
   response[_response] = inner;
   response[_headers] = headersFromHeaderList(inner.headerList, guard);
   return response;

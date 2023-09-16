@@ -275,6 +275,11 @@ class Request {
    * @param {RequestInit} init
    */
   constructor(input, init = {}) {
+    if (input === webidl.brand) {
+      this[webidl.brand] = webidl.brand;
+      return;
+    }
+
     const prefix = "Failed to construct 'Request'";
     webidl.requiredArguments(arguments.length, 1, prefix);
     input = webidl.converters["RequestInfo_DOMString"](
@@ -554,7 +559,7 @@ function toInnerRequest(request) {
  * @returns {Request}
  */
 function fromInnerRequest(inner, signal, guard) {
-  const request = webidl.createBranded(Request);
+  const request = new Request(webidl.brand);
   request[_request] = inner;
   request[_signal] = signal;
   request[_getHeaders] = () => headersFromHeaderList(inner.headerList, guard);
