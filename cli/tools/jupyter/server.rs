@@ -408,52 +408,89 @@ impl JupyterServer {
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     } else {
       let exception_details = exception_details.unwrap();
-      let name = if let Some(exception) = exception_details.exception {
-        if let Some(description) = exception.description {
-          description
-        } else if let Some(value) = exception.value {
-          value.to_string()
+
+      // Determine the exception value and name
+      let (value, name) = if let Some(exception) = &exception_details.exception {
+        // Determine the exception name based on class_name or default to "Uncaught"
+        let name = if let Some(class_name) = &exception.class_name {
+            format!("Uncaught {}", class_name)
         } else {
-          "undefined".to_string()
-        }
+            "Unknown exception".to_string()
+        };
+
+        let remote_object = exception;
+
+        let value: serde_json::Value = match remote_object.kind.as_str() {
+            "string" => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
+            "object" => {
+                match remote_object.subtype.as_deref() {
+                    Some("error") => {
+                        if let Some(message) = remote_object.value.clone().and_then(|v| v.get("message").cloned()) {
+                          json!(message)
+                        } else if let Some(description) = remote_object.description.clone() {
+                          json!(description)
+                        } else {
+                          json!("wat")
+                        }
+                    },
+                    _ => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
+                }
+            },
+            _ => remote_object.value.clone().unwrap_or_else(|| json!(" ")),
+        };
+
+        (name, value)
       } else {
-        "Unknown exception".to_string()
+        ("Unknown exception".to_string(), json!("Unknown exception"))
       };
 
-      let traceback : Vec<String> = exception_details
-      .stack_trace
-      .map(|trace| {
-        trace.call_frames
-          .into_iter()
-          .map(|frame| {
-            let file_name = frame.url;
-            let line_number = frame.line_number;
-            let column_number = frame.column_number;
 
-            // If the filename is blank, assume it's the REPL / cell
-            // itself.
-            let file_prefix = if file_name.is_empty() {
-              "<cell>".to_string()
-            } else {
-              // File "<file_name>", line 1, column 1
-              format!("File \"{}\"", file_name)
-            };
 
-            format!(
-              r#"  {file_prefix}, line {line_number}, column {column_number}"#,
-              file_prefix = file_prefix,
-              line_number = line_number,
-              column_number = column_number,)
-          })
-          .collect::<Vec<_>>()
-      }).unwrap_or_default();
+      let mut traceback: Vec<String> = Vec::new();
+
+      if let Some(stack_trace) = &exception_details.stack_trace {
+          traceback = stack_trace.call_frames
+              .iter()
+              .map(|frame| {
+                  let file_name = &frame.url;
+                  let line_number = frame.line_number;
+                  let column_number = frame.column_number;
+
+                  // If the filename is blank, assume it's the REPL / cell
+                  // itself.
+                  let file_prefix = if file_name.is_empty() {
+                    "<cell>".to_string()
+                  } else {
+                    // File "<file_name>", line 1, column 1
+                    format!("File \"{}\"", file_name)
+                  };
+
+                  format!(
+                    r#"  {file_prefix}, line {line_number}, column {column_number}"#,
+                    file_prefix = file_prefix,
+                    line_number = line_number,
+                    column_number = column_number,)
+                })
+                .collect();
+      }
+
+      if !traceback.is_empty() {
+        // Include the error name and value at the top of the traceback
+        traceback.insert(0, format!("{}: {}", name, value));
+
+        // Insert the traceback header
+        traceback.insert(1, "Traceback (most recent call last):".to_string());
+    
+    }
+
+
 
       // TODO(bartlomieju): fill all the fields
       msg
         .new_message("error")
         .with_content(json!({
           "ename": name,
-          "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
+          "evalue": value,
           "traceback": traceback,
         }))
         .send(&mut *self.iopub_socket.lock().await)
