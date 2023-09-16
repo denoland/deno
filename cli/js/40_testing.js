@@ -40,25 +40,39 @@ let hasSetOpSanitizerDelayMacrotask = false;
 // that resolves when it's (probably) fine to run the op sanitizer.
 //
 // This is implemented by adding a macrotask callback that runs after the
-// timer macrotasks, so we can guarantee that a currently running interval
-// will have an associated op. An additional `setTimeout` of 0 is needed
-// before that, though, in order to give time for worker message ops to finish
-// (since timeouts of 0 don't queue tasks in the timer queue immediately).
-function opSanitizerDelay() {
+// all ready async ops resolve, and the timer macrotask. Using just a macrotask
+// callback without delaying is sufficient, because when the macrotask callback
+// runs after async op dispatch, we know that all async ops that can currently
+// return `Poll::Ready` have done so, and have been dispatched to JS.
+//
+// Worker ops are an exception to this, because there is no way for the user to
+// await shutdown of the worker from the thread calling `worker.terminate()`.
+// Because of this, we give extra leeway for worker ops to complete, by waiting
+// for a whole millisecond if there are pending worker ops.
+function opSanitizerDelay(hasPendingWorkerOps) {
   if (!hasSetOpSanitizerDelayMacrotask) {
     core.setMacrotaskCallback(handleOpSanitizerDelayMacrotask);
     hasSetOpSanitizerDelayMacrotask = true;
   }
-  return new Promise((resolve) => {
+  const p = new Promise((resolve) => {
+    // Schedule an async op to complete immediately to ensure the macrotask is
+    // run. We rely on the fact that enqueueing the resolver callback during the
+    // timeout callback will mean that the resolver gets called in the same
+    // event loop tick as the timeout callback.
     setTimeout(() => {
       ArrayPrototypePush(opSanitizerDelayResolveQueue, resolve);
-    }, 1);
+    }, hasPendingWorkerOps ? 1 : 0);
   });
+  return p;
 }
 
 function handleOpSanitizerDelayMacrotask() {
-  ArrayPrototypeShift(opSanitizerDelayResolveQueue)?.();
-  return opSanitizerDelayResolveQueue.length === 0;
+  const resolve = ArrayPrototypeShift(opSanitizerDelayResolveQueue);
+  if (resolve) {
+    resolve();
+    return opSanitizerDelayResolveQueue.length === 0;
+  }
+  return undefined; // we performed no work, so can skip microtasks checkpoint
 }
 
 // An async operation to $0 was started in this test, but never completed. This is often caused by not $1.
@@ -126,7 +140,8 @@ const OP_DETAILS = {
   "op_tls_start": ["start a TLS connection", "awaiting a `Deno.startTls` call"],
   "op_truncate_async": ["truncate a file", "awaiting the result of a `Deno.truncate` call"],
   "op_utime_async": ["change file timestamps", "awaiting the result of a `Deno.utime` call"],
-  "op_worker_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_message": ["receive a message from a web worker", "terminating a `Worker`"],
+  "op_host_recv_ctrl": ["receive a message from a web worker", "terminating a `Worker`"],
   "op_ws_close": ["close a WebSocket", "awaiting until the `close` event is emitted on a `WebSocket`, or the `WebSocketStream#closed` promise resolves"],
   "op_ws_create": ["create a WebSocket", "awaiting until the `open` event is emitted on a `WebSocket`, or the result of a `WebSocketStream#connection` promise"],
   "op_ws_next_event": ["receive the next message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
@@ -136,6 +151,28 @@ const OP_DETAILS = {
   "op_ws_send_pong": ["send a message on a WebSocket", "closing a `WebSocket` or `WebSocketStream`"],
 };
 
+function collectReliableOpMetrics() {
+  let metrics = core.metrics();
+  if (metrics.opsDispatched > metrics.opsCompleted) {
+    // If there are still async ops pending, we drain the event loop to the
+    // point where all ops that can return `Poll::Ready` have done so, to ensure
+    // that any ops are ready because of user cleanup code are completed.
+    const hasPendingWorkerOps = metrics.ops.op_host_recv_message && (
+      metrics.ops.op_host_recv_message.opsDispatched >
+        metrics.ops.op_host_recv_message.opsCompleted ||
+      metrics.ops.op_host_recv_ctrl.opsDispatched >
+        metrics.ops.op_host_recv_ctrl.opsCompleted
+    );
+    return opSanitizerDelay(hasPendingWorkerOps).then(() => {
+      metrics = core.metrics();
+      const traces = new Map(core.opCallTraces);
+      return { metrics, traces };
+    });
+  }
+  const traces = new Map(core.opCallTraces);
+  return { metrics, traces };
+}
+
 // Wrap test function in additional assertion that makes sure
 // the test case does not leak async "ops" - ie. number of async
 // completed ops after the test is the same as number of dispatched
@@ -144,19 +181,26 @@ const OP_DETAILS = {
 function assertOps(fn) {
   /** @param desc {TestDescription | TestStepDescription} */
   return async function asyncOpSanitizer(desc) {
-    const pre = core.metrics();
-    const preTraces = new Map(core.opCallTraces);
+    let metrics = collectReliableOpMetrics();
+    if (metrics.then) {
+      // We're delaying so await to get the result asynchronously.
+      metrics = await metrics;
+    }
+    const { metrics: pre, traces: preTraces } = metrics;
+    let post;
+    let postTraces;
+
     try {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      // Defer until next event loop turn - that way timeouts and intervals
-      // cleared can actually be removed from resource table, otherwise
-      // false positives may occur (https://github.com/denoland/deno/issues/4591)
-      await opSanitizerDelay();
+      let metrics = collectReliableOpMetrics();
+      if (metrics.then) {
+        // We're delaying so await to get the result asynchronously.
+        metrics = await metrics;
+      }
+      ({ metrics: post, traces: postTraces } = metrics);
     }
-    const post = core.metrics();
-    const postTraces = new Map(core.opCallTraces);
 
     // We're checking diff because one might spawn HTTP server in the background
     // that will be a pending async op before test starts.
@@ -232,6 +276,7 @@ function assertOps(fn) {
         ArrayPrototypePush(details, message);
       }
     }
+
     return { failed: { leakedOps: [details, core.isOpCallTracingEnabled()] } };
   };
 }

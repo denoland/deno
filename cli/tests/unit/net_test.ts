@@ -901,7 +901,7 @@ Deno.test(
 );
 
 Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
-  (async () => {
+  const server = (async () => {
     const listener = Deno.listen({ hostname: "127.0.0.1", port: listenPort });
     const conn = await listener.accept();
     await conn.readable.pipeTo(conn.writable);
@@ -920,6 +920,7 @@ Deno.test({ permissions: { net: true } }, async function whatwgStreams() {
   assert(!done);
   assertEquals(decoder.decode(value), "Hello World");
   await reader.cancel();
+  await server;
 });
 
 Deno.test(
@@ -973,7 +974,7 @@ Deno.test(
 
 Deno.test(
   { permissions: { read: true, run: true } },
-  async function netListenUnref() {
+  async function netListenUnref2() {
     const [statusCode, _output] = await execCode(`
       async function main() {
         const listener = Deno.listen({ port: ${listenPort} });
