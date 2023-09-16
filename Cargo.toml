@@ -85,6 +85,7 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "serde", "clock"] }
 console_static_text = "=0.8.1"
 data-url = "=0.3.0"
+data-encoding = "2.3.3"
 dlopen = "0.1.8"
 encoding_rs = "=0.8.33"
 ecb = "=0.1.2"
