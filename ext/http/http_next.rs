@@ -463,7 +463,18 @@ pub fn op_http_set_response_trailers(
   *http.trailers().borrow_mut() = Some(trailer_map);
 }
 
-fn is_request_compressible(headers: &HeaderMap) -> Compression {
+fn is_request_compressible(
+  length: Option<usize>,
+  headers: &HeaderMap,
+) -> Compression {
+  if let Some(length) = length {
+    // By the time we add compression headers and Accept-Encoding, it probably doesn't make sense
+    // to compress stuff that's smaller than this.
+    if length < 64 {
+      return Compression::None;
+    }
+  }
+
   let Some(accept_encoding) = headers.get(ACCEPT_ENCODING) else {
     return Compression::None;
   };
@@ -521,17 +532,9 @@ fn is_response_compressible(headers: &HeaderMap) -> bool {
 
 fn modify_compressibility_from_response(
   compression: Compression,
-  length: Option<usize>,
   headers: &mut HeaderMap,
 ) -> Compression {
   ensure_vary_accept_encoding(headers);
-  if let Some(length) = length {
-    // By the time we add compression headers and Accept-Encoding, it probably doesn't make sense
-    // to compress stuff that's smaller than this.
-    if length < 64 {
-      return Compression::None;
-    }
-  }
   if compression == Compression::None {
     return Compression::None;
   }
@@ -592,13 +595,11 @@ fn set_response(
   // do all of this work to send the response.
   if !http.cancelled() {
     let resource = http.take_resource();
-    let compression = is_request_compressible(&http.request_parts().headers);
+    let compression =
+      is_request_compressible(length, &http.request_parts().headers);
     let response = http.response();
-    let compression = modify_compressibility_from_response(
-      compression,
-      length,
-      response.headers_mut(),
-    );
+    let compression =
+      modify_compressibility_from_response(compression, response.headers_mut());
     response
       .body_mut()
       .initialize(response_fn(compression), resource);
