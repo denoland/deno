@@ -420,13 +420,41 @@ impl JupyterServer {
         "Unknown exception".to_string()
       };
 
+      let traceback : Vec<String> = exception_details
+      .stack_trace
+      .map(|trace| {
+        trace.call_frames
+          .into_iter()
+          .map(|frame| {
+            let file_name = frame.url;
+            let line_number = frame.line_number;
+            let column_number = frame.column_number;
+
+            // If the filename is blank, assume it's the REPL / cell
+            // itself.
+            let file_prefix = if file_name.is_empty() {
+              "<cell>".to_string()
+            } else {
+              // File "<file_name>", line 1, column 1
+              format!("File \"{}\"", file_name)
+            };
+
+            format!(
+              r#"  {file_prefix}, line {line_number}, column {column_number}"#,
+              file_prefix = file_prefix,
+              line_number = line_number,
+              column_number = column_number,)
+          })
+          .collect::<Vec<_>>()
+      }).unwrap_or_default();
+
       // TODO(bartlomieju): fill all the fields
       msg
         .new_message("error")
         .with_content(json!({
           "ename": name,
           "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
-          "traceback": [],
+          "traceback": traceback,
         }))
         .send(&mut *self.iopub_socket.lock().await)
         .await?;
