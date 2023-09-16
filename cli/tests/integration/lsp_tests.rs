@@ -5212,6 +5212,9 @@ fn lsp_completions_auto_import() {
 
   let req = json!({
     "label": "foo",
+    "labelDetails": {
+      "description": "import \"./b.ts\""
+    },
     "kind": 6,
     "sortText": "￿16",
     "commitCharacters": [
@@ -5243,6 +5246,9 @@ fn lsp_completions_auto_import() {
     res,
     json!({
       "label": "foo",
+      "labelDetails": {
+        "description": "import \"./b.ts\""
+      },
       "kind": 6,
       "detail": "const foo: \"foo\"",
       "documentation": {
@@ -5323,6 +5329,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "import \"npm:@denotest/types-exports-subpaths@1/client\""
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5435,6 +5444,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "import \"npm:chalk@5.0\""
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5635,6 +5647,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "import \"types-exports-subpaths/client\""
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5747,6 +5762,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "import \"chalk\""
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5854,6 +5872,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "printHello",
+      "labelDetails": {
+        "description": "import \"print_hello\""
+      },
       "kind": 3,
       "sortText": "￿16",
       "additionalTextEdits": [
