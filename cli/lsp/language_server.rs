@@ -2440,6 +2440,7 @@ impl Inner {
           &self.config.workspace_settings().suggest,
           &specifier,
           position,
+          self,
         );
         Some(results)
       } else {
