@@ -218,6 +218,45 @@ function uponPromise(promise, onFulfilled, onRejected) {
   );
 }
 
+class Queue {
+  head = null;
+  tail = null;
+  size = 0;
+
+  enqueue(value) {
+    const node = { value, next: null };
+    if (!this.head) {
+      this.head = node;
+      this.tail = node;
+    } else {
+      this.tail.next = node;
+      this.tail = node;
+    }
+    return ++this.size;
+  }
+
+  dequeue() {
+    if (!this.head) {
+      return null;
+    }
+    const node = this.head;
+    if (this.head === this.tail) {
+      this.tail = null;
+    }
+    this.head = this.head.next;
+    this.size--;
+    return node.value;
+  }
+
+  peek() {
+    if (!this.head) {
+      return null;
+    }
+
+    return this.head.value;
+  }
+}
+
 /**
  * @param {ArrayBufferLike} O
  * @returns {boolean}
@@ -454,19 +493,15 @@ function createWritableStream(
  * @returns {T}
  */
 function dequeueValue(container) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
-  assert(container[_queue].length);
-  const valueWithSize = ArrayPrototypeShift(container[_queue]);
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].dequeue();
   container[_queueTotalSize] -= valueWithSize.size;
   if (container[_queueTotalSize] < 0) {
     container[_queueTotalSize] = 0;
   }
   return valueWithSize.value;
 }
-
 /**
  * @template T
  * @param {{ [_queue]: Array<ValueWithSize<T | _close>>, [_queueTotalSize]: number }} container
@@ -475,17 +510,14 @@ function dequeueValue(container) {
  * @returns {void}
  */
 function enqueueValueWithSize(container, value, size) {
-  assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
-  );
+  assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
     throw RangeError("chunk size isn't a positive number");
   }
   if (size === Infinity) {
     throw RangeError("chunk size is invalid");
   }
-  ArrayPrototypePush(container[_queue], { value, size });
+  container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
 }
 
@@ -646,16 +678,7 @@ function initializeWritableStream(stream) {
  * @returns {v is number}
  */
 function isNonNegativeNumber(v) {
-  if (typeof v !== "number") {
-    return false;
-  }
-  if (NumberIsNaN(v)) {
-    return false;
-  }
-  if (v < 0) {
-    return false;
-  }
-  return true;
+  return typeof v === "number" && v >= 0;
 }
 
 /**
@@ -663,8 +686,7 @@ function isNonNegativeNumber(v) {
  * @returns {value is ReadableStream}
  */
 function isReadableStream(value) {
-  return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _controller));
+  return !(typeof value !== "object" || value === null || !value[_controller]);
 }
 
 /**
@@ -684,7 +706,7 @@ function isReadableStreamLocked(stream) {
  */
 function isReadableStreamDefaultReader(value) {
   return !(typeof value !== "object" || value === null ||
-    !ReflectHas(value, _readRequests));
+    !value[_readRequests]);
 }
 
 /**
@@ -1173,11 +1195,11 @@ function isWritableStreamLocked(stream) {
  */
 function peekQueueValue(container) {
   assert(
-    ReflectHas(container, _queue) &&
-      ReflectHas(container, _queueTotalSize),
+    container[_queue] &&
+      typeof container[_queueTotalSize] === "number",
   );
-  assert(container[_queue].length);
-  const valueWithSize = container[_queue][0];
+  assert(container[_queue].size);
+  const valueWithSize = container[_queue].peek();
   return valueWithSize.value;
 }
 
@@ -1347,7 +1369,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
         byteLength,
       );
     } else {
-      assert(controller[_queue].length === 0);
+      assert(controller[_queue].size === 0);
       if (controller[_pendingPullIntos].length !== 0) {
         assert(controller[_pendingPullIntos][0].readerType === "default");
         readableByteStreamControllerShiftPendingPullInto(controller);
@@ -1394,7 +1416,7 @@ function readableByteStreamControllerEnqueueChunkToQueue(
   byteOffset,
   byteLength,
 ) {
-  ArrayPrototypePush(controller[_queue], { buffer, byteOffset, byteLength });
+  controller[_queue].enqueue({ buffer, byteOffset, byteLength });
   controller[_queueTotalSize] += byteLength;
 }
 
@@ -1504,7 +1526,7 @@ function readableByteStreamControllerGetDesiredSize(controller) {
  * @returns {void}
  */
 function resetQueue(container) {
-  container[_queue] = [];
+  container[_queue] = new Queue();
   container[_queueTotalSize] = 0;
 }
 
@@ -1676,11 +1698,7 @@ function readableStreamDefaultControllerCallPullIfNeeded(controller) {
  */
 function readableStreamDefaultControllerCanCloseOrEnqueue(controller) {
   const state = controller[_stream][_state];
-  if (controller[_closeRequested] === false && state === "readable") {
-    return true;
-  } else {
-    return false;
-  }
+  return controller[_closeRequested] === false && state === "readable";
 }
 
 /** @param {ReadableStreamDefaultController<any>} controller */
@@ -1699,7 +1717,7 @@ function readableStreamDefaultControllerClose(controller) {
   }
   const stream = controller[_stream];
   controller[_closeRequested] = true;
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     readableStreamDefaultControllerClearAlgorithms(controller);
     readableStreamClose(stream);
   }
@@ -2326,7 +2344,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
   }
   const queue = controller[_queue];
   while (totalBytesToCopyRemaining > 0) {
-    const headOfQueue = queue[0];
+    const headOfQueue = queue.peek();
     const bytesToCopy = MathMin(
       totalBytesToCopyRemaining,
       // deno-lint-ignore prefer-primordials
@@ -2353,7 +2371,7 @@ function readableByteStreamControllerFillPullIntoDescriptorFromQueue(
 
     // deno-lint-ignore prefer-primordials
     if (headOfQueue.byteLength === bytesToCopy) {
-      ArrayPrototypeShift(queue);
+      queue.dequeue();
     } else {
       headOfQueue.byteOffset += bytesToCopy;
       headOfQueue.byteLength -= bytesToCopy;
@@ -2384,7 +2402,7 @@ function readableByteStreamControllerFillReadRequestFromQueue(
   readRequest,
 ) {
   assert(controller[_queueTotalSize] > 0);
-  const entry = ArrayPrototypeShift(controller[_queue]);
+  const entry = controller[_queue].dequeue();
   // deno-lint-ignore prefer-primordials
   controller[_queueTotalSize] -= entry.byteLength;
   readableByteStreamControllerHandleQueueDrain(controller);
@@ -4244,7 +4262,7 @@ function writableStreamDefaultControllerAdvanceQueueIfNeeded(controller) {
     writableStreamFinishErroring(stream);
     return;
   }
-  if (controller[_queue].length === 0) {
+  if (controller[_queue].size === 0) {
     return;
   }
   const value = peekQueueValue(controller);
@@ -4330,7 +4348,7 @@ function writableStreamDefaultControllerProcessClose(controller) {
   const stream = controller[_stream];
   writableStreamMarkCloseRequestInFlight(stream);
   dequeueValue(controller);
-  assert(controller[_queue].length === 0);
+  assert(controller[_queue].size === 0);
   const sinkClosePromise = controller[_closeAlgorithm]();
   writableStreamDefaultControllerClearAlgorithms(controller);
   uponPromise(sinkClosePromise, () => {
@@ -5869,9 +5887,9 @@ class ReadableStreamDefaultController {
    */
   [_pullSteps](readRequest) {
     const stream = this[_stream];
-    if (this[_queue].length) {
+    if (this[_queue].size) {
       const chunk = dequeueValue(this);
-      if (this[_closeRequested] && this[_queue].length === 0) {
+      if (this[_closeRequested] && this[_queue].size === 0) {
         readableStreamDefaultControllerClearAlgorithms(this);
         readableStreamClose(stream);
       } else {
