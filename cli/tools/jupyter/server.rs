@@ -490,6 +490,12 @@ async fn get_jupyter_display(
     )
     .await?;
 
+  if let Some(exception_details) = &response.exception_details {
+    // TODO(rgbkrk): Return an error in userspace instead of Jupyter logs
+    eprintln!("Exception encountered: {}", exception_details.text);
+    return Ok(None);
+  }
+
   if let Some(serde_json::Value::String(json_str)) = response.result.value {
     let data: HashMap<String, serde_json::Value> =
       serde_json::from_str(&json_str)?;
