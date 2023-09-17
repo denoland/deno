@@ -480,57 +480,27 @@ async fn get_jupyter_display(
   session: &mut repl::ReplSession,
   evaluate_result: &cdp::RemoteObject,
 ) -> Result<Option<HashMap<String, serde_json::Value>>, AnyError> {
-  let mut data = HashMap::default();
   let response = session
     .call_function_on_args(
       r#"function (object) {{
-        return object[Symbol.for("Jupyter.display")]();
-      }}"#
+      return JSON.stringify(object[Symbol.for("Jupyter.display")]());
+    }}"#
         .to_string(),
       &[evaluate_result.clone()],
     )
     .await?;
 
-  if response.exception_details.is_some() {
-    return Ok(None);
-  }
+  let json_str = response.result.clone().value.unwrap_or_default();
 
-  let object_id = response.result.object_id.unwrap();
+  if let Some(serde_json::Value::String(json_str)) = response.result.value {
+    let data: HashMap<String, serde_json::Value> =
+      serde_json::from_str(&json_str)?;
 
-  let get_properties_response_result = session
-    .post_message_with_event_loop(
-      "Runtime.getProperties",
-      Some(cdp::GetPropertiesArgs {
-        object_id,
-        own_properties: Some(true),
-        accessor_properties_only: None,
-        generate_preview: None,
-        non_indexed_properties_only: Some(true),
-      }),
-    )
-    .await;
-
-  let Ok(get_properties_response) = get_properties_response_result else {
-    return Ok(None);
-  };
-
-  let get_properties_response: cdp::GetPropertiesResponse =
-    serde_json::from_value(get_properties_response).unwrap();
-
-  for prop in get_properties_response.result.into_iter() {
-    if let Some(value) = &prop.value {
-      data.insert(
-        prop.name.to_string(),
-        value
-          .value
-          .clone()
-          .unwrap_or_else(|| serde_json::Value::Null),
-      );
+    if !data.is_empty() {
+      return Ok(Some(data));
     }
-  }
-
-  if !data.is_empty() {
-    return Ok(Some(data));
+  } else {
+    eprintln!("Unexpected response from Jupyter.display: {:?}", json_str);
   }
 
   Ok(None)
