@@ -4045,6 +4045,24 @@ fn lsp_code_actions() {
   assert_eq!(
     res,
     json!([{
+      "title": "Add all missing 'async' modifiers",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 7 }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }],
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "fixId": "fixAwaitInSyncFunction"
+      }
+    }, {
       "title": "Add async modifier to containing function",
       "kind": "quickfix",
       "diagnostics": [{
@@ -4078,24 +4096,6 @@ fn lsp_code_actions() {
             "newText": "Promise<void>"
           }]
         }]
-      }
-    }, {
-      "title": "Add all missing 'async' modifiers",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 7 }
-        },
-        "severity": 1,
-        "code": 1308,
-        "source": "deno-ts",
-        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
-        "relatedInformation": []
-      }],
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "fixId": "fixAwaitInSyncFunction"
       }
     }])
   );
@@ -4186,6 +4186,98 @@ fn lsp_code_actions() {
     })
   );
   client.shutdown();
+}
+
+#[test]
+fn test_lsp_code_actions_ordering() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+          import "https://deno.land/x/a/mod.ts";
+          let a = "a";
+          console.log(a);
+          export function b(): void {
+            await Promise.resolve("b");
+          }
+        "#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 1, "character": 11 },
+        "end": { "line": 6, "character": 12 }
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+
+  // Simplify the serialization to `{ title, source }` for this test.
+  let mut actions: Vec<Value> = serde_json::from_value(res).unwrap();
+  for action in &mut actions {
+    let action = action.as_object_mut().unwrap();
+    let title = action.get("title").unwrap().as_str().unwrap().to_string();
+    let diagnostics = action.get("diagnostics").unwrap().as_array().unwrap();
+    let diagnostic = diagnostics.get(0).unwrap().as_object().unwrap();
+    let source = diagnostic.get("source").unwrap();
+    let source = source.as_str().unwrap().to_string();
+    action.clear();
+    action.insert("title".to_string(), serde_json::to_value(title).unwrap());
+    action.insert("source".to_string(), serde_json::to_value(source).unwrap());
+  }
+  let res = serde_json::to_value(actions).unwrap();
+
+  // Ensure ordering is "deno-ts" -> "deno" -> "deno-lint".
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add async modifier to containing function",
+        "source": "deno-ts",
+      },
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "source": "deno",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+    ])
+  );
 }
 
 #[test]
@@ -4451,7 +4543,7 @@ export class DuckConfig {
   assert_eq!(
     res,
     json!([{
-      "title": "Add import from \"./file02.ts\"",
+      "title": "Add all missing imports",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -4463,20 +4555,9 @@ export class DuckConfig {
         "source": "deno-ts",
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
-      "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file00.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
-            },
-            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
-          }]
-        }]
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
       }
     }, {
       "title": "Add import from \"./file01.ts\"",
@@ -4507,7 +4588,7 @@ export class DuckConfig {
         }]
       }
     }, {
-      "title": "Add all missing imports",
+      "title": "Add import from \"./file02.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -4519,9 +4600,20 @@ export class DuckConfig {
         "source": "deno-ts",
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file00.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+          }]
+        }]
       }
     }])
   );
@@ -8093,31 +8185,6 @@ fn lsp_code_actions_ignore_lint() {
   assert_eq!(
     res,
     json!([{
-      "title": "Disable prefer-const for this line",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 1, "character": 5 },
-          "end": { "line": 1, "character": 12 }
-        },
-        "severity": 1,
-        "code": "prefer-const",
-        "source": "deno-lint",
-        "message": "'message' is never reassigned\nUse 'const' instead",
-        "relatedInformation": []
-      }],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [{
-            "range": {
-              "start": { "line": 1, "character": 0 },
-              "end": { "line": 1, "character": 0 }
-            },
-            "newText": "// deno-lint-ignore prefer-const\n"
-          }]
-        }
-      }
-    }, {
       "title": "Disable prefer-const for the entire file",
       "kind": "quickfix",
       "diagnostics": [{
@@ -8139,6 +8206,31 @@ fn lsp_code_actions_ignore_lint() {
               "end": { "line": 0, "character": 0 }
             },
             "newText": "// deno-lint-ignore-file prefer-const\n"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
           }]
         }
       }
@@ -8220,31 +8312,6 @@ console.log(snake_case);
   assert_eq!(
     res,
     json!([{
-      "title": "Disable prefer-const for this line",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 3, "character": 5 },
-          "end": { "line": 3, "character": 15 }
-        },
-        "severity": 1,
-        "code": "prefer-const",
-        "source": "deno-lint",
-        "message": "'snake_case' is never reassigned\nUse 'const' instead",
-        "relatedInformation": []
-      }],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [{
-            "range": {
-              "start": { "line": 3, "character": 0 },
-              "end": { "line": 3, "character": 0 }
-            },
-            "newText": "// deno-lint-ignore prefer-const\n"
-          }]
-        }
-      }
-    }, {
       "title": "Disable prefer-const for the entire file",
       "kind": "quickfix",
       "diagnostics": [{
@@ -8266,6 +8333,31 @@ console.log(snake_case);
               "end": { "line": 1, "character": 34 }
             },
             "newText": " prefer-const"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 3, "character": 0 },
+              "end": { "line": 3, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
           }]
         }
       }
