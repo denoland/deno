@@ -358,7 +358,7 @@ impl JupyterServer {
           .new_message("error")
           .with_content(json!({
             "ename": err.to_string(),
-            "evalue": "",
+            "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
             "traceback": [],
           }))
           .send(&mut *self.iopub_socket.lock().await)
@@ -425,7 +425,7 @@ impl JupyterServer {
         .new_message("error")
         .with_content(json!({
           "ename": name,
-          "evalue": "",
+          "evalue": " ", // Fake value, otherwise old Jupyter frontends don't show the error
           "traceback": [],
         }))
         .send(&mut *self.iopub_socket.lock().await)
