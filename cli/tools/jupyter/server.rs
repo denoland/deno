@@ -506,7 +506,7 @@ async fn get_jupyter_display(
   } else {
     eprintln!(
       "Unexpected response from Jupyter.display: {:?}",
-      response.result.clone().value.unwrap_or_default()
+      response.result.clone().value
     );
   }
 
