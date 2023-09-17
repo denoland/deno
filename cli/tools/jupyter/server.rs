@@ -490,8 +490,6 @@ async fn get_jupyter_display(
     )
     .await?;
 
-  let json_str = response.result.clone().value.unwrap_or_default();
-
   if let Some(serde_json::Value::String(json_str)) = response.result.value {
     let data: HashMap<String, serde_json::Value> =
       serde_json::from_str(&json_str)?;
@@ -500,7 +498,10 @@ async fn get_jupyter_display(
       return Ok(Some(data));
     }
   } else {
-    eprintln!("Unexpected response from Jupyter.display: {:?}", json_str);
+    eprintln!(
+      "Unexpected response from Jupyter.display: {:?}",
+      response.result.clone().value.unwrap_or_default()
+    );
   }
 
   Ok(None)
