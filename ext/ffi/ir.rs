@@ -3,6 +3,7 @@
 use crate::symbol::NativeType;
 use crate::MAX_SAFE_INTEGER;
 use crate::MIN_SAFE_INTEGER;
+use deno_core::anyhow::Result;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::serde_v8;
@@ -72,7 +73,7 @@ impl NativeValue {
       NativeType::ISize => Arg::new(&self.isize_value),
       NativeType::F32 => Arg::new(&self.f32_value),
       NativeType::F64 => Arg::new(&self.f64_value),
-      NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
+      NativeType::Pointer | NativeType::Buffer | NativeType::Function | NativeType::String => {
         Arg::new(&self.pointer)
       }
       NativeType::Struct(_) => Arg::new(&*self.pointer),
@@ -189,6 +190,7 @@ impl NativeValue {
         let local_value: v8::Local<v8::Value> = v8::null(scope).into();
         local_value.into()
       }
+      NativeType::String => todo!(),
     }
   }
 }
@@ -382,6 +384,28 @@ pub fn ffi_parse_pointer_arg(
 }
 
 #[inline]
+pub fn ffi_parse_string_arg(
+  scope: &mut v8::HandleScope,
+  arg: v8::Local<v8::Value>,
+) -> Result<NativeValue, AnyError> {
+  // Order of checking:
+  // 1. String: Most common and only Latin-1 supported by Fast API, optimise this case.
+  // 2. Null: Uncommon / can be represented by a 0.
+  let pointer = if let Ok(value) = v8::Local::<v8::String>::try_from(arg) {
+    let mut buf = Vec::with_capacity(value.length());
+    value.write_utf8(scope, &mut buf, None, v8::WriteOptions::NO_NULL_TERMINATION);
+    buf.as_mut_ptr() as *mut c_void
+  } else if arg.is_null() {
+    ptr::null_mut()
+  } else {
+    return Err(type_error(
+      "Invalid FFI string type, expected null, or String",
+    ));
+  };
+  Ok(NativeValue { pointer })
+}
+
+#[inline]
 pub fn ffi_parse_buffer_arg(
   scope: &mut v8::HandleScope,
   arg: v8::Local<v8::Value>,
@@ -551,6 +575,9 @@ where
       }
       NativeType::Function => {
         ffi_args.push(ffi_parse_function_arg(scope, value)?);
+      }
+      NativeType::String => {
+        ffi_args.push(ffi_parse_string_arg(scope, value)?);
       }
       NativeType::Void => {
         unreachable!();

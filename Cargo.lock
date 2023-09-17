@@ -6755,3 +6755,19 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "deno_core"
+version = "0.208.0"
+
+[[patch.unused]]
+name = "deno_ops"
+version = "0.86.0"
+
+[[patch.unused]]
+name = "serde_v8"
+version = "0.119.0"
+
+[[patch.unused]]
+name = "v8"
+version = "0.75.1"

@@ -242,6 +242,7 @@ unsafe fn do_ffi_callback(
           v8::External::new(scope, result).into()
         }
       }
+      NativeType::String => todo!(),
       NativeType::Struct(_) => {
         let size = arg_types[index].as_ref().unwrap().size;
         let ptr = (*val) as *const u8;
@@ -292,6 +293,7 @@ unsafe fn do_ffi_callback(
       }
       NativeType::Pointer
       | NativeType::Buffer
+      | NativeType::String
       | NativeType::Function
       | NativeType::U64
       | NativeType::I64 => {
@@ -471,6 +473,7 @@ unsafe fn do_ffi_callback(
           as u64;
       }
     }
+    NativeType::String => todo!(),
     NativeType::Struct(_) => {
       let size;
       let pointer = if let Ok(value) =

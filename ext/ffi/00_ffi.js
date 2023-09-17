@@ -359,6 +359,7 @@ function getTypeSizeAndAlignment(type, cache = new SafeMap()) {
     case "f64":
     case "pointer":
     case "buffer":
+    case "string":
     case "function":
     case "usize":
     case "isize":

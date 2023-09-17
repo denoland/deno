@@ -24,6 +24,7 @@ pub enum NativeType {
   F64,
   Pointer,
   Buffer,
+  String,
   Function,
   Struct(Box<[NativeType]>),
 }
@@ -46,7 +47,7 @@ impl TryFrom<NativeType> for libffi::middle::Type {
       NativeType::ISize => libffi::middle::Type::isize(),
       NativeType::F32 => libffi::middle::Type::f32(),
       NativeType::F64 => libffi::middle::Type::f64(),
-      NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
+      NativeType::String | NativeType::Pointer | NativeType::Buffer | NativeType::Function => {
         libffi::middle::Type::pointer()
       }
       NativeType::Struct(fields) => {

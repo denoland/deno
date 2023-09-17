@@ -112,6 +112,9 @@ where
       NativeType::Pointer => {
         ffi_args.push(ffi_parse_pointer_arg(scope, value)?);
       }
+      NativeType::String => {
+        ffi_args.push(ffi_parse_string_arg(scope, value)?);
+      }
       NativeType::Function => {
         ffi_args.push(ffi_parse_function_arg(scope, value)?);
       }
@@ -172,7 +175,7 @@ where
       NativeType::F64 => NativeValue {
         f64_value: cif.call::<f64>(*fun_ptr, &call_args),
       },
-      NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
+      NativeType::Pointer | NativeType::Function | NativeType::Buffer | NativeType::String => {
         NativeValue {
           pointer: cif.call::<*mut c_void>(*fun_ptr, &call_args),
         }
@@ -265,6 +268,7 @@ fn ffi_call(
           cif.call::<*mut c_void>(fun_ptr, &call_args),
         ))
       }
+      NativeType::String => todo!(),
       NativeType::Struct(_) => {
         ffi_call_rtype_struct(cif, &fun_ptr, call_args, out_buffer.unwrap().0);
         FfiValue::Value(Value::Null)

@@ -95,6 +95,7 @@ impl From<&NativeType> for fast_api::Type {
       NativeType::USize => fast_api::Type::Uint64,
       NativeType::Pointer | NativeType::Function => fast_api::Type::Pointer,
       NativeType::Buffer => fast_api::Type::TypedArray(fast_api::CType::Uint8),
+      NativeType::String => fast_api::Type::SeqOneByteString,
       NativeType::Struct(_) => {
         fast_api::Type::TypedArray(fast_api::CType::Uint8)
       }
@@ -1503,7 +1504,7 @@ impl From<NativeType> for Param {
       NativeType::I16 => Int(I(W)),
       NativeType::I32 => Int(I(DW)),
       NativeType::I64 | NativeType::ISize => Int(I(QW)),
-      NativeType::Buffer => Int(Buffer),
+      NativeType::Buffer | NativeType::String => Int(Buffer),
       NativeType::Struct(_) => unimplemented!(),
     }
   }

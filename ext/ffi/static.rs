@@ -144,7 +144,7 @@ pub fn op_ffi_get_static<'scope>(
       let number: v8::Local<v8::Value> = v8::Number::new(scope, result).into();
       number.into()
     }
-    NativeType::Pointer | NativeType::Function | NativeType::Buffer => {
+    NativeType::Pointer | NativeType::Function | NativeType::Buffer | NativeType::String => {
       let external: v8::Local<v8::Value> =
         v8::External::new(scope, data_ptr).into();
       external.into()
