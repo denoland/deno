@@ -490,9 +490,9 @@ async fn get_jupyter_display(
     )
     .await?;
 
-  if let Some(exception_details) = &response.exception_details {
-    // TODO(rgbkrk): Return an error in userspace instead of Jupyter logs
-    eprintln!("Exception encountered: {}", exception_details.text);
+  if response.exception_details.is_some() {
+    // If the object doesn't have a Jupyter.display method or it throws an
+    // exception, we just ignore it and let the caller handle it.
     return Ok(None);
   }
 
