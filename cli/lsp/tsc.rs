@@ -2817,10 +2817,10 @@ impl CompletionEntry {
     let mut kind: Option<lsp::CompletionItemKind> =
       Some(self.kind.clone().into());
 
-    let sort_text = if self.source.is_some() {
-      Some(format!("\u{ffff}{}", self.sort_text))
+    let mut sort_text = if self.source.is_some() {
+      format!("\u{ffff}{}", self.sort_text)
     } else {
-      Some(self.sort_text.clone())
+      self.sort_text.clone()
     };
 
     let preselect = self.is_recommended;
@@ -2888,6 +2888,11 @@ impl CompletionEntry {
           }
         }
       }
+      if resolve_url(&source).is_err() {
+        sort_text += "_0";
+      } else {
+        sort_text += "_1";
+      }
       label_details
         .get_or_insert_with(Default::default)
         .description = Some(source);
@@ -2919,7 +2924,7 @@ impl CompletionEntry {
       label,
       label_details,
       kind,
-      sort_text,
+      sort_text: Some(sort_text),
       preselect,
       text_edit,
       filter_text,
