@@ -7,8 +7,7 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
-use deno_core::op;
-use deno_core::serde_v8;
+use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
@@ -129,19 +128,20 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   set
 });
 
-#[op]
+#[op2]
+#[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
 }
 
-#[op(fast)]
-fn op_is_any_arraybuffer(value: serde_v8::Value) -> bool {
-  value.v8_value.is_array_buffer() || value.v8_value.is_shared_array_buffer()
+#[op2(fast)]
+fn op_is_any_arraybuffer(value: &v8::Value) -> bool {
+  value.is_array_buffer() || value.is_shared_array_buffer()
 }
 
-#[op(fast)]
-fn op_node_is_promise_rejected(value: serde_v8::Value) -> bool {
-  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value.v8_value) else {
+#[op2(fast)]
+fn op_node_is_promise_rejected(value: v8::Local<v8::Value>) -> bool {
+  let Ok(promise) = v8::Local::<v8::Promise>::try_from(value) else {
     return false;
   };
 
@@ -155,6 +155,8 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_create_decipheriv,
     ops::crypto::op_node_cipheriv_encrypt,
     ops::crypto::op_node_cipheriv_final,
+    ops::crypto::op_node_cipheriv_set_aad,
+    ops::crypto::op_node_decipheriv_set_aad,
     ops::crypto::op_node_create_cipheriv,
     ops::crypto::op_node_create_hash,
     ops::crypto::op_node_get_hashes,
@@ -241,6 +243,19 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_request<P>,
+    ops::http2::op_http2_connect,
+    ops::http2::op_http2_poll_client_connection,
+    ops::http2::op_http2_client_request,
+    ops::http2::op_http2_client_get_response,
+    ops::http2::op_http2_client_get_response_body_chunk,
+    ops::http2::op_http2_client_send_data,
+    ops::http2::op_http2_client_end_stream,
+    ops::http2::op_http2_client_reset_stream,
+    ops::http2::op_http2_client_send_trailers,
+    ops::http2::op_http2_client_get_response_trailers,
+    ops::http2::op_http2_accept,
+    ops::http2::op_http2_listen,
+    ops::http2::op_http2_send_response,
     ops::os::op_node_os_get_priority<P>,
     ops::os::op_node_os_set_priority<P>,
     ops::os::op_node_os_username<P>,

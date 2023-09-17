@@ -760,7 +760,7 @@ fn lsp_deno_task() {
 }
 
 #[test]
-fn lsp_import_assertions() {
+fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
@@ -806,9 +806,9 @@ fn lsp_import_assertions() {
           "end": { "line": 0, "character": 27 }
         },
         "severity": 1,
-        "code": "no-assert-type",
+        "code": "no-attribute-type",
         "source": "deno",
-        "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+        "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
       }
     ])
   );
@@ -831,9 +831,9 @@ fn lsp_import_assertions() {
               "end": { "line": 0, "character": 27 }
             },
             "severity": 1,
-            "code": "no-assert-type",
+            "code": "no-attribute-type",
             "source": "deno",
-            "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+            "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
           }],
           "only": ["quickfix"]
         }
@@ -843,7 +843,7 @@ fn lsp_import_assertions() {
   assert_eq!(
     res,
     json!([{
-      "title": "Insert import assertion.",
+      "title": "Insert import attribute.",
       "kind": "quickfix",
       "diagnostics": [
         {
@@ -852,9 +852,9 @@ fn lsp_import_assertions() {
             "end": { "line": 0, "character": 27 }
           },
           "severity": 1,
-          "code": "no-assert-type",
+          "code": "no-attribute-type",
           "source": "deno",
-          "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+          "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
         }
       ],
       "edit": {
@@ -865,7 +865,7 @@ fn lsp_import_assertions() {
                 "start": { "line": 0, "character": 27 },
                 "end": { "line": 0, "character": 27 }
               },
-              "newText": " assert { type: \"json\" }"
+              "newText": " with { type: \"json\" }"
             }
           ]
         }
@@ -1298,13 +1298,14 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
-fn lsp_workspace_enable_paths() {
+fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
     temp_dir.create_dir_all("worker");
     temp_dir.write("worker/shared.ts", "export const a = 1");
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
+    temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
 
     let root_specifier = temp_dir.uri();
 
@@ -1312,6 +1313,7 @@ fn lsp_workspace_enable_paths() {
     client.initialize_with_config(
       |builder| {
         builder
+          .set_disable_paths(vec!["./worker/node.ts".to_string()])
           .set_enable_paths(vec!["./worker".to_string()])
           .set_root_uri(root_specifier.clone())
           .set_workspace_folders(vec![lsp::WorkspaceFolder {
@@ -1329,6 +1331,7 @@ fn lsp_workspace_enable_paths() {
       },
       json!([{
         "enable": false,
+        "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
       }]),
     );
@@ -1391,6 +1394,17 @@ fn lsp_workspace_enable_paths() {
           "uri": root_specifier.join("./other/file.ts").unwrap(),
         },
         "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/node.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 0 }
       }),
     );
     assert_eq!(res, json!(null));
@@ -4349,7 +4363,7 @@ fn lsp_code_actions_deno_cache() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["https://deno.land/x/a/mod.ts"]]
+        "arguments": [["https://deno.land/x/a/mod.ts"], "file:///a/file.ts"]
       }
     }])
   );
@@ -4434,7 +4448,7 @@ fn lsp_code_actions_deno_cache_npm() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["npm:chalk"]]
+        "arguments": [["npm:chalk"], "file:///a/file.ts"]
       }
     }])
   );
@@ -5290,6 +5304,9 @@ fn lsp_completions_auto_import() {
 
   let req = json!({
     "label": "foo",
+    "labelDetails": {
+      "description": "./b.ts",
+    },
     "kind": 6,
     "sortText": "￿16",
     "commitCharacters": [
@@ -5321,6 +5338,9 @@ fn lsp_completions_auto_import() {
     res,
     json!({
       "label": "foo",
+      "labelDetails": {
+        "description": "./b.ts",
+      },
       "kind": 6,
       "detail": "const foo: \"foo\"",
       "documentation": {
@@ -5401,6 +5421,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "npm:@denotest/types-exports-subpaths@1/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5513,6 +5536,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "npm:chalk@5.0",
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5588,6 +5614,45 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         }]
       }
     }])
+  );
+}
+
+#[test]
+fn lsp_semantic_tokens_for_disabled_module() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_with_config(
+    |builder| {
+      builder.set_deno_enable(false);
+    },
+    json!({
+      "enable": false
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const someConst = 1; someConst"
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "data": [0, 6, 9, 7, 9, 0, 15, 9, 7, 8],
+    })
   );
 }
 
@@ -5674,6 +5739,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "types-exports-subpaths/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5786,6 +5854,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "chalk",
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5893,6 +5964,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "printHello",
+      "labelDetails": {
+        "description": "print_hello",
+      },
       "kind": 3,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -8052,11 +8126,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 331,
+            "line": 346,
             "character": 0,
           },
           "end": {
-            "line": 371,
+            "line": 388,
             "character": 1,
           },
         },

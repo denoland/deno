@@ -1,4 +1,3 @@
-[WILDCARD]
 error: Uncaught AggregateError
     Error: bar <ref *1>
         at file:///[WILDCARD]/error_cause_recursive_aggregate.ts:2:13

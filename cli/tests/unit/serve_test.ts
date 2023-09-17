@@ -1,6 +1,9 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
-import { assertMatch } from "../../../test_util/std/testing/asserts.ts";
+import {
+  assertMatch,
+  assertRejects,
+} from "../../../test_util/std/testing/asserts.ts";
 import { Buffer, BufReader, BufWriter } from "../../../test_util/std/io/mod.ts";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -41,26 +44,256 @@ function onListen<T>(
   };
 }
 
-Deno.test(async function httpServerShutsDownPortBeforeResolving() {
+async function makeServer(
+  handler: (req: Request) => Response | Promise<Response>,
+): Promise<
+  { finished: Promise<void>; abort: () => void; shutdown: () => Promise<void> }
+> {
   const ac = new AbortController();
   const listeningPromise = deferred();
 
   const server = Deno.serve({
-    handler: (_req) => new Response("ok"),
+    handler,
     port: servePort,
     signal: ac.signal,
     onListen: onListen(listeningPromise),
   });
 
   await listeningPromise;
-  assertThrows(() => Deno.listen({ port: servePort }));
+  return {
+    finished: server.finished,
+    abort() {
+      ac.abort();
+    },
+    async shutdown() {
+      await server.shutdown();
+    },
+  };
+}
 
-  ac.abort();
-  await server.finished;
+Deno.test(async function httpServerShutsDownPortBeforeResolving() {
+  const { finished, abort } = await makeServer((_req) => new Response("ok"));
+  assertThrows(() => Deno.listen({ port: servePort }));
+  abort();
+  await finished;
 
   const listener = Deno.listen({ port: servePort });
   listener!.close();
 });
+
+// When shutting down abruptly, we require that all in-progress connections are aborted,
+// no new connections are allowed, and no new transactions are allowed on existing connections.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerShutdownAbruptGuaranteeHttp11() {
+    const promiseQueue: { input: Deferred<string>; out: Deferred<void> }[] = [];
+    const { finished, abort } = await makeServer((_req) => {
+      const { input, out } = promiseQueue.shift()!;
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            controller.enqueue(new Uint8Array([46]));
+            out.resolve(undefined);
+            controller.enqueue(encoder.encode(await input));
+            controller.close();
+          },
+        }),
+      );
+    });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const conn = await Deno.connect({ port: servePort });
+    const w = conn.writable.getWriter();
+    const r = conn.readable.getReader();
+
+    const deferred1 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred1);
+    const deferred2 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred2);
+    const deferred3 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred3);
+    deferred1.input.resolve("#");
+    deferred2.input.resolve("$");
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+
+    // Fully read two responses
+    let text = "";
+    while (!text.includes("$\r\n")) {
+      text += decoder.decode((await r.read()).value);
+    }
+
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+    await deferred3.out;
+
+    // This is half served, so wait for the chunk that has the first '.'
+    text = "";
+    while (!text.includes("1\r\n.\r\n")) {
+      text += decoder.decode((await r.read()).value);
+    }
+
+    abort();
+
+    // This doesn't actually write anything, but we release it after aborting
+    deferred3.input.resolve("!");
+
+    // Guarantee: can't connect to an aborted server (though this may not happen immediately)
+    let failed = false;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const conn = await Deno.connect({ port: servePort });
+        conn.close();
+        // Give the runtime a few ticks to settle (required for Windows)
+        await new Promise((r) => setTimeout(r, 2 ** i));
+        continue;
+      } catch (_) {
+        failed = true;
+        break;
+      }
+    }
+    assert(failed, "The Deno.serve listener was not disabled promptly");
+
+    // Guarantee: the pipeline is closed abruptly
+    assert((await r.read()).done);
+
+    try {
+      conn.close();
+    } catch (_) {
+      // Ignore
+    }
+    await finished;
+  },
+);
+
+// When shutting down abruptly, we require that all in-progress connections are aborted,
+// no new connections are allowed, and no new transactions are allowed on existing connections.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerShutdownGracefulGuaranteeHttp11() {
+    const promiseQueue: { input: Deferred<string>; out: Deferred<void> }[] = [];
+    const { finished, shutdown } = await makeServer((_req) => {
+      const { input, out } = promiseQueue.shift()!;
+      return new Response(
+        new ReadableStream({
+          async start(controller) {
+            controller.enqueue(new Uint8Array([46]));
+            out.resolve(undefined);
+            controller.enqueue(encoder.encode(await input));
+            controller.close();
+          },
+        }),
+      );
+    });
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const conn = await Deno.connect({ port: servePort });
+    const w = conn.writable.getWriter();
+    const r = conn.readable.getReader();
+
+    const deferred1 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred1);
+    const deferred2 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred2);
+    const deferred3 = { input: deferred<string>(), out: deferred<void>() };
+    promiseQueue.push(deferred3);
+    deferred1.input.resolve("#");
+    deferred2.input.resolve("$");
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+
+    // Fully read two responses
+    let text = "";
+    while (!text.includes("$\r\n")) {
+      text += decoder.decode((await r.read()).value);
+    }
+
+    await w.write(encoder.encode(`GET / HTTP/1.1\nConnection: keep-alive\n\n`));
+    await deferred3.out;
+
+    // This is half served, so wait for the chunk that has the first '.'
+    text = "";
+    while (!text.includes("1\r\n.\r\n")) {
+      text += decoder.decode((await r.read()).value);
+    }
+
+    const shutdownPromise = shutdown();
+
+    // Release the final response _after_ we shut down
+    deferred3.input.resolve("!");
+
+    // Guarantee: can't connect to an aborted server (though this may not happen immediately)
+    let failed = false;
+    for (let i = 0; i < 10; i++) {
+      try {
+        const conn = await Deno.connect({ port: servePort });
+        conn.close();
+        // Give the runtime a few ticks to settle (required for Windows)
+        await new Promise((r) => setTimeout(r, 2 ** i));
+        continue;
+      } catch (_) {
+        failed = true;
+        break;
+      }
+    }
+    assert(failed, "The Deno.serve listener was not disabled promptly");
+
+    // Guarantee: existing connections fully drain
+    while (!text.includes("!\r\n")) {
+      text += decoder.decode((await r.read()).value);
+    }
+
+    await shutdownPromise;
+
+    try {
+      conn.close();
+    } catch (_) {
+      // Ignore
+    }
+    await finished;
+  },
+);
+
+// Ensure that resources don't leak during a graceful shutdown
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerShutdownGracefulResources() {
+    const waitForRequest = deferred();
+    const { finished, shutdown } = await makeServer(async (_req) => {
+      waitForRequest.resolve(null);
+      await new Promise((r) => setTimeout(r, 10));
+      return new Response((await makeTempFile(1024 * 1024)).readable);
+    });
+
+    const f = fetch(`http://localhost:${servePort}`);
+    await waitForRequest;
+    assertEquals((await (await f).text()).length, 1048576);
+    await shutdown();
+    await finished;
+  },
+);
+
+// Ensure that resources don't leak during a graceful shutdown
+Deno.test(
+  { permissions: { net: true, write: true, read: true } },
+  async function httpServerShutdownGracefulResources2() {
+    const waitForAbort = deferred();
+    const waitForRequest = deferred();
+    const { finished, shutdown } = await makeServer(async (_req) => {
+      waitForRequest.resolve(null);
+      await waitForAbort;
+      await new Promise((r) => setTimeout(r, 10));
+      return new Response((await makeTempFile(1024 * 1024)).readable);
+    });
+
+    const f = fetch(`http://localhost:${servePort}`);
+    await waitForRequest;
+    const s = shutdown();
+    waitForAbort.resolve(null);
+    assertEquals((await (await f).text()).length, 1048576);
+    await s;
+    await finished;
+  },
+);
 
 Deno.test(
   { permissions: { read: true, run: true } },
@@ -649,6 +882,43 @@ Deno.test(
   },
 );
 
+Deno.test(
+  { permissions: { net: true } },
+  async function httpServerAbortedRequestBody() {
+    const promise = deferred();
+    const ac = new AbortController();
+    const listeningPromise = deferred();
+
+    const server = Deno.serve({
+      handler: async (request) => {
+        await assertRejects(async () => {
+          await request.text();
+        });
+        promise.resolve();
+        // Not actually used
+        return new Response();
+      },
+      port: servePort,
+      signal: ac.signal,
+      onListen: onListen(listeningPromise),
+      onError: createOnErrorCb(ac),
+    });
+
+    await listeningPromise;
+    const conn = await Deno.connect({ port: servePort });
+    // Send POST request with a body + content-length, but don't send it all
+    const encoder = new TextEncoder();
+    const body =
+      `POST / HTTP/1.1\r\nHost: 127.0.0.1:${servePort}\r\nContent-Length: 10\r\n\r\n12345`;
+    const writeResult = await conn.write(encoder.encode(body));
+    assertEquals(body.length, writeResult);
+    conn.close();
+    await promise;
+    ac.abort();
+    await server.finished;
+  },
+);
+
 function createStreamTest(count: number, delay: number, action: string) {
   function doAction(controller: ReadableStreamDefaultController, i: number) {
     if (i == count) {
@@ -695,14 +965,12 @@ function createStreamTest(count: number, delay: number, action: string) {
 
     try {
       await listeningPromise;
-      const resp = await fetch(`http://127.0.0.1:${servePort}/`);
+      const client = Deno.createHttpClient({});
+      const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
       if (action == "Throw") {
-        try {
+        await assertRejects(async () => {
           await resp.text();
-          fail();
-        } catch (_) {
-          // expected
-        }
+        });
       } else {
         const text = await resp.text();
 
@@ -713,9 +981,10 @@ function createStreamTest(count: number, delay: number, action: string) {
 
         assertEquals(text, expected);
       }
+      client.close();
     } finally {
       ac.abort();
-      await server.finished;
+      await server.shutdown();
     }
   });
 }
@@ -829,12 +1098,14 @@ Deno.test(
     });
 
     await listeningPromise;
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
+    const client = Deno.createHttpClient({});
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
     const respBody = await resp.text();
 
     assertEquals("", respBody);
     ac.abort();
     await server.finished;
+    client.close();
   },
 );
 
@@ -871,12 +1142,14 @@ Deno.test(
     });
 
     await listeningPromise;
-    const resp = await fetch(`http://127.0.0.1:${servePort}/`);
+    const client = Deno.createHttpClient({});
+    const resp = await fetch(`http://127.0.0.1:${servePort}/`, { client });
     // Incorrectly implemented reader ReadableStream should reject.
     assertStringIncludes(await resp.text(), "Failed to execute 'enqueue'");
     await errorPromise;
     ac.abort();
     await server.finished;
+    client.close();
   },
 );
 
@@ -920,6 +1193,7 @@ Deno.test(
 Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   const ac = new AbortController();
   const listeningPromise = deferred();
+  const done = deferred();
   const server = Deno.serve({
     handler: (request) => {
       const {
@@ -934,6 +1208,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
         socket.send(m.data);
         socket.close(1001);
       };
+      socket.onclose = () => done.resolve();
       return response;
     },
     port: servePort,
@@ -954,6 +1229,7 @@ Deno.test({ permissions: { net: true } }, async function httpServerWebSocket() {
   ws.onopen = () => ws.send("foo");
 
   await def;
+  await done;
   ac.abort();
   await server.finished;
 });
@@ -1041,6 +1317,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketUpgradeTwice() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1063,6 +1340,7 @@ Deno.test(
           socket.send(m.data);
           socket.close(1001);
         };
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1083,6 +1361,7 @@ Deno.test(
     ws.onopen = () => ws.send("foo");
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -1092,6 +1371,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCloseFast() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1100,6 +1380,7 @@ Deno.test(
           socket,
         } = Deno.upgradeWebSocket(request);
         socket.onopen = () => socket.close();
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1118,6 +1399,7 @@ Deno.test(
     ws.onclose = () => def.resolve();
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -1127,6 +1409,7 @@ Deno.test(
   { permissions: { net: true } },
   async function httpServerWebSocketCanAccessRequest() {
     const ac = new AbortController();
+    const done = deferred();
     const listeningPromise = deferred();
     const server = Deno.serve({
       handler: (request) => {
@@ -1142,6 +1425,7 @@ Deno.test(
           socket.send(request.url.toString());
           socket.close(1001);
         };
+        socket.onclose = () => done.resolve();
         return response;
       },
       port: servePort,
@@ -1163,6 +1447,7 @@ Deno.test(
     ws.onopen = () => ws.send("foo");
 
     await def;
+    await done;
     ac.abort();
     await server.finished;
   },
@@ -1321,9 +1606,11 @@ Deno.test(
     );
 
     const { readable, writable } = new TransformStream();
+    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
       body: readable,
+      client,
     });
 
     await promise;
@@ -1331,6 +1618,7 @@ Deno.test(
     await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
+    client.close();
   },
 );
 
@@ -1365,9 +1653,11 @@ Deno.test(
     );
 
     const { readable, writable } = new TransformStream();
+    const client = Deno.createHttpClient({});
     const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
       method: "POST",
       body: readable,
+      client,
     });
 
     await promise;
@@ -1375,6 +1665,7 @@ Deno.test(
     await testDuplex(resp.body.getReader(), writable.getWriter());
     ac.abort();
     await server.finished;
+    client.close();
   },
 );
 
@@ -2333,9 +2624,12 @@ for (const testCase of compressionTestCases) {
         });
         try {
           await listeningPromise;
+          const client = Deno.createHttpClient({});
           const resp = await fetch(`http://127.0.0.1:${servePort}/`, {
             headers: testCase.in as HeadersInit,
+            client,
           });
+          client.close();
           await promise;
           const body = await resp.arrayBuffer();
           if (testCase.expect == null) {
@@ -2459,7 +2753,9 @@ for (const url of ["text", "file", "stream"]) {
       // Give it a few milliseconds for the serve machinery to work
       await new Promise((r) => setTimeout(r, 10));
 
-      ac.abort();
+      // Since the handler has a chance of creating resources or running async ops, we need to use a
+      // graceful shutdown here to ensure they have fully drained.
+      await server.shutdown();
       await server.finished;
     },
   });
@@ -2923,14 +3219,16 @@ Deno.test(
     let count = 0;
     const server = Deno.serve({
       async onListen({ port }: { port: number }) {
-        const res1 = await fetch(`http://localhost:${port}/`);
+        const client = Deno.createHttpClient({});
+        const res1 = await fetch(`http://localhost:${port}/`, { client });
         assertEquals(await res1.text(), "hello world 1");
 
-        const res2 = await fetch(`http://localhost:${port}/`);
+        const res2 = await fetch(`http://localhost:${port}/`, { client });
         assertEquals(await res2.text(), "hello world 2");
 
         promise.resolve();
         ac.abort();
+        client.close();
       },
       signal: ac.signal,
     }, () => {
@@ -2983,13 +3281,16 @@ Deno.test(
 
     try {
       const port = await listeningPromise;
+      const client = Deno.createHttpClient({});
       const resp = await fetch(`http://localhost:${port}/`, {
         headers: { connection: "close" },
         method: "POST",
         body: '{"sus":true}',
+        client,
       });
       const text = await resp.text();
       assertEquals(text, "ok");
+      client.close();
     } finally {
       ac.abort();
       await server.finished;

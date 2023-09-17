@@ -5,7 +5,6 @@ use deno_core::error::invalid_hostname;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
-use deno_core::op2;
 use deno_core::url;
 use deno_core::AsyncMutFuture;
 use deno_core::AsyncRefCell;
@@ -289,7 +288,9 @@ where
   };
 
   if let Some(cancel_rid) = cancel_handle {
-    state.borrow_mut().resource_table.close(cancel_rid).ok();
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
   }
 
   let mut state = state.borrow_mut();
@@ -529,12 +530,12 @@ pub async fn op_ws_send_ping(
     .await
 }
 
-#[op2(async(lazy))]
+#[op(deferred)]
 pub async fn op_ws_close(
   state: Rc<RefCell<OpState>>,
-  #[smi] rid: ResourceId,
+  rid: ResourceId,
   code: Option<u16>,
-  #[string] reason: Option<String>,
+  reason: Option<String>,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
