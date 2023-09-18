@@ -6,6 +6,7 @@ use deno_core::error::bad_resource;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
@@ -72,10 +73,11 @@ pub struct UnixListenArgs {
   pub path: String,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_accept_unix(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, Option<String>, Option<String>), AnyError> {
   let resource = state
     .borrow()
@@ -103,10 +105,11 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -134,11 +137,12 @@ where
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] mut buf: JsBuffer,
 ) -> Result<(usize, Option<String>), AnyError> {
   let resource = state
     .borrow()
@@ -185,10 +189,11 @@ where
   Ok(nwritten)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -231,10 +236,11 @@ where
   Ok((rid, pathname))
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -243,10 +249,11 @@ where
   net_listen_unixpacket::<NP>(state, path)
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,
-  path: String,
+  #[string] path: String,
 ) -> Result<(ResourceId, Option<String>), AnyError>
 where
   NP: NetPermissions + 'static,

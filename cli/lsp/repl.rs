@@ -285,6 +285,7 @@ fn get_cwd_uri() -> Result<ModuleSpecifier, AnyError> {
 pub fn get_repl_workspace_settings() -> WorkspaceSettings {
   WorkspaceSettings {
     enable: Some(true),
+    disable_paths: vec![],
     enable_paths: None,
     config: None,
     certificate_stores: None,

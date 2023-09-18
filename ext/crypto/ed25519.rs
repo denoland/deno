@@ -1,7 +1,7 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::ToJsBuffer;
 use elliptic_curve::pkcs8::PrivateKeyInfo;
 use rand::rngs::OsRng;
@@ -11,10 +11,10 @@ use ring::signature::KeyPair;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_crypto_generate_ed25519_keypair(
-  pkey: &mut [u8],
-  pubkey: &mut [u8],
+  #[buffer] pkey: &mut [u8],
+  #[buffer] pubkey: &mut [u8],
 ) -> bool {
   let mut rng = OsRng;
   rng.fill_bytes(pkey);
@@ -27,11 +27,11 @@ pub fn op_crypto_generate_ed25519_keypair(
   true
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_crypto_sign_ed25519(
-  key: &[u8],
-  data: &[u8],
-  signature: &mut [u8],
+  #[buffer] key: &[u8],
+  #[buffer] data: &[u8],
+  #[buffer] signature: &mut [u8],
 ) -> bool {
   let pair = match Ed25519KeyPair::from_seed_unchecked(key) {
     Ok(p) => p,
@@ -41,11 +41,11 @@ pub fn op_crypto_sign_ed25519(
   true
 }
 
-#[op(fast)]
+#[op2(fast)]
 pub fn op_crypto_verify_ed25519(
-  pubkey: &[u8],
-  data: &[u8],
-  signature: &[u8],
+  #[buffer] pubkey: &[u8],
+  #[buffer] data: &[u8],
+  #[buffer] signature: &[u8],
 ) -> bool {
   ring::signature::UnparsedPublicKey::new(&ring::signature::ED25519, pubkey)
     .verify(data, signature)
@@ -56,8 +56,11 @@ pub fn op_crypto_verify_ed25519(
 pub const ED25519_OID: const_oid::ObjectIdentifier =
   const_oid::ObjectIdentifier::new_unwrap("1.3.101.112");
 
-#[op(fast)]
-pub fn op_crypto_import_spki_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
+#[op2(fast)]
+pub fn op_crypto_import_spki_ed25519(
+  #[buffer] key_data: &[u8],
+  #[buffer] out: &mut [u8],
+) -> bool {
   // 2-3.
   let pk_info = match spki::SubjectPublicKeyInfo::from_der(key_data) {
     Ok(pk_info) => pk_info,
@@ -76,8 +79,11 @@ pub fn op_crypto_import_spki_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
   true
 }
 
-#[op(fast)]
-pub fn op_crypto_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
+#[op2(fast)]
+pub fn op_crypto_import_pkcs8_ed25519(
+  #[buffer] key_data: &[u8],
+  #[buffer] out: &mut [u8],
+) -> bool {
   // 2-3.
   // This should probably use OneAsymmetricKey instead
   let pk_info = match PrivateKeyInfo::from_der(key_data) {
@@ -102,9 +108,10 @@ pub fn op_crypto_import_pkcs8_ed25519(key_data: &[u8], out: &mut [u8]) -> bool {
   true
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_spki_ed25519(
-  pubkey: &[u8],
+  #[buffer] pubkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   let key_info = spki::SubjectPublicKeyInfo {
     algorithm: spki::AlgorithmIdentifier {
@@ -117,9 +124,10 @@ pub fn op_crypto_export_spki_ed25519(
   Ok(key_info.to_vec()?.into())
 }
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_crypto_export_pkcs8_ed25519(
-  pkey: &[u8],
+  #[buffer] pkey: &[u8],
 ) -> Result<ToJsBuffer, AnyError> {
   // This should probably use OneAsymmetricKey instead
   let pk_info = rsa::pkcs8::PrivateKeyInfo {
@@ -137,8 +145,11 @@ pub fn op_crypto_export_pkcs8_ed25519(
 
 // 'x' from Section 2 of RFC 8037
 // https://www.rfc-editor.org/rfc/rfc8037#section-2
-#[op]
-pub fn op_crypto_jwk_x_ed25519(pkey: &[u8]) -> Result<String, AnyError> {
+#[op2]
+#[string]
+pub fn op_crypto_jwk_x_ed25519(
+  #[buffer] pkey: &[u8],
+) -> Result<String, AnyError> {
   let pair = Ed25519KeyPair::from_seed_unchecked(pkey)?;
   Ok(base64::encode_config(
     pair.public_key().as_ref(),

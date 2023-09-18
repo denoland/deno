@@ -388,6 +388,12 @@ impl InitializeParamsBuilder {
     self
   }
 
+  pub fn set_disable_paths(&mut self, value: Vec<String>) -> &mut Self {
+    let options = self.initialization_options_mut();
+    options.insert("disablePaths".to_string(), value.into());
+    self
+  }
+
   pub fn set_enable_paths(&mut self, value: Vec<String>) -> &mut Self {
     let options = self.initialization_options_mut();
     options.insert("enablePaths".to_string(), value.into());

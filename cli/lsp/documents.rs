@@ -804,6 +804,7 @@ impl FileSystemDocuments {
 
 pub struct UpdateDocumentConfigOptions<'a> {
   pub enabled_urls: Vec<Url>,
+  pub disabled_urls: Vec<Url>,
   pub document_preload_limit: usize,
   pub maybe_import_map: Option<Arc<import_map::ImportMap>>,
   pub maybe_config_file: Option<&'a ConfigFile>,
@@ -1283,14 +1284,10 @@ impl Documents {
           .filter_map(|url| specifier_to_file_path(url).ok())
           .collect(),
         options
-          .maybe_config_file
-          .and_then(|cf| {
-            cf.to_files_config()
-              .ok()
-              .flatten()
-              .map(|files| files.exclude)
-          })
-          .unwrap_or_default(),
+          .disabled_urls
+          .iter()
+          .filter_map(|url| specifier_to_file_path(url).ok())
+          .collect(),
         options.document_preload_limit,
       );
       self.resolver_config_hash = new_resolver_config_hash;
@@ -2032,6 +2029,7 @@ console.log(b, "hello deno");
 
       documents.update_config(UpdateDocumentConfigOptions {
         enabled_urls: vec![],
+        disabled_urls: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,
@@ -2073,6 +2071,7 @@ console.log(b, "hello deno");
 
       documents.update_config(UpdateDocumentConfigOptions {
         enabled_urls: vec![],
+        disabled_urls: vec![],
         document_preload_limit: 1_000,
         maybe_import_map: Some(Arc::new(import_map)),
         maybe_config_file: None,

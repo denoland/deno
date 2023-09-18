@@ -1,0 +1,4 @@
+Download http://localhost:4545/jsr/registry/@denotest/deps/meta.json
+error: Could not find constraint in the list of versions: @denotest/deps@0.1.4
+  Specifier: jsr:@denotest/deps@0.1.4/mod.ts
+    at file:///[WILDCARD]/version_not_found/main.ts:1:19

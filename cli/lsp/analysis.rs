@@ -848,8 +848,26 @@ impl CodeActionCollection {
 
   /// Move out the code actions and return them as a `CodeActionResponse`.
   pub fn get_response(self) -> lsp::CodeActionResponse {
-    self
-      .actions
+    let mut actions = self.actions;
+
+    // Prefer TSC fixes first, then Deno fixes, then Deno lint fixes.
+    actions.sort_by(|a, b| match (a, b) {
+      (CodeActionKind::Deno(a), CodeActionKind::Deno(b)) => {
+        a.title.cmp(&b.title)
+      }
+      (CodeActionKind::DenoLint(a), CodeActionKind::DenoLint(b)) => {
+        a.title.cmp(&b.title)
+      }
+      (CodeActionKind::Tsc(a, _), CodeActionKind::Tsc(b, _)) => {
+        a.title.cmp(&b.title)
+      }
+      (CodeActionKind::Tsc(_, _), _) => Ordering::Less,
+      (CodeActionKind::Deno(_), CodeActionKind::Tsc(_, _)) => Ordering::Greater,
+      (CodeActionKind::Deno(_), CodeActionKind::DenoLint(_)) => Ordering::Less,
+      (CodeActionKind::DenoLint(_), _) => Ordering::Greater,
+    });
+
+    actions
       .into_iter()
       .map(|i| match i {
         CodeActionKind::Tsc(c, _) => lsp::CodeActionOrCommand::CodeAction(c),

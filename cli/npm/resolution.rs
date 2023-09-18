@@ -7,7 +7,6 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
@@ -32,6 +31,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
+use crate::util::sync::TaskQueue;
 
 use super::registry::CliNpmRegistryApi;
 

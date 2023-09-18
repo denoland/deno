@@ -284,6 +284,9 @@ async function mainFetch(req, recursive, terminator) {
         cause: requestSendError,
       });
     }
+    if (requestBodyRid !== null) {
+      core.tryClose(requestBodyRid);
+    }
     throw err;
   } finally {
     if (cancelHandleRid !== null) {

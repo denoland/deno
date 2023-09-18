@@ -128,3 +128,44 @@ fn init_subcommand_with_quiet_arg() {
   assert_contains!(output.stdout(), "1 passed");
   output.skip_output_check();
 }
+
+#[test]
+fn init_subcommand_with_existing_file() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let cwd = context.temp_dir().path();
+
+  cwd
+    .join("main.ts")
+    .write("console.log('Log from main.ts that already exists');");
+
+  let output = context.new_command().args("init").split_output().run();
+
+  output.assert_exit_code(0);
+  output.assert_stderr_matches_text(
+    "ℹ️ Skipped creating main.ts as it already exists
+✅ Project initialized
+
+Run these commands to get started
+
+  # Run the program
+  deno run main.ts
+
+  # Run the program and watch for file changes
+  deno task dev
+
+  # Run the tests
+  deno test
+",
+  );
+
+  assert!(cwd.join("deno.json").exists());
+
+  let output = context
+    .new_command()
+    .env("NO_COLOR", "1")
+    .args("run main.ts")
+    .run();
+
+  output.assert_exit_code(0);
+  output.assert_matches_text("Log from main.ts that already exists\n");
+}

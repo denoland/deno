@@ -1354,6 +1354,7 @@ impl Inner {
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(UpdateDocumentConfigOptions {
       enabled_urls: self.config.enabled_urls(),
+      disabled_urls: self.config.disabled_urls(),
       document_preload_limit: self
         .config
         .workspace_settings()
@@ -2439,6 +2440,7 @@ impl Inner {
           &self.config.workspace_settings().suggest,
           &specifier,
           position,
+          self,
         );
         Some(results)
       } else {
