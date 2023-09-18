@@ -2,7 +2,6 @@
 
 use test_util as util;
 use util::env_vars_for_npm_tests;
-use util::env_vars_for_npm_tests_no_sync_download;
 use util::TestContext;
 use util::TestContextBuilder;
 
@@ -61,7 +60,7 @@ itest!(bundle_jsximportsource_importmap_config {
 itest!(jsx_not_checked {
   args: "check check/jsx_not_checked/main.jsx",
   output: "check/jsx_not_checked/main.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
 });
@@ -272,7 +271,7 @@ itest!(package_json_basic {
 itest!(package_json_fail_check {
   args: "check --quiet fail_check.ts",
   output: "package_json/basic/fail_check.check.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   cwd: Some("package_json/basic"),
   copy_temp_dir: Some("package_json/basic"),
@@ -284,7 +283,7 @@ itest!(package_json_with_deno_json {
   output: "package_json/deno_json/main.check.out",
   cwd: Some("package_json/deno_json/"),
   copy_temp_dir: Some("package_json/deno_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
 });
@@ -370,9 +369,9 @@ fn npm_module_check_then_error() {
     lockfile.read_json::<deno_lockfile::LockfileContent>();
 
   // make the specifier resolve to version 1
-  lockfile_content.npm.specifiers.insert(
-    "@denotest/breaking-change-between-versions".to_string(),
-    "@denotest/breaking-change-between-versions@1.0.0".to_string(),
+  lockfile_content.packages.specifiers.insert(
+    "npm:@denotest/breaking-change-between-versions".to_string(),
+    "npm:@denotest/breaking-change-between-versions@1.0.0".to_string(),
   );
   lockfile.write_json(&lockfile_content);
   temp_dir.write(
@@ -385,9 +384,9 @@ fn npm_module_check_then_error() {
 
   // now update the lockfile to use version 2 instead, which should cause a
   // type checking error because the oldName no longer exists
-  lockfile_content.npm.specifiers.insert(
-    "@denotest/breaking-change-between-versions".to_string(),
-    "@denotest/breaking-change-between-versions@2.0.0".to_string(),
+  lockfile_content.packages.specifiers.insert(
+    "npm:@denotest/breaking-change-between-versions".to_string(),
+    "npm:@denotest/breaking-change-between-versions@2.0.0".to_string(),
   );
   lockfile.write_json(&lockfile_content);
 

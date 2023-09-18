@@ -693,7 +693,7 @@ Buffer.prototype.base64urlWrite = function base64urlWrite(
 
 Buffer.prototype.hexWrite = function hexWrite(string, offset, length) {
   return blitBuffer(
-    hexToBytes(string, this.length - offset),
+    hexToBytes(string),
     this,
     offset,
     length,
@@ -751,6 +751,9 @@ Buffer.prototype.utf8Write = function utf8Write(string, offset, length) {
 };
 
 Buffer.prototype.write = function write(string, offset, length, encoding) {
+  if (typeof string !== "string") {
+    throw new codes.ERR_INVALID_ARG_TYPE("argument", "string");
+  }
   // Buffer#write(string);
   if (offset === undefined) {
     return this.utf8Write(string, 0, this.length);
@@ -1756,16 +1759,26 @@ function utf8ToBytes(string, units) {
   return bytes;
 }
 
-function blitBuffer(src, dst, offset, byteLength) {
-  let i;
-  const length = byteLength === undefined ? src.length : byteLength;
-  for (i = 0; i < length; ++i) {
-    if (i + offset >= dst.length || i >= src.length) {
-      break;
-    }
-    dst[i + offset] = src[i];
+function blitBuffer(src, dst, offset, byteLength = Infinity) {
+  // Establish the number of bytes to be written
+  const bytesToWrite = Math.min(
+    // If byte length is defined in the call, then it sets an upper bound,
+    // otherwise it is Infinity and is never chosen.
+    byteLength,
+    // The length of the source sets an upper bound being the source of data.
+    src.length,
+    // The length of the destination minus any offset into it sets an upper bound.
+    dst.length - offset,
+  );
+  if (bytesToWrite < src.length) {
+    // Resize the source buffer to the number of bytes we're about to write.
+    // This both makes sure that we're actually only writing what we're told to
+    // write but also prevents `Uint8Array#set` from throwing an error if the
+    // source is longer than the target.
+    src = src.subarray(0, length);
   }
-  return i;
+  dst.set(src, offset);
+  return bytesToWrite;
 }
 
 function isInstance(obj, type) {

@@ -13,6 +13,8 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliGraphResolver;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
+use crate::util::sync::TaskQueue;
+use crate::util::sync::TaskQueuePermit;
 
 use deno_core::anyhow::bail;
 use deno_core::error::custom_error;
@@ -20,8 +22,6 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::ModuleSpecifier;
-use deno_core::TaskQueue;
-use deno_core::TaskQueuePermit;
 use deno_graph::source::Loader;
 use deno_graph::GraphKind;
 use deno_graph::Module;
@@ -32,6 +32,8 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_runtime::deno_node;
 use deno_runtime::permissions::PermissionsContainer;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageReq;
 use import_map::ImportMapError;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -237,6 +239,8 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;
@@ -280,6 +284,8 @@ impl ModuleGraphBuilder {
           npm_resolver: Some(graph_npm_resolver),
           module_analyzer: Some(&*analyzer),
           reporter: maybe_file_watcher_reporter,
+          // todo(dsherret): workspace support
+          workspace_members: vec![],
         },
       )
       .await?;
@@ -327,11 +333,29 @@ impl ModuleGraphBuilder {
         for (from, to) in &lockfile.content.redirects {
           if let Ok(from) = ModuleSpecifier::parse(from) {
             if let Ok(to) = ModuleSpecifier::parse(to) {
-              if !matches!(from.scheme(), "file" | "npm")
-                && !matches!(to.scheme(), "file" | "npm")
-              {
+              if !matches!(from.scheme(), "file" | "npm" | "jsr") {
                 graph.redirects.insert(from, to);
               }
+            }
+          }
+        }
+      }
+    }
+
+    // add the jsr specifiers to the graph if it's the first time executing
+    if graph.packages.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let lockfile = lockfile.lock();
+        for (key, value) in &lockfile.content.packages.specifiers {
+          if let Some(key) = key
+            .strip_prefix("jsr:")
+            .and_then(|key| PackageReq::from_str(key).ok())
+          {
+            if let Some(value) = value
+              .strip_prefix("jsr:")
+              .and_then(|value| PackageNv::from_str(value).ok())
+            {
+              graph.packages.add(key, value);
             }
           }
         }
@@ -343,13 +367,26 @@ impl ModuleGraphBuilder {
     // add the redirects in the graph to the lockfile
     if !graph.redirects.is_empty() {
       if let Some(lockfile) = &self.lockfile {
-        let graph_redirects = graph
-          .redirects
-          .iter()
-          .filter(|(from, _)| !matches!(from.scheme(), "npm" | "file"));
+        let graph_redirects = graph.redirects.iter().filter(|(from, _)| {
+          !matches!(from.scheme(), "npm" | "file" | "deno")
+        });
         let mut lockfile = lockfile.lock();
         for (from, to) in graph_redirects {
           lockfile.insert_redirect(from.to_string(), to.to_string());
+        }
+      }
+    }
+
+    // add the jsr specifiers in the graph to the lockfile
+    if !graph.packages.is_empty() {
+      if let Some(lockfile) = &self.lockfile {
+        let mappings = graph.packages.mappings();
+        let mut lockfile = lockfile.lock();
+        for (from, to) in mappings {
+          lockfile.insert_package_specifier(
+            format!("jsr:{}", from),
+            format!("jsr:{}", to),
+          );
         }
       }
     }
@@ -382,6 +419,7 @@ impl ModuleGraphBuilder {
       self.file_fetcher.clone(),
       self.options.resolve_file_header_overrides(),
       self.global_http_cache.clone(),
+      self.parsed_source_cache.clone(),
       permissions,
       self.options.node_modules_dir_specifier(),
     )

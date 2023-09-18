@@ -134,11 +134,8 @@ class Kv {
     value = serializeValue(value);
 
     const checks: Deno.AtomicCheck[] = [];
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
     const mutations = [
-      [key, "set", value, expireAt],
+      [key, "set", value, options?.expireIn],
     ];
 
     const versionstamp = await core.opAsync(
@@ -340,7 +337,7 @@ class AtomicOperation {
       const key = mutation.key;
       let type: string;
       let value: RawValue | null;
-      let expireAt: number | undefined = undefined;
+      let expireIn: number | undefined = undefined;
       switch (mutation.type) {
         case "delete":
           type = "delete";
@@ -350,7 +347,7 @@ class AtomicOperation {
           break;
         case "set":
           if (typeof mutation.expireIn === "number") {
-            expireAt = Date.now() + mutation.expireIn;
+            expireIn = mutation.expireIn;
           }
           /* falls through */
         case "sum":
@@ -365,7 +362,7 @@ class AtomicOperation {
         default:
           throw new TypeError("Invalid mutation type");
       }
-      this.#mutations.push([key, type, value, expireAt]);
+      this.#mutations.push([key, type, value, expireIn]);
     }
     return this;
   }
@@ -390,10 +387,12 @@ class AtomicOperation {
     value: unknown,
     options?: { expireIn?: number },
   ): this {
-    const expireAt = typeof options?.expireIn === "number"
-      ? Date.now() + options.expireIn
-      : undefined;
-    this.#mutations.push([key, "set", serializeValue(value), expireAt]);
+    this.#mutations.push([
+      key,
+      "set",
+      serializeValue(value),
+      options?.expireIn,
+    ]);
     return this;
   }
 

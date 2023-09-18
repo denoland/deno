@@ -12,6 +12,7 @@ use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::ModuleId;
@@ -281,6 +282,17 @@ impl CliMainWorker {
     } else {
       Ok(None)
     }
+  }
+
+  pub fn execute_script_static(
+    &mut self,
+    name: &'static str,
+    source_code: &'static str,
+  ) -> Result<v8::Global<v8::Value>, AnyError> {
+    self
+      .worker
+      .js_runtime
+      .execute_script_static(name, source_code)
   }
 }
 

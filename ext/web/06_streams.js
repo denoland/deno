@@ -1,5 +1,4 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
-// deno-lint-ignore-file camelcase
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -54,10 +53,8 @@ const {
   NumberIsInteger,
   NumberIsNaN,
   ObjectCreate,
-  ObjectDefineProperties,
   ObjectDefineProperty,
   ObjectGetPrototypeOf,
-  ObjectPrototype,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   Promise,
@@ -4652,26 +4649,6 @@ function writableStreamUpdateBackpressure(stream, backpressure) {
   stream[_backpressure] = backpressure;
 }
 
-/**
- * @template T
- * @param {T} value
- * @param {boolean} done
- * @returns {IteratorResult<T>}
- */
-function createIteratorResult(value, done) {
-  const result = ObjectCreate(ObjectPrototype);
-  ObjectDefineProperties(result, {
-    value: { value, writable: true, enumerable: true, configurable: true },
-    done: {
-      value: done,
-      writable: true,
-      enumerable: true,
-      configurable: true,
-    },
-  });
-  return result;
-}
-
 /** @type {AsyncIterator<unknown, unknown>} */
 const asyncIteratorPrototype = ObjectGetPrototypeOf(AsyncGeneratorPrototype);
 
@@ -4686,7 +4663,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     function nextSteps() {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
 
       if (reader[_stream] === undefined) {
@@ -4702,11 +4679,11 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       /** @type {ReadRequest} */
       const readRequest = {
         chunkSteps(chunk) {
-          promise.resolve(createIteratorResult(chunk, false));
+          promise.resolve({ value: chunk, done: false });
         },
         closeSteps() {
           readableStreamDefaultReaderRelease(reader);
-          promise.resolve(createIteratorResult(undefined, true));
+          promise.resolve({ value: undefined, done: true });
         },
         errorSteps(e) {
           readableStreamDefaultReaderRelease(reader);
@@ -4719,7 +4696,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
         reader[_iteratorNext] = null;
         if (result.done === true) {
           reader[_iteratorFinished] = true;
-          return createIteratorResult(undefined, true);
+          return { value: undefined, done: true };
         }
         return result;
       }, (reason) => {
@@ -4744,12 +4721,12 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
     const reader = this[_reader];
     const returnSteps = () => {
       if (reader[_iteratorFinished]) {
-        return PromiseResolve(createIteratorResult(arg, true));
+        return PromiseResolve({ value: arg, done: true });
       }
       reader[_iteratorFinished] = true;
 
       if (reader[_stream] === undefined) {
-        return PromiseResolve(createIteratorResult(undefined, true));
+        return PromiseResolve({ value: undefined, done: true });
       }
       assert(reader[_readRequests].length === 0);
       if (this[_preventCancel] === false) {
@@ -4758,7 +4735,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
         return result;
       }
       readableStreamDefaultReaderRelease(reader);
-      return PromiseResolve(createIteratorResult(undefined, true));
+      return PromiseResolve({ value: undefined, done: true });
     };
 
     const returnPromise = reader[_iteratorNext]
@@ -4766,7 +4743,7 @@ const readableStreamAsyncIteratorPrototype = ObjectSetPrototypeOf({
       : returnSteps();
     return PromisePrototypeThen(
       returnPromise,
-      () => createIteratorResult(arg, true),
+      () => ({ value: arg, done: true }),
     );
   },
 }, asyncIteratorPrototype);

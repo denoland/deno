@@ -143,11 +143,16 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
   }
 
   const finished = deferred();
+  const serverSocketsClosed: Deferred<undefined>[] = [];
   const server = net.createServer();
   server.on("connection", (socket) => {
     assert(socket !== undefined);
+    const i = serverSocketsClosed.push(deferred());
     socket.on("data", (data) => {
       socket.write(new TextDecoder().decode(data));
+    });
+    socket.on("close", () => {
+      serverSocketsClosed[i - 1].resolve();
     });
   });
 
@@ -190,6 +195,7 @@ Deno.test("[node/net] multiple Sockets should get correct server data", async ()
   });
 
   await finished;
+  await Promise.all(serverSocketsClosed);
 
   for (let i = 0; i < socketCount; i++) {
     assertEquals(sockets[i].events, [`${i}`.repeat(3), `${i}`.repeat(3)]);

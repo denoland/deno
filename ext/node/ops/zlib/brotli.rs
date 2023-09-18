@@ -4,13 +4,16 @@ use brotli::ffi::compressor::*;
 use brotli::ffi::decompressor::ffi::interface::BrotliDecoderResult;
 use brotli::ffi::decompressor::ffi::BrotliDecoderState;
 use brotli::ffi::decompressor::*;
+use brotli::Decompressor;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ToJsBuffer;
+use std::io::Read;
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, AnyError> {
   if mode > 6 {
@@ -69,12 +72,13 @@ fn max_compressed_size(input_size: usize) -> usize {
   }
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_brotli_compress_async(
-  input: JsBuffer,
-  quality: i32,
-  lgwin: i32,
-  mode: u32,
+  #[buffer] input: JsBuffer,
+  #[smi] quality: i32,
+  #[smi] lgwin: i32,
+  #[smi] mode: u32,
 ) -> Result<ToJsBuffer, AnyError> {
   tokio::task::spawn_blocking(move || {
     let in_buffer = input.as_ptr();
@@ -121,10 +125,11 @@ impl Drop for BrotliCompressCtx {
   }
 }
 
-#[op]
+#[op2]
+#[smi]
 pub fn op_create_brotli_compress(
   state: &mut OpState,
-  params: Vec<(u8, i32)>,
+  #[serde] params: Vec<(u8, i32)>,
 ) -> u32 {
   let inst =
     // SAFETY: Creates a brotli encoder instance for default allocators.
@@ -214,46 +219,24 @@ pub fn op_brotli_compress_stream_end(
 }
 
 fn brotli_decompress(buffer: &[u8]) -> Result<ToJsBuffer, AnyError> {
-  let in_buffer = buffer.as_ptr();
-  let in_size = buffer.len();
-
-  let mut out = vec![0u8; 4096];
-  loop {
-    let out_buffer = out.as_mut_ptr();
-    let mut out_size = out.len();
-    // SAFETY: TODO(littledivy)
-    match unsafe {
-      CBrotliDecoderDecompress(
-        in_size,
-        in_buffer,
-        &mut out_size as *mut usize,
-        out_buffer,
-      )
-    } {
-      BrotliDecoderResult::BROTLI_DECODER_RESULT_SUCCESS => {
-        out.truncate(out_size);
-        return Ok(out.into());
-      }
-      BrotliDecoderResult::BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT => {
-        let new_size = out.len() * 2;
-        if new_size < out.len() {
-          return Err(type_error("Failed to decompress"));
-        }
-        out.resize(new_size, 0);
-      }
-      _ => return Err(type_error("Failed to decompress")),
-    }
-  }
+  let mut output = Vec::with_capacity(4096);
+  let mut decompressor = Decompressor::new(buffer, buffer.len());
+  decompressor.read_to_end(&mut output)?;
+  Ok(output.into())
 }
 
-#[op]
-pub fn op_brotli_decompress(buffer: &[u8]) -> Result<ToJsBuffer, AnyError> {
+#[op2]
+#[serde]
+pub fn op_brotli_decompress(
+  #[buffer] buffer: &[u8],
+) -> Result<ToJsBuffer, AnyError> {
   brotli_decompress(buffer)
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_brotli_decompress_async(
-  buffer: JsBuffer,
+  #[buffer] buffer: JsBuffer,
 ) -> Result<ToJsBuffer, AnyError> {
   tokio::task::spawn_blocking(move || brotli_decompress(&buffer)).await?
 }
@@ -271,7 +254,8 @@ impl Drop for BrotliDecompressCtx {
   }
 }
 
-#[op]
+#[op2(fast)]
+#[smi]
 pub fn op_create_brotli_decompress(state: &mut OpState) -> u32 {
   let inst =
     // SAFETY: TODO(littledivy)
