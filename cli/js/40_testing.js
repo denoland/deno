@@ -190,7 +190,6 @@ function assertOps(fn) {
 
     try {
       const innerResult = await fn(desc);
-      hasErrored = false;
       if (innerResult) return innerResult;
     } finally {
       const res = core.ops.op_test_op_sanitizer_finish(
