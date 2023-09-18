@@ -290,6 +290,7 @@ fn spawn_child(
     Ok(child) => child,
     Err(err) => {
       let command = command.as_std();
+      let command_name = command.get_program().to_string_lossy();
 
       if let Some(cwd) = command.get_current_dir() {
         // launching a sub process always depends on the real
@@ -300,7 +301,8 @@ fn spawn_child(
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
               format!(
-                "Failed to spawn: No such cwd '{}'",
+                "Failed to spawn '{}': No such cwd '{}'",
+                command_name,
                 cwd.to_string_lossy()
               ),
             )
@@ -314,7 +316,8 @@ fn spawn_child(
             std::io::Error::new(
               std::io::ErrorKind::NotFound,
               format!(
-                "Failed to spawn: cwd is not a directory '{}'",
+                "Failed to spawn '{}': cwd is not a directory '{}'",
+                command_name,
                 cwd.to_string_lossy()
               ),
             )
@@ -324,7 +327,7 @@ fn spawn_child(
       }
 
       return Err(AnyError::from(err).context(format!(
-        "Failed to spawn: {}",
+        "Failed to spawn '{}'",
         command.get_program().to_string_lossy()
       )));
     }
@@ -400,7 +403,7 @@ fn op_spawn_sync(
   let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
-      "Failed to spawn: {}",
+      "Failed to spawn '{}'",
       command.get_program().to_string_lossy()
     )
   })?;
