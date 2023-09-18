@@ -40,7 +40,7 @@ use deno_runtime::worker::WorkerOptions;
 use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
 
 use crate::args::package_json::PackageJsonDeps;
 use crate::args::StorageKeyResolver;
@@ -359,39 +359,35 @@ impl CliMainWorkerFactory {
     let (main_module, is_main_cjs) = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
-      // For main_module that exists in package.json deps,
-      // use the version defined in package.json instead of adding new dependency.
-      let existing_package_ref = shared
-        .options
-        .maybe_package_json_deps
-        .as_ref()
-        .and_then(|deps| {
-          let PackageReq { version_req, name } = package_ref.req();
-          deps
-            .get(name)
-            .filter(|existing_req| {
-              version_req.version_text() == "*" && existing_req.is_ok()
-            })
-            .map(|existing_req| {
-              let existing_req = existing_req.as_ref().unwrap();
-              NpmPackageReqReference::from_str(
-                format!(
-                  "npm:{}/{}",
-                  existing_req,
-                  package_ref.sub_path().unwrap_or("")
-                )
-                .as_ref(),
-              )
-              .unwrap()
-            })
-        })
-        .unwrap_or(package_ref);
+      let package_ref = if package_ref.req().version_req.version_text() == "*" {
+        // When using the wildcard version, select the same version used in the
+        // package.json deps in order to prevent adding new dependency version
+        shared
+          .options
+          .maybe_package_json_deps
+          .as_ref()
+          .and_then(|deps| {
+            deps
+              .values()
+              .filter_map(|v| v.as_ref().ok())
+              .find(|dep| dep.name == package_ref.req().name)
+              .map(|dep| {
+                NpmPackageReqReference::new(PackageReqReference {
+                  req: dep.clone(),
+                  sub_path: package_ref.sub_path().map(|s| s.to_string()),
+                })
+              })
+          })
+          .unwrap_or(package_ref)
+      } else {
+        package_ref
+      };
       shared
         .npm_resolver
-        .add_package_reqs(&[existing_package_ref.req().clone()])
+        .add_package_reqs(&[package_ref.req().clone()])
         .await?;
       let node_resolution =
-        self.resolve_binary_entrypoint(&existing_package_ref, &permissions)?;
+        self.resolve_binary_entrypoint(&package_ref, &permissions)?;
       let is_main_cjs = matches!(node_resolution, NodeResolution::CommonJs(_));
 
       if let Some(lockfile) = &shared.maybe_lockfile {
