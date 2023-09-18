@@ -286,12 +286,53 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn().with_context(|| {
-    format!(
-      "Failed to spawn: {}",
-      command.as_std().get_program().to_string_lossy()
-    )
-  })?;
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    Err(err) => {
+      let command = command.as_std();
+      let command_name = command.get_program().to_string_lossy();
+
+      if let Some(cwd) = command.get_current_dir() {
+        // launching a sub process always depends on the real
+        // file system so using these methods directly is ok
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.exists() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': No such cwd '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.is_dir() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn '{}': cwd is not a directory '{}'",
+                command_name,
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+      }
+
+      return Err(AnyError::from(err).context(format!(
+        "Failed to spawn '{}'",
+        command.get_program().to_string_lossy()
+      )));
+    }
+  };
+
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child
@@ -362,7 +403,7 @@ fn op_spawn_sync(
   let mut command = create_command(state, args, "Deno.Command().outputSync()")?;
   let output = command.output().with_context(|| {
     format!(
-      "Failed to spawn: {}",
+      "Failed to spawn '{}'",
       command.get_program().to_string_lossy()
     )
   })?;

@@ -424,6 +424,31 @@ Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
   );
 });
 
+Deno.test({ permissions: { run: true, read: true } }, function cwdNotFound() {
+  assertThrows(
+    () =>
+      new Deno.Command(Deno.execPath(), {
+        cwd: Deno.cwd() + "/non-existent-directory",
+      }).output(),
+    Deno.errors.NotFound,
+    "No such cwd",
+  );
+});
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  function cwdNotDirectory() {
+    assertThrows(
+      () =>
+        new Deno.Command(Deno.execPath(), {
+          cwd: Deno.execPath(),
+        }).output(),
+      Deno.errors.NotFound,
+      "cwd is not a directory",
+    );
+  },
+);
+
 Deno.test(
   { permissions: { run: true, read: true } },
   async function commandFailedWithCode() {
@@ -892,12 +917,12 @@ Deno.test(
     assertThrows(
       () => new Deno.Command("doesntexist").outputSync(),
       Error,
-      "Failed to spawn: doesntexist",
+      "Failed to spawn 'doesntexist'",
     );
     await assertRejects(
       async () => await new Deno.Command("doesntexist").output(),
       Error,
-      "Failed to spawn: doesntexist",
+      "Failed to spawn 'doesntexist'",
     );
   },
 );
