@@ -2888,6 +2888,8 @@ impl CompletionEntry {
           }
         }
       }
+      // We want relative or bare (import-mapped or otherwise) specifiers to
+      // appear at the top.
       if resolve_url(&source).is_err() {
         sort_text += "_0";
       } else {
