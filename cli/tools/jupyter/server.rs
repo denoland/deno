@@ -463,7 +463,7 @@ impl JupyterServer {
       } else {
         stack
       };
-      let traceback = format!("Stack trace (most recent call last):\n{stack}")
+      let traceback = format!("Stack trace:\n{stack}")
         .split('\n')
         .map(|s| s.to_owned())
         .collect::<Vec<_>>();
