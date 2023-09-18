@@ -483,8 +483,8 @@ async fn get_jupyter_display(
   let response = session
     .call_function_on_args(
       r#"function (object) {
-        const display = object[Symbol.for("Jupyter.display")]
-        if (display) {
+        const display = object[Symbol.for("Jupyter.display")];
+        if (typeof display === "function") {
           return JSON.stringify(display());
         } else {
           return null;
@@ -516,6 +516,7 @@ async fn get_jupyter_display(
       }
     },
     Some(serde_json::Value::Null) => {
+      // Object did not have the Jupyter display spec
       return Ok(None);
     },
     _ => {
