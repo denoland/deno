@@ -4189,6 +4189,98 @@ fn lsp_code_actions() {
 }
 
 #[test]
+fn test_lsp_code_actions_ordering() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+          import "https://deno.land/x/a/mod.ts";
+          let a = "a";
+          console.log(a);
+          export function b(): void {
+            await Promise.resolve("b");
+          }
+        "#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 1, "character": 11 },
+        "end": { "line": 6, "character": 12 }
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+
+  // Simplify the serialization to `{ title, source }` for this test.
+  let mut actions: Vec<Value> = serde_json::from_value(res).unwrap();
+  for action in &mut actions {
+    let action = action.as_object_mut().unwrap();
+    let title = action.get("title").unwrap().as_str().unwrap().to_string();
+    let diagnostics = action.get("diagnostics").unwrap().as_array().unwrap();
+    let diagnostic = diagnostics.get(0).unwrap().as_object().unwrap();
+    let source = diagnostic.get("source").unwrap();
+    let source = source.as_str().unwrap().to_string();
+    action.clear();
+    action.insert("title".to_string(), serde_json::to_value(title).unwrap());
+    action.insert("source".to_string(), serde_json::to_value(source).unwrap());
+  }
+  let res = serde_json::to_value(actions).unwrap();
+
+  // Ensure ordering is "deno-ts" -> "deno" -> "deno-lint".
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add async modifier to containing function",
+        "source": "deno-ts",
+      },
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "source": "deno",
+      },
+      {
+        "title": "Disable prefer-const for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+    ])
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();

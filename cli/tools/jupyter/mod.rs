@@ -8,7 +8,7 @@ use crate::CliFactory;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::resolve_url_or_path;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
@@ -105,22 +105,25 @@ deno_core::extension!(deno_jupyter,
   },
 );
 
-#[op]
+#[op2(fast)]
 pub fn op_print(
   state: &mut OpState,
-  msg: String,
+  #[string] msg: &str,
   is_err: bool,
 ) -> Result<(), AnyError> {
   let sender = state.borrow_mut::<mpsc::UnboundedSender<server::StdioMsg>>();
 
   if is_err {
-    if let Err(err) = sender.unbounded_send(server::StdioMsg::Stderr(msg)) {
+    if let Err(err) =
+      sender.unbounded_send(server::StdioMsg::Stderr(msg.into()))
+    {
       eprintln!("Failed to send stderr message: {}", err);
     }
     return Ok(());
   }
 
-  if let Err(err) = sender.unbounded_send(server::StdioMsg::Stdout(msg)) {
+  if let Err(err) = sender.unbounded_send(server::StdioMsg::Stdout(msg.into()))
+  {
     eprintln!("Failed to send stdout message: {}", err);
   }
   Ok(())
