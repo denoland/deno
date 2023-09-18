@@ -217,7 +217,7 @@ function assertOps(fn) {
     if (report === null) return null;
 
     const details = [];
-    for (const opReport in report) {
+    for (const opReport of report) {
       const opName = opNames[opReport.id];
       const diff = opReport.diff;
 
