@@ -286,28 +286,50 @@ fn spawn_child(
   // We want to kill child when it's closed
   command.kill_on_drop(true);
 
-  let mut child = command.spawn().with_context(|| {
-    let mut _cmd = command.as_std();
+  let mut child = match command.spawn() {
+    Ok(child) => child,
+    Err(err) => {
+      let command = command.as_std();
 
-    if let Some(cwd) = _cmd.get_current_dir() {
-      // launching a sub process always depends on the real
-      // file system so using these methods directly is ok
-      #[allow(clippy::disallowed_methods)]
-      if !cwd.exists() {
-        return format!("Can't find cwd path '{}'", cwd.to_string_lossy());
+      if let Some(cwd) = command.get_current_dir() {
+        // launching a sub process always depends on the real
+        // file system so using these methods directly is ok
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.exists() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn: No such cwd '{}'",
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
+
+        #[allow(clippy::disallowed_methods)]
+        if !cwd.is_dir() {
+          return Err(
+            std::io::Error::new(
+              std::io::ErrorKind::NotFound,
+              format!(
+                "Failed to spawn: cwd is not a directory '{}'",
+                cwd.to_string_lossy()
+              ),
+            )
+            .into(),
+          );
+        }
       }
 
-      #[allow(clippy::disallowed_methods)]
-      if !cwd.is_dir() {
-        return format!(
-          "cwd path is not a directory '{}'",
-          cwd.to_string_lossy()
-        );
-      }
+      return Err(AnyError::from(err).context(format!(
+        "Failed to spawn: {}",
+        command.get_program().to_string_lossy()
+      )));
     }
+  };
 
-    format!("Failed to spawn: {}", _cmd.get_program().to_string_lossy())
-  })?;
   let pid = child.id().expect("Process ID should be set.");
 
   let stdin_rid = child

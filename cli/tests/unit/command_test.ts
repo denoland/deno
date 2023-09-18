@@ -431,7 +431,7 @@ Deno.test({ permissions: { run: true, read: true } }, function cwdNotFound() {
         cwd: Deno.cwd() + "/non-existent-directory",
       }).output(),
     Deno.errors.NotFound,
-    "non-existent-directory': No such file or directory",
+    "Failed to spawn: No such cwd '",
   );
 });
 
@@ -444,7 +444,7 @@ Deno.test(
           cwd: Deno.execPath(),
         }).output(),
       Deno.errors.NotFound,
-      `cwd path is not a directory '${Deno.execPath()}':`,
+      "Failed to spawn: cwd is not a directory '",
     );
   },
 );
