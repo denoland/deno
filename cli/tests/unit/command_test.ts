@@ -426,21 +426,21 @@ Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
 
 Deno.test({ permissions: { run: true } }, function cwdNotFound() {
   assertThrows(
-    () => new Deno.Command("ls", {
-      cwd: "/sadsa"
+    () => new Deno.Command(Deno.execPath(), {
+      cwd: Deno.cwd() + "/non-existent-directory"
     }).output(),
     Deno.errors.NotFound,
-    "Can't find cwd path `/sadsa`: No such file or directory (os error 2)"
+    "non-existent-directory\`: No such file or directory"
   );
 });
 
-Deno.test({ permissions: { run: true } }, function cwdNotFound() {
+Deno.test({ permissions: { run: true } }, function cwdNotDirectory() {
   assertThrows(
-    () => new Deno.Command("ls", {
+    () => new Deno.Command(Deno.execPath(), {
       cwd: Deno.execPath()
     }).output(),
     Deno.errors.NotFound,
-    `cwd path is not a directory \`${Deno.execPath()}\`: Not a directory (os error 20)`
+    `cwd path is not a directory \`${Deno.execPath()}\`: Not a directory`
   );
 });
 
