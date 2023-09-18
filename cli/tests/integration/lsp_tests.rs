@@ -5308,7 +5308,7 @@ fn lsp_completions_auto_import() {
       "description": "./b.ts",
     },
     "kind": 6,
-    "sortText": "￿16",
+    "sortText": "￿16_0",
     "commitCharacters": [
       ".",
       ",",
@@ -5347,7 +5347,7 @@ fn lsp_completions_auto_import() {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5430,7 +5430,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_1",
       "additionalTextEdits": [
         {
           "range": {
@@ -5540,7 +5540,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         "description": "npm:chalk@5.0",
       },
       "kind": 6,
-      "sortText": "￿16",
+      "sortText": "￿16_1",
       "additionalTextEdits": [
         {
           "range": {
@@ -5748,7 +5748,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "kind": "markdown",
         "value": ""
       },
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5858,7 +5858,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "chalk",
       },
       "kind": 6,
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
@@ -5968,7 +5968,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "print_hello",
       },
       "kind": 3,
-      "sortText": "￿16",
+      "sortText": "￿16_0",
       "additionalTextEdits": [
         {
           "range": {
