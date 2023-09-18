@@ -490,7 +490,7 @@ async fn get_jupyter_display(
           return null;
         }
       }"#
-      .to_string(),
+        .to_string(),
       &[evaluate_result.clone()],
     )
     .await?;
@@ -504,21 +504,21 @@ async fn get_jupyter_display(
 
   match response.result.value {
     Some(serde_json::Value::String(json_str)) => {
-      let Ok(data) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str) else {
-        eprintln!(
-          "Unexpected response from Jupyter.display: {json_str}"
-        );
+      let Ok(data) =
+        serde_json::from_str::<HashMap<String, serde_json::Value>>(&json_str)
+      else {
+        eprintln!("Unexpected response from Jupyter.display: {json_str}");
         return Ok(None);
       };
 
       if !data.is_empty() {
         return Ok(Some(data));
       }
-    },
+    }
     Some(serde_json::Value::Null) => {
       // Object did not have the Jupyter display spec
       return Ok(None);
-    },
+    }
     _ => {
       eprintln!(
         "Unexpected response from Jupyter.display: {:?}",
