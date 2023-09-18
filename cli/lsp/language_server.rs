@@ -1927,6 +1927,10 @@ impl Inner {
                   ..line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
                 (&self.fmt_options.options).into(),
+                tsc::UserPreferences {
+                  quote_preference: Some((&self.fmt_options.options).into()),
+                  ..self.config.workspace_settings().into()
+                },
               )
               .await;
             for action in actions {
@@ -1984,6 +1988,10 @@ impl Inner {
         specifier.clone(),
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
+        Some(tsc::UserPreferences {
+          quote_preference: Some((&self.fmt_options.options).into()),
+          ..self.config.workspace_settings().into()
+        }),
         only,
       )
       .await?;
@@ -2039,6 +2047,10 @@ impl Inner {
           self.snapshot(),
           &code_action_data,
           (&self.fmt_options.options).into(),
+          tsc::UserPreferences {
+            quote_preference: Some((&self.fmt_options.options).into()),
+            ..self.config.workspace_settings().into()
+          },
         )
         .await?;
       if combined_code_actions.commands.is_some() {
@@ -2084,6 +2096,10 @@ impl Inner {
             ..line_index.offset_tsc(action_data.range.end)?,
           action_data.refactor_name,
           action_data.action_name,
+          Some(tsc::UserPreferences {
+            quote_preference: Some((&self.fmt_options.options).into()),
+            ..self.config.workspace_settings().into()
+          }),
         )
         .await?;
       code_action.edit = refactor_edit_info.to_workspace_edit(self).await?;

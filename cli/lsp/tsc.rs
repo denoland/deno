@@ -234,6 +234,7 @@ impl TsServer {
     range: Range<u32>,
     codes: Vec<String>,
     format_code_settings: FormatCodeSettings,
+    preferences: UserPreferences,
   ) -> Vec<CodeFixAction> {
     let req = RequestMethod::GetCodeFixes((
       specifier,
@@ -241,6 +242,7 @@ impl TsServer {
       range.end,
       codes,
       format_code_settings,
+      preferences,
     ));
     match self.request(snapshot, req).await {
       Ok(items) => items,
@@ -260,6 +262,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     range: Range<u32>,
+    preferences: Option<UserPreferences>,
     only: String,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let req = RequestMethod::GetApplicableRefactors((
@@ -268,6 +271,7 @@ impl TsServer {
         start: range.start,
         length: range.end - range.start,
       },
+      preferences,
       only,
     ));
     self.request(snapshot, req).await.map_err(|err| {
@@ -281,11 +285,13 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     code_action_data: &CodeActionData,
     format_code_settings: FormatCodeSettings,
+    preferences: UserPreferences,
   ) -> Result<CombinedCodeActions, LspError> {
     let req = RequestMethod::GetCombinedCodeFix((
       code_action_data.specifier.clone(),
       json!(code_action_data.fix_id.clone()),
       format_code_settings,
+      preferences,
     ));
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Unable to get combined fix from TypeScript: {}", err);
@@ -293,6 +299,7 @@ impl TsServer {
     })
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_edits_for_refactor(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -301,6 +308,7 @@ impl TsServer {
     range: Range<u32>,
     refactor_name: String,
     action_name: String,
+    preferences: Option<UserPreferences>,
   ) -> Result<RefactorEditInfo, LspError> {
     let req = RequestMethod::GetEditsForRefactor((
       specifier,
@@ -311,6 +319,7 @@ impl TsServer {
       },
       refactor_name,
       action_name,
+      preferences,
     ));
     self.request(snapshot, req).await.map_err(|err| {
       log::error!("Failed to request to tsserver {}", err);
@@ -3767,7 +3776,9 @@ enum RequestMethod {
   },
   GetAssets,
   /// Retrieve the possible refactor info for a range of a file.
-  GetApplicableRefactors((ModuleSpecifier, TextSpan, String)),
+  GetApplicableRefactors(
+    (ModuleSpecifier, TextSpan, Option<UserPreferences>, String),
+  ),
   /// Retrieve the refactor edit info for a range.
   GetEditsForRefactor(
     (
@@ -3776,6 +3787,7 @@ enum RequestMethod {
       TextSpan,
       String,
       String,
+      Option<UserPreferences>,
     ),
   ),
   /// Retrieve the refactor edit info for a range.
@@ -3788,7 +3800,16 @@ enum RequestMethod {
     ),
   ),
   /// Retrieve code fixes for a range of a file with the provided error codes.
-  GetCodeFixes((ModuleSpecifier, u32, u32, Vec<String>, FormatCodeSettings)),
+  GetCodeFixes(
+    (
+      ModuleSpecifier,
+      u32,
+      u32,
+      Vec<String>,
+      FormatCodeSettings,
+      UserPreferences,
+    ),
+  ),
   /// Get completion information at a given position (IntelliSense).
   GetCompletions(
     (
@@ -3801,7 +3822,9 @@ enum RequestMethod {
   /// Get details about a specific completion entry.
   GetCompletionDetails(GetCompletionDetailsArgs),
   /// Retrieve the combined code fixes for a fix id for a module.
-  GetCombinedCodeFix((ModuleSpecifier, Value, FormatCodeSettings)),
+  GetCombinedCodeFix(
+    (ModuleSpecifier, Value, FormatCodeSettings, UserPreferences),
+  ),
   /// Get declaration information for a specific position.
   GetDefinition((ModuleSpecifier, u32)),
   /// Return diagnostics for given file.
@@ -3878,11 +3901,17 @@ impl RequestMethod {
         "id": id,
         "method": "getAssets",
       }),
-      RequestMethod::GetApplicableRefactors((specifier, span, kind)) => json!({
+      RequestMethod::GetApplicableRefactors((
+        specifier,
+        span,
+        preferences,
+        kind,
+      )) => json!({
         "id": id,
         "method": "getApplicableRefactors",
         "specifier": state.denormalize_specifier(specifier),
         "range": { "pos": span.start, "end": span.start + span.length },
+        "preferences": preferences,
         "kind": kind,
       }),
       RequestMethod::GetEditsForRefactor((
@@ -3891,6 +3920,7 @@ impl RequestMethod {
         span,
         refactor_name,
         action_name,
+        preferences,
       )) => json!({
         "id": id,
         "method": "getEditsForRefactor",
@@ -3899,6 +3929,7 @@ impl RequestMethod {
         "range": { "pos": span.start, "end": span.start + span.length},
         "refactorName": refactor_name,
         "actionName": action_name,
+        "preferences": preferences,
       }),
       RequestMethod::GetEditsForFileRename((
         old_specifier,
@@ -3919,6 +3950,7 @@ impl RequestMethod {
         end_pos,
         error_codes,
         format_code_settings,
+        preferences,
       )) => json!({
         "id": id,
         "method": "getCodeFixes",
@@ -3927,17 +3959,20 @@ impl RequestMethod {
         "endPosition": end_pos,
         "errorCodes": error_codes,
         "formatCodeSettings": format_code_settings,
+        "preferences": preferences,
       }),
       RequestMethod::GetCombinedCodeFix((
         specifier,
         fix_id,
         format_code_settings,
+        preferences,
       )) => json!({
         "id": id,
         "method": "getCombinedCodeFix",
         "specifier": state.denormalize_specifier(specifier),
         "fixId": fix_id,
         "formatCodeSettings": format_code_settings,
+        "preferences": preferences,
       }),
       RequestMethod::GetCompletionDetails(args) => json!({
         "id": id,
