@@ -276,10 +276,10 @@ fn op_test_op_sanitizer_collect(
       op_id_host_recv_ctrl,
     ) {
       Ok(metrics) => metrics,
-      Err(true) => {
+      Err(false) => {
         return Ok(1);
       }
-      Err(false) => {
+      Err(true) => {
         return Ok(2);
       }
     };
@@ -325,10 +325,10 @@ fn op_test_op_sanitizer_finish(
       op_id_host_recv_ctrl,
     ) {
       Ok(metrics) => metrics,
-      Err(true) => {
+      Err(false) => {
         return Ok(1);
       }
-      Err(false) => {
+      Err(true) => {
         return Ok(2);
       }
     };
