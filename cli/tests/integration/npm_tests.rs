@@ -448,6 +448,27 @@ itest!(permissions_outside_package {
   http_server: true,
 });
 
+itest!(run_existing_npm_package {
+  args: "run --allow-read --node-modules-dir npm:@denotest/bin",
+  output: "npm/run_existing_npm_package/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+  cwd: Some("npm/run_existing_npm_package/"),
+  copy_temp_dir: Some("npm/run_existing_npm_package/"),
+});
+
+itest!(run_existing_npm_package_with_subpath {
+  args:
+    "run --allow-read --node-modules-dir npm:@denotest/bin/cli-esm dev --help",
+  output: "npm/run_existing_npm_package_with_subpath/main.out",
+  envs: env_vars_for_npm_tests(),
+  http_server: true,
+  temp_cwd: true,
+  cwd: Some("npm/run_existing_npm_package_with_subpath/"),
+  copy_temp_dir: Some("npm/run_existing_npm_package_with_subpath/"),
+});
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
