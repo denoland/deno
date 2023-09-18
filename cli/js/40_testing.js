@@ -192,7 +192,7 @@ function assertOps(fn) {
       const innerResult = await fn(desc);
       if (innerResult) return innerResult;
     } finally {
-      const res = core.ops.op_test_op_sanitizer_finish(
+      let res = core.ops.op_test_op_sanitizer_finish(
         desc.id,
         false,
         opIdHostRecvMessage,
@@ -200,7 +200,7 @@ function assertOps(fn) {
       );
       if (res === 1 || res === 2) {
         await opSanitizerDelay(res === 2);
-        core.ops.op_test_op_sanitizer_finish(
+        res = core.ops.op_test_op_sanitizer_finish(
           desc.id,
           true,
           opIdHostRecvMessage,
@@ -212,6 +212,10 @@ function assertOps(fn) {
         report = core.ops.op_test_op_sanitizer_report(desc.id);
       }
     }
+
+    console.log("preTraces", preTraces);
+    console.log("postTraces", postTraces);
+    console.log("report", report);
 
     if (report === null) return null;
 
@@ -232,8 +236,8 @@ function assertOps(fn) {
           message += ` This is often caused by not ${hint}.`;
         }
         const traces = [];
-        for (const [id, { opName, stack }] of postTraces) {
-          if (opName !== key) continue;
+        for (const [id, { opName: traceOpName, stack }] of postTraces) {
+          if (traceOpName !== opName) continue;
           if (MapPrototypeHas(preTraces, id)) continue;
           ArrayPrototypePush(traces, stack);
         }
