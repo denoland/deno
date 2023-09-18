@@ -407,7 +407,9 @@ fn collect_test(
   parsed_source: Option<ParsedSource>,
   config: &Config,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
-  if config.specifier_code_lens_test(specifier) {
+  if config.specifier_enabled_for_test(specifier)
+    && config.specifier_code_lens_test(specifier)
+  {
     if let Some(parsed_source) = parsed_source {
       let mut collector =
         DenoTestCollector::new(specifier.clone(), parsed_source.clone());

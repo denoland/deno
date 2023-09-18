@@ -159,6 +159,13 @@ pub struct InstallFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct JupyterFlags {
+  pub install: bool,
+  pub kernel: bool,
+  pub conn_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UninstallFlags {
   pub name: String,
   pub root: Option<PathBuf>,
@@ -276,6 +283,7 @@ pub enum DenoSubcommand {
   Init(InitFlags),
   Info(InfoFlags),
   Install(InstallFlags),
+  Jupyter(JupyterFlags),
   Uninstall(UninstallFlags),
   Lsp,
   Lint(LintFlags),
@@ -679,7 +687,8 @@ impl Flags {
         std::env::current_dir().ok()
       }
       Bundle(_) | Completions(_) | Doc(_) | Fmt(_) | Init(_) | Install(_)
-      | Uninstall(_) | Lsp | Lint(_) | Types | Upgrade(_) | Vendor(_) => None,
+      | Uninstall(_) | Jupyter(_) | Lsp | Lint(_) | Types | Upgrade(_)
+      | Vendor(_) => None,
     }
   }
 
@@ -797,6 +806,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
     flags.log_level = Some(Level::Error);
   } else if let Some(log_level) = matches.get_one::<String>("log-level") {
     flags.log_level = match log_level.as_str() {
+      "trace" => Some(Level::Trace),
       "debug" => Some(Level::Debug),
       "info" => Some(Level::Info),
       _ => unreachable!(),
@@ -818,6 +828,7 @@ pub fn flags_from_vec(args: Vec<String>) -> clap::error::Result<Flags> {
       "init" => init_parse(&mut flags, &mut m),
       "info" => info_parse(&mut flags, &mut m),
       "install" => install_parse(&mut flags, &mut m),
+      "jupyter" => jupyter_parse(&mut flags, &mut m),
       "lint" => lint_parse(&mut flags, &mut m),
       "lsp" => lsp_parse(&mut flags, &mut m),
       "repl" => repl_parse(&mut flags, &mut m),
@@ -892,7 +903,7 @@ fn clap_root() -> Command {
         .long("log-level")
         .help("Set log level")
         .hide(true)
-        .value_parser(["debug", "info"])
+        .value_parser(["trace", "debug", "info"])
         .global(true),
     )
     .arg(
@@ -919,6 +930,7 @@ fn clap_root() -> Command {
         .subcommand(init_subcommand())
         .subcommand(info_subcommand())
         .subcommand(install_subcommand())
+        .subcommand(jupyter_subcommand())
         .subcommand(uninstall_subcommand())
         .subcommand(lsp_subcommand())
         .subcommand(lint_subcommand())
@@ -1113,7 +1125,6 @@ supported in canary.
     )
     .defer(|cmd| {
       runtime_args(cmd, true, false)
-      .arg(script_arg().required(true))
       .arg(check_arg(true))
       .arg(
         Arg::new("include")
@@ -1155,6 +1166,7 @@ supported in canary.
       )
       .arg(executable_ext_arg())
       .arg(env_file_arg())
+      .arg(script_arg().required(true).trailing_var_arg(true))
     })
 }
 
@@ -1615,6 +1627,33 @@ These must be added to the path manually if required.")
           .action(ArgAction::SetTrue))
       )
       .arg(env_file_arg())
+}
+
+fn jupyter_subcommand() -> Command {
+  Command::new("jupyter")
+    .arg(
+      Arg::new("install")
+        .long("install")
+        .help("Installs kernelspec, requires 'jupyter' command to be available.")
+        .conflicts_with("kernel")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("kernel")
+        .long("kernel")
+        .help("Start the kernel")
+        .conflicts_with("install")
+        .requires("conn")
+        .action(ArgAction::SetTrue)
+    )
+    .arg(
+      Arg::new("conn")
+        .long("conn")
+        .help("Path to JSON file describing connection parameters, provided by Jupyter")
+        .value_parser(value_parser!(PathBuf))
+        .value_hint(ValueHint::FilePath)
+        .conflicts_with("install"))
+    .about("Deno kernel for Jupyter notebooks")
 }
 
 fn uninstall_subcommand() -> Command {
@@ -3182,6 +3221,18 @@ fn install_parse(flags: &mut Flags, matches: &mut ArgMatches) {
     args,
     root,
     force,
+  });
+}
+
+fn jupyter_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let conn_file = matches.remove_one::<PathBuf>("conn");
+  let kernel = matches.get_flag("kernel");
+  let install = matches.get_flag("install");
+
+  flags.subcommand = DenoSubcommand::Jupyter(JupyterFlags {
+    install,
+    kernel,
+    conn_file,
   });
 }
 
@@ -7323,14 +7374,14 @@ mod tests {
   #[test]
   fn compile_with_flags() {
     #[rustfmt::skip]
-    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://deno.land/std/examples/colors.ts", "foo", "bar"]);
+    let r = flags_from_vec(svec!["deno", "compile", "--import-map", "import_map.json", "--no-remote", "--config", "tsconfig.json", "--no-check", "--unsafely-ignore-certificate-errors", "--reload", "--lock", "lock.json", "--lock-write", "--cert", "example.crt", "--cached-only", "--location", "https:foo", "--allow-read", "--allow-net", "--v8-flags=--help", "--seed", "1", "--no-terminal", "--output", "colors", "--env=.example.env", "https://deno.land/std/examples/colors.ts", "foo", "bar", "-p", "8080"]);
     assert_eq!(
       r.unwrap(),
       Flags {
         subcommand: DenoSubcommand::Compile(CompileFlags {
           source_file: "https://deno.land/std/examples/colors.ts".to_string(),
           output: Some(PathBuf::from("colors")),
-          args: svec!["foo", "bar"],
+          args: svec!["foo", "bar", "-p", "8080"],
           target: None,
           no_terminal: true,
           include: vec![]
@@ -7889,5 +7940,70 @@ mod tests {
         ..Flags::default()
       }
     );
+  }
+
+  #[test]
+  fn jupyter() {
+    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec!["deno", "jupyter", "--unstable", "--install"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: true,
+          kernel: false,
+          conn_file: None,
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--unstable",
+      "--kernel",
+      "--conn",
+      "path/to/conn/file"
+    ]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Jupyter(JupyterFlags {
+          install: false,
+          kernel: true,
+          conn_file: Some(PathBuf::from("path/to/conn/file")),
+        }),
+        unstable: true,
+        ..Flags::default()
+      }
+    );
+
+    let r = flags_from_vec(svec![
+      "deno",
+      "jupyter",
+      "--install",
+      "--conn",
+      "path/to/conn/file"
+    ]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--kernel",]);
+    r.unwrap_err();
+    let r = flags_from_vec(svec!["deno", "jupyter", "--install", "--kernel",]);
+    r.unwrap_err();
   }
 }

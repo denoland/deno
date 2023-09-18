@@ -7,6 +7,7 @@ use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
 use hyper::header::HeaderValue;
+use hyper::http;
 use hyper::server::Server;
 use hyper::service::make_service_fn;
 use hyper::service::service_fn;
@@ -57,6 +58,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls;
+use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use url::Url;
 
@@ -102,6 +104,8 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WS_CLOSE_PORT: u16 = 4244;
 const WS_PING_PORT: u16 = 4245;
+const H2_GRPC_PORT: u16 = 4246;
+const H2S_GRPC_PORT: u16 = 4247;
 
 pub const PERMISSION_VARIANTS: [&str; 5] =
   ["read", "write", "env", "net", "run"];
@@ -1664,17 +1668,7 @@ async fn wrap_https_h1_only_tls_server() {
 async fn wrap_https_h2_only_tls_server() {
   let main_server_https_addr =
     SocketAddr::from(([127, 0, 0, 1], H2_ONLY_TLS_PORT));
-  let cert_file = "tls/localhost.crt";
-  let key_file = "tls/localhost.key";
-  let ca_cert_file = "tls/RootCA.pem";
-  let tls_config = get_tls_config(
-    cert_file,
-    key_file,
-    ca_cert_file,
-    SupportedHttpVersions::Http2Only,
-  )
-  .await
-  .unwrap();
+  let tls_config = create_tls_server_config().await;
   loop {
     let tcp = TcpListener::bind(&main_server_https_addr)
       .await
@@ -1707,6 +1701,20 @@ async fn wrap_https_h2_only_tls_server() {
   }
 }
 
+async fn create_tls_server_config() -> Arc<rustls::ServerConfig> {
+  let cert_file = "tls/localhost.crt";
+  let key_file = "tls/localhost.key";
+  let ca_cert_file = "tls/RootCA.pem";
+  get_tls_config(
+    cert_file,
+    key_file,
+    ca_cert_file,
+    SupportedHttpVersions::Http2Only,
+  )
+  .await
+  .unwrap()
+}
+
 async fn wrap_https_h1_only_server() {
   let main_server_http_addr = SocketAddr::from(([127, 0, 0, 1], H1_ONLY_PORT));
 
@@ -1727,6 +1735,103 @@ async fn wrap_https_h2_only_server() {
     .http2_only(true)
     .serve(main_server_http_svc);
   let _ = main_server_http.await;
+}
+
+async fn h2_grpc_server() {
+  let addr = SocketAddr::from(([127, 0, 0, 1], H2_GRPC_PORT));
+  let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+
+  let addr_tls = SocketAddr::from(([127, 0, 0, 1], H2S_GRPC_PORT));
+  let listener_tls = tokio::net::TcpListener::bind(addr_tls).await.unwrap();
+  let tls_config = create_tls_server_config().await;
+
+  async fn serve(socket: TcpStream) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn serve_tls(
+    socket: TlsStream<TcpStream>,
+  ) -> Result<(), anyhow::Error> {
+    let mut connection = h2::server::handshake(socket).await?;
+
+    while let Some(result) = connection.accept().await {
+      let (request, respond) = result?;
+      tokio::spawn(async move {
+        let _ = handle_request(request, respond).await;
+      });
+    }
+
+    Ok(())
+  }
+
+  async fn handle_request(
+    mut request: http::Request<h2::RecvStream>,
+    mut respond: h2::server::SendResponse<bytes::Bytes>,
+  ) -> Result<(), anyhow::Error> {
+    let body = request.body_mut();
+    while let Some(data) = body.data().await {
+      let data = data?;
+      let _ = body.flow_control().release_capacity(data.len());
+    }
+
+    let maybe_recv_trailers = body.trailers().await?;
+
+    let response = http::Response::new(());
+    let mut send = respond.send_response(response, false)?;
+    send.send_data(bytes::Bytes::from_static(b"hello "), false)?;
+    send.send_data(bytes::Bytes::from_static(b"world\n"), false)?;
+    let mut trailers = http::HeaderMap::new();
+    trailers.insert(
+      http::HeaderName::from_static("abc"),
+      HeaderValue::from_static("def"),
+    );
+    trailers.insert(
+      http::HeaderName::from_static("opr"),
+      HeaderValue::from_static("stv"),
+    );
+    if let Some(recv_trailers) = maybe_recv_trailers {
+      for (key, value) in recv_trailers {
+        trailers.insert(key.unwrap(), value);
+      }
+    }
+    send.send_trailers(trailers)?;
+
+    Ok(())
+  }
+
+  let http = tokio::spawn(async move {
+    loop {
+      if let Ok((socket, _peer_addr)) = listener.accept().await {
+        tokio::spawn(async move {
+          let _ = serve(socket).await;
+        });
+      }
+    }
+  });
+
+  let https = tokio::spawn(async move {
+    loop {
+      if let Ok((socket, _peer_addr)) = listener_tls.accept().await {
+        let tls_acceptor = TlsAcceptor::from(tls_config.clone());
+        let tls = tls_acceptor.accept(socket).await.unwrap();
+        tokio::spawn(async move {
+          let _ = serve_tls(tls).await;
+        });
+      }
+    }
+  });
+
+  http.await.unwrap();
+  https.await.unwrap();
 }
 
 async fn wrap_client_auth_https_server() {
@@ -1821,6 +1926,7 @@ pub async fn run_all_servers() {
   let h2_only_server_tls_fut = wrap_https_h2_only_tls_server();
   let h1_only_server_fut = wrap_https_h1_only_server();
   let h2_only_server_fut = wrap_https_h2_only_server();
+  let h2_grpc_server_fut = h2_grpc_server();
 
   let mut server_fut = async {
     futures::join!(
@@ -1843,7 +1949,8 @@ pub async fn run_all_servers() {
       h1_only_server_tls_fut,
       h2_only_server_tls_fut,
       h1_only_server_fut,
-      h2_only_server_fut
+      h2_only_server_fut,
+      h2_grpc_server_fut,
     )
   }
   .boxed();
@@ -2410,57 +2517,266 @@ impl<'a> CheckOutputIntegrationTest<'a> {
   }
 }
 
-pub fn wildcard_match(pattern: &str, s: &str) -> bool {
-  pattern_match(pattern, s, "[WILDCARD]")
+pub fn wildcard_match(pattern: &str, text: &str) -> bool {
+  match wildcard_match_detailed(pattern, text) {
+    WildcardMatchResult::Success => true,
+    WildcardMatchResult::Fail(debug_output) => {
+      eprintln!("{}", debug_output);
+      false
+    }
+  }
 }
 
-pub fn pattern_match(pattern: &str, s: &str, wildcard: &str) -> bool {
+pub enum WildcardMatchResult {
+  Success,
+  Fail(String),
+}
+
+pub fn wildcard_match_detailed(
+  pattern: &str,
+  text: &str,
+) -> WildcardMatchResult {
+  fn annotate_whitespace(text: &str) -> String {
+    text.replace('\t', "\u{2192}").replace(' ', "\u{00B7}")
+  }
+
   // Normalize line endings
-  let mut s = s.replace("\r\n", "\n");
+  let original_text = text.replace("\r\n", "\n");
+  let mut current_text = original_text.as_str();
   let pattern = pattern.replace("\r\n", "\n");
+  let mut output_lines = Vec::new();
 
-  if pattern == wildcard {
-    return true;
-  }
+  let parts = parse_wildcard_pattern_text(&pattern).unwrap();
 
-  let parts = pattern.split(wildcard).collect::<Vec<&str>>();
-  if parts.len() == 1 {
-    return pattern == s;
-  }
-
-  if !s.starts_with(parts[0]) {
-    return false;
-  }
-
-  // If the first line of the pattern is just a wildcard the newline character
-  // needs to be pre-pended so it can safely match anything or nothing and
-  // continue matching.
-  if pattern.lines().next() == Some(wildcard) {
-    s.insert(0, '\n');
-  }
-
-  let mut t = s.split_at(parts[0].len());
-
+  let mut was_last_wildcard = false;
   for (i, part) in parts.iter().enumerate() {
-    if i == 0 {
-      continue;
+    match part {
+      WildcardPatternPart::Wildcard => {
+        output_lines.push("<WILDCARD />".to_string());
+      }
+      WildcardPatternPart::Text(search_text) => {
+        let is_last = i + 1 == parts.len();
+        let search_index = if is_last && was_last_wildcard {
+          // search from the end of the file
+          current_text.rfind(search_text)
+        } else {
+          current_text.find(search_text)
+        };
+        match search_index {
+          Some(found_index) if was_last_wildcard || found_index == 0 => {
+            output_lines.push(format!(
+              "<FOUND>{}</FOUND>",
+              colors::gray(annotate_whitespace(search_text))
+            ));
+            current_text = &current_text[found_index + search_text.len()..];
+          }
+          Some(index) => {
+            output_lines.push(
+              "==== FOUND SEARCH TEXT IN WRONG POSITION ====".to_string(),
+            );
+            output_lines.push(colors::gray(annotate_whitespace(search_text)));
+            output_lines
+              .push("==== HAD UNKNOWN PRECEEDING TEXT ====".to_string());
+            output_lines
+              .push(colors::red(annotate_whitespace(&current_text[..index])));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          }
+          None => {
+            let mut max_found_index = 0;
+            for (index, _) in search_text.char_indices() {
+              let sub_string = &search_text[..index];
+              if let Some(found_index) = current_text.find(sub_string) {
+                if was_last_wildcard || found_index == 0 {
+                  max_found_index = index;
+                } else {
+                  break;
+                }
+              } else {
+                break;
+              }
+            }
+            if !was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "<FOUND>{}</FOUND>",
+                colors::gray(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
+            output_lines
+              .push("==== COULD NOT FIND SEARCH TEXT ====".to_string());
+            output_lines.push(colors::green(annotate_whitespace(
+              if was_last_wildcard {
+                search_text
+              } else {
+                &search_text[max_found_index..]
+              },
+            )));
+            if was_last_wildcard && max_found_index > 0 {
+              output_lines.push(format!(
+                "==== MAX FOUND ====\n{}",
+                colors::red(annotate_whitespace(
+                  &search_text[..max_found_index]
+                ))
+              ));
+            }
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          }
+        }
+      }
+      WildcardPatternPart::UnorderedLines(expected_lines) => {
+        assert!(!was_last_wildcard, "unsupported");
+        let mut actual_lines = Vec::with_capacity(expected_lines.len());
+        for _ in 0..expected_lines.len() {
+          match current_text.find('\n') {
+            Some(end_line_index) => {
+              actual_lines.push(&current_text[..end_line_index]);
+              current_text = &current_text[end_line_index + 1..];
+            }
+            None => {
+              break;
+            }
+          }
+        }
+        actual_lines.sort_unstable();
+        let mut expected_lines = expected_lines.clone();
+        expected_lines.sort_unstable();
+
+        if actual_lines.len() != expected_lines.len() {
+          output_lines
+            .push("==== HAD WRONG NUMBER OF UNORDERED LINES ====".to_string());
+          output_lines.push("# ACTUAL".to_string());
+          output_lines.extend(
+            actual_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          output_lines.push("# EXPECTED".to_string());
+          output_lines.extend(
+            expected_lines
+              .iter()
+              .map(|l| colors::green(annotate_whitespace(l))),
+          );
+          return WildcardMatchResult::Fail(output_lines.join("\n"));
+        }
+        for (actual, expected) in actual_lines.iter().zip(expected_lines.iter())
+        {
+          if actual != expected {
+            output_lines
+              .push("==== UNORDERED LINE DID NOT MATCH ====".to_string());
+            output_lines.push(format!(
+              "  ACTUAL: {}",
+              colors::red(annotate_whitespace(actual))
+            ));
+            output_lines.push(format!(
+              "EXPECTED: {}",
+              colors::green(annotate_whitespace(expected))
+            ));
+            return WildcardMatchResult::Fail(output_lines.join("\n"));
+          }
+        }
+        output_lines.push("# Found matching unordered lines".to_string());
+      }
     }
-    dbg!(part, i);
-    if i == parts.len() - 1 && (part.is_empty() || *part == "\n") {
-      dbg!("exit 1 true", i);
-      return true;
-    }
-    if let Some(found) = t.1.find(*part) {
-      dbg!("found ", found);
-      t = t.1.split_at(found + part.len());
-    } else {
-      dbg!("exit false ", i);
-      return false;
+    was_last_wildcard = matches!(part, WildcardPatternPart::Wildcard);
+  }
+
+  if was_last_wildcard || current_text.is_empty() {
+    WildcardMatchResult::Success
+  } else {
+    output_lines.push("==== HAD TEXT AT END OF FILE ====".to_string());
+    output_lines.push(colors::red(annotate_whitespace(current_text)));
+    WildcardMatchResult::Fail(output_lines.join("\n"))
+  }
+}
+
+#[derive(Debug)]
+enum WildcardPatternPart<'a> {
+  Wildcard,
+  Text(&'a str),
+  UnorderedLines(Vec<&'a str>),
+}
+
+fn parse_wildcard_pattern_text(
+  text: &str,
+) -> Result<Vec<WildcardPatternPart>, monch::ParseErrorFailureError> {
+  use monch::*;
+
+  fn parse_unordered_lines(input: &str) -> ParseResult<Vec<&str>> {
+    const END_TEXT: &str = "\n[UNORDERED_END]\n";
+    let (input, _) = tag("[UNORDERED_START]\n")(input)?;
+    match input.find(END_TEXT) {
+      Some(end_index) => ParseResult::Ok((
+        &input[end_index + END_TEXT.len()..],
+        input[..end_index].lines().collect::<Vec<_>>(),
+      )),
+      None => ParseError::fail(input, "Could not find [UNORDERED_END]"),
     }
   }
 
-  dbg!("end ", t.1.len());
-  t.1.is_empty()
+  enum InnerPart<'a> {
+    Wildcard,
+    UnorderedLines(Vec<&'a str>),
+    Char,
+  }
+
+  struct Parser<'a> {
+    current_input: &'a str,
+    last_text_input: &'a str,
+    parts: Vec<WildcardPatternPart<'a>>,
+  }
+
+  impl<'a> Parser<'a> {
+    fn parse(mut self) -> ParseResult<'a, Vec<WildcardPatternPart<'a>>> {
+      while !self.current_input.is_empty() {
+        let (next_input, inner_part) = or3(
+          map(tag("[WILDCARD]"), |_| InnerPart::Wildcard),
+          map(parse_unordered_lines, |lines| {
+            InnerPart::UnorderedLines(lines)
+          }),
+          map(next_char, |_| InnerPart::Char),
+        )(self.current_input)?;
+        match inner_part {
+          InnerPart::Wildcard => {
+            self.queue_previous_text(next_input);
+            self.parts.push(WildcardPatternPart::Wildcard);
+          }
+          InnerPart::UnorderedLines(expected_lines) => {
+            self.queue_previous_text(next_input);
+            self
+              .parts
+              .push(WildcardPatternPart::UnorderedLines(expected_lines));
+          }
+          InnerPart::Char => {
+            // ignore
+          }
+        }
+        self.current_input = next_input;
+      }
+
+      self.queue_previous_text("");
+
+      ParseResult::Ok(("", self.parts))
+    }
+
+    fn queue_previous_text(&mut self, next_input: &'a str) {
+      let previous_text = &self.last_text_input
+        [..self.last_text_input.len() - self.current_input.len()];
+      if !previous_text.is_empty() {
+        self.parts.push(WildcardPatternPart::Text(previous_text));
+      }
+      self.last_text_input = next_input;
+    }
+  }
+
+  with_failure_handling(|input| {
+    Parser {
+      current_input: input,
+      last_text_input: input,
+      parts: Vec::new(),
+    }
+    .parse()
+  })(text)
 }
 
 pub fn with_pty(deno_args: &[&str], action: impl FnMut(Pty)) {
@@ -2604,6 +2920,67 @@ pub fn parse_max_mem(output: &str) -> Option<u64> {
   None
 }
 
+pub(crate) mod colors {
+  use std::io::Write;
+
+  use termcolor::Ansi;
+  use termcolor::Color;
+  use termcolor::ColorSpec;
+  use termcolor::WriteColor;
+
+  pub fn bold<S: AsRef<str>>(s: S) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style(s, style_spec)
+  }
+
+  pub fn red<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Red)
+  }
+
+  pub fn bold_red<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Red)
+  }
+
+  pub fn green<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Green)
+  }
+
+  pub fn bold_green<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Green)
+  }
+
+  pub fn bold_blue<S: AsRef<str>>(s: S) -> String {
+    bold_fg_color(s, Color::Blue)
+  }
+
+  pub fn gray<S: AsRef<str>>(s: S) -> String {
+    fg_color(s, Color::Ansi256(245))
+  }
+
+  fn bold_fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_bold(true);
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn fg_color<S: AsRef<str>>(s: S, color: Color) -> String {
+    let mut style_spec = ColorSpec::new();
+    style_spec.set_fg(Some(color));
+    style(s, style_spec)
+  }
+
+  fn style<S: AsRef<str>>(s: S, colorspec: ColorSpec) -> String {
+    let mut v = Vec::new();
+    let mut ansi_writer = Ansi::new(&mut v);
+    ansi_writer.set_color(&colorspec).unwrap();
+    ansi_writer.write_all(s.as_ref().as_bytes()).unwrap();
+    ansi_writer.reset().unwrap();
+    String::from_utf8_lossy(&v).into_owned()
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -2690,6 +3067,15 @@ mod tests {
   }
 
   #[test]
+  fn parse_parse_wildcard_match_text() {
+    let result =
+      parse_wildcard_pattern_text("[UNORDERED_START]\ntesting\ntesting")
+        .err()
+        .unwrap();
+    assert_contains!(result.to_string(), "Could not find [UNORDERED_END]");
+  }
+
+  #[test]
   fn test_wildcard_match() {
     let fixtures = vec![
       ("foobarbaz", "foobarbaz", true),
@@ -2733,16 +3119,15 @@ mod tests {
   }
 
   #[test]
-  fn test_pattern_match() {
+  fn test_wildcard_match2() {
     // foo, bar, baz, qux, quux, quuz, corge, grault, garply, waldo, fred, plugh, xyzzy
 
-    let wildcard = "[BAR]";
-    assert!(pattern_match("foo[BAR]baz", "foobarbaz", wildcard));
-    assert!(!pattern_match("foo[BAR]baz", "foobazbar", wildcard));
+    assert!(wildcard_match("foo[WILDCARD]baz", "foobarbaz"));
+    assert!(!wildcard_match("foo[WILDCARD]baz", "foobazbar"));
 
-    let multiline_pattern = "[BAR]
+    let multiline_pattern = "[WILDCARD]
 foo:
-[BAR]baz[BAR]";
+[WILDCARD]baz[WILDCARD]";
 
     fn multi_line_builder(input: &str, leading_text: Option<&str>) -> String {
       // If there is leading text add a newline so it's on it's own line
@@ -2767,31 +3152,52 @@ grault",
     );
 
     // Correct input & leading line
-    assert!(pattern_match(
+    assert!(wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", Some("QUX=quux")),
-      wildcard
     ));
 
-    // Correct input & no leading line
-    assert!(pattern_match(
+    // Should fail when leading line
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("baz", None),
-      wildcard
     ));
 
     // Incorrect input & leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", Some("QUX=quux")),
-      wildcard
     ));
 
     // Incorrect input & no leading line
-    assert!(!pattern_match(
+    assert!(!wildcard_match(
       multiline_pattern,
       &multi_line_builder("garply", None),
-      wildcard
+    ));
+  }
+
+  #[test]
+  fn test_wildcard_match_unordered_lines() {
+    // matching
+    assert!(wildcard_match(
+      concat!("[UNORDERED_START]\n", "B\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different line
+    assert!(!wildcard_match(
+      concat!("[UNORDERED_START]\n", "Ba\n", "A\n", "[UNORDERED_END]\n"),
+      concat!("A\n", "B\n",)
+    ));
+    // different number of lines
+    assert!(!wildcard_match(
+      concat!(
+        "[UNORDERED_START]\n",
+        "B\n",
+        "A\n",
+        "C\n",
+        "[UNORDERED_END]\n"
+      ),
+      concat!("A\n", "B\n",)
     ));
   }
 

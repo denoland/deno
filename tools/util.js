@@ -1,4 +1,5 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
+import { deferred } from "../test_util/std/async/deferred.ts";
 import {
   dirname,
   fromFileUrl,
@@ -15,7 +16,7 @@ export { delay } from "../test_util/std/async/delay.ts";
 // [toolName] --version output
 const versions = {
   "dprint": "dprint 0.40.0",
-  "dlint": "dlint 0.47.0",
+  "dlint": "dlint 0.51.0",
 };
 
 export const ROOT_PATH = dirname(dirname(fromFileUrl(import.meta.url)));
@@ -115,10 +116,45 @@ const platformDirName = {
 
 const executableSuffix = Deno.build.os === "windows" ? ".exe" : "";
 
+async function sanityCheckPrebuiltFile(toolPath) {
+  const stat = await Deno.stat(toolPath);
+  if (stat.size < PREBUILT_MINIMUM_SIZE) {
+    throw new Error(
+      `File size ${stat.size} is less than expected minimum file size ${PREBUILT_MINIMUM_SIZE}`,
+    );
+  }
+  const file = await Deno.open(toolPath, { read: true });
+  const buffer = new Uint8Array(1024);
+  let n = 0;
+  while (n < 1024) {
+    n += await file.read(buffer.subarray(n));
+  }
+
+  // Mac: OK
+  if (buffer[0] == 0xcf && buffer[1] == 0xfa) {
+    return;
+  }
+
+  // Windows OK
+  if (buffer[0] == "M".charCodeAt(0) && buffer[1] == "Z".charCodeAt(0)) {
+    return;
+  }
+
+  // Linux OK
+  if (
+    buffer[0] == 0x7f && buffer[1] == "E".charCodeAt(0) &&
+    buffer[2] == "L".charCodeAt(0) && buffer[3] == "F".charCodeAt(0)
+  ) {
+    return;
+  }
+
+  throw new Error(`Invalid executable (header was ${buffer.subarray(0, 16)}`);
+}
+
 export async function getPrebuilt(toolName) {
   const toolPath = getPrebuiltToolPath(toolName);
   try {
-    await Deno.stat(toolPath);
+    await sanityCheckPrebuiltFile(toolPath);
     const versionOk = await verifyVersion(toolName);
     if (!versionOk) {
       throw new Error("Version mismatch");
@@ -132,17 +168,26 @@ export async function getPrebuilt(toolName) {
 
 const PREBUILT_PATH = join(ROOT_PATH, "third_party", "prebuilt");
 const PREBUILT_TOOL_DIR = join(PREBUILT_PATH, platformDirName);
+const PREBUILT_MINIMUM_SIZE = 16 * 1024;
+const DOWNLOAD_TASKS = {};
 
 export function getPrebuiltToolPath(toolName) {
   return join(PREBUILT_TOOL_DIR, toolName + executableSuffix);
 }
 
 const downloadUrl =
-  `https://raw.githubusercontent.com/denoland/deno_third_party/master/prebuilt/${platformDirName}`;
+  `https://raw.githubusercontent.com/denoland/deno_third_party/69ffd968c0c435f5f9dbba713a92b4fb6a3e2301/prebuilt/${platformDirName}`;
 
 export async function downloadPrebuilt(toolName) {
+  // Ensure only one download per tool happens at a time
+  if (DOWNLOAD_TASKS[toolName]) {
+    return await DOWNLOAD_TASKS[toolName];
+  }
+
+  const downloadPromise = DOWNLOAD_TASKS[toolName] = deferred();
   const spinner = wait("Downloading prebuilt tool: " + toolName).start();
   const toolPath = getPrebuiltToolPath(toolName);
+  const tempFile = `${toolPath}.temp`;
 
   try {
     await Deno.mkdir(PREBUILT_TOOL_DIR, { recursive: true });
@@ -150,19 +195,29 @@ export async function downloadPrebuilt(toolName) {
     const url = `${downloadUrl}/${toolName}${executableSuffix}`;
 
     const resp = await fetch(url);
-    const file = await Deno.open(toolPath, {
+    if (!resp.ok) {
+      throw new Error(`Non-successful response from ${url}: ${resp.status}`);
+    }
+
+    const file = await Deno.open(tempFile, {
       create: true,
       write: true,
       mode: 0o755,
     });
 
     await resp.body.pipeTo(file.writable);
+    spinner.text = `Checking prebuilt tool: ${toolName}`;
+    await sanityCheckPrebuiltFile(tempFile);
+    spinner.text = `Successfully downloaded: ${toolName}`;
+    await Deno.rename(tempFile, toolPath);
   } catch (e) {
     spinner.fail();
+    downloadPromise.reject(e);
     throw e;
   }
 
   spinner.succeed();
+  downloadPromise.resolve(null);
 }
 
 export async function verifyVersion(toolName) {

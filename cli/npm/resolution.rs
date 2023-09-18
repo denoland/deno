@@ -7,7 +7,6 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::TaskQueue;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
@@ -32,6 +31,7 @@ use deno_semver::package::PackageReq;
 use deno_semver::VersionReq;
 
 use crate::args::Lockfile;
+use crate::util::sync::TaskQueue;
 
 use super::registry::CliNpmRegistryApi;
 
@@ -369,13 +369,16 @@ fn populate_lockfile_from_snapshot(
   snapshot: &NpmResolutionSnapshot,
 ) -> Result<(), AnyError> {
   for (package_req, nv) in snapshot.package_reqs() {
-    lockfile.insert_npm_specifier(
-      package_req.to_string(),
-      snapshot
-        .resolve_package_from_deno_module(nv)
-        .unwrap()
-        .id
-        .as_serialized(),
+    lockfile.insert_package_specifier(
+      format!("npm:{}", package_req),
+      format!(
+        "npm:{}",
+        snapshot
+          .resolve_package_from_deno_module(nv)
+          .unwrap()
+          .id
+          .as_serialized()
+      ),
     );
   }
   for package in snapshot.all_packages_for_every_system() {

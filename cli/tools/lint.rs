@@ -13,7 +13,7 @@ use crate::factory::CliFactory;
 use crate::tools::fmt::run_parallelized;
 use crate::util::file_watcher;
 use crate::util::fs::FileCollector;
-use crate::util::path::is_supported_ext;
+use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 use deno_ast::MediaType;
 use deno_core::anyhow::bail;
@@ -195,12 +195,12 @@ async fn lint_files(
 }
 
 fn collect_lint_files(files: &FilesConfig) -> Result<Vec<PathBuf>, AnyError> {
-  FileCollector::new(is_supported_ext)
+  FileCollector::new(is_script_ext)
     .ignore_git_folder()
     .ignore_node_modules()
     .ignore_vendor_folder()
     .add_ignore_paths(&files.exclude)
-    .collect_files(&files.include)
+    .collect_files(files.include.as_deref())
 }
 
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {

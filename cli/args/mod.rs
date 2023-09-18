@@ -15,7 +15,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::npm::NpmPackageReqReference;
-use indexmap1::IndexMap;
+use indexmap::IndexMap;
 
 pub use deno_config::BenchConfig;
 pub use deno_config::CompilerOptions;
@@ -1403,20 +1403,18 @@ fn resolve_files(
   let mut result = maybe_files_config.unwrap_or_default();
   if let Some(file_flags) = maybe_file_flags {
     if !file_flags.include.is_empty() {
-      result.include = file_flags.include;
+      result.include = Some(file_flags.include);
     }
     if !file_flags.ignore.is_empty() {
       result.exclude = file_flags.ignore;
     }
   }
   // Now expand globs if there are any
-  if !result.include.is_empty() {
-    result.include = expand_globs(result.include)?;
-  }
-
-  if !result.exclude.is_empty() {
-    result.exclude = expand_globs(result.exclude)?;
-  }
+  result.include = match result.include {
+    Some(include) => Some(expand_globs(include)?),
+    None => None,
+  };
+  result.exclude = expand_globs(result.exclude)?;
 
   Ok(result)
 }
@@ -1629,7 +1627,7 @@ mod test {
     let temp_dir_path = temp_dir.path().as_path();
     let error = resolve_files(
       Some(FilesConfig {
-        include: vec![temp_dir_path.join("data/**********.ts")],
+        include: Some(vec![temp_dir_path.join("data/**********.ts")]),
         exclude: vec![],
       }),
       None,
@@ -1639,12 +1637,12 @@ mod test {
 
     let resolved_files = resolve_files(
       Some(FilesConfig {
-        include: vec![
+        include: Some(vec![
           temp_dir_path.join("data/test1.?s"),
           temp_dir_path.join("nested/foo/*.ts"),
           temp_dir_path.join("nested/fizz/*.ts"),
           temp_dir_path.join("pages/[id].ts"),
-        ],
+        ]),
         exclude: vec![temp_dir_path.join("nested/**/*bazz.ts")],
       }),
       None,
@@ -1653,7 +1651,7 @@ mod test {
 
     assert_eq!(
       resolved_files.include,
-      vec![
+      Some(vec![
         temp_dir_path.join("data/test1.js"),
         temp_dir_path.join("data/test1.ts"),
         temp_dir_path.join("nested/foo/bar.ts"),
@@ -1665,7 +1663,7 @@ mod test {
         temp_dir_path.join("nested/fizz/fizz.ts"),
         temp_dir_path.join("nested/fizz/foo.ts"),
         temp_dir_path.join("pages/[id].ts"),
-      ]
+      ])
     );
     assert_eq!(
       resolved_files.exclude,

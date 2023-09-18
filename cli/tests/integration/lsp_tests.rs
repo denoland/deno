@@ -643,6 +643,87 @@ fn lsp_import_map_node_specifiers() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/19802.
+// Disable the `workspace/configuration` capability. Ensure the LSP falls back
+// to using `enablePaths` from the `InitializationOptions`.
+#[test]
+fn lsp_workspace_enable_paths_no_workspace_configuration() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write("main_disabled.ts", "Date.now()");
+  temp_dir.write("main_enabled.ts", "Date.now()");
+
+  let mut client = context.new_lsp_command().build();
+  client.initialize(|builder| {
+    builder.with_capabilities(|capabilities| {
+      capabilities.workspace.as_mut().unwrap().configuration = Some(false);
+    });
+    builder.set_workspace_folders(vec![lsp::WorkspaceFolder {
+      uri: temp_dir.uri(),
+      name: "project".to_string(),
+    }]);
+    builder.set_root_uri(temp_dir.uri());
+    builder.set_enable_paths(vec!["./main_enabled.ts".to_string()]);
+  });
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("main_disabled.ts"),
+    }
+  }));
+
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": temp_dir.read_to_string("main_enabled.ts"),
+    }
+  }));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("main_disabled.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 5 }
+    }),
+  );
+  assert_eq!(res, json!(null));
+
+  let res = client.write_request(
+    "textDocument/hover",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.uri().join("main_enabled.ts").unwrap(),
+      },
+      "position": { "line": 0, "character": 5 }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "(method) DateConstructor.now(): number",
+        },
+        "Returns the number of milliseconds elapsed since midnight, January 1, 1970 Universal Coordinated Time (UTC)."
+      ],
+      "range": {
+        "start": { "line": 0, "character": 5, },
+        "end": { "line": 0, "character": 8, }
+      }
+    })
+  );
+
+  client.shutdown();
+}
+
 #[test]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
@@ -679,7 +760,7 @@ fn lsp_deno_task() {
 }
 
 #[test]
-fn lsp_import_assertions() {
+fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
@@ -725,9 +806,9 @@ fn lsp_import_assertions() {
           "end": { "line": 0, "character": 27 }
         },
         "severity": 1,
-        "code": "no-assert-type",
+        "code": "no-attribute-type",
         "source": "deno",
-        "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+        "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
       }
     ])
   );
@@ -750,9 +831,9 @@ fn lsp_import_assertions() {
               "end": { "line": 0, "character": 27 }
             },
             "severity": 1,
-            "code": "no-assert-type",
+            "code": "no-attribute-type",
             "source": "deno",
-            "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+            "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
           }],
           "only": ["quickfix"]
         }
@@ -762,7 +843,7 @@ fn lsp_import_assertions() {
   assert_eq!(
     res,
     json!([{
-      "title": "Insert import assertion.",
+      "title": "Insert import attribute.",
       "kind": "quickfix",
       "diagnostics": [
         {
@@ -771,9 +852,9 @@ fn lsp_import_assertions() {
             "end": { "line": 0, "character": 27 }
           },
           "severity": 1,
-          "code": "no-assert-type",
+          "code": "no-attribute-type",
           "source": "deno",
-          "message": "The module is a JSON module and not being imported with an import assertion. Consider adding `assert { type: \"json\" }` to the import statement."
+          "message": "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement."
         }
       ],
       "edit": {
@@ -784,7 +865,7 @@ fn lsp_import_assertions() {
                 "start": { "line": 0, "character": 27 },
                 "end": { "line": 0, "character": 27 }
               },
-              "newText": " assert { type: \"json\" }"
+              "newText": " with { type: \"json\" }"
             }
           ]
         }
@@ -1217,13 +1298,14 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
-fn lsp_workspace_enable_paths() {
+fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
     temp_dir.create_dir_all("worker");
     temp_dir.write("worker/shared.ts", "export const a = 1");
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
+    temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
 
     let root_specifier = temp_dir.uri();
 
@@ -1231,6 +1313,7 @@ fn lsp_workspace_enable_paths() {
     client.initialize_with_config(
       |builder| {
         builder
+          .set_disable_paths(vec!["./worker/node.ts".to_string()])
           .set_enable_paths(vec!["./worker".to_string()])
           .set_root_uri(root_specifier.clone())
           .set_workspace_folders(vec![lsp::WorkspaceFolder {
@@ -1248,6 +1331,7 @@ fn lsp_workspace_enable_paths() {
       },
       json!([{
         "enable": false,
+        "disablePaths": ["./worker/node.ts"],
         "enablePaths": ["./worker"],
       }]),
     );
@@ -1310,6 +1394,17 @@ fn lsp_workspace_enable_paths() {
           "uri": root_specifier.join("./other/file.ts").unwrap(),
         },
         "position": { "line": 0, "character": 19 }
+      }),
+    );
+    assert_eq!(res, json!(null));
+
+    let res = client.write_request(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": root_specifier.join("./worker/node.ts").unwrap(),
+        },
+        "position": { "line": 0, "character": 0 }
       }),
     );
     assert_eq!(res, json!(null));
@@ -3950,6 +4045,24 @@ fn lsp_code_actions() {
   assert_eq!(
     res,
     json!([{
+      "title": "Add all missing 'async' modifiers",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 2 },
+          "end": { "line": 1, "character": 7 }
+        },
+        "severity": 1,
+        "code": 1308,
+        "source": "deno-ts",
+        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
+        "relatedInformation": []
+      }],
+      "data": {
+        "specifier": "file:///a/file.ts",
+        "fixId": "fixAwaitInSyncFunction"
+      }
+    }, {
       "title": "Add async modifier to containing function",
       "kind": "quickfix",
       "diagnostics": [{
@@ -3983,24 +4096,6 @@ fn lsp_code_actions() {
             "newText": "Promise<void>"
           }]
         }]
-      }
-    }, {
-      "title": "Add all missing 'async' modifiers",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 1, "character": 2 },
-          "end": { "line": 1, "character": 7 }
-        },
-        "severity": 1,
-        "code": 1308,
-        "source": "deno-ts",
-        "message": "'await' expressions are only allowed within async functions and at the top levels of modules.",
-        "relatedInformation": []
-      }],
-      "data": {
-        "specifier": "file:///a/file.ts",
-        "fixId": "fixAwaitInSyncFunction"
       }
     }])
   );
@@ -4094,6 +4189,98 @@ fn lsp_code_actions() {
 }
 
 #[test]
+fn test_lsp_code_actions_ordering() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+          import "https://deno.land/x/a/mod.ts";
+          let a = "a";
+          console.log(a);
+          export function b(): void {
+            await Promise.resolve("b");
+          }
+        "#
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      },
+      "range": {
+        "start": { "line": 1, "character": 11 },
+        "end": { "line": 6, "character": 12 }
+      },
+      "context": {
+        "diagnostics": diagnostics.all(),
+        "only": ["quickfix"]
+      }
+    }),
+  );
+
+  // Simplify the serialization to `{ title, source }` for this test.
+  let mut actions: Vec<Value> = serde_json::from_value(res).unwrap();
+  for action in &mut actions {
+    let action = action.as_object_mut().unwrap();
+    let title = action.get("title").unwrap().as_str().unwrap().to_string();
+    let diagnostics = action.get("diagnostics").unwrap().as_array().unwrap();
+    let diagnostic = diagnostics.get(0).unwrap().as_object().unwrap();
+    let source = diagnostic.get("source").unwrap();
+    let source = source.as_str().unwrap().to_string();
+    action.clear();
+    action.insert("title".to_string(), serde_json::to_value(title).unwrap());
+    action.insert("source".to_string(), serde_json::to_value(source).unwrap());
+  }
+  let res = serde_json::to_value(actions).unwrap();
+
+  // Ensure ordering is "deno-ts" -> "deno" -> "deno-lint".
+  assert_eq!(
+    res,
+    json!([
+      {
+        "title": "Add async modifier to containing function",
+        "source": "deno-ts",
+      },
+      {
+        "title": "Cache \"https://deno.land/x/a/mod.ts\" and its dependencies.",
+        "source": "deno",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable no-await-in-sync-fn for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Disable prefer-const for this line",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+      {
+        "title": "Ignore lint errors for the entire file",
+        "source": "deno-lint",
+      },
+    ])
+  );
+}
+
+#[test]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4176,7 +4363,7 @@ fn lsp_code_actions_deno_cache() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["https://deno.land/x/a/mod.ts"]]
+        "arguments": [["https://deno.land/x/a/mod.ts"], "file:///a/file.ts"]
       }
     }])
   );
@@ -4261,7 +4448,7 @@ fn lsp_code_actions_deno_cache_npm() {
       "command": {
         "title": "",
         "command": "deno.cache",
-        "arguments": [["npm:chalk"]]
+        "arguments": [["npm:chalk"], "file:///a/file.ts"]
       }
     }])
   );
@@ -4356,7 +4543,7 @@ export class DuckConfig {
   assert_eq!(
     res,
     json!([{
-      "title": "Add import from \"./file02.ts\"",
+      "title": "Add all missing imports",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -4368,20 +4555,9 @@ export class DuckConfig {
         "source": "deno-ts",
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
-      "edit": {
-        "documentChanges": [{
-          "textDocument": {
-            "uri": "file:///a/file00.ts",
-            "version": 1
-          },
-          "edits": [{
-            "range": {
-              "start": { "line": 0, "character": 0 },
-              "end": { "line": 0, "character": 0 }
-            },
-            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
-          }]
-        }]
+      "data": {
+        "specifier": "file:///a/file00.ts",
+        "fixId": "fixMissingImport"
       }
     }, {
       "title": "Add import from \"./file01.ts\"",
@@ -4412,7 +4588,7 @@ export class DuckConfig {
         }]
       }
     }, {
-      "title": "Add all missing imports",
+      "title": "Add import from \"./file02.ts\"",
       "kind": "quickfix",
       "diagnostics": [{
         "range": {
@@ -4424,9 +4600,20 @@ export class DuckConfig {
         "source": "deno-ts",
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
-      "data": {
-        "specifier": "file:///a/file00.ts",
-        "fixId": "fixMissingImport"
+      "edit": {
+        "documentChanges": [{
+          "textDocument": {
+            "uri": "file:///a/file00.ts",
+            "version": 1
+          },
+          "edits": [{
+            "range": {
+              "start": { "line": 0, "character": 0 },
+              "end": { "line": 0, "character": 0 }
+            },
+            "newText": "import { DuckConfigOptions } from \"./file02.ts\";\n\n"
+          }]
+        }]
       }
     }])
   );
@@ -5117,6 +5304,9 @@ fn lsp_completions_auto_import() {
 
   let req = json!({
     "label": "foo",
+    "labelDetails": {
+      "description": "./b.ts",
+    },
     "kind": 6,
     "sortText": "￿16",
     "commitCharacters": [
@@ -5148,6 +5338,9 @@ fn lsp_completions_auto_import() {
     res,
     json!({
       "label": "foo",
+      "labelDetails": {
+        "description": "./b.ts",
+      },
       "kind": 6,
       "detail": "const foo: \"foo\"",
       "documentation": {
@@ -5228,6 +5421,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "npm:@denotest/types-exports-subpaths@1/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5340,6 +5536,9 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "npm:chalk@5.0",
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5415,6 +5614,45 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         }]
       }
     }])
+  );
+}
+
+#[test]
+fn lsp_semantic_tokens_for_disabled_module() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_with_config(
+    |builder| {
+      builder.set_deno_enable(false);
+    },
+    json!({
+      "enable": false
+    }),
+  );
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "const someConst = 1; someConst"
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/semanticTokens/full",
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts"
+      }
+    }),
+  );
+  assert_eq!(
+    res,
+    json!({
+      "data": [0, 6, 9, 7, 9, 0, 15, 9, 7, 8],
+    })
   );
 }
 
@@ -5501,6 +5739,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "getClient",
+      "labelDetails": {
+        "description": "types-exports-subpaths/client",
+      },
       "kind": 3,
       "detail": "function getClient(): 5",
       "documentation": {
@@ -5613,6 +5854,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "chalk",
+      "labelDetails": {
+        "description": "chalk",
+      },
       "kind": 6,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -5720,6 +5964,9 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
     res,
     json!({
       "label": "printHello",
+      "labelDetails": {
+        "description": "print_hello",
+      },
       "kind": 3,
       "sortText": "￿16",
       "additionalTextEdits": [
@@ -7879,11 +8126,11 @@ fn lsp_workspace_symbol() {
         "uri": "deno:/asset/lib.decorators.d.ts",
         "range": {
           "start": {
-            "line": 331,
+            "line": 346,
             "character": 0,
           },
           "end": {
-            "line": 371,
+            "line": 388,
             "character": 1,
           },
         },
@@ -7938,31 +8185,6 @@ fn lsp_code_actions_ignore_lint() {
   assert_eq!(
     res,
     json!([{
-      "title": "Disable prefer-const for this line",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 1, "character": 5 },
-          "end": { "line": 1, "character": 12 }
-        },
-        "severity": 1,
-        "code": "prefer-const",
-        "source": "deno-lint",
-        "message": "'message' is never reassigned\nUse 'const' instead",
-        "relatedInformation": []
-      }],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [{
-            "range": {
-              "start": { "line": 1, "character": 0 },
-              "end": { "line": 1, "character": 0 }
-            },
-            "newText": "// deno-lint-ignore prefer-const\n"
-          }]
-        }
-      }
-    }, {
       "title": "Disable prefer-const for the entire file",
       "kind": "quickfix",
       "diagnostics": [{
@@ -7984,6 +8206,31 @@ fn lsp_code_actions_ignore_lint() {
               "end": { "line": 0, "character": 0 }
             },
             "newText": "// deno-lint-ignore-file prefer-const\n"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 1, "character": 5 },
+          "end": { "line": 1, "character": 12 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'message' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 1, "character": 0 },
+              "end": { "line": 1, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
           }]
         }
       }
@@ -8065,31 +8312,6 @@ console.log(snake_case);
   assert_eq!(
     res,
     json!([{
-      "title": "Disable prefer-const for this line",
-      "kind": "quickfix",
-      "diagnostics": [{
-        "range": {
-          "start": { "line": 3, "character": 5 },
-          "end": { "line": 3, "character": 15 }
-        },
-        "severity": 1,
-        "code": "prefer-const",
-        "source": "deno-lint",
-        "message": "'snake_case' is never reassigned\nUse 'const' instead",
-        "relatedInformation": []
-      }],
-      "edit": {
-        "changes": {
-          "file:///a/file.ts": [{
-            "range": {
-              "start": { "line": 3, "character": 0 },
-              "end": { "line": 3, "character": 0 }
-            },
-            "newText": "// deno-lint-ignore prefer-const\n"
-          }]
-        }
-      }
-    }, {
       "title": "Disable prefer-const for the entire file",
       "kind": "quickfix",
       "diagnostics": [{
@@ -8111,6 +8333,31 @@ console.log(snake_case);
               "end": { "line": 1, "character": 34 }
             },
             "newText": " prefer-const"
+          }]
+        }
+      }
+    }, {
+      "title": "Disable prefer-const for this line",
+      "kind": "quickfix",
+      "diagnostics": [{
+        "range": {
+          "start": { "line": 3, "character": 5 },
+          "end": { "line": 3, "character": 15 }
+        },
+        "severity": 1,
+        "code": "prefer-const",
+        "source": "deno-lint",
+        "message": "'snake_case' is never reassigned\nUse 'const' instead",
+        "relatedInformation": []
+      }],
+      "edit": {
+        "changes": {
+          "file:///a/file.ts": [{
+            "range": {
+              "start": { "line": 3, "character": 0 },
+              "end": { "line": 3, "character": 0 }
+            },
+            "newText": "// deno-lint-ignore prefer-const\n"
           }]
         }
       }

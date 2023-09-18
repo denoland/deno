@@ -8,7 +8,7 @@ use crate::tools::test::TestStepDescription;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
-use deno_core::op;
+use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
@@ -48,10 +48,11 @@ deno_core::extension!(deno_test,
 #[derive(Clone)]
 struct PermissionsHolder(Uuid, PermissionsContainer);
 
-#[op]
+#[op2]
+#[serde]
 pub fn op_pledge_test_permissions(
   state: &mut OpState,
-  args: ChildPermissionsArg,
+  #[serde] args: ChildPermissionsArg,
 ) -> Result<Uuid, AnyError> {
   let token = Uuid::new_v4();
   let parent_permissions = state.borrow_mut::<PermissionsContainer>();
@@ -73,10 +74,10 @@ pub fn op_pledge_test_permissions(
   Ok(token)
 }
 
-#[op]
+#[op2]
 pub fn op_restore_test_permissions(
   state: &mut OpState,
-  token: Uuid,
+  #[serde] token: Uuid,
 ) -> Result<(), AnyError> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
@@ -113,11 +114,12 @@ struct TestRegisterResult {
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[op(v8)]
+#[op2]
+#[serde]
 fn op_register_test<'a>(
   scope: &mut v8::HandleScope<'a>,
   state: &mut OpState,
-  info: TestInfo<'a>,
+  #[serde] info: TestInfo<'a>,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
@@ -164,10 +166,11 @@ struct TestStepInfo {
   root_name: String,
 }
 
-#[op]
+#[op2]
+#[serde]
 fn op_register_test_step(
   state: &mut OpState,
-  info: TestStepInfo,
+  #[serde] info: TestStepInfo,
 ) -> Result<TestRegisterResult, AnyError> {
   let id = NEXT_ID.fetch_add(1, Ordering::SeqCst);
   let origin = state.borrow::<ModuleSpecifier>().to_string();
@@ -186,10 +189,10 @@ fn op_register_test_step(
   Ok(TestRegisterResult { id, origin })
 }
 
-#[op]
+#[op2]
 fn op_dispatch_test_event(
   state: &mut OpState,
-  event: TestEvent,
+  #[serde] event: TestEvent,
 ) -> Result<(), AnyError> {
   assert!(
     matches!(event, TestEvent::StepWait(_) | TestEvent::StepResult(..)),

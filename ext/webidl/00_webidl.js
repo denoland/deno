@@ -36,9 +36,7 @@ const {
   Number,
   NumberIsFinite,
   NumberIsNaN,
-  // deno-lint-ignore camelcase
   NumberMAX_SAFE_INTEGER,
-  // deno-lint-ignore camelcase
   NumberMIN_SAFE_INTEGER,
   ObjectAssign,
   ObjectCreate,
