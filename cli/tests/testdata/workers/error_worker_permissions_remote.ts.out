@@ -1,3 +1,2 @@
-[WILDCARD]
 error: Uncaught (in worker "") Requires net access to "localhost:4545", run again with the --allow-net flag
 [WILDCARD]

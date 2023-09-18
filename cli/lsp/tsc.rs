@@ -2603,6 +2603,7 @@ impl CompletionInfo {
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
+    language_server: &language_server::Inner,
   ) -> lsp::CompletionResponse {
     let items = self
       .entries
@@ -2614,6 +2615,7 @@ impl CompletionInfo {
           settings,
           specifier,
           position,
+          language_server,
         )
       })
       .collect();
@@ -2808,15 +2810,17 @@ impl CompletionEntry {
     settings: &config::CompletionSettings,
     specifier: &ModuleSpecifier,
     position: u32,
+    language_server: &language_server::Inner,
   ) -> lsp::CompletionItem {
     let mut label = self.name.clone();
+    let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
       Some(self.kind.clone().into());
 
-    let sort_text = if self.source.is_some() {
-      Some(format!("\u{ffff}{}", self.sort_text))
+    let mut sort_text = if self.source.is_some() {
+      format!("\u{ffff}{}", self.sort_text)
     } else {
-      Some(self.sort_text.clone())
+      self.sort_text.clone()
     };
 
     let preselect = self.is_recommended;
@@ -2865,6 +2869,37 @@ impl CompletionEntry {
       }
     }
 
+    if let Some(source) = &self.source {
+      let mut source = source.clone();
+      if let Some(data) = &self.data {
+        if let Ok(import_data) =
+          serde_json::from_value::<CompletionEntryDataImport>(data.clone())
+        {
+          if let Ok(import_specifier) =
+            normalize_specifier(import_data.file_name)
+          {
+            if let Some(new_module_specifier) = language_server
+              .get_ts_response_import_mapper()
+              .check_specifier(&import_specifier, specifier)
+              .or_else(|| relative_specifier(specifier, &import_specifier))
+            {
+              source = new_module_specifier;
+            }
+          }
+        }
+      }
+      // We want relative or bare (import-mapped or otherwise) specifiers to
+      // appear at the top.
+      if resolve_url(&source).is_err() {
+        sort_text += "_0";
+      } else {
+        sort_text += "_1";
+      }
+      label_details
+        .get_or_insert_with(Default::default)
+        .description = Some(source);
+    }
+
     let text_edit =
       if let (Some(text_span), Some(new_text)) = (range, &insert_text) {
         let range = text_span.to_range(line_index);
@@ -2889,8 +2924,9 @@ impl CompletionEntry {
 
     lsp::CompletionItem {
       label,
+      label_details,
       kind,
-      sort_text,
+      sort_text: Some(sort_text),
       preselect,
       text_edit,
       filter_text,

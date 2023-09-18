@@ -9,12 +9,24 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::uri_error;
 use deno_core::error::AnyError;
 
-/// Checks if the path has extension Deno supports.
-pub fn is_supported_ext(path: &Path) -> bool {
+/// Checks if the path has an extension Deno supports for script execution.
+pub fn is_script_ext(path: &Path) -> bool {
   if let Some(ext) = get_extension(path) {
     matches!(
       ext.as_str(),
       "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts"
+    )
+  } else {
+    false
+  }
+}
+
+/// Checks if the path has an extension Deno supports for importing.
+pub fn is_importable_ext(path: &Path) -> bool {
+  if let Some(ext) = get_extension(path) {
+    matches!(
+      ext.as_str(),
+      "ts" | "tsx" | "js" | "jsx" | "mjs" | "mts" | "cjs" | "cts" | "json"
     )
   } else {
     false
@@ -259,23 +271,45 @@ mod test {
   use super::*;
 
   #[test]
-  fn test_is_supported_ext() {
-    assert!(!is_supported_ext(Path::new("tests/subdir/redirects")));
-    assert!(!is_supported_ext(Path::new("README.md")));
-    assert!(is_supported_ext(Path::new("lib/typescript.d.ts")));
-    assert!(is_supported_ext(Path::new("testdata/run/001_hello.js")));
-    assert!(is_supported_ext(Path::new("testdata/run/002_hello.ts")));
-    assert!(is_supported_ext(Path::new("foo.jsx")));
-    assert!(is_supported_ext(Path::new("foo.tsx")));
-    assert!(is_supported_ext(Path::new("foo.TS")));
-    assert!(is_supported_ext(Path::new("foo.TSX")));
-    assert!(is_supported_ext(Path::new("foo.JS")));
-    assert!(is_supported_ext(Path::new("foo.JSX")));
-    assert!(is_supported_ext(Path::new("foo.mjs")));
-    assert!(is_supported_ext(Path::new("foo.mts")));
-    assert!(is_supported_ext(Path::new("foo.cjs")));
-    assert!(is_supported_ext(Path::new("foo.cts")));
-    assert!(!is_supported_ext(Path::new("foo.mjsx")));
+  fn test_is_script_ext() {
+    assert!(!is_script_ext(Path::new("tests/subdir/redirects")));
+    assert!(!is_script_ext(Path::new("README.md")));
+    assert!(is_script_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_script_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_script_ext(Path::new("testdata/run/002_hello.ts")));
+    assert!(is_script_ext(Path::new("foo.jsx")));
+    assert!(is_script_ext(Path::new("foo.tsx")));
+    assert!(is_script_ext(Path::new("foo.TS")));
+    assert!(is_script_ext(Path::new("foo.TSX")));
+    assert!(is_script_ext(Path::new("foo.JS")));
+    assert!(is_script_ext(Path::new("foo.JSX")));
+    assert!(is_script_ext(Path::new("foo.mjs")));
+    assert!(is_script_ext(Path::new("foo.mts")));
+    assert!(is_script_ext(Path::new("foo.cjs")));
+    assert!(is_script_ext(Path::new("foo.cts")));
+    assert!(!is_script_ext(Path::new("foo.json")));
+    assert!(!is_script_ext(Path::new("foo.mjsx")));
+  }
+
+  #[test]
+  fn test_is_importable_ext() {
+    assert!(!is_importable_ext(Path::new("tests/subdir/redirects")));
+    assert!(!is_importable_ext(Path::new("README.md")));
+    assert!(is_importable_ext(Path::new("lib/typescript.d.ts")));
+    assert!(is_importable_ext(Path::new("testdata/run/001_hello.js")));
+    assert!(is_importable_ext(Path::new("testdata/run/002_hello.ts")));
+    assert!(is_importable_ext(Path::new("foo.jsx")));
+    assert!(is_importable_ext(Path::new("foo.tsx")));
+    assert!(is_importable_ext(Path::new("foo.TS")));
+    assert!(is_importable_ext(Path::new("foo.TSX")));
+    assert!(is_importable_ext(Path::new("foo.JS")));
+    assert!(is_importable_ext(Path::new("foo.JSX")));
+    assert!(is_importable_ext(Path::new("foo.mjs")));
+    assert!(is_importable_ext(Path::new("foo.mts")));
+    assert!(is_importable_ext(Path::new("foo.cjs")));
+    assert!(is_importable_ext(Path::new("foo.cts")));
+    assert!(is_importable_ext(Path::new("foo.json")));
+    assert!(!is_importable_ext(Path::new("foo.mjsx")));
   }
 
   #[test]

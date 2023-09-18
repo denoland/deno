@@ -7,7 +7,6 @@ mod resolution;
 mod resolvers;
 mod tarball;
 
-pub use cache::should_sync_download;
 pub use cache::NpmCache;
 pub use cache::NpmCacheDir;
 pub use installer::PackageJsonDepsInstaller;

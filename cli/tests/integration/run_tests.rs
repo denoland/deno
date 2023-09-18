@@ -15,7 +15,7 @@ use trust_dns_client::serialize::txt::Lexer;
 use trust_dns_client::serialize::txt::Parser;
 use util::assert_contains;
 use util::assert_not_contains;
-use util::env_vars_for_npm_tests_no_sync_download;
+use util::env_vars_for_npm_tests;
 use util::PathRef;
 use util::TestContext;
 use util::TestContextBuilder;
@@ -870,7 +870,7 @@ itest!(lock_write_fetch {
 
 itest!(lock_check_ok {
   args:
-    "run --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -917,7 +917,7 @@ itest!(lock_flag_overrides_config_file_lock_path {
 
 itest!(lock_v2_check_ok {
   args:
-    "run --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
+    "run --quiet --lock=run/lock_v2_check_ok.json http://127.0.0.1:4545/run/003_relative_import.ts",
   output: "run/003_relative_import.ts.out",
   http_server: true,
 });
@@ -3237,7 +3237,7 @@ itest!(package_json_auto_discovered_for_local_script_arg {
   cwd: Some("run/with_package_json/"),
   // prevent creating a node_modules dir in the code directory
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -3249,7 +3249,7 @@ itest!(
     output: "run/with_package_json/with_stop/main.out",
     cwd: Some("run/with_package_json/"),
     copy_temp_dir: Some("run/with_package_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
     exit_code: 1,
   }
@@ -3280,7 +3280,7 @@ itest!(
     output: "run/with_package_json/no_deno_json/sub_dir/main.out",
     cwd: Some("run/with_package_json/no_deno_json/sub_dir"),
     copy_temp_dir: Some("run/with_package_json/no_deno_json/"),
-    envs: env_vars_for_npm_tests_no_sync_download(),
+    envs: env_vars_for_npm_tests(),
     http_server: true,
   }
 );
@@ -3290,7 +3290,7 @@ itest!(package_json_auto_discovered_for_npm_binary {
   output: "run/with_package_json/npm_binary/main.out",
   cwd: Some("run/with_package_json/npm_binary/"),
   copy_temp_dir: Some("run/with_package_json/"),
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -4680,21 +4680,21 @@ fn permission_prompt_strips_ansi_codes_and_control_chars() {
 itest!(node_builtin_modules_ts {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.ts hello there",
   output: "run/node_builtin_modules/mod.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_builtin_modules_js {
   args: "run --quiet --allow-read run/node_builtin_modules/mod.js hello there",
   output: "run/node_builtin_modules/mod.js.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 0,
 });
 
 itest!(node_prefix_missing {
   args: "run --quiet run/node_prefix_missing/main.ts",
   output: "run/node_prefix_missing/main.ts.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   exit_code: 1,
 });
 
@@ -4816,3 +4816,8 @@ console.log(returnsHi());"#,
 ")
     .assert_exit_code(1);
 }
+
+itest!(explicit_resource_management {
+  args: "run --quiet --check run/explicit_resource_management/main.ts",
+  output: "run/explicit_resource_management/main.out",
+});

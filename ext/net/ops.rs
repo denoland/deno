@@ -9,6 +9,7 @@ use deno_core::error::custom_error;
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::op;
+use deno_core::op2;
 use deno_core::CancelFuture;
 
 use deno_core::AsyncRefCell;
@@ -76,10 +77,11 @@ pub(crate) fn accept_err(e: std::io::Error) -> AnyError {
   }
 }
 
-#[op]
-async fn op_net_accept_tcp(
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError> {
   let resource = state
     .borrow()
@@ -105,11 +107,12 @@ async fn op_net_accept_tcp(
   Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
 }
 
-#[op]
-async fn op_net_recv_udp(
+#[op2(async)]
+#[serde]
+pub async fn op_net_recv_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  mut buf: JsBuffer,
+  #[smi] rid: ResourceId,
+  #[buffer] mut buf: JsBuffer,
 ) -> Result<(usize, IpAddr), AnyError> {
   let resource = state
     .borrow_mut()
@@ -158,12 +161,12 @@ where
   Ok(nwritten)
 }
 
-#[op]
-async fn op_net_join_multi_v4_udp(
+#[op2(async)]
+pub async fn op_net_join_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: String,
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[string] multi_interface: String,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -180,12 +183,12 @@ async fn op_net_join_multi_v4_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_join_multi_v6_udp(
+#[op2(async)]
+pub async fn op_net_join_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: u32,
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[smi] multi_interface: u32,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -201,12 +204,12 @@ async fn op_net_join_multi_v6_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_leave_multi_v4_udp(
+#[op2(async)]
+pub async fn op_net_leave_multi_v4_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: String,
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[string] multi_interface: String,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -223,12 +226,12 @@ async fn op_net_leave_multi_v4_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_leave_multi_v6_udp(
+#[op2(async)]
+pub async fn op_net_leave_multi_v6_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  address: String,
-  multi_interface: u32,
+  #[smi] rid: ResourceId,
+  #[string] address: String,
+  #[smi] multi_interface: u32,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -244,10 +247,10 @@ async fn op_net_leave_multi_v6_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_set_multi_loopback_udp(
+#[op2(async)]
+pub async fn op_net_set_multi_loopback_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   is_v4_membership: bool,
   loopback: bool,
 ) -> Result<(), AnyError> {
@@ -267,11 +270,11 @@ async fn op_net_set_multi_loopback_udp(
   Ok(())
 }
 
-#[op]
-async fn op_net_set_multi_ttl_udp(
+#[op2(async)]
+pub async fn op_net_set_multi_ttl_udp(
   state: Rc<RefCell<OpState>>,
-  rid: ResourceId,
-  ttl: u32,
+  #[smi] rid: ResourceId,
+  #[smi] ttl: u32,
 ) -> Result<(), AnyError> {
   let resource = state
     .borrow_mut()
@@ -285,10 +288,11 @@ async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
 ) -> Result<(ResourceId, IpAddr, IpAddr), AnyError>
 where
   NP: NetPermissions + 'static,
@@ -346,10 +350,11 @@ impl Resource for UdpSocketResource {
   }
 }
 
-#[op]
-fn op_net_listen_tcp<NP>(
+#[op2]
+#[serde]
+pub fn op_net_listen_tcp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_port: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
 where
@@ -455,10 +460,11 @@ where
   Ok((rid, IpAddr::from(local_addr)))
 }
 
-#[op]
-fn op_net_listen_udp<NP>(
+#[op2]
+#[serde]
+pub fn op_net_listen_udp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
@@ -469,10 +475,11 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[op]
-fn op_node_unstable_net_listen_udp<NP>(
+#[op2]
+#[serde]
+pub fn op_node_unstable_net_listen_udp<NP>(
   state: &mut OpState,
-  addr: IpAddr,
+  #[serde] addr: IpAddr,
   reuse_address: bool,
   loopback: bool,
 ) -> Result<(ResourceId, IpAddr), AnyError>
@@ -553,10 +560,11 @@ pub struct NameServer {
   port: u16,
 }
 
-#[op]
+#[op2(async)]
+#[serde]
 pub async fn op_dns_resolve<NP>(
   state: Rc<RefCell<OpState>>,
-  args: ResolveAddrArgs,
+  #[serde] args: ResolveAddrArgs,
 ) -> Result<Vec<DnsReturnRecord>, AnyError>
 where
   NP: NetPermissions + 'static,
@@ -613,7 +621,9 @@ where
     let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
 
     if let Some(cancel_rid) = cancel_rid {
-      state.borrow_mut().resource_table.close(cancel_rid).ok();
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
     };
 
     lookup_rv?
@@ -640,10 +650,10 @@ where
     .collect::<Result<Vec<DnsReturnRecord>, AnyError>>()
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_set_nodelay(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
@@ -651,10 +661,10 @@ pub fn op_set_nodelay(
   resource.set_nodelay(nodelay)
 }
 
-#[op]
+#[op2(fast)]
 pub fn op_set_keepalive(
   state: &mut OpState,
-  rid: ResourceId,
+  #[smi] rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), AnyError> {
   let resource: Rc<TcpStreamResource> =
