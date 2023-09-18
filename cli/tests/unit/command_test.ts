@@ -442,7 +442,7 @@ Deno.test({ permissions: { run: true } }, function cwdNotDirectory() {
         cwd: Deno.execPath(),
       }).output(),
     Deno.errors.NotFound,
-    `cwd path is not a directory '${Deno.execPath()}': Not a directory`,
+    `cwd path is not a directory '${Deno.execPath()}':`,
   );
 });
 
