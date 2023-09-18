@@ -8,7 +8,6 @@ use std::process::Stdio;
 use test_util as util;
 use util::assert_contains;
 use util::env_vars_for_npm_tests;
-use util::env_vars_for_npm_tests_no_sync_download;
 use util::http_server;
 use util::TestContextBuilder;
 
@@ -461,7 +460,7 @@ fn parallel_downloading() {
     ],
     None,
     // don't use the sync env var
-    Some(env_vars_for_npm_tests_no_sync_download()),
+    Some(env_vars_for_npm_tests()),
     true,
   );
   assert!(out.contains("chalk cjs loads"));
@@ -742,7 +741,7 @@ fn deno_run_cjs_module() {
 itest!(deno_run_cowsay {
   args: "run -A --quiet npm:cowsay@1.5.0 Hello",
   output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -750,21 +749,21 @@ itest!(deno_run_cowsay_with_node_modules_dir {
   args: "run -A --quiet --node-modules-dir npm:cowsay@1.5.0 Hello",
   temp_cwd: true,
   output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(deno_run_cowsay_explicit {
   args: "run -A --quiet npm:cowsay@1.5.0/cowsay Hello",
   output: "npm/deno_run_cowsay.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
 itest!(deno_run_cowthink {
   args: "run -A --quiet npm:cowsay@1.5.0/cowthink Hello",
   output: "npm/deno_run_cowthink.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
 });
 
@@ -1553,7 +1552,6 @@ fn auto_discover_lock_file() {
 #[test]
 fn peer_deps_with_copied_folders_and_lockfile() {
   let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
     .use_copy_temp_dir("npm/peer_deps_with_copied_folders")
     .cwd("npm/peer_deps_with_copied_folders")
     .build();
@@ -1749,10 +1747,7 @@ fn reload_info_not_found_cache_but_exists_remote() {
 
   // This tests that when a local machine doesn't have a version
   // specified in a dependency that exists in the npm registry
-  let test_context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
-    .use_temp_cwd()
-    .build();
+  let test_context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let deno_dir = test_context.deno_dir();
   let temp_dir = test_context.temp_dir();
   temp_dir.write(
@@ -1955,7 +1950,6 @@ fn reload_info_not_found_cache_but_exists_remote() {
 #[test]
 fn binary_package_with_optional_dependencies() {
   let context = TestContextBuilder::for_npm()
-    .use_sync_npm_download()
     .use_copy_temp_dir("npm/binary_package")
     .cwd("npm/binary_package")
     .build();
@@ -2171,7 +2165,7 @@ itest!(dynamic_import_json {
 itest!(check_package_file_dts_dmts_dcts {
   args: "check npm/file_dts_dmts_dcts/main.ts",
   output: "npm/file_dts_dmts_dcts/main.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 1,
 });
@@ -2179,7 +2173,7 @@ itest!(check_package_file_dts_dmts_dcts {
 itest!(require_resolve_url_paths {
   args: "run -A --quiet --node-modules-dir url_paths.ts",
   output: "npm/require_resolve_url/url_paths.out",
-  envs: env_vars_for_npm_tests_no_sync_download(),
+  envs: env_vars_for_npm_tests(),
   http_server: true,
   exit_code: 0,
   cwd: Some("npm/require_resolve_url/"),
