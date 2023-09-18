@@ -1,7 +1,6 @@
 // Copyright 2018-2023 the Deno authors. All rights reserved. MIT license.
 
 use super::analysis::CodeActionData;
-use super::analysis::TsResponseImportMapper;
 use super::code_lens;
 use super::config;
 use super::documents::AssetOrDocument;
@@ -2416,11 +2415,13 @@ fn parse_code_actions(
         let change_specifier = normalize_specifier(&change.file_name)?;
         if data.specifier == change_specifier {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
-            update_import_statement(
-              tc.as_text_edit(asset_or_doc.line_index()),
-              data,
-              Some(&language_server.get_ts_response_import_mapper()),
-            )
+            let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
+            if let Some(specifier_rewrite) = &data.specifier_rewrite {
+              text_edit.new_text = text_edit
+                .new_text
+                .replace(&specifier_rewrite.0, &specifier_rewrite.1);
+            }
+            text_edit
           }));
         } else {
           has_remaining_commands_or_edits = true;
@@ -2655,6 +2656,11 @@ pub struct CompletionItemData {
   pub name: String,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub source: Option<String>,
+  /// If present, the code action / text edit corresponding to this item should
+  /// be rewritten by replacing the first string with the second. Intended for
+  /// auto-import specifiers to be reverse-import-mapped.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub specifier_rewrite: Option<(String, String)>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
   pub use_code_snippet: bool,
@@ -2665,37 +2671,6 @@ pub struct CompletionItemData {
 struct CompletionEntryDataImport {
   module_specifier: String,
   file_name: String,
-}
-
-/// Modify an import statement text replacement to have the correct import
-/// specifier to work with Deno module resolution.
-fn update_import_statement(
-  mut text_edit: lsp::TextEdit,
-  item_data: &CompletionItemData,
-  maybe_import_mapper: Option<&TsResponseImportMapper>,
-) -> lsp::TextEdit {
-  if let Some(data) = &item_data.data {
-    if let Ok(import_data) =
-      serde_json::from_value::<CompletionEntryDataImport>(data.clone())
-    {
-      if let Ok(import_specifier) = normalize_specifier(&import_data.file_name)
-      {
-        if let Some(new_module_specifier) = maybe_import_mapper
-          .and_then(|m| {
-            m.check_specifier(&import_specifier, &item_data.specifier)
-          })
-          .or_else(|| {
-            relative_specifier(&item_data.specifier, &import_specifier)
-          })
-        {
-          text_edit.new_text = text_edit
-            .new_text
-            .replace(&import_data.module_specifier, &new_module_specifier);
-        }
-      }
-    }
-  }
-  text_edit
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -2825,6 +2800,7 @@ impl CompletionEntry {
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
     let mut kind: Option<lsp::CompletionItemKind> =
       Some(self.kind.clone().into());
+    let mut specifier_rewrite = None;
 
     let mut sort_text = if self.source.is_some() {
       format!("\u{ffff}{}", self.sort_text)
@@ -2879,7 +2855,7 @@ impl CompletionEntry {
     }
 
     if let Some(source) = &self.source {
-      let mut source = source.clone();
+      let mut display_source = source.clone();
       if let Some(data) = &self.data {
         if let Ok(import_data) =
           serde_json::from_value::<CompletionEntryDataImport>(data.clone())
@@ -2892,21 +2868,25 @@ impl CompletionEntry {
               .check_specifier(&import_specifier, specifier)
               .or_else(|| relative_specifier(specifier, &import_specifier))
             {
-              source = new_module_specifier;
+              display_source = new_module_specifier.clone();
+              if new_module_specifier != import_data.module_specifier {
+                specifier_rewrite =
+                  Some((import_data.module_specifier, new_module_specifier));
+              }
             }
           }
         }
       }
       // We want relative or bare (import-mapped or otherwise) specifiers to
       // appear at the top.
-      if resolve_url(&source).is_err() {
+      if resolve_url(&display_source).is_err() {
         sort_text += "_0";
       } else {
         sort_text += "_1";
       }
       label_details
         .get_or_insert_with(Default::default)
-        .description = Some(source);
+        .description = Some(display_source);
     }
 
     let text_edit =
@@ -2927,6 +2907,7 @@ impl CompletionEntry {
       position,
       name: self.name.clone(),
       source: self.source.clone(),
+      specifier_rewrite,
       data: self.data.clone(),
       use_code_snippet,
     };
@@ -5140,82 +5121,6 @@ mod tests {
         is_new_file: None,
       }]
     );
-  }
-
-  #[test]
-  fn test_update_import_statement() {
-    let fixtures = vec![
-      (
-        "file:///a/a.ts",
-        "./b",
-        "file:///a/b.ts",
-        "import { b } from \"./b\";\n\n",
-        "import { b } from \"./b.ts\";\n\n",
-      ),
-      (
-        "file:///a/a.ts",
-        "../b/b",
-        "file:///b/b.ts",
-        "import { b } from \"../b/b\";\n\n",
-        "import { b } from \"../b/b.ts\";\n\n",
-      ),
-      ("file:///a/a.ts", "./b", "file:///a/b.ts", ", b", ", b"),
-    ];
-
-    for (
-      specifier_text,
-      module_specifier,
-      file_name,
-      orig_text,
-      expected_text,
-    ) in fixtures
-    {
-      let specifier = ModuleSpecifier::parse(specifier_text).unwrap();
-      let item_data = CompletionItemData {
-        specifier: specifier.clone(),
-        position: 0,
-        name: "b".to_string(),
-        source: None,
-        data: Some(json!({
-          "moduleSpecifier": module_specifier,
-          "fileName": file_name,
-        })),
-        use_code_snippet: false,
-      };
-      let actual = update_import_statement(
-        lsp::TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 0,
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 0,
-            },
-          },
-          new_text: orig_text.to_string(),
-        },
-        &item_data,
-        None,
-      );
-      assert_eq!(
-        actual,
-        lsp::TextEdit {
-          range: lsp::Range {
-            start: lsp::Position {
-              line: 0,
-              character: 0,
-            },
-            end: lsp::Position {
-              line: 0,
-              character: 0,
-            },
-          },
-          new_text: expected_text.to_string(),
-        }
-      );
-    }
   }
 
   #[test]
