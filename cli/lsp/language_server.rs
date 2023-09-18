@@ -2399,6 +2399,7 @@ impl Inner {
           position,
           tsc::GetCompletionsAtPositionOptions {
             user_preferences: tsc::UserPreferences {
+              quote_preference: Some((&self.fmt_options.options).into()),
               allow_incomplete_completions: Some(true),
               allow_text_changes_in_new_files: Some(
                 specifier.scheme() == "file",
@@ -2466,10 +2467,14 @@ impl Inner {
         })?;
       if let Some(data) = &data.tsc {
         let specifier = &data.specifier;
-        let args = GetCompletionDetailsArgs {
+        let mut args = GetCompletionDetailsArgs {
           format_code_settings: Some((&self.fmt_options.options).into()),
           ..data.into()
         };
+        args
+          .preferences
+          .get_or_insert(Default::default())
+          .quote_preference = Some((&self.fmt_options.options).into());
         let result = self
           .ts_server
           .get_completion_details(self.snapshot(), args)
@@ -2971,6 +2976,7 @@ impl Inner {
             (&self.fmt_options.options).into(),
             tsc::UserPreferences {
               allow_text_changes_in_new_files: Some(true),
+              quote_preference: Some((&self.fmt_options.options).into()),
               ..Default::default()
             },
           )
@@ -3600,7 +3606,10 @@ impl Inner {
         self.snapshot(),
         specifier,
         text_span,
-        workspace_settings.into(),
+        tsc::UserPreferences {
+          quote_preference: Some((&self.fmt_options.options).into()),
+          ..workspace_settings.into()
+        },
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {

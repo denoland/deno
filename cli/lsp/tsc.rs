@@ -3500,6 +3500,15 @@ pub enum QuotePreference {
   Single,
 }
 
+impl From<&FmtOptionsConfig> for QuotePreference {
+  fn from(config: &FmtOptionsConfig) -> Self {
+    match config.single_quote {
+      Some(true) => QuotePreference::Single,
+      _ => QuotePreference::Double,
+    }
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
@@ -4969,6 +4978,7 @@ mod tests {
     assert!(result.is_ok());
     let fmt_options_config = FmtOptionsConfig {
       semi_colons: Some(false),
+      single_quote: Some(true),
       ..Default::default()
     };
     let result = request(
@@ -4979,6 +4989,7 @@ mod tests {
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
+            quote_preference: Some((&fmt_options_config).into()),
             include_completions_for_module_exports: Some(true),
             include_completions_with_insert_text: Some(true),
             ..Default::default()
@@ -5004,7 +5015,10 @@ mod tests {
         position,
         name: entry.name.clone(),
         source: entry.source.clone(),
-        preferences: None,
+        preferences: Some(UserPreferences {
+          quote_preference: Some((&fmt_options_config).into()),
+          ..Default::default()
+        }),
         format_code_settings: Some((&fmt_options_config).into()),
         data: entry.data.clone(),
       }),
@@ -5022,7 +5036,7 @@ mod tests {
     let change = changes.text_changes.first().unwrap();
     assert_eq!(
       change.new_text,
-      "import { someLongVariable } from \"./b.ts\"\n"
+      "import { someLongVariable } from './b.ts'\n"
     );
   }
 
