@@ -424,7 +424,7 @@ Deno.test({ permissions: { run: true } }, function commandSyncNotFound() {
   );
 });
 
-Deno.test({ permissions: { run: true } }, function cwdNotFound() {
+Deno.test({ permissions: { run: true, read: true } }, function cwdNotFound() {
   assertThrows(
     () =>
       new Deno.Command(Deno.execPath(), {
@@ -435,16 +435,19 @@ Deno.test({ permissions: { run: true } }, function cwdNotFound() {
   );
 });
 
-Deno.test({ permissions: { run: true } }, function cwdNotDirectory() {
-  assertThrows(
-    () =>
-      new Deno.Command(Deno.execPath(), {
-        cwd: Deno.execPath(),
-      }).output(),
-    Deno.errors.NotFound,
-    `cwd path is not a directory '${Deno.execPath()}':`,
-  );
-});
+Deno.test(
+  { permissions: { run: true, read: true } },
+  function cwdNotDirectory() {
+    assertThrows(
+      () =>
+        new Deno.Command(Deno.execPath(), {
+          cwd: Deno.execPath(),
+        }).output(),
+      Deno.errors.NotFound,
+      `cwd path is not a directory '${Deno.execPath()}':`,
+    );
+  },
+);
 
 Deno.test(
   { permissions: { run: true, read: true } },
